@@ -2200,7 +2200,7 @@ Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
 libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
 FFmpeg header or type appears in a public header. FFmpeg is optional at build
 time: without it the same API links from a stub whose calls return
-`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
+`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 9.x.
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments

@@ -12,11 +12,13 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.14.1 - every frame reaches a filter graph through
+//                  FeedBufferSource (FFmpeg 9 refuses frames past a trim)
 // Version: 0.14.0 - VideoFX_GetFileFormats: the containers and pictures this
 //                  build reads (the host's picture types too), and the ones an
 //                  export writes
 // Version: 0.13.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -353,13 +355,13 @@ VideoFXResult FeedOverlayVideos(std::vector<OverlayVideoFeed>& feeds, double upt
     for (OverlayVideoFeed& f : feeds) {
         while (!f.eof && f.lastFed <= upto) {
             if (f.pendingTime >= f.cap) {
-                int err = av_buffersrc_add_frame_flags(f.source, nullptr, 0);
+                int err = FeedBufferSource(f.source, nullptr, 0);
                 if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the overlay video", err);
                 f.eof = true;
                 break;
             }
             f.pending->pts = std::llround(f.pendingTime / av_q2d(kOverlayTb));
-            int err = av_buffersrc_add_frame_flags(f.source, f.pending.get(), 0);
+            int err = FeedBufferSource(f.source, f.pending.get(), 0);
             if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the overlay video", err);
             f.lastFed = f.pendingTime;
             FramePtr decoded = MakeFrame();
@@ -370,7 +372,7 @@ VideoFXResult FeedOverlayVideos(std::vector<OverlayVideoFeed>& feeds, double upt
             const VideoFXOverlay& o = *f.overlay;
             const double next = std::max(f.lastFed, o.start + std::max(0.0, t - o.videoStart));
             if (end || (o.end > 0.0 && next >= o.end)) {
-                err = av_buffersrc_add_frame_flags(f.source, nullptr, 0);
+                err = FeedBufferSource(f.source, nullptr, 0);
                 if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the overlay video", err);
                 f.eof = true;
                 break;
@@ -389,7 +391,7 @@ VideoFXResult FinishOverlayVideos(std::vector<OverlayVideoFeed>& feeds, double s
     if (r != VideoFXResult::Ok) return r;
     for (OverlayVideoFeed& f : feeds) {
         if (f.eof) continue;
-        int err = av_buffersrc_add_frame_flags(f.source, nullptr, 0);
+        int err = FeedBufferSource(f.source, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the overlay video", err);
         f.eof = true;
     }
@@ -1258,8 +1260,8 @@ VideoFXResult Exporter::FeedOverlayImages(Graph& g, const SegmentPlan& plan) {
         VideoFXResult r = RgbaToFrame(image, f);
         if (r != VideoFXResult::Ok) return r;
         f->pts = 0;
-        int err = av_buffersrc_add_frame_flags(src, f.get(), 0);
-        if (err >= 0) err = av_buffersrc_add_frame_flags(src, nullptr, 0);
+        int err = FeedBufferSource(src, f.get(), 0);
+        if (err >= 0) err = FeedBufferSource(src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed an overlay image", err);
     }
     return VideoFXResult::Ok;
@@ -1292,9 +1294,9 @@ VideoFXResult Exporter::FeedPreviewOverlayVideos(Graph& g, const SegmentPlan& pl
             if ((r = ConvertOverlayFrame(v, decoded.get(), w, h, f)) != VideoFXResult::Ok) return r;
             // half a frame early, so it is the frame "before" the picture's whatever the rounding
             f->pts = std::llround(std::max(0.0, previewLocal - 0.5 / av_q2d(frameRate)) / av_q2d(kOverlayTb));
-            err = av_buffersrc_add_frame_flags(src, f.get(), 0);
+            err = FeedBufferSource(src, f.get(), 0);
         }
-        if (err >= 0) err = av_buffersrc_add_frame_flags(src, nullptr, 0);
+        if (err >= 0) err = FeedBufferSource(src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the overlay video", err);
     }
     return VideoFXResult::Ok;
@@ -1391,7 +1393,7 @@ VideoFXResult Exporter::PassVideo(AVFrame* f) {
 
 VideoFXResult Exporter::OutputVideo(AVFrame* f) {
     if (!gif) return EncodeVideo(f);
-    int err = av_buffersrc_add_frame_flags(gifGraph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+    int err = FeedBufferSource(gifGraph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
     if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot build the GIF palette", err);
     FramePtr scratch = MakeFrame();
     const AVRational tb = av_buffersink_get_time_base(gifGraph.sink);
@@ -1435,13 +1437,13 @@ VideoFXResult Exporter::RunVideoTransition() {
         for (size_t i = 0; i < n; ++i) {
             transitionTail[before + i]->pts = static_cast<int64_t>(i);
             headFrames[i]->pts = static_cast<int64_t>(i);
-            int err = av_buffersrc_add_frame_flags(a, transitionTail[before + i].get(), 0);
-            if (err >= 0) err = av_buffersrc_add_frame_flags(b, headFrames[i].get(), 0);
+            int err = FeedBufferSource(a, transitionTail[before + i].get(), 0);
+            if (err >= 0) err = FeedBufferSource(b, headFrames[i].get(), 0);
             if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the transition", err);
             if ((r = PullGraph(g, scratch.get(), emit)) != VideoFXResult::Ok) return r;
         }
-        int err = av_buffersrc_add_frame_flags(a, nullptr, 0);
-        if (err >= 0) err = av_buffersrc_add_frame_flags(b, nullptr, 0);
+        int err = FeedBufferSource(a, nullptr, 0);
+        if (err >= 0) err = FeedBufferSource(b, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the transition", err);
         if ((r = PullGraph(g, scratch.get(), emit)) != VideoFXResult::Ok) return r;
         nextVideoPts = std::max(nextVideoPts, base + static_cast<int64_t>(n));
@@ -1830,7 +1832,7 @@ VideoFXResult Exporter::ReadMusicPacket() {
         const int64_t ts = f->best_effort_timestamp;
         f->pts = ts != AV_NOPTS_VALUE ? av_rescale_q(ts - bed.origin, st->time_base, tb) : bed.nextPts;
         bed.nextPts = f->pts + f->nb_samples;
-        int err = av_buffersrc_add_frame_flags(bed.graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        int err = FeedBufferSource(bed.graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the music", err);
         return PullGraph(bed.graph, scratch.get(), toFifo);
     };
@@ -1862,7 +1864,7 @@ VideoFXResult Exporter::ReadMusicPacket() {
     VideoFXResult r = receive();
     if (r != VideoFXResult::Ok) return r;
     if (bed.graph.src) {
-        err = av_buffersrc_add_frame_flags(bed.graph.src, nullptr, 0);
+        err = FeedBufferSource(bed.graph.src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the music", err);
         if ((r = PullGraph(bed.graph, scratch.get(), toFifo)) != VideoFXResult::Ok) return r;
     }
@@ -2067,7 +2069,7 @@ VideoFXResult Exporter::ReadClipPacket(ClipSource& s) {
         const int64_t ts = f->best_effort_timestamp;
         f->pts = ts != AV_NOPTS_VALUE ? av_rescale_q(ts - s.origin, st->time_base, tb) : s.nextPts;
         s.nextPts = f->pts + f->nb_samples;
-        int err = av_buffersrc_add_frame_flags(s.graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        int err = FeedBufferSource(s.graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the audio clip", err);
         return PullGraph(s.graph, scratch.get(), toFifo);
     };
@@ -2094,7 +2096,7 @@ VideoFXResult Exporter::ReadClipPacket(ClipSource& s) {
     VideoFXResult r = receive();
     if (r != VideoFXResult::Ok) return r;
     if (s.graph.src) {
-        err = av_buffersrc_add_frame_flags(s.graph.src, nullptr, 0);
+        err = FeedBufferSource(s.graph.src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the audio clip", err);
         if ((r = PullGraph(s.graph, scratch.get(), toFifo)) != VideoFXResult::Ok) return r;
     }
@@ -2242,12 +2244,12 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
         RenderView(image, x, y, w, h, width, height, f->data[0], f->linesize[0], settings.threads,
                    backdrop.empty() ? nullptr : backdrop.data());
         f->pts = k;
-        err = av_buffersrc_add_frame_flags(g.src, f.get(), 0);
+        err = FeedBufferSource(g.src, f.get(), 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the image", err);
         if ((r = PullGraph(g, scratch.get(), emit)) != VideoFXResult::Ok) return r;
     }
     if ((r = FinishOverlayVideos(feeds, plan.outDuration)) != VideoFXResult::Ok) return r;
-    int err = av_buffersrc_add_frame_flags(g.src, nullptr, 0);
+    int err = FeedBufferSource(g.src, nullptr, 0);
     if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the image", err);
     return PullGraph(g, scratch.get(), emit);
 }
@@ -2349,7 +2351,7 @@ VideoFXResult Exporter::ProcessFileSegment(const SegmentPlan& plan) {
             converted->pts = frame->pts;
             push = converted.get();
         }
-        int err = av_buffersrc_add_frame_flags(vg.src, push, AV_BUFFERSRC_FLAG_KEEP_REF);
+        int err = FeedBufferSource(vg.src, push, AV_BUFFERSRC_FLAG_KEEP_REF);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the effect chain", err);
         return PullGraph(vg, scratch.get(), emitVideo);
     };
@@ -2372,7 +2374,7 @@ VideoFXResult Exporter::ProcessFileSegment(const SegmentPlan& plan) {
             frame->pts = audioNextPts;
         }
         audioNextPts = frame->pts + frame->nb_samples;
-        int err = av_buffersrc_add_frame_flags(ag.src, frame, AV_BUFFERSRC_FLAG_KEEP_REF);
+        int err = FeedBufferSource(ag.src, frame, AV_BUFFERSRC_FLAG_KEEP_REF);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the audio effect chain", err);
         return PullGraph(ag, scratch.get(), emitAudio);
     };
@@ -2430,12 +2432,12 @@ VideoFXResult Exporter::ProcessFileSegment(const SegmentPlan& plan) {
     }
     if (vg.src) {
         if ((r = FinishOverlayVideos(feeds, std::max(plan.outDuration, lastLocal))) != VideoFXResult::Ok) return r;
-        int err = av_buffersrc_add_frame_flags(vg.src, nullptr, 0);
+        int err = FeedBufferSource(vg.src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the effect chain", err);
         if ((r = PullGraph(vg, scratch.get(), emitVideo)) != VideoFXResult::Ok) return r;
     }
     if (ag.src) {
-        int err = av_buffersrc_add_frame_flags(ag.src, nullptr, 0);
+        int err = FeedBufferSource(ag.src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the audio effect chain", err);
         if ((r = PullGraph(ag, scratch.get(), emitAudio)) != VideoFXResult::Ok) return r;
     }
@@ -2545,7 +2547,7 @@ VideoFXResult Exporter::Finish() {
     }
     if (outVideo && gif) {
         // The palette stage holds nothing back, but drain it all the same
-        int err = av_buffersrc_add_frame_flags(gifGraph.src, nullptr, 0);
+        int err = FeedBufferSource(gifGraph.src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the GIF palette", err);
         FramePtr scratch = MakeFrame();
         const AVRational tb = av_buffersink_get_time_base(gifGraph.sink);
@@ -2661,7 +2663,7 @@ VideoFXResult DecodeMonoStream(const std::string& path, int sampleRate,
         }
         f->pts = nextPts;                   // the sound in order, gaps and all closed up
         nextPts += f->nb_samples;
-        int err = av_buffersrc_add_frame_flags(graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        int err = FeedBufferSource(graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the sound", err);
         return PullGraph(graph, scratch.get(), collect);
     };
@@ -2691,7 +2693,7 @@ VideoFXResult DecodeMonoStream(const std::string& path, int sampleRate,
     avcodec_send_packet(dec.get(), nullptr);
     if ((r = receive()) != VideoFXResult::Ok) return r;
     if (graph.src) {
-        int err = av_buffersrc_add_frame_flags(graph.src, nullptr, 0);
+        int err = FeedBufferSource(graph.src, nullptr, 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the sound", err);
         if ((r = PullGraph(graph, scratch.get(), collect)) != VideoFXResult::Ok) return r;
     }
@@ -3000,8 +3002,8 @@ VideoFXResult Exporter::RenderThroughGraph(const SegmentPlan& plan, const std::s
     if (r != VideoFXResult::Ok) return r;
     if ((r = FeedOverlayImages(g, plan)) != VideoFXResult::Ok) return r;
     if ((r = FeedPreviewOverlayVideos(g, plan)) != VideoFXResult::Ok) return r;
-    int err = av_buffersrc_add_frame_flags(g.src, input, AV_BUFFERSRC_FLAG_KEEP_REF);
-    if (err >= 0) err = av_buffersrc_add_frame_flags(g.src, nullptr, 0);
+    int err = FeedBufferSource(g.src, input, AV_BUFFERSRC_FLAG_KEEP_REF);
+    if (err >= 0) err = FeedBufferSource(g.src, nullptr, 0);
     if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the effect chain", err);
     FramePtr scratch = MakeFrame();
     out.reset();
@@ -3044,7 +3046,7 @@ VideoFXResult Exporter::BlendTransition(const SegmentPlan& into, double overlap,
         AVFilterContext* sb = g.Source("b");
         auto feed = [](AVFilterContext* src, AVFrame* f, int64_t pts) {
             f->pts = pts;
-            return av_buffersrc_add_frame_flags(src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+            return FeedBufferSource(src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
         };
         int err = 0;
         if (k > 0) {
@@ -3053,8 +3055,8 @@ VideoFXResult Exporter::BlendTransition(const SegmentPlan& into, double overlap,
         }
         if (err >= 0) err = feed(sa, a, k);
         if (err >= 0) err = feed(sb, b, k);
-        if (err >= 0) err = av_buffersrc_add_frame_flags(sa, nullptr, 0);
-        if (err >= 0) err = av_buffersrc_add_frame_flags(sb, nullptr, 0);
+        if (err >= 0) err = FeedBufferSource(sa, nullptr, 0);
+        if (err >= 0) err = FeedBufferSource(sb, nullptr, 0);
         if (err >= 0) {
             FramePtr scratch = MakeFrame();
             PullGraph(g, scratch.get(), [&](AVFrame* f) {

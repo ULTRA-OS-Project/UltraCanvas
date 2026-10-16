@@ -371,11 +371,32 @@ done
 # before System32 in the search order. Any hit fails the build with the
 # file named, so the choice - drop it or rename it - is made here and not
 # by a loader box on a user's machine.
+#
+# The one kept choice: the Khronos loaders, vulkan-1.dll and OpenCL.dll. They
+# carry the system name because they are that library - what a GPU driver
+# installs into System32 under the name, the same API (the mpr.dll coder was
+# an unrelated DLL that happened to share one). MSYS2's FFmpeg imports them:
+# libavfilter links libplacebo, which links the Vulkan loader, and on ARM64
+# ggml (FFmpeg's whisper filter) links Vulkan and OpenCL. Dropped, they would
+# leave libavfilter - and with it libVideoFX and UltraVideo - unable to start
+# on a PC without a GPU driver (a VM, a server); shipped, ours serves this
+# process in place of the system's, where nothing else asks for them (the
+# framework uses neither API).
+is_khronos_loader() {
+    case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in
+        vulkan-1.dll|opencl.dll) return 0 ;;
+    esac
+    return 1
+}
 echo ""
 echo "Checking for DLLs named like Windows system DLLs..."
 SHADOW_HITS=0
 while IFS= read -r dll; do
     if is_system_dll_name "$(basename "$dll")"; then
+        if is_khronos_loader "$(basename "$dll")"; then
+            echo "  $dll: the Khronos loader of that name - shipped (see is_khronos_loader)"
+            continue
+        fi
         echo "  ERROR: $dll has a Windows system DLL's name and would shadow it in the process" >&2
         SHADOW_HITS=$((SHADOW_HITS + 1))
     fi
@@ -384,7 +405,35 @@ if [ "$SHADOW_HITS" -gt 0 ]; then
     echo "Error: $SHADOW_HITS DLL(s) would shadow a Windows system DLL (see above); drop or rename them" >&2
     exit 1
 fi
-echo "  none"
+echo "  done"
+
+# Every DLL of this build that a packaged executable or DLL imports must be in
+# the package beside the executables. The copy at the top takes only the build
+# root's DLLs, and the closure above follows only the MinGW prefix, so a
+# library a CMakeLists sends anywhere else is left behind unnoticed:
+# libVideoFX.dll went to build/bin/ until VideoFX 0.14.1, and UltraVideo.exe
+# from the package stopped at start with "libVideoFX.dll was not found". Here
+# that fails the build with the importer and the DLL named. One objdump per
+# file and one awk at the end: a grep per import costs minutes under MSYS2.
+echo ""
+echo "Checking that every DLL of this build that the package imports is in it..."
+UNPACKAGED=$(
+    find "$DIST_DIR" \( -iname '*.exe' -o -iname '*.dll' \) | while IFS= read -r bin; do
+        bin_name=${bin##*/}
+        "$OBJDUMP" -p "$bin" 2>/dev/null | sed -n 's/.*DLL Name:[[:space:]]*//p' | tr -d '\r' \
+            | while IFS= read -r name; do
+                [ -f "$DIST_DIR/$name" ] || printf '%s\t%s\n' "$bin_name" "$name"
+            done
+    done | awk -F'\t' 'FNR == NR { built[tolower($0)] = 1; next }
+                       built[tolower($2)] { print "  " $1 " imports " $2 }' \
+        <(find ./build -iname '*.dll' -printf '%f\n' 2>/dev/null) -
+)
+if [ -n "$UNPACKAGED" ]; then
+    echo "$UNPACKAGED" >&2
+    echo "Error: the package lacks DLLs this build made that the files above import; build them into the build root (CMAKE_RUNTIME_OUTPUT_DIRECTORY), where the executables are and the copy above looks" >&2
+    exit 1
+fi
+echo "  none missing"
 
 # Copy GLib schema files if they exist (needed by some GTK/GLib apps)
 #if [ -d "$MSYS_PREFIX/share/glib-2.0/schemas" ]; then

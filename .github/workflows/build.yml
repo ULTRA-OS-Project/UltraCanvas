@@ -267,6 +267,11 @@ jobs:
           key: msys2-pkgs-${{ matrix.msystem }}-
           restore-keys: msys2-pkgs-${{ matrix.msystem }}-
 
+      # -ffmpeg is VideoFX's engine: without it VideoFX builds from its stub,
+      # and the package's UltraVideo starts but opens, plays and exports
+      # nothing. MSYS2 builds FFmpeg with --enable-gpl --enable-version3
+      # (libx264, libx265), so what the Windows package ships linking it is
+      # GPL-3.0-or-later - see FFmpeg in THIRD_PARTY_LICENSES.md.
       - name: Update MSYS2 and install the build dependencies (Windows)
         if: runner.os == 'Windows'
         id: msys2-deps
@@ -310,6 +315,7 @@ jobs:
             ${{ matrix.msys_prefix }}-opusfile
             ${{ matrix.msys_prefix }}-libopusenc
             ${{ matrix.msys_prefix }}-lame
+            ${{ matrix.msys_prefix }}-ffmpeg
             ${{ matrix.msys_prefix }}-librevenge
             ${{ matrix.msys_prefix }}-libcdr
             ${{ matrix.msys_prefix }}-lcms2
@@ -835,6 +841,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
+            -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
@@ -1240,6 +1247,21 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
+
+      # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
+      # ships - and through the Windows file names, cache folder and fonts.
+      # As on Linux (below), the stub would pass VideoFXTest on its
+      # filter-text checks alone, so first prove the engine was configured.
+      - name: Verify the VideoFX engine and run VideoFXTest (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -eu
+          if ! grep -q "VideoFX: FFmpeg .* found - engine enabled" configure.log; then
+            echo "::error::VideoFX was configured without FFmpeg - is the MSYS2 -ffmpeg package installed?"
+            exit 1
+          fi
+          cd build
+          ctest --output-on-failure --no-tests=error -R "^VideoFXTest$"
 
       # UltraCloud's module suite - the account store on UltraDatabase, the
       # secret stores on UltraVault, every provider against an injected fake
