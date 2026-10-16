@@ -13,3 +13,10 @@
   name ("Sheet2", ...) and switches to it. Tabs and the button are laid out
   once for drawing and clicking, so a click on a tab always selects the tab
   drawn there, and the button stays in view when many tabs do not fit.
+- **Spreadsheet: every sheet tab can be reached.** The box left of the tabs
+  was an empty placeholder, so with more sheets than fit the rest could not be
+  clicked. It now holds ◀ ▶ buttons that scroll the strip one tab at a time
+  (greyed when there is nothing further that way), and switching sheets in
+  code or with "+" scrolls the active tab into view. Tab widths are measured
+  in the tab font instead of guessed at 8 px per byte, so long and non-Latin
+  names fit; a name wider than the whole strip is clipped inside its tab.

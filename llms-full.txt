@@ -57961,7 +57961,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 ## Features
 
 - **Editable Grid**: Click-to-edit cells with an in-cell editor and a formula bar
-- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs
+- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs; the tab strip's "+" button adds a sheet, and its ◀ ▶ buttons scroll through tabs that do not fit
 - **Typed Cells**: Text, Number, Boolean, Date/Time, Currency, Percentage, Error, and Formula values
 - **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection, and some 150 Excel-compatible functions — `VLOOKUP`, `INDEX` and `MATCH`, `SUMIF` and `SUMIFS`, `COUNTIF` and `COUNTIFS`, `SUMPRODUCT`, text, date, statistical and financial functions (see [Formula language and functions](#formula-language-and-functions))
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)

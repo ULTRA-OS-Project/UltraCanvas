@@ -712,53 +712,99 @@ void UltraCanvasSpreadsheet::RenderFreezeLines(IRenderContext* ctx) {
     }
 }
 
-void UltraCanvasSpreadsheet::LayoutSheetTabs(std::vector<Rect2Di>& tabs, Rect2Di& addButton) const {
-    const int navWidth = 60;
+int UltraCanvasSpreadsheet::SheetTabWidth(const std::string& name) const {
+    const int padding = 20;
+    // Measured in the font the tab is drawn in, so long and non-Latin names
+    // fit; the per-byte estimate is only for before the grid has a window.
+    if (CellTextMeasureFn measure = MakeSpreadsheetTextMeasurer(GetRenderContext())) {
+        return std::max(40, measure(name, CellFont()) + padding);
+    }
+    return std::max(40, static_cast<int>(name.length()) * 8 + padding);
+}
+
+UltraCanvasSpreadsheet::SheetTabLayout UltraCanvasSpreadsheet::LayoutSheetTabs(int firstTab) const {
+    const int navButtonWidth = 30;
     const int addWidth = 24;
     const int tabY = sheetTabsBounds_.y;
     const int tabHeight = sheetTabsBounds_.height;
     const int right = sheetTabsBounds_.x + sheetTabsBounds_.width;
-    int tabX = sheetTabsBounds_.x + 4 + navWidth;
 
-    tabs.clear();
-    for (const auto& sheet : sheets_) {
-        int tabWidth = static_cast<int>(sheet->GetName().length() * 8) + 20;
-        // Always keep room for the "+" button after the last tab drawn.
-        if (!tabs.empty() && tabX + tabWidth + addWidth > right) break;
-        tabs.emplace_back(tabX, tabY, tabWidth, tabHeight);
+    SheetTabLayout layout;
+    layout.prevButton = Rect2Di(sheetTabsBounds_.x, tabY, navButtonWidth, tabHeight);
+    layout.nextButton = Rect2Di(sheetTabsBounds_.x + navButtonWidth, tabY, navButtonWidth, tabHeight);
+
+    const int count = static_cast<int>(sheets_.size());
+    firstTab = std::max(0, std::min(firstTab, count - 1));
+    int tabX = sheetTabsBounds_.x + 2 * navButtonWidth + 4;
+    int i = firstTab;
+    for (; i < count; ++i) {
+        int tabWidth = SheetTabWidth(sheets_[i]->GetName());
+        // Always keep room for the "+" button after the last tab drawn; a
+        // single tab wider than the strip is still shown (clipped).
+        if (!layout.tabs.empty() && tabX + tabWidth + addWidth > right) break;
+        tabWidth = std::min(tabWidth, std::max(40, right - addWidth - tabX));
+        layout.tabs.emplace_back(i, Rect2Di(tabX, tabY, tabWidth, tabHeight));
         tabX += tabWidth;
     }
-    addButton = Rect2Di(tabX, tabY, addWidth, tabHeight);
+    layout.addButton = Rect2Di(tabX, tabY, addWidth, tabHeight);
+    layout.canScrollPrev = firstTab > 0;
+    layout.canScrollNext = i < count;
+    return layout;
+}
+
+void UltraCanvasSpreadsheet::EnsureSheetTabVisible(int index) {
+    const int count = static_cast<int>(sheets_.size());
+    if (index < 0 || index >= count) return;
+    firstVisibleTab_ = std::max(0, std::min(firstVisibleTab_, count - 1));
+    if (index < firstVisibleTab_) {
+        firstVisibleTab_ = index;
+        return;
+    }
+    // Before the strip has been laid out there is nothing to fit into yet.
+    if (sheetTabsBounds_.width <= 0) return;
+    while (firstVisibleTab_ < index) {
+        const SheetTabLayout layout = LayoutSheetTabs(firstVisibleTab_);
+        if (!layout.tabs.empty() && layout.tabs.back().first >= index) break;
+        ++firstVisibleTab_;
+    }
 }
 
 void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
-    int tabY = sheetTabsBounds_.y;
-    int tabHeight = sheetTabsBounds_.height;
-    
     // Background
     ctx->SetFillPaint(headerBackgroundColor_);
     ctx->FillRectangle(Rect2Df(sheetTabsBounds_.x, sheetTabsBounds_.y,
                   sheetTabsBounds_.width, sheetTabsBounds_.height));
 
-    // Navigation buttons placeholder
-    int navWidth = 60;
-    ctx->SetStrokePaint(gridlineColor_);
-    ctx->DrawRectangle(Rect2Df(sheetTabsBounds_.x, tabY, navWidth, tabHeight));
+    const SheetTabLayout layout = LayoutSheetTabs(firstVisibleTab_);
+    firstVisibleTab_ = layout.tabs.empty() ? 0 : layout.tabs.front().first;
 
-    std::vector<Rect2Di> tabs;
-    Rect2Di addButton;
-    LayoutSheetTabs(tabs, addButton);
+    // Scroll buttons: a triangle pointing the way the strip moves, greyed
+    // when there is nothing more that way.
+    auto drawNavButton = [&](const Rect2Di& r, bool enabled, bool pointLeft) {
+        ctx->SetStrokePaint(gridlineColor_);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRectangle(Rect2Df(r.x, r.y, r.width, r.height));
+        const double cx = r.x + r.width * 0.5;
+        const double cy = r.y + r.height * 0.5;
+        const double w = 5.0, hh = 5.0;
+        std::vector<Point2Dd> tri = pointLeft
+            ? std::vector<Point2Dd>{ Point2Dd(cx - w / 2, cy), Point2Dd(cx + w / 2, cy - hh), Point2Dd(cx + w / 2, cy + hh) }
+            : std::vector<Point2Dd>{ Point2Dd(cx + w / 2, cy), Point2Dd(cx - w / 2, cy - hh), Point2Dd(cx - w / 2, cy + hh) };
+        ctx->SetFillPaint(enabled ? headerTextColor_ : Color(190, 190, 190));
+        ctx->FillLinePath(tri);
+    };
+    drawNavButton(layout.prevButton, layout.canScrollPrev, true);
+    drawNavButton(layout.nextButton, layout.canScrollNext, false);
 
     // Sheet tabs
     ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
     ctx->SetFontSize(11);
-    for (int i = 0; i < static_cast<int>(tabs.size()); ++i) {
-        const auto& sheet = sheets_[i];
-        const Rect2Di& tab = tabs[i];
+    for (const auto& [index, tab] : layout.tabs) {
+        const auto& sheet = sheets_[index];
         std::string name = sheet->GetName();
 
         // Tab background
-        ctx->SetFillPaint(i == activeSheetIndex_ ? sheetTabActiveColor_ : sheetTabInactiveColor_);
+        ctx->SetFillPaint(index == activeSheetIndex_ ? sheetTabActiveColor_ : sheetTabInactiveColor_);
         ctx->FillRectangle(Rect2Df(tab.x, tab.y, tab.width, tab.height));
 
         // Tab border
@@ -772,13 +818,17 @@ void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
             ctx->FillRectangle(Rect2Df(tab.x, tab.y + tab.height - 3, tab.width, 3));
         }
 
-        // Tab name
+        // Tab name, kept inside the tab when the strip is too narrow for it
+        ctx->PushState();
+        ctx->ClipRect(Rect2Df(tab.x + 2, tab.y, std::max(0, tab.width - 4), tab.height));
         ctx->SetTextPaint(Colors::Black);
         ctx->DrawText(name, Point2Df(tab.x + 10,
                       tab.y + (tab.height - ctx->GetTextLineHeight(name)) / 2));
+        ctx->PopState();
     }
 
     // Add sheet button
+    const Rect2Di& addButton = layout.addButton;
     ctx->SetFillPaint(headerBackgroundColor_);
     ctx->FillRectangle(Rect2Df(addButton.x, addButton.y, addButton.width, addButton.height));
     ctx->SetStrokePaint(gridlineColor_);
@@ -1082,6 +1132,10 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             if (hit.addSheetButton) {
                 // "+" appends a sheet with the next free name and opens it.
                 if (AddSheet("")) SetActiveSheet(static_cast<int>(sheets_.size()) - 1);
+            } else if (hit.tabScroll != 0) {
+                // The arrows scroll the strip one tab; the active sheet stays.
+                firstVisibleTab_ += hit.tabScroll;
+                RequestRedraw();
             } else if (hit.tabIndex >= 0 && hit.tabIndex < static_cast<int>(sheets_.size())) {
                 SetActiveSheet(hit.tabIndex);
             }
@@ -1409,15 +1463,17 @@ UltraCanvasSpreadsheet::HitTestResult UltraCanvasSpreadsheet::HitTest(int x, int
     // Sheet tabs
     if (showSheetTabs_ && sheetTabsBounds_.Contains(x, y)) {
         result.area = HitArea::SheetTab;
-        std::vector<Rect2Di> tabs;
-        Rect2Di addButton;
-        LayoutSheetTabs(tabs, addButton);
-        if (addButton.Contains(x, y)) {
+        const SheetTabLayout layout = LayoutSheetTabs(firstVisibleTab_);
+        if (layout.addButton.Contains(x, y)) {
             result.addSheetButton = true;
+        } else if (layout.prevButton.Contains(x, y)) {
+            result.tabScroll = layout.canScrollPrev ? -1 : 0;
+        } else if (layout.nextButton.Contains(x, y)) {
+            result.tabScroll = layout.canScrollNext ? 1 : 0;
         } else {
-            for (int i = 0; i < static_cast<int>(tabs.size()); ++i) {
-                if (tabs[i].Contains(x, y)) {
-                    result.tabIndex = i;
+            for (const auto& [index, tab] : layout.tabs) {
+                if (tab.Contains(x, y)) {
+                    result.tabIndex = index;
                     break;
                 }
             }

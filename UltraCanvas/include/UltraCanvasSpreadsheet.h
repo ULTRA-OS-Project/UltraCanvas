@@ -100,6 +100,7 @@ public:
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
     int activeSheetIndex_ = 0;
+    int firstVisibleTab_ = 0;   // first sheet tab shown in the tab strip
     std::unique_ptr<SpreadsheetFormulaEngine> formulaEngine_;
     std::map<std::string, NamedRange> namedRanges_;
     
@@ -519,9 +520,17 @@ private:
     void RenderFormulaRangeHighlights(IRenderContext* ctx);
     void RenderFreezeLines(IRenderContext* ctx);
     void RenderSheetTabs(IRenderContext* ctx);
-    // Tab rectangles (as many as fit) and the "+" button; shared by drawing
-    // and hit-testing so a click lands on what is drawn.
-    void LayoutSheetTabs(std::vector<Rect2Di>& tabs, Rect2Di& addButton) const;
+    // The tab strip: the scroll buttons, the tabs that fit from the first
+    // scrolled-to tab on, and the "+" button. Shared by drawing and
+    // hit-testing so a click lands on what is drawn.
+    struct SheetTabLayout {
+        Rect2Di prevButton, nextButton, addButton;
+        std::vector<std::pair<int, Rect2Di>> tabs;   // sheet index, rect
+        bool canScrollPrev = false, canScrollNext = false;
+    };
+    SheetTabLayout LayoutSheetTabs(int firstTab) const;
+    int SheetTabWidth(const std::string& name) const;
+    void EnsureSheetTabVisible(int index);
     void RenderScrollbars(IRenderContext* ctx);
     void RenderCellEditor(IRenderContext* ctx);   // draws the editor child
     void RenderClipboardIndicator(IRenderContext* ctx);
@@ -543,7 +552,7 @@ private:
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
                          ColumnSortButton };
     struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1;
-                           bool addSheetButton = false; };
+                           bool addSheetButton = false; int tabScroll = 0; };
     HitTestResult HitTest(int x, int y) const;
 
     // Header sort buttons: the block they sort (false when the selection is
