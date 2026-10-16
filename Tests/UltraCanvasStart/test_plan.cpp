@@ -1,12 +1,15 @@
 // Tests/UltraCanvasStart/test_plan.cpp
 // The plan, the SDK names and the report.
+// Version: 0.1.2 - Windows without MSYS2: winget sets it up before pacman
 // Version: 0.1.1 - a check switched off is left out of the install
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "StartPlan.h"
+#include "StartGuide.h"
 #include "StartSdk.h"
+#include "StartSystem.h"
 
 using namespace UltraCanvasStart;
 
@@ -104,6 +107,45 @@ TEST(BuildPlan_leaves_out_what_is_switched_off) {
     choices.SetSkipped("cairo", false);
     REQUIRE(!choices.Skips("cairo"));
     REQUIRE(BuildPlan(profile, choices, checks).steps.front().kind == StepKind::Install);
+}
+
+TEST(BuildPlan_on_Windows_without_MSYS2_sets_it_up_first) {
+    SystemProfile profile;
+    profile.platform = Platform::Windows;
+    profile.architecture = "x86_64";
+    REQUIRE(InstallingPackageManager(profile) == PackageManager::Msys2Pacman);
+    Choices choices;
+    choices.platform = Platform::Windows;
+    std::vector<CheckResult> checks(2);
+    checks[0].dependencyId = "cmake"; checks[0].checked = true;
+    checks[0].packageName = "mingw-w64-clang-x86_64-cmake";
+    checks[1].dependencyId = "git"; checks[1].checked = true; checks[1].present = true;
+    checks[1].packageName = "git";
+
+    const Plan plan = BuildPlan(profile, choices, checks);
+    REQUIRE(plan.steps.size() >= 4);
+    REQUIRE_EQ(plan.steps[0].argv[0], std::string("winget"));
+    REQUIRE(plan.steps[0].setsUpPackageManager);
+    REQUIRE_EQ(plan.steps[1].argv[0], std::string("C:/msys64/usr/bin/bash.exe"));
+    REQUIRE(plan.steps[1].mayFail);
+    REQUIRE(!plan.steps[2].mayFail);
+    const PlanStep& pacman = plan.steps[3];
+    REQUIRE(pacman.kind == StepKind::Install);
+    REQUIRE(!pacman.setsUpPackageManager);
+    REQUIRE_EQ(pacman.argv[0], std::string("C:/msys64/usr/bin/pacman.exe"));
+    REQUIRE_EQ(pacman.argv.back(), std::string("mingw-w64-clang-x86_64-cmake"));
+
+    const std::string preview = InstallPreview(plan);
+    REQUIRE(preview.find("MSYS2 is not installed: Install sets it up with winget") == 0);
+    REQUIRE(preview.find("\nwinget install --id MSYS2.MSYS2") != std::string::npos);
+    REQUIRE(preview.find("pacman.exe -S --needed --noconfirm mingw-w64-clang-x86_64-cmake") != std::string::npos);
+
+    // With MSYS2 there, no set-up steps.
+    profile.msysPrefix = "C:/msys64";
+    profile.packageManager = PackageManager::Msys2Pacman;
+    profile.packageManagerPath = "C:/msys64/usr/bin/pacman.exe";
+    const Plan found = BuildPlan(profile, choices, checks);
+    for (const auto& step : found.steps) REQUIRE(!step.setsUpPackageManager);
 }
 
 TEST(BuildPlan_for_another_platform_lists_everything) {

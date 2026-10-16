@@ -133,6 +133,13 @@ std::string FindMsys2Root() {
     return {};
 }
 
+PackageManager InstallingPackageManager(const SystemProfile& profile) {
+    if (profile.packageManager == PackageManager::None && profile.platform == Platform::Windows) {
+        return PackageManager::Msys2Pacman;
+    }
+    return profile.packageManager;
+}
+
 SystemProfile DetectSystem() {
     SystemProfile profile;
     profile.platform = CurrentPlatform();

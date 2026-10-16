@@ -1,10 +1,14 @@
 // Apps/UltraCanvasStart/engine/StartRunner.cpp
+// Version: 0.1.1 - on Windows the MSYS2 bin directories on the child's PATH and
+//                  MSYSTEM set, found again when MSYS2 was installed meanwhile
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartRunner.h"
 
+#include "StartChecks.h"
 #include "StartSystem.h"
 
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
 #include <sstream>
@@ -51,7 +55,22 @@ RunResult RunStep(const PlanStep& step, const SystemProfile& profile,
     const std::vector<std::string> argv = ElevatedArgv(step, profile, result.error);
     if (argv.empty()) return result;
 
-    const auto output = UltraCanvas::RunProcessCaptured(argv, {});
+    // On Windows pacman and its hooks find MSYS2's programs the way the
+    // CLANG64 shell does. The root is looked for again: winget may have just
+    // installed it.
+    std::vector<std::pair<std::string, std::string>> environment;
+    if (profile.platform == Platform::Windows) {
+        SystemProfile here = profile;
+        if (here.msysPrefix.empty()) here.msysPrefix = FindMsys2Root();
+        if (!here.msysPrefix.empty()) {
+            std::string path;
+            for (const auto& directory : CheckSearchDirectories(here)) path += directory + ";";
+            path += UltraCanvas::GetEnvUtf8("PATH");
+            environment.emplace_back("PATH", path);
+            environment.emplace_back("MSYSTEM", here.architecture == "arm64" ? "CLANGARM64" : "CLANG64");
+        }
+    }
+    const auto output = UltraCanvas::RunProcessCaptured(argv, {}, environment);
     result.started = output.started;
     result.exitCode = output.exitCode;
     result.error = output.error;

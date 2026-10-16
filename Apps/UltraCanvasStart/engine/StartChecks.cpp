@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartChecks.cpp
+// Version: 0.1.1 - package names from InstallingPackageManager (MSYS2's before it is installed)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartChecks.h"
@@ -111,7 +112,9 @@ std::vector<CheckResult> RunChecks(const SystemProfile& profile, const Choices& 
     std::string pkgConfig = FindProgram("pkg-config", directories);
     if (pkgConfig.empty()) pkgConfig = FindProgram("pkgconf", directories);
 
-    for (const auto* dependency : DependenciesFor(choices, profile.packageManager)) {
+    // Without MSYS2 on Windows the names are still MSYS2's: Install sets it up.
+    const PackageManager manager = InstallingPackageManager(profile);
+    for (const auto* dependency : DependenciesFor(choices, manager)) {
         if (progress) progress(dependency->title);
         CheckResult result;
         switch (dependency->checkKind) {
@@ -129,8 +132,8 @@ std::vector<CheckResult> RunChecks(const SystemProfile& profile, const Choices& 
         result.dependencyId = dependency->id;
         result.title = dependency->title;
         result.group = dependency->group;
-        result.packageName = dependency->PackageFor(profile.packageManager);
-        if (profile.packageManager == PackageManager::Msys2Pacman) {
+        result.packageName = dependency->PackageFor(manager);
+        if (manager == PackageManager::Msys2Pacman) {
             result.packageName = Msys2PackageForArchitecture(result.packageName,
                                                              profile.architecture);
         }

@@ -1,4 +1,7 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.4.2 - Windows without MSYS2: Install sets it up with winget, updates
+//                  it and installs the missing with its pacman, then finds it
+//                  again; any stage of the stepper can be clicked
 // Version: 0.4.1 - the Tools step: a missing row's switch can be flipped,
 //                  off leaves that package out of the install
 // Version: 0.4.0 - step 6, Build: the skeleton compiled from the window (StartBuild),
@@ -277,7 +280,9 @@ std::shared_ptr<UltraCanvasStepper> UltraCanvasStartWindow::BuildStepper() {
         { "Project",       "name, folder, create" },
         { "Build",         "compile, hand over" },
     });
-    stepper->SetNavigation(StepperNavigation::Linear);
+    // Any stage can be clicked, ahead as well as back (Next is a shortcut);
+    // UpdateNavigation locks it while something runs.
+    stepper->SetNavigation(StepperNavigation::NonLinear);
     stepper->SetMarkerStyle(StepMarkerStyle::NumberedCircle);
     auto& style = stepper->GetStyle();
     style.completedColor          = Theme::kAccent;
@@ -804,6 +809,7 @@ void UltraCanvasStartWindow::OnEnterStep(int index) {
 }
 
 void UltraCanvasStartWindow::UpdateNavigation() {
+    if (stepper_) stepper_->SetNavigation(working_ ? StepperNavigation::Display : StepperNavigation::NonLinear);
     if (stepHint_) stepHint_->SetText(kStepHints[currentStep_]);
     if (backButton_) backButton_->SetDisabled(currentStep_ == 0 || working_);
     if (nextButton_) {
@@ -859,7 +865,9 @@ void UltraCanvasStartWindow::StartChecks() {
             const size_t missing = plan_.MissingCount();
             if (stepper_) stepper_->SetStepError(static_cast<int>(Step::Tools), missing > 0);
             SetStatus(missing == 0 ? "Everything the chosen features need is installed. Next goes on to the framework."
-                      : CanInstall() ? std::to_string(missing) + " missing; \"Install what is missing\" runs the package manager."
+                      : CanInstall() ? std::to_string(missing) + " missing; \"Install what is missing\" " +
+                                           (profile_.packageManagerPath.empty() ? "sets up MSYS2, then installs them."
+                                                                                : "runs the package manager.")
                                      : std::to_string(missing) + " missing; no package manager was found to install them with.");
         });
     });
@@ -869,49 +877,94 @@ void UltraCanvasStartWindow::StartInstall() {
     if (working_) return;
     ReadChoicesFromPanes();
     RefreshPlan();
-    const PlanStep* install = nullptr;
+    // Every install step in order: on Windows without MSYS2 the set-up ones
+    // (winget, the first start, the update) come before pacman.
+    std::vector<PlanStep> steps;
+    bool setsUp = false;
     for (const auto& step : plan_.steps) {
-        if (step.kind == StepKind::Install) { install = &step; break; }
+        if (step.kind != StepKind::Install || step.argv.empty()) continue;
+        steps.push_back(step);
+        setsUp |= step.setsUpPackageManager;
     }
-    if (!install || install->argv.empty()) {
+    if (steps.empty() || !CanInstall()) {
         UltraCanvasDialogManager::ShowInformation(
             "Nothing to install: every package the chosen features need is present, "
             "or no package manager was recognised.", "Install", nullptr, window_.get());
         return;
     }
-    const PlanStep step = *install;
-    const std::string command = DisplayCommand(step.argv, step.needsElevation);
+    std::string commands;
+    bool elevation = false;
+    for (const auto& step : steps) {
+        commands += DisplayCommand(step.argv, step.needsElevation) + "\n";
+        elevation |= step.needsElevation;
+    }
     UltraCanvasDialogManager::ShowConfirmation(
-        "This runs the package manager:\n\n" + command +
-        (step.needsElevation ? "\n\nIt needs administrator rights; the system will ask for your password." : "") +
-        (profile_.packageManager == PackageManager::Msys2Pacman
-             ? "\n\nOn Windows the packages are installed into the MSYS2 tree." : ""),
-        "Install the development packages?",
-        [this, step](bool confirmed) {
+        std::string(setsUp ? "MSYS2 is not installed. This installs it with winget, updates it and then "
+                             "installs the packages with its pacman:\n\n"
+                           : "This runs the package manager:\n\n") + commands +
+        (elevation ? "\nIt needs administrator rights; the system will ask for your password." : "") +
+        (setsUp ? "\nWindows may ask for administrator rights for the MSYS2 installer. "
+                  "It takes several minutes; the output appears when each command ends."
+                : profile_.packageManager == PackageManager::Msys2Pacman
+                      ? "\nOn Windows the packages are installed into the MSYS2 tree." : ""),
+        setsUp ? "Install MSYS2 and the development packages?" : "Install the development packages?",
+        [this, steps](bool confirmed) {
             if (!confirmed) return;
             if (worker_.joinable()) worker_.join();
             working_ = true;
             SetBusy(true);
             SetStatus("Installing... this can take a few minutes.");
-            if (installOutput_) installOutput_->SetText("$ " + DisplayCommand(step.argv, step.needsElevation) + "\n");
+            if (installOutput_) installOutput_->SetText("");
             const SystemProfile profile = profile_;
-            worker_ = std::thread([this, step, profile]() {
-                const RunResult result = RunStep(step, profile);
-                RunOnUiThread([this, result]() {
-                    working_ = false;
-                    SetBusy(false);
-                    if (installOutput_) {
-                        installOutput_->AppendText(result.output);
-                        if (!result.started) installOutput_->AppendText("\n" + result.error + "\n");
-                        installOutput_->AppendText(result.Succeeded() ? "\n[done]\n"
-                                                   : "\n[failed, exit " + std::to_string(result.exitCode) + "]\n");
+            worker_ = std::thread([this, steps, profile]() {
+                bool ok = true;
+                std::string failure;
+                for (size_t i = 0; i < steps.size() && ok; ++i) {
+                    const PlanStep& step = steps[i];
+                    const std::string head = "$ " + DisplayCommand(step.argv, step.needsElevation) + "\n";
+                    const std::string status = step.title + " (" + std::to_string(i + 1) + " of " +
+                                               std::to_string(steps.size()) + ")...";
+                    RunOnUiThread([this, head, status]() {
+                        SetStatus(status);
+                        if (installOutput_) installOutput_->AppendText(head);
+                    });
+                    const RunResult result = RunStep(step, profile);
+                    std::string tail = result.output;
+                    if (!tail.empty() && tail.back() != '\n') tail += '\n';
+                    if (!result.started) {
+                        tail += result.error + "\n";
+                        if (step.setsUpPackageManager && step.argv.front() == "winget") {
+                            tail += "winget is part of App Installer (Microsoft Store). Without it, install "
+                                    "MSYS2 from https://www.msys2.org to C:\\msys64 and press Check again.\n";
+                        }
                     }
                     if (result.Succeeded()) {
+                        tail += "[done]\n\n";
+                    } else if (step.mayFail) {
+                        tail += "[exit " + std::to_string(result.exitCode) + ", going on]\n\n";
+                    } else {
+                        tail += "[failed, exit " + std::to_string(result.exitCode) + "]\n";
+                        ok = false;
+                        failure = result.started ? step.title + " reported an error; see the output."
+                                                 : result.error;
+                    }
+                    RunOnUiThread([this, tail]() {
+                        if (installOutput_) installOutput_->AppendText(tail);
+                    });
+                }
+                // MSYS2 may be there now: find it again, so the checks look
+                // in its tree and pacman is its own.
+                const SystemProfile detected = DetectSystem();
+                RunOnUiThread([this, ok, failure, detected]() {
+                    profile_ = detected;
+                    working_ = false;
+                    SetBusy(false);
+                    if (ok) {
                         SetStatus("Installed. Checking again...");
                         StartChecks();
                     } else {
-                        SetStatus(result.started ? "The package manager reported an error; see the output."
-                                                 : result.error);
+                        RefreshPlan();
+                        SetStatus(failure);
                     }
                 });
             });
@@ -1284,11 +1337,15 @@ void UltraCanvasStartWindow::RefreshInstallBadge() {
 }
 
 bool UltraCanvasStartWindow::CanInstall() const {
-    if (plan_.MissingCount() == 0 || profile_.packageManagerPath.empty()) return false;
+    // A manager that was found, or MSYS2 that the plan sets up first.
+    if (plan_.MissingCount() == 0) return false;
+    bool any = false, setsUp = false;
     for (const auto& step : plan_.steps) {
-        if (step.kind == StepKind::Install && !step.argv.empty()) return true;
+        if (step.kind != StepKind::Install || step.argv.empty()) continue;
+        any = true;
+        setsUp |= step.setsUpPackageManager;
     }
-    return false;
+    return any && (setsUp || !profile_.packageManagerPath.empty());
 }
 
 void UltraCanvasStartWindow::RefreshInstallPreview() {

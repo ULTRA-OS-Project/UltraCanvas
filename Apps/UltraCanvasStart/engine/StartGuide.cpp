@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.2 - InstallPreview: MSYS2 set up by winget first, every command listed
 // Version: 0.2.1 - InstallPreview counts only the missing ones switched on
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.2 - the guide names the steps, not the pages
@@ -110,11 +111,15 @@ std::string InstallPreview(const Plan& plan) {
     const size_t missing = plan.MissingCount();
     if (missing == 0) return "Everything the chosen features need is installed: Install has nothing to do.";
     const size_t skipped = plan.SkippedCount();
-    const PlanStep* install = nullptr;
+    // Every command Install runs, in order; the MSYS2 set-up ones first.
+    std::vector<const PlanStep*> runs;
+    bool setsUp = false;
     for (const auto& step : plan.steps) {
-        if (step.kind == StepKind::Install && !step.argv.empty()) { install = &step; break; }
+        if (step.kind != StepKind::Install || step.argv.empty()) continue;
+        runs.push_back(&step);
+        setsUp |= step.setsUpPackageManager;
     }
-    if (skipped == missing && !install) {
+    if (skipped == missing && runs.empty()) {
         return "All " + std::to_string(missing) + " missing are switched off: Install has nothing to do. "
                "Switch one on to install it.";
     }
@@ -122,13 +127,22 @@ std::string InstallPreview(const Plan& plan) {
         skipped == 0      ? std::to_string(missing) + " missing"
       : skipped < missing ? std::to_string(missing - skipped) + " switched on (of " + std::to_string(missing) + " missing)"
                           : std::string("ones that cannot be checked");
-    if (!install || plan.profile.packageManagerPath.empty()) {
+    if (runs.empty() || (plan.profile.packageManagerPath.empty() && !setsUp)) {
         return "No package manager was found, so Install cannot run here: install the " + count +
                " yourself and press Check again. Next goes on anyway.";
     }
+    std::string commands;
+    bool elevation = false;
+    for (const PlanStep* step : runs) {
+        commands += "\n" + DisplayCommand(step->argv, step->needsElevation);
+        elevation |= step->needsElevation;
+    }
+    if (setsUp) {
+        return "MSYS2 is not installed: Install sets it up with winget (Windows may ask for administrator "
+               "rights), updates it, installs the " + count + " with its pacman, then checks again:" + commands;
+    }
     return "Install runs " + PackageManagerName(plan.profile.packageManager) + " for the " + count + ", then checks again" +
-           (install->needsElevation ? "; it asks for administrator rights" : "") + ":\n" +
-           DisplayCommand(install->argv, install->needsElevation);
+           (elevation ? "; it asks for administrator rights" : "") + ":" + commands;
 }
 
 std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) {

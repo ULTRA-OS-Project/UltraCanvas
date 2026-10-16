@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPackages.cpp
+// Version: 0.1.1 - Msys2SetupSteps
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartPackages.h"
@@ -199,6 +200,37 @@ PlanStep InstallStep(PackageManager manager, const std::vector<std::string>& pac
     for (const auto& p : packages) list += (list.empty() ? "" : " ") + p;
     step.description = "Installs the development packages the chosen features need: " + list;
     return step;
+}
+
+std::vector<PlanStep> Msys2SetupSteps(const std::string& root) {
+    std::vector<PlanStep> steps;
+    PlanStep winget;
+    winget.kind = StepKind::Install;
+    winget.title = "Install MSYS2 with winget";
+    winget.description = "MSYS2 brings the CLANG64 toolchain and the pacman that installs the libraries; "
+                         "winget puts it in " + root + " (Windows may ask for administrator rights)";
+    winget.argv = { "winget", "install", "--id", "MSYS2.MSYS2", "--exact", "--source", "winget",
+                    "--accept-source-agreements", "--accept-package-agreements", "--silent" };
+    winget.setsUpPackageManager = true;
+    steps.push_back(winget);
+
+    const std::string bash = root + "/usr/bin/bash.exe";
+    PlanStep first;
+    first.kind = StepKind::Install;
+    first.title = "Start MSYS2 for the first time and update it";
+    first.description = "The first login shell sets up pacman's keyring; pacman -Syuu updates the core, "
+                        "which may end this run (the next one finishes it)";
+    first.argv = { bash, "--login", "-c", "pacman -Syuu --noconfirm" };
+    first.setsUpPackageManager = true;
+    first.mayFail = true;
+    steps.push_back(first);
+
+    PlanStep second = first;
+    second.title = "Finish updating MSYS2";
+    second.description = "pacman -Syuu again: the rest of the update after the core";
+    second.mayFail = false;
+    steps.push_back(second);
+    return steps;
 }
 
 std::string Msys2PackagePrefix(const std::string& architecture) {

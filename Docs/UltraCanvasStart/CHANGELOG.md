@@ -7,6 +7,22 @@
   says *N missing, M off*; with every missing one off, Install has nothing
   to do and says so. Installed rows stay on and locked, and the choice
   survives *Check again* (`Choices::skipped`, `Plan::SkippedCount`).
+- **Windows without MSYS2: Install sets it up.** Before, the step said no
+  package manager was found and Install stayed off - and the rows named no
+  package, so their switches could not be flipped either, and Linux-only
+  rows (X11, Xcursor, GTK 3) were listed. The checks now name MSYS2's
+  packages (`InstallingPackageManager`), and Install runs, after one
+  confirmation that lists every command: `winget install --id MSYS2.MSYS2`
+  into `C:\msys64`, a first login shell that sets up pacman's keyring and
+  runs `pacman -Syuu` (twice: a core update ends the first run, which may
+  fail without stopping the install), then MSYS2's `pacman -S` for the
+  missing ones. MSYS2 is detected again and the checks run. Without winget
+  the output says to install App Installer or MSYS2 by hand. Every install
+  command runs with the MSYS2 bin directories on its PATH and `MSYSTEM`
+  set (`StartRunner` 0.1.1), so pacman's hooks find their programs.
+- **Any stage of the stepper can be clicked**, ahead as well as back; Next
+  and Back stay as one-step shortcuts. The stepper is locked while a
+  check, an install or a build runs.
 
 #### 2026-10-15 *0.4.1*
 - **No console window on Windows when it is started from the Start menu or
