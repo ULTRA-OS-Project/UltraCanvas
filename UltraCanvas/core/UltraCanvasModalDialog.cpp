@@ -1754,6 +1754,9 @@ namespace UltraCanvas {
             label->layoutItem.SetFlexShrink(0);
             fieldLabels.push_back(label);
             group->AddChild(label);
+            // As wide as its name's column: the width it was made with is
+            // only a starting size.
+            field->size.width = CSSLayout::Dimension::Auto();
             field->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
             field->layoutItem.SetFlexShrink(0);
             group->AddChild(field);
