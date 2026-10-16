@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.7.1 - the colour picker offers its design list, folds its channels and is
+//                  as tall as its content (SetAutoHeight)
 // Version: 1.7.0 - text typed on the canvas: an UltraCanvasRichTextEdit over the canvas
 //                  edits a text layer; Layer > Edit Text / Rasterize Layer; the layer list
 //                  marks text layers
@@ -31,7 +33,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -743,13 +745,14 @@ void UltraPaintWindow::BuildRightPanel() {
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(background.ToColor());
     colorPicker->SetShowAlpha(true);
-    // The hue ring is capped by whatever vertical space the controls leave it,
-    // so a picker sized by eye draws a wheel narrower than the card. Ask for
-    // the height at which the ring fills the card's width instead.
-    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
-    // the card's next layout pass puts back the size the picker was created
-    // with. The declared height is also the picker's flex basis.
-    colorPicker->SetElementSize(Size2Df(cardInner, colorPicker->PreferredHeightForWidth(cardInner)));
+    // The design list top right (circle, square, rectangle, two sliders), and
+    // the HSV / HSL / RGB channels folded under their disclosure row.
+    colorPicker->SetShowWheelStyleSelector(true);
+    colorPicker->SetSlidersCollapsible(true, false);
+    // As tall as its content: the hue ring fills the card's width, and the
+    // card and the cards below move up and down as the channels fold or
+    // another design is chosen. The height is also the picker's flex basis.
+    colorPicker->SetAutoHeight(true);
     // Not stretched: the picker lays its hex field and channel values out to
     // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
