@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.7.1 - the Text tool's Font and Align lists closed with Escape give the keyboard
+//                  back to the text being typed (ReturnKeyboardToText)
 // Version: 1.7.0 - text typed on the canvas: an UltraCanvasRichTextEdit over the canvas
 //                  edits a text layer; Layer > Edit Text / Rasterize Layer; the layer list
 //                  marks text layers
@@ -31,7 +33,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -333,6 +335,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     toolContext.setStatus = [this](const std::string& s) { if (statusHint) statusHint->SetText(s); };
     toolContext.requestText = [this](double x, double y, double boxWidth) { BeginTextEdit(x, y, boxWidth); };
     toolContext.textOptionChanged = [this](const std::string& option) { ApplyTextOption(option); };
+    toolContext.textControlDone = [this](UltraCanvasUIElement& control) { ReturnKeyboardToText(control); };
     toolContext.askRasterize = [this](const std::string& action) { AskRasterize(action); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
 
@@ -1864,6 +1867,24 @@ void UltraPaintWindow::CommitTextEdit() {
         statusHint->SetText(std::string(index >= 0 ? "Changed" : "Added") + " the text layer \"" + rendered->name +
                             "\" - it stays editable until it is merged or rasterized");
     }
+}
+
+void UltraPaintWindow::ReturnKeyboardToText(UltraCanvasUIElement& control) {
+    if (!textSession || !textEditor) return;
+    std::weak_ptr<UltraCanvasUIElement> watched = control.weak_from_this();
+    auto handBack = [this, watched]() {
+        auto still = watched.lock();
+        if (!still || !textSession || !textEditor || !window) return;
+        if (window->GetFocusedElement() == still.get()) textEditor->SetFocus(true);
+    };
+    // The list reports its closing from inside the event that closed it, and
+    // a Tab moves the focus on after that.
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { handBack(); return; }
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([alive, handBack]() {
+        if (!alive.expired()) handBack();
+    });
 }
 
 void UltraPaintWindow::ApplyTextOption(const std::string& option) {

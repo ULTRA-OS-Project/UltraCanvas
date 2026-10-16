@@ -7,12 +7,14 @@
 // Tools are stateless between activations except for what their options
 // hold; PaintToolOptions is the shared, user-editable state (brush sizes,
 // tolerances, shape style, …) that survives tool switches.
+// Version: 1.3.1 - textControlDone: a Text option's list closed without a choice hands the
+//                  keyboard back to the text being typed
 // Version: 1.3.0 - the Text tool types on the canvas into a text layer: requestText with a box,
 //                  textOptionChanged, askRasterize; italic, underline and alignment options
 // Version: 1.2.1 - shortcutShift / ShortcutLabel: a tool's key can need Shift (the Eraser's Shift+X)
 // Version: 1.2.0 - Polyline, Arrow and Curve, the Lines group's tools beside Line
 // Version: 1.1.0 - WantsMagnifier: a tool that places things to the pixel asks for the magnifying glass
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -105,6 +107,10 @@ struct PaintToolContext {
     // "underline" or "align": the window applies it to the text being typed
     // (its selection, or what is typed next) or to the active text layer.
     std::function<void(const std::string& option)> textOptionChanged;
+    // A Text tool option's list closed without a choice (Escape, or the item
+    // it already had): the window gives the keyboard back to the text being
+    // typed, if `control` still has it.
+    std::function<void(UltraCanvasUIElement& control)> textControlDone;
     // A tool is about to paint on a text layer: the window offers to
     // rasterize it (the tool does nothing this time). `action` names what
     // was about to happen ("Paintbrush", "Fill").

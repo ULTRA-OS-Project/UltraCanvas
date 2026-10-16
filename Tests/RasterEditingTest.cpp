@@ -6,12 +6,13 @@
 // keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
 // surface's view through a resize, and the PNG and .ucraster round trips (the
 // last three only with libvips).
+// Version: 1.4.1 - TestSurfaceFollowsResize: a document change after a resize reports the move
 // Version: 1.4.0 - TestSurfaceFollowsResize: the view re-centres when the element is resized
 // Version: 1.3.0 - TestTextLayers, TestTextLayerProject: text layers stay
 //                  text until their pixels change, and survive a project
 // Version: 1.2.0 - TestLinesCurvesArrows: polylines in one pass, curves, arrows
 // Version: 1.1.0 - TestListeners: several observers of one document
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterLayer.h"
@@ -1096,6 +1097,21 @@ static void TestSurfaceFollowsResize() {
     const Point2Dd underPointer = surface->ViewToImage(Point2Di(100, 100));
     CHECK_NEAR(underPointer.x, 75, 1);
     CHECK_NEAR(underPointer.y, 75, 1);
+
+    // A document change between a resize and the frame brings the view to
+    // the new size itself, and reports it like any other view move.
+    RenderSurfaceAt(*surface, 1000, 700);
+    surface->ZoomToFit();
+    const double fitted = surface->GetZoom();
+    surface->SetBounds(Rect2Df(0, 0, 1400, 900));
+    viewChanges = 0;
+    doc->AddLayer("resize-test-layer");
+    CHECK(viewChanges == 1);
+    CHECK_NEAR(surface->GetTransform().originX, (1400 - 800 * fitted) / 2, 1);
+    CHECK_NEAR(surface->GetTransform().originY, (900 - 600 * fitted) / 2, 1);
+    // One that moves nothing reports nothing.
+    doc->AddLayer("resize-test-layer-2");
+    CHECK(viewChanges == 1);
 
     // A loupe keeps the point SetLoupeView put at its centre.
     auto loupe = CreatePaintSurface("resize-loupe");

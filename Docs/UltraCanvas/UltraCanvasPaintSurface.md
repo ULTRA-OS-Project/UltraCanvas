@@ -348,7 +348,9 @@ over the canvas. The surface handles what every tool shares:
   happens in the frame that shows the new size - or at the next view call
   (`SetZoom`, `ScrollToImagePoint`, ...) if that comes first - and
   `onViewChanged` reports it, so overlays placed in view coordinates (an
-  editor over a text layer, the status bar's zoom) follow.
+  editor over a text layer, the status bar's zoom) follow. A document change
+  that comes first (a layer added, the canvas resized) brings the view to the
+  new size itself and reports it the same way.
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
