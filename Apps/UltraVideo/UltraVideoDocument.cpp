@@ -1,9 +1,10 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
+// Version: 0.6.1 - paths written with '/' on every system (FileText)
 // Version: 0.6.0 - DraftSettings
 // Version: 0.5.0 - KindOfPath from the engine's and FileLoader's lists (UltraVideoFormats)
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoFormats.h"
@@ -47,16 +48,26 @@ std::string Clock(double seconds) {
     return out.str();
 }
 
+// A path as the file holds it: '/' between the parts on every system, as in
+// the engine's project text, so a project saved on Windows finds its media on
+// Linux and macOS (where '\' is part of a name, and stays)
+std::string FileText(std::string path) {
+#ifdef _WIN32
+    std::replace(path.begin(), path.end(), '\\', '/');
+#endif
+    return path;
+}
+
 // Paths in the file are relative to its folder when they are inside it
 std::string Relative(const std::string& path, const fs::path& base) {
-    if (base.empty()) return path;
+    if (base.empty()) return FileText(path);
     std::error_code ec;
     const fs::path p = PathFromUtf8(path);
     const fs::path rel = fs::relative(p, base, ec);
-    if (ec || rel.empty()) return path;
+    if (ec || rel.empty()) return FileText(path);
     const std::string text = PathToUtf8(rel);
-    if (text.rfind("..", 0) == 0) return path;
-    return text;
+    if (text.rfind("..", 0) == 0) return FileText(path);
+    return FileText(text);
 }
 
 std::string Absolute(const std::string& path, const fs::path& base) {

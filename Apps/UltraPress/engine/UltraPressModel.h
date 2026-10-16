@@ -4,11 +4,12 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.8.2 - SitePathText: '\' becomes '/' on Windows only
 // Version: 0.7.1 - Hosting's comment names the data folder the hosts live in
 // Version: 0.7.0 - SplitParagraphs, TextLocation / SetBlockText, ResolveBlockPath: text edited in place
 // Version: 0.5.0 - the hosting target (where Publish uploads to)
 // Version: 0.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -168,5 +169,11 @@ std::vector<const Page*> SortedPages(const Site& site, PageOrder order,
 
 // A slug: lower-case ASCII letters, digits and hyphens, from any title.
 std::string MakeSlug(const std::string& title);
+
+// A path relative to the site or its output as the site, the deploy manifest
+// and the web hold it: '/' between the parts. Windows joins the parts with
+// '\', which become '/'; anywhere else '\' is a character of a name and
+// stays - "media/a\b.png" is one file, not "b.png" in a folder "a".
+std::string SitePathText(std::string path);
 
 } // namespace UltraPress

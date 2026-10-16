@@ -1,3 +1,16 @@
+#### 2026-10-16 *0.8.2*
+- **A file with a `\` in its name is published, deployed and listed as
+  itself on Linux and macOS.** The media library, the import of a file
+  already in it, the deploy and the publish's sweep of stale files turned
+  every `\` in a relative path into `/` - right on Windows, where `\` joins
+  the parts, but on Linux and macOS `\` is a character of a name: a file
+  `a\b.html` became `b.html` in a folder `a`, which the deploy then failed to
+  read (or, were there such a file, uploaded in its place), and a media file
+  `x\y.png` was listed, referenced and removed under a name that is not its
+  own. One helper, `SitePathText` (`UltraPressModel.h`), turns `\` into `/`
+  on Windows only; the four places use it. `UltraPressEngineTests` checks a
+  `\` in a deployed and in a media file name.
+
 #### 2026-10-15 *0.8.1*
 - **No console window on Windows when it is started from the Start menu or
   Explorer.** `ultrapress.exe` is a GUI program now. Beside it,

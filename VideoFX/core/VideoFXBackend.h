@@ -7,10 +7,11 @@
 // (codecpar->coded_side_data, 6.1), the supported-config query (7.1) and a
 // buffer source that refuses frames once its filters are done (9.0) are
 // wrapped here so the pipeline code does not care which one it runs on.
+// Version: 0.15.1 - FindEncoderByName: no experimental encoder
 // Version: 0.14.1 - FeedBufferSource: FFmpeg 9's closed buffer source
 // Version: 0.14.0 - HostPictureExtensions
 // Version: 0.12.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -132,6 +133,13 @@ std::string ResolveDefaultFont();
 bool FontconfigCanDrawText();
 
 // ===== CODEC SELECTION =====
+// An encoder by name: in this FFmpeg build and not marked experimental, or
+// nullptr. Every encoder VideoFX chooses, lists or reports comes through
+// here. FFmpeg's own Vorbis and Opus encoders are experimental - the Vorbis
+// one takes stereo only and refuses anything else with "Operation not
+// permitted" - so without libvorbis or libopus a build has no Vorbis or
+// Opus to offer, rather than one that fails when an export opens it.
+const AVCodec* FindEncoderByName(const char* name);
 // Encoder for a codec choice, trying the usual implementations in order
 // (libx264, then platform encoders, ...). nullptr = none in this build.
 // With an acceleration other than Auto, only encoders of that kind that
