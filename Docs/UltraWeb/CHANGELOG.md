@@ -1,3 +1,11 @@
+#### 2026-10-15 *0.8.2*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraWeb.exe` is a GUI program now. Beside it, `UltraWeb.com`
+  is its console companion, which a prompt runs for the bare name: `UltraWeb
+  --check` starts the `.exe`, waits for it and returns its exit code, as
+  before. Typed as `UltraWeb.exe`, the prompt no longer waits (framework
+  changelog: `windows-console-companions`).
+
 #### 2026-10-15 *0.8.1*
 - **Apps run on Windows.** UltraWeb built with MSYS2 (CLANG64 or
   CLANGARM64) said "This UltraWeb cannot run apps": it had no WebAssembly

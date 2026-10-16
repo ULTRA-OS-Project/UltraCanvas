@@ -61,7 +61,7 @@ mkdir -p "$DIST_DIR"
 # output to the build root (CMAKE_RUNTIME_OUTPUT_DIRECTORY), not build/bin.
 #
 # Test and diagnostic binaries (UltraNetTests, UltraNetApiStatus, *Test(s),
-# ultraai_test_*) must NOT ship: they are unsigned dev tools that open sockets
+# ultraai_test_*, ConsoleCompanionTest's probe and its .com) must NOT ship: they are unsigned dev tools that open sockets
 # and load plug-in DLLs, which behaviour-based AV heuristics flag — AVG's
 # Verhaltensschutz quarantined UltraNetApiStatus.exe from the 0.3.50 package
 # as IDP.Generic. End users have no use for them anyway.
@@ -69,10 +69,14 @@ mkdir -p "$DIST_DIR"
 # RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU and ultrapress do), and globbing
 # only the root is why such an app is built by CI and then missing from the
 # package.
-for exe in ./build/*.exe ./build/bin/*.exe; do
+# The .com files are the console companions of the applications whose command
+# line prints (cmake/UltraCanvasWindowsGuiApp.cmake): UltraCleaner.com runs
+# UltraCleaner.exe from a prompt and waits for it.
+for exe in ./build/*.exe ./build/bin/*.exe ./build/*.com ./build/bin/*.com; do
     [ -e "$exe" ] || continue
     case "$(basename "$exe")" in
-        *Test.exe|*Tests.exe|ultraai_test_*.exe|UltraNetApiStatus.exe)
+        *Test.exe|*Tests.exe|*Test.com|*Tests.com|ultraai_test_*.exe|UltraNetApiStatus.exe|\
+        ConsoleCompanionProbe.exe|ConsoleCompanionProbe.com)
             echo "  Skipping test/diagnostic binary: $(basename "$exe")"
             continue ;;
     esac
@@ -159,6 +163,7 @@ VERIFY_ARCH="${MSYSTEM_CARCH:-x86_64}"
 echo ""
 echo "Verifying PE headers ($VERIFY_ARCH)..."
 VERIFY_FILES=("$DIST_DIR"/*.exe "$DIST_DIR"/*.dll)
+for companion in "$DIST_DIR"/*.com; do [ -e "$companion" ] && VERIFY_FILES+=("$companion"); done
 [ -f "$DIST_DIR/lib/UltraCanvasLaTeX.dll" ] && VERIFY_FILES+=("$DIST_DIR/lib/UltraCanvasLaTeX.dll")
 if ! "$SCRIPT_DIR/scripts/verify-pe.sh" "$VERIFY_ARCH" "${VERIFY_FILES[@]}"; then
     echo "Error: a packaged executable or DLL is not a valid $VERIFY_ARCH Windows binary (see above)" >&2

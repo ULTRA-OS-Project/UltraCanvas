@@ -1,3 +1,11 @@
+#### 2026-10-15 *0.8.1*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `ultrapress.exe` is a GUI program now. Beside it,
+  `ultrapress.com` is its console companion, which a prompt runs for the
+  bare name: `ultrapress mysite --check` starts the `.exe`, waits for it and
+  returns its exit code, as before. Typed as `ultrapress.exe`, the prompt no
+  longer waits (framework changelog: `windows-console-companions`).
+
 #### 2026-10-15 *0.8.0*
 - **The look follows the framework's theme, light or dark.** The window
   and its dialogs take their colours from an `UltraCanvasTheme`

@@ -177,8 +177,9 @@ Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
 `./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
 command prompt with the MSYS2 `bin` directory on `PATH`. In a Release build
 the executables are GUI-subsystem programs, so they print nothing to a console
-(the few with command-line modes, such as DeviceExplorer, stay console
-programs and close the console a double-click opens for them);
+(the few with command-line modes, such as DeviceExplorer, have a console
+companion, `DeviceExplorer.com`, which a prompt runs for the bare name and
+waits for);
 `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
 build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
 
@@ -384,7 +385,8 @@ GUI-subsystem program, so no console opens beside the window, and still lets
 `--help` print into the prompt it was typed at (for an app in this repository,
 add it to the list under *Hide console window on Windows Release builds* in the
 root `CMakeLists.txt`; an app whose command-line modes print into the prompt
-stays off that list), and embed the icon in the `.exe` with
+goes on the list of console companions there,
+`ultracanvas_windows_console_companion()`), and embed the icon in the `.exe` with
 `ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
 Explorer and the taskbar read.
 
