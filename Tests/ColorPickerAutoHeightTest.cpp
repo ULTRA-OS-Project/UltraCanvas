@@ -15,9 +15,13 @@
 // moves up when the section folds and down when it opens or a larger design
 // is chosen. Without it the widget keeps its size, as before.
 //
+// onSlidersExpandedChanged reports the user opening or folding the section
+// with the disclosure row, not SetSlidersExpanded.
+//
 // Every press goes through the application's own dispatch. Opens a real
 // window, so it runs under Xvfb (xvfb-run -a) and skips itself without a
 // DISPLAY.
+// Version: 1.1.0 - onSlidersExpandedChanged
 // Version: 1.0.0
 // Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
@@ -127,8 +131,11 @@ int main() {
     Press(app, window, *fixedPicker, PickerW * 0.5f, tabsY + st.tabHeight * 0.5f);
     TEST("where the HSL tab is when open, a press does nothing while folded",
          fixedPicker->GetModel() == ColorPickerModel::HSV);
+    std::vector<bool> reported;
+    fixedPicker->onSlidersExpandedChanged = [&reported](bool expanded) { reported.push_back(expanded); };
     Press(app, window, *fixedPicker, 40, headerY + rh * 0.5f);
     TEST("a press on the disclosure row opens the section", fixedPicker->GetSlidersExpanded());
+    TEST("and reports it opened (onSlidersExpandedChanged)", reported == std::vector<bool>{true});
     DisplayTest::Frame(window, {fixedPicker});
     Press(app, window, *fixedPicker, PickerW * 0.5f, tabsY + st.tabHeight * 0.5f);
     TEST("open, the tab bar sits under the disclosure row",
@@ -137,6 +144,12 @@ int main() {
          Near(fixedPicker->GetHeight(), 470));
     fixedPicker->SetSlidersExpanded(false);
     TEST("... folded too", Near(fixedPicker->GetHeight(), 470));
+    TEST("folding it from code reports nothing", reported.size() == 1);
+    DisplayTest::Frame(window, {fixedPicker});
+    Press(app, window, *fixedPicker, 40, headerY + rh * 0.5f);
+    Press(app, window, *fixedPicker, 40, headerY + rh * 0.5f);
+    TEST("opening and folding it again reports both",
+         reported == (std::vector<bool>{true, true, false}) && !fixedPicker->GetSlidersExpanded());
     window->RemoveChild(fixedPicker);
 
     // ===== Auto height in a toolbox column =====

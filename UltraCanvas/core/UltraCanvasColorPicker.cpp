@@ -1522,6 +1522,7 @@ namespace UltraCanvas {
         }
         if (slidersCollapsible && slidersHeaderRect.Contains(p)) {
             SetSlidersExpanded(!slidersExpanded);
+            if (onSlidersExpandedChanged) onSlidersExpandedChanged(slidersExpanded);
             return true;
         }
 

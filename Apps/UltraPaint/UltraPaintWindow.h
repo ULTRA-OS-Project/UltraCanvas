@@ -8,6 +8,7 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.6.1 - RememberColourPicker: the picker opens as it was left
 // Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
 //                  canvas at its zoom edits a text layer; Layer > Edit Text / Rasterize Layer
 // Version: 1.5.0 - the right panel's sections are group boxes (optionsPanel, layersPanel)
@@ -20,7 +21,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,6 +89,9 @@ private:
     void BuildToolbar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next editor opens it the way it was left.
+    void RememberColourPicker();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;

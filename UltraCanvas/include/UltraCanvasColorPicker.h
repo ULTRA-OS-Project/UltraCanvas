@@ -12,7 +12,8 @@
 // mouse moves.
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
 //                  the HSV/HSL/RGB tabs collapse with the channel sliders;
-//                  SetAutoHeight: the widget's height follows its content
+//                  SetAutoHeight: the widget's height follows its content;
+//                  onSlidersExpandedChanged reports the user opening or folding them
 // Version: 1.7.0 - ColorPickerStyle::Light() for a light window, Dark() for the default
 // Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
 // Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
@@ -376,6 +377,12 @@ namespace UltraCanvas {
         // The user chose a design in the design selector (not fired by
         // SetWheelStyle). A host that remembers the choice saves it here.
         std::function<void(ColorPickerWheelStyle)> onWheelStyleChanged;
+
+        // The user opened or folded the colour definitions with the
+        // disclosure row (not fired by SetSlidersExpanded or
+        // SetSlidersCollapsible). A host that remembers the state saves it
+        // here.
+        std::function<void(bool expanded)> onSlidersExpandedChanged;
 
         // Screen colour-picker ("eyedropper") request. Fired when the eyedropper
         // button next to the background swatch is clicked. When set, the host

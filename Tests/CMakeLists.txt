@@ -1215,6 +1215,31 @@ else()
     message(STATUS "  ColorPickerAutoHeightTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ULTRAPAINT SETTINGS TEST =====
+# UltraPaint's settings file remembers the colour picker's design and its
+# open or folded channels; the picker's own save keeps the file's other keys.
+# The settings are header-only (Apps/UltraPaint/UltraPaintSettings.h). Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraPaintSettingsTest...")
+    add_executable(UltraPaintSettingsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraPaintSettingsTest.cpp
+    )
+    target_include_directories(UltraPaintSettingsTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraPaint
+    )
+    target_compile_features(UltraPaintSettingsTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraPaintSettingsTest PRIVATE UltraCanvas)
+    set_target_properties(UltraPaintSettingsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraPaintSettingsTest COMMAND UltraPaintSettingsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraPaintSettingsTest")
+else()
+    message(STATUS "  UltraPaintSettingsTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== DROPDOWN KEYBOARD TEST =====
 # Down / Up / Return choose an item of an open dropdown; Escape keeps the
 # choice. The dropdown takes the keyboard focus (Tab, a click, Down / Space to

@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.7.2 - the colour picker opens with the design and channels it was left with
+//                  (settings: picker.design, picker.channels)
 // Version: 1.7.1 - the colour picker offers its design list, folds its channels and is
 //                  as tall as its content (SetAutoHeight)
 // Version: 1.7.0 - text typed on the canvas: an UltraCanvasRichTextEdit over the canvas
@@ -746,9 +748,13 @@ void UltraPaintWindow::BuildRightPanel() {
     colorPicker->SetBackgroundColor(background.ToColor());
     colorPicker->SetShowAlpha(true);
     // The design list top right (circle, square, rectangle, two sliders), and
-    // the HSV / HSL / RGB channels folded under their disclosure row.
+    // the HSV / HSL / RGB channels under their disclosure row - both as the
+    // user left them (folded the first time).
+    colorPicker->SetWheelStyle(settings.pickerDesign);
     colorPicker->SetShowWheelStyleSelector(true);
-    colorPicker->SetSlidersCollapsible(true, false);
+    colorPicker->SetSlidersCollapsible(true, settings.pickerChannelsOpen);
+    colorPicker->onWheelStyleChanged = [this](ColorPickerWheelStyle) { RememberColourPicker(); };
+    colorPicker->onSlidersExpandedChanged = [this](bool) { RememberColourPicker(); };
     // As tall as its content: the hue ring fills the card's width, and the
     // card and the cards below move up and down as the channels fold or
     // another design is chosen. The height is also the picker's flex basis.
@@ -1429,6 +1435,19 @@ void UltraPaintWindow::BuildMagnifier() {
     magnifierFrame->AddChild(magnifier);
     body->AddChild(magnifierFrame);
     ApplySettings();
+}
+
+void UltraPaintWindow::RememberColourPicker() {
+    settings.pickerDesign = colorPicker->GetWheelStyle();
+    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
+    // The other editors' copies too: whichever saves its settings next (its
+    // settings window) writes the picker as it was left last, not as it was
+    // when that editor opened. Their pickers stay as they are.
+    for (const auto& editor : OpenWindows()) {
+        editor->settings.pickerDesign = settings.pickerDesign;
+        editor->settings.pickerChannelsOpen = settings.pickerChannelsOpen;
+    }
+    settings.SavePicker();
 }
 
 void UltraPaintWindow::ApplySettings() {

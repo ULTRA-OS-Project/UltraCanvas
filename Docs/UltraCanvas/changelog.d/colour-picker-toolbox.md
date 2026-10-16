@@ -8,7 +8,9 @@
   - A collapsible picker (`SetSlidersCollapsible`) hides the **HSV / HSL /
     RGB tab bar** with the channel sliders behind the disclosure row, which
     now comes first; the tabs used to stay out on their own when the sliders
-    folded away.
+    folded away. `onSlidersExpandedChanged` reports the user opening or
+    folding the section, as `onWheelStyleChanged` reports a design chosen,
+    for a host that remembers it (UltraPaint does).
   - `SetAutoHeight(true)` makes the widget take the height its content needs
     and keep it as the content changes - the section opened or closed,
     another design chosen, the alpha row, the UI scale - in the layout too,

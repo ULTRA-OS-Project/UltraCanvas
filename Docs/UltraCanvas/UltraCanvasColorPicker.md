@@ -122,6 +122,8 @@ natively with the framework's `IRenderContext` primitives.
   `PreferredHeightForWidth` sizes a collapsible PixelExact picker for its
   **expanded** sliders, which then open into the free space under the
   controls and leave the area exact in both states.
+  `onSlidersExpandedChanged` reports the user opening or folding the section
+  (not `SetSlidersExpanded`), for a host that remembers it.
 - ✅ **Auto height** — `SetAutoHeight(true)` makes the widget take the height
   its content needs and keep it as the content changes: the colour
   definitions opened or closed, another design chosen (also from the design
@@ -198,6 +200,7 @@ namespace UltraCanvas {
         std::function<void(const Color&)> onColorChanged;
         std::function<void(const Color&)> onColorChanging;
         std::function<void(ColorPickerWheelStyle)> onWheelStyleChanged; // user's design choice
+        std::function<void(bool expanded)> onSlidersExpandedChanged; // user opened / folded the section
         std::function<void(bool foreground)> onScreenColorPick; // host override
     };
 }
@@ -256,8 +259,12 @@ picker->onWheelStyleChanged = [](UltraCanvas::ColorPickerWheelStyle design) {
 picker->SetShowValueSpinners(true);
 
 // Hide the colour definitions (the HSV / HSL / RGB tabs and the four
-// sliders) behind a disclosure icon, collapsed by default:
+// sliders) behind a disclosure icon, collapsed by default, and remember
+// whether the user leaves them open:
 picker->SetSlidersCollapsible(true, false);
+picker->onSlidersExpandedChanged = [](bool expanded) {
+    printf("Channels %s\n", expanded ? "open" : "folded");   // e.g. save it in the settings
+};
 
 // In a toolbox column: let the picker's height follow what it shows, so the
 // tools below move up when the colour definitions fold away:
