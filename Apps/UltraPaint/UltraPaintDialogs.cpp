@@ -278,7 +278,7 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
 UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hidePreview, bool available)
     : UltraCanvasWindow() {
     config_.title = "Password Protection";
-    config_.width = 440; config_.height = 300;
+    config_.width = 440; config_.height = 250;
     config_.minWidth = 380; config_.minHeight = 260;
     config_.resizable = true;
     config_.deleteOnClose = true;

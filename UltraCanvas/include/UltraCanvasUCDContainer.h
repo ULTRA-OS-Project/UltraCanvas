@@ -67,6 +67,9 @@ constexpr size_t  kSectionHeaderSize = 12;
 constexpr size_t  kPreambleSize      = 8;
 constexpr uint8_t kVersionMajor      = 2;
 constexpr uint8_t kVersionMinor      = 2;
+// Reader::Unlock's error for a wrong password - what a caller compares
+// against to ask again rather than report a damaged file.
+inline constexpr const char* kWrongPassword = "The password is not right";
 
 // Header byte 15 / section header byte 8.
 enum class Compression : uint8_t {
@@ -153,8 +156,8 @@ public:
     // do not decode until Unlock succeeds.
     bool NeedsPassword() const;
     // Derives the document key from `password` and the SECU parameters and
-    // checks it against the SECU's check tag. False with `error` - "the
-    // password is not right" for a wrong one; a damaged or missing SECU, a
+    // checks it against the SECU's check tag. False with `error` -
+    // kWrongPassword for a wrong one; a damaged or missing SECU, a
     // SuperVault document or a build without libsodium say so instead.
     bool Unlock(const std::string& password, std::string& error);
 

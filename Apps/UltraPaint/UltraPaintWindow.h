@@ -8,6 +8,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.7.0 - password-protected *.ucd: CmdPassword (File > Password Protection...),
+//                  OpenProtectedFile asks for a file's password, SaveLossQuestion
 // Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
 //                  the keyboard back to the text being typed
 // Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
@@ -115,8 +117,17 @@ private:
     // or merge it into the open image — and carries the answer out.
     // `fromDrop` decides which of those the dialog offers; `alsoFiles` are the
     // rest of a multi-file drop, which follow the same answer.
+    // `preloaded`: the file already read (a password-protected one, opened
+    // once its password was given), so it is not read again.
     void ImportFile(const std::string& path, bool fromDrop,
-                    const std::vector<std::string>& alsoFiles = {});
+                    const std::vector<std::string>& alsoFiles = {},
+                    std::shared_ptr<UCRasterDocument> preloaded = nullptr);
+    // A password-protected *.ucd: asks for its password and hands the opened
+    // document to `opened`. A wrong password asks again (`note` says so);
+    // Cancel opens nothing, and any other failure is shown.
+    void OpenProtectedFile(const std::string& path,
+                           const std::function<void(std::shared_ptr<UCRasterDocument>)>& opened,
+                           const std::string& note = std::string());
     // A 3D model takes the framework's model-view dialog instead: it has no
     // view either, and one has to be chosen before there are any pixels.
     void ImportModel(const std::string& path, bool fromDrop,
@@ -144,6 +155,10 @@ private:
     // which is what made the Adjust menu look as though it did nothing.
     void ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog);
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
+    // What saving the open image to `path` would lose - its layers (a flat
+    // format, when `layers` is asked), its password (anything but a *.ucd) -
+    // as the question to confirm first; empty when nothing is lost.
+    std::string SaveLossQuestion(const std::string& path, bool layers) const;
     void UpdateTitle();
     void UpdateStatus();
     void UpdateUndoButtons();
@@ -157,6 +172,7 @@ private:
     void CmdSave();
     void CmdSaveAs();
     void CmdExport();
+    void CmdPassword();
     void CmdUndo();
     void CmdRedo();
     void CmdCut();

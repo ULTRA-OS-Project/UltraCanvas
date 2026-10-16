@@ -1323,7 +1323,7 @@ static void TestProtectedUCD() {
     std::string why;
     CHECK(!other.LoadFromFile(path, why) && why.find("password") != std::string::npos);
     why.clear();
-    CHECK(!other.LoadUCD(path, why, "passwort") && why.find("not right") != std::string::npos);
+    CHECK(!other.LoadUCD(path, why, "passwort") && why == UCD::kWrongPassword);   // what UltraPaint asks again on
     CHECK(other.GetWidth() == 3 && other.GetLayerCount() == 1 && !other.HasUCDPassword());
 
     CHECK(other.LoadUCD(path, err, "p\xC3\xA4sswort"));

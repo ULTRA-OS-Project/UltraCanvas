@@ -329,7 +329,7 @@ bool Reader::Unlock(const std::string& password, std::string& error) {
     check.associatedData = CheckAssociatedData(secu.stored.data());
     UltraCryptSecureBuffer nothing;
     if (!UltraCrypt_AeadOpen(derived, check, tag.data(), tag.size(), nothing)) {
-        error = "The password is not right";
+        error = kWrongPassword;
         return false;
     }
     key = std::make_unique<UltraCryptSecureBuffer>(std::move(derived));

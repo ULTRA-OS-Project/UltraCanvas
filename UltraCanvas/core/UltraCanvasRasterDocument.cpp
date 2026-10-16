@@ -1422,8 +1422,11 @@ bool UCRasterDocument::SaveUCD(const std::string& path, std::string& error) {
     }
 
     UCD::Writer writer("UCBitmap");
-    if (auto flat = Flatten()) writer.SetThumbnailPng(ThumbnailPng(*flat));
-    if (ucdPassword) writer.SetPassword(*ucdPassword, ucdHidePreview);
+    const bool hidePreview = ucdPassword && ucdHidePreview;
+    if (!hidePreview) {
+        if (auto flat = Flatten()) writer.SetThumbnailPng(ThumbnailPng(*flat));
+    }
+    if (ucdPassword) writer.SetPassword(*ucdPassword, hidePreview);
     writer.AddSection("LAYR", std::move(stack));
     for (size_t i = 0; i < layers.size(); ++i) {
         writer.AddSection("BMAP", BitmapPayload(*layers[i]));
