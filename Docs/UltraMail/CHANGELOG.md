@@ -1,3 +1,13 @@
+#### 2026-10-16 *0.10.58*
+- **An unreachable sign-in service is worded like every other failure.**
+  When a browser sign-in could not reach the sign-in service, the alert
+  repeated UltraNet's raw message; it now leads with the same sentence
+  `FriendlyMessage` gives for *the sign-in service* (*The sign-in service
+  could not be found. Check your internet connection.*), then the service's
+  address and its `/healthz` check. A refusal from the provider, and a
+  sign-in straight to a provider with a client of its own, keep the
+  framework's own reason - the service was not at fault there.
+
 #### 2026-10-15 *0.10.57*
 - **A failure names the server it talked to.** The sentence an alert leads
   with for a failed network operation (`FriendlyMessage`) said *the mail
