@@ -44,7 +44,10 @@ private:
         bool isImage = false;
     };
 
-    void RebuildEndpointPicker();
+    // Rebuild the picker from the Chat endpoints. When `selectId` names an
+    // endpoint still in the list its row stays selected; otherwise the first
+    // endpoint is chosen (first open, or the selected one was just deleted).
+    void RebuildEndpointPicker(const std::string& selectId = "");
     void OnSend();
     void OnAttach();
     void OnNewChat();

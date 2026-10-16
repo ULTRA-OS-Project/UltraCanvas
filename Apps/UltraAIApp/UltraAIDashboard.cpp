@@ -5,6 +5,7 @@
 #include "UltraAIDashboard.h"
 #include "UltraAIDialogs.h"
 #include "UltraAIChatDialog.h"
+#include "UltraAITranslatorDialog.h"
 #include "UltraAISettingsWindow.h"
 
 #include "UltraCanvasButton.h"
@@ -153,7 +154,9 @@ void UltraAIDashboard::OpenVisionDialog() {
     ShowServiceDialog<VisionDialog>(window_.get());
 }
 void UltraAIDashboard::OpenTranslatorDialog() {
-    ShowServiceDialog<TranslatorDialog>(window_.get());
+    auto dlg = std::make_shared<UltraAITranslatorDialog>();
+    dlg->CreateTranslatorDialog();
+    dlg->ShowModal(window_.get());
 }
 void UltraAIDashboard::OpenVideoGenDialog() {
     ShowServiceDialog<VideoGenDialog>(window_.get());
