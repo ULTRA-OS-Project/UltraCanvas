@@ -1375,8 +1375,6 @@ namespace UltraCanvas {
             return id.size() > 1 && id[1] == '|' ? id.substr(2) : std::string();
         }
 
-        const Color kFileDialogBorderColor(160, 160, 160, 255);
-
         std::string FileDialogIconPath(const std::string& file) {
             return NormalizePath(GetResourcesDir() + "media/icons/" + file);
         }
@@ -1457,6 +1455,14 @@ namespace UltraCanvas {
         // "Drag to Folder" caption, left of the name and type rows.
         constexpr int kSaveIconSize = 64;
         constexpr int kSaveIconBlockWidth = 96;
+        // The fields and buttons, the names written above the fields, and the
+        // space round the browser.
+        constexpr int kFileDialogFieldHeight = 32;
+        constexpr int kFileDialogLabelHeight = 18;
+        constexpr int kFileDialogLabelGap = 4;
+        constexpr int kFileDialogPadding = 20;
+        constexpr float kFileDialogCornerRadius = 4.0f;
+        constexpr float kFileDialogFrameRadius = 8.0f;
         constexpr int kFileDialogMaxColumn = 2000;
 
         // The name the running application registered with
@@ -1506,6 +1512,13 @@ namespace UltraCanvas {
             if (!last.empty() && std::filesystem::is_directory(PathFromUtf8(last), fec) && !fec)
                 fileConfig.initialDirectory = last;
         }
+        // The footer band of today's platform dialogs: taller, with wider
+        // buttons of one size, and more air round the browser.
+        style.padding = static_cast<float>(kFileDialogPadding);
+        style.buttonWidth = 120.0f;
+        style.buttonHeight = static_cast<float>(kFileDialogFieldHeight);
+        style.buttonAreaHeight = 64.0f;
+        style.buttonSpacing = 8.0f;
         UltraCanvasModalDialog::CreateDialog(fileConfig);
 
         // The browser fills the dialog at the configured size; there is no
@@ -1523,6 +1536,12 @@ namespace UltraCanvas {
         // identical, because they all run this same callback.
         if (auto* okEntry = FindButtonEntry(DialogButton::OK)) {
             okEntry->button->onClick = [this]() { HandleOkButton(); };
+            // The button says what it does, as the platforms' own do.
+            okEntry->button->SetText(
+                    fileConfig.dialogType == FileDialogType::Save ? "Save" :
+                    fileConfig.dialogType == FileDialogType::SelectFolder ? "Select Folder" : "Open");
+            SizeButtonToLabel(okEntry->button);
+            AssignButtonMnemonics();
         }
 
         {
@@ -1542,6 +1561,7 @@ namespace UltraCanvas {
         RefreshFileList();
         SyncFolderTree();
         SetNameText(fileConfig.defaultFileName);
+        ApplyFileDialogLook(UltraCanvasTheme::Current());
     }
 
     void UltraCanvasFileDialog::BuildFileInterface() {
@@ -1550,10 +1570,10 @@ namespace UltraCanvas {
         if (messageArea) messageArea->SetVisible(false);
 
         const float fontSize = style.messageFontSize;
-        const long fieldHeight = 28;
+        const long fieldHeight = kFileDialogFieldHeight;
 
         auto browser = std::make_shared<UltraCanvasContainer>("FileDialogBrowser");
-        browser->layout.SetFlexColumn().SetFlexGap(8)
+        browser->layout.SetFlexColumn().SetFlexGap(12)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         browser->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
 
@@ -1617,13 +1637,30 @@ namespace UltraCanvas {
 
         // ----- folder tree | listing -----
         auto panes = std::make_shared<UltraCanvasContainer>("FileDialogPanes");
-        panes->layout.SetFlexRow().SetFlexGap(8)
+        panes->layout.SetFlexRow().SetFlexGap(12)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         panes->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
 
+        // Each pane sits in a rounded frame, inset far enough that its own
+        // square corners stay inside the rounding.
+        auto makeFrame = [this](const std::string& id) {
+            auto frame = std::make_shared<UltraCanvasContainer>(id);
+            frame->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            frame->SetPadding(4);
+            ContainerStyle frameStyle = frame->GetContainerStyle();
+            frameStyle.autoShowScrollbars = false;
+            frame->SetContainerStyle(frameStyle);
+            paneFrames.push_back(frame);
+            return frame;
+        };
+        auto treeFrame = makeFrame("FileDialogFoldersFrame");
+        treeFrame->size.width = CSSLayout::Dimension::Px(260);
+        treeFrame->layoutItem.SetFlexShrink(0);
+        auto listingFrame = makeFrame("FileDialogListingFrame");
+        listingFrame->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
         folderTree = std::make_shared<UltraCanvasTreeView>("FileDialogFolders");
-        folderTree->size.width = CSSLayout::Dimension::Px(260);
-        folderTree->layoutItem.SetFlexShrink(0);
+        folderTree->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         folderTree->SetFontSize(fontSize);
         folderTree->SetRowHeight(22);
         folderTree->SetSelectionMode(TreeSelectionMode::Single);
@@ -1631,7 +1668,6 @@ namespace UltraCanvas {
         folderTree->SetShowFirstChildOnExpand(false);
         folderTree->SetShowScrollToTopButton(false);
         folderTree->SetRootVisible(false);
-        folderTree->SetBorders(1.0f, kFileDialogBorderColor);
         folderTree->onNodeExpanded = [this](TreeNode* node) { LoadFolderTreeChildren(node); };
         folderTree->onNodeSelected = [this](TreeNode* node) {
             if (syncingTree || !node) return;
@@ -1648,7 +1684,8 @@ namespace UltraCanvas {
             const std::string& id = node->data.nodeId;
             return TreeNodeTag(id) == kPlaceTag || TreeNodeTag(id) == kDriveTag;
         };
-        panes->AddChild(folderTree);
+        treeFrame->AddChild(folderTree);
+        panes->AddChild(treeFrame);
 
         // The listing is the framework's file display, as in UltraFiler: its
         // icons, columns, sorting, thumbnails and keyboard. Opening a folder
@@ -1668,7 +1705,6 @@ namespace UltraCanvas {
         filerView->SetSelectionInfoVisible(false);
         filerView->SetHoverIconMenuEnabled(fileConfig.hoverIconMenu);
         filerView->SetActivateOpensWithDefaultApp(false);
-        filerView->SetBorders(1.0f, kFileDialogBorderColor);
         filerView->onSelectionChanged = [this](const std::vector<FilerEntry>& selected) {
             OnListingSelectionChanged(selected);
         };
@@ -1691,37 +1727,52 @@ namespace UltraCanvas {
             });
         };
         ApplyListingFilter();
-        panes->AddChild(filerView);
+        listingFrame->AddChild(filerView);
+        panes->AddChild(listingFrame);
         browser->AddChild(panes);
 
-        // ----- name and type rows -----
-        // Two columns, so the labels line up and the fields start at the same
-        // x whatever the labels' measured widths are.
+        // ----- name and type -----
+        // Each field with its name written above it: the name and the type
+        // side by side (a Save's big icon at their left, level with the
+        // fields), or, with the type toggles, the name over the "Show" row.
         auto fields = std::make_shared<UltraCanvasContainer>("FileDialogFields");
-        fields->layout.SetFlexRow().SetFlexGap(8)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        fields->layout.SetFlexRow().SetFlexGap(16)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Start);
         fields->layoutItem.SetFlexShrink(0);
 
-        auto labelColumn = std::make_shared<UltraCanvasContainer>("FileDialogFieldLabels");
-        labelColumn->layout.SetFlexColumn().SetFlexGap(6)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        labelColumn->layoutItem.SetFlexShrink(0);
-
-        auto inputColumn = std::make_shared<UltraCanvasContainer>("FileDialogFieldInputs");
-        inputColumn->layout.SetFlexColumn().SetFlexGap(6)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        inputColumn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-
-        auto addLabel = [&](const std::string& id, const std::string& text) {
-            auto label = std::make_shared<UltraCanvasLabel>(id, text);
+        // A field's name over the field (or row of fields) it names.
+        auto makeGroup = [&](const std::string& id, const std::string& labelId,
+                             const std::string& text,
+                             const std::shared_ptr<UltraCanvasUIElement>& field) {
+            auto group = std::make_shared<UltraCanvasContainer>(id);
+            group->layout.SetFlexColumn().SetFlexGap(kFileDialogLabelGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            auto label = std::make_shared<UltraCanvasLabel>(labelId, text);
             label->SetFontSize(fontSize);
             label->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-            label->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
-            labelColumn->AddChild(label);
+            label->size.height = CSSLayout::Dimension::Px(static_cast<float>(kFileDialogLabelHeight));
+            label->layoutItem.SetFlexShrink(0);
+            fieldLabels.push_back(label);
+            group->AddChild(label);
+            field->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
+            field->layoutItem.SetFlexShrink(0);
+            group->AddChild(field);
+            return group;
+        };
+        // A row holding a field and the Settings button after it.
+        auto withSettings = [&](const std::string& id,
+                                const std::shared_ptr<UltraCanvasUIElement>& field) {
+            if (!saveSettingsButton) return field;
+            auto row = std::make_shared<UltraCanvasContainer>(id);
+            row->layout.SetFlexRow().SetFlexGap(6)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(field);
+            row->AddChild(saveSettingsButton);
+            return std::static_pointer_cast<UltraCanvasUIElement>(row);
         };
 
         if (fileConfig.dialogType != FileDialogType::SelectFolder) {
-            addLabel("FileDialogNameLabel", "File name:");
             fileNameInput = std::make_shared<UltraCanvasTextInput>(
                     "FileDialogName", 0, 0, 300, fieldHeight);
             fileNameInput->SetFontSize(fontSize);
@@ -1731,9 +1782,9 @@ namespace UltraCanvas {
             };
             if (fileConfig.dialogType == FileDialogType::Save) {
                 // The save box: the big icon of the type being saved at the
-                // left of the name and type rows ("Drag to Folder" under it),
-                // the name, and that type's settings after it. The icon is the
-                // one the listing draws for the type, and dropping it on a
+                // left of the name and type ("Drag to Folder" under it), the
+                // name, and that type's settings after the type. The icon is
+                // the one the listing draws for the type, and dropping it on a
                 // folder of the listing or the tree opens that folder - where
                 // the file goes.
                 auto iconBlock = std::make_shared<UltraCanvasContainer>("FileDialogFileIconBlock");
@@ -1741,6 +1792,8 @@ namespace UltraCanvas {
                 iconBlock->layout.SetFlexColumn().SetFlexGap(2)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
                 iconBlock->layoutItem.SetFlexShrink(0);
+                // Level with the fields, under the line of their names.
+                iconBlock->SetMargin(static_cast<float>(kFileDialogLabelHeight + kFileDialogLabelGap), 0, 0, 0);
 
                 fileIcon = std::make_shared<UltraCanvasFileDragIcon>(
                         "FileDialogFileIcon", 0, 0, kSaveIconSize, kSaveIconSize);
@@ -1768,35 +1821,27 @@ namespace UltraCanvas {
                 };
                 iconBlock->AddChild(fileIcon);
 
-                auto iconCaption = std::make_shared<UltraCanvasLabel>(
+                fileIconCaption = std::make_shared<UltraCanvasLabel>(
                         "FileDialogFileIconCaption", 0, 0, kSaveIconBlockWidth, 14, "Drag to Folder");
-                iconCaption->SetFontSize(std::max(8.0f, fontSize - 2.0f));
-                iconCaption->SetTextColor(Color(90, 90, 96, 255));
-                iconCaption->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-                iconCaption->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconBlockWidth));
-                iconCaption->size.height = CSSLayout::Dimension::Px(14.0f);
-                iconCaption->layoutItem.SetFlexShrink(0);
-                iconBlock->AddChild(iconCaption);
+                fileIconCaption->SetFontSize(std::max(8.0f, fontSize - 2.0f));
+                fileIconCaption->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+                fileIconCaption->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconBlockWidth));
+                fileIconCaption->size.height = CSSLayout::Dimension::Px(14.0f);
+                fileIconCaption->layoutItem.SetFlexShrink(0);
+                iconBlock->AddChild(fileIconCaption);
                 fields->AddChild(iconBlock);
 
-                // The type's settings: a button at the end of the type row,
-                // added there below.
+                // The type's settings: a button after the type, added there
+                // below.
                 if (fileConfig.saveSettingsButton) {
                     saveSettingsButton = std::make_shared<UltraCanvasButton>(
                             "FileDialogSaveSettings", 0, 0, fieldHeight, fieldHeight);
                     saveSettingsButton->SetIcon(FileDialogIconPath("settings.svg"));
+                    saveSettingsButton->SetTooltip("Settings for this type");
+                    saveSettingsButton->size.width = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
                     saveSettingsButton->layoutItem.SetFlexShrink(0);
                     saveSettingsButton->onClick = [this]() { ShowSaveTypeSettings(); };
                 }
-                // The name takes the whole width of its row.
-                auto nameRow = std::make_shared<UltraCanvasContainer>("FileDialogNameRow");
-                nameRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
-                nameRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-                fileNameInput->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-                nameRow->AddChild(fileNameInput);
-                inputColumn->AddChild(nameRow);
-            } else {
-                inputColumn->AddChild(fileNameInput);
             }
             // Typing a name narrows the listing to the files whose name has
             // it in; and in a Save the type follows the name: "photo.jpg"
@@ -1804,26 +1849,33 @@ namespace UltraCanvas {
             fileNameInput->onTextChanged = [this](const std::string& text) {
                 OnNameTyped(text);
             };
+            auto nameGroup = makeGroup("FileDialogNameGroup", "FileDialogNameLabel",
+                                       "File name", fileNameInput);
 
             if (fileConfig.filterToggles) {
                 // One button per kind of file, any number on, sized to their
                 // names and left-aligned: no extension lists to read through.
-                addLabel("FileDialogTypeLabel", "Show:");
-                auto toggleRow = std::make_shared<UltraCanvasContainer>("FileDialogTypeRow");
-                toggleRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
-                toggleRow->layout.SetFlexRow()
-                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
                 filterToggleBar = std::make_shared<UltraCanvasSegmentedControl>(
                         "FileDialogTypeToggles", 0, 0, 300, fieldHeight);
                 filterToggleBar->SetSelectionMode(SegmentSelectionMode::Toggle);
                 filterToggleBar->SetWidthMode(SegmentWidthMode::FitContent);
                 filterToggleBar->layoutItem.SetFlexShrink(1);
+                auto toggleRow = std::make_shared<UltraCanvasContainer>("FileDialogTypeRow");
+                toggleRow->layout.SetFlexRow().SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
                 toggleRow->AddChild(filterToggleBar);
-                if (saveSettingsButton) {
-                    toggleRow->layout.SetFlexGap(6);
-                    toggleRow->AddChild(saveSettingsButton);
-                }
-                inputColumn->AddChild(toggleRow);
+                if (saveSettingsButton) toggleRow->AddChild(saveSettingsButton);
+
+                // The name over the kinds of file: the toggles want the width.
+                auto stack = std::make_shared<UltraCanvasContainer>("FileDialogFieldStack");
+                stack->layout.SetFlexColumn().SetFlexGap(10)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                stack->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+                stack->AddChild(nameGroup);
+                stack->AddChild(makeGroup("FileDialogTypeGroup", "FileDialogTypeLabel",
+                                          "Show", toggleRow));
+                fields->AddChild(stack);
+
                 RebuildFilterToggles();
                 ApplyListingFilter();   // the listing was set up before the toggles
                 filterToggleBar->onSelectionChanged = [this](const std::vector<int>& on) {
@@ -1832,7 +1884,6 @@ namespace UltraCanvas {
                     UpdateSaveTypeDecorations();
                 };
             } else {
-                addLabel("FileDialogTypeLabel", "Files of type:");
                 filterDropdown = std::make_shared<UltraCanvasDropdown>(
                         "FileDialogType", 0, 0, 300, fieldHeight);
                 filterDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
@@ -1849,24 +1900,18 @@ namespace UltraCanvas {
                     }
                     UpdateSaveTypeDecorations();
                 };
-                if (saveSettingsButton) {
-                    // The type, and the settings of the type, on one line.
-                    auto typeRow = std::make_shared<UltraCanvasContainer>("FileDialogTypeRow");
-                    typeRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
-                    typeRow->layout.SetFlexRow().SetFlexGap(6)
-                            .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-                    filterDropdown->layoutItem.SetFlexShrink(1);
-                    typeRow->AddChild(filterDropdown);
-                    typeRow->AddChild(saveSettingsButton);
-                    inputColumn->AddChild(typeRow);
-                } else {
-                    inputColumn->AddChild(filterDropdown);
-                }
+                // The name and the type side by side, the name the wider.
+                nameGroup->layoutItem.SetFlexGrow(3).SetFlexShrink(1).SetFlexBasis(
+                        CSSLayout::Dimension::Px(0));
+                fields->AddChild(nameGroup);
+                auto typeGroup = makeGroup("FileDialogTypeGroup", "FileDialogTypeLabel", "File type",
+                                           withSettings("FileDialogTypeRow", filterDropdown));
+                typeGroup->layoutItem.SetFlexGrow(2).SetFlexShrink(1).SetFlexBasis(
+                        CSSLayout::Dimension::Px(0));
+                fields->AddChild(typeGroup);
                 RebuildFilterDropdown();
             }
 
-            fields->AddChild(labelColumn);
-            fields->AddChild(inputColumn);
             browser->AddChild(fields);
             UpdateSaveTypeDecorations();
         }
@@ -1958,6 +2003,71 @@ namespace UltraCanvas {
     }
 
 // ----- folder tree -----
+    void UltraCanvasFileDialog::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasModalDialog::ApplyTheme(theme);
+        ApplyFileDialogLook(theme);
+    }
+
+    void UltraCanvasFileDialog::ApplyFileDialogLook(const UltraCanvasTheme& theme) {
+        const ThemeRoles& r = theme.roles;
+
+        // The panel the browser sits on.
+        dialogConfig.backgroundColor = r.panel;
+        SetBackgroundColor(r.panel);
+        for (auto& section : {contentSection, messageContainer})
+            if (section) section->SetBackgroundColor(r.panel);
+
+        // The buttons on a band of their own, a hairline above it.
+        if (footerSection) {
+            footerSection->SetBackgroundColor(r.ground);
+            footerSection->SetBorderTop(1.0f, r.line);
+        }
+        for (auto& entry : dialogButtons) {
+            if (!entry.button) continue;
+            const bool accept = entry.type == DialogButton::OK;
+            ButtonStyle look = ButtonStyle::FromTheme(theme, entry.button->GetStyle(),
+                                                      accept ? ButtonVariant::Primary : ButtonVariant::Standard);
+            look.cornerRadius = kFileDialogCornerRadius;
+            entry.button->SetStyle(look);
+        }
+
+        // The tree and the listing in rounded frames of the hairline colour.
+        for (auto& frame : paneFrames) {
+            frame->SetBackgroundColor(r.panel);
+            frame->SetBorders(1.0f, r.line, kFileDialogFrameRadius);
+        }
+
+        for (auto& label : fieldLabels) label->SetTextColor(r.ink);
+        if (fileIconCaption) fileIconCaption->SetTextColor(r.inkMuted);
+
+        // The fields: the theme's own, with the corners the buttons have.
+        for (auto& input : {pathInput, fileNameInput}) {
+            if (!input) continue;
+            TextInputStyle look = TextInputStyle::FromTheme(theme, input->GetStyle());
+            look.borderRadius = static_cast<int>(kFileDialogCornerRadius);
+            input->SetStyle(look);
+        }
+        if (filterDropdown) {
+            DropdownStyle look = DropdownStyle::FromTheme(theme, filterDropdown->GetStyle());
+            look.cornerRadius = kFileDialogCornerRadius;
+            filterDropdown->SetStyle(look);
+        }
+        // "Up" is a bare glyph until the pointer is on it; Settings stands
+        // beside the type as a control of its own.
+        if (upButton) {
+            ButtonStyle look = ButtonStyle::FromTheme(theme, upButton->GetStyle(), ButtonVariant::Ghost);
+            look.cornerRadius = kFileDialogCornerRadius;
+            upButton->SetStyle(look);
+        }
+        if (saveSettingsButton) {
+            ButtonStyle look = ButtonStyle::FromTheme(theme, saveSettingsButton->GetStyle(),
+                                                      ButtonVariant::Standard);
+            look.cornerRadius = kFileDialogCornerRadius;
+            saveSettingsButton->SetStyle(look);
+        }
+        RequestRedraw();
+    }
+
     void UltraCanvasFileDialog::PopulateFolderTree() {
         if (!folderTree) return;
         loadedTreeNodes.clear();
