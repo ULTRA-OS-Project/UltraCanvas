@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.8.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.7.0 - the panels, controls, buttons, labels and dialogs follow the theme; the draft at the project's shape, its settings from the document
 // Version: 0.6.0 - OpenFiles: files handed over by a second start
 // Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
@@ -157,6 +158,23 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
         }
         return false;
     }, {UCEventType::MouseMove, UCEventType::MouseUp});
+    // An effect preset dragged from its button: the press arms it (the
+    // button's onPress, below), moving away from the press starts it
+    window->InstallEventFilter("ultravideo-effectdrag", [this](const UCEvent& event) {
+        if (event.type == UCEventType::MouseDown) { effectPressAt_ = event.pointerWindow; pointerDown_ = true; return false; }
+        if (event.type == UCEventType::MouseUp) pointerDown_ = false;
+        if (!effectDrag_.empty()) {
+            DragEffect(event, event.type == UCEventType::MouseUp);
+            return true;
+        }
+        if (effectPress_.empty()) return false;
+        if (event.type == UCEventType::MouseUp) { effectPress_.clear(); return false; }   // a click: the button applies it
+        const int dx = event.pointerWindow.x - effectPressAt_.x, dy = event.pointerWindow.y - effectPressAt_.y;
+        if (dx * dx + dy * dy < 36) return false;
+        BeginEffectDrag(effectPress_);
+        DragEffect(event, false);
+        return true;
+    }, {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
     window->onWindowClosing = [this]() {
         if (history_.IsClean()) {
             app_.RequestExit();
@@ -409,7 +427,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     effectsPage->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     effectsPage->SetPadding(static_cast<float>(Tokens::Space3));
     effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
-                               "A click puts the effect on the selected clip; the inspector lists the clip's effects and removes them.");
+                               "A click puts the effect on the selected clip, or drag it onto a clip; the inspector lists the clip's effects and removes them.");
     effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
     FollowTheme(effectsNote_, LabelVariant::Muted);
     effectsNote_->layoutItem.SetFlexShrink(0);
@@ -430,6 +448,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
             button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
             const std::string key = e.key;
             button->SetOnClick([this, key]() { ApplyEffect(key); });
+            button->onPress = [this, key]() { effectPress_ = pointerDown_ ? key : ""; };   // armed by the mouse; a move away starts the drag
             effectButtons_.push_back(button);
             effectsPage->AddChild(button);
         }
@@ -1063,6 +1082,53 @@ void UltraVideoWindow::DragToTimeline(const UCEvent& source, bool drop) {
     timeline_->OnEvent(e);
 }
 
+void UltraVideoWindow::BeginEffectDrag(std::string key) {   // by value: the caller passes effectPress_, cleared here
+    const EffectPreset* preset = FindEffectPreset(key);
+    effectPress_.clear();
+    if (!preset) return;
+    for (const auto& b : effectButtons_)   // the button lets go: its MouseUp goes to the drag
+        if (b->GetIdentifier() == std::string("uv.bin.effect.") + key) { b->SetPressed(false); b->SetHovered(false); }
+    effectDrag_ = key;
+    effectHover_.clear();
+    Message(std::string("Drop ") + preset->label + " on a clip on the main track. Esc lets go.");
+}
+
+// The clip under the pointer is the target while it is on the main track;
+// the timeline rings it, the status line names it, the drop applies the preset
+void UltraVideoWindow::DragEffect(const UCEvent& source, bool drop) {
+    if (effectDrag_.empty()) return;
+    const EffectPreset* preset = FindEffectPreset(effectDrag_);
+    const std::string label = preset ? preset->label : effectDrag_;
+    const Point2Df inWindow(static_cast<float>(source.pointerWindow.x), static_cast<float>(source.pointerWindow.y));
+    std::string clipId, trackId;
+    if (timeline_ && timeline_->IsVisible() && timeline_->ContainsInWindow(inWindow)) {
+        const Point2Df local = timeline_->MapToLocal(inWindow);
+        clipId = timeline_->ClipAt(local.x, local.y, &trackId);
+    }
+    const int index = clipId.empty() ? -1 : SegmentOfClip(document_, clipId);
+    const std::string hover = index >= 0 ? "clip:" + clipId : clipId.empty() ? "" : "other";
+    if (!drop) {
+        if (hover == effectHover_) return;
+        effectHover_ = hover;
+        if (timeline_) timeline_->SetDropTargetClip(index >= 0 ? clipId : "");
+        if (index >= 0) Message("Drop to put " + label + " on " + ClipName(document_, static_cast<size_t>(index)) + ".");
+        else if (!clipId.empty()) Message("Effects go on the main track's clips in this release.");
+        else Message("Drop " + label + " on a clip on the main track. Esc lets go.");
+        return;
+    }
+    const std::string key = effectDrag_;
+    CancelEffectDrag();
+    if (index >= 0) ApplyEffectTo(key, clipId);
+    else if (!clipId.empty()) Message("Effects go on the main track's clips in this release: nothing applied.");
+    else Message("Dropped outside a clip: nothing applied.");
+}
+
+void UltraVideoWindow::CancelEffectDrag() {
+    effectDrag_.clear();
+    effectHover_.clear();
+    if (timeline_) timeline_->SetDropTargetClip("");
+}
+
 void UltraVideoWindow::AddMediaToTimeline(const std::string& path, double at) {
     const MediaItem* m = document_.FindMedia(path);
     if (!m || !m->error.empty()) {
@@ -1471,12 +1537,21 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
 }
 
 void UltraVideoWindow::ApplyEffect(const std::string& key) {
+    if (SegmentOfClip(document_, selectedClip_) < 0) {
+        Message("Select a clip on the main track first, or drag the effect onto one.");
+        return;
+    }
+    ApplyEffectTo(key, selectedClip_);
+}
+
+void UltraVideoWindow::ApplyEffectTo(const std::string& key, const std::string& clipId) {
     const EffectPreset* preset = FindEffectPreset(key);
     if (!preset) return;
-    const int index = SegmentOfClip(document_, selectedClip_);
-    if (index < 0) {
-        Message("Select a clip on the main track first: an effect goes on a clip.");
-        return;
+    const int index = SegmentOfClip(document_, clipId);
+    if (index < 0) return;
+    if (selectedClip_ != clipId) {   // the clip it lands on is the one the inspector shows
+        selectedClip_ = clipId;
+        if (timeline_) timeline_->SetSelection({clipId});
     }
     Document trial = document_;
     if (!trial.ApplyEffectPreset(static_cast<size_t>(index), key)) {
@@ -1943,6 +2018,11 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
                 UCEvent leave;
                 leave.type = UCEventType::DragLeave;
                 if (timeline_) timeline_->OnEvent(leave);
+                Message("Drag cancelled.");
+                return true;
+            }
+            if (!effectDrag_.empty()) {
+                CancelEffectDrag();
                 Message("Drag cancelled.");
                 return true;
             }

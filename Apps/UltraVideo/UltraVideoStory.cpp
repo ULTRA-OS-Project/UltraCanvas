@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoStory.cpp
 // The story wizard (UltraVideoStory.h).
+// Version: 0.3.1 - Keep faces in shot names the clips too
 // Version: 0.3.0 - the wizard follows the theme (its dialog, tabs, album, labels); no palette parameter
 // Version: 0.2.0 - the photos, clips and songs offered are FileLoader's types the engine reads
 // Version: 0.1.0
@@ -274,7 +275,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, std::vector<std::string> files,
         std::snprintf(text, sizeof text, "%.1f s", v);
         wiz->lengthValue->SetText(text);
     };
-    auto faces = UltraCanvasSwitch::Create("uv.story.faces", 0, 0, "Keep faces in shot while the camera moves over photos", true);
+    auto faces = UltraCanvasSwitch::Create("uv.story.faces", 0, 0, "Keep faces in shot: photos, and clips that fill the frame", true);
     faces->onStateChanged = [wiz](CheckedState, CheckedState now) { wiz->choice.keepFaces = now == CheckedState::Checked; };
     faces->layoutItem.SetFlexShrink(0);
     style->AddChild(faces);

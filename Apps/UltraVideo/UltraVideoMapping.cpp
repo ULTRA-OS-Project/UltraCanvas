@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoMapping.cpp
 // Document <-> timeline model (UltraVideoMapping.h).
+// Version: 0.4.0 - a story's clips keep faces in shot when they fill the frame
 // Version: 0.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -131,6 +132,9 @@ Document BuildStoryDocument(const StoryChoice& choice, const std::vector<VideoFX
             if (!m || !m->error.empty()) continue;
             segment = VideoFXSegment::FromFile(m->path);
             segment.transitionIn = transition;
+            // Read by the engine when the project fills the frame (Cover):
+            // the crop stays around the faces of a frame from the clip's middle
+            segment.keepFacesInView = choice.keepFaces;
             if (choice.captionsFromNames) caption = CaptionFromName(f);
         }
         doc.project.segments.push_back(segment);

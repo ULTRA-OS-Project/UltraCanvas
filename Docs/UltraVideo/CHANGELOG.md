@@ -1,3 +1,24 @@
+#### 2026-10-14 *0.6.0*
+- **Clips keep their faces when they fill the frame.** The wizard's *Keep
+  faces in shot* now covers the clips as well as the photos: a clip of
+  another shape that fills the frame (*Filling the frame* on the Style
+  step, the project's *Fill* framing) is cropped around the faces the
+  engine finds in a frame from the clip's middle, not around its centre
+  (VideoFX 0.15.0: `keepFacesInView` and `keepInView` on a video segment).
+  The inspector shows *Keep faces in shot* on a video clip too, and the
+  project file keeps it.
+
+#### 2026-10-14 *0.5.1*
+- **Effects dragged onto a clip.** A preset in the bin's *Effects* tab is
+  dragged from its button onto a clip on the main track: the press arms
+  it, moving away starts it, the clip under the pointer shows a dashed
+  ring (`UltraCanvasVideoTimeline` 1.2.0, `SetDropTargetClip`) and the
+  status line names it, and the drop puts the preset on that clip,
+  selects it and shows its effects in the inspector. A drop on a title,
+  overlay or sound clip says effects go on the main track's clips; `Esc`
+  lets go. A click on the button still puts the preset on the selected
+  clip, as before.
+
 #### 2026-10-14 *0.5.0*
 - **The theme roles.** The design's palette is now the framework's theme
   (`UltraCanvasTheme` 1.0.0, `ThemeFor` in `UltraVideoTheme.h`): the

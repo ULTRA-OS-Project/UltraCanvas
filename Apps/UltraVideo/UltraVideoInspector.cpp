@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
+// Version: 0.6.0 - a video clip's Keep faces in shot (the Fill crop around them)
 // Version: 0.5.0 - the tabs, dropdowns, fields, sliders, switches, buttons and labels follow the theme
 // Version: 0.4.0
 // Last Modified: 2026-10-13
@@ -151,7 +152,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     FollowTheme(clipKind, LabelVariant::Muted);
     clipFields->AddChild(clipKind);
 
-    fileRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.file", 0, 0, kPageWidth, 140);
+    fileRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.file", 0, 0, kPageWidth, 168);
     fileRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     fileRows->layoutItem.SetFlexShrink(0);
     inField = CreateTimecodeField("uv.insp.in", 0, 0, 120, ctl);
@@ -202,6 +203,19 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     speedValue->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
     FollowTheme(speedValue, LabelVariant::Muted);
     speedRow->AddChild(speedValue);
+    clipFaces = UltraCanvasSwitch::Create("uv.insp.clipFaces", 0, 0, "Keep faces in shot", false);
+    clipFaces->SetTooltip("A clip of another shape that fills the frame (the Project tab's framing) is cropped around the faces in it, not its centre");
+    clipFaces->onStateChanged = [this](CheckedState, CheckedState now) {
+        const int index = segment;
+        const bool on = now == CheckedState::Checked;
+        Edit(on ? "Keep faces in shot" : "Centre the clip", [index, on](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.project.segments.size())
+                d.project.segments[static_cast<size_t>(index)].keepFacesInView = on;
+        });
+    };
+    clipFaces->layoutItem.SetFlexShrink(0);
+    switches.push_back(clipFaces);
+    fileRows->AddChild(clipFaces);
     clipFields->AddChild(fileRows);
 
     stillLength = CreateTimecodeField("uv.insp.still", 0, 0, 120, ctl);
@@ -949,6 +963,7 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
             outField->SetSeconds(end);
             speed->SetValue(static_cast<float>(s.speed));
             speedValue->SetText(Times(s.speed));
+            clipFaces->SetChecked(s.keepFacesInView || !s.keepInView.empty());
         } else {
             stillLength->SetMaximumFrames(0);
             stillLength->SetSeconds(s.duration);
