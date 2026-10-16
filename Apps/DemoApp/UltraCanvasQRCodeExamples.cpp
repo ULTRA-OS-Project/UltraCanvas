@@ -380,7 +380,7 @@ namespace UltraCanvas {
 
                 // --- Row 1: upload / remove / placement style --------------
                 auto uploadBtn = std::make_shared<UltraCanvasButton>(
-                    "logo_upload", ctrlX, rowY, 140, 30, "Upload logo\u2026");
+                    "logo_upload", ctrlX, rowY, 140, 30, "Upload logo");
                 uploadBtn->SetFontSize(11);
 
                 auto clearBtn = std::make_shared<UltraCanvasButton>(
@@ -523,7 +523,7 @@ namespace UltraCanvas {
                 // Every picture type this build writes (FileLoader's list), and
                 // SVG through the code's own vector writer
                 auto saveBtn = std::make_shared<UltraCanvasButton>(
-                    "save_btn", ctrlX, ctrlY, 110, 30, "Save\u2026");
+                    "save_btn", ctrlX, ctrlY, 110, 30, "Save");
                 saveBtn->SetFontSize(11);
                 saveBtn->SetOnClick([qrPtr, statusPtr, activeSlug]() {
                     FileDialogOptions opts;
@@ -564,7 +564,7 @@ namespace UltraCanvas {
 
             auto hint = std::make_shared<UltraCanvasLabel>("DecHint", 20, 40, 1000, 22);
             if (QRCodeUtils::IsDecoderAvailable()) {
-                hint->SetText("Click \"Open image\u2026\" to choose a photo or screenshot containing one or more QR codes.");
+                hint->SetText("Click \"Open image\" to choose a photo or screenshot containing one or more QR codes.");
             } else {
                 hint->SetText("Decoder support is not built in — install libzbar-dev and rebuild to enable scanning.");
             }
@@ -573,7 +573,7 @@ namespace UltraCanvas {
             page->AddChild(hint);
 
             auto openBtn = std::make_shared<UltraCanvasButton>(
-                "DecOpen", 20, 72, 160, 32, "Open image\u2026");
+                "DecOpen", 20, 72, 160, 32, "Open image");
             openBtn->SetFontSize(12);
             // Use SetColors (not SetBackgroundColor) so the button's normal/
             // hover/pressed style colors are set \u2014 otherwise it keeps the

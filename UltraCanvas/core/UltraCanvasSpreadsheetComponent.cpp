@@ -39,6 +39,7 @@ void UltraCanvasSpreadsheet::SetActiveSheet(int index) {
         sheets_[i]->SetSelected(i == index);
     }
 
+    EnsureSheetTabVisible(index);
     UpdateFormulaBar();
     RequestRedraw();
 

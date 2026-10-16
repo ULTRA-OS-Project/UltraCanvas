@@ -16,6 +16,7 @@
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetSheet.h"
 #include "UltraCanvasSpreadsheetCell.h"
+#include <cctype>
 #include <cmath>
 #include <algorithm>
 #include <numeric>
@@ -395,6 +396,73 @@ FormulaFunctionLibrary::FormulaFunctionLibrary() {
     RegisterInformationFunctions();
     RegisterFinancialFunctions();
     RegisterExcelFunctions();
+    ApplyArgumentNames();
+}
+
+std::vector<std::string> FormulaFunctionLibrary::GetSignatureArguments(const std::string& name) const {
+    std::vector<std::string> parts;
+    const FunctionDefinition* def = GetFunction(name);
+    if (!def) return parts;
+    for (const auto& arg : def->args) {
+        parts.push_back(arg.optional ? "[" + arg.name + "]" : arg.name);
+    }
+    if (def->maxArgs < 0 || def->maxArgs > static_cast<int>(def->args.size())) parts.push_back("...");
+    return parts;
+}
+
+std::string FormulaFunctionLibrary::GetSignature(const std::string& name) const {
+    const FunctionDefinition* def = GetFunction(name);
+    if (!def) return std::string();
+    std::string text = def->name + "(";
+    const auto parts = GetSignatureArguments(name);
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i) text += ", ";
+        text += parts[i];
+    }
+    return text + ")";
+}
+
+bool FindFormulaCallAtCaret(const std::string& formula, size_t caret,
+                            std::string& functionName, int& argumentIndex) {
+    struct Frame { std::string name; int arg = 0; bool array = false; };
+    std::vector<Frame> stack;
+    caret = std::min(caret, formula.size());
+    char quote = 0;   // inside "text" or 'sheet name'
+    for (size_t i = 0; i < caret; ++i) {
+        const char c = formula[i];
+        if (quote) {
+            if (c == quote) quote = 0;   // a doubled quote reopens at once
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+        } else if (c == '(') {
+            size_t start = i;
+            while (start > 0 && (std::isalnum(static_cast<unsigned char>(formula[start - 1])) ||
+                                 formula[start - 1] == '.' || formula[start - 1] == '_')) {
+                --start;
+            }
+            std::string name = formula.substr(start, i - start);
+            if (!name.empty() && !std::isalpha(static_cast<unsigned char>(name[0]))) name.clear();
+            std::transform(name.begin(), name.end(), name.begin(), ::toupper);
+            stack.push_back({ name, 0, false });
+        } else if (c == '{') {
+            stack.push_back({ std::string(), 0, true });
+        } else if (c == ')' || c == '}') {
+            if (!stack.empty()) stack.pop_back();
+        } else if ((c == ',' || c == ';') && !stack.empty() && !stack.back().array) {
+            ++stack.back().arg;
+        }
+    }
+    // The innermost named call; a group in it is part of its argument.
+    for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+        if (!it->name.empty()) {
+            functionName = it->name;
+            argumentIndex = it->arg;
+            return true;
+        }
+    }
+    return false;
 }
 
 void FormulaFunctionLibrary::RegisterFunction(const FunctionDefinition& def) {

@@ -3839,6 +3839,48 @@ add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonIconPixelTest")
 
+message(STATUS "  Building ButtonGrowToFitTest...")
+add_executable(ButtonGrowToFitTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ButtonGrowToFitTest.cpp
+)
+target_include_directories(ButtonGrowToFitTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ButtonGrowToFitTest PRIVATE cxx_std_20)
+target_link_libraries(ButtonGrowToFitTest PRIVATE UltraCanvas)
+set_target_properties(ButtonGrowToFitTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ButtonGrowToFitTest COMMAND ButtonGrowToFitTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ButtonGrowToFitTest")
+
+message(STATUS "  Building SpreadsheetSortMenuTest...")
+add_executable(SpreadsheetSortMenuTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetSortMenuTest.cpp
+)
+target_include_directories(SpreadsheetSortMenuTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetSortMenuTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetSortMenuTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetSortMenuTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetSortMenuTest COMMAND SpreadsheetSortMenuTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetSortMenuTest")
+
+message(STATUS "  Building SpreadsheetFunctionMenuTest...")
+add_executable(SpreadsheetFunctionMenuTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetFunctionMenuTest.cpp
+)
+target_include_directories(SpreadsheetFunctionMenuTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetFunctionMenuTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetFunctionMenuTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetFunctionMenuTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetFunctionMenuTest COMMAND SpreadsheetFunctionMenuTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetFunctionMenuTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

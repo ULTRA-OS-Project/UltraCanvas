@@ -176,17 +176,17 @@ namespace {
         // ----- Files -----
         root->AddChild(SectionLabel("SysDlgFilesLabel", "Files"));
         auto fileRow = ButtonRow("SysDlgFileRow");
-        auto openBtn     = AddButton(fileRow, "SysDlgOpen",     "Open file...",        120);
-        auto openManyBtn = AddButton(fileRow, "SysDlgOpenMany", "Open multiple...",    140);
-        auto saveBtn     = AddButton(fileRow, "SysDlgSave",     "Save file...",        120);
-        auto folderBtn   = AddButton(fileRow, "SysDlgFolder",   "Select folder...",    140);
+        auto openBtn     = AddButton(fileRow, "SysDlgOpen",     "Open file",        120);
+        auto openManyBtn = AddButton(fileRow, "SysDlgOpenMany", "Open multiple",    140);
+        auto saveBtn     = AddButton(fileRow, "SysDlgSave",     "Save file",        120);
+        auto folderBtn   = AddButton(fileRow, "SysDlgFolder",   "Select folder",    140);
         root->AddChild(fileRow);
 
         // ----- Printing -----
         root->AddChild(SectionLabel("SysDlgPrintLabel", "Printing"));
         auto printRow = ButtonRow("SysDlgPrintRow");
-        auto printSettingsBtn = AddButton(printRow, "SysDlgPrintSettings", "Print settings...",   150);
-        auto printTestBtn     = AddButton(printRow, "SysDlgPrintTest",     "Print test page...",  150);
+        auto printSettingsBtn = AddButton(printRow, "SysDlgPrintSettings", "Print settings",   150);
+        auto printTestBtn     = AddButton(printRow, "SysDlgPrintTest",     "Print test page",  150);
         root->AddChild(printRow);
 
         // ----- Messages and input -----
