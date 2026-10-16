@@ -12,3 +12,4 @@
 #include "UltraCloudSecrets.h"
 #include "UltraCloudService.h"
 #include "UltraCloudOAuth.h"
+#include "UltraCloudLog.h"

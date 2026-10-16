@@ -168,6 +168,13 @@ if(ANCHORPOINT_BUILD_GUI)
         add_executable(AnchorPoint
                 gui/main.cpp
                 gui/AnchorPointApp.cpp)
+        # One copy per user; a second start brings the running one forward
+        # (UltraCanvasSingleInstance.h). The GUI only: the headless
+        # `anchorpoint` runs as many times as it is started. Included here
+        # too for a standalone build, where the root CMakeLists.txt that
+        # defines the function is not read.
+        include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasSingleInstance.cmake")
+        ultracanvas_single_instance(AnchorPoint)
 
         target_include_directories(AnchorPoint PRIVATE
                 ${ULTRACANVAS_INCLUDE_DIRS}

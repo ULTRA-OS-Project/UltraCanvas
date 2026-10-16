@@ -1,6 +1,8 @@
 // Tests/UltraMail/test_scheduler.cpp
 // The sync scheduler's due-account logic, the offline grace period and the
-// contact auto-collector, and the wake-from-sleep detector.
+// contact auto-collector, the wake-from-sleep detector, and the quiet period
+// after the computer was switched on with its last-connected file.
+// Version: 0.4.0 - SwitchOnQuiet, ReadLastConnected / WriteLastConnected
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -8,7 +10,10 @@
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailContactCollector.h"
 #include "UltraMailContactStore.h"
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -209,4 +214,96 @@ TEST(offline_grace_clear_forgets_running_periods) {
     g.Clear();                          // the computer slept and woke
     REQUIRE(!g.InGrace("a", 5000));
     REQUIRE(!g.Unreachable("a", 5000)); // the first failure after waking is held back again
+}
+
+// ---- SwitchOnQuiet: no alerts while the network comes up after a switch-on ----
+
+TEST(switch_on_quiet_tells_a_switch_on_from_a_restart) {
+    const int64_t now = 1700000000;
+    // Connected a minute ago: UltraMail was only restarted.
+    REQUIRE(!SwitchOnQuiet::LooksSwitchedOff(now - 60, now));
+    REQUIRE(!SwitchOnQuiet::LooksSwitchedOff(now - 600, now));     // ten minutes: not yet
+    REQUIRE(SwitchOnQuiet::LooksSwitchedOff(now - 601, now));      // more than ten
+    REQUIRE(SwitchOnQuiet::LooksSwitchedOff(now - 86400, now));    // overnight
+    REQUIRE(SwitchOnQuiet::LooksSwitchedOff(0, now));              // none on record
+    // The clock is behind the last connection (not yet set after boot).
+    REQUIRE(SwitchOnQuiet::LooksSwitchedOff(now + 3600, now));
+}
+
+TEST(switch_on_quiet_runs_for_the_chosen_time) {
+    const int64_t wall = 1700000000;
+    SwitchOnQuiet q;
+    REQUIRE(!q.Quiet(50));
+    REQUIRE(q.Begin(wall - 3600, wall, 50, 120));    // off for an hour
+    REQUIRE(q.Quiet(50));
+    REQUIRE(q.Quiet(169));
+    REQUIRE_EQ(q.RemainingSec(110), static_cast<int64_t>(60));
+    REQUIRE(!q.Quiet(170));                          // two minutes are up
+    REQUIRE_EQ(q.RemainingSec(170), static_cast<int64_t>(0));
+}
+
+TEST(switch_on_quiet_does_not_begin_after_a_recent_connection_or_when_off) {
+    const int64_t wall = 1700000000;
+    SwitchOnQuiet q;
+    REQUIRE(!q.Begin(wall - 120, wall, 50, 120));    // connected two minutes ago
+    REQUIRE(!q.Quiet(50));
+    REQUIRE(!q.Begin(wall - 3600, wall, 50, 0));     // the setting is off
+    REQUIRE(!q.Quiet(50));
+}
+
+TEST(switch_on_quiet_is_never_cut_short) {
+    const int64_t wall = 1700000000;
+    SwitchOnQuiet q;
+    REQUIRE(q.Begin(0, wall, 100, 600));             // until 700
+    REQUIRE(q.Begin(0, wall, 200, 120));             // a wake: until 320 would be shorter
+    REQUIRE(q.Quiet(699));
+    REQUIRE(q.Begin(0, wall, 650, 120));             // and this one lasts longer: until 770
+    REQUIRE(q.Quiet(769));
+    REQUIRE(!q.Quiet(770));
+    q.End();                                         // turned off in Settings
+    REQUIRE(!q.Quiet(0));
+}
+
+TEST(switch_on_quiet_hands_over_the_accounts_held_back) {
+    SwitchOnQuiet q;
+    q.Hold("erika");
+    q.Hold("work");
+    q.Hold("erika");
+    REQUIRE(q.Held("erika"));
+    q.Reached("work");                               // reached meanwhile: no second look
+    REQUIRE(!q.Held("work"));
+    const auto held = q.TakeHeld();
+    REQUIRE_EQ(held.size(), (size_t)1);
+    REQUIRE_EQ(held[0], std::string("erika"));
+    REQUIRE(!q.Held("erika"));
+    REQUIRE_EQ(q.TakeHeld().size(), (size_t)0);      // handed over once
+}
+
+TEST(last_connected_file_round_trip) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+                         UltraCanvas::PathFromUtf8("ultramail-last-connected-ทดสอบ-🚀");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const std::string path = UltraCanvas::PathToUtf8(dir / kLastConnectedFileName);
+
+    REQUIRE_EQ(ReadLastConnected(path), static_cast<int64_t>(0));   // no file yet
+    REQUIRE(WriteLastConnected(path, 1700000123));
+    REQUIRE_EQ(ReadLastConnected(path), static_cast<int64_t>(1700000123));
+    REQUIRE(WriteLastConnected(path, 1700000456));                  // replaced, not appended
+    REQUIRE_EQ(ReadLastConnected(path), static_cast<int64_t>(1700000456));
+    {
+        // A write torn by the power going off: no time, read as none.
+        std::ofstream f(dir / kLastConnectedFileName, std::ios::trunc);
+        f << "garbage";
+    }
+    REQUIRE_EQ(ReadLastConnected(path), static_cast<int64_t>(0));
+    {
+        std::ofstream f(dir / kLastConnectedFileName, std::ios::trunc);
+    }
+    REQUIRE_EQ(ReadLastConnected(path), static_cast<int64_t>(0));    // empty
+    // A folder that does not exist cannot be written.
+    REQUIRE(!WriteLastConnected(UltraCanvas::PathToUtf8(dir / "missing" / "x"), 1));
+    fs::remove_all(dir, ec);
 }

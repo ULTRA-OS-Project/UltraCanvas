@@ -57,7 +57,10 @@ Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
 `libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
 decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
 for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
-(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). Phone photos
+(HEIC) need libheif's HEVC decoder, `libheif-plugin-libde265`; with
+`libheif-dev`, which `libvips-dev` brings along, the build asks libheif and
+offers HEIC only where it decodes. The complete
 list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
 Other distributions use the same library names under their package manager.
 
@@ -174,8 +177,9 @@ Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
 `./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
 command prompt with the MSYS2 `bin` directory on `PATH`. In a Release build
 the executables are GUI-subsystem programs, so they print nothing to a console
-(the few with command-line modes, such as DeviceExplorer, stay console
-programs and close the console a double-click opens for them);
+(the few with command-line modes, such as DeviceExplorer, have a console
+companion, `DeviceExplorer.com`, which a prompt runs for the bare name and
+waits for);
 `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
 build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
 
@@ -381,7 +385,8 @@ GUI-subsystem program, so no console opens beside the window, and still lets
 `--help` print into the prompt it was typed at (for an app in this repository,
 add it to the list under *Hide console window on Windows Release builds* in the
 root `CMakeLists.txt`; an app whose command-line modes print into the prompt
-stays off that list), and embed the icon in the `.exe` with
+goes on the list of console companions there,
+`ultracanvas_windows_console_companion()`), and embed the icon in the `.exe` with
 `ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
 Explorer and the taskbar read.
 
@@ -601,9 +606,32 @@ it, and without the entitlement the device is refused.
 
 `./package-win.sh`, run from the CLANG64 or CLANGARM64 shell after the build,
 collects every application with the DLLs it needs into one standalone zip.
+`--installer` also builds `UltraCanvas-Setup-Windows-<version>-<arch>.exe`
+from the same folder (`Windows/Installer/UltraCanvasSetup.nsi`, through
+`scripts/build-windows-installer.sh`; first `pacman -S mingw-w64-clang-x86_64-nsis`
+in CLANG64, or NSIS for Windows, which CLANGARM64 has to use, as it has no NSIS
+package). CI builds the installer on both Windows rows, installs and
+uninstalls it once, and uploads it as an artifact. It installs for
+the current account without administrator rights, into
+`%LOCALAPPDATA%\Programs\UltraCanvas`. Every GUI program gets a Start-menu
+entry, and the suite gets an *Apps & features* entry. The finish page offers
+UltraDesktop as the Windows desktop. The uninstaller gives the Windows desktop
+back first, then removes exactly the files it installed.
 `--no-sign` skips Authenticode signing when no certificate is present;
 `SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
-release uses. The version in the `.exe` resource and the manifest comes from
+release uses. They read the certificate's password from
+`ULTRACANVAS_SIGN_PFX_PASSWORD` - set it in the shell, or as a secret on a
+build machine - and stop, saying so, when it is not set. The `.pfx` they
+export next to themselves is ignored by git: it holds the private key.
+Until 2026-10 the password was written into the scripts, so it is in the
+repository's history: on the signing machine, set a new one in
+`ULTRACANVAS_SIGN_PFX_PASSWORD` and run each script once with
+`-Mode RotatePassword`. It exports the same certificate and key again under the
+new password, opens the result once to prove it, and replaces the old `.pfx`.
+When the certificate is not in the account's store, it also needs the old
+password, in `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD`. It refuses the published
+password. Delete any other copy of the old `.pfx` - it still opens with the old
+password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
 bumping the version; the CMake configure warns when they are stale and

@@ -1,8 +1,9 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
+// Version: 0.14.0 - VideoFX_GetFileFormats: none; VideoFX_SetPictureReader: nothing to read with
 // Version: 0.12.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -41,6 +42,8 @@ std::vector<VideoFXEncoderInfo> VideoFX_ListVideoEncoders(VideoFXVideoCodec) { r
 std::string VideoFX_ChooseVideoEncoder(VideoFXVideoCodec, VideoFXAcceleration) { return ""; }
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec) { return false; }
 bool VideoFX_IsTextOverlayAvailable() { return false; }
+std::vector<VideoFXFileFormat> VideoFX_GetFileFormats() { return {}; }
+void VideoFX_SetPictureReader(VideoFXPictureReader) {}
 bool VideoFX_SetDefaultFontPath(const std::string& path) { return path.empty(); }
 std::string VideoFX_GetDefaultFontPath() { return ""; }
 void VideoFX_SetVerboseLogging(bool) {}

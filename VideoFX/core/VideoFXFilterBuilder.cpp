@@ -1,7 +1,8 @@
 // VideoFX/core/VideoFXFilterBuilder.cpp
 // Effect list -> filter-graph text, and the effect / segment / preset factories.
-// Version: 0.14.0
-// Last Modified: 2026-10-14
+// Version: 0.16.0 - an overlay's effects: IsOverlayEffect, BuildOverlayEffectGraph, ValidateOverlay
+// Version: 0.4.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "VideoFXFilterBuilder.h"

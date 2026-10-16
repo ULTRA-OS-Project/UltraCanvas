@@ -23,9 +23,12 @@
 // Runs headless: keys are sent to the element as the application sends them
 // to the focused element. The ring check opens a real window and skips
 // itself without a DISPLAY.
+// Version: 1.1.1 - the selection is looked for as an area of its colour, so the
+//                  coloured fringes subpixel antialiasing leaves on black text
+//                  no longer make the plain row look selected
 // Version: 1.1.0 - the focus ring, on real pixels
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -264,18 +267,39 @@ void TestJumpToFirstEntry() {
     TEST("Down with no focused row skips an open parent too", f.Selected() == "a1");
 }
 
-// Is any pixel of the row's rectangle showing `colour`? The row is read
-// from the composited window.
+// What a check looks for in a row: any pixel of the colour (the focus ring,
+// a dashed line one pixel wide), or an area of it (a selection's fill).
+enum class Look { AnyPixel, Area };
+
+// Is the row's rectangle showing `colour`? The row is read from the
+// composited window. Looking for an Area, a pixel counts only when a
+// neighbour beside it and one above or below it show the colour too: a fill
+// has those, while the coloured fringe that subpixel antialiasing leaves on
+// black text - a pixel wide, beside each stem - does not. Counting the fringe
+// made the plain row look selected wherever text renders in subpixel (a
+// desktop with an RGB fontconfig).
 bool RowShows(const std::shared_ptr<UltraCanvasWindow>& window, const Rect2Di& row,
-              const Color& colour) {
+              const Color& colour, Look look = Look::AnyPixel) {
     auto close = [](uint8_t l, uint8_t r) {
         return std::abs(static_cast<int>(l) - static_cast<int>(r)) <= 24;
     };
-    for (int y = row.y; y < row.y + row.height; ++y) {
-        for (int x = row.x; x < row.x + row.width; ++x) {
+    const int w = row.width, h = row.height;
+    std::vector<char> match(static_cast<size_t>(w) * h, 0);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
             Color px;
-            if (!window->GetPixelColor(x, y, px)) continue;
-            if (close(px.r, colour.r) && close(px.g, colour.g) && close(px.b, colour.b)) return true;
+            if (!window->GetPixelColor(row.x + x, row.y + y, px)) continue;
+            match[static_cast<size_t>(y) * w + x] = close(px.r, colour.r) && close(px.g, colour.g) && close(px.b, colour.b);
+        }
+    }
+    auto at = [&](int x, int y) {
+        return x >= 0 && y >= 0 && x < w && y < h && match[static_cast<size_t>(y) * w + x];
+    };
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (!at(x, y)) continue;
+            if (look == Look::AnyPixel) return true;
+            if ((at(x - 1, y) || at(x + 1, y)) && (at(x, y - 1) || at(x, y + 1))) return true;
         }
     }
     return false;
@@ -324,15 +348,15 @@ void TestFocusRingOnScreen() {
     // The second row, inset to where the ring runs; the first row is plain.
     const Rect2Di focusedRow(2, 21, 296, 18);
     const Rect2Di otherRow(2, 1, 296, 18);
-    TEST("the focused row is drawn selected", RowShows(window, focusedRow, Color(0, 120, 215)));
+    TEST("the focused row is drawn selected", RowShows(window, focusedRow, Color(0, 120, 215), Look::Area));
     TEST("the focused row carries a white focus ring while the tree is focused",
          RowShows(window, focusedRow, Colors::White));
-    TEST("an unfocused row is not drawn selected", !RowShows(window, otherRow, Color(0, 120, 215)));
+    TEST("an unfocused row is not drawn selected", !RowShows(window, otherRow, Color(0, 120, 215), Look::Area));
 
     window->ClearFocus();
     DisplayTest::Frame(window, {tree});
     TEST("the ring goes when the focus leaves, the selection stays",
-         !RowShows(window, focusedRow, Colors::White) && RowShows(window, focusedRow, Color(0, 120, 215)));
+         !RowShows(window, focusedRow, Colors::White) && RowShows(window, focusedRow, Color(0, 120, 215), Look::Area));
 
     tree->SetFocus(true);
     tree->SetFocusRingColor(Color(255, 0, 255));

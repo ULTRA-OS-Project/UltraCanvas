@@ -1,3 +1,80 @@
+#### 2026-10-15 *0.4.1*
+- **No console window flashes up when UltraDesktop starts on Windows.**
+  `UltraDesktop.exe` is a GUI program now, so starting it beside Explorer at
+  sign-in, from the Start menu or from UOS-Settings shows the desktop alone.
+  Beside it, `UltraDesktop.com` is its console companion, which a prompt runs
+  for the bare name: `UltraDesktop --windows` starts the `.exe`, waits for it
+  and returns its exit code, as before (framework changelog:
+  `windows-console-companions`).
+
+#### 2026-10-15 *0.4.0*
+- **UltraDesktop can run instead of Explorer, not only beside it.** On
+  Windows, *UltraDesktop instead of Explorer* (UOS-Settings → Desktop → At
+  sign-in, the settings button's right-click menu, or
+  `--use-instead-of-explorer`) makes it the whole desktop from the next
+  sign-in, started with the new `--shell` (framework changelog:
+  `desktopshell-instead-of-explorer`). As the shell it
+  - shows the programs' tray icons on the info panel, above its services, in
+    their own colours: a click goes to the program, a right click opens its
+    menu, two clicks are a double click, and their balloons become
+    notifications (or a yellow marker and a tooltip where the build has no
+    notification toasts);
+  - offers *Sign out*, *Restart* and *Shut down* on the settings button's
+    right-click menu, each asked first;
+  - opens the Applications window on a tap of the Win key, where the Start
+    menu would open;
+  - covers the other monitors with its wallpaper instead of leaving them
+    black, following monitors plugged in or taken away, and puts back a
+    wallpaper closed with Alt+F4 within a few seconds.
+- **The Applications window lists the Microsoft Store apps** (Calculator,
+  Photos, Settings …) beside the Start menu's programs, with their tile
+  icons, and starts them as the Start menu does.
+- The sign-in starts UltraCanvasShellGuard, which starts UltraDesktop and
+  starts Explorer for the session when UltraDesktop crashes three times in a
+  minute or cannot start - so a broken update never leaves an empty screen.
+- The settings button's menu offers what applies: beside Explorer, instead of
+  it, keeping Explorer beside it again, and the way back.
+  *Switch back to the Windows desktop* as the shell closes UltraDesktop and
+  Explorer starts in its place at once.
+
+#### 2026-10-14 *0.3.2*
+- **The settings file lives in Application Support on macOS.** `desktop.json`
+  was kept in `~/.config/ultraos` there, as on Linux, while every other
+  per-user file of the desktop and its applications is in
+  `~/Library/Application Support`. Its folder is now the framework's desktop
+  settings folder (`UltraCanvasDesktopSettingsFolder`): `%APPDATA%\ultraos`
+  on Windows, `~/Library/Application Support/ultraos` on macOS,
+  `$XDG_CONFIG_HOME` or `~/.config/ultraos` elsewhere, every variable read as
+  UTF-8. On the first start the old macOS folder is moved into place whole,
+  the clipboard history's key with it; Linux and Windows are untouched.
+
+#### 2026-10-14 *0.3.1*
+- **The clipboard quick panel follows UltraClipboard's *Display → Icons*.**
+  Set the icons left of the item text in UltraClipboard's Settings and the
+  panel's Copy / Edit / Delete stand between the thumbnail and the text too;
+  right, as before, is the default. The panel picks the setting up the next
+  time it opens or the history changes (framework changelog:
+  `clipboard-save-as`).
+
+#### 2026-10-14 *0.3.0*
+- **UltraDesktop can take the place of the Windows desktop, and give it
+  back.** On Windows it now has running windows, the Start menu's programs,
+  reserved bars and a screenshot (framework changelog:
+  `desktopshell-windows-backend`). You can switch over in UOS-Settings →
+  Desktop, from the settings button's right-click menu, or with
+  `--use-as-desktop`.
+  - What switching over does: the sign-in starts UltraDesktop, and
+    Explorer's taskbar hides itself. Explorer keeps running underneath.
+  - The way back: the same switch or menu, `--restore-desktop`, or
+    uninstalling. Each removes the start at sign-in and gives the taskbar
+    back the state it had before.
+  - A desktop the sign-in started (`--session`) closes within a second of
+    being switched back.
+  - A trial run started by hand closes from the same menu.
+- **No RAM disc button without a RAM disc.** An empty RAM disc folder leaves
+  the button out. That is the default on Windows, which has no RAM disc of
+  its own; `/dev/shm` stays the default elsewhere.
+
 #### 2026-10-13 *0.2.2*
 - **The Sticker board: files sorted into categories on the desktop.** The
   pinboard on the right bar shows a Kanban board over the wallpaper with three

@@ -1,5 +1,6 @@
 // Apps/UltraWeb/ui/UltraWebDownloadsPanel.cpp
 // The downloads panel (UltraWebDownloadsPanel.h).
+// Version: 0.2.0 - long names cut with "…" (the whole name as the tooltip)
 // Version: 0.1.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
@@ -15,6 +16,8 @@ namespace {
 constexpr float kPanelHeight = 170;
 constexpr float kRowHeight = 30;
 constexpr float kButtonHeight = 26;
+// A longer name is cut with "…" in the middle, so the state keeps its room.
+constexpr size_t kNameChars = 36;
 
 std::shared_ptr<UltraCanvasContainer> MakeRowBox(const std::string& id, float height) {
     auto box = CreateContainer(id, 0, 0, 0, 0);
@@ -136,8 +139,10 @@ UltraWebDownloadsPanel::Row UltraWebDownloadsPanel::MakeRow(const DownloadEntry&
     Row row;
     row.box = MakeRowBox(id, kRowHeight);
 
-    row.name = CreateLabel(id + "Name", entry.name);
+    const std::string shown = DownloadList::Ellipsize(entry.name, kNameChars);
+    row.name = CreateLabel(id + "Name", shown);
     row.name->SetFontSize(13);
+    if (shown != entry.name) row.name->SetTooltip(entry.name);
     row.name->layoutItem.SetFlexShrink(1);
     row.box->AddChild(row.name);
 

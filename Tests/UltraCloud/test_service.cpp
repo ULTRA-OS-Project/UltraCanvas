@@ -1,7 +1,9 @@
 // Tests/UltraCloud/test_service.cpp
 // CloudService: add an account (id, default, secrets), UploadAndShare end to
-// end against a fake Nextcloud (MKCOL, PUT, OCS POST in order).
-// Version: 0.1.0
+// end against a fake Nextcloud (MKCOL, PUT, OCS POST in order), and a shared
+// service keeping its stores for a thread that outlives its maker.
+// Version: 0.2.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
@@ -9,9 +11,13 @@
 #include <UltraCloud/UltraCloudMemory.h>
 #include <UltraCloud/UltraCloudNextcloud.h>
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
@@ -269,4 +275,45 @@ TEST(providers_without_the_change_verbs_answer_unsupported_through_the_service) 
 
     REQUIRE(service.Delete(a.accountId, "/x", false).code == ResultCode::Unsupported);
     REQUIRE(service.Rename(a.accountId, "/x", "y").code == ResultCode::Unsupported);
+}
+
+// The add-account dialog's sign-in runs on a thread of its own and can wait
+// minutes on the browser; the window that made the service can close first.
+// A service made over shared stores keeps them alive, so a thread that holds
+// it still stores into them after every other handle has gone.
+TEST(a_shared_service_keeps_its_stores_for_whoever_still_holds_it) {
+    RegisterBuiltInProviders();
+    std::weak_ptr<AccountStore> accountsSeen;
+    std::shared_ptr<CloudService> held;
+    {
+        auto accounts = std::make_shared<AccountStore>();
+        REQUIRE(accounts->Open("uctest-shared-service", ":memory:"));
+        auto secrets = std::make_shared<MemorySecretStore>();
+        accountsSeen = accounts;
+        held = std::make_shared<CloudService>(accounts, secrets);
+    }
+    // Only the service holds the stores now.
+    REQUIRE(!accountsSeen.expired());
+
+    std::atomic<bool> ownerGone{false};
+    Result stored;
+    std::size_t listed = 0;
+    std::thread signIn([service = held, &ownerGone, &stored, &listed]() {
+        while (!ownerGone.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Account a; a.providerId = "memory"; a.username = "erika";
+        Credentials c; c.password = "pw";
+        stored = service->AddAccount(a, c, /*verify=*/true);
+        std::vector<Account> all;
+        if (service->Accounts().List(all)) listed = all.size();
+        Credentials back;
+        if (!service->Secrets().Retrieve(a.accountId, back) || back.password != "pw")
+            listed = 0;
+    });
+    held.reset();          // the window closes: its handle goes
+    ownerGone = true;
+    signIn.join();
+    REQUIRE(static_cast<bool>(stored));
+    REQUIRE_EQ(listed, static_cast<std::size_t>(1));
+    // And with the last holder gone, the stores go too.
+    REQUIRE(accountsSeen.expired());
 }

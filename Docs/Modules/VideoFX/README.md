@@ -22,7 +22,7 @@ segments.
 > VA-API, AMF, VideoToolbox, Media Foundation) by choice, voice-overs and
 > sound effects placed at any time, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
-> command-line tool work today, on FFmpeg 4.4 to 8.x.
+> command-line tool work today, on FFmpeg 4.4 to 9.x.
 > Keyframed parameters are planned (see *Roadmap*).
 
 ---
@@ -122,6 +122,54 @@ The file is read from its start, so a range saves memory, not time. A file
 without sound fails with `NoMediaStreams`; a range beginning after the sound
 ends with `InvalidArgument`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
 prints the same, one block a line.
+
+**Which files.** `VideoFX_GetFileFormats()` lists the files this build reads
+and writes, asking the FFmpeg it is linked against rather than a list kept
+by hand:
+
+- Films and sound (`VideoFXFileKind::Video` / `Audio`) are the containers it
+  knows by name: MP4, MOV, MKV, WebM, AVI, MPEG, transport streams, WMV, FLV,
+  Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
+  `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
+  it: the muxer and the container's usual encoders are there. `container`
+  then names the `VideoFXContainer` an export to it uses.
+- Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
+  FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
+  opens it, but a phone's HEIC is a grid of tiles in a stream group, which
+  VideoFX does not put together. A host application's picture reader does
+  (below). GIF is also written, as the animation.
+
+The descriptions match the UltraCanvas codec registry's, so an application
+that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
+FileLoader's lists, and the dialogs built from them, then offer exactly what
+the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
+module built without FFmpeg returns an empty list.
+
+```cpp
+for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+    if (f.kind == VideoFXFileKind::Video && f.canWrite)
+        std::printf("%s (%s) - an export writes it\n", f.description.c_str(), f.extension.c_str());
+```
+
+**Pictures the application reads.** A host with an image library of its own
+hands VideoFX a `VideoFXPictureReader`: the picture types it takes over, a
+cheap `size` (the upright size, from the header) and `decode` (the upright
+picture as RGBA). `VideoFX_Probe`, `VideoFX_ExtractFrame` and
+`VideoFX_ExtractThumbnails` read files of those types through it instead of
+FFmpeg, and so does everything built on them: image segments, picture
+overlays, slideshows. `VideoFX_GetFileFormats` then reports the types read.
+Both calls come from the engine's worker threads. UltraVideo gives VideoFX
+the UltraCanvas image reader (libvips, libheif) this way, for every picture
+type FileLoader reads and FFmpeg does not: a phone's HEIC comes in whole and
+upright, and so does a camera's raw file.
+
+```cpp
+VideoFXPictureReader reader;
+reader.extensions = {"heic", "heif"};
+reader.size = [](const std::string& path, int& w, int& h) { return MyImageSize(path, w, h); };
+reader.decode = [](const std::string& path, VideoFXFrame& frame) { return MyImageRgba(path, frame); };
+VideoFX_SetPictureReader(reader);             // a reader with no extensions takes it away
+```
 
 ---
 
@@ -378,6 +426,17 @@ needs skin colour in its middle, and one that too few overlapping windows
 agree on is dropped. A black and white photo cannot use the skin test, so an
 occasional stray box survives there; it only makes the move frame a little
 more of the picture. Set `keepFacesInView = false` for plain motion.
+
+A **video clip** keeps its people the same way when the export's `fitMode`
+is `Fill` (a portrait phone clip filling a 16:9 frame loses its sides, a
+landscape clip in a portrait frame its top and bottom): `keepInView` on a
+file segment places the crop window around the regions instead of the
+picture's centre, and `keepFacesInView` finds them itself in one frame from
+the middle of the clip's used range (found once per clip, whatever the
+preview asks later). A clip with no face found keeps the centred crop. The
+regions are fractions of the picture as the file shows it, before the
+segment's effects. Under `Letterbox` and `Stretch` nothing is cropped and
+both are ignored.
 
 An application with a better detector plugs it in instead: UltraAI's vision
 analyser (`VisionTask::FaceDetection`), the operating system's (Vision on
@@ -768,7 +827,7 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `audioCodec` | `Auto` | AAC (MP4/MOV/MKV), Opus (WebM), MP3, PCM (WAV), FLAC; `Disabled` drops sound |
 | `width`, `height` | first segment | Give one and the other follows the aspect ratio |
 | `frameRate` | first segment | 30 for generated clips, 12 for GIF |
-| `fitMode` | `Letterbox` | `Fill` crops to cover, `Stretch` distorts |
+| `fitMode` | `Letterbox` | `Fill` crops to cover (around a segment's `keepInView` / its faces), `Stretch` distorts |
 | `quality` | codec default | 0..100 → CRF / qscale per encoder |
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |
@@ -1050,9 +1109,12 @@ call returns `VideoFXResult::NotAvailable` — applications need no `#ifdef`.
 
 Link `VideoFX::VideoFX`. FFmpeg stays a private dependency of the library.
 
-VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux,
-`libVideoFX.dylib` on macOS and `libVideoFX.dll` / `VideoFX.dll` on Windows,
-next to `videofx` and `VideoFXTest` in `bin/`. It is not built into the
+VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux and
+`libVideoFX.dylib` on macOS, in the build's `lib/` (`videofx` and
+`VideoFXTest` are in `bin/`), and `libVideoFX.dll` / `VideoFX.dll` on
+Windows, in the build root beside the applications that load it -
+`UltraVideo.exe`, `videofx.exe`, `VideoFXTest.exe` - because Windows looks
+for a DLL in the folder of the executable that loads it. It is not built into the
 UltraCanvas core, so an application that does no video never loads it or
 FFmpeg, and every application that does shares one copy. While VideoFX is
 0.x, every minor version may change the binary interface, so the minor

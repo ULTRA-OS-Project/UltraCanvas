@@ -78,7 +78,7 @@ namespace UltraCanvas {
         };
         container->AddChild(player);
 
-        auto openBtn = CreateButton("OpenVideo", 10, 430, 130, 36, "Open video...");
+        auto openBtn = CreateButton("OpenVideo", 10, 430, 130, 36, "Open video");
         openBtn->onClick = [playerWeak]() {
             if (auto p = playerWeak.lock()) p->ShowOpenDialog();
         };
@@ -108,7 +108,7 @@ namespace UltraCanvas {
             status->SetText("Recording...");
             status->SetTextColor(Color(200, 60, 60));
             // Recording always runs the live camera; keep the toggle label in sync
-            // when a recording is started from "Record to file..." rather than here.
+            // when a recording is started from "Record to file" rather than here.
             if (auto b = camBtnWeak.lock()) b->SetText("Stop camera");
         };
         recorder->onRecordStopped = [status, recWeak, camBtnWeak]() {
@@ -170,7 +170,7 @@ namespace UltraCanvas {
             }
         };
 
-        auto recBtn = CreateButton("RecToFile", 660, 430, 150, 36, "Record to file...");
+        auto recBtn = CreateButton("RecToFile", 660, 430, 150, 36, "Record to file");
         recBtn->onClick = [recWeak]() {
             if (auto r = recWeak.lock()) r->ShowSaveDialog();
         };

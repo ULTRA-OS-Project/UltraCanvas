@@ -1,5 +1,10 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.10.1 - two -Wswitch / -Wtautological warnings in DispatchEvent fixed (the
+//                   key-state bound is checked on the key code as an int, against
+//                   KeyStateCount, as IsKeyPressed now does too)
+// Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
+// Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
 //                  registered, every window is drawn again, not only laid out:
 //                  boxes drawn for characters the start's fonts lacked stayed
@@ -13,10 +18,11 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <atomic>
 #include <iostream>
@@ -106,6 +112,8 @@ namespace UltraCanvas {
     }
 
     UltraCanvasApplicationBase::~UltraCanvasApplicationBase() {
+        if (themeHandler != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler);
+        themeHandler = 0;
         UltraCanvasApplicationBase* expected = this;
         g_currentApplication.compare_exchange_strong(
             expected, nullptr, std::memory_order_release);
@@ -739,6 +747,47 @@ namespace UltraCanvas {
         pango_cairo_font_map_set_default(nullptr);
     }
 
+    std::vector<std::string> GetInstalledFontFamilies() {
+        std::vector<std::string> names;
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (!fontMap) return names;
+        PangoFontFamily** families = nullptr;
+        int familyCount = 0;
+        pango_font_map_list_families(fontMap, &families, &familyCount);
+        for (int i = 0; i < familyCount; ++i) {
+            const char* name = pango_font_family_get_name(families[i]);
+            if (!name || !*name) continue;
+            // A face made of bitmaps lists the sizes it has; a scalable one
+            // lists none.
+            PangoFontFace** faces = nullptr;
+            int faceCount = 0;
+            pango_font_family_list_faces(families[i], &faces, &faceCount);
+            bool scalable = faceCount == 0;
+            for (int f = 0; f < faceCount && !scalable; ++f) {
+                int* sizes = nullptr;
+                int sizeCount = 0;
+                pango_font_face_list_sizes(faces[f], &sizes, &sizeCount);
+                if (!sizes) scalable = true;
+                g_free(sizes);
+            }
+            g_free(faces);
+            if (scalable) names.emplace_back(name);
+        }
+        g_free(families);
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+            return s;
+        };
+        std::sort(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            const std::string la = lower(a), lb = lower(b);
+            return la != lb ? la < lb : a < b;
+        });
+        names.erase(std::unique(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            return lower(a) == lower(b);
+        }), names.end());
+        return names;
+    }
+
     bool UltraCanvasApplicationBase::RegisterFontFile(const std::string& fontFilePath) {
         if (fontFilePath.empty()) return false;
 
@@ -812,6 +861,19 @@ namespace UltraCanvas {
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
+
+        // A theme change reaches every element of every window (the ones
+        // that follow the theme re-style themselves) and the tooltips
+        if (themeHandler == 0) {
+            themeHandler = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme& theme) {
+                UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme(theme, UltraCanvasTooltipManager::GetStyle()));
+                for (auto& window : windows) {
+                    if (!window) continue;
+                    window->OnThemeChanged(theme);
+                    window->RequestRedraw();
+                }
+            });
+        }
 
         // Each step's time, for GetStartupTimings(): a slow start is usually
         // one of these (a font cache rebuilt, a virus scanner reading every
@@ -1142,7 +1204,7 @@ namespace UltraCanvas {
         return GetCurrentModalWindow() != nullptr;
     }
 
-    bool UltraCanvasApplicationBase::HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow) {
+    bool UltraCanvasApplicationBase::HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow*& targetWindow) {
         auto* modalWindow = GetCurrentModalWindow();
         if (!modalWindow) return false;
 
@@ -1164,11 +1226,21 @@ namespace UltraCanvas {
             case UCEventType::MouseWheel:
             case UCEventType::MouseEnter:
             case UCEventType::MouseLeave:
+                if (targetWindow != modalWindow) return true;
+                break;
             case UCEventType::KeyDown:
             case UCEventType::KeyUp:
             case UCEventType::TextInput:
             case UCEventType::TextComposition:
-                if (targetWindow != modalWindow) return true;
+                // A key the system delivered to a blocked window (focus follows
+                // the pointer, or no window manager gave the dialog the focus)
+                // goes to the modal: Escape and Return reach the dialog, typing
+                // reaches its field, instead of being dropped.
+                if (targetWindow != modalWindow) {
+                    auto* modalAsWindow = dynamic_cast<UltraCanvasWindow*>(modalWindow);
+                    if (!modalAsWindow) return true;
+                    targetWindow = modalAsWindow;
+                }
                 break;
             case UCEventType::WindowFocus:
                 if (targetWindow && targetWindow != modalWindow) {
@@ -1258,7 +1330,7 @@ namespace UltraCanvas {
 
     std::vector<UCKeys> UltraCanvasApplicationBase::GetPressedKeys() const {
         std::vector<UCKeys> pressed;
-        for (int key = 0; key < 256; ++key) {
+        for (int key = 0; key < KeyStateCount; ++key) {
             if (keyStates[key]) {
                 pressed.push_back(static_cast<UCKeys>(key));
             }
@@ -1391,8 +1463,12 @@ namespace UltraCanvas {
             ctrlHeld = event.ctrl;
             altHeld = event.alt;
             metaHeld = event.meta;
-            if (event.virtualKey >= 0 && event.virtualKey < 256) {
-                keyStates[event.virtualKey] = (event.type == UCEventType::KeyDown);
+            // As an int: the platforms make a UCKeys out of any key code
+            // (static_cast<UCKeys>(vk)), so the value is not bounded by the
+            // enum's own range, which is what the compiler reasons from.
+            const int key = static_cast<int>(event.virtualKey);
+            if (key >= 0 && key < KeyStateCount) {
+                keyStates[key] = (event.type == UCEventType::KeyDown);
             }
         }
 
@@ -1474,6 +1550,9 @@ namespace UltraCanvas {
                     focusedWindow.reset();
                 }
                 return;
+            default:
+                // Everything else goes on to the window below.
+                break;
         }
         // Dispatch other events to focused element
         if (targetWindow) {

@@ -42,6 +42,13 @@
 // cannot be honoured — and silently discarding the log is the failure this
 // whole mechanism exists to prevent.
 //
+// Under Emscripten the default is on and writing to stderr, which the browser
+// shows in its developer console: a release .wasm inherits no environment to
+// set the variable in, and a page that came up empty would otherwise say
+// nothing anywhere. The page can set `Module.ENV.ULTRACANVAS_DEBUG_LOG`
+// (to "0", say) in a `preRun` hook, before the program starts; a file path
+// lands in the in-memory file system.
+//
 // Note this covers the framework's own `debugOutput` only. Anything a library
 // or a legacy call site writes straight to stdout/stderr still needs the
 // stdio pump the Android backend installs in `android_main`
@@ -225,7 +232,13 @@ namespace UltraCanvas {
             DebugSink() {
                 const std::string requested = ReadSetting();
                 if (requested.empty()) {
-#ifdef ULTRACANVAS_DEBUG
+#if defined(ULTRACANVAS_DEBUG) || defined(__EMSCRIPTEN__)
+                    // In the browser stderr is the developer console, the
+                    // one place a person looks when a page comes up empty,
+                    // and a release .wasm inherits no environment to turn
+                    // the sink on with. So it is on, and the page turns it
+                    // off (Module.ENV.ULTRACANVAS_DEBUG_LOG = "0" before
+                    // the program starts) rather than the other way round.
                     enabled_ = true;
 #endif
                     return;

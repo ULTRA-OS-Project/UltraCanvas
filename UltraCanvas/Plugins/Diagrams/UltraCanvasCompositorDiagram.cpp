@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <locale>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -305,7 +306,7 @@ std::string FormatNumberShort(double v, double step) {
     else if (step >= 0.01) decimals = 2;
     else decimals = 3;
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.*f", decimals, v);
+    std::snprintf(buf, sizeof(buf), "%.*f", decimals, v);   // locale-ok: text drawn in the widget
     return buf;
 }
 
@@ -2551,6 +2552,7 @@ bool UltraCanvasCompositorDiagram::TryConnect(
 
 std::string UltraCanvasCompositorDiagram::ToJson() const {
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
     out << "{\n";
     out << "  \"version\": \"0.1.0\",\n";
     out << "  \"viewport\": {\n";
@@ -2996,6 +2998,7 @@ void UltraCanvasCompositorDiagram::Copy() {
         return;
     }
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
     out << "{\n  \"nodes\": [\n";
     bool first = true;
     for (const auto& id : nodeOrder) {

@@ -1,14 +1,16 @@
-#### 2026-10-14 *0.5.0*
+#### 2026-10-16 *0.7.0*
 - **Effects on overlay clips.** The bin's effect presets now also work on
-  a selected clip on the overlay lane. They change only that clip's own
-  picture, such as a picture-in-picture video in black and white or a
-  softened logo, and leave the picture under it untouched.
+  a clip on the overlay lane, by a click with it selected or by dragging
+  the preset onto it. They change only that clip's own picture, such as a
+  picture-in-picture video in black and white or a softened logo, and
+  leave the picture under it untouched. (A drop on an overlay clip used to
+  say effects go on the main track's clips.)
   - The inspector lists the overlay clip's effects, each with its strength
     slider and remove button, as it does for a main-track clip.
   - A blur's radius follows the overlay file's own height.
   - The clip shows its effects badge on the overlay lane, and the
     `.ultravideo` file keeps the effects with the overlay span.
-  - This needs VideoFX 0.14.0 (`VideoFXOverlay::effects`).
+  - This needs VideoFX 0.16.0 (`VideoFXOverlay::effects`).
   - (`EffectTarget`, `Document::EffectsOf`, `ApplyEffectPreset` and
     `SetEffectAmount` taking a target; tested in `UltraVideoDocumentTest`.)
 - **A slider's drag is one undo step.** Before, every value a slider in
@@ -31,10 +33,130 @@
     Tested in `UltraVideoDocumentTest`, which now builds an inspector
     without a display and drags its music-volume slider.)
 - **Blurs in the preview over proxies look as they will in the export.**
-  VideoFX 0.14.0 scales a blur's radius to the proxy's picture. Before, on
+  VideoFX 0.16.0 scales a blur's radius to the proxy's picture. Before, on
   a proxy half as tall, *Strong blur* looked twice as strong in the viewer
   as in the export.
 
+#### 2026-10-14 *0.6.0*
+- **Clips keep their faces when they fill the frame.** The wizard's *Keep
+  faces in shot* now covers the clips as well as the photos: a clip of
+  another shape that fills the frame (*Filling the frame* on the Style
+  step, the project's *Fill* framing) is cropped around the faces the
+  engine finds in a frame from the clip's middle, not around its centre
+  (VideoFX 0.15.0: `keepFacesInView` and `keepInView` on a video segment).
+  The inspector shows *Keep faces in shot* on a video clip too, and the
+  project file keeps it.
+
+#### 2026-10-14 *0.5.1*
+- **Effects dragged onto a clip.** A preset in the bin's *Effects* tab is
+  dragged from its button onto a clip on the main track: the press arms
+  it, moving away starts it, the clip under the pointer shows a dashed
+  ring (`UltraCanvasVideoTimeline` 1.2.0, `SetDropTargetClip`) and the
+  status line names it, and the drop puts the preset on that clip,
+  selects it and shows its effects in the inspector. A drop on a title,
+  overlay or sound clip says effects go on the main track's clips; `Esc`
+  lets go. A click on the button still puts the preset on the selected
+  clip, as before.
+
+#### 2026-10-14 *0.5.0*
+- **The theme roles.** The design's palette is now the framework's theme
+  (`UltraCanvasTheme` 1.0.0, `ThemeFor` in `UltraVideoTheme.h`): the
+  surfaces, lines, ink, accent, focus and danger tokens fill the shared
+  roles, the clip kinds, waveform, transition badge, guides and playhead
+  are the timeline's own roles, and the timeline and the timecode field
+  take their colours from it through `FromTheme`. With `UltraCanvasTheme`
+  1.1.0 the split panes, the bin's and the inspector's tabs, the search
+  and text fields, the albums, the toolbars, the dropdowns and the clip's
+  context menu *follow* the theme (`SetFollowTheme`): the window sets the
+  theme when the palette switches and they re-style themselves, menus and
+  tooltips included; `ApplyPalette` keeps only the app's own looks - the
+  ghost and primary buttons, the sliders, the switches, the timeline.
+- **Playing with sound, confirmed.** The draft played in the framework's
+  player with the GStreamer plugins installed: the playhead follows the
+  player's position, the end of the draft stops playback at the end, Play
+  again starts over. Two fixes from that run: a player that cannot start
+  (no audio sink it can open) now falls back to frame-by-frame playback
+  with the message, where before the playhead jumped to the end; and the
+  framework's GStreamer backend no longer insists on a PulseAudio sink
+  where no PulseAudio server answers, so the picture plays at pace, silent,
+  on such a desktop. The sound itself was then measured through a
+  PulseAudio null sink: it starts and stops with playback, the music's
+  fade and the clip's own sound arrive where the timeline has them, and
+  the volume slider at half halves the level. `UltraVideoDraftTest` pins
+  it without a recorder: the draft (`Document::DraftSettings`, the
+  settings the app renders with) decoded shows its sound stepping in at
+  the document's cut within a frame, and the framework's player, playing
+  it headless, reports a position within two frames of the frame it
+  shows and reads the cut when the clip's first frame appears.
+- **The draft in the frame's place.** The draft is rendered at the
+  project's shape, 360 lines high: with only a height given the engine took
+  the width from the first segment, and a 4:3 photo first made a 4:3 draft
+  of a 16:9 project that sat letterboxed and smaller than the frame
+  surface. The player keeps the surface's 12 px inset and follows the
+  viewer's *Fit* menu (fit, fill, 50, 100, 200 %) as the surface does, so
+  the picture does not move when the draft takes over; the title-safe
+  guide stays on over the draft too. A percent zoom is of the project's
+  pixels on both sides (the surface asks the engine for a frame of that
+  size; the player scales the 360-line draft by the project's height), so
+  *100 %* shows the same picture before and during playback.
+- **Sliders and switches follow the theme.** The zoom, volume and
+  inspector sliders and the inspector's switches follow the theme like
+  the other controls: the design's ink handle and on-accent thumb are the
+  theme's `slider.handle` and `switch.thumb` element roles (framework
+  slider 3.7.0, switch 1.6.0).
+- **Buttons follow the theme by their variant.** The app bar's icons, the
+  transport, the timeline tools, the preset buttons, *Export* and the
+  dialogs' buttons are the framework's `Ghost`, `Standard` and `Primary`
+  variants (button 2.9.0), the active tool its `Selected` one: the theme
+  colours them and a switch of the look reaches them on its own. The
+  labels too, by their variant (label 2.13.0): the project's name and the
+  section titles are headings, notes and captions muted, the preset hints
+  faint. `ApplyPalette` keeps the timeline's token sizes alone. The export
+  dialog, the unsaved-changes question and the story wizard take no
+  palette any more: the dialogs follow the theme (modal dialog 3.9.0) -
+  their surface, message, captions and footer buttons - and the wizard's
+  tabs and album like the window's.
+
+#### 2026-10-14 *0.4.2*
+- **One UltraVideo at a time.** Opening a project or media files while
+  UltraVideo is already running handles them in the running copy instead of
+  starting a second one: a `.ultravideo` project opens there - asking first
+  whether to save the current project when it has changes, as *Open project*
+  does - and media files are imported into the open project, as dropping
+  them on the window does; the window, or its save question, comes forward.
+  Starting it without a file brings the open window forward. Two starts at
+  the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UltraVideo is already running"*. `--help` and `--version`
+  are unaffected. Framework: `UltraCanvasSingleInstance` (framework
+  changelog: `instance-lock`).
+
+#### 2026-10-14 *0.4.1*
+- **Import and Export offer FileLoader's file types.** UltraVideo kept lists
+  of its own, so its dialogs offered types the engine could not read and
+  missed ones it could.
+  - At start-up UltraVideo now tells the framework's codec registry which
+    films and sound VideoFX (FFmpeg) reads and writes
+    (`VideoFX_GetFileFormats`). FileLoader's lists then include them; on
+    macOS, for example, the registry alone knew only MP4, MOV and 3GP.
+  - Import media, the file over the picture, a voice-over or sound effect
+    on A2, and the story's photos, clips and songs offer FileLoader's types
+    that the engine reads.
+  - **HEIC photos import whole.** Picture types FileLoader reads and FFmpeg
+    does not are read through the framework's image reader
+    (`VideoFX_SetPictureReader`): HEIC, a camera's raw files, FITS and so on.
+    For HEIC this is libheif, which puts a phone photo's grid of tiles
+    together and turns it upright. FFmpeg 6 refused HEIC, and FFmpeg 7 would
+    have given one tile of the photo.
+  - Whether a file is a picture or sound is decided by the same lists, so a
+    picture this build cannot decode (a HEIC where libheif lacks its HEVC
+    decoder) still shows as a photo, marked unreadable.
+  - Export's Browse offers the presets' types under FileLoader's names.
+    Picking a type there selects the preset that writes it, so an MP4 can
+    no longer be saved under a `.wav` name.
+  - The bare `.ts` extension is no longer offered: the framework decides it
+    by the file's contents, since it is far more often TypeScript. `.mts` and
+    `.m2ts` are offered.
+  - New file `UltraVideoFormats.{h,cpp}`, checked in `UltraVideoDocumentTest`.
 #### 2026-10-13 *0.4.0*
 - **Effect presets in the bin.** The bin's *Effects* tab is no longer a
   placeholder. It holds one-click presets for the selected main-track clip.

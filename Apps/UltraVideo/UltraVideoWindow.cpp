@@ -1,9 +1,15 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
-// Version: 0.5.0
+// Version: 0.9.0 - presets on overlay clips, by click or drop; a slider's drag one undo step
+// Version: 0.8.0 - an effect preset dragged from its bin button onto a clip
+// Version: 0.7.0 - the panels, controls, buttons, labels and dialogs follow the theme; the draft at the project's shape, its settings from the document
+// Version: 0.6.0 - OpenFiles: files handed over by a second start
+// Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
+// Version: 0.4.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
+#include "UltraVideoFormats.h"
 #include "UltraVideoMapping.h"
 
 #include "UltraCanvasAlert.h"
@@ -35,13 +41,6 @@ constexpr unsigned kTickMs = 20;
 constexpr int kMessageTicks = 200;       // 4 s
 constexpr double kMinZoom = 2.0;
 constexpr double kMaxZoom = 2000.0;
-
-const std::vector<std::string>& MediaExtensions() {
-    static const std::vector<std::string> exts = {"mp4", "mov", "mkv", "webm", "avi", "m4v", "mpg", "mpeg", "mts", "ts",
-                                                  "jpg", "jpeg", "png", "webp", "heic", "heif", "tif", "tiff", "bmp", "avif",
-                                                  "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus"};
-    return exts;
-}
 
 bool IsProjectFile(const std::string& path) {
     return PathToUtf8(PathFromUtf8(path).extension()) == ".ultravideo";
@@ -102,6 +101,13 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     // The three columns
     columns_ = CreateHorizontalSplitPane("uv.columns", 0, 0, 1440, 540);
     columns_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // the splitters' width once; their colours follow the theme
+    for (auto& pane : {rows_, columns_}) {
+        SplitPaneStyle split = pane->GetSplitPaneStyle();
+        split.splitterThickness = static_cast<int>(Tokens::SplitterW);
+        pane->SetSplitPaneStyle(split);
+        pane->SetFollowTheme(true);
+    }
     auto binPane = columns_->AddPane(static_cast<double>(Tokens::BinW));
     viewerPane_ = columns_->AddPane(1440.0 - Tokens::BinW - Tokens::InspectorW);
     inspectorPane_ = columns_->AddPane(static_cast<double>(Tokens::InspectorW));
@@ -156,6 +162,23 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
         }
         return false;
     }, {UCEventType::MouseMove, UCEventType::MouseUp});
+    // An effect preset dragged from its button: the press arms it (the
+    // button's onPress, below), moving away from the press starts it
+    window->InstallEventFilter("ultravideo-effectdrag", [this](const UCEvent& event) {
+        if (event.type == UCEventType::MouseDown) { effectPressAt_ = event.pointerWindow; pointerDown_ = true; return false; }
+        if (event.type == UCEventType::MouseUp) pointerDown_ = false;
+        if (!effectDrag_.empty()) {
+            DragEffect(event, event.type == UCEventType::MouseUp);
+            return true;
+        }
+        if (effectPress_.empty()) return false;
+        if (event.type == UCEventType::MouseUp) { effectPress_.clear(); return false; }   // a click: the button applies it
+        const int dx = event.pointerWindow.x - effectPressAt_.x, dy = event.pointerWindow.y - effectPressAt_.y;
+        if (dx * dx + dy * dy < 36) return false;
+        BeginEffectDrag(effectPress_);
+        DragEffect(event, false);
+        return true;
+    }, {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
     window->onWindowClosing = [this]() {
         if (history_.IsClean()) {
             app_.RequestExit();
@@ -186,14 +209,15 @@ void UltraVideoWindow::Show() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
-    const Palette& p = *palette_;
     appBar_ = std::make_shared<UltraCanvasContainer>("uv.appbar", 0, 0, 1440, static_cast<int>(Tokens::AppbarH));
     appBar_->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     appBar_->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(Tokens::AppbarH));
     appBar_->SetPadding(0, static_cast<float>(Tokens::Space3));
 
     auto logo = std::make_shared<UltraCanvasButton>("uv.logo", 0, 0, 28, 28, "");
-    logo->SetStyle(GhostButtonStyle(p));
+    logo->SetStyle(ButtonShape(false));
+    logo->SetThemeVariant(ButtonVariant::Ghost);
+    logo->SetFollowTheme(true);
     logo->SetIcon(IconPath("logo"));
     logo->SetIconSize(18, 18);
     logo->SetTooltip(std::string("UltraVideo ") + ULTRAVIDEO_VERSION);
@@ -202,35 +226,37 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
 
     title_ = CreateLabel("uv.title", 0, 0, 200, 28, "Untitled");
     title_->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
+    FollowTheme(title_, LabelVariant::Heading);
     title_->layoutItem.SetFlexShrink(0);
     appBar_->AddChild(title_);
     status_ = CreateLabel("uv.status", 0, 0, 400, 28, "");
     status_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    FollowTheme(status_, LabelVariant::Muted);
     status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     appBar_->AddChild(status_);
 
-    undo_ = MakeIconButton("uv.undo", "undo", "Undo  Ctrl+Z", p);
+    undo_ = MakeIconButton("uv.undo", "undo", "Undo  Ctrl+Z");
     undo_->SetOnClick([this]() { if (history_.Undo(document_)) { RefreshAll(); Message("Undid " + history_.RedoLabel()); } });
     appBar_->AddChild(undo_);
-    redo_ = MakeIconButton("uv.redo", "redo", "Redo  Ctrl+Shift+Z", p);
+    redo_ = MakeIconButton("uv.redo", "redo", "Redo  Ctrl+Shift+Z");
     redo_->SetOnClick([this]() { if (history_.Redo(document_)) { RefreshAll(); Message("Redid " + history_.UndoLabel()); } });
     appBar_->AddChild(redo_);
     auto gap = std::make_shared<UltraCanvasContainer>("uv.appbar.gap", 0, 0, 12, 28);
     gap->layoutItem.SetFlexShrink(0);
     appBar_->AddChild(gap);
-    open_ = MakeIconButton("uv.open", "film", "Open project  Ctrl+O", p);
+    open_ = MakeIconButton("uv.open", "film", "Open project  Ctrl+O");
     open_->SetOnClick([this]() { OpenProject(); });
     appBar_->AddChild(open_);
-    save_ = MakeIconButton("uv.save", "duplicate", "Save  Ctrl+S", p);
+    save_ = MakeIconButton("uv.save", "duplicate", "Save  Ctrl+S");
     save_->SetOnClick([this]() { SaveProject(); });
     appBar_->AddChild(save_);
-    import_ = MakeIconButton("uv.import", "upload", "Import media  Ctrl+I", p);
+    import_ = MakeIconButton("uv.import", "upload", "Import media  Ctrl+I");
     import_->SetOnClick([this]() { ImportMedia(); });
     appBar_->AddChild(import_);
-    story_ = MakeIconButton("uv.story", "image", "Make a story from photos and clips  Ctrl+Shift+N", p);
+    story_ = MakeIconButton("uv.story", "image", "Make a story from photos and clips  Ctrl+Shift+N");
     story_->SetOnClick([this]() { MakeStory(); });
     appBar_->AddChild(story_);
-    theme_ = MakeIconButton("uv.theme", "eye", "Light or dark", p);
+    theme_ = MakeIconButton("uv.theme", "eye", "Light or dark");
     theme_->SetOnClick([this]() {
         dark_ = !dark_;
         document_.view.dark = dark_;
@@ -238,7 +264,7 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
         ApplyPalette();
     });
     appBar_->AddChild(theme_);
-    export_ = MakeTextButton("uv.export", "Export", p, 96, true);
+    export_ = MakeTextButton("uv.export", "Export", 96, true);
     export_->SetIcon(IconPath("export"));
     export_->SetIconSize(16, 16);
     export_->SetTooltip("Export the video  Ctrl+E");
@@ -254,6 +280,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     binTabs_->SetCloseMode(TabCloseMode::NoClose);
     binTabs_->SetTabMinWidth(52);
     binTabs_->SetTabStyle(TabStyle::Flat);
+    binTabs_->SetFollowTheme(true);
 
     // Media: the search field over the grid, or the empty state
     auto mediaPage = std::make_shared<UltraCanvasContainer>("uv.bin.media", 0, 0, static_cast<int>(Tokens::BinW), 480);
@@ -261,6 +288,10 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     mediaPage->SetPadding(static_cast<float>(Tokens::Space2));
     binSearch_ = CreateTextInput("uv.bin.search", 0, 0, 200, static_cast<int>(Tokens::ControlH));
     binSearch_->SetPlaceholder("Search media");
+    TextInputStyle search = binSearch_->GetStyle();
+    search.borderRadius = static_cast<int>(Tokens::RadiusSm);
+    binSearch_->SetStyle(search);
+    binSearch_->SetFollowTheme(true);
     binSearch_->onTextChanged = [this](const std::string&) { RefreshBin(); };
     binSearch_->layoutItem.SetFlexShrink(0);
     mediaPage->AddChild(binSearch_);
@@ -269,7 +300,19 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         album = std::make_shared<UltraCanvasAlbum>(id, 0, 0, 260, 400);
         album->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        album->SetMode(AlbumMode::UserEdit);
+        AlbumConfig cfg;
+        cfg.layout = AlbumLayout::UniformGrid;
+        cfg.sizingMode = AlbumSizingMode::ItemsPerRow;
+        cfg.itemsPerRow = 2;
+        cfg.gap = static_cast<int>(Tokens::Space2);
+        cfg.outerPadding = 0;
+        cfg.imageDisplay = AlbumImageDisplay::Crop;
+        cfg.actionDisplay = AlbumActionDisplay::OnHover;
+        cfg.showBorder = false;
+        cfg.allowSelection = true;
+        cfg.mode = AlbumMode::UserEdit;      // tiles can be dragged (out to the timeline)
+        album->SetConfig(cfg);
+        album->SetFollowTheme(true);         // the panel, raised tiles, captions, the selection
         AlbumAction add;
         add.id = "add";
         add.label = music ? "Use as music" : "Add to the timeline";
@@ -341,6 +384,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
                             "Drop clips here to start\n\nVideos, photos and songs. Or import them with the button above, "
                             "or make a story from photos with the picture button.");
     binEmpty_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    FollowTheme(binEmpty_, LabelVariant::Muted);
     binEmpty_->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
     binEmpty_->layoutItem.SetFlexShrink(0);
     binEmpty_->SetPadding(static_cast<float>(Tokens::Space4));
@@ -361,10 +405,11 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     titlesNote_ = CreateLabel("uv.bin.titles", 0, 0, 240, 40,
                               "A title goes on the title lane at the playhead; drag it, trim it, and set its text in the inspector.");
     titlesNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    FollowTheme(titlesNote_, LabelVariant::Muted);
     titlesNote_->layoutItem.SetFlexShrink(0);
     titlesPage->AddChild(titlesNote_);
     for (const TitleStyle& st : TitleStyles()) {
-        auto button = MakeTextButton(std::string("uv.bin.title.") + st.key, st.label, p, 240);
+        auto button = MakeTextButton(std::string("uv.bin.title.") + st.key, st.label, 240);
         button->SetIcon(IconPath("title"));
         button->SetIconSize(16, 16);
         button->SetTooltip(st.hint);
@@ -376,7 +421,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         auto hint = CreateLabel(std::string("uv.bin.titleHint.") + st.key, 0, 0, 240, 18, st.hint);
         hint->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
         hint->layoutItem.SetFlexShrink(0);
-        titleHints_.push_back(hint);
+        FollowTheme(hint, LabelVariant::Faint);
         titlesPage->AddChild(hint);
     }
     binTabs_->AddTab("Titles", titlesPage);
@@ -386,8 +431,9 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     effectsPage->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     effectsPage->SetPadding(static_cast<float>(Tokens::Space3));
     effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
-                               "A click puts the effect on the selected clip; the inspector lists the clip's effects and removes them.");
+                               "A click puts the effect on the selected clip, or drag it onto a clip; the inspector lists the clip's effects and removes them.");
     effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    FollowTheme(effectsNote_, LabelVariant::Muted);
     effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
     for (const bool blurGroup : {false, true}) {
@@ -395,17 +441,18 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
                                    blurGroup ? "Blur and detail" : "Colour looks");
         heading->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
         heading->layoutItem.SetFlexShrink(0);
-        effectHeadings_.push_back(heading);
+        FollowTheme(heading, LabelVariant::Faint);
         effectsPage->AddChild(heading);
         for (const EffectPreset& e : EffectPresets()) {
             if (e.blur != blurGroup) continue;
-            auto button = MakeTextButton(std::string("uv.bin.effect.") + e.key, e.label, p, 240);
+            auto button = MakeTextButton(std::string("uv.bin.effect.") + e.key, e.label, 240);
             button->SetIcon(IconPath("fx"));
             button->SetIconSize(16, 16);
             button->SetTooltip(e.hint);
             button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
             const std::string key = e.key;
             button->SetOnClick([this, key]() { ApplyEffect(key); });
+            button->onPress = [this, key]() { effectPress_ = pointerDown_ ? key : ""; };   // armed by the mouse; a move away starts the drag
             effectButtons_.push_back(button);
             effectsPage->AddChild(button);
         }
@@ -417,30 +464,36 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
 }
 
 std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
-    const Palette& p = *palette_;
     timelineBar_ = std::make_shared<UltraCanvasToolbar>("uv.timelineBar", 0, 0, 1440, static_cast<int>(Tokens::ToolbarH));
     timelineBar_->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(Tokens::ToolbarH))
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ToolbarAppearance bar;
+    bar.style = ToolbarStyle::Flat;
+    bar.showIconLabels = false;
+    bar.hasShadow = false;
+    bar.iconSize = ToolbarIconSize::Small;
+    timelineBar_->SetAppearance(bar);
+    timelineBar_->SetFollowTheme(true);
 
-    toolSelect_ = MakeIconButton("uv.tool.select", "select", "Select  V", p);
+    toolSelect_ = MakeIconButton("uv.tool.select", "select", "Select  V");
     toolSelect_->SetOnClick([this]() { SetTool(TimelineTool::Select); });
-    toolBlade_ = MakeIconButton("uv.tool.blade", "blade", "Blade  B", p);
+    toolBlade_ = MakeIconButton("uv.tool.blade", "blade", "Blade  B");
     toolBlade_->SetOnClick([this]() { SetTool(TimelineTool::Blade); });
-    toolTrim_ = MakeIconButton("uv.tool.trim", "clipIn", "Trim  T", p);
+    toolTrim_ = MakeIconButton("uv.tool.trim", "clipIn", "Trim  T");
     toolTrim_->SetOnClick([this]() { SetTool(TimelineTool::Trim); });
-    toolSlip_ = MakeIconButton("uv.tool.slip", "slip", "Slip  Y", p);
+    toolSlip_ = MakeIconButton("uv.tool.slip", "slip", "Slip  Y");
     toolSlip_->SetOnClick([this]() { SetTool(TimelineTool::Slip); });
     for (auto& b : {toolSelect_, toolBlade_, toolTrim_, toolSlip_}) timelineBar_->AddChild(b);
     timelineBar_->AddSeparator("uv.sep1");
-    split_ = MakeIconButton("uv.act.split", "split", "Split at the playhead  S", p);
+    split_ = MakeIconButton("uv.act.split", "split", "Split at the playhead  S");
     split_->SetOnClick([this]() { SplitAtPlayhead(); });
-    delete_ = MakeIconButton("uv.act.delete", "trash", "Delete  Del", p);
+    delete_ = MakeIconButton("uv.act.delete", "trash", "Delete  Del");
     delete_->SetOnClick([this]() { DeleteSelection(); });
-    marker_ = MakeIconButton("uv.act.marker", "marker", "Add a marker  M", p);
+    marker_ = MakeIconButton("uv.act.marker", "marker", "Add a marker  M");
     marker_->SetOnClick([this]() { AddMarker(); });
     for (auto& b : {split_, delete_, marker_}) timelineBar_->AddChild(b);
     timelineBar_->AddSeparator("uv.sep2");
-    magnet_ = MakeIconButton("uv.mode.magnet", "magnet", "Magnetic main track  P", p);
+    magnet_ = MakeIconButton("uv.mode.magnet", "magnet", "Magnetic main track  P");
     magnet_->SetOnClick([this]() {
         TimelineTrack* track = nullptr;
         TimelineModel model = BuildTimelineModel(document_);
@@ -450,13 +503,13 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
         (void)on;
     });
     magnet_->SetDisabled(true);   // the main track is always magnetic in this release
-    snap_ = MakeIconButton("uv.mode.snap", "snap", "Snapping  N", p);
+    snap_ = MakeIconButton("uv.mode.snap", "snap", "Snapping  N");
     snap_->SetOnClick([this]() {
         snapping_ = !snapping_;
         if (timeline_) timeline_->SetSnapping(snapping_);
         RefreshToolbarLooks();
     });
-    beats_ = MakeIconButton("uv.mode.beats", "beat", "Beat marks", p);
+    beats_ = MakeIconButton("uv.mode.beats", "beat", "Beat marks");
     beats_->SetOnClick([this]() {
         showBeats_ = !showBeats_;
         if (timeline_) timeline_->SetShowBeats(showBeats_);
@@ -473,11 +526,12 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     timelineBar_->AddChild(playheadField_);
     lengthLabel_ = CreateLabel("uv.length", 0, 0, 100, static_cast<int>(Tokens::ControlH), "/ 00:00:00:00");
     lengthLabel_->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+    FollowTheme(lengthLabel_, LabelVariant::Muted);
     lengthLabel_->layoutItem.SetFlexShrink(0);
     timelineBar_->AddChild(lengthLabel_);
     timelineBar_->AddStretch();
 
-    zoomOut_ = MakeIconButton("uv.zoom.out", "zoomOut", "Zoom out  -", p);
+    zoomOut_ = MakeIconButton("uv.zoom.out", "zoomOut", "Zoom out  -");
     zoomOut_->SetOnClick([this]() { if (timeline_) timeline_->ZoomBy(0.8, document_.view.playhead); });
     timelineBar_->AddChild(zoomOut_);
     zoom_ = CreateSlider("uv.zoom", 0, 0, 120, static_cast<int>(Tokens::ControlH));
@@ -486,11 +540,16 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     zoom_->SetValueDisplay(SliderValueDisplay::NoDisplay);
     zoom_->onValueChanged = [this](float v) { if (timeline_) timeline_->SetPixelsPerSecond(SliderToZoom(v)); };
     zoom_->layoutItem.SetFlexShrink(0);
+    SliderVisualStyle zoomStyle = zoom_->GetStyle();
+    zoomStyle.trackHeight = 4.0f;
+    zoomStyle.handleSize = 12.0f;
+    zoom_->SetStyle(zoomStyle);
+    zoom_->SetFollowTheme(true);           // the colours, with the slider.handle roles
     timelineBar_->AddChild(zoom_);
-    zoomIn_ = MakeIconButton("uv.zoom.in", "zoomIn", "Zoom in  =", p);
+    zoomIn_ = MakeIconButton("uv.zoom.in", "zoomIn", "Zoom in  =");
     zoomIn_->SetOnClick([this]() { if (timeline_) timeline_->ZoomBy(1.25, document_.view.playhead); });
     timelineBar_->AddChild(zoomIn_);
-    zoomFit_ = MakeIconButton("uv.zoom.fit", "fit", "Fit the project  Shift+Z", p);
+    zoomFit_ = MakeIconButton("uv.zoom.fit", "fit", "Fit the project  Shift+Z");
     zoomFit_->SetOnClick([this]() { if (timeline_) timeline_->ZoomToFit(); });
     timelineBar_->AddChild(zoomFit_);
     timelineBar_->AddSpacer(static_cast<int>(Tokens::Space2));
@@ -630,103 +689,27 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
 
 void UltraVideoWindow::ApplyPalette() {
     const Palette& p = *palette_;
+    // The framework's theme is the palette: the elements that follow it
+    // (split panes, tabs, fields, albums, toolbars, dropdowns, menus,
+    // tooltips) re-style themselves here; the app's own looks follow
+    UltraCanvasTheme::SetCurrent(ThemeFor(p));
     window_->SetBackgroundColor(ToColor(p.Bg000));
     appBar_->SetBackgroundColor(ToColor(p.Bg100));
     appBar_->SetBorderBottom(1, ToColor(p.Line));
-    title_->SetTextColor(ToColor(p.Ink));
-    status_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& b : {undo_, redo_, open_, save_, import_, story_, theme_}) b->SetStyle(GhostButtonStyle(p));
-    export_->SetStyle(PrimaryButtonStyle(p));
     theme_->SetIcon(IconPath(dark_ ? "eye" : "eyeOff"));
-
-    SplitPaneStyle split = columns_->GetSplitPaneStyle();
-    split.splitterColor = ToColor(p.Bg000);
-    split.splitterHoverColor = ToColor(p.LineStrong);
-    split.splitterActiveColor = ToColor(p.Accent);
-    split.splitterThickness = static_cast<int>(Tokens::SplitterW);
-    columns_->SetSplitPaneStyle(split);
-    rows_->SetSplitPaneStyle(split);
 
     binPanel_->SetBackgroundColor(ToColor(p.Bg100));
     inspectorPane_->SetBackgroundColor(ToColor(p.Bg100));
     viewerPane_->SetBackgroundColor(ToColor(p.Bg000));
     binTabs_->SetBackgroundColor(ToColor(p.Bg100));
-    binTabs_->SetTabBarColor(ToColor(p.Bg100));
-    binTabs_->SetInactiveTabBackgroundColor(ToColor(p.Bg100));
-    binTabs_->SetActiveTabBackgroundColor(ToColor(p.Bg100));
-    binTabs_->SetHoveredTabBackgroundColor(ToColor(p.Bg400));
-    binTabs_->SetInactiveTabTextColor(ToColor(p.InkMuted));
-    binTabs_->SetActiveTabTextColor(ToColor(p.Ink));
-    binTabs_->SetActiveTabIndicatorColor(ToColor(p.Accent));
-    binTabs_->SetActiveTabBorderColor(ToColor(p.Line));
-    binTabs_->SetInactiveTabBorderColor(ToColor(p.Line));
+    binTabs_->SetInactiveTabBorderColor(ToColor(p.Line));   // the theme leaves these transparent
     binTabs_->SetHoveredTabBorderColor(ToColor(p.Line));
-    binTabs_->contentAreaColor = ToColor(p.Bg100);
-    binTabs_->tabContentBorderColor = ToColor(p.Line);
-    binTabs_->navButtonBackgroundColor = ToColor(p.Bg300);
-    binTabs_->navButtonIconColor = ToColor(p.Ink);
-    TextInputStyle search = binSearch_->GetStyle();
-    search.backgroundColor = ToColor(p.Bg200);
-    search.borderColor = ToColor(p.LineStrong);
-    search.focusBorderColor = ToColor(p.Focus);
-    search.textColor = ToColor(p.Ink);
-    search.placeholderColor = ToColor(p.InkFaint);
-    search.caretColor = ToColor(p.Ink);
-    search.borderRadius = static_cast<int>(Tokens::RadiusSm);
-    binSearch_->SetStyle(search);
-    for (auto& album : {binAlbum_, musicAlbum_}) {
-        AlbumConfig cfg;
-        cfg.layout = AlbumLayout::UniformGrid;
-        cfg.sizingMode = AlbumSizingMode::ItemsPerRow;
-        cfg.itemsPerRow = 2;
-        cfg.gap = static_cast<int>(Tokens::Space2);
-        cfg.outerPadding = 0;
-        cfg.imageDisplay = AlbumImageDisplay::Crop;
-        cfg.actionDisplay = AlbumActionDisplay::OnHover;
-        cfg.backgroundColor = ToColor(p.Bg100);
-        cfg.itemBackgroundColor = ToColor(p.Bg200);
-        cfg.showBorder = false;
-        cfg.captionColor = ToColor(p.Ink);
-        cfg.subtitleColor = ToColor(p.InkMuted);
-        cfg.allowSelection = true;
-        cfg.selectionColor = ToColor(p.Accent);
-        cfg.mode = AlbumMode::UserEdit;      // tiles can be dragged (out to the timeline)
-        album->SetConfig(cfg);
-    }
-    binEmpty_->SetTextColor(ToColor(p.InkMuted));
     binEmpty_->SetBorders(1, ToColor(p.LineStrong), Tokens::RadiusLg, UCDashPattern({6.0, 4.0}));
-    titlesNote_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& b : titleButtons_) b->SetStyle(PlainButtonStyle(p));
-    for (auto& h : titleHints_) h->SetTextColor(ToColor(p.InkFaint));
-    effectsNote_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& b : effectButtons_) b->SetStyle(PlainButtonStyle(p));
-    for (auto& h : effectHeadings_) h->SetTextColor(ToColor(p.InkFaint));
     viewer_.ApplyPalette(p);
     inspector_.ApplyPalette(p);
 
     dock_->SetBackgroundColor(ToColor(p.Bg100));
-    ToolbarAppearance bar;
-    bar.style = ToolbarStyle::Flat;
-    bar.backgroundColor = ToColor(p.Bg100);
-    bar.foregroundColor = ToColor(p.Ink);
-    bar.separatorColor = ToColor(p.Line);
-    bar.hoverBackgroundColor = ToColor(p.Bg400);
-    bar.activeBackgroundColor = ToColor(p.Bg500);
-    bar.showIconLabels = false;
-    bar.hasShadow = false;
-    bar.iconSize = ToolbarIconSize::Small;
-    timelineBar_->SetAppearance(bar);
-    for (auto& b : {split_, delete_, marker_, magnet_, zoomOut_, zoomIn_, zoomFit_}) b->SetStyle(GhostButtonStyle(p));
     playheadField_->SetStyle(TimecodeStyleFor(p));
-    lengthLabel_->SetTextColor(ToColor(p.InkMuted));
-    SliderVisualStyle slider;
-    slider.trackColor = ToColor(p.Bg500);
-    slider.activeTrackColor = ToColor(p.Accent);
-    slider.handleColor = ToColor(p.Ink);
-    slider.handleBorderColor = ToColor(p.Bg100);
-    slider.trackHeight = 4.0f;
-    slider.handleSize = 12.0f;
-    zoom_->SetStyle(slider);
     timeline_->SetStyle(TimelineStyleFor(p));
     RefreshToolbarLooks();
     window_->RequestRedraw();
@@ -862,7 +845,7 @@ void UltraVideoWindow::RefreshTimeline() {
     playheadField_->SetMaximumFrames(static_cast<long long>(length * fps));
     lengthLabel_->SetText("/ " + TimelineTimecode(length, fps));
     viewer_.SetFrameRate(fps);
-    viewer_.SetAspect(static_cast<double>(document_.Width()) / std::max(1, document_.Height()));
+    viewer_.SetProjectSize(document_.Width(), document_.Height());
     viewer_.SetTime(document_.view.playhead, length);
     if (document_.view.playhead > length) SetPlayhead(length, false);
 }
@@ -916,13 +899,13 @@ void UltraVideoWindow::OpenProject() {
     });
 }
 
-void UltraVideoWindow::OpenProjectFile(const std::string& path) {
+bool UltraVideoWindow::OpenProjectFile(const std::string& path) {
     Document loaded;
     std::string error;
     std::vector<std::string> missing;
     if (!Document::Load(path, loaded, error, &missing)) {
         UltraCanvasAlert::Error(error, "Open project", nullptr, window_.get());
-        return;
+        return false;
     }
     SetDocument(std::move(loaded));
     history_.MarkClean();
@@ -934,6 +917,7 @@ void UltraVideoWindow::OpenProjectFile(const std::string& path) {
                                   "Open project", nullptr, window_.get());
     }
     Message("Opened " + document_.Name() + ".");
+    return true;
 }
 
 bool UltraVideoWindow::SaveProject() {
@@ -967,7 +951,7 @@ bool UltraVideoWindow::SaveTo(const std::string& path) {
 void UltraVideoWindow::ImportMedia() {
     FileDialogOptions opts;
     opts.SetTitle("Import media").SetParentWindow(window_.get());
-    opts.AddFilter("Video, pictures and sound", MediaExtensions());
+    AddImportTypes(opts, "Video, pictures and sound", true, true, true);
     UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, [this](DialogResult result, const std::vector<std::string>& files) {
         if (result == DialogResult::OK && !files.empty()) ImportFiles(files);
     });
@@ -979,7 +963,7 @@ void UltraVideoWindow::MakeStory() {
         std::vector<std::string> files;
         for (const MediaItem& m : document_.media) if (m.error.empty()) files.push_back(m.path);
         const bool dark = dark_;
-        ShowStoryWizard(window_.get(), *palette_, files, [this, dark](const StoryChoice& choice) {
+        ShowStoryWizard(window_.get(), files, [this, dark](const StoryChoice& choice) {
             Message("Planning the story\xE2\x80\xA6");
             auto segments = std::make_shared<std::vector<VideoFXSegment>>();
             auto settings = std::make_shared<VideoFXExportSettings>();
@@ -1049,6 +1033,32 @@ void UltraVideoWindow::ImportFiles(const std::vector<std::string>& files, double
     else Message(paths.size() == 1 ? "Imported." : "Imported " + std::to_string(paths.size()) + " files.");
 }
 
+void UltraVideoWindow::OpenFiles(const std::vector<std::string>& paths) {
+    std::string project;
+    std::vector<std::string> media;
+    size_t otherProjects = 0;
+    for (const std::string& p : paths) {
+        if (!IsProjectFile(p)) media.push_back(p);
+        else if (project.empty()) project = p;
+        else ++otherProjects;
+    }
+    if (project.empty()) {
+        ImportFiles(media);   // what a drop on the window does
+        return;
+    }
+    // One project at a time: the first one opens, through the same question
+    // File > Open asks when the current project has changes
+    ConfirmThen([this, project, media, otherProjects]() {
+        // Media that came with a project belongs to it: when the project
+        // does not open, nothing goes into the one that stays
+        if (!OpenProjectFile(project)) return;
+        if (!media.empty()) ImportFiles(media);
+        if (otherProjects > 0)
+            Message("UltraVideo opens one project at a time: " + std::to_string(otherProjects) +
+                    (otherProjects == 1 ? " other project was" : " other projects were") + " not opened.");
+    });
+}
+
 void UltraVideoWindow::BeginBinDrag(const std::string& path) {
     const MediaItem* m = document_.FindMedia(path);
     if (!m || !m->error.empty()) return;
@@ -1075,6 +1085,54 @@ void UltraVideoWindow::DragToTimeline(const UCEvent& source, bool drop) {
     }
     e.type = drop ? UCEventType::Drop : UCEventType::DragOver;
     timeline_->OnEvent(e);
+}
+
+void UltraVideoWindow::BeginEffectDrag(std::string key) {   // by value: the caller passes effectPress_, cleared here
+    const EffectPreset* preset = FindEffectPreset(key);
+    effectPress_.clear();
+    if (!preset) return;
+    for (const auto& b : effectButtons_)   // the button lets go: its MouseUp goes to the drag
+        if (b->GetIdentifier() == std::string("uv.bin.effect.") + key) { b->SetPressed(false); b->SetHovered(false); }
+    effectDrag_ = key;
+    effectHover_.clear();
+    Message(std::string("Drop ") + preset->label + " on a clip on the main track or the overlay lane. Esc lets go.");
+}
+
+// The clip under the pointer is the target while it is on the main track or
+// the overlay lane; the timeline rings it, the status line names it, the drop applies the preset
+void UltraVideoWindow::DragEffect(const UCEvent& source, bool drop) {
+    if (effectDrag_.empty()) return;
+    const EffectPreset* preset = FindEffectPreset(effectDrag_);
+    const std::string label = preset ? preset->label : effectDrag_;
+    const Point2Df inWindow(static_cast<float>(source.pointerWindow.x), static_cast<float>(source.pointerWindow.y));
+    std::string clipId, trackId;
+    if (timeline_ && timeline_->IsVisible() && timeline_->ContainsInWindow(inWindow)) {
+        const Point2Df local = timeline_->MapToLocal(inWindow);
+        clipId = timeline_->ClipAt(local.x, local.y, &trackId);
+    }
+    const EffectTarget target = EffectTargetOf(clipId);
+    const bool takes = target.segment >= 0 || target.overlay >= 0;
+    const std::string hover = takes ? "clip:" + clipId : clipId.empty() ? "" : "other";
+    if (!drop) {
+        if (hover == effectHover_) return;
+        effectHover_ = hover;
+        if (timeline_) timeline_->SetDropTargetClip(takes ? clipId : "");
+        if (takes) Message("Drop to put " + label + " on " + EffectClipName(target) + ".");
+        else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds.");
+        else Message("Drop " + label + " on a clip on the main track or the overlay lane. Esc lets go.");
+        return;
+    }
+    const std::string key = effectDrag_;
+    CancelEffectDrag();
+    if (takes) ApplyEffectTo(key, clipId);
+    else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds: nothing applied.");
+    else Message("Dropped outside a clip: nothing applied.");
+}
+
+void UltraVideoWindow::CancelEffectDrag() {
+    effectDrag_.clear();
+    effectHover_.clear();
+    if (timeline_) timeline_->SetDropTargetClip("");
 }
 
 void UltraVideoWindow::AddMediaToTimeline(const std::string& path, double at) {
@@ -1160,11 +1218,8 @@ void UltraVideoWindow::RenderDraft() {
     if (!draftPath_.empty() && draftRevision_ == documentRevision_) return;
     std::vector<VideoFXSegment> segments = SegmentsToPlay();
     if (segments.empty()) return;
-    VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
-    settings.music = document_.project.settings.music;
+    VideoFXExportSettings settings = document_.DraftSettings();
     PutSounds(document_, settings);
-    settings.fitMode = document_.project.settings.fitMode;
-    settings.frameRate = document_.FrameRate();
     std::error_code ec;
     const fs::path dir = fs::temp_directory_path(ec);
     if (ec) {
@@ -1191,8 +1246,20 @@ void UltraVideoWindow::PollDraft() {
         // the player has the file: start it once it is ready, give up if it
         // cannot (an error, or nothing loaded after a few seconds)
         const VideoPlaybackState state = viewer_.DraftState();
-        const bool failed = state == VideoPlaybackState::Error ||
-                            (state == VideoPlaybackState::Idle && ++draftStartTicks_ > 250);
+        bool failed = state == VideoPlaybackState::Error ||
+                      (state == VideoPlaybackState::Idle && ++draftStartTicks_ > 250);
+        if (!failed && state != VideoPlaybackState::Loading && state != VideoPlaybackState::Buffering &&
+            state != VideoPlaybackState::Idle) {
+            viewer_.DraftSeek(document_.view.playhead);
+            // the player may refuse (no audio sink it can open): then the
+            // frame-by-frame path, not a playhead that jumps to the end
+            if (viewer_.DraftPlay()) {
+                draftStarting_ = false;
+                draftPlaying_ = true;
+            } else {
+                failed = true;
+            }
+        }
         if (failed) {
             viewer_.HideDraft();
             draftStarting_ = false;
@@ -1202,12 +1269,6 @@ void UltraVideoWindow::PollDraft() {
             Message("The player cannot play the draft here: playing frame by frame, without sound.");
             playFrom_ = document_.view.playhead;
             playStarted_ = std::chrono::steady_clock::now();
-        } else if (state != VideoPlaybackState::Loading && state != VideoPlaybackState::Buffering &&
-                   state != VideoPlaybackState::Idle) {
-            viewer_.DraftSeek(document_.view.playhead);
-            viewer_.DraftPlay();
-            draftStarting_ = false;
-            draftPlaying_ = true;
         }
     }
     if (!draftJob_ || draftJob_->IsRunning()) return;
@@ -1378,15 +1439,14 @@ void UltraVideoWindow::SetTool(TimelineTool tool) {
 
 void UltraVideoWindow::RefreshToolbarLooks() {
     if (!timeline_) return;
-    const Palette& p = *palette_;
     const TimelineTool tool = timeline_->GetTool();
-    SetToggleLook(*toolSelect_, tool == TimelineTool::Select, p);
-    SetToggleLook(*toolBlade_, tool == TimelineTool::Blade, p);
-    SetToggleLook(*toolTrim_, tool == TimelineTool::Trim, p);
-    SetToggleLook(*toolSlip_, tool == TimelineTool::Slip, p);
-    SetToggleLook(*magnet_, true, p);
-    SetToggleLook(*snap_, snapping_, p);
-    SetToggleLook(*beats_, showBeats_, p);
+    SetToggleLook(*toolSelect_, tool == TimelineTool::Select);
+    SetToggleLook(*toolBlade_, tool == TimelineTool::Blade);
+    SetToggleLook(*toolTrim_, tool == TimelineTool::Trim);
+    SetToggleLook(*toolSlip_, tool == TimelineTool::Slip);
+    SetToggleLook(*magnet_, true);
+    SetToggleLook(*snap_, snapping_);
+    SetToggleLook(*beats_, showBeats_);
 }
 
 void UltraVideoWindow::SplitAtPlayhead() {
@@ -1483,13 +1543,23 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
 }
 
 void UltraVideoWindow::ApplyEffect(const std::string& key) {
+    const EffectTarget target = EffectTargetOf(selectedClip_);
+    if (target.segment < 0 && target.overlay < 0) {
+        Message("Select a clip on the main track or the overlay lane first, or drag the effect onto one.");
+        return;
+    }
+    ApplyEffectTo(key, selectedClip_);
+}
+
+void UltraVideoWindow::ApplyEffectTo(const std::string& key, const std::string& clipId) {
     const EffectPreset* preset = FindEffectPreset(key);
     if (!preset) return;
     // a main-track clip, or an overlay clip's own picture
-    const EffectTarget target{SegmentOfClip(document_, selectedClip_), document_.OverlayIndex(selectedClip_)};
-    if (target.segment < 0 && target.overlay < 0) {
-        Message("Select a clip on the main track or the overlay lane first: an effect goes on a clip.");
-        return;
+    const EffectTarget target = EffectTargetOf(clipId);
+    if (target.segment < 0 && target.overlay < 0) return;
+    if (selectedClip_ != clipId) {   // the clip it lands on is the one the inspector shows
+        selectedClip_ = clipId;
+        if (timeline_) timeline_->SetSelection({clipId});
     }
     Document trial = document_;
     if (!trial.ApplyEffectPreset(target, key)) {
@@ -1498,9 +1568,19 @@ void UltraVideoWindow::ApplyEffect(const std::string& key) {
     }
     Edit(std::string("Apply ") + preset->label, [target, key](Document& d) { d.ApplyEffectPreset(target, key); });
     inspector_.ShowClipTab();
-    const std::string name = target.segment >= 0 ? ClipName(document_, static_cast<size_t>(target.segment))
-                                                 : document_.overlays[static_cast<size_t>(target.overlay)].Name();
-    Message(std::string(preset->label) + " on " + name + ": the inspector lists its effects.");
+    Message(std::string(preset->label) + " on " + EffectClipName(target) + ": the inspector lists its effects.");
+}
+
+EffectTarget UltraVideoWindow::EffectTargetOf(const std::string& clipId) const {
+    const int segment = clipId.empty() ? -1 : SegmentOfClip(document_, clipId);
+    return segment >= 0 ? EffectTarget{segment, -1} : EffectTarget{-1, clipId.empty() ? -1 : document_.OverlayIndex(clipId)};
+}
+
+std::string UltraVideoWindow::EffectClipName(EffectTarget target) const {
+    if (target.segment >= 0) return ClipName(document_, static_cast<size_t>(target.segment));
+    if (target.overlay >= 0 && static_cast<size_t>(target.overlay) < document_.overlays.size())
+        return document_.overlays[static_cast<size_t>(target.overlay)].Name();
+    return "";
 }
 
 void UltraVideoWindow::AddOverlay(const std::string& path, double at) {
@@ -1527,10 +1607,7 @@ void UltraVideoWindow::AddOverlay(const std::string& path, double at) {
 void UltraVideoWindow::ChooseOverlay(double at) {
     FileDialogOptions opts;
     opts.SetTitle("A file over the picture").SetParentWindow(window_.get());
-    std::vector<std::string> exts;
-    for (const std::string& e : MediaExtensions())
-        if (Document::KindOfPath("x." + e) != MediaKind::Audio) exts.push_back(e);
-    opts.AddFilter("Video and pictures", exts);
+    AddImportTypes(opts, "Video and pictures", true, true, false);
     UltraCanvasFileLoader::OpenFileDialog(opts, [this, at](DialogResult result, const std::string& path) {
         if (result == DialogResult::OK && !path.empty()) AddOverlay(path, at);
     });
@@ -1557,10 +1634,7 @@ void UltraVideoWindow::AddSound(const std::string& path, double at, bool voiceOv
 void UltraVideoWindow::ChooseSound(double at, bool voiceOver) {
     FileDialogOptions opts;
     opts.SetTitle(voiceOver ? "A voice-over" : "A sound effect").SetParentWindow(window_.get());
-    std::vector<std::string> exts;
-    for (const std::string& e : MediaExtensions())
-        if (Document::KindOfPath("x." + e) != MediaKind::Image) exts.push_back(e);
-    opts.AddFilter("Sound, and video with sound", exts);
+    AddImportTypes(opts, "Sound, and video with sound", true, false, true);
     UltraCanvasFileLoader::OpenFileDialog(opts, [this, at, voiceOver](DialogResult result, const std::string& path) {
         if (result == DialogResult::OK && !path.empty()) AddSound(path, at, voiceOver);
     });
@@ -1606,6 +1680,7 @@ void UltraVideoWindow::AddMarker() {
 void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double seconds, const std::string& clipId, int x, int y) {
     menu_ = std::make_shared<UltraCanvasMenu>("uv.timelineMenu", 0, 0, 240, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
+    menu_->SetFollowTheme(true);       // the raised panel, ink and hairlines of the current look
     const int index = SegmentOfClip(document_, clipId);
     const int titleIndex = document_.TitleIndex(clipId);
     const int overlayIndex = document_.OverlayIndex(clipId);
@@ -1734,6 +1809,13 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
                 if (static_cast<size_t>(index) < d.project.segments.size()) d.project.segments[static_cast<size_t>(index)].mute = muted;
             });
         }));
+        if (!s.effects.empty()) {
+            menu_->AddItem(MenuItemData::Action("Remove the effects", [this, index]() {
+                Edit("Remove effects", [index](Document& d) {
+                    if (static_cast<size_t>(index) < d.project.segments.size()) d.project.segments[static_cast<size_t>(index)].effects.clear();
+                });
+            }));
+        }
         if (index > 0) {
             menu_->AddItem(MenuItemData::Separator());
             if (s.transitionIn.IsCut()) {
@@ -1775,7 +1857,7 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
             menu_->AddItem(MenuItemData::ActionWithShortcut("Import media here\xE2\x80\xA6", "Ctrl+I", [this, seconds]() {
                 FileDialogOptions opts;
                 opts.SetTitle("Import media").SetParentWindow(window_.get());
-                opts.AddFilter("Video, pictures and sound", MediaExtensions());
+                AddImportTypes(opts, "Video, pictures and sound", true, true, true);
                 UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, [this, seconds](DialogResult result, const std::vector<std::string>& files) {
                     if (result == DialogResult::OK && !files.empty()) ImportFiles(files, seconds);
                 });
@@ -1804,7 +1886,7 @@ void UltraVideoWindow::Export() {
         Message("An export is already running.");
         return;
     }
-    ShowExportDialog(window_.get(), document_, *palette_, [this](const ExportChoice& choice) { StartExport(choice); });
+    ShowExportDialog(window_.get(), document_, [this](const ExportChoice& choice) { StartExport(choice); });
 }
 
 void UltraVideoWindow::StartExport(const ExportChoice& choice) {
@@ -1956,6 +2038,11 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
                 UCEvent leave;
                 leave.type = UCEventType::DragLeave;
                 if (timeline_) timeline_->OnEvent(leave);
+                Message("Drag cancelled.");
+                return true;
+            }
+            if (!effectDrag_.empty()) {
+                CancelEffectDrag();
                 Message("Drag cancelled.");
                 return true;
             }

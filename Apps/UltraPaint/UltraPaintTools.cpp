@@ -4,16 +4,21 @@
 // airbrush, eraser, clone, smudge, dodge, burn), fill, gradient, the lines
 // (line, polyline, arrow, curve), shapes (rectangle, ellipse), text, zoom
 // and pan.
+// Version: 1.2.0 - Text types on the canvas into a text layer; painting on a
+//                  text layer asks to rasterize it; Move moves a text as text
+// Version: 1.1.1 - AddCaption: the hints under a tool's options are quiet grey, not bold
 // Version: 1.1.0 - Polyline, Arrow and Curve
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraPaintTools.h"
 
+#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasRasterText.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
@@ -103,9 +108,9 @@ void AddCheckbox(UltraCanvasContainer& panel, const std::string& id, const std::
     panel.AddChild(cb);
 }
 
-void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
-                 const std::vector<std::string>& items, int selected,
-                 const std::function<void(int)>& onChange) {
+UltraCanvasDropdown* AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
+                                 const std::vector<std::string>& items, int selected,
+                                 const std::function<void(int)>& onChange) {
     auto row = MakeRow(id + "-row");
     auto lbl = CreateLabel(id + "-label", 0, 0, kLabelW, kRowH, label);
     lbl->SetFontSize(11);
@@ -118,12 +123,15 @@ void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::
     dd->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     row->AddChild(dd);
     panel.AddChild(row);
+    return dd.get();
 }
 
 void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text) {
+    // A hint under the controls ("[ and ] change the size"): quiet grey, not
+    // bold, so it does not read as one more heading in the card.
     auto lbl = CreateLabel(id, 0, 0, 0, 20, text);
-    lbl->SetFontSize(11);
-    lbl->SetFontWeight(FontWeight::Bold);
+    lbl->SetFontSize(10.5f);
+    lbl->SetTextColor(Color(104, 112, 125, 255));
     lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     panel.AddChild(lbl);
 }
@@ -235,14 +243,22 @@ void SetPreviewPen(IRenderContext* ctx, PaintToolContext& tc, const PaintViewTra
 
 Point2Dd ToView(const PaintViewTransform& v, const Point2Df& p) { return v.ImageToView(p.x, p.y); }
 
-// Active layer if it can be painted on; reports why not otherwise.
-std::shared_ptr<UCRasterLayer> PaintableLayer(PaintToolContext& ctx, std::shared_ptr<UCRasterDocument>& doc) {
+// Active layer if it can be painted on; reports why not otherwise. Painting
+// on a text layer would turn it into a bitmap, so that is asked first
+// (`action` names what was about to happen) and nothing is painted this time.
+std::shared_ptr<UCRasterLayer> PaintableLayer(PaintToolContext& ctx, std::shared_ptr<UCRasterDocument>& doc,
+                                              const std::string& action) {
     doc = ctx.getDocument ? ctx.getDocument() : nullptr;
     if (!doc || !doc->IsValid()) return nullptr;
     auto layer = doc->GetActiveLayer();
     if (!layer) return nullptr;
     if (layer->locked) { if (ctx.setStatus) ctx.setStatus("The active layer is locked"); return nullptr; }
     if (!layer->visible) { if (ctx.setStatus) ctx.setStatus("The active layer is hidden"); return nullptr; }
+    if (layer->IsTextLayer()) {
+        if (ctx.askRasterize) ctx.askRasterize(action);
+        else if (ctx.setStatus) ctx.setStatus("The active layer is a text layer: rasterize it to paint on it");
+        return nullptr;
+    }
     return layer;
 }
 
@@ -250,7 +266,7 @@ std::shared_ptr<UCRasterLayer> PaintableLayer(PaintToolContext& ctx, std::shared
 template <typename F>
 void EditActiveLayer(PaintToolContext& ctx, const std::string& label, F&& fn) {
     std::shared_ptr<UCRasterDocument> doc;
-    auto layer = PaintableLayer(ctx, doc);
+    auto layer = PaintableLayer(ctx, doc, label);
     if (!layer) return;
     auto before = layer->Clone();
     const Rect2Di changed = fn(*doc, *layer, &doc->GetSelection());
@@ -421,7 +437,25 @@ public:
                            "Drag to move the selection (or the whole layer)") {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::SizeAll; }
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
-        auto layer = PaintableLayer(ctx, doc);
+        // A text layer moved whole stays text: its box moves, and the text is
+        // drawn again where it lands (so nothing the canvas edge cut off is
+        // lost on the way).
+        doc = ctx.getDocument ? ctx.getDocument() : nullptr;
+        if (doc && doc->IsValid()) {
+            auto layer = doc->GetActiveLayer();
+            const bool selection = doc->GetSelection().IsActive() && ctx.options->moveSelectionOnly;
+            if (layer && layer->IsTextLayer() && !selection && !layer->locked && layer->visible) {
+                snapshot = layer->Clone();
+                floating.reset();
+                movingSelection = false;
+                movingText = true;
+                startX = e.x; startY = e.y; dx = dy = 0;
+                active = true;
+                return;
+            }
+        }
+        movingText = false;
+        auto layer = PaintableLayer(ctx, doc, name);
         if (!layer) return;
         snapshot = layer->Clone();
         floating.reset();
@@ -445,6 +479,10 @@ public:
         active = false;
         dx = static_cast<int>(std::lround(e.x - startX));
         dy = static_cast<int>(std::lround(e.y - startY));
+        if (movingText) {
+            FinishTextMove(ctx);
+            return;
+        }
         Apply(ctx);
         auto layer = doc->GetActiveLayer();
         if (layer && snapshot && (dx != 0 || dy != 0)) {
@@ -462,6 +500,22 @@ public:
         AddCaption(panel, "move-hint", "Without a selection the whole layer moves");
     }
 private:
+    void FinishTextMove(PaintToolContext& ctx) {
+        auto layer = doc->GetActiveLayer();
+        movingText = false;
+        if (!layer || !snapshot) { snapshot.reset(); return; }
+        // The drag shifted the pixels as a preview; the layer itself is put
+        // back and replaced by the text drawn at its new place, one undo step.
+        layer->CopyFrom(*snapshot, 0, 0);
+        doc->NotifyChanged(layer->GetRect());
+        if ((dx != 0 || dy != 0) && layer->text) {
+            std::string error;
+            auto moved = RenderTextLayerLike(*layer, *layer->text->MovedBy(dx, dy), error);
+            if (moved) doc->ReplaceLayer(doc->GetActiveLayerIndex(), moved, "Move Text");
+            else if (ctx.setStatus) ctx.setStatus("Could not move the text: " + error);
+        }
+        snapshot.reset();
+    }
     void Apply(PaintToolContext&) {
         auto layer = doc->GetActiveLayer();
         if (!layer || !snapshot) return;
@@ -489,7 +543,7 @@ private:
     std::shared_ptr<UCRasterDocument> doc;
     std::shared_ptr<UCRasterLayer> snapshot, floating;
     Point2Di floatOrigin;
-    bool active = false, movingSelection = false;
+    bool active = false, movingSelection = false, movingText = false;
     double startX = 0, startY = 0;
     int dx = 0, dy = 0;
 };
@@ -620,7 +674,7 @@ public:
             ctx.surface->Refresh();
             return;
         }
-        auto layer = PaintableLayer(ctx, doc);
+        auto layer = PaintableLayer(ctx, doc, name);
         if (!layer) return;
         if (mode == BrushMode::Clone) {
             if (!cloneSourceSet) { if (ctx.setStatus) ctx.setStatus("Ctrl+click to set the clone source first"); return; }
@@ -1185,21 +1239,95 @@ private:
 // TEXT / ZOOM / PAN
 // ===========================================================================
 
+// Types on the canvas: a click starts a text there, a drag a box the lines
+// wrap in, a click on a text layer's box edits it. The window holds the
+// editor (UltraCanvasRichTextEdit over the canvas, at the canvas's zoom) and
+// puts what was typed into a text layer; the tool only says where.
 class TextTool : public PaintTool {
 public:
-    TextTool() : PaintTool(PaintToolId::Text, "Text", "text.svg", 'T', "Click where the text should start") {}
+    TextTool() : PaintTool(PaintToolId::Text, "Text", "text.svg", 'T',
+                           "Click and type, or drag a box for the lines to wrap in; click a text to edit it. "
+                           "Escape or a click outside finishes") {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::Text; }
-    void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
-        if (ctx.requestText) ctx.requestText(e.x, e.y);
+    void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
+        dragging = true;
+        x0 = x1 = e.x;
+        y0 = y1 = e.y;
+    }
+    void OnDrag(PaintToolContext& ctx, const PaintPointerEvent& e) override {
+        if (!dragging) return;
+        x1 = e.x;
+        y1 = e.y;
+        ctx.surface->Refresh();
+    }
+    void OnRelease(PaintToolContext& ctx, const PaintPointerEvent& e) override {
+        if (!dragging) return;
+        dragging = false;
+        x1 = e.x;
+        y1 = e.y;
+        ctx.surface->Refresh();
+        if (!ctx.requestText) return;
+        // Wider than a few screen pixels is a box; anything less, a click.
+        const double minimum = 6.0 / std::max(0.01, ctx.surface->GetZoom());
+        const double width = std::fabs(x1 - x0);
+        if (width > minimum) ctx.requestText(std::min(x0, x1), std::min(y0, y1), width);
+        else ctx.requestText(x0, y0, 0.0);
+    }
+    void DrawOverlay(PaintToolContext& ctx, IRenderContext* rc, const PaintViewTransform& v) override {
+        (void)ctx;
+        if (!dragging || std::fabs(x1 - x0) * v.zoom < 6.0) return;
+        const Point2Dd a = v.ImageToView(std::min(x0, x1), std::min(y0, y1));
+        const Point2Dd b = v.ImageToView(std::max(x0, x1), std::max(y0, y1));
+        const Rect2Dd r(std::floor(a.x) + 0.5, std::floor(a.y) + 0.5,
+                        std::max(1.0, std::floor(b.x - a.x)), std::max(1.0, std::floor(b.y - a.y)));
+        rc->SetStrokeWidth(1.0);
+        rc->SetStrokePaint(Color(255, 255, 255, 220));
+        rc->SetLineDash(UCDashPattern());
+        rc->DrawRectangle(r);
+        rc->SetStrokePaint(Color(0, 0, 0, 220));
+        rc->SetLineDash(UCDashPattern({4.0, 4.0}));
+        rc->DrawRectangle(r);
+        rc->SetLineDash(UCDashPattern());
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddDropdown(panel, "text-font", "Font", { "Sans", "Serif", "Monospace" },
-                    o->textFont == "Serif" ? 1 : o->textFont == "Monospace" ? 2 : 0,
-                    [o](int i) { o->textFont = i == 1 ? "Serif" : i == 2 ? "Monospace" : "Sans"; });
-        AddSliderRow(panel, "text-size", "Size", 6, 300, static_cast<float>(o->textSize), 1, true, [o](float v) { o->textSize = static_cast<int>(v); });
-        AddCheckbox(panel, "text-bold", "Bold", o->textBold, [o](bool v) { o->textBold = v; });
+        auto notify = ctx.textOptionChanged;
+        // Every font the system has, not a short list of our own.
+        std::vector<std::string> families = GetInstalledFontFamilies();
+        if (families.empty()) families = { "Sans", "Serif", "Monospace" };
+        auto current = std::find(families.begin(), families.end(), o->textFont);
+        if (current == families.end()) {
+            families.insert(families.begin(), o->textFont);
+            current = families.begin();
+        }
+        auto* fonts = AddDropdown(panel, "text-font", "Font", families, static_cast<int>(current - families.begin()),
+                                  [o, notify, families](int i) {
+                                      if (i < 0 || i >= static_cast<int>(families.size())) return;
+                                      o->textFont = families[static_cast<size_t>(i)];
+                                      if (notify) notify("font");
+                                  });
+        if (fonts) {
+            DropdownStyle style = fonts->GetStyle();
+            style.maxVisibleItems = 16;
+            fonts->SetStyle(style);
+            fonts->SetTooltip(std::to_string(families.size()) + " fonts installed");
+        }
+        AddSliderRow(panel, "text-size", "Size", 4, 400, static_cast<float>(o->textSize), 1, true,
+                     [o, notify](float v) { o->textSize = static_cast<int>(v); if (notify) notify("size"); });
+        AddCheckbox(panel, "text-bold", "Bold", o->textBold,
+                    [o, notify](bool v) { o->textBold = v; if (notify) notify("bold"); });
+        AddCheckbox(panel, "text-italic", "Italic", o->textItalic,
+                    [o, notify](bool v) { o->textItalic = v; if (notify) notify("italic"); });
+        AddCheckbox(panel, "text-underline", "Underline", o->textUnderline,
+                    [o, notify](bool v) { o->textUnderline = v; if (notify) notify("underline"); });
+        AddDropdown(panel, "text-align", "Align", { "Left", "Centre", "Right" }, o->textAlign,
+                    [o, notify](int i) { o->textAlign = std::clamp(i, 0, 2); if (notify) notify("align"); });
+        AddCaption(panel, "text-colour", "Colour: the foreground colour");
+        AddCaption(panel, "text-hint", "Editable until merged");
     }
+private:
+    bool dragging = false;
+    double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 };
 
 class ZoomTool : public PaintTool {

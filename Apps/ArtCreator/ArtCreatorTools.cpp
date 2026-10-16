@@ -3,9 +3,10 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.2.2 - the arrow keys nudge by one icon pixel in icon mode
 // Version: 1.2.1 - the Shape Editor button reads "Line / curve", not "Line ⇄ curve"
 // Version: 1.2.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorTools.h"
@@ -455,7 +456,8 @@ public:
         if (k.virtualKey == UCKeys::Left) dx = -step; else if (k.virtualKey == UCKeys::Right) dx = step;
         else if (k.virtualKey == UCKeys::Up) dy = -step; else if (k.virtualKey == UCKeys::Down) dy = step;
         if ((dx != 0 || dy != 0) && !ctx.selection->Empty()) {
-            const double s = ctx.canvas->PixelsToDoc(1.0);
+            // a screen pixel, or in icon mode one of the icon's pixels
+            const double s = ctx.iconPixel > 0 ? ctx.iconPixel : ctx.canvas->PixelsToDoc(1.0);
             ctx.history->Record("Nudge", [&]() { TranslateElements(ctx.selection->Elements(), dx * s, dy * s); }, true);
             return true;
         }

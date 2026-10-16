@@ -2,8 +2,9 @@
 // Proxy media: see VideoFXProxy.h. Built in every configuration; making a
 // proxy goes through VideoFX_Probe / VideoFX_Export, which the stub answers
 // with NotAvailable.
-// Version: 0.14.0
-// Last Modified: 2026-10-14
+// Version: 0.16.0 - a Blur's radius scaled to the proxy, on segments and picture-in-picture videos
+// Version: 0.12.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "VideoFXProxy.h"

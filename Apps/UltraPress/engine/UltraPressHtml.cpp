@@ -2,10 +2,13 @@
 // The HTML shadow, sitemap, robots and feed. Text goes through
 // HTML::EscapeText everywhere; the two blocks that carry HTML (richtext,
 // html) are the owner's own and pass through.
+// Version: 0.7.2 - width and height on every <img>
+// Version: 0.7.0 - paragraphs split by the model (SplitParagraphs)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressHtml.h"
+#include "UltraPressMedia.h"
 
 #include "HTMLReader/HTMLDocument.h"
 
@@ -49,13 +52,7 @@ bool IsAbsoluteUrl(const std::string& url) {
 
 std::string Paragraphs(const std::string& longText) {
     std::string out;
-    std::string paragraph;
-    auto flush = [&]() {
-        // trim
-        size_t start = paragraph.find_first_not_of(" \t\r\n");
-        size_t end = paragraph.find_last_not_of(" \t\r\n");
-        if (start == std::string::npos) { paragraph.clear(); return; }
-        std::string text = paragraph.substr(start, end - start + 1);
+    for (const std::string& text : SplitParagraphs(longText)) {
         std::string escaped = EscapeText(text);
         std::string withBreaks;
         for (char c : escaped) {
@@ -64,19 +61,7 @@ std::string Paragraphs(const std::string& longText) {
             else withBreaks += c;
         }
         out += "<p>" + withBreaks + "</p>\n";
-        paragraph.clear();
-    };
-    std::istringstream lines(longText);
-    std::string line;
-    while (std::getline(lines, line)) {
-        if (line.find_first_not_of(" \t\r") == std::string::npos) {
-            flush();
-        } else {
-            if (!paragraph.empty()) paragraph += '\n';
-            paragraph += line;
-        }
     }
-    flush();
     return out;
 }
 
@@ -142,6 +127,16 @@ static void EmitLinks(const Site& site, const JSONValue& links, std::string& out
     out += "</p>\n";
 }
 
+// ` width="W" height="H"` for a media picture whose header gives its size;
+// nothing for an absolute URL, a file not in the folder, or no folder.
+static std::string ImgSize(const std::string& siteDirectory, const std::string& path) {
+    if (siteDirectory.empty() || path.empty() || IsAbsoluteUrl(path)) return "";
+    const std::string relative = path[0] == '/' ? path.substr(1) : path;
+    int w = 0, h = 0;
+    if (!ImageDimensions(siteDirectory + "/" + relative, w, h)) return "";
+    return " width=\"" + std::to_string(w) + "\" height=\"" + std::to_string(h) + "\"";
+}
+
 static std::string MediaSrc(const std::string& path) {
     // A media path is relative to the site folder and published as it is;
     // an absolute URL stays.
@@ -174,12 +169,14 @@ void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context
         out += "<h1>" + EscapeText(block.Text("title")) + "</h1>\n";
         out += Paragraphs(block.Text("text"));
         if (!block.Text("picture").empty()) {
-            out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("picture"))) + "\" alt=\"\"></figure>\n";
+            out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("picture"))) + "\" alt=\"\"" +
+                   ImgSize(options.siteDirectory, block.Text("picture")) + "></figure>\n";
         }
         EmitLinks(site, block.Items("buttons"), out);
         out += "</section>\n";
     } else if (type == "picture") {
-        out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("src"))) + "\" alt=\"" + Attr(block.Text("alt")) + "\">";
+        out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("src"))) + "\" alt=\"" + Attr(block.Text("alt")) + "\"" +
+               ImgSize(options.siteDirectory, block.Text("src")) + ">";
         if (!block.Text("caption").empty()) out += "<figcaption>" + EscapeText(block.Text("caption")) + "</figcaption>";
         out += "</figure>\n";
     } else if (type == "columns") {
@@ -195,7 +192,8 @@ void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context
     } else if (type == "card") {
         out += "<article class=\"card\">\n";
         if (!block.Text("picture").empty()) {
-            out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("picture"))) + "\" alt=\"\"></figure>\n";
+            out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("picture"))) + "\" alt=\"\"" +
+                   ImgSize(options.siteDirectory, block.Text("picture")) + "></figure>\n";
         }
         out += "<h3>" + EscapeText(block.Text("title")) + "</h3>\n";
         out += Paragraphs(block.Text("text"));
@@ -318,6 +316,12 @@ std::string HtmlEmitter::Head(const UltraPress::Page& page, const PageContext& c
     if (!page.seo.image.empty()) {
         const std::string image = IsAbsoluteUrl(page.seo.image) ? page.seo.image : site.url + MediaSrc(page.seo.image);
         out += "<meta property=\"og:image\" content=\"" + Attr(image) + "\">\n";
+        int w = 0, h = 0;
+        if (!options.siteDirectory.empty() && !IsAbsoluteUrl(page.seo.image) &&
+            ImageDimensions(options.siteDirectory + "/" + (page.seo.image[0] == '/' ? page.seo.image.substr(1) : page.seo.image), w, h)) {
+            out += "<meta property=\"og:image:width\" content=\"" + std::to_string(w) + "\">\n";
+            out += "<meta property=\"og:image:height\" content=\"" + std::to_string(h) + "\">\n";
+        }
         out += "<meta name=\"twitter:card\" content=\"summary_large_image\">\n";
     } else {
         out += "<meta name=\"twitter:card\" content=\"summary\">\n";

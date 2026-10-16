@@ -5,11 +5,11 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.2  
+**Version:** 2.1.0 - `ApplyTheme`  
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
-<!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
+<!-- doc-check: void SendChatText(); void SaveNote(const std::string& text); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
 
 ## Class Hierarchy
 ```
@@ -454,6 +454,17 @@ void ApplyDarkTheme();
 ```
 Applies dark color scheme with syntax highlighting.
 
+#### ApplyTheme
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme);
+```
+The light or dark preset by the theme's `dark` flag (the token colours),
+then the theme's roles for the surfaces and ink: the well behind the text,
+ink, the hover fill on the current line, the accent behind a selection,
+faint ink for the line numbers over the panel. A text area asked to follow
+the theme (`SetFollowTheme(true)`) does this on every theme change; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
+
 #### ApplyLightTheme
 ```cpp
 void ApplyLightTheme();
@@ -516,6 +527,19 @@ std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 // Every KeyDown, before the area handles it (any editing mode, read-only too).
 // Return true to consume the key; false lets the area edit as usual.
 std::function<bool(const UCEvent&)> onBeforeKeyDown;
+
+// The keyboard focus arriving and leaving, the same two the text input has;
+// fired after the area's own handling, so onFocusLost reads the final text.
+std::function<void()> onFocusGained;
+std::function<void()> onFocusLost;
+```
+
+A field that keeps its text when it is left, whether it is a line or a
+paragraph:
+
+```cpp
+auto note = std::make_shared<UltraCanvasTextArea>("note", 0, 0, 400, 120);
+note->onFocusLost = [raw = note.get()]() { SaveNote(raw->GetText()); };   // your own save
 ```
 
 `onBeforeKeyDown` gives a key a meaning of its own without reimplementing the
@@ -560,6 +584,36 @@ The text area handles the following events:
 - **Triple-click**: Select line
 - **Drag**: Text selection
 - **Wheel**: Vertical scrolling (3 lines per notch)
+
+### Input Method Composition
+
+While an input method (Japanese, Chinese, Korean, ...) is composing, the text
+it has so far is laid out **in the caret's line, at the caret, underlined**,
+with the caret inside it where the input method puts it; the view scrolls to
+keep that caret visible, and a wrapped line grows as the composition does.
+The area says so through `DrawsTextComposition()`, and the platform backend
+then sends it `UCEventType::TextComposition` events instead of opening the
+input method's own composition window (on a backend that does not report
+compositions the window is used as before).
+
+- The composition is **not** part of the text: `GetText()`, `onTextChanged`,
+  syntax state and the undo stack never see it. `GetCompositionText()` returns
+  it (`""` when nothing is being composed).
+- The committed result arrives as ordinary typing (`KeyDown` with `text`),
+  which ends the composition and is inserted like any typed text.
+- An empty composition ends it without typing anything, and so does losing
+  the focus, turning the area read-only or changing the editing mode.
+- Starting to compose over a selection deletes the selection, as typing would
+  (that deletion is a normal edit: one undo step, one `onTextChanged`).
+- A composition never breaks the line: a line break in it is shown as a space.
+- `DrawsTextComposition()` is `false` for a read-only or display-only area and
+  in hex mode, where a key is a hex digit rather than text.
+
+```cpp
+auto notes = std::make_shared<UltraCanvasTextArea>("Notes", 0, 0, 400, 200);
+bool inPlace = notes->DrawsTextComposition();          // true: editable
+const std::string& composing = notes->GetCompositionText();
+```
 
 ## Usage Example
 
@@ -911,6 +965,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes

@@ -7,6 +7,9 @@
 // hand-off needs UltraMessage, a separate module the core does not link, and
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
+// Version: 1.2.0 - the answer goes out from the bus thread, so a busy window
+//                  no longer makes the other start wait and give up
+// Version: 1.1.0 - MakeOpenRequest / RequestPaths / ListenOpen
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -22,12 +25,14 @@
 #include "UltraCanvasWindow.h"
 
 #include <cstdlib>
+#include <filesystem>
+#include <system_error>
 #include <utility>
 
 #ifdef ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE
 #include "UltraMessage/UltraMessage.h"
-#include "UltraMessage/UltraMessageUltraCanvas.h"
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <vector>
@@ -112,16 +117,31 @@ namespace UltraCanvas {
             if (endpoint == UltraMsgInvalidHandle) return;
             endpoint_ = endpoint;
         }
-        handler_ = std::move(handler);
-        if (!UltraMsg_HasUIDispatcher()) UltraMsg_UseUltraCanvasApplication();
+        // The answer goes out from the bus thread at once, and only the
+        // handler waits for the UI thread. A window that is busy - a native
+        // dialog that blocks the loop, a long load - would otherwise leave the
+        // other start waiting until it gave up and said "already running";
+        // now it quits at once and the request is carried out when the window
+        // is free again.
+        const auto run = std::make_shared<Handler>(std::move(handler));
+        live_ = std::make_shared<std::atomic<bool>>(true);
+        const auto live = live_;
+        const std::string name = displayName_;
         const UltraMsgHandle endpoint = endpoint_;
+        UltraMsgSubscribeOptions options;
+        options.onWorkerThread = true;
         const UltraMsgHandle subscription = UltraMsg_Subscribe(endpoint, ShowTopic(appId_),
-            [this, endpoint](const UltraMsgMessage& message) {
-                // Answer first: the other start is waiting to quit.
+            [endpoint, run, live, name](const UltraMsgMessage& message) {
                 UltraMsg_Reply(endpoint, message, JSONValue::MakeObject());
-                debugOutput << displayName_ << ": another start asked for the window" << std::endl;
-                if (handler_) handler_(message.body);
-            });
+                auto* app = UltraCanvasApplicationBase::GetCurrent();
+                if (!app) return;
+                app->PostToUIThread([run, live, name, body = message.body]() {
+                    if (!live->load()) return;   // Close() came first
+                    debugOutput << name << ": another start asked for the window" << std::endl;
+                    if (*run) (*run)(body);
+                });
+            },
+            options);
         if (subscription != UltraMsgInvalidHandle) subscription_ = subscription;
     }
 
@@ -130,7 +150,8 @@ namespace UltraCanvas {
         subscription_ = 0;
         if (endpoint_ != 0) UltraMsg_Disconnect(endpoint_);
         endpoint_ = 0;
-        handler_ = nullptr;
+        if (live_) live_->store(false);
+        live_.reset();
     }
 #else
     bool UltraCanvasSingleInstance::HandOff(const JSONValue&) { return false; }
@@ -167,6 +188,45 @@ namespace UltraCanvas {
 
     void UltraCanvasSingleInstance::ListenRaise() {
         Listen([](const JSONValue&) { BringToFront(); });
+    }
+
+    void UltraCanvasSingleInstance::ListenOpen(OpenHandler openPaths) {
+        Listen([openPaths = std::move(openPaths)](const JSONValue& request) {
+            const std::vector<std::string> paths = RequestPaths(request);
+            if (paths.empty() || !openPaths) {
+                BringToFront();
+                return;
+            }
+            openPaths(paths);
+        });
+    }
+
+    JSONValue UltraCanvasSingleInstance::MakeOpenRequest(const std::vector<std::string>& paths) {
+        JSONValue request = JSONValue::MakeObject();
+        JSONValue list = JSONValue::MakeArray();
+        for (const std::string& path : paths) {
+            if (path.empty()) continue;
+            if (path.find("://") != std::string::npos) {
+                list.Append(JSONValue(path));
+                continue;
+            }
+            std::error_code ec;
+            const std::filesystem::path absolute = std::filesystem::absolute(PathFromUtf8(path), ec);
+            list.Append(JSONValue(ec ? path : PathToUtf8(absolute.lexically_normal())));
+        }
+        request.Set("paths", list);
+        return request;
+    }
+
+    std::vector<std::string> UltraCanvasSingleInstance::RequestPaths(const JSONValue& request) {
+        std::vector<std::string> paths;
+        const JSONValue& list = request.Get("paths");
+        if (!list.IsArray()) return paths;
+        for (size_t i = 0; i < list.GetSize(); ++i) {
+            const JSONValue& path = list.At(i);
+            if (path.IsString() && !path.GetString().empty()) paths.push_back(path.GetString());
+        }
+        return paths;
     }
 
     void UltraCanvasSingleInstance::BringToFront() {

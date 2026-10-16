@@ -20,6 +20,7 @@ set(ULTRACLOUD_SOURCES
     core/UltraCloudRegistry.cpp
     core/UltraCloudService.cpp
     core/UltraCloudHttp.cpp
+    core/UltraCloudLog.cpp
     core/UltraCloudOAuth.cpp
     providers/UltraCloudWebDav.cpp
     providers/UltraCloudFtp.cpp

@@ -24,14 +24,16 @@ UOS-Settings opens on this page.
 |---|---|
 | **Taskbar** | The screen edge the taskbar sits on: Left, Top or Bottom. |
 | **Wallpaper** | The picture behind the desktop; empty is the framework's picture. *Browse...* opens the file dialog. |
-| **RAM disc** | The folder the desktop's drive button opens. |
+| **RAM disc** | The folder the desktop's drive button opens; empty, no button (the default on Windows). |
 | **File manager** | The program the desktop's folder buttons start. |
 | **Virtual desktops** | How many the organiser offers (1-9); asked of the window manager, which may offer another number. |
+| **At sign-in** (Windows only) | What this account's sign-in starts. *The Windows desktop*: Explorer, as Windows has it - the way back from either of the others, at once: the taskbar as it was, and a desktop the sign-in started closes (instead of Explorer, Explorer then starts in its place). *UltraDesktop beside Explorer*: UltraDesktop starts at every sign-in - and now, if it is not running - and Explorer's taskbar hides itself. *UltraDesktop instead of Explorer*: from the next sign-in UltraDesktop is the whole desktop, with the programs' tray icons and sign out, restart and shut down; Explorer does not start, unless UltraDesktop fails. Not a setting in the file: it is the account's start at sign-in, through `UltraCanvasDesktopShell::ReplaceSystemDesktop` / `RestoreSystemDesktop`, so the choice always shows what is true. See [UltraDesktop on Windows](../UltraDesktop/README.md#on-windows). |
 
 A dropdown is saved when it changes, a text field when it is left or Return
 is pressed. The fields go to UltraDesktop's settings file -
 `<config dir>/ultraos/desktop.json` (`$XDG_CONFIG_HOME`, else `~/.config`;
-`%APPDATA%` on Windows) - read, changed and written back, so the sticky notes
+`%APPDATA%` on Windows; `~/Library/Application Support` on macOS) - read,
+changed and written back, so the sticky notes
 UltraDesktop keeps in the same file are not touched. A running UltraDesktop
 checks the file once a second and rebuilds its bars when one of these fields
 changed. The file is read and written by UltraDesktop's own settings code

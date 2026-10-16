@@ -224,9 +224,13 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   `InputConnection` gives the IME an editor to compose into (autocorrect,
   suggestions, gesture typing, CJK candidates); commits arrive as
   `UCEvent::text`, and `deleteSurroundingText` is replayed as Backspace
-  presses. Pre-edit text was indeed deferred, and deliberately stays that way:
-  it is a cross-platform capability (core text model + rendering + every
-  backend), not an Android gap — Linux shows no inline pre-edit either.
+  presses. Pre-edit text was deferred until the core gained it: the
+  `TextComposition` event and `DrawsTextComposition()`, which the Linux (XIM)
+  and Windows (IMM) backends deliver. Android now delivers it too:
+  `setComposingText` becomes `TextComposition` for an element that draws
+  compositions. `finishComposingText` and a tap keep the composing word as
+  typed, and `setComposingRegion` is refused. See the backend README's *Text
+  input*.
 
 ### 3.5 Desktop services with no Android analogue
 
@@ -267,13 +271,14 @@ pkg-config. The port needs a prebuilt Android sysroot (vcpkg's
 `arm64-android` triplet is the first thing to evaluate; Conan or hand-rolled
 meson cross-files are the fallback) with `PKG_CONFIG_LIBDIR` pointed at it.
 
-**Status: the vcpkg route is written but unproven.**
-`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below and
-`scripts/android-bootstrap-sysroot.sh` drives vcpkg with the NDK chainloaded.
-Neither has ever been run — the environment they were written in has no NDK and
-no route to download one — so this is the plan encoded, not a working sysroot.
-**This remains the one blocker between "compiles in CI" and "runs on a
-device".**
+**Status: the vcpkg route runs in CI.**
+`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below,
+libvips included, and `scripts/android-bootstrap-sysroot.sh` drives vcpkg (at
+the commit `scripts/macos-deps.sh` pins) with the NDK chainloaded.
+`.github/workflows/android-build.yml` builds that sysroot for `arm64-android`
+on GitHub's runner, with its NDK, keeps the libraries in vcpkg's binary cache,
+and compiles the core library against it with the NDK's toolchain. What is
+left between that and "runs on a device" is the APK (packaging/README.md).
 
 ### 4.1 Irreducible core stack (must cross-compile)
 
@@ -295,10 +300,10 @@ device".**
 
 | Dependency | Action |
 |---|---|
-| **libvips** (+ ~10 transitive libs) | Currently `REQUIRED` but `HAS_LIBVIPS`/`LIBVIPS_FOUND` guards already exist throughout — **make it optional** (drop `REQUIRED` at `UltraCanvas/CMakeLists.txt:146`, conditionalize the link). This is the single highest-leverage build change and benefits WASM too. Image decode on Android can later go through a smaller path (stb/libjpeg-turbo/libpng or JNI `BitmapFactory`) |
+| **libvips** (+ ~10 transitive libs) | ~~Make it optional~~ **Decided otherwise (2026-10-15): libvips is part of UltraCanvas on every platform, Android included** — it is in the vcpkg manifest with JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF and Netpbm, from the macOS overlay port. The optional build that the first milestone used is gone; only a single-threaded WebAssembly program goes without it, where libvips cannot run |
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
-| GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android |
+| GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android. **Status:** done with the NDK's MediaCodec, Camera2 and AAudio (`libspecific/Video/VideoBackendAndroid*.cpp`). No ExoPlayer, so no Java dependency. |
 | miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |
 | MuPDF (PDF plugin) | Official Android build exists; defer to a later phase |
@@ -418,8 +423,9 @@ Process lessons for the Android effort:
 ## 7. Phased implementation plan
 
 **Phase 0 — build foundations** (no Android code yet)
-- Make libvips optional; conditionalize the required-deps block
-  (`UltraCanvas/CMakeLists.txt:128-182`) per platform.
+- ~~Make libvips optional~~ (done for the first milestone, then reversed:
+  libvips is part of UltraCanvas on Android too; §4.2). Conditionalize the
+  rest of the required-deps block per platform.
 - Add `if(ANDROID)` platform arm + `OS/Android/` skeleton + NDK toolchain CI
   job that configures (even if it only builds core + stubs).
 - Produce the dependency sysroot (vcpkg `arm64-android` evaluation:
@@ -454,8 +460,10 @@ Process lessons for the Android effort:
   lives in the core (`UpdateTouchGesture`) rather than the Android backend,
   since the touch stream and the geometry are both platform-neutral.
 - ~~Audio (miniaudio AAudio — near-free)~~ — done, and it was indeed free:
-  enabling the existing option, no new dependency, no new link line. Video via
-  a MediaCodec backend is still open.
+  enabling the existing option, no new dependency, no new link line.
+- ~~Video via a MediaCodec backend~~ — done, and on by default, since every
+  library it needs is in the NDK sysroot: playback with A/V sync, thumbnails,
+  and Camera2 preview + MP4 recording. See the backend README's *Video*.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
 - Plugin packaging as `jniLibs`, Play-store packaging polish.

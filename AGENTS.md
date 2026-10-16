@@ -123,9 +123,14 @@ before adding cross-module code.
   a plugin registered once is offered everywhere - and the conversions
   between them: a drawing saved as a bitmap is
   `SaveVectorDocument(document, path, size, ...)` with the types from
-  `AddVectorDocumentSaveTypes`, drawn at the size the Settings give. Never a
-  list of formats an application keeps for itself, a writer it calls
-  directly, or a raster step of its own for something FileLoader does. What
+  `AddVectorDocumentSaveTypes`, drawn at the size the Settings give. A
+  dialog's file types are `AddLoadTypes(opts, label, {categories})` and
+  `AddSaveTypes(opts, category)` (`AddImageSaveTypes`,
+  `AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes`); a codec the
+  application brings itself joins them through `RegisterMediaCodec`, as
+  UltraVideo's FFmpeg engine does. Never a list of formats an application
+  keeps for itself, a writer it calls directly, or a raster step of its own
+  for something FileLoader does. What
   FileLoader cannot yet do is added to FileLoader, not worked around in the
   application. The exception is the program's own internal files - its
   settings, caches, logs, state, a temporary file - which it reads and writes
@@ -337,7 +342,11 @@ every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
 fraction of a second; it never blocks the session, and when an install fails
-it says so in one line in the session's context. The services CI starts for
+it says so in one line in the session's context. It also generates the
+comma-decimal locale `de_DE.UTF-8`, as CI's Linux rows do: the tests that hold
+file formats to dot-decimal numbers (`HTMLReaderTest`, `ModelLocaleDecimalTest`,
+`DiagramJsonLocaleTest` and the rest) skip without one, and the image has none.
+The services CI starts for
 its live tests (PostgreSQL, Avahi, the IPP printer) are not set up; those
 tests skip. A test that fails here but passes in CI because a library is
 missing is fixed by adding the package to that list, not by treating the
@@ -655,7 +664,9 @@ number anywhere else, and never introduce a new literal copy of one:
    joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,
    Plan or Investigation) describe APIs not written yet, so their findings
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
-   a component doc must never be added there.
+   a component doc must never be added there. Writing one of those APIs
+   makes its entries stop being found, which fails the check until the file
+   is rewritten (`--all --update-baseline`) in the same change.
    Changing a header can therefore fail a doc you did not touch: fix that
    doc in the same change. A name a snippet takes from the application - a
    `window`, a callback the reader writes, a version macro - is declared in

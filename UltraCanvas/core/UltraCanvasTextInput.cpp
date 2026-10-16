@@ -1,7 +1,16 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.8.1
-// Last Modified: 2026-10-08
+// Version: 1.11.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
+// Version: 1.11.0 - SetClearButtonText: a clear button with a word on it;
+//                  SetInputType(Search) shows the clear button
+// Version: 1.10.0 - TextInputStyle::FromTheme
+// Version: 1.9.0
+// Last Modified: 2026-10-15
+// V1.9.0: An input method's composition is drawn in the line at the caret,
+//   underlined, with the caret inside it; the scroll keeps that caret in view.
+//   Composing over a selection replaces the selection; committed text, an
+//   empty composition or losing the focus ends it. The composition never
+//   enters the text, the change callbacks or the undo stack.
 // V1.8.1: The caret and the selection cover the glyphs' last row. The line
 //   box was GetTextLineHeight("H") tall - whole pixels, the fraction cut off -
 //   so it ended up to a pixel above the descenders and the bottoms of
@@ -120,6 +129,19 @@ namespace UltraCanvas {
         return displayText;
     }
 
+    std::string UltraCanvasTextInput::GetPaintedText() const {
+        std::string painted = GetRenderText();
+        if (!preeditText.empty()) {
+            painted.insert(std::min(GetCompositionRenderOffset(), painted.length()), preeditText);
+        }
+        return painted;
+    }
+
+    size_t UltraCanvasTextInput::GetPaintedCaretOffset() const {
+        const size_t caret = ToRenderOffset(caretPosition);
+        return preeditText.empty() ? caret : caret + preeditCursor;
+    }
+
     bool UltraCanvasTextInput::IsMasked() const {
         return passwordMode && !passwordRevealed;
     }
@@ -177,6 +199,7 @@ namespace UltraCanvas {
         // drops the mask (it used to stick once set).
         passwordMode = (type == TextInputType::Password);
         if (!passwordMode) passwordRevealed = false;
+        if (passwordMode) ClearComposition();   // a password field does not compose in place
 
         // The rules the previous type brought go: switching Email -> Text must
         // not leave the email check behind, and setting a type twice must not
@@ -189,6 +212,12 @@ namespace UltraCanvas {
         // it (Phone -> Text must not stay phone-formatted); a formatter the
         // caller set stays.
         if (formatterFromInputType) SetFormatter(TextFormatter::NoFormat());
+        // And the clear button Search showed (Search -> Text has none); one
+        // the caller turned on stays.
+        if (clearButtonFromInputType) {
+            showClearButton = false;
+            clearButtonFromInputType = false;
+        }
         auto setTypeFormatter = [this](const TextFormatter& typeFormatter) {
             SetFormatter(typeFormatter);
             formatterFromInputType = true;
@@ -220,15 +249,26 @@ namespace UltraCanvas {
             case TextInputType::Date:
                 setTypeFormatter(TextFormatter::Date());
                 break;
+            case TextInputType::Search:
+                // A search field is emptied often: it gets the clear button.
+                if (!showClearButton) {
+                    showClearButton = true;
+                    clearButtonFromInputType = true;
+                }
+                break;
             default:
                 break;
         }
+        // The clear button, when it came or went, changes the text area.
+        UpdateScrollOffset();
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::SetReadOnly(bool readonly) {
         readOnly = readonly;
         if (readonly) {
             ClearSelection();
+            ClearComposition();
         }
     }
 
@@ -438,8 +478,8 @@ namespace UltraCanvas {
             RenderSelection(textArea, ctx);
         }
 
-        // Draw text content
-        if (!text.empty()) {
+        // Draw text content (a composition alone is text to draw too)
+        if (!text.empty() || !preeditText.empty()) {
             RenderText(textArea, textColor, ctx);
         } else if (!placeholderText.empty() && (showPlaceholderAlways || !IsFocused())) {
             RenderPlaceholder(textArea, ctx);
@@ -532,13 +572,22 @@ namespace UltraCanvas {
                 return HandleMouseUp(event);
 
             case UCEventType::KeyDown:
+                // Typed (committed) text ends any composition: it is what the
+                // input method composed, and is inserted as typing.
+                if (!preeditText.empty() && !event.text.empty()) ClearComposition();
                 return HandleKeyDown(event);
+
+            case UCEventType::TextComposition:
+                return HandleComposition(event);
 
             case UCEventType::FocusGained:
                 return HandleFocusGained(event);
 
             case UCEventType::FocusLost:
                 return HandleFocusLost(event);
+
+            default:
+                break;
         }
         return false;
     }
@@ -594,8 +643,8 @@ namespace UltraCanvas {
         // Ensure we don't scroll past the beginning
         scrollOffset = std::max(0, scrollOffset);
 
-        // Clamp against total text width.
-        std::string displayText = GetRenderText();
+        // Clamp against total text width (with any composition in it).
+        std::string displayText = GetPaintedText();
 
         // Set text style for measurement
         ctx->SetFontStyle(style.fontStyle);
@@ -629,10 +678,48 @@ namespace UltraCanvas {
             rightOffset += passwordToggleSize + 4;
         }
 
-        int btnX = finalBounds.width - rightOffset - clearButtonSize - 2;
-        int btnY = (finalBounds.height - clearButtonSize) / 2;
+        const int btnWidth = GetClearButtonWidth();
+        int btnHeight = clearButtonSize;
+        if (!clearButtonText.empty()) {
+            // As tall as the word needs, inside the field's frame.
+            const int inner = static_cast<int>(finalBounds.height) - 2 * style.borderWidth - 4;
+            btnHeight = std::max(clearButtonSize,
+                                 std::min(inner, static_cast<int>(std::ceil(GetClearButtonFont().fontSize * 1.9))));
+        }
+        int btnX = finalBounds.width - rightOffset - btnWidth - 2;
+        int btnY = (finalBounds.height - btnHeight) / 2;
 
-        return Rect2Di(btnX, btnY, clearButtonSize, clearButtonSize);
+        return Rect2Di(btnX, btnY, btnWidth, btnHeight);
+    }
+
+    FontStyle UltraCanvasTextInput::GetClearButtonFont() const {
+        FontStyle font = style.fontStyle;
+        font.fontSize = std::max(8.0, font.fontSize * 0.85);
+        return font;
+    }
+
+    int UltraCanvasTextInput::GetClearButtonWidth() const {
+        if (clearButtonText.empty()) return clearButtonSize;
+        const FontStyle font = GetClearButtonFont();
+        int labelWidth = 0;
+        if (IRenderContext* ctx = GetRenderContext()) {
+            ctx->PushState();
+            ctx->SetFontStyle(font);
+            labelWidth = ctx->GetTextLineWidth(clearButtonText);
+            ctx->PopState();
+        } else {
+            // Not on a window yet: a fair guess, replaced at the first paint.
+            labelWidth = static_cast<int>(utf8_length(clearButtonText) * font.fontSize * 0.6f);
+        }
+        return labelWidth + 2 * kClearButtonLabelPadding;
+    }
+
+    void UltraCanvasTextInput::SetClearButtonText(const std::string& text) {
+        if (clearButtonText == text) return;
+        clearButtonText = text;
+        // The text area ends where the button begins.
+        UpdateScrollOffset();
+        RequestRedraw();
     }
 
     bool UltraCanvasTextInput::IsPasswordToggleVisible() const {
@@ -682,7 +769,7 @@ namespace UltraCanvas {
         }
 
         if (IsClearButtonVisible()) {
-            rightReduction += clearButtonSize + 4;
+            rightReduction += GetClearButtonWidth() + 4;
         }
 
         if (IsPasswordToggleVisible()) {
@@ -698,7 +785,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::RenderText(const Rect2Dd &area, const Color &color, IRenderContext* ctx) {
-        std::string renderText = GetRenderText();
+        std::string renderText = GetPaintedText();
 
         if (renderText.empty()) return;
 
@@ -713,6 +800,19 @@ namespace UltraCanvas {
         Rect2Dd lineBox = GetTextLineBox(area, ctx);
         Point2Dd textPos(area.x - scrollOffset, lineBox.y);
         ctx->DrawText(renderText, textPos);
+
+        // The composition is drawn as part of the line (so it shapes with the
+        // text around it) and underlined, the way input methods mark text
+        // that is not committed yet.
+        if (!preeditText.empty()) {
+            const size_t at = std::min(GetCompositionRenderOffset(), renderText.length());
+            const double startX = textPos.x + ctx->GetTextLineWidth(renderText.substr(0, at));
+            const double endX = textPos.x + ctx->GetTextLineWidth(renderText.substr(0, at + preeditText.length()));
+            const double underlineY = std::floor(lineBox.y + lineBox.height) - 0.5;
+            ctx->SetStrokePaint(color);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawLine(Point2Dd(startX, underlineY), Point2Dd(endX, underlineY));
+        }
     }
 
     void UltraCanvasTextInput::RenderPlaceholder(const Rect2Dd &area, IRenderContext* ctx) {
@@ -771,13 +871,15 @@ namespace UltraCanvas {
         Rect2Dd textArea = GetTextArea();
         float caretX;
 
-        if (text.empty() || caretPosition == 0) {
+        // While composing, the caret is in the composition.
+        const size_t caretOffset = GetPaintedCaretOffset();
+        if (caretOffset == 0) {
             // When no text, caret should be at text start position
             caretX = textArea.x - scrollOffset;
         } else {
             // Calculate width of text up to caret position
-            std::string displayText = GetRenderText();
-            std::string textUpToCaret = displayText.substr(0, ToRenderOffset(caretPosition));
+            std::string displayText = GetPaintedText();
+            std::string textUpToCaret = displayText.substr(0, caretOffset);
 
             // Set text style for accurate measurement
             ctx->SetFontStyle(style.fontStyle);
@@ -864,6 +966,24 @@ namespace UltraCanvas {
 
         Rect2Di btnBounds = GetClearButtonBounds();
         if (btnBounds.width <= 0) return;
+
+        if (!clearButtonText.empty()) {
+            // A small button: a tint of the border colour behind the word,
+            // deeper while the pointer is on it.
+            Color face = style.borderColor;
+            face.a = isClearButtonHovered ? 150 : 80;
+            ctx->PushState();
+            ctx->SetFillPaint(face);
+            ctx->FillRoundedRectangle(Rect2Dd(btnBounds.x, btnBounds.y, btnBounds.width, btnBounds.height),
+                                      std::min(4.0, btnBounds.height / 2.0));
+            ctx->SetFontStyle(GetClearButtonFont());
+            ctx->SetTextAlignment(TextAlignment::Center);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+            ctx->SetTextPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
+            ctx->DrawTextInRect(clearButtonText, Rect2Dd(btnBounds.x, btnBounds.y, btnBounds.width, btnBounds.height));
+            ctx->PopState();
+            return;
+        }
 
         Color buttonColor = isClearButtonHovered ? clearButtonHoverColor : clearButtonColor;
 
@@ -1335,6 +1455,9 @@ namespace UltraCanvas {
 
     bool UltraCanvasTextInput::HandleFocusLost(const UCEvent &event) {
         UltraCanvasCaret::GetInstance().Hide(this);
+        // A composition belongs to the focused field; leaving drops it (the
+        // input method commits or abandons it on its own side).
+        ClearComposition();
         isDragging = false;
         isClearButtonHovered = false;
         isPasswordToggleHovered = false;
@@ -1351,6 +1474,44 @@ namespace UltraCanvas {
 
         if (onFocusLost) onFocusLost();
         return true;
+    }
+
+    bool UltraCanvasTextInput::HandleComposition(const UCEvent &event) {
+        if (!DrawsTextComposition()) return false;
+
+        // One line: a line break or other control character in a composition
+        // shows as a space. Byte for byte, so the caret offset still fits.
+        std::string composing = utf8_make_valid(event.text);
+        for (char& c : composing) {
+            const unsigned char uc = static_cast<unsigned char>(c);
+            if (uc < 32 || uc == 127) c = ' ';
+        }
+
+        // Composing over a selection replaces it, as typing would. That is a
+        // real edit (an undo step, a change report); the composition is not.
+        const bool starting = preeditText.empty() && !composing.empty();
+        if (starting && hasSelection) {
+            DeleteSelection();
+        }
+
+        preeditText = composing;
+        const size_t cursor = event.compositionCursor < 0
+                ? preeditText.length()
+                : std::min(static_cast<size_t>(event.compositionCursor), preeditText.length());
+        preeditCursor = utf8_align_boundary(preeditText, cursor);
+
+        UltraCanvasCaret::GetInstance().ResetBlink(this);
+        UpdateScrollOffset();   // keep the composition's caret in view
+        RequestRedraw();
+        return true;
+    }
+
+    void UltraCanvasTextInput::ClearComposition() {
+        if (preeditText.empty()) return;
+        preeditText.clear();
+        preeditCursor = 0;
+        UpdateScrollOffset();
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::InsertText(const std::string &rawInsertText) {
@@ -1492,16 +1653,19 @@ namespace UltraCanvas {
 
     float UltraCanvasTextInput::GetCaretXPosition() {
         auto ctx = GetRenderContext();
-        if (text.empty() || caretPosition == 0) {
+        // While composing, the caret is in the composition, and that is the
+        // caret the scroll keeps in view.
+        const size_t caretOffset = GetPaintedCaretOffset();
+        if (caretOffset == 0) {
             return style.paddingLeft;
         }
 
-        std::string displayText = GetRenderText();
+        std::string displayText = GetPaintedText();
 
         // Measure text up to caret (a whole number of characters - measuring a
         // prefix that ends inside a multi-byte character hands the renderer a
         // string that is not UTF-8).
-        std::string textUpToCaret = displayText.substr(0, ToRenderOffset(caretPosition));
+        std::string textUpToCaret = displayText.substr(0, caretOffset);
 
         // Set text style for measurement
         ctx->SetFontStyle(style.fontStyle);
@@ -1838,5 +2002,23 @@ namespace UltraCanvas {
         if (strength < 80.0f) return Color(163, 203, 56);  // Lime
         if (strength < 95.0f) return Color(40, 167, 69);   // Green
         return Color(25, 135, 84);                          // Dark Green
+    }
+
+    TextInputStyle TextInputStyle::FromTheme(const UltraCanvasTheme& theme, const TextInputStyle& base) {
+        TextInputStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.backgroundColor = r.well;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.placeholderColor = r.inkFaint;
+        s.selectionColor = r.accent.WithAlpha(100);
+        s.caretColor = r.ink;
+        s.disabledBackgroundColor = r.panel;
+        s.disabledBorderColor = r.line;
+        s.disabledTextColor = r.inkFaint;
+        s.validBorderColor = r.lineStrong;
+        s.invalidBorderColor = r.danger;
+        return s;
     }
 }

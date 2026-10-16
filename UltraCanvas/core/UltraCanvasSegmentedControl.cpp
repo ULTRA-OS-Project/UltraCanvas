@@ -1,7 +1,8 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.3.1 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.3.0
-// Last Modified: 2026-06-02
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
@@ -570,6 +571,9 @@ namespace UltraCanvas {
                         return true;
                     }
                 }
+                break;
+
+            default:
                 break;
         }
 

@@ -1,9 +1,14 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
-// Version: 0.5.0
-// Last Modified: 2026-10-14
+// Version: 0.7.0 - an overlay clip's effects (EffectTarget, EffectsOf), kept in
+//                 the file
+// Version: 0.6.0 - DraftSettings
+// Version: 0.5.0 - KindOfPath from the engine's and FileLoader's lists (UltraVideoFormats)
+// Version: 0.4.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
+#include "UltraVideoFormats.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
@@ -30,12 +35,6 @@ namespace {
 
 constexpr int kFileVersion = 1;
 constexpr double kDefaultPictureSeconds = 4.0;
-
-std::string LowerExtension(const std::string& path) {
-    std::string ext = PathToUtf8(PathFromUtf8(path).extension());
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
-}
 
 std::string FileName(const std::string& path) {
     return PathToUtf8(PathFromUtf8(path).filename());
@@ -302,12 +301,8 @@ std::string MediaItem::Badge() const {
 }
 
 MediaKind Document::KindOfPath(const std::string& path) {
-    static const char* const images[] = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp",
-                                         ".avif", ".jxl", ".gif"};
-    static const char* const sounds[] = {".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma", ".aiff"};
-    const std::string ext = LowerExtension(path);
-    for (const char* e : images) if (ext == e) return MediaKind::Image;
-    for (const char* e : sounds) if (ext == e) return MediaKind::Audio;
+    if (IsPicturePath(path)) return MediaKind::Image;
+    if (IsSoundPath(path)) return MediaKind::Audio;
     return MediaKind::Unknown;
 }
 
@@ -320,6 +315,16 @@ std::string Document::Name() const {
 // The output size: the settings', else the first video's on the timeline
 // (a photo's own size says nothing about the video it goes into: pictures
 // alone make a 1080p video, as the engine's slideshow does)
+VideoFXExportSettings Document::DraftSettings() const {
+    VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
+    const int projectW = std::max(1, Width()), projectH = std::max(1, Height());
+    settings.width = std::max(16, static_cast<int>(std::lround(360.0 * projectW / projectH / 2.0)) * 2);
+    settings.music = project.settings.music;
+    settings.fitMode = project.settings.fitMode;
+    settings.frameRate = FrameRate();
+    return settings;
+}
+
 int Document::Width() const {
     if (project.settings.width > 0) return project.settings.width;
     for (const VideoFXSegment& s : project.segments)

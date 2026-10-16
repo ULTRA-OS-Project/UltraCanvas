@@ -1,6 +1,7 @@
 // core/UltraCanvasWebView.cpp
 // A web page as an element: PageLoader + ElementBuilder + history.
 // See include/UltraCanvasWebView.h.
+// Version: 1.4.0 - onOpenInNewWindow: target="_blank" links go to the host
 // Version: 1.3.0 - a download keeps the page on show, its address and history
 // Version: 1.2.0 - file inputs choose through onChooseFiles
 // Version: 1.1.0 - forms the reader fills in and sends: SetInteractiveForms,
@@ -282,6 +283,13 @@ void UltraCanvasWebView::Build() {
     options.onLinkActivated = [this](const std::string& href) {
         Post([this, href]() { OnLink(href); });
     };
+    // A link that asks for another window (target="_blank") goes to the
+    // host when it can open one, else it is followed here.
+    if (onOpenInNewWindow) {
+        options.onLinkActivatedNewWindow = [this](const std::string& href) {
+            Post([this, href]() { OnNewWindowLink(href); });
+        };
+    }
     options.onLinkHovered = [this](const std::string& href) {
         if (onLinkHovered) onLinkHovered(href.empty() ? std::string() : ResolveLink(href));
     };
@@ -391,6 +399,18 @@ void UltraCanvasWebView::OnLink(const std::string& href) {
     }
     if (scheme == "javascript" || scheme == "data" || scheme.empty()) return;
     if (onExternalLink) onExternalLink(target);
+}
+
+void UltraCanvasWebView::OnNewWindowLink(const std::string& href) {
+    const std::string target = ResolveLink(href);
+    if (target.empty()) return;
+    const std::string scheme = SchemeOf(target);
+    // What this view would open itself opens in the other window instead;
+    // anything else (mailto:, ...) is the same either way.
+    const bool opens = scheme == "http" || scheme == "https" ||
+                       (scheme == "file" && page && SchemeOf(page->url) == "file");
+    if (opens && onOpenInNewWindow) onOpenInNewWindow(target);
+    else OnLink(href);
 }
 
 void UltraCanvasWebView::SubmitForm(const HTML::FormSubmission& submission) {

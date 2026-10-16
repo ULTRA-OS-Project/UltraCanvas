@@ -116,6 +116,11 @@ check "$repo/UltraCanvas/core/UltraCanvasGLSurface.cpp"
 # miniaudio's own Android paths.
 check "$repo/UltraCanvas/libspecific/Audio/AudioBackendMiniaudio.cpp" -DULTRACANVAS_ENABLE_AUDIO=1
 
+# Video is ON for Android too: its backend uses only the NDK's own media,
+# camera and AAudio libraries, so these TUs are part of an Android build.
+check "$repo/UltraCanvas/libspecific/Video/VideoBackendAndroid.cpp" -DULTRACANVAS_ENABLE_VIDEO=1
+check "$repo/UltraCanvas/libspecific/Video/VideoBackendAndroidCapture.cpp" -DULTRACANVAS_ENABLE_VIDEO=1
+
 # The Android UltraNet build reuses these Linux sources verbatim (their
 # #ifdef __linux__ guards are satisfied by bionic) - keep them compiling
 # under __ANDROID__ too.

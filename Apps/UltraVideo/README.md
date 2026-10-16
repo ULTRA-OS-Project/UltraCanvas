@@ -14,6 +14,8 @@ UltraVideoWindow.{h,cpp}    the editor window: app bar, panes, media bin, timeli
                             playback, the timeline's change loop, files, export
 UltraVideoDocument.{h,cpp}  the document (the VideoFX project, clip ids, the bin, markers,
                             the view) and the .ultravideo file
+UltraVideoFormats.{h,cpp}   the files it takes and makes: the engine's registered with the
+                            codec registry, the dialogs offered FileLoader's lists
 UltraVideoMapping.{h,cpp}   BuildTimelineModel / ApplyChange: the document <-> the element
 UltraVideoHistory.{h,cpp}   undo and redo, the clean mark
 UltraVideoPreview.{h,cpp}   the engine's worker thread: frames for the viewer, thumbnails,
@@ -39,7 +41,9 @@ preview planned again, the inspector, the app bar). The timeline element
 never applies an edit itself: it reports one, `ApplyChange` writes it into
 the document, and `SetModel` shows the result.
 
-The test: `Tests/UltraVideoDocumentTest.cpp` (headless, the engine needed).
+The tests: `Tests/UltraVideoDocumentTest.cpp` and `Tests/UltraVideoDraftTest.cpp`
+(headless, the engine needed; the draft test's player part skips itself
+without GStreamer plugins).
 
 ## The design
 

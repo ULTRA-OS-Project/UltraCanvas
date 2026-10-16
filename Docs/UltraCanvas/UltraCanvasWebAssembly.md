@@ -222,8 +222,17 @@ sample applications.
 
 ## Known limitations
 
-- Keyboard: no IME composition events (dead keys and CJK input methods are not
-  handled); typed text arrives on KeyDown like the desktop backends.
+- Keyboard: typed text arrives on KeyDown like the desktop backends. Input
+  method composition (CJK input methods, dead keys) reaches only an element
+  that draws compositions itself (`DrawsTextComposition()`: an editable
+  text input, text area or rich text editor): while one has focus, a transparent `<textarea>`
+  at its caret takes the keyboard, its `compositionupdate` events arrive as
+  `TextComposition` events and `compositionend` commits the text as a KeyDown
+  with `text`; keys the input method is processing (`keyCode` 229) are not
+  delivered as key presses as well. Any other element keeps the canvas, where
+  the browser offers no input method. Mobile soft keyboards beyond plain text
+  and compositions (deleting through the input method, autocorrect
+  replacements) are not handled.
 - Mouse: drags that leave the canvas stop receiving moves until the pointer
   re-enters (no pointer capture yet).
 - Touch is synthesized into left-button mouse events.

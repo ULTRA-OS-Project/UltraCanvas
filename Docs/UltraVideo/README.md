@@ -26,8 +26,14 @@ button in the app bar switches to the light one.
 
 Import videos, photos and songs with the import button, `Ctrl+I`, by
 dropping them on the window, or by naming them on the command line (a
-folder imports its files). Every file is probed by the engine and shows a
-duration badge, *photo*, or *unreadable* with the reason in its tooltip.
+folder imports its files). The dialogs offer FileLoader's types that the
+engine reads: at start-up UltraVideo tells the framework's codec registry
+which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
+the framework's image reader for the pictures FFmpeg does not open whole - a
+phone's HEIC (a grid of tiles libheif puts together, offered where libheif
+has its HEVC decoder, libde265), a camera's raw file.
+Every file is probed by the engine and shows a duration badge, *photo*, or
+*unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a
 tile onto the timeline: on the main track it goes in at the cut nearest the
@@ -40,9 +46,11 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. The *Effects* tab holds one-click presets for the selected
-clip, on the main track or the overlay lane (an overlay clip's effects
-change its own picture only): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+playhead. The *Effects* tab holds the presets for the clips on the main
+track and the overlay lane (an overlay clip's effects change its own
+picture only) - a click puts one on the selected clip, or drag one onto a
+clip (the clip under the pointer shows a dashed ring and the status line
+names it; `Esc` lets go): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
 *Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
 *Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
 A preset is the engine's own effects (a look is a few of them: Warm is
@@ -69,8 +77,9 @@ in the background - a small, quick MP4 with the music and the clips' own
 sound (`VideoFXExportSettings::Draft`) - and plays frame by frame until it
 is ready; from then on Play runs the draft in the framework's player with
 sound, and the playhead follows it. An edit throws the draft away and the
-next Play renders a new one. Where no sound device or player is available
-playback stays frame by frame and the status line says so.
+next Play renders a new one. Where no sound server answers the picture
+still plays at pace, silently; where the player cannot play the draft at
+all, playback stays frame by frame and the status line says so.
 
 **Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
 every video in the bin gets a *proxy* in the background: the same clip at
@@ -171,7 +180,9 @@ song or none; with a song, *Fit the video to the song's length* paces the
 photos so the show ends with it and *Change pictures on the beat* cuts on
 the engine's beats; a dropdown names the clips' own sound so the music
 dips under it the right way. **3 Style**: the transition between pictures
-and its length, *Keep faces in shot* while the camera pans over photos,
+and its length, *Keep faces in shot* while the camera pans over photos
+and when a clip of another shape fills the frame (the engine finds them
+in a frame from the clip's middle and crops around them),
 photos and clips of another shape whole on a blurred background (clips:
 whole, with bars), filling the frame, or whole with bars, *Captions from
 the file names*, a fade in and out. *Make video* asks the engine for the
@@ -185,7 +196,9 @@ are offered first; a song in the bin becomes the music.
 ### The inspector
 
 - **Clip**: the selected clip's name and what it is; for a video its *In*
-  and *Out* as timecode fields and its *Speed*; for a photo or a card its
+  and *Out* as timecode fields, its *Speed* and *Keep faces in shot* (for
+  a clip of another shape that fills the frame, the project's framing on
+  the *Project* tab); for a photo or a card its
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
   *Framing* and *Keep faces in shot*; *Mute*; the clip's **Effects**, one
   row per effect by what it does (*Warmer 30 %*, *Blur 3.5 px*) with a
@@ -226,7 +239,8 @@ UltraVideo, appear on the *Voice & sound* lane.
 
 **Export** (`Ctrl+E`) asks for a preset - web MP4 at 1080p, 720p or 4K,
 WebM, an animated GIF, a ProRes master, or sound only as MP3 - the output
-file, and whether to export the whole project or the work area set with
+file (*Browse* offers the presets' types; picking one there picks its
+preset), and whether to export the whole project or the work area set with
 `I` and `O` on the timeline. The export runs in the background with a
 progress dialog and can be cancelled; a cancelled or failed export leaves
 no file. Exporting the work area keeps the part of each sound clip inside
@@ -242,6 +256,13 @@ UltraVideo ~/Pictures/Trip        every readable file of a folder
 UltraVideo --version
 ```
 
+One UltraVideo runs per user. Starting it again while it runs hands the
+files to the running copy and quits: a project opens there (asking first
+whether to save the current one when it has changes, as *Open project*
+does), media files are imported into the open project as a drop on the
+window would, and the window comes forward. Started without a file, it
+just brings the running window forward.
+
 ## Building
 
 `BUILD_ULTRAVIDEO` (default ON) builds it whenever the framework and the
@@ -252,10 +273,12 @@ starts but can read no media. The icon set the window uses is
 
 Tests: `UltraVideoDocumentTest` (the document, the mapping onto the
 timeline model and back, the history, the file round trip; headless, needs
-the engine).
+the engine) and `UltraVideoDraftTest` (the draft played with sound: rendered
+with the app's settings, its sound steps in at the document's cut within a
+frame, and the framework's player reports a position that matches the
+frames it shows and reads the cut when the clip's first frame appears;
+headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
-Effects dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
-its elements from the tokens directly). The proposal's roadmap (§11) has
-the order.
+The proposal's roadmap (§11) has the order.

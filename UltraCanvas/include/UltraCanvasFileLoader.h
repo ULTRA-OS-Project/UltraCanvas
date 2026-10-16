@@ -4,6 +4,8 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
+//                  AddTextDocumentLoadTypes, SaveTextDocument, AddTextDocumentSaveTypes
 // Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
@@ -19,6 +21,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <initializer_list>
 
 namespace UltraCanvas {
 
@@ -199,8 +202,8 @@ namespace UltraCanvas {
         // .md/.markdown parse as Markdown; anything
         // else readable as text becomes plain paragraphs. Legacy Word 97-2003
         // .doc files are detected and rejected with a clear loadError telling
-        // the user to convert to .docx. If the caller supplies no filters, a
-        // sensible set of document filters is added. On cancel, onResult fires
+        // the user to convert to .docx. If the caller supplies no filters,
+        // AddTextDocumentLoadTypes' are offered. On cancel, onResult fires
         // with dialogResult == Cancel and a null document; on parse failure,
         // loadError is populated and the document is null.
         static void OpenTextDocument(const FileDialogOptions& opts,
@@ -210,6 +213,17 @@ namespace UltraCanvas {
         // UCRichDocument. Returns null and fills outError on failure.
         static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
                                                                 std::string& outError);
+        // The Open dialog's file types for a text document: one "Documents"
+        // filter with every type LoadTextDocument reads (ODT, DOCX, DOC,
+        // LaTeX, Markdown, plain text), then each under its name.
+        // OpenTextDocument offers these when it is given no filters.
+        static void AddTextDocumentLoadTypes(FileDialogOptions& opts);
+        // Writes `document` as the type its path names: .odt or .docx.
+        static bool SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
+                                     std::string& outError);
+        // The Save dialog's file types for SaveTextDocument, each under its
+        // name, ODT first.
+        static void AddTextDocumentSaveTypes(FileDialogOptions& opts);
 
         // ===== VECTOR DOCUMENTS =====
         // Editable drawings: SVG, XAR, EMF, WMF, DXF, DWG, AI ... read into
@@ -277,6 +291,24 @@ namespace UltraCanvas {
         static std::vector<MediaFormatInfo> GetSupportedFormats(MediaFormatCategory category);
         static std::vector<std::string> GetSupportedLoadExtensions(MediaFormatCategory category);
         static std::vector<std::string> GetSupportedSaveExtensions(MediaFormatCategory category);
+
+        // ----- the inventory as an Open or Save dialog's file types -----
+        // What an application's dialogs offer, so every type this build reads
+        // or writes is on offer and nothing it cannot - never a list of the
+        // application's own. (A codec an application brings itself joins
+        // these lists once it is registered: RegisterMediaCodec.)
+        //
+        // One Open filter, `label`, holding every extension this build reads
+        // in `categories` (aliases too), e.g. "Video, pictures and sound"
+        // for {Video, Bitmap, Audio}. Adds nothing when it reads none.
+        static void AddLoadTypes(FileDialogOptions& opts, const std::string& label,
+                                 std::initializer_list<MediaFormatCategory> categories);
+        // One Save filter for each format of `category` this build writes,
+        // under its name. AddImageSaveTypes is this for Bitmap. Like every
+        // Save-type call here, it puts the type the proposed name
+        // (SetDefaultFileName, set first) ends in first: the dialog starts
+        // on the first type.
+        static void AddSaveTypes(FileDialogOptions& opts, MediaFormatCategory category);
 
         // ===== SAVE SETTINGS =====
         // What each format's writer can be told (JPEG quality, PNG

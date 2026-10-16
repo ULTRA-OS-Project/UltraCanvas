@@ -1,11 +1,12 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
+// Version: 0.6.1 - OAuthSignInFailureText; the trace says which way a sign-in goes
+// Version: 0.6.0 - the sign-in service: no client secret in the application, Yahoo redirects
 // Version: 0.5.0 - Yahoo takes an app password again, beside the browser sign-in
 // Version: 0.4.0 - ExtractOAuthCode, OAuthUsesPastedCode (https redirects pasted back)
 // Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared OAuth2 app registry
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
-
-#include "UltraMailOAuthDefaults.h"   // generated at configure time (build tree)
+#include "UltraMailTrace.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -13,47 +14,11 @@
 
 namespace UltraMail {
 
-namespace {
-
-// Reverse the build-time obfuscation of a baked-in credential (see
-// UltraMailOAuthDefaults.h.in): verbatim when the build stored the values in the
-// clear, else XOR each byte back with the key. The high-bit key means an
-// obfuscated ASCII credential never contains a NUL, so the length is intact.
-std::string Deobf(const char* s) {
-    std::string out(s);
-    if (defaults::kObfuscated)
-        for (char& c : out)
-            c = static_cast<char>(static_cast<unsigned char>(c) ^ defaults::kXorKey);
-    return out;
-}
-
-// The OAuth client baked into this build for `providerId`, if any. Unconfigured
-// (clientId empty) when the build carried no credentials for it — the common
-// case for a dev/CI/test build.
-OAuthApp BuiltInApp(const std::string& providerId) {
-    OAuthApp app;
-    if (providerId == "google") {
-        app.clientId     = Deobf(defaults::kGoogleClientId);
-        app.clientSecret = Deobf(defaults::kGoogleClientSecret);
-    } else if (providerId == "yahoo") {
-        app.clientId     = Deobf(defaults::kYahooClientId);      // public client, no secret
-    } else if (providerId == "microsoft") {
-        app.clientId     = Deobf(defaults::kMicrosoftClientId);  // public client, no secret
-    }
-    return app;
-}
-
-} // namespace
-
 // ===== OAuthApps ==============================================================
 
 void OAuthApps::EnsureRegistered() {
     static const bool once = [] {
         UltraNet_OAuth2AddAppEnvPrefix("ULTRAMAIL_");
-        // The floor: what this build bakes in. Unconfigured apps are ignored by
-        // the registry, so a dev/CI/test build registers nothing here.
-        for (const char* id : {"google", "yahoo", "microsoft"})
-            UltraNet_OAuth2SetBuiltInApp(id, BuiltInApp(id));
         return true;
     }();
     (void)once;
@@ -68,6 +33,8 @@ std::string OAuthApps::DefaultRedirectUri(const std::string& providerId) {
     // Yahoo forces https redirect URIs, which the loopback listener cannot serve
     // (it speaks plain HTTP). Yahoo's documented answer for a desktop client is
     // the out-of-band flow: the consent page shows a code the user pastes back.
+    // (Through the service Yahoo redirects to the service's https address and
+    // none of this applies.)
     if (providerId == "yahoo")     return "oob";
     if (providerId == "microsoft") return "http://127.0.0.1:0/";
     return "http://127.0.0.1:0/callback";
@@ -81,13 +48,32 @@ OAuthApp OAuthApps::Get(const std::string& providerId) {
     return app;
 }
 
+bool OAuthApps::IsServiceProvider(const std::string& providerId) {
+    return providerId == "google" || providerId == "microsoft" || providerId == "yahoo";
+}
+
+std::string OAuthApps::ServiceUrl() {
+    EnsureRegistered();   // the ULTRAMAIL_OAUTH_SERVICE_URL prefix
+    return UltraNet_OAuth2SignInServiceUrl();
+}
+
+void OAuthApps::SetServiceUrl(const std::string& url) {
+    UltraNet_OAuth2SetSignInService(url);
+}
+
+bool OAuthApps::UsesService(const std::string& providerId) {
+    if (!IsServiceProvider(providerId)) return false;
+    if (Get(providerId).IsConfigured()) return false;   // a client of its own wins
+    return !ServiceUrl().empty();
+}
+
 bool OAuthApps::Has(const std::string& providerId) {
-    return Get(providerId).IsConfigured();
+    return Get(providerId).IsConfigured() || UsesService(providerId);
 }
 
 int OAuthApps::ParseIni(const std::string& text) {
     EnsureRegistered();
-    return UltraNet_OAuth2ParseAppsIni(text);
+    return UltraNet_OAuth2ParseAppsIni(text);   // [service] url included
 }
 
 int OAuthApps::LoadFile(const std::string& path) {
@@ -197,6 +183,51 @@ UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthAp
     return cfg;
 }
 
+UltraNetOAuth2ServiceConfig OAuthServiceConfigFor(const std::string& providerId,
+                                                  const std::string& loginHint) {
+    UltraNetOAuth2ServiceConfig cfg;
+    cfg.serviceUrl = OAuthApps::ServiceUrl();
+    cfg.providerId = providerId;
+    cfg.loginHint  = loginHint;
+    // No scopes: the service's defaults for the provider are the mail scopes
+    // OAuthConfigFor asks for (and no scope at all for Yahoo).
+    cfg.clientName = "UltraMail";
+    return cfg;
+}
+
+std::string OAuthSignInFailureText(const std::string& providerId, const UltraNetResult& result) {
+    std::string text = result.message.empty() ? std::string("the sign-in did not complete")
+                                              : result.message;
+    text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+    if (text.back() != '.' && text.back() != '!' && text.back() != '?') text += '.';
+    // A transport failure before the browser could open: the service itself
+    // was out of reach, which is where to look.
+    bool unreachable = false;
+    switch (result.code) {
+        case UltraNetResultCode::HostNotFound:
+        case UltraNetResultCode::ConnectionRefused:
+        case UltraNetResultCode::ConnectionReset:
+        case UltraNetResultCode::ConnectionTimeout:
+        case UltraNetResultCode::TlsHandshakeFailed:
+        case UltraNetResultCode::TlsCertificateInvalid:
+        case UltraNetResultCode::TlsCertificateExpired:
+        case UltraNetResultCode::TlsPublicKeyMismatch:
+        case UltraNetResultCode::SendFailed:
+        case UltraNetResultCode::ReceiveFailed:
+        case UltraNetResultCode::HttpError:
+            unreachable = true;
+            break;
+        default:
+            break;
+    }
+    if (unreachable && OAuthApps::UsesService(providerId)) {
+        const std::string url = OAuthApps::ServiceUrl();
+        text += " The sign-in service at " + url + " could not be reached: check the internet "
+                "connection, and that " + url + "/healthz answers in a browser.";
+    }
+    return text;
+}
+
 bool OAuthUsesPastedCode(const std::string& redirectUri) {
     return redirectUri == "oob" || redirectUri.rfind("https://", 0) == 0;
 }
@@ -248,7 +279,28 @@ MailOAuth::MailOAuth(OAuthHooks hooks) : hooks_(std::move(hooks)) {
                             UltraNetOAuth2Token& out) {
             return UltraNet_OAuth2Refresh(cfg, refreshToken, out);
         };
+    if (!hooks_.serviceAuthorize)
+        hooks_.serviceAuthorize = [](const UltraNetOAuth2ServiceConfig& cfg,
+                                     const std::function<void(const std::string&)>& openUrl,
+                                     UltraNetOAuth2Token& out) {
+            return UltraNet_OAuth2AuthorizeViaService(cfg, openUrl, out);
+        };
+    if (!hooks_.serviceRefresh)
+        hooks_.serviceRefresh = [](const UltraNetOAuth2ServiceConfig& cfg,
+                                   const std::string& refreshToken, UltraNetOAuth2Token& out) {
+            return UltraNet_OAuth2ServiceRefresh(cfg, refreshToken, out);
+        };
 }
+
+namespace {
+
+UltraNetResult NoClientError(const std::string& providerId) {
+    return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+        "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId)
+        + " and the sign-in service is off");
+}
+
+} // namespace
 
 OAuthTokens MailOAuth::FromToken(const UltraNetOAuth2Token& token, int64_t now,
                                  const OAuthTokens& previous) {
@@ -265,13 +317,32 @@ UltraNetResult MailOAuth::SignIn(const std::string& providerId, const std::strin
                                  const std::function<void(const std::string& url)>& openUrl,
                                  OAuthTokens& out, int64_t now) {
     if (now <= 0) now = static_cast<int64_t>(std::time(nullptr));
-    const OAuthApp app = OAuthApps::Get(providerId);
-    if (!app.IsConfigured())
-        return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-            "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId));
+    const std::string name = OAuthProviderDisplayName(providerId);
     UltraNetOAuth2Token token;
-    UltraNetResult r = hooks_.authorize(OAuthConfigFor(providerId, app, email), openUrl, token);
-    if (!r) return r;
+    UltraNetResult r;
+    if (OAuthApps::UsesService(providerId)) {
+        const UltraNetOAuth2ServiceConfig cfg = OAuthServiceConfigFor(providerId, email);
+        Trace::Line("OAuth: signing in to " + name + " for " + email
+                    + " through the sign-in service " + cfg.serviceUrl);
+        r = hooks_.serviceAuthorize(cfg, openUrl, token);
+    } else {
+        const OAuthApp app = OAuthApps::Get(providerId);
+        if (!app.IsConfigured()) {
+            Trace::Line("OAuth: cannot sign in to " + name + ": no client of this installation's "
+                        "own, and the sign-in service is off");
+            return NoClientError(providerId);
+        }
+        Trace::Line("OAuth: signing in to " + name + " for " + email
+                    + " directly, with this installation's own client (oauth.ini or the "
+                    "environment); the redirect goes to " + app.redirectUri);
+        r = hooks_.authorize(OAuthConfigFor(providerId, app, email), openUrl, token);
+    }
+    if (!r) {
+        Trace::Line("OAuth: the " + name + " sign-in failed: " + r.message);
+        return r;
+    }
+    Trace::Line("OAuth: signed in to " + name + " for " + email
+                + (token.refreshToken.empty() ? " (no refresh token)" : ""));
     if (!token.IsValid())
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
                                      "the sign-in returned no access token");
@@ -329,13 +400,25 @@ UltraNetResult MailOAuth::EnsureFresh(const std::string& providerId, OAuthTokens
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationRequired,
                                      "the " + OAuthProviderDisplayName(providerId)
                                      + " sign-in has expired; sign in again");
-    const OAuthApp app = OAuthApps::Get(providerId);
-    if (!app.IsConfigured())
-        return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-            "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId));
+    const std::string name = OAuthProviderDisplayName(providerId);
     UltraNetOAuth2Token token;
-    UltraNetResult r = hooks_.refresh(OAuthConfigFor(providerId, app), tokens.refreshToken, token);
-    if (!r) return r;
+    UltraNetResult r;
+    if (OAuthApps::UsesService(providerId)) {
+        const UltraNetOAuth2ServiceConfig cfg = OAuthServiceConfigFor(providerId);
+        Trace::Line("OAuth: refreshing the " + name + " token through the sign-in service "
+                    + cfg.serviceUrl);
+        r = hooks_.serviceRefresh(cfg, tokens.refreshToken, token);
+    } else {
+        const OAuthApp app = OAuthApps::Get(providerId);
+        if (!app.IsConfigured()) return NoClientError(providerId);
+        Trace::Line("OAuth: refreshing the " + name + " token directly, with this "
+                    "installation's own client");
+        r = hooks_.refresh(OAuthConfigFor(providerId, app), tokens.refreshToken, token);
+    }
+    if (!r) {
+        Trace::Line("OAuth: the " + name + " token refresh failed: " + r.message);
+        return r;
+    }
     if (!token.IsValid())
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
                                      "the token refresh returned no access token");

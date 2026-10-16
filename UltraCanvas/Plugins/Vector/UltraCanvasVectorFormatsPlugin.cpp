@@ -1,7 +1,8 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.cpp
 // Implementation of the vector formats graphics plugin - see the header.
+// Version: 1.3.0 - the preview provider reads from memory too (ImportFromString)
 // Version: 1.2.0
-// Last Modified: 2026-09-26
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
@@ -209,6 +210,15 @@ void RegisterVectorFormatsPlugin() {
     provider.ClaimsFile = [](const std::string& path) {
         auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
         return converter && converter->CanImport();
+    };
+    // From bytes: what UCImage::LoadFromMemory asks for an SVG that came
+    // without a file, in a build whose libvips cannot rasterize SVG.
+    provider.LoadFromMemory = [](const std::string& extension, const uint8_t* data, size_t size)
+            -> std::shared_ptr<VectorStorage::VectorDocument> {
+        auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(extension);
+        if (!converter || !converter->CanImport() || !data || size == 0) return nullptr;
+        return converter->ImportFromString(std::string(reinterpret_cast<const char*>(data), size),
+                                           DebugLogOptions());
     };
     // The editing half, for UltraCanvasFileLoader::LoadVectorDocument /
     // SaveVectorDocument: the same readers with their notes, and the writers.

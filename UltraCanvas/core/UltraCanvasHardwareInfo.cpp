@@ -52,7 +52,7 @@ std::string JoinStrings(const std::vector<std::string>& parts, const std::string
 
 std::string FormatDouble(double value, int decimals) {
     char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);
+    std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);   // locale-ok: the shown sizes, clock and temperature
     return std::string(buffer);
 }
 

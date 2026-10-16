@@ -260,12 +260,20 @@ namespace UltraCanvas {
                            QRImageFormat format,
                            int moduleSize = 10,
                            std::string* errorMessage = nullptr);
+        // Written as the picture type the name ends in - any type
+        // UltraCanvasFileLoader writes (CanSaveImage: PNG, JPEG, WebP, QOI,
+        // ICO, TIFF ...), scan-friendly black on white. An application's Save
+        // dialog offers them with UltraCanvasFileLoader::AddImageSaveTypes.
+        bool ExportToImage(const std::string& filename,
+                           int moduleSize = 10,
+                           std::string* errorMessage = nullptr);
 
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
     private:
         void Regenerate();
         void EnsureFresh();
+        bool WriteImage(const std::string& outPath, int moduleSize, std::string* errorMessage);
 
         void   ApplyDataPaint(IRenderContext* ctx, const Rect2Df& qrRect);
         void   ApplyFinderPaint(IRenderContext* ctx);

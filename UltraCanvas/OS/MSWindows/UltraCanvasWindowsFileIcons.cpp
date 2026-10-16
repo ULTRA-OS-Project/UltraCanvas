@@ -4,9 +4,11 @@
 // rasterized into a UCPixmap — what Windows Explorer shows for these files.
 // The extraction itself is exposed to the rest of the Windows backend
 // through UltraCanvasWindowsIcons.h: the "Open with" service reuses it for
-// the icon locations that IAssocHandler reports.
-// Version: 1.1.0
-// Last Modified: 2026-09-04
+// the icon locations that IAssocHandler reports, and it and the desktop
+// shell write the results out as PNG files through WriteSurfacePng.
+// Version: 1.3.0 - PixmapFromBitmap
+// Version: 1.2.0 - WriteSurfacePng, moved here from the "Open with" backend
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
@@ -24,8 +26,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <vector>
+
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -109,17 +115,9 @@ namespace UltraCanvas {
             return ok;
         }
 
-    } // namespace
-
-    namespace WindowsIcons {
-
-        std::shared_ptr<UCPixmap> PixmapFromIcon(HICON icon) {
-            if (!icon) return nullptr;
-            int w = 0, h = 0;
-            std::vector<uint8_t> bgra;
-            if (!IconToBGRA(icon, w, h, bgra) || w <= 0 || h <= 0)
-                return nullptr;
-
+        // Straight-alpha BGRA rows (top-down) → a premultiplied ARGB32
+        // pixmap.
+        std::shared_ptr<UCPixmap> PixmapFromStraightBGRA(int w, int h, const std::vector<uint8_t>& bgra) {
             auto pm = std::make_shared<UCPixmap>(w, h);
             cairo_surface_t* surf = pm->GetSurface();
             if (!surf || !pm->IsValid()) return nullptr;
@@ -149,6 +147,60 @@ namespace UltraCanvas {
             return pm;
         }
 
+    } // namespace
+
+    namespace WindowsIcons {
+
+        std::shared_ptr<UCPixmap> PixmapFromIcon(HICON icon) {
+            if (!icon) return nullptr;
+            int w = 0, h = 0;
+            std::vector<uint8_t> bgra;
+            if (!IconToBGRA(icon, w, h, bgra) || w <= 0 || h <= 0)
+                return nullptr;
+            return PixmapFromStraightBGRA(w, h, bgra);
+        }
+
+        std::shared_ptr<UCPixmap> PixmapFromBitmap(HBITMAP bitmap) {
+            if (!bitmap) return nullptr;
+            BITMAP bm{};
+            if (GetObject(bitmap, sizeof(bm), &bm) != sizeof(bm) || bm.bmWidth <= 0 || bm.bmHeight == 0)
+                return nullptr;
+            const int w = bm.bmWidth;
+            const int h = bm.bmHeight < 0 ? -bm.bmHeight : bm.bmHeight;
+            BITMAPINFO bi{};
+            bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+            bi.bmiHeader.biWidth = w;
+            bi.bmiHeader.biHeight = -h;   // top-down rows
+            bi.bmiHeader.biPlanes = 1;
+            bi.bmiHeader.biBitCount = 32;
+            bi.bmiHeader.biCompression = BI_RGB;
+            std::vector<uint8_t> bgra(static_cast<size_t>(w) * h * 4);
+            HDC dc = GetDC(nullptr);
+            const bool read = dc && GetDIBits(dc, bitmap, 0, static_cast<UINT>(h), bgra.data(), &bi,
+                                              DIB_RGB_COLORS) == h;
+            if (dc) ReleaseDC(nullptr, dc);
+            if (!read) return nullptr;
+            // Premultiplied when no colour exceeds its alpha anywhere - what
+            // the shell hands out; then back to straight alpha for the one
+            // conversion every icon takes. No alpha at all: opaque.
+            bool hasAlpha = false;
+            bool premultiplied = true;
+            for (size_t i = 0; i < bgra.size(); i += 4) {
+                const uint8_t a = bgra[i + 3];
+                if (a != 0) hasAlpha = true;
+                if (bgra[i] > a || bgra[i + 1] > a || bgra[i + 2] > a) premultiplied = false;
+            }
+            for (size_t i = 0; i < bgra.size(); i += 4) {
+                uint8_t& a = bgra[i + 3];
+                if (!hasAlpha) {
+                    a = 255;
+                } else if (premultiplied && a != 0 && a != 255) {
+                    for (int c = 0; c < 3; ++c) bgra[i + c] = static_cast<uint8_t>(bgra[i + c] * 255 / a);
+                }
+            }
+            return PixmapFromStraightBGRA(w, h, bgra);
+        }
+
         std::shared_ptr<UCPixmap> LoadIconResourcePixmap(
                 const std::wstring& location, int index, int desiredSize) {
             if (location.empty()) return nullptr;
@@ -164,6 +216,46 @@ namespace UltraCanvas {
             std::shared_ptr<UCPixmap> pm = PixmapFromIcon(icon);
             DestroyIcon(icon);
             return pm;
+        }
+
+        namespace {
+            cairo_status_t WritePngChunk(void* closure, const unsigned char* data,
+                                         unsigned int length) {
+                FILE* file = static_cast<FILE*>(closure);
+                return std::fwrite(data, 1, length, file) == length
+                       ? CAIRO_STATUS_SUCCESS : CAIRO_STATUS_WRITE_ERROR;
+            }
+        } // namespace
+
+        bool WriteSurfacePng(cairo_surface_t* surface, const std::string& path) {
+            if (!surface || path.empty() ||
+                cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS)
+                return false;
+            cairo_surface_flush(surface);
+            namespace fs = std::filesystem;
+            const std::string temp = path + "." +
+                    std::to_string(static_cast<unsigned long>(GetCurrentProcessId()))
+                    + ".tmp";
+            // Through a stream, not cairo_surface_write_to_png: that one opens
+            // the narrow path in the process code page, which mangles a
+            // folder under a user name outside it.
+            FILE* file = _wfopen(Utf8ToWide(temp).c_str(), L"wb");
+            if (!file) return false;
+            const cairo_status_t status =
+                    cairo_surface_write_to_png_stream(surface, WritePngChunk, file);
+            const bool closed = std::fclose(file) == 0;
+            std::error_code ec;
+            if (status != CAIRO_STATUS_SUCCESS || !closed) {
+                fs::remove(PathFromUtf8(temp), ec);
+                return false;
+            }
+            fs::rename(PathFromUtf8(temp), PathFromUtf8(path), ec);
+            if (ec) {
+                // Another process won the race: its file is just as good.
+                fs::remove(PathFromUtf8(temp), ec);
+                return fs::exists(PathFromUtf8(path), ec);
+            }
+            return true;
         }
 
     } // namespace WindowsIcons

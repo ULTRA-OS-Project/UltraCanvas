@@ -1,5 +1,8 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.9.0 - ButtonVariant (Standard, Ghost, Primary, Selected): FromTheme maps the
+//                 theme onto a button's part; SetThemeVariant on the element
+// Version: 2.8.0 - ButtonStyle::FromTheme, ApplyTheme
 // Version: 2.7.1 - GetIconWidth / GetIconHeight
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
@@ -36,6 +39,14 @@ namespace UltraCanvas {
     };
 
 // ===== SPLIT BUTTON STYLE =====
+    // A button's part in the window, which FromTheme maps the theme onto:
+    // Standard - the raised surface with the control border (a text button);
+    // Ghost - no fill at rest, the hover and pressed fills (an icon button in
+    // a bar); Primary - the accent fill with text on it (the one main
+    // action); Selected - a ghost button in its on state (the active tool, a
+    // toggle that is on): the soft accent fill with the accent for its ink
+    enum class ButtonVariant { Standard, Ghost, Primary, Selected };
+
     struct SplitButtonStyle {
         // Enable split button mode
         bool enabled = false;
@@ -118,6 +129,20 @@ namespace UltraCanvas {
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
         Point2Df shadowOffset = Point2Di(0, 0);
+
+        // The theme's roles, by the button's variant - Standard: the raised
+        // surface at rest, the hover and pressed fills, ink, the control
+        // border, the focus ring; Ghost: no fill at rest, the hover and
+        // pressed fills ("button.ghost-hover", "button.ghost-pressed" where
+        // a theme names them), ink; Primary: the accent, its hover, text on
+        // it ("button.primary", "button.primary-hover", "button.on-primary");
+        // Selected: the soft accent fill, the accent for the ink
+        // ("button.selected", "button.on-selected") - over a base's own
+        // shape (sizes, fonts, flags), or a default one
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base,
+                                     ButtonVariant variant = ButtonVariant::Standard);
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ButtonStyle()); }
+        static ButtonStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -130,6 +155,7 @@ namespace UltraCanvas {
         int mnemonicIndex = -1;
         std::shared_ptr<UCImage> icon;
         ButtonStyle style;
+        ButtonVariant themeVariant = ButtonVariant::Standard;
         ButtonIconPosition iconPosition = ButtonIconPosition::Left;
 
         // Icon properties
@@ -139,6 +165,13 @@ namespace UltraCanvas {
         // State
         bool canToggled = false;
         bool canAcceptFocus = true;
+        // Grow-to-fit: the width the caller gave the button, and the width
+        // it was grown to (or -1 when it is at its given width).
+        bool growToFitText = true;
+        float declaredWidth = -1.f;
+        float grownWidth = -1.f;
+        float fitMinWidth = -1.f;   // the min-width the fit set, -1 when none
+        float relayoutForMinWidth = -1.f;   // the minimum a relayout was last asked for
 
         // Cached layout calculations
         Rect2Df iconRect;
@@ -202,6 +235,14 @@ namespace UltraCanvas {
         // ===== TEXT & ICON METHODS =====
         void SetText(const std::string& buttonText);
         std::string GetText() const { return text; }
+
+        // A button with text never comes out narrower than its text: a fixed
+        // width given in the constructor or SetSize() is the least it takes,
+        // and it grows when the text (a translation, a larger font) needs
+        // more. On by default; turn it off for a button that must keep its
+        // width and may cut its text. Buttons without text are not affected.
+        void SetGrowToFitText(bool grow);
+        bool GetGrowToFitText() const { return growToFitText; }
 
         // ===== ACCESSIBILITY =====
         // A push button, or a toggle button with its pressed state. Named by
@@ -294,6 +335,15 @@ namespace UltraCanvas {
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ButtonStyle::FromTheme(theme, GetStyle(), themeVariant)); }
+        // The button's part in the window for the theme (Standard unless
+        // set); a following button re-styles at once, so an active tool
+        // switches between Ghost and Selected with this alone
+        void SetThemeVariant(ButtonVariant variant) {
+            themeVariant = variant;
+            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+        }
+        ButtonVariant GetThemeVariant() const { return themeVariant; }
         bool AcceptsFocus() const override { return canAcceptFocus; }
         void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
 
@@ -302,6 +352,9 @@ namespace UltraCanvas {
         // Content-box size (text + primary icon + split secondary section),
         // excluding padding/border. Used by MeasureOwnContent/ComputeIntrinsicSizes.
         Size2Df MeasureContentSize(IRenderContext* rc) const;
+        // Widens a fixed-width button to its text (see SetGrowToFitText), or
+        // returns it to its given width; true when the width changed.
+        bool FitWidthToText(IRenderContext* rc);
         void CalculateLayout();
         void CalculateSplitLayout();
         bool IsPointInPrimarySection(int x, int y) const;

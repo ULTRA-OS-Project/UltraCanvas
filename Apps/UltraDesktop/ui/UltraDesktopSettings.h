@@ -5,6 +5,7 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.1.1 - no RAM disc by default on Windows
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -46,7 +47,11 @@ struct CategoryBoardSettings {
 struct DesktopSettings {
     TaskbarEdge taskbarEdge = TaskbarEdge::Left;
     std::string wallpaper;              // "" = the framework's default picture
-    std::string ramDiscPath = "/dev/shm";
+#if defined(_WIN32)
+    std::string ramDiscPath;            // Windows has no RAM disc of its own: no button
+#else
+    std::string ramDiscPath = "/dev/shm";   // "" = no RAM disc button
+#endif
     std::string filerProgram = "UltraFiler";
     int virtualDesktops = 3;            // 1..9, what the organiser offers
     bool stickerboardVisible = false;
@@ -54,7 +59,9 @@ struct DesktopSettings {
     CategoryBoardSettings categoryBoard;
 
     // "<config dir>/ultraos/desktop.json": $XDG_CONFIG_HOME, else ~/.config
-    // (%APPDATA% on Windows). "" when there is no home to keep it in.
+    // (%APPDATA% on Windows, ~/Library/Application Support on macOS - the
+    // framework's UltraCanvasDesktopSettingsFolder). "" when there is no home
+    // to keep it in.
     static std::string DefaultPath();
 
     // Missing file = defaults, and true; a file that cannot be parsed keeps

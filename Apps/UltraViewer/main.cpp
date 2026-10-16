@@ -4,8 +4,14 @@
 // video and audio (with player transport controls), documents (PDF),
 // e-books (EPUB/FB2/MOBI/AZW), spreadsheets (ODS/CSV/TSV), 3D models (STL),
 // text / source / markdown and UltraCanvas Document containers (*.ucd).
+// One UltraViewer per user: a second start hands its files and folders to the
+// running copy, whose viewer shows them in place of what it showed
+// (UltraCanvasSingleInstance.h); --help and --version print and quit without
+// asking it.
+// Version: 1.1.0 - one UltraViewer per user: a second start's files are shown
+//                  in the running viewer, a start without files brings it forward
 // Version: 1.0.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -18,6 +24,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraViewerWindow.h"
 
@@ -91,6 +98,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Only a start that opens a window claims the one copy per user; the
+    // print-and-quit options above never get here. The paths go over as
+    // absolute ones: the running copy was started in another folder. Declared
+    // before the application, so it outlives app.Run().
+    UltraCanvasSingleInstance instance("org.ultraos.ultraviewer", "UltraViewer");
+    const UltraCanvasSingleInstance::Start start =
+        instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(pathsToOpen));
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy shows them
+
     UltraCanvasApplication app;
     g_app = &app;
 
@@ -115,8 +131,26 @@ int main(int argc, char* argv[]) {
         // listing, view buttons), the same on every platform. Its message
         // boxes - a failed save, the replace prompt - follow the same setting.
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraViewer");
 
         UltraViewerWindow mainWindow;
+        // Listening starts before the command line's files are opened: a
+        // file that cannot be read shows a native error dialog that holds the
+        // start-up, and a start made meanwhile is still answered.
+        //
+        // A later start's files are shown here the way a drop on the viewer
+        // shows them: the one window's viewer switches to them (a folder, a
+        // file and its folder, or exactly those files). It replaces what was
+        // on view - a viewer has nothing unsaved to lose - and the window
+        // comes to the front. `shown` outlives the listener: Close() below
+        // runs before mainWindow goes.
+        UltraViewerWindow* shown = &mainWindow;
+        instance.ListenOpen([shown](const std::vector<std::string>& paths) {
+            shown->ShowPaths(paths);
+            shown->BringForward();
+        });
+
         if (!mainWindow.Initialize(pathsToOpen)) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
@@ -125,6 +159,7 @@ int main(int argc, char* argv[]) {
 
         debugOutput << "=== UltraViewer Ready ===" << std::endl;
         app.Run();
+        instance.Close();   // no request reaches the window once it starts to go
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());
         return EXIT_FAILURE;

@@ -19,6 +19,7 @@
 #include <set>
 #include <sstream>
 #include "../../../include/UltraCanvasPathUtf8.h"
+#include "UltraCanvasTextUtils.h"   // FormatFloatClassic
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -375,7 +376,7 @@ private:
         // pipeline this material model came from.
         phong.Shininess = haveShininess ? shininess * 128.0f : 0.0f;
         if (shininessStrength != 1.0f)
-            material.Extras["3ds.shininessStrength"] = std::to_string(shininessStrength);
+            material.Extras["3ds.shininessStrength"] = FormatFloatClassic(shininessStrength);
 
         material.Phong = phong;
         material.BaseColorFactor = Vec4f(phong.Diffuse.x, phong.Diffuse.y, phong.Diffuse.z,
@@ -723,9 +724,10 @@ private:
         // The document has no look-at: a camera is oriented by its node. The
         // target and bank are kept so nothing is lost while the orientation is
         // not yet derived.
-        node.Extras["3ds.target"] = std::to_string(tx) + " " + std::to_string(ty) + " " +
-                                    std::to_string(tz);
-        node.Extras["3ds.bank"] = std::to_string(bank);
+        // Dot-decimal: std::to_string writes "1,500000" on a comma-decimal desktop.
+        node.Extras["3ds.target"] = FormatFloatClassic(tx) + " " + FormatFloatClassic(ty) + " " +
+                                    FormatFloatClassic(tz);
+        node.Extras["3ds.bank"] = FormatFloatClassic(bank);
         doc.AddNode(std::move(node));
 
         options_.Warn("3DS: camera '" + name + "' imported at its position; the target and bank "

@@ -1,8 +1,9 @@
 // VideoFX/core/VideoFXFilterBuilder.h
 // Internal: turns typed VideoFX effects into backend filter-graph text.
 // Pure string code with no FFmpeg dependency, so it is unit-tested directly.
-// Version: 0.14.0
-// Last Modified: 2026-10-14
+// Version: 0.16.0 - IsOverlayEffect, BuildOverlayEffectGraph: an overlay's effects round its alpha
+// Version: 0.3.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 

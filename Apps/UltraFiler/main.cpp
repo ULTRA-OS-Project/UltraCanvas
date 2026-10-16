@@ -2,8 +2,13 @@
 // UltraFiler - file manager application built on the UltraCanvas framework:
 // folder tree (UltraCanvasTreeView) + folder content (UltraCanvasFilerWidget)
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
+// One copy per user: a second start hands its folder to the running copy,
+// which opens it in a new tab, and quits (UltraCanvasSingleInstance.h).
+// Version: 0.13.0 - one UltraFiler per user: a second start's folder opens in
+//                  a new tab of the running copy; the elevated helper never
+//                  claims
 // Version: 0.12.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -11,12 +16,14 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasElevatedFileOperations.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerWindow.h"
 #include "UltraFilerSettingsDialog.h"
@@ -70,6 +77,9 @@ static void PrintUsage(const char* programName) {
     std::cout << "Examples:" << std::endl;
     std::cout << "  " << programName << "                  # Open the home folder" << std::endl;
     std::cout << "  " << programName << " /home/user/Docs  # Open a specific folder" << std::endl;
+    std::cout << std::endl;
+    std::cout << "While UltraFiler is running, starting it again opens the folder in a new" << std::endl;
+    std::cout << "tab of the running window." << std::endl;
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
@@ -79,6 +89,9 @@ int main(int argc, char* argv[]) {
     // the helper flag on its command line: it deletes what the user
     // consented to and exits here, before any window exists. Calling this
     // is also what lets the Filer widget offer the retry at all.
+    // The helper is started BY the running UltraFiler, so it must never
+    // claim the one copy per user below: it would find that copy and hand
+    // itself over instead of deleting anything.
     int helperExit = 0;
     if (ElevatedFileOperations::RunHelperIfRequested(argc, argv, helperExit))
         return helperExit;
@@ -103,6 +116,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // One UltraFiler per user. The helper above and --help / --version print
+    // or work and quit without it. A later start hands its folder to this
+    // copy, which opens it in a new tab; one without a folder brings the
+    // window forward. Outlives app.Run(), so it sits outside the try.
+    UltraCanvasSingleInstance instance("org.ultraos.ultrafiler", "UltraFiler");
+    const UltraCanvasSingleInstance::Start start = instance.Claim(
+            UltraCanvasSingleInstance::MakeOpenRequest({folderToOpen}));
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy shows it
+
     UltraCanvasApplication app;
     g_app = &app;
 
@@ -120,6 +142,8 @@ int main(int argc, char* argv[]) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return EXIT_FAILURE;
         }
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraFiler");
         app.SetDefaultWindowIcon(
                 NormalizePath(GetResourcesDir() + "media/appicon/UltraFiler.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
@@ -129,6 +153,16 @@ int main(int argc, char* argv[]) {
         SetDefaultMenuCheckboxShape(MenuCheckboxShape::Round);
 
         UltraFilerWindow mainWindow;
+        // Listening starts before the command line's files are opened: a
+        // file that cannot be read shows a native error dialog that holds the
+        // start-up, and a start made meanwhile is still answered.
+        //
+        // A later start's folder opens in a new tab here; a later start
+        // without one brings the window forward.
+        instance.ListenOpen([&mainWindow](const std::vector<std::string>& paths) {
+            mainWindow.OpenFolders(paths);
+        });
+
         if (!mainWindow.Initialize(folderToOpen)) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
@@ -137,6 +171,7 @@ int main(int argc, char* argv[]) {
 
         debugOutput << "=== UltraFiler Ready ===" << std::endl;
         app.Run();
+        instance.Close();   // no request reaches the window once it starts to go
         // Tear down the retained settings-dialog widget tree while `app` (and
         // thus the Application singleton) is still alive, instead of at static
         // destruction after main() returns — see UltraFilerSettingsDialog::Shutdown.

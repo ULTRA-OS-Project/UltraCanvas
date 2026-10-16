@@ -10,8 +10,9 @@
 //     "title": "...", "output": "out.mp4", "settings": {...},
 //     "segments": [ {...}, ... ] }                       a timeline, or
 //     "slideshow": { "images": [...], "options": {...} } a slideshow
-// Version: 0.14.0
-// Last Modified: 2026-10-14
+// Version: 0.16.0 - overlays[].effects
+// Version: 0.13.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "VideoFXProject.h"

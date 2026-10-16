@@ -12,8 +12,11 @@
 // document again, so the inspector never writes the document itself. A
 // slider's edits while it is dragged carry its id as the merge key, so a
 // whole drag is one undo step; its release ends the step (onEditEnd).
-// Version: 0.5.0
-// Last Modified: 2026-10-14
+// Version: 0.7.0 - an overlay clip's effects; a slider's drag as one undo step
+// Version: 0.6.0 - a clip's Keep faces in shot switch
+// Version: 0.5.0 - no caption or heading vectors: the labels follow the theme
+// Version: 0.4.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -77,7 +80,6 @@ private:
 
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs;
     std::shared_ptr<Container> clipPage, audioPage, projectPage;
-    std::vector<std::shared_ptr<Label>> captions, headings;
     std::vector<std::shared_ptr<Dropdown>> dropdowns;
     std::vector<std::shared_ptr<Slider>> sliders;
     std::vector<std::shared_ptr<Switch>> switches;
@@ -88,7 +90,7 @@ private:
     std::shared_ptr<Container> clipFields, clipEmpty, fileRows, imageRows, transitionRows;
     std::shared_ptr<TimecodeField> inField, outField, transitionLength;
     std::shared_ptr<Slider> speed;
-    std::shared_ptr<Switch> mute;
+    std::shared_ptr<Switch> mute, clipFaces;   // clipFaces: a video clip that fills the frame keeps its faces
     std::shared_ptr<Dropdown> transitionType, motion, imageFit;
     std::shared_ptr<Switch> keepFaces;
     std::shared_ptr<TimecodeField> stillLength;

@@ -71,6 +71,21 @@ TimecodeFieldStyle TimecodeFieldStyle::DarkPalette() {
     return s;
 }
 
+TimecodeFieldStyle TimecodeFieldStyle::FromTheme(const UltraCanvasTheme& t) {
+    TimecodeFieldStyle s;
+    const ThemeRoles& r = t.roles;
+    s.background = r.well;
+    s.border = r.lineStrong;
+    s.borderFocused = r.focus;
+    s.borderInvalid = r.danger;
+    s.ink = r.ink;
+    s.inkFaint = r.inkFaint;
+    s.selection = r.accent;
+    s.onSelection = r.onAccent;
+    s.sign = r.accent;
+    return s;
+}
+
 UltraCanvasTimecodeField::UltraCanvasTimecodeField(const std::string& id, int x, int y, int w, int h)
     : UltraCanvasUIElement(id, x, y, w, h) {
     SetMouseCursor(UCMouseCursor::Default);

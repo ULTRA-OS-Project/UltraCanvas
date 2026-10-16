@@ -4,8 +4,9 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
+// Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasEvent.h"
@@ -139,6 +140,54 @@ VideoTimelineStyle VideoTimelineStyle::DarkPalette() {
     return s;
 }
 
+VideoTimelineStyle VideoTimelineStyle::FromTheme(const UltraCanvasTheme& t) {
+    VideoTimelineStyle s = t.dark ? DarkPalette() : LightPalette();
+    const ThemeRoles& r = t.roles;
+    s.background = r.panel;
+    s.lane = r.well;
+    s.laneAlternate = r.well;
+    s.header = r.raised;
+    s.headerSelected = r.accentSoft;
+    s.line = r.line;
+    s.lineStrong = r.lineStrong;
+    s.ink = r.ink;
+    s.inkMuted = r.inkMuted;
+    s.inkFaint = r.inkFaint;
+    s.accent = r.accent;
+    s.accentSoft = r.accentSoft;
+    s.onAccent = r.onAccent;
+    s.focus = r.focus;
+    s.danger = r.danger;
+    // the element's own roles, with the palette's colour where the theme is silent
+    auto role = [&](const char* name, Color& into) { into = t.Role(std::string("video-timeline.") + name, into); };
+    role("playhead", s.playhead);
+    role("clip-video", s.clipVideo);
+    role("clip-video-edge", s.clipVideoEdge);
+    role("clip-image", s.clipImage);
+    role("clip-image-edge", s.clipImageEdge);
+    role("clip-card", s.clipCard);
+    role("clip-card-edge", s.clipCardEdge);
+    role("clip-title", s.clipTitle);
+    role("clip-title-edge", s.clipTitleEdge);
+    role("clip-audio", s.clipAudio);
+    role("clip-audio-edge", s.clipAudioEdge);
+    role("waveform", s.waveform);
+    role("transition-fill", s.transitionFill);
+    role("on-transition", s.onTransition);
+    role("beat", s.beat);
+    role("trim-overflow", s.trimOverflow);
+    // the guides that are tints of shared roles follow those roles unless named
+    s.dropSoft = Color(r.focus.r, r.focus.g, r.focus.b, 31);
+    s.rangeFill = Color(r.accent.r, r.accent.g, r.accent.b, 36);
+    s.mutedHatch = Color(r.panel.r, r.panel.g, r.panel.b, 150);
+    s.scrollbar = Color(r.lineStrong.r, r.lineStrong.g, r.lineStrong.b, 120);
+    role("drop-soft", s.dropSoft);
+    role("range-fill", s.rangeFill);
+    role("muted-hatch", s.mutedHatch);
+    role("scrollbar", s.scrollbar);
+    return s;
+}
+
 // ============================================================================
 // CONSTRUCTION AND SETTERS
 // ============================================================================
@@ -236,6 +285,12 @@ std::vector<std::string> UltraCanvasVideoTimeline::GetSelection() const {
 
 void UltraCanvasVideoTimeline::SetSelectedTransition(const std::string& clipId) {
     selectedTransition = clipId;
+    RequestRedraw();
+}
+
+void UltraCanvasVideoTimeline::SetDropTargetClip(const std::string& clipId) {
+    if (dropTargetClip == clipId) return;
+    dropTargetClip = clipId;
     RequestRedraw();
 }
 
@@ -864,6 +919,13 @@ void UltraCanvasVideoTimeline::DrawClip(IRenderContext* ctx, const TimelineTrack
         ctx->SetStrokePaint(style.accent);
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawRoundedRectangle(Rect2Dd(r.x + 1.0, r.y + 1.0, r.width - 2.0, r.height - 2.0), style.cornerRadius);
+    }
+    if (!dropTargetClip.empty() && dropTargetClip == clip.id) {   // where a carried drop would land
+        ctx->SetStrokePaint(style.focus);
+        ctx->SetStrokeWidth(2.0f);
+        ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
+        ctx->DrawRoundedRectangle(Rect2Dd(r.x + 1.0, r.y + 1.0, r.width - 2.0, r.height - 2.0), style.cornerRadius);
+        ctx->SetLineDash(UCDashPattern());
     }
     ctx->PopState();
 }

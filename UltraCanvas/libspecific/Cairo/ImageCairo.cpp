@@ -1,20 +1,29 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.8.0 - GIF through libvips everywhere: its gifsave, else the
+//                  framework's encoder registered as ucgifsave (VipsGifPlugin)
+// Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
+//                  AVIF (AV1) here
 // Version: 2.6.0 - ICO and QOI written by the framework's own libvips savers
 //                  (VipsIcoPlugin, VipsQoiLoader), registered with the loaders;
 //                  no ImageMagick for either
+// Version: 2.6.0 - ...and so is one that arrives as bytes (LoadFromMemory sniffs the SVG)
+// Version: 2.8.0 - a build without libvips reads JPEG, BMP and GIF through the
+//                  bundled stb_image (StbRasterDecode)
+// Version: 2.7.0 - a build without libvips reads PNG through cairo's own reader
 // Version: 2.5.0 - An SVG libvips cannot load is read through the vector preview seam
 //                 and rendered by the core's vector renderer (the WebAssembly build)
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
 //                  drops it; RemoveFromCache releases libvips' cached operations
 //                  too; pixmap keys carry the source stamp
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
+#include "StbRasterDecode.h"
 #include "UltraCanvasCoderModuleRepair.h"
 #include "UltraCanvasFileStamp.h"
 #include "UltraCanvasVectorPreview.h"              // LoadVectorPreviewDocument, RenderVectorDocumentPixmap
@@ -25,7 +34,10 @@
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #include "VipsIcoPlugin.h"
-#include "UltraCanvasGifEncoder.h"
+#include "VipsGifPlugin.h"
+#endif
+#ifdef HAS_LIBHEIF
+#include <libheif/heif.h>                          // VipsCanDecode: which codecs decode here
 #endif
 #ifdef HAS_LIBRSVG
 #include "SvgDocumentCairo.h"
@@ -191,6 +203,7 @@ namespace UltraCanvas {
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
         vips_foreign_ico_init_types();
+        vips_foreign_gif_init_types();
         return true;
     }
 
@@ -359,8 +372,94 @@ namespace UltraCanvas {
 #endif
     }
 
-    bool UCImageRaster::LoadVectorDocument(const std::string& imagePath) {
-        auto document = LoadVectorPreviewDocument(imagePath);
+    namespace {
+        // Bytes that are an SVG document: optional BOM and whitespace, then an
+        // XML declaration, a DOCTYPE, a comment or the <svg> element itself,
+        // with "<svg" somewhere in the first kilobyte. Gzip-compressed SVG
+        // (.svgz) is not sniffed: from memory nothing inflates it.
+        bool LooksLikeSvg(const uint8_t* data, size_t size) {
+            if (!data || size < 5) return false;
+            size_t i = 0;
+            if (size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) i = 3;
+            while (i < size && (data[i] == ' ' || data[i] == '\t' || data[i] == '\r' || data[i] == '\n')) ++i;
+            if (i >= size || data[i] != '<') return false;
+            const std::string head(reinterpret_cast<const char*>(data + i), std::min<size_t>(size - i, 1024));
+            return head.find("<svg") != std::string::npos;
+        }
+
+#ifndef HAS_LIBVIPS
+        // Without libvips the raster formats read are PNG, through cairo's
+        // own reader (cairo-png is in every sysroot this build links): the
+        // icons, logos and status marks a program's chrome is made of; and
+        // JPEG, BMP and GIF through the bundled stb_image (StbRasterDecode),
+        // for the photographs a static host serves.
+        const char* const kNoDecoderMessage =
+            "No decoder for this picture in a build without libvips (PNG, JPEG, BMP, GIF and SVG only)";
+
+        bool LooksLikePng(const uint8_t* data, size_t size) {
+            static const uint8_t signature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+            return data && size >= 33 && std::memcmp(data, signature, 8) == 0;
+        }
+
+        // The IHDR chunk follows the signature: width and height big-endian
+        // at bytes 16 and 20, the colour type at 25 (4 and 6 carry alpha).
+        void ReadPngHeader(const uint8_t* data, int& w, int& h, bool& alpha) {
+            auto be32 = [data](size_t at) {
+                return (static_cast<uint32_t>(data[at]) << 24) | (static_cast<uint32_t>(data[at + 1]) << 16) |
+                       (static_cast<uint32_t>(data[at + 2]) << 8) | static_cast<uint32_t>(data[at + 3]);
+            };
+            const uint32_t pw = be32(16), ph = be32(20);
+            w = pw > 0 && pw < 0x40000000u ? static_cast<int>(pw) : 0;
+            h = ph > 0 && ph < 0x40000000u ? static_cast<int>(ph) : 0;
+            alpha = data[25] == 4 || data[25] == 6;
+        }
+
+        struct PngReadCursor { const uint8_t* data; size_t size; size_t pos; };
+
+        cairo_status_t ReadPngBytes(void* closure, unsigned char* out, unsigned int length) {
+            auto* cursor = static_cast<PngReadCursor*>(closure);
+            if (cursor->pos + length > cursor->size) return CAIRO_STATUS_READ_ERROR;
+            std::memcpy(out, cursor->data + cursor->pos, length);
+            cursor->pos += length;
+            return CAIRO_STATUS_SUCCESS;
+        }
+
+        // The PNG decoded to an ARGB32 surface, or nullptr. A 16-bit PNG comes
+        // back as a float surface on newer cairo and a grey one as A8 or
+        // RGB24: whatever it is, it is painted onto ARGB32.
+        cairo_surface_t* DecodePngSurface(const uint8_t* data, size_t size) {
+#ifdef CAIRO_HAS_PNG_FUNCTIONS
+            PngReadCursor cursor{ data, size, 0 };
+            cairo_surface_t* loaded = cairo_image_surface_create_from_png_stream(ReadPngBytes, &cursor);
+            if (cairo_surface_status(loaded) != CAIRO_STATUS_SUCCESS) {
+                cairo_surface_destroy(loaded);
+                return nullptr;
+            }
+            if (cairo_image_surface_get_format(loaded) == CAIRO_FORMAT_ARGB32) return loaded;
+            const int w = cairo_image_surface_get_width(loaded);
+            const int h = cairo_image_surface_get_height(loaded);
+            cairo_surface_t* argb = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+            if (cairo_surface_status(argb) != CAIRO_STATUS_SUCCESS) {
+                cairo_surface_destroy(argb);
+                cairo_surface_destroy(loaded);
+                return nullptr;
+            }
+            cairo_t* cr = cairo_create(argb);
+            cairo_set_source_surface(cr, loaded, 0, 0);
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+            cairo_surface_destroy(loaded);
+            return argb;
+#else
+            (void)data; (void)size;
+            return nullptr;
+#endif
+        }
+#endif  // !HAS_LIBVIPS
+    }
+
+    bool UCImageRaster::AdoptVectorDocument(std::shared_ptr<VectorStorage::VectorDocument> document) {
         if (!document) return false;
         // The natural size: what the drawing asks to be drawn at, else what
         // it paints - the same answer RenderVectorDocumentPixmap fits to.
@@ -377,6 +476,22 @@ namespace UltraCanvas {
         height = std::max(1, static_cast<int>(std::lround(dh)));
         transparency = 1;        // a drawing shows what is behind it
         errorMessage.clear();
+        return true;
+    }
+
+    bool UCImageRaster::LoadVectorDocument(const std::string& imagePath) {
+        return AdoptVectorDocument(LoadVectorPreviewDocument(imagePath));
+    }
+
+    bool UCImageRaster::LoadVectorDocumentFromMemory(const uint8_t* data, size_t size) {
+        if (!LooksLikeSvg(data, size)) return false;
+        if (!AdoptVectorDocument(LoadVectorPreviewDocumentFromMemory("svg", data, size))) return false;
+        // The document is the image now; the bytes a decoder would have
+        // read are not needed.
+        if (imgDataPtr && ownData) free(imgDataPtr);
+        imgDataPtr = nullptr;
+        ownData = false;
+        imgDataSize = 0;
         return true;
     }
 
@@ -572,6 +687,12 @@ namespace UltraCanvas {
             result->errorMessage = "Invalid data: null pointer or zero size";
             return result;
         }
+        // An SVG that came as bytes, in a build whose libvips cannot
+        // rasterize SVG: the vector preview seam, as Load() does for a file.
+        const bool svg = LooksLikeSvg(data, dataSize);
+        if (svg && !PipelineHasSvgLoader() && result->LoadVectorDocumentFromMemory(data, dataSize)) {
+            return result;
+        }
 
         try {
             // Copy the buffer: the raster outlives the call (pixmap creation,
@@ -592,6 +713,10 @@ namespace UltraCanvas {
             result->height = vipsImage.height();
             result->ReadAnimationMetadata(vipsImage);
         } catch (vips::VError& err) {
+            // The loader refused the bytes: the plugin's reader may not.
+            if (svg && result->LoadVectorDocumentFromMemory(data, dataSize)) {
+                return result;
+            }
             debugOutput << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image from memory buffer. Err:") + err.what();
         }
@@ -603,20 +728,43 @@ namespace UltraCanvas {
         auto result = std::make_shared<UCImageRaster>(imagePath);
         (void)loadOnlyHeader;
         // No image pipeline, but a drawing the Vector plugin reads still
-        // renders through the core's vector renderer.
+        // renders through the core's vector renderer, and a PNG through
+        // cairo's reader (the pixmap is decoded when first drawn).
         if (IsSvgFileName(imagePath) && result->LoadVectorDocument(imagePath)) {
             return result;
         }
-        result->LoadFileToMemory(imagePath);
-        result->errorMessage = "Image loading not yet implemented (no libvips)";
+        if (result->LoadFileToMemory(imagePath) && result->AdoptRasterBytes()) {
+            return result;
+        }
+        if (result->errorMessage.empty())
+            result->errorMessage = kNoDecoderMessage;
         return result;
     }
 
-    // No loader, so nothing can be said about the pixels: "opaque" is the
-    // answer that leaves a backdrop chooser out of the way.
+    // What the header says: alpha when the PNG colour type or the stb
+    // channel count carries one. The other answer, "opaque", leaves a
+    // backdrop chooser out of the way.
     bool UCImageRaster::HasTransparency() {
-        transparency = 0;
-        return false;
+        return transparency == 1;
+    }
+
+    // The bytes in imgDataPtr taken as a PNG (cairo's reader) or a JPEG, BMP
+    // or GIF (stb_image): the size from the header now, the pixels when a
+    // pixmap is asked for.
+    bool UCImageRaster::AdoptRasterBytes() {
+        int w = 0, h = 0;
+        bool alpha = false;
+        if (LooksLikePng(imgDataPtr, imgDataSize)) {
+            ReadPngHeader(imgDataPtr, w, h, alpha);
+        } else if (!StbRaster::ReadHeader(imgDataPtr, imgDataSize, w, h, alpha)) {
+            return false;
+        }
+        if (w <= 0 || h <= 0) return false;
+        width = w;
+        height = h;
+        transparency = alpha ? 1 : 0;
+        errorMessage.clear();
+        return true;
     }
 
     // No loader, so no metadata: "" means "unknown" to every caller.
@@ -641,7 +789,13 @@ namespace UltraCanvas {
         std::memcpy(result->imgDataPtr, data, dataSize);
         result->imgDataSize = dataSize;
         result->ownData = true;
-        result->errorMessage = "Image loading not yet implemented (no libvips)";
+        if (result->LoadVectorDocumentFromMemory(data, dataSize)) {
+            return result;
+        }
+        if (result->AdoptRasterBytes()) {
+            return result;
+        }
+        result->errorMessage = kNoDecoderMessage;
         return result;
     }
 #endif
@@ -951,7 +1105,76 @@ namespace UltraCanvas {
         if (vectorDocument) {
             return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
         }
-        return nullptr;
+        if (!imgDataPtr || imgDataSize == 0 || w <= 0 || h <= 0) return nullptr;
+        if (scale <= 0.0f) scale = 1.0f;
+        cairo_surface_t* source = nullptr;
+        if (LooksLikePng(imgDataPtr, imgDataSize)) {
+            source = DecodePngSurface(imgDataPtr, imgDataSize);
+        } else if (StbRaster::Recognises(imgDataPtr, imgDataSize)) {
+            source = StbRaster::Decode(imgDataPtr, imgDataSize);
+        }
+        if (!source) {
+            errorMessage = "The picture could not be decoded: " + fileName;
+            return nullptr;
+        }
+        const int sw = cairo_image_surface_get_width(source);
+        const int sh = cairo_image_surface_get_height(source);
+        if (sw <= 0 || sh <= 0) {
+            cairo_surface_destroy(source);
+            return nullptr;
+        }
+        // The box w x h, by the fit mode, with the libvips thumbnail path's
+        // meaning: Fill stretches to the box, Contain fits it, ScaleDown fits
+        // it but never past the natural size, Cover covers it and is cropped
+        // to it, NoScale is the natural size. Rendered at device pixels.
+        const double sx = static_cast<double>(w) / sw;
+        const double sy = static_cast<double>(h) / sh;
+        double fx = 1.0, fy = 1.0;
+        switch (fitMode) {
+            case ImageFitMode::Fill:      fx = sx; fy = sy; break;
+            case ImageFitMode::Contain:   fx = fy = std::min(sx, sy); break;
+            case ImageFitMode::ScaleDown: fx = fy = std::min(1.0, std::min(sx, sy)); break;
+            case ImageFitMode::Cover:     fx = fy = std::max(sx, sy); break;
+            case ImageFitMode::NoScale:   break;
+        }
+        const int tw = std::max(1, static_cast<int>(std::lround(sw * fx * scale)));
+        const int th = std::max(1, static_cast<int>(std::lround(sh * fy * scale)));
+        auto pm = std::make_shared<UCPixmapCairo>(tw, th);
+        if (!pm->IsValid()) {
+            cairo_surface_destroy(source);
+            return nullptr;
+        }
+        {
+            cairo_t* cr = cairo_create(pm->GetSurface());
+            cairo_scale(cr, static_cast<double>(tw) / sw, static_cast<double>(th) / sh);
+            cairo_set_source_surface(cr, source, 0, 0);
+            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+        }
+        cairo_surface_destroy(source);
+        pm->MarkDirty();
+        pm->Flush();
+        if (fitMode == ImageFitMode::Cover && (tw > w * scale || th > h * scale)) {
+            // Centre crop to the box, in device pixels.
+            const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
+            const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
+            auto cropped = std::make_shared<UCPixmapCairo>(bw, bh);
+            if (!cropped->IsValid()) return nullptr;
+            cairo_t* cr = cairo_create(cropped->GetSurface());
+            cairo_set_source_surface(cr, pm->GetSurface(), -(tw - bw) / 2.0, -(th - bh) / 2.0);
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+            cropped->MarkDirty();
+            cropped->Flush();
+            pm = cropped;
+        }
+        if (scale != 1.0f) {
+            pm->SetDeviceScale(scale);
+        }
+        return pm;
     }
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
         return nullptr;
@@ -1014,45 +1237,6 @@ namespace UltraCanvas {
         return ExportVImage(vImg, imagePath, opts);
     }
 
-    // Bundled, dependency-free GIF89a writer, used when this libvips build has
-    // no native cgif `gifsave`. Normalises the VImage to 8-bit sRGB (RGB, or
-    // RGBA when transparency must be kept), hands the raw buffer to the bundled
-    // encoder, and returns "" on success or an error string. See
-    // UltraCanvasGifEncoder.h for why the encoder exists.
-    static std::string EncodeGIFFromVImage(vips::VImage vImg, const std::string& imagePath,
-                                           int maxColorBits, bool interlace) {
-        try {
-            if (vImg.interpretation() != VIPS_INTERPRETATION_sRGB) {
-                vImg = vImg.colourspace(VIPS_INTERPRETATION_sRGB);
-            }
-            int bands = vImg.bands();
-            if (bands == 1) {
-                vImg = vImg.bandjoin({ vImg, vImg });        // gray → RGB
-                bands = 3;
-            } else if (bands == 2) {
-                // gray + alpha → RGB + alpha (keep binary transparency)
-                vips::VImage gray  = vImg.extract_band(0);
-                vips::VImage alpha = vImg.extract_band(1);
-                vImg = gray.bandjoin({ gray, gray, alpha });
-                bands = 4;
-            } else if (bands > 4) {
-                vImg = vImg.extract_band(0, vips::VImage::option()->set("n", 4));
-                bands = 4;
-            }
-            if (vImg.format() != VIPS_FORMAT_UCHAR) {
-                vImg = vImg.cast(VIPS_FORMAT_UCHAR);
-            }
-            vImg = vImg.copy_memory();   // guarantee a contiguous buffer
-            const int width  = vImg.width();
-            const int height = vImg.height();
-            const uint8_t* data = static_cast<const uint8_t*>(vImg.data());
-            return UltraCanvas::GifEncode::EncodeGifFile(
-                    imagePath, data, width, height, bands, maxColorBits, interlace);
-        } catch (vips::VError& err) {
-            return std::string("GIF encode: ") + err.what();
-        }
-    }
-
     // The encoding half of ExportVImage. It writes wherever it is told, which
     // is never the caller's file directly - see ExportVImage below.
     static std::string EncodeVImageTo(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
@@ -1082,27 +1266,16 @@ namespace UltraCanvas {
             switch (opts.format) {
                 case UCImageSaveFormat::GIF:
                     bitDepth = std::min(8, ColorDepthToBitDepth(opts.gif.colorDepth));
-                    if (vips_type_find("VipsOperation", "gifsave") != 0) {
-                        vImg.gifsave(imagePath.c_str(), vips::VImage::option()
-                                ->set("bitdepth", bitDepth)
-                                ->set("interlace", opts.gif.interlace)
-                                ->set("dither", opts.gif.dithering ? 1.0 : 0.0));
-                    } else {
-                        // This libvips build has no native cgif writer (MSYS2
-                        // passes -Dcgif=disabled). The previous fallback routed
-                        // GIF through ImageMagick's magicksave, but that fails
-                        // at run time on systems whose ImageMagick lacks the
-                        // optional GIF encode delegate:
-                        //   magicksave: libMagick error:
-                        //   NoEncodeDelegateForThisImageFormat `gif'
-                        // Use the bundled, dependency-free encoder instead so
-                        // GIF export works regardless of cgif/ImageMagick.
-                        // (bitdepth carries over; interlace is honoured; the
-                        // encoder quantises to <=256 colours itself.)
-                        std::string gifErr = EncodeGIFFromVImage(
-                                vImg, imagePath, bitDepth, opts.gif.interlace);
-                        if (!gifErr.empty()) return gifErr;
-                    }
+                    // libvips' gifsave (cgif) where it has one, else the
+                    // framework's encoder registered as ucgifsave
+                    // (VipsGifPlugin.h): not ImageMagick, whose GIF coder is
+                    // an optional delegate.
+                    vips::VImage::call(vips_foreign_gif_saver(), vips::VImage::option()
+                            ->set("in", vImg)
+                            ->set("filename", imagePath.c_str())
+                            ->set("bitdepth", bitDepth)
+                            ->set("interlace", opts.gif.interlace)
+                            ->set("dither", opts.gif.dithering ? 1.0 : 0.0));
                     break;
 
                 case UCImageSaveFormat::PNG: {
@@ -1394,6 +1567,38 @@ namespace UltraCanvas {
         vips_error_clear();
         known[key] = works;
         return works;
+    }
+
+#ifdef HAS_LIBHEIF
+    namespace {
+        // libheif loads its codec plug-ins in heif_init (1.14 on), which
+        // counts its callers; this one stays for the program's life.
+        bool HeifDecodes(heif_compression_format format) {
+#if defined(LIBHEIF_NUMERIC_VERSION) && LIBHEIF_NUMERIC_VERSION >= 0x010d0000
+            static const bool initialised = [] { heif_init(nullptr); return true; }();
+            (void)initialised;
+#endif
+            return heif_have_decoder_for_format(format) != 0;
+        }
+    }
+#endif
+
+    bool VipsCanDecode(const std::string& extensionWithDot) {
+        if (!VipsCanLoad(extensionWithDot)) return false;
+#ifdef HAS_LIBHEIF
+        std::string ext = extensionWithDot;
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        // Asked once each: the plug-ins do not change while the program runs
+        if (ext == ".heic" || ext == ".heif") {
+            static const bool hevc = HeifDecodes(heif_compression_HEVC);
+            return hevc;
+        }
+        if (ext == ".avif") {
+            static const bool av1 = HeifDecodes(heif_compression_AV1);
+            return av1;
+        }
+#endif
+        return true;
     }
 
     namespace {

@@ -1,8 +1,10 @@
 // UltraCloud/include/UltraCloud/UltraCloudService.h
 // The app-facing facade: accounts + secrets + providers behind one object.
 // "Share this file through my default cloud account" is one call.
-// Version: 0.3.0
-// Last Modified: 2026-09-24
+// Version: 0.5.0 - a service can own its stores (the shared_ptr
+//                  constructor), so it can be shared with work that outlives
+//                  whoever made it
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -19,15 +21,28 @@ namespace UltraCloud {
 
 class CloudService {
 public:
+    // A service over stores the caller keeps: they must outlive it, and so
+    // must the service outlive every call made on it.
     CloudService(AccountStore& accounts, ISecretStore& secrets)
         : accounts_(accounts), secrets_(secrets) {}
+
+    // A service that keeps its stores alive for as long as it lives itself.
+    // Made with std::make_shared, it can be handed to work that may outlive
+    // whoever made it - the add-account dialog's sign-in thread, which waits
+    // minutes on the browser, holds it until the sign-in has ended
+    // (ShowAddAccountDialog's shared_ptr form).
+    CloudService(std::shared_ptr<AccountStore> accounts, std::shared_ptr<ISecretStore> secrets)
+        : ownedAccounts_(std::move(accounts)), ownedSecrets_(std::move(secrets)),
+          accounts_(*ownedAccounts_), secrets_(*ownedSecrets_) {}
 
     AccountStore& Accounts() { return accounts_; }
     ISecretStore& Secrets()  { return secrets_; }
 
     // Store an account and its credentials. Fills accountId when empty; the
     // first account becomes the default. With `verify` the provider is asked
-    // to sign in first and nothing is stored if that fails.
+    // to sign in first and nothing is stored if that fails - nor when the
+    // calling thread's sign-in has been called off meanwhile
+    // (SetThreadSignInCancel): that ends as ResultCode::Cancelled.
     Result AddAccount(Account& account, const Credentials& credentials, bool verify);
     // Sign in through the provider's OAuth2 flow (`openUrl` shows the consent
     // page), fill the account's user name from the provider, then store it
@@ -38,6 +53,12 @@ public:
 
     std::shared_ptr<ICloudProvider> ProviderFor(const Account& account) const;
 
+    // Every call below runs with the account's credentials resolved
+    // (Resolve). One whose access token the service rejects (HTTP 401) while
+    // it had not expired here - revoked early, a clock that is off, or expired
+    // during a long wait for a service that limits requests - is not failed
+    // at once: the token is renewed from the refresh token, stored, and the
+    // call made once more. Said in the thread's log (UltraCloudLog.h).
     Result List(const std::string& accountId, const std::string& path, std::vector<Entry>& out);
     // ---- Changing what is there ---------------------------------------------
     // Forwarded to the provider, which answers Unsupported unless it can do
@@ -71,10 +92,29 @@ public:
 
 private:
     // Account + credentials + provider for an id. An expired OAuth token is
-    // refreshed here and the new one stored, so callers never see a stale one.
+    // refreshed here and the new one stored, so callers never see a stale one;
+    // `renewed`, when given, says whether that happened.
     Result Resolve(const std::string& accountId, Account& account, Credentials& credentials,
-                   std::shared_ptr<ICloudProvider>& provider);
+                   std::shared_ptr<ICloudProvider>& provider, bool* renewed = nullptr);
+    // Resolve, then `call` - and once more with a renewed token when the
+    // service rejected the one it had (see above).
+    using AccountCall =
+            std::function<Result(const Account&, const Credentials&, ICloudProvider&)>;
+    Result Run(const std::string& accountId, const AccountCall& call);
+    // UploadAndShare's three steps with the account resolved.
+    Result UploadAndShareWith(const Account& account, const Credentials& credentials,
+                              ICloudProvider& provider, const std::string& localPath,
+                              const std::string& remoteFolder, const ShareLinkOptions& options,
+                              ShareLink& out, std::string* remotePathOut);
+    // Renews the access token and stores it, saying so in the log.
+    Result RenewToken(const std::string& accountId, const Account& account,
+                      Credentials& credentials, ICloudProvider& provider,
+                      const std::string& why);
 
+    // Set by the shared_ptr constructor only. Declared before the references
+    // below, which are bound to what they hold.
+    std::shared_ptr<AccountStore> ownedAccounts_;
+    std::shared_ptr<ISecretStore> ownedSecrets_;
     AccountStore& accounts_;
     ISecretStore& secrets_;
 };

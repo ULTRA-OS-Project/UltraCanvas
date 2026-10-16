@@ -1,0 +1,4 @@
+{
+  "$comment": "No registry or baseline: the ports are those of the vcpkg commit scripts/android-bootstrap-sysroot.sh checks out (the one scripts/macos-deps.sh pins), plus libvips from the macOS overlay - vcpkg's own port turns off libvips' built-in GIF and PPM loaders unless they are named, and the overlay names them. It holds nothing macOS-specific.",
+  "overlay-ports": [ "../../../../MacOS/deps/ports/libvips" ]
+}

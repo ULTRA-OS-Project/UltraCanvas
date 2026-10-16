@@ -1,6 +1,6 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
-// Version: 0.1.3
+// Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraClipboardWindow.h"
@@ -15,23 +15,28 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDesktopShell.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasRichDocument.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTooltipManager.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <string_view>
 
 #ifndef ULTRACLIPBOARD_VERSION
 #error "ULTRACLIPBOARD_VERSION must come from Docs/UltraClipboard/CHANGELOG.md via CMake"
@@ -132,6 +137,66 @@ std::filesystem::path ImageHandOffFolder() {
     return fs::is_directory(folder, ec) ? folder : fs::path();
 }
 
+// A file name from an entry's title: its first line, without the characters
+// a file name cannot hold on some system, at most 60 bytes (not cutting a
+// character in two); `fallback` when nothing is left.
+std::string FileNameFromTitle(const std::string& title, const std::string& fallback) {
+    std::string name;
+    for (const char c : title.substr(0, title.find('\n'))) {
+        const auto u = static_cast<unsigned char>(c);
+        if (u < 0x20 || std::string_view("/\\:*?\"<>|").find(c) != std::string_view::npos) name += ' ';
+        else name += c;
+    }
+    if (name.size() > 60) {
+        size_t cut = 60;
+        while (cut > 0 && (static_cast<unsigned char>(name[cut]) & 0xC0) == 0x80) --cut;
+        name.resize(cut);
+    }
+    const size_t first = name.find_first_not_of(" .");
+    if (first == std::string::npos) return fallback;
+    name = name.substr(first, name.find_last_not_of(" .") - first + 1);
+    return name.empty() ? fallback : name;
+}
+
+// The extension of a path, lower case, without the dot.
+std::string LowerExtension(const std::string& path) {
+    std::string extension = PathToUtf8(PathFromUtf8(path).extension());
+    if (!extension.empty() && extension[0] == '.') extension.erase(0, 1);
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return extension;
+}
+
+bool WriteWholeFile(const std::string& path, const void* data, size_t size) {
+    std::FILE* file = OpenFileUtf8(path, "wb");
+    if (!file) return false;
+    const bool written = size == 0 || std::fwrite(data, 1, size, file) == size;
+    return std::fclose(file) == 0 && written;
+}
+
+// The paths of a Files entry, from its files format ("copy" or "cut", then
+// one path per line); `cut` says which.
+std::vector<std::string> CopiedPaths(const ClipboardSnapshot& content, bool& cut) {
+    std::vector<std::string> paths;
+    cut = false;
+    const ClipboardFormat* files = content.Find(ClipboardMime::Files);
+    if (!files) return paths;
+    const std::string text(files->data.begin(), files->data.end());
+    size_t start = 0;
+    bool first = true;
+    while (start <= text.size()) {
+        size_t end = text.find('\n', start);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (first) cut = line == "cut";
+        else if (!line.empty()) paths.push_back(line);
+        first = false;
+        start = end + 1;
+    }
+    return paths;
+}
+
 } // namespace
 
 UltraClipboardWindow::UltraClipboardWindow(UltraCanvasApplication& app) : app_(app) {}
@@ -173,7 +238,10 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
     window->AddChild(BuildToolbar());
 
     model_ = std::make_shared<ClipboardHistoryListModel>();
-    rows_ = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Light());
+    ClipboardRowStyle rowStyle = ClipboardRowStyle::Light();
+    rowStyle.saveAction = true;
+    if (history_) rowStyle.actionsLeftOfText = history_->GetPolicy().iconSide == ClipboardIconSide::Left;
+    rows_ = std::make_shared<ClipboardHistoryRowDelegate>(rowStyle);
     list_ = std::make_shared<UltraCanvasListView>("ucb.list");
     ListViewStyle listStyle;
     listStyle.backgroundColor = rows_->Style().listBackground;
@@ -196,6 +264,7 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
         switch (rows_->ActionAt(row, at)) {
             case ClipboardRowAction::Copy: CopyEntry(id); break;
             case ClipboardRowAction::Edit: EditEntry(id); break;
+            case ClipboardRowAction::SaveAs: SaveEntryAs(id); break;
             case ClipboardRowAction::Delete: DeleteEntry(id); break;
             default: break;
         }
@@ -422,6 +491,10 @@ void UltraClipboardWindow::Reload() {
     const bool recordingNow = !policy.recordingPaused;
     if (recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
     updatingRecording_ = false;
+    if (const bool left = policy.iconSide == ClipboardIconSide::Left; left != rows_->Style().actionsLeftOfText) {
+        rows_->SetActionsLeftOfText(left);
+        list_->RequestRedraw();
+    }
     if (policy.previewStyle != previewStyle_) {
         previewStyle_ = policy.previewStyle;
         ApplyPreviewStyle();
@@ -536,6 +609,10 @@ bool UltraClipboardWindow::OnKey(const UCEvent& event) {
     }
     if (letter('e')) {
         if (const int64_t id = chosen()) EditEntry(id);
+        return true;
+    }
+    if (letter('s')) {
+        if (const int64_t id = chosen()) SaveEntryAs(id);
         return true;
     }
     if (letter('p')) {
@@ -677,6 +754,205 @@ void UltraClipboardWindow::OpenInUltraPaint(int64_t id) {
     Message("Opened in UltraPaint: copy the result to add it here");
 }
 
+// ===== SAVE AS =====
+
+void UltraClipboardWindow::SaveEntryAs(int64_t id) {
+    if (!history_ || !window_) return;
+    HidePreview();
+    const std::optional<ClipboardHistoryEntry> entry = history_->Get(id);
+    if (!entry) return;
+    ClipboardSnapshot content;
+    if (!history_->ReadFormats(id, content.formats)) {
+        UltraCanvasAlert::Error("This entry can no longer be read from the clipboard history.", "Save as", nullptr,
+                                window_.get());
+        return;
+    }
+    switch (entry->kind) {
+        case ClipboardEntryKind::Image: SaveImageAs(*entry, content); break;
+        case ClipboardEntryKind::Files: SaveFilesTo(*entry, content); break;
+        default: SaveTextAs(*entry, content); break;
+    }
+}
+
+// Text as a text file; formatted text as HTML (its own markup), ODT or DOCX
+// (FileLoader's document writer) or its plain text.
+void UltraClipboardWindow::SaveTextAs(const ClipboardHistoryEntry& entry, const ClipboardSnapshot& content) {
+    const bool rich = entry.kind == ClipboardEntryKind::RichText && content.Find(ClipboardMime::Html);
+    const std::string extension = rich ? "html" : "txt";
+    FileDialogOptions opts;
+    opts.SetTitle("Save as")
+        .SetParentWindow(window_.get())
+        .SetInitialDirectory(saveFolder_)
+        .SetDefaultFileName(FileNameFromTitle(entry.title, "Clipboard text") + "." + extension)
+        .SetDefaultExtension(extension)
+        .SetSaveSettingsButton(false);
+    if (rich) {
+        opts.AddFilter("HTML document", std::vector<std::string>{"html", "htm"});
+        UltraCanvasFileLoader::AddTextDocumentSaveTypes(opts);
+    }
+    opts.AddFilter("Plain text", "txt");
+    opts.AddFilter("All files", std::vector<std::string>{"*"});
+    const int64_t id = entry.id;
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, id, content](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        const std::string type = LowerExtension(path);
+        const ClipboardFormat* html = content.Find(ClipboardMime::Html);
+        std::string error;
+        bool saved = false;
+        if (html && (type == "odt" || type == "docx")) {
+            const UCRichDocument document =
+                    UCRichDocument::FromHTML(std::string(html->data.begin(), html->data.end()));
+            saved = UltraCanvasFileLoader::SaveTextDocument(document, path, error);
+        } else if (html && (type == "html" || type == "htm")) {
+            saved = WriteWholeFile(path, html->data.data(), html->data.size());
+        } else {
+            const std::string text = content.GetText();
+            saved = WriteWholeFile(path, text.data(), text.size());
+        }
+        if (!saved) {
+            UltraCanvasAlert::Error("Could not save " + path + (error.empty() ? std::string() : "\n" + error),
+                                    "Save as", nullptr, window_.get());
+            return;
+        }
+        OfferToDelete(id, path);
+    });
+}
+
+// An image in any picture type this build writes, at its own size or the one
+// the type's Settings give. Saved as the type it was copied in, at its own
+// size, it is written as it came - nothing re-encoded.
+void UltraClipboardWindow::SaveImageAs(const ClipboardHistoryEntry& entry, const ClipboardSnapshot& content) {
+    const ClipboardFormat* image = content.FindImage();
+    if (!image) return;
+    std::string extension;
+    std::vector<uint8_t> bytes = ClipboardImageFile(*image, extension);
+    FileDialogOptions opts;
+    opts.SetTitle("Save image as")
+        .SetParentWindow(window_.get())
+        .SetInitialDirectory(saveFolder_)
+        .SetDefaultFileName((entry.width > 0 && entry.height > 0
+                                     ? "Clipboard image " + std::to_string(entry.width) + "x" +
+                                               std::to_string(entry.height)
+                                     : std::string("Clipboard image")) +
+                            "." + extension)
+        .SetDefaultExtension(extension)
+        .SetImageSize(entry.width, entry.height);
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);
+    const int64_t id = entry.id;
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, id, extension, bytes = std::move(bytes)](
+                                                        DialogResult result, const std::string& path,
+                                                        const FileSaveImageSize& size) {
+        if (result != DialogResult::OK || path.empty()) return;
+        std::string error;
+        const std::string type = LowerExtension(path);
+        const bool sameType = type == extension || (extension == "jpg" && type == "jpeg");
+        if (size.IsOriginal() && sameType) {
+            if (!WriteWholeFile(path, bytes.data(), bytes.size())) error = "The file could not be written.";
+        } else {
+            UCImageSave::ImageExportOptions options;
+            const std::shared_ptr<UCImage> picture = UCImage::LoadFromMemory(bytes);
+            if (!picture) error = "The image could not be read.";
+            else if (!UltraCanvasFileLoader::GetImageExportOptions(path, size, options))
+                error = "This build cannot write ." + type + " pictures.";
+            else error = picture->Save(path, options);
+        }
+        if (!error.empty()) {
+            UltraCanvasAlert::Error("Could not save " + path + "\n" + error, "Save as", nullptr, window_.get());
+            return;
+        }
+        OfferToDelete(id, path);
+    });
+}
+
+// Copied files are copied into the folder chosen; cut files are moved there,
+// as pasting them would. A file of the same name already there is replaced
+// only when the user says so.
+void UltraClipboardWindow::SaveFilesTo(const ClipboardHistoryEntry& entry, const ClipboardSnapshot& content) {
+    bool cut = false;
+    const std::vector<std::string> paths = CopiedPaths(content, cut);
+    if (paths.empty()) return;
+    FileDialogOptions opts;
+    opts.SetTitle(cut ? "Move the files to" : "Save copies of the files in")
+        .SetParentWindow(window_.get())
+        .SetInitialDirectory(saveFolder_);
+    const int64_t id = entry.id;
+    UltraCanvasFileLoader::SelectFolderDialog(opts, [this, id, cut, paths](DialogResult result,
+                                                                           const std::string& folder) {
+        namespace fs = std::filesystem;
+        if (result != DialogResult::OK || folder.empty()) return;
+        auto transfer = [this, id, cut, paths, folder]() {
+            std::vector<std::string> failed;
+            size_t done = 0;
+            for (const std::string& path : paths) {
+                std::error_code ec;
+                const fs::path source = PathFromUtf8(path);
+                const fs::path target = PathFromUtf8(folder) / source.filename();
+                if (fs::equivalent(source, target, ec)) {   // already there
+                    ++done;
+                    continue;
+                }
+                ec.clear();
+                if (cut) {
+                    if (fs::exists(target, ec)) fs::remove_all(target, ec);
+                    ec.clear();
+                    fs::rename(source, target, ec);
+                    if (ec) {   // another device: copy, then remove the original
+                        ec.clear();
+                        fs::copy(source, target, fs::copy_options::recursive | fs::copy_options::overwrite_existing,
+                                 ec);
+                        if (!ec) fs::remove_all(source, ec);
+                    }
+                } else {
+                    fs::copy(source, target, fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+                }
+                if (ec) failed.push_back(PathToUtf8(source.filename()) + ": " + ec.message());
+                else ++done;
+            }
+            if (!failed.empty()) {
+                std::string text = "Could not " + std::string(cut ? "move" : "copy") + " " +
+                                   Plural(failed.size(), "file", "files") + " to " + folder + ":";
+                for (const std::string& line : failed) text += "\n" + line;
+                UltraCanvasAlert::Error(text, "Save as", nullptr, window_.get());
+                if (done == 0) return;
+            }
+            OfferToDelete(id, folder);
+        };
+        size_t existing = 0;
+        for (const std::string& path : paths) {
+            std::error_code ec;
+            const fs::path source = PathFromUtf8(path);
+            const fs::path target = PathFromUtf8(folder) / source.filename();
+            if (fs::exists(target, ec) && !fs::equivalent(source, target, ec)) ++existing;
+        }
+        if (existing == 0) {
+            transfer();
+            return;
+        }
+        UltraCanvasAlert::Confirm(
+                Plural(existing, "file of the same name is", "files of the same names are") + " already in " +
+                        folder + ". Replace " + (existing == 1 ? "it?" : "them?"),
+                "Save as", [transfer](bool yes) { if (yes) transfer(); }, window_.get());
+    });
+}
+
+void UltraClipboardWindow::OfferToDelete(int64_t id, const std::string& saved) {
+    std::error_code ec;
+    const std::filesystem::path where = PathFromUtf8(saved);
+    saveFolder_ = PathToUtf8(std::filesystem::is_directory(where, ec) ? where : where.parent_path());
+    const std::string name = PathToUtf8(where.filename());
+    UltraCanvasAlert::Confirm("Saved to " + saved + ".\n\nDelete the item from the clipboard?", "Save as",
+                              [this, id, name](bool yes) {
+        if (!history_) return;
+        if (!yes) {
+            Message("Saved: " + name);
+            return;
+        }
+        // The saved entry's row is the one the next row takes the place of.
+        SelectRow(model_->FindRow(id));
+        DeleteEntry(id);
+    }, window_.get());
+}
+
 void UltraClipboardWindow::ShowRowMenu(int row, const UCEvent& event) {
     const ClipboardHistoryEntry* entry = model_ ? model_->GetEntry(row) : nullptr;
     if (!entry || !window_) return;
@@ -690,6 +966,7 @@ void UltraClipboardWindow::ShowRowMenu(int row, const UCEvent& event) {
     } else if (entry->kind != ClipboardEntryKind::Files) {
         menu_->AddItem(MenuItemData::ActionWithShortcut("Edit\xE2\x80\xA6", "F2", [this, id]() { EditEntry(id); }));
     }
+    menu_->AddItem(MenuItemData::ActionWithShortcut("Save as\xE2\x80\xA6", "Ctrl+S", [this, id]() { SaveEntryAs(id); }));
     menu_->AddItem(MenuItemData::ActionWithShortcut(entry->pinned ? "Unpin" : "Pin", "Ctrl+P",
                                                     [this, id]() { TogglePin(id); }));
     menu_->AddItem(MenuItemData::Separator());

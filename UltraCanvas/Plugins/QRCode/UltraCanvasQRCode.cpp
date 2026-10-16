@@ -18,7 +18,13 @@
 #include <stdexcept>
 
 #include <cairo/cairo.h>
+// libvips reads the image a file scan decodes and writes the exported
+// picture; a build without it (the WebAssembly no-vips variant) keeps the
+// element, the scan of a pixel buffer and the decoder, and says so from
+// the two functions that need the library.
+#ifdef HAS_LIBVIPS
 #include <vips/vips8>
+#endif
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasFileError.h"   // WriteFileAtomically
 #ifdef ULTRACANVAS_QRCODE_HAS_DECODER
@@ -393,6 +399,11 @@ namespace UltraCanvas {
 #ifndef ULTRACANVAS_QRCODE_HAS_DECODER
         setErr("QR decoder support not built in (compile with libzbar)");
         return results;
+#elif !defined(HAS_LIBVIPS)
+        (void)imagePath;
+        setErr("Reading the image file needs libvips, which this build has not got; "
+               "scan the pixels with ScanQRCodeImage instead");
+        return results;
 #else
         using namespace zbar;
 
@@ -655,10 +666,11 @@ namespace UltraCanvas {
                                         config_.style.backgroundColor);
     }
 
-    bool UltraCanvasQRCode::ExportToImage(const std::string& filename,
-                                          QRImageFormat format,
-                                          int moduleSize,
-                                          std::string* errorMessage) {
+    // The code drawn scan-friendly and written to outPath, whose extension
+    // names the type
+    bool UltraCanvasQRCode::WriteImage(const std::string& outPath,
+                                       int moduleSize,
+                                       std::string* errorMessage) {
         auto setErr = [&](const std::string& s) {
             if (errorMessage) *errorMessage = s;
         };
@@ -741,32 +753,11 @@ namespace UltraCanvas {
             }
         }
 
-        const char* fmtExt = nullptr;
-        switch (format) {
-            case QRImageFormat::PNG:  fmtExt = ".png";  break;
-            case QRImageFormat::JPEG: fmtExt = ".jpg";  break;
-            case QRImageFormat::QOI:  fmtExt = ".qoi";  break;
-            case QRImageFormat::WebP: fmtExt = ".webp"; break;
-            case QRImageFormat::AVIF: fmtExt = ".avif"; break;
-        }
-        std::string outPath = filename;
-        {
-            auto endsWith = [](const std::string& s, const char* suf) {
-                size_t n = std::strlen(suf);
-                if (s.size() < n) return false;
-                for (size_t i = 0; i < n; ++i)
-                    if (std::tolower(static_cast<unsigned char>(s[s.size() - n + i]))
-                        != std::tolower(static_cast<unsigned char>(suf[i])))
-                        return false;
-                return true;
-            };
-            if (format == QRImageFormat::JPEG &&
-                (endsWith(outPath, ".jpg") || endsWith(outPath, ".jpeg"))) {
-            } else if (!endsWith(outPath, fmtExt)) {
-                outPath += fmtExt;
-            }
-        }
-
+#ifndef HAS_LIBVIPS
+        (void)rgba; (void)sw; (void)sh; (void)outPath;
+        setErr("Writing the picture needs libvips, which this build has not got");
+        return false;
+#else
         try {
             if (VIPS_INIT("ultracanvas-qrcode") != 0) {
                 setErr(vips_error_buffer());
@@ -812,6 +803,50 @@ namespace UltraCanvas {
             setErr(e.what());
             return false;
         }
+#endif  // HAS_LIBVIPS
+    }
+
+    bool UltraCanvasQRCode::ExportToImage(const std::string& filename,
+                                          QRImageFormat format,
+                                          int moduleSize,
+                                          std::string* errorMessage) {
+        const char* fmtExt = nullptr;
+        switch (format) {
+            case QRImageFormat::PNG:  fmtExt = ".png";  break;
+            case QRImageFormat::JPEG: fmtExt = ".jpg";  break;
+            case QRImageFormat::QOI:  fmtExt = ".qoi";  break;
+            case QRImageFormat::WebP: fmtExt = ".webp"; break;
+            case QRImageFormat::AVIF: fmtExt = ".avif"; break;
+        }
+        std::string outPath = filename;
+        {
+            auto endsWith = [](const std::string& s, const char* suf) {
+                size_t n = std::strlen(suf);
+                if (s.size() < n) return false;
+                for (size_t i = 0; i < n; ++i)
+                    if (std::tolower(static_cast<unsigned char>(s[s.size() - n + i]))
+                        != std::tolower(static_cast<unsigned char>(suf[i])))
+                        return false;
+                return true;
+            };
+            if (format == QRImageFormat::JPEG &&
+                (endsWith(outPath, ".jpg") || endsWith(outPath, ".jpeg"))) {
+            } else if (!endsWith(outPath, fmtExt)) {
+                outPath += fmtExt;
+            }
+        }
+
+        return WriteImage(outPath, moduleSize, errorMessage);
+    }
+
+    bool UltraCanvasQRCode::ExportToImage(const std::string& filename,
+                                          int moduleSize,
+                                          std::string* errorMessage) {
+        if (!UltraCanvasFileLoader::CanSaveImage(filename)) {
+            if (errorMessage) *errorMessage = "this build does not write that picture type: " + filename;
+            return false;
+        }
+        return WriteImage(filename, moduleSize, errorMessage);
     }
 
     void UltraCanvasQRCode::Regenerate() {

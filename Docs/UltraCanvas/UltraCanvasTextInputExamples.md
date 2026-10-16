@@ -17,7 +17,7 @@
 - **Undo/Redo**: Undo/redo stack holding the last 50 states
 - **Selection Management**: Text selection with keyboard and mouse support
 - **Clipboard**: Copy, cut and paste from the keyboard or from code
-- **Clear Button**: Optional in-field button that empties the field
+- **Clear Button**: Optional in-field button that empties the field - a cross, or a word such as "Reset"
 - **Placeholder Text**: Contextual hints when field is empty
 - **Read-only Mode**: Disable editing while maintaining visual presentation
 - **UTF-8 Text**: Every position the field keeps is a character boundary, so accented, umlauted and non-Latin text edits like any other (see [Text and UTF-8](#text-and-utf-8))
@@ -78,7 +78,7 @@ enum class TextInputType {
     Time,          // Time input
     DateTime,      // Combined date and time
     URL,           // URL with validation
-    Search,        // Search field with clear button
+    Search,        // Search field: shows the clear button
     Custom         // Custom validation rules
 };
 ```
@@ -475,6 +475,39 @@ The control handles various keyboard inputs:
 - **Drag**: Select text range (keeps selecting while the pointer is outside the field)
 - **Click on the clear button / eye button**: Empty the field / toggle the password mask
 
+### Input Method Composition
+
+While an input method (Japanese, Chinese, Korean, dead-key sequences on some
+systems) is composing, the text it has so far is drawn **in the field, at the
+caret, underlined**, with the caret inside it where the input method puts it;
+the horizontal scroll keeps that caret in view. The field says so through
+`DrawsTextComposition()`, and the platform backend then sends it
+`UCEventType::TextComposition` events instead of opening the input method's
+own composition window (on a backend that does not report compositions the
+window is used as before).
+
+- The composition is **not** part of the text: `GetText()`, `onTextChanged`,
+  validation and the undo stack never see it. `GetCompositionText()` returns
+  it (`""` when nothing is being composed).
+- The committed result arrives as ordinary typing (`KeyDown` with `text`), which
+  ends the composition and is inserted like any typed character - length limit,
+  validation and one undo step included.
+- An empty composition ends it without typing anything, and so does losing
+  the focus or turning the field read-only.
+- Starting to compose over a selection deletes the selection, as typing would
+  (that deletion is a normal edit: one undo step, one `onTextChanged`).
+- A **read-only** or **password** field returns `false` from
+  `DrawsTextComposition()`. A password field leaves the composing to the
+  input method's own window: masking the composition would hide what is being
+  converted, and drawing it in the field would show the secret (most platforms
+  switch the input method off for password fields anyway).
+
+```cpp
+auto field = CreateTextInput("Name", 10, 10, 240, 28);
+bool inPlace = field->DrawsTextComposition();          // true: editable
+const std::string& composing = field->GetCompositionText();
+```
+
 ### Event Callbacks
 
 ```cpp
@@ -655,6 +688,38 @@ bool IsShowClearButton() const;
 When on, a small button at the right of the field empties it. It is shown only
 while the field has text and is not read-only. Clicking it saves an undo state,
 clears the text and calls `onTextChanged` and then `onCleared`.
+
+`SetInputType(TextInputType::Search)` turns it on, and changing the type away
+from `Search` turns it off again - unless it was on before, or the caller
+switched it with `SetShowClearButton`, which is always the caller's own choice.
+
+The button is part of the text input; nothing is placed over the field. It is
+a cross by default. `SetClearButtonText` puts a word on it instead - "Reset",
+"Clear" - and it becomes a small button inside the right end of the field, as
+wide as the word, in a font a little smaller than the field's. It behaves as
+the cross does; an empty text puts the cross back.
+
+```cpp
+void SetClearButtonText(const std::string& text);
+const std::string& GetClearButtonText() const;
+```
+
+<!-- doc-check:
+std::shared_ptr<UltraCanvasTreeView> tree;
+-->
+```cpp
+// A filter field: "Reset" inside it empties the field and ends the filter.
+auto filter = std::make_shared<UltraCanvasTextInput>("Filter", 10, 10, 300, 30);
+filter->SetPlaceholder("Filter components");
+filter->SetShowClearButton(true);
+filter->SetClearButtonText("Reset");
+filter->onTextChanged = [tree](const std::string& text) { tree->SetFilterText(text); };
+filter->onCleared = []() { /* the field was emptied by its button */ };
+```
+
+The DemoApp's *Text Input* page shows both, the cross and "Reset", and the
+demo's component tree has such a filter field over it
+(see [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md#filtering)).
 
 ## Auto-completion
 
@@ -848,9 +913,8 @@ phoneInput->SetFormatter(TextFormatter::Phone());
 ```cpp
 auto searchInput = std::make_shared<UltraCanvasTextInput>(
     "search", 50, 250, 250, 35);
-searchInput->SetInputType(TextInputType::Search);
+searchInput->SetInputType(TextInputType::Search);   // shows the clear button
 searchInput->SetPlaceholder("Search...");
-searchInput->SetShowClearButton(true);
 searchInput->onEnterPressed = [](const std::string& query) {
     std::cerr << "Search for: " << query << std::endl;
     return true;

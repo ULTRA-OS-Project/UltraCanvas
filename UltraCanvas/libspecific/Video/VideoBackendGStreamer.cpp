@@ -10,6 +10,8 @@
 // frames are converted to packed BGRA and handed up via the session callbacks;
 // the engine buffers the latest frame for the UI thread to upload to a pixmap.
 //
+// Version: 0.1.13 - pulsesink is probed to READY before playbin gets it: without a
+//                  PulseAudio server playbin falls back to autoaudiosink and plays
 // Version: 0.1.12 - Stop() no longer hangs when it comes before the loop has begun
 //                  to run: the quit is queued on the loop's own context
 // Version: 0.1.11
@@ -374,7 +376,20 @@ public:
                 g_object_set(asink,
                              "slave-method", 2,      // GST_AUDIO_BASE_SINK_SLAVE_NONE
                              "provide-clock", FALSE, nullptr);
-                g_object_set(pipeline, "audio-sink", asink, nullptr);  // playbin takes the ref
+                // Without a PulseAudio server (a bare X session, a container, a
+                // desktop on ALSA or JACK alone) pulsesink cannot open its
+                // device, and a playbin given it fails to activate its sinks:
+                // nothing plays, with or without sound. Probe it to READY
+                // (where it connects) first; when it cannot, leave playbin's
+                // autoaudiosink to find a sink that works - a silent one at
+                // worst, which still runs the clock so the picture plays at
+                // pace and the position is reported.
+                gst_object_ref_sink(asink);
+                if (gst_element_set_state(asink, GST_STATE_READY) != GST_STATE_CHANGE_FAILURE) {
+                    gst_element_set_state(asink, GST_STATE_NULL);
+                    g_object_set(pipeline, "audio-sink", asink, nullptr);  // playbin takes a ref
+                }
+                gst_object_unref(asink);
             }
             // else: pulsesink unavailable (rare) → leave playbin's autoaudiosink default.
         }

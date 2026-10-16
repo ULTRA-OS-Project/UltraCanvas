@@ -2,14 +2,18 @@
 // Tooltip style and structured tooltip content types.
 // Shared by UltraCanvasTooltipManager (rendering) and UltraCanvasUIElement
 // (per-element tooltip storage) — keep this header lightweight.
+// Version: 1.3.1 - TooltipContent builds its blocks through Block(): no missing-field-
+//                 initializers warning in every file that includes this header
+// Version: 1.3.0 - TooltipStyle::FromTheme
 // Version: 1.2.0 - offsetX / offsetY are the gap right of and above the pointer
 //                 (12 / 20 px; the tooltip sits above-right of it)
 // Version: 1.1.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasTheme.h"
 #include <array>
 #include <optional>
 #include <string>
@@ -121,6 +125,21 @@ namespace UltraCanvas {
             return s;
         }
 
+        // Preset: the theme's roles - the raised surface for the panel,
+        // a hairline, ink and muted ink - over Dark() or Light()
+        static TooltipStyle FromTheme(const UltraCanvasTheme& theme, const TooltipStyle& base) {
+            TooltipStyle s = base;
+            const ThemeRoles& r = theme.roles;
+            s.backgroundColor = r.raised.WithAlpha(s.backgroundColor.a);
+            s.borderColor = r.line;
+            s.textColor = r.ink;
+            s.secondaryTextColor = r.inkMuted;
+            s.separatorColor = r.line;
+            return s;
+        }
+        static TooltipStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, theme.dark ? Dark() : Light()); }
+        static TooltipStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
         bool operator==(const TooltipStyle& other) const {
             return backgroundColor == other.backgroundColor
                 && borderColor == other.borderColor
@@ -210,14 +229,14 @@ namespace UltraCanvas {
         std::optional<std::array<TooltipColumnAlign, 3>> columnAlign3Override;
 
         TooltipContent& AddTitle(const std::string& text) {
-            blocks.push_back({TooltipBlockType::Title, text});
+            blocks.push_back(Block(TooltipBlockType::Title, text));
             return *this;
         }
 
         // Pango markup is interpreted (e.g. "<b>bold</b>", "<i>italic</i>",
         // "<span foreground=\"#ff8800\">colored</span>")
         TooltipContent& AddText(const std::string& markupText) {
-            blocks.push_back({TooltipBlockType::Text, markupText});
+            blocks.push_back(Block(TooltipBlockType::Text, markupText));
             return *this;
         }
 
@@ -225,7 +244,7 @@ namespace UltraCanvas {
         // the renderer, so the text is shown verbatim. Use this — not AddText —
         // for user data (names, addresses, file paths) that is not markup.
         TooltipContent& AddPlainText(const std::string& text) {
-            blocks.push_back({TooltipBlockType::PlainText, text});
+            blocks.push_back(Block(TooltipBlockType::PlainText, text));
             return *this;
         }
 
@@ -251,12 +270,12 @@ namespace UltraCanvas {
         }
 
         TooltipContent& AddBullet(const std::string& text) {
-            blocks.push_back({TooltipBlockType::Bullet, text});
+            blocks.push_back(Block(TooltipBlockType::Bullet, text));
             return *this;
         }
 
         TooltipContent& AddSeparator() {
-            blocks.push_back({TooltipBlockType::Separator});
+            blocks.push_back(Block(TooltipBlockType::Separator));
             return *this;
         }
 
@@ -298,6 +317,17 @@ namespace UltraCanvas {
         }
 
     private:
+        // A block of `type` holding `text`, its other fields at their
+        // defaults. A braced {type, text} names two of the six fields, which
+        // -Wextra reports (missing-field-initializers) in every file that
+        // includes this header.
+        static TooltipBlock Block(TooltipBlockType type, const std::string& text = std::string()) {
+            TooltipBlock block;
+            block.type = type;
+            block.text = text;
+            return block;
+        }
+
         TooltipContent& AddRowBlock(const Color& swatch, const std::string& label,
                                     const std::string& value, const std::string& value2,
                                     int columns) {

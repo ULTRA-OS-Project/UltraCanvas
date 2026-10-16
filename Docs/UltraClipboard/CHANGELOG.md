@@ -1,3 +1,21 @@
+#### 2026-10-14 *0.1.5*
+- **Save an entry as a file, then choose whether to keep it.** Every row has
+  a fourth button, *Save as* (also in the row's menu and on Ctrl+S): a text,
+  code, link or colour is saved as a text file; formatted text as HTML, ODT
+  or DOCX, or as its plain text; an image as any picture type this build
+  writes - in the type it was copied in, at its own size, it is written as
+  it came, and the type's Settings can give another size. Copied files are
+  copied into the folder chosen, and files that were cut are moved there, as
+  pasting them would; a file of the same name there is replaced only when
+  you say so. Once saved, UltraClipboard asks *"Delete the item from the
+  clipboard?"* - Yes deletes it, with Undo as for any deletion. The next
+  Save as starts in the folder the last one saved to. Everything goes
+  through the framework's Save dialog and writers, so every format this
+  build writes is offered (framework changelog: `clipboard-save-as`).
+- **Settings, Display → Icons: left or right of the item text.** The row's
+  buttons stand at its right edge, as before, or between the thumbnail and
+  the text. The choice is kept with the history's settings.
+
 #### 2026-10-12 *0.1.4*
 - **Two starts at the same moment no longer both stay.** One UltraClipboard
   at a time was decided over the message bus alone, so two starts close

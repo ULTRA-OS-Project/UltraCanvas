@@ -1,10 +1,15 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
+// Version: 1.7.0 - VipsCanDecode: a loader that can decode here (HEIC / AVIF need
+//                  libheif's decoder)
 // Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
 //                  libheif's encoder)
+// Version: 1.6.0 - ...and so is one that arrives as bytes (LoadFromMemory)
+// Version: 1.8.0 - AdoptRasterBytes: a build without libvips reads PNG through cairo
+//                  and JPEG, BMP, GIF through the bundled stb_image
 // Version: 1.5.0 - An SVG libvips cannot load is read through the vector preview seam
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
@@ -159,7 +164,13 @@ namespace VectorStorage { class VectorDocument; }
         // an application that registers no Vector plugin gets the pipeline's
         // error as before. Set by Load(), read by CreatePixmap().
         std::shared_ptr<VectorStorage::VectorDocument> vectorDocument;
+        bool AdoptVectorDocument(std::shared_ptr<VectorStorage::VectorDocument> document);
         bool LoadVectorDocument(const std::string& imagePath);
+        // Without libvips: the bytes in imgDataPtr taken as a PNG (cairo's
+        // reader) or a JPEG, BMP or GIF (stb_image): size from the header,
+        // pixels decoded when a pixmap is asked for.
+        bool AdoptRasterBytes();
+        bool LoadVectorDocumentFromMemory(const uint8_t* data, size_t size);   // bytes that read as SVG
         std::shared_ptr<UCPixmapCairo> CreatePixmapFromVectorDocument(int width, int height,
                                                                      ImageFitMode fitMode, float scale);
 
@@ -341,6 +352,13 @@ namespace VectorStorage { class VectorDocument; }
     // 2 x 2 picture is encoded once and the answer kept. What a format list
     // offering a save should ask.
     bool VipsCanEncode(const std::string& extensionWithDot);
+    // VipsCanLoad, and the loader can decode here too: libvips' HEIF loader
+    // takes .heic, .heif and .avif wherever libheif is, but libheif decodes a
+    // HEIC only with an HEVC decoder and an AVIF only with an AV1 one, plug-ins
+    // it loads on their own (libde265, aomdec, dav1d ...). libheif is asked
+    // where its headers were found at build time; elsewhere this is
+    // VipsCanLoad's answer. What a format list offering an open should ask.
+    bool VipsCanDecode(const std::string& extensionWithDot);
     // True when libvips has the ImageMagick load delegate. magickload
     // advertises no suffixes (it content-sniffs), so VipsCanLoad cannot see
     // it; for known raster extensions its presence means "will load".

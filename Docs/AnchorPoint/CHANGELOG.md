@@ -1,3 +1,14 @@
+#### 2026-10-14 *0.2.4*
+- **One AnchorPoint at a time.** Starting AnchorPoint while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of starting a second one - the GUI
+  opens no files from its command line, so there is nothing to hand over.
+  Two starts at the same moment cannot both stay, and a copy that does not
+  answer is reported with *"AnchorPoint is already running"*. The headless
+  `anchorpoint` is unaffected and runs as many times as it is started.
+  Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-10-10 *0.2.3*
 - **Windows: no empty console window beside AnchorPoint's.** The GUI was a
   console program, so a double-click opened a console window that nothing

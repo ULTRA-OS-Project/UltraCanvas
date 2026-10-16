@@ -1,3 +1,49 @@
+#### 2026-10-15 *0.8.2*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraWeb.exe` is a GUI program now. Beside it, `UltraWeb.com`
+  is its console companion, which a prompt runs for the bare name: `UltraWeb
+  --check` starts the `.exe`, waits for it and returns its exit code, as
+  before. Typed as `UltraWeb.exe`, the prompt no longer waits (framework
+  changelog: `windows-console-companions`).
+
+#### 2026-10-15 *0.8.1*
+- **Apps run on Windows.** UltraWeb built with MSYS2 (CLANG64 or
+  CLANGARM64) said "This UltraWeb cannot run apps": it had no WebAssembly
+  engine. The build now compiles wasmtime itself there; it needs
+  `mingw-w64-clang-x86_64-rust` and a few minutes the first time.
+- **Back and forward show arrows on Windows.** They were the characters
+  ← and →, which Windows' UI font does not have, so they showed as empty
+  boxes. They are now icons (`media/icons/ultraweb`), greyed out while
+  there is nowhere to go.
+
+#### 2026-10-14 *0.8.0*
+- **Links that ask for a new window open in a new tab.** This covers
+  `target="_blank"`, a target naming a window, and links without a target
+  on a page with `<base target="_blank">`. The new tab becomes the active
+  one, and the page the link was on stays in its own tab with its history.
+  `_self`, `_parent` and `_top` open in the same tab, and `mailto:` still
+  goes to the system's mail client.
+  - Built on the web view's new `onOpenInNewWindow` (framework); the tab
+    passes such links to the window (`UltraWebTab::Host::onOpenInNewTab`).
+
+#### 2026-10-14 *0.7.0*
+- **Tabs.** A tab strip above the toolbar. Each tab has its own page and
+  back / forward history, or its own running app, and the toolbar, the
+  status line and the window title follow the active one.
+  - **+** on the strip or **Ctrl+T** opens an empty tab with the address
+    bar focused. A tab's **×** or **Ctrl+W** closes it, but the last tab
+    stays. **Ctrl+Tab** / **Ctrl+Shift+Tab** switch tabs, and **Ctrl+L**
+    selects the address. Tabs can be dragged to reorder them.
+  - A tab is named after its page's title, or its address for an app.
+  - New `ui/UltraWebTab`, which holds what was the whole window's page or
+    app, and `UltraWebTabTest`, which drives one without a window.
+- **Download speed and time left.** A running download's row reads
+  "4.8 MB of 20.0 MB (23%) - 1.8 MB/s, 9 s left". The speed is smoothed
+  over the last seconds.
+- **Long file names are shortened.** A name longer than 36 characters is cut
+  in the middle with "…", keeping its start and its extension, so the
+  progress keeps its room. The whole name shows as the row's tooltip.
+
 #### 2026-10-13 *0.6.1*
 - **A large download is no longer cut off after 30 seconds.** A streamed
   download ran under UltraNet's 30-second whole-transfer limit, so any file

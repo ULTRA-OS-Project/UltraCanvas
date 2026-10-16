@@ -2,8 +2,8 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.6  
-**Last Modified:** 2026-10-12  
+**Version:** 1.2.0 - a button grows to fit its text  
+**Last Modified:** 2026-10-16  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -306,6 +306,44 @@ Padding is not part of the style: it is the element's box padding, set with
 `SuccessStyle()`, `FlatStyle()`, `SplitButtonStyle()`, `BadgeButtonStyle()`
 and `CounterButtonStyle()`.
 
+## The theme and the button's variant
+
+`ButtonStyle::FromTheme` maps the framework theme (`UltraCanvasTheme`,
+`Docs/UltraCanvas/UltraCanvasTheme.md`) onto a style, over a base whose
+shape (sizes, fonts, flags) stays, by the button's **variant**:
+
+```cpp
+enum class ButtonVariant {
+    Standard,   // the raised surface with the control border: a text button
+    Ghost,      // no fill at rest, the hover and pressed fills: an icon button in a bar
+    Primary,    // the accent fill with text on it: the one main action
+    Selected    // a ghost button in its on state: the soft accent fill, the accent for its ink
+};
+static ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base,
+                                          ButtonVariant variant = ButtonVariant::Standard);
+```
+
+A button told its variant and asked to follow the theme styles itself
+from the current theme, now and on every change; an active tool switches
+between `Ghost` and `Selected` with `SetThemeVariant` alone:
+
+```cpp
+auto tool = std::make_shared<UltraCanvasButton>("tool.blade", 0, 0, 28, 28, "");
+ButtonStyle shape;
+shape.borderWidth = 0.0f;
+shape.cornerRadius = 4.0f;
+shape.useIconAsMask = true;
+tool->SetStyle(shape);                              // the shape once
+tool->SetThemeVariant(ButtonVariant::Ghost);        // the colours from the theme
+tool->SetFollowTheme(true);
+tool->SetThemeVariant(ButtonVariant::Selected);     // the active tool, re-styled at once
+```
+
+A theme names the variants' colours as element roles where its design
+differs from the shared roles: `button.ghost-hover`, `button.ghost-pressed`,
+`button.primary`, `button.primary-hover`, `button.on-primary`,
+`button.selected`, `button.on-selected`.
+
 ## ButtonBuilder Pattern
 
 For fluent interface construction:
@@ -396,6 +434,30 @@ container->AddChild(autoBtn);
 autoBtn->SetText("This is a longer text that will auto-resize");
 ```
 
+### A Fixed Width Is a Minimum
+
+A button with text never comes out narrower than its text. A width given in
+the constructor or `SetSize()` is the least the button takes: when the text
+needs more - a translation, a larger font - the button grows to it, and it
+returns to the given width when the text is short again. In a flex row that is
+too narrow, a button is not shrunk below its text either (CSS's
+`min-width: auto`). So a label can be translated without checking every
+button's width by hand.
+
+```cpp
+auto button = CreateButton("Open", 10, 10, 80, 30, "Open");
+button->SetText("Ouvrir le fichier");   // grows past 80 px to fit
+button->SetText("OK");                  // back to 80 px
+
+// A button that must keep its width, and may cut its text
+button->SetGrowToFitText(false);
+```
+
+A button that grows keeps its position and grows to the right. In a row of
+absolutely placed buttons it can then reach its neighbour; lay such rows out
+with a flex container (see the Layout documentation) so the buttons after it
+move along. Buttons without text (icon-only tools) are not affected.
+
 ### Split Button (a primary action plus a menu)
 
 A split button is one button with two sections: the primary one runs the
@@ -467,6 +529,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |

@@ -2,6 +2,7 @@
 // The downloads of this run, for the downloads panel: what each one is, where
 // it goes, how far it got and how it ended. No UI here (the panel,
 // ui/UltraWebDownloadsPanel, shows it), so it is tested on its own.
+// Version: 0.2.0 - speed and time left; Ellipsize for long names
 // Version: 0.1.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
@@ -24,6 +25,11 @@ struct DownloadEntry {
     int64_t received = 0;
     int64_t total = -1;      // -1: the server did not say
     std::string error;       // why it failed
+    // How fast it is coming, in bytes a second (0 until it can be told),
+    // smoothed over the last few seconds; and the sample it was measured from.
+    int64_t bytesPerSecond = 0;
+    int64_t sampleMs = -1;
+    int64_t sampleReceived = 0;
 };
 
 class DownloadList {
@@ -45,9 +51,19 @@ public:
     const DownloadEntry* Find(int id) const;
     int RunningCount() const;
 
-    // Its state as the panel says it: "4.2 MB of 20.0 MB (21%)", "Saved -
-    // 20.0 MB", "Failed: the server answered 404", "Cancelled".
+    // Its state as the panel says it: "4.2 MB of 20.0 MB (21%) - 1.3 MB/s,
+    // 12 s left", "Saved - 20.0 MB", "Failed: the server answered 404",
+    // "Cancelled".
     static std::string Describe(const DownloadEntry& entry);
+    // "12 s left", "4 min left", "1 h 5 min left": the time `remaining` bytes
+    // take at `bytesPerSecond` ("" when the speed is not known).
+    static std::string TimeLeft(int64_t remaining, int64_t bytesPerSecond);
+    // `name` cut to at most `maxChars` characters (UTF-8 aware) with "…" in
+    // the middle, keeping its extension: "a-very-long-repo…-snapshot.tar.gz".
+    static std::string Ellipsize(const std::string& name, size_t maxChars);
+
+    // Milliseconds on a steady clock; tests set their own.
+    std::function<int64_t()> clock;
 
     // The list changed: an entry was added, finished or removed (`id` -1 for
     // several) - or, for `progressOnly`, only its numbers moved.

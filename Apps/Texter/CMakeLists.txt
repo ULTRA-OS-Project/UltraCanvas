@@ -173,6 +173,13 @@ set(ULTRATEXTER_SOURCES
 add_executable(UltraTexter
         ${ULTRATEXTER_SOURCES}
 )
+# One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+# The root build has included the module already; a build of this folder alone
+# includes it here.
+if(NOT COMMAND ultracanvas_single_instance)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasSingleInstance.cmake")
+endif()
+ultracanvas_single_instance(UltraTexter)
 
 # Include directories
 target_include_directories(UltraTexter PRIVATE

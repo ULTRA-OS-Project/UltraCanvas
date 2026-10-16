@@ -35,9 +35,18 @@
 // and only the eSCL backend is run (ULTRACANVAS_DEVICE_BACKENDS): SANE, or
 // whatever else searches for scanners here, takes seconds and finds nothing
 // this test is about.
-// Version: 1.1.1
+//
+// However it ends, the scanner is stopped before the test's directory is
+// removed, and the removal cannot throw: Windows refuses to delete a file
+// another process holds open, and once an early failure removed the directory
+// while the scanner still wrote to it - the exception that raised went
+// uncaught, the abort hung in Windows' fault reporting until ctest's timeout,
+// and the lines saying what had failed were lost with the buffered output.
+// So the output is unbuffered too, and an abort ends at once.
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 
@@ -298,6 +307,24 @@ std::string MakeTemporaryDirectory() {
     return std::string();
 }
 
+// Removes the test's directory. Never throws, and tries for a while: Windows
+// refuses to delete a file another process has open, and keeps a terminated
+// process's files for a moment after it is gone. A directory that still will
+// not go is said and left - a stray temporary directory is no test failure,
+// where an exception out of here was a hang (see the top of the file).
+void RemoveTestDirectory(const std::string& root) {
+    if (root.empty()) return;
+    const fs::path path = PathFromUtf8(root);
+    std::error_code error;
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        fs::remove_all(path, error);
+        if (!error) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    std::cout << "  (the test's directory " << root << " could not be removed: " << error.message()
+              << ")\n";
+}
+
 // A self-signed certificate and its key, as a scanner makes for itself -
 // named for its model, not the address it is reached at, as theirs often
 // are; false when openssl could not make one. The request's settings come
@@ -386,6 +413,14 @@ IODeviceTrustedCertificate KeptFor(const std::string& address) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Unbuffered, so what was printed before a kill - ctest's timeout - or an
+    // abort is in the log: it is what says where the test stopped.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+#if defined(_WIN32)
+    // An abort ends the process rather than waiting in Windows' fault
+    // reporting, where one once sat until ctest's timeout.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
     std::cout << "eSCL scanning over HTTPS, from a scanner with a self-signed certificate\n";
 
     if (argc < 4) {
@@ -402,6 +437,17 @@ int main(int argc, char** argv) {
         std::cout << "SKIPPED: no temporary directory\n";
         return SkipOrFail();
     }
+    // Every way out: the scanner stopped first, since it writes into `root`,
+    // then the manager shut down, then the directory removed.
+    TlsScanner scanner;
+    IODeviceManager& manager = IODeviceManager::GetInstance();
+    bool managerStarted = false;
+    const auto finish = [&](int code) {
+        scanner.Stop();
+        if (managerStarted) manager.Shutdown();
+        RemoveTestDirectory(root);
+        return code;
+    };
     const std::string log = root + "/scanner.log";
     const std::string firstCertificate = root + "/first.pem";
     const std::string firstKey = root + "/first.key";
@@ -410,8 +456,7 @@ int main(int argc, char** argv) {
     if (!MakeCertificate(openssl, root, firstCertificate, firstKey, log) ||
         !MakeCertificate(openssl, root, secondCertificate, secondKey, log)) {
         std::cout << "SKIPPED: openssl could not make a certificate:\n" << Tail(log) << "\n";
-        fs::remove_all(PathFromUtf8(root));
-        return SkipOrFail();
+        return finish(SkipOrFail());
     }
     const std::string firstPin = PinOfCertificateFile(firstCertificate);
     const std::string secondPin = PinOfCertificateFile(secondCertificate);
@@ -424,20 +469,18 @@ int main(int argc, char** argv) {
     SetEnv("ULTRACANVAS_DEVICE_BACKENDS", "eSCL");
 
     const std::string firstRequests = root + "/first-requests.log";
-    TlsScanner scanner;
     if (!scanner.Start(python, script, firstCertificate, firstKey, firstRequests, 0, log)) {
         std::cout << "SKIPPED: the scanner would not start - " << scanner.Failure() << ":\n"
                   << Tail(log) << "\n";
-        fs::remove_all(PathFromUtf8(root));
-        return SkipOrFail();
+        return finish(SkipOrFail());
     }
     const int port = scanner.Port();
     const std::string address = "127.0.0.1:" + std::to_string(port);
     const std::string url = "https://" + address + "/eSCL";
     SetEnv("ULTRACANVAS_ESCL_SCANNERS", url);
 
-    IODeviceManager& manager = IODeviceManager::GetInstance();
     manager.Initialize();
+    managerStarted = true;
     manager.EnumerateDevices(IODeviceCategory::Scanner);
 
     ScannerDevicePtr device;
@@ -447,11 +490,7 @@ int main(int argc, char** argv) {
         }
     }
     Check(device != nullptr, "a scanner named in ULTRACANVAS_ESCL_SCANNERS is listed");
-    if (!device) {
-        manager.Shutdown();
-        fs::remove_all(PathFromUtf8(root));
-        return EXIT_FAILURE;
-    }
+    if (!device) return finish(EXIT_FAILURE);
     Check(device->GetDeviceInfo().backend == "eSCL", "  by the eSCL backend");
     Check(device->GetDeviceInfo().name == url, "  under its address, all it is known by yet");
     Check(IODeviceTrustedCertificates().empty(), "  with no device key kept yet");
@@ -463,9 +502,7 @@ int main(int argc, char** argv) {
               connected.message);
     if (!connected.success) {
         std::cout << Tail(log) << "\n";
-        manager.Shutdown();
-        fs::remove_all(PathFromUtf8(root));
-        return EXIT_FAILURE;
+        return finish(EXIT_FAILURE);
     }
 
     const std::vector<std::string> firstContact = ReadLines(firstRequests);
@@ -567,16 +604,12 @@ int main(int argc, char** argv) {
     }
 
     device->Disconnect();
-    manager.Shutdown();
-    scanner.Stop();
-    fs::remove_all(PathFromUtf8(root));
+    device.reset();
+    const int code = finish(g_failed == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 
     std::cout << "\n" << g_passed << " passed, " << g_failed << " failed\n";
-    if (g_failed == 0) {
-        std::cout << "All live eSCL scanner checks passed.\n";
-        return EXIT_SUCCESS;
-    }
-    return EXIT_FAILURE;
+    if (code == EXIT_SUCCESS) std::cout << "All live eSCL scanner checks passed.\n";
+    return code;
 }
 
 #else

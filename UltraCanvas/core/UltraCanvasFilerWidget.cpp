@@ -5319,12 +5319,15 @@ namespace UltraCanvas {
         spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
                                                    : FactPath(from))
                    + "\n\n**Into:** " + FactPath(destDir);
-        // How much is going: the set's tally, or a single file's own size (a
-        // single folder is not walked for it).
+        // How much is going: the set's tally, or a single file's own size. A
+        // single folder is not walked for it - the line says so instead of
+        // going missing.
         if (entries.size() > 1)
             spec.facts += "\n\n**Size:** " + DescribeEntries(entries);
-        else if (entries.size() == 1 && !entries.front().isDirectory)
-            spec.facts += "\n\n**Size:** " + FormatSize(entries.front().size);
+        else if (entries.size() == 1)
+            spec.facts += "\n\n**Size:** " + (entries.front().isDirectory
+                    ? std::string("folder (size not counted)")
+                    : FormatSize(entries.front().size));
         if (entries.size() > 1) {
             spec.listed.assign(entries.begin(), entries.begin() +
                     static_cast<std::ptrdiff_t>(std::min(entries.size(), kOperationListRows)));
@@ -6533,6 +6536,13 @@ namespace UltraCanvas {
             entry.name = PathToUtf8(PathFromUtf8(path).filename());
             if (entry.name.empty()) entry.name = path;   // a drive root
             entry.isDirectory = fs::is_directory(st);
+            // The move / copy / delete questions show what a file weighs;
+            // a folder is not walked for it.
+            if (fs::is_regular_file(st)) {
+                const uintmax_t bytes = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+                if (!ec) entry.size = entry.effectiveSize = static_cast<uint64_t>(bytes);
+                ec.clear();
+            }
             // The queue asks before touching a write-protected entry, so this
             // has to be right; the listing reads the same bit for its "R".
             entry.isReadOnly = (st.permissions() & fs::perms::owner_write)

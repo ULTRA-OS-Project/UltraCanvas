@@ -1,5 +1,8 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.7.0 - key presses for an element that draws input method
+//   compositions go through the input method (TextComposition events); a
+//   click commits a composition in progress
 // Version: 2.6.0 - shuts the VoiceOver (NSAccessibility) bridge down on exit
 // Version: 2.4.0 - Mouse-down events now carry AppKit's click count, so the
 //   second press of a double-click is delivered as MouseDoubleClick (it was
@@ -7,7 +10,7 @@
 // Version: 2.3.0 - RunInEventLoop() commits the CoreAnimation transaction each
 //   main-loop iteration, so frames rendered without a Cocoa event reach the
 //   screen (previously they waited for the next mouse move)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSAccessibility.h"
@@ -129,6 +132,13 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
                 g_appDelegate = [[UltraCanvasAppDelegate alloc] init];
                 [nsApplication setDelegate:g_appDelegate];
             }
+
+            // Holding a key repeats it, as it always has here, rather than
+            // opening the accent menu: that menu replaces text already typed
+            // (NSTextInputClient's replacementRange), which an element's
+            // input method composition cannot do. Only a default - a user
+            // who set ApplePressAndHoldEnabled keeps their setting.
+            [[NSUserDefaults standardUserDefaults] registerDefaults:@{ @"ApplePressAndHoldEnabled": @NO }];
 
             // Get main run loop
             mainRunLoop = [NSRunLoop mainRunLoop];
@@ -358,6 +368,26 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 // ===== EVENT PROCESSING =====
     void UltraCanvasMacOSApplication::ProcessCocoaEvent(NSEvent* nsEvent) {
         if (!nsEvent) return;
+
+        // Input method composition (see UltraCanvasMacOSWindow::
+        // InterpretKeyDown): a key for an element that draws compositions
+        // goes to the input method, which hands it back as text, as a
+        // composition or as the plain KeyDown - so it is not pushed here too.
+        // A click ends a composition first, keeping what was composed, so
+        // the text lands in the element that had it.
+        const NSEventType type = [nsEvent type];
+        if (type == NSEventTypeKeyDown || type == NSEventTypeLeftMouseDown ||
+            type == NSEventTypeRightMouseDown || type == NSEventTypeOtherMouseDown) {
+            NSWindow* nsWindow = [nsEvent window];
+            auto* window = nsWindow ? static_cast<UltraCanvasMacOSWindow*>(FindWindow((__bridge void*)nsWindow)) : nullptr;
+            if (window) {
+                if (type == NSEventTypeKeyDown) {
+                    if (window->InterpretKeyDown(nsEvent)) return;
+                } else {
+                    window->CommitComposition();
+                }
+            }
+        }
 
         // Convert to UCEvent
         UCEvent ucEvent = ConvertNSEventToUCEvent(nsEvent);

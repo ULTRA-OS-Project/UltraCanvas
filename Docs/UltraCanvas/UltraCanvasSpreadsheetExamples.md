@@ -15,13 +15,14 @@
 ## Features
 
 - **Editable Grid**: Click-to-edit cells with an in-cell editor and a formula bar
-- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs
+- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs; the tab strip's "+" button adds a sheet, and its ◀ ▶ buttons scroll through tabs that do not fit
 - **Typed Cells**: Text, Number, Boolean, Date/Time, Currency, Percentage, Error, and Formula values
 - **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection, and some 150 Excel-compatible functions — `VLOOKUP`, `INDEX` and `MATCH`, `SUMIF` and `SUMIFS`, `COUNTIF` and `COUNTIFS`, `SUMPRODUCT`, text, date, statistical and financial functions (see [Formula language and functions](#formula-language-and-functions))
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
-- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
+- **Function Menu**: an **fx** button at the end of the formula bar lists every formula function by category and A to Z, and inserts the one picked (see [Function menu](#function-menu))
+- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, sorting, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
@@ -701,8 +702,9 @@ sheet->SetColumnWidth(0, 120, /*explicitWidth*/ true);
 
 `UltraCanvasSpreadsheetFormatMenu.h` builds the standard formatting menu for the
 current selection: alignment (horizontal, vertical, wrap), number-format presets,
-font style and size, text and background colour, column/row sizing, and
-merge/unmerge. Each number preset shows a live sample rendered through the same
+font style and size, text and background colour, sorting the selected rows
+(see [Sorting from the context menu](#sorting-from-the-context-menu)),
+column/row sizing, and merge/unmerge. Each number preset shows a live sample rendered through the same
 formatter the cells use, so the menu shows exactly what the cell will show.
 
 The grid opens it on a right-click, with no application code at all — the click
@@ -737,6 +739,61 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Function menu
+
+The **fx** button at the right end of the formula bar opens a menu of every
+function the formula engine knows - a submenu per category (Date and time,
+Financial, Information, Logical, Lookup, Math, Statistical, Text) and one with
+all of them A to Z. Each entry shows the call with its argument names -
+`ROUND(number, num_digits)`, `IF(logical_test, value_if_true, [value_if_false])`,
+`SUM(number1, [number2], ...)` (square brackets: optional; `...`: more of the
+same) - and the function's description.
+Picking one inserts the call:
+
+| When | The formula bar gets |
+|---|---|
+| editing a formula | `NAME()` at the caret |
+| on a formula cell, not editing | the formula wrapped: `=A1/B1` becomes `=ROUND(A1/B1)` |
+| on any other cell | `=NAME()` |
+
+The caret is left inside the call - between the parentheses, or before the
+closing one of a wrapped formula - ready for the arguments.
+
+While a formula is typed - in the formula bar or in the cell - a hint under
+the editor shows the signature of the function call the caret is in, with
+the argument being typed in **bold**, and the description below it. It
+follows the caret: into a nested call, and on to the next argument after each
+`,` (or `;`); text in quotes and array constants `{...}` are skipped.
+
+The argument names are the ones Excel uses. From code:
+`GetFunctionLibrary().GetSignature("ROUND")` gives the signature,
+`GetSignatureArguments()` the arguments one by one, and
+`FindFormulaCallAtCaret(formula, caret, name, argument)` the call and argument
+at a position in a formula. Functions an
+application registers on the engine appear too; the menu is rebuilt each time
+it opens. From code: `InsertFunction("ROUND")` does what a pick does,
+`BuildSpreadsheetFunctionMenuItems()` returns the items for a menu of your
+own, and `SetFunctionMenuEnabled(false)` removes the button.
+
+## Sorting from the context menu
+
+The right-click menu has a **Sort** submenu that sorts the selected block the
+way the header sort buttons do (see
+[Sorting a selection from the header](#sorting-a-selection-from-the-header)):
+only the selected rows move, each keeping its cells together.
+
+- **Ascending by column X** / **Descending by column X** - by the column of
+  the active cell (the cell that was right-clicked).
+- **Ascending by** / **Descending by** - a submenu listing every column of the
+  selection, to sort by another one.
+
+It is offered for the same selections as the header buttons - one block of
+two or more rows, not whole columns or rows, not over merged cells - and
+otherwise shows one disabled hint. A block that holds formulas asks first, as
+the buttons do. From code: `RequestSortSelectionByColumn(column, order)` sorts
+with that warning, `SortSelectionByColumn` without it, and
+`IsSelectionSortable()` says whether the selection can be sorted.
 
 ## Fill handle
 

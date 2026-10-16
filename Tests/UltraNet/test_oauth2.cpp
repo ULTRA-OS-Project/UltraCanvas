@@ -4,6 +4,7 @@
 // full interactive flow against a fake in-process token endpoint. Everything
 // runs on 127.0.0.1 — no external network.
 #include "test_framework.h"
+#include "FakeHttpServer.h"
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
@@ -55,87 +56,11 @@ std::string RawQueryParam(const std::string& url, const std::string& key) {
     return {};
 }
 
-// One-shot fake token endpoint on 127.0.0.1:<ephemeral>. Serves `responses`
-// HTTP exchanges, capturing each request (head + body) and answering with
-// the canned JSON. Join() before reading capturedBodies.
-struct FakeTokenServer {
-    UltraNetHandle listener = UltraNetInvalidHandle;
-    int port = 0;
-    std::thread thread;
-    std::vector<std::string> responses;
-    std::vector<std::string> capturedBodies;
-
+// The fake token endpoint: FakeHttpServer (FakeHttpServer.h) answering 200
+// with the canned JSON bodies, in order.
+struct FakeTokenServer : FakeHttpServer {
     explicit FakeTokenServer(std::vector<std::string> jsonResponses)
-        : responses(std::move(jsonResponses)) {
-        UltraNetSocketOptions options;
-        options.bindAddress  = "127.0.0.1";
-        options.reuseAddress = true;
-        listener = UltraNet_TcpListen(0, options);
-        if (listener == UltraNetInvalidHandle) return;
-        UltraNetEndpoint local;
-        if (!UltraNet_SocketLocalEndpoint(listener, local)) return;
-        port = local.port;
-        thread = std::thread([this] { Serve(); });
-    }
-
-    void Serve() {
-        for (const auto& json : responses) {
-            UltraNetEndpoint remote;
-            UltraNetHandle conn = UltraNet_TcpAccept(listener, remote, 5000);
-            if (conn == UltraNetInvalidHandle) return;
-
-            std::string request;
-            std::size_t bodyStart = std::string::npos;
-            std::size_t contentLength = 0;
-            while (request.size() < 65536) {
-                if (bodyStart == std::string::npos) {
-                    bodyStart = request.find("\r\n\r\n");
-                    if (bodyStart != std::string::npos) {
-                        bodyStart += 4;
-                        std::size_t cl = request.find("Content-Length:");
-                        if (cl == std::string::npos)
-                            cl = request.find("content-length:");
-                        if (cl != std::string::npos) {
-                            contentLength = static_cast<std::size_t>(
-                                std::atoll(request.c_str() + cl + 15));
-                        }
-                    }
-                }
-                if (bodyStart != std::string::npos &&
-                    request.size() >= bodyStart + contentLength) {
-                    break;
-                }
-                std::vector<uint8_t> chunk;
-                auto r = UltraNet_TcpReceive(conn, chunk, 4096, 3000);
-                if (!r || chunk.empty()) break;
-                request.append(chunk.begin(), chunk.end());
-            }
-            if (bodyStart != std::string::npos) {
-                capturedBodies.push_back(request.substr(bodyStart));
-            } else {
-                capturedBodies.push_back(std::string());
-            }
-
-            std::string resp = "HTTP/1.1 200 OK\r\n"
-                "Content-Type: application/json\r\n"
-                "Content-Length: " + std::to_string(json.size()) + "\r\n"
-                "Connection: close\r\n\r\n" + json;
-            int sent = 0;
-            UltraNet_TcpSend(conn, std::vector<uint8_t>(resp.begin(), resp.end()),
-                             sent);
-            UltraNet_SocketClose(conn);
-        }
-    }
-
-    void Join() {
-        if (thread.joinable()) thread.join();
-        if (listener != UltraNetInvalidHandle) {
-            UltraNet_SocketClose(listener);
-            listener = UltraNetInvalidHandle;
-        }
-    }
-
-    ~FakeTokenServer() { Join(); }
+        : FakeHttpServer(FakeHttpServer::Json(jsonResponses)) {}
 };
 
 } // namespace
@@ -305,6 +230,28 @@ TEST(oauth2_wait_for_callback_times_out) {
     auto r = UltraNet_OAuth2WaitForCallback("http://127.0.0.1:18471/cb", cb, 300);
     REQUIRE(!r);
     REQUIRE(r.code == UltraNetResultCode::Timeout);
+}
+
+// A sign-in the user walked away from: the dialog is closed, and the wait has
+// to let its thread go then, not when the five minutes are up.
+TEST(oauth2_wait_for_callback_can_be_cancelled) {
+    UltraNet_Initialize();
+    std::atomic<bool> cancelled{false};
+    UltraNetOAuth2CallbackResult cb;
+    UltraNetResult waitResult;
+    const auto started = std::chrono::steady_clock::now();
+    std::thread waiter([&] {
+        waitResult = UltraNet_OAuth2WaitForCallback(
+            "http://127.0.0.1:18478/cb", cb, 60000, std::string(),
+            [&cancelled] { return cancelled.load(); });
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    cancelled = true;
+    waiter.join();
+    const auto took = std::chrono::steady_clock::now() - started;
+    REQUIRE(!waitResult);
+    REQUIRE(waitResult.code == UltraNetResultCode::Cancelled);
+    REQUIRE(took < std::chrono::seconds(5));
 }
 
 TEST(oauth2_wait_for_callback_receives_redirect) {

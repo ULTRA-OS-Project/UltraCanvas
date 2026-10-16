@@ -1,9 +1,14 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.12.0 - onFocusGained / onFocusLost, as the text input has them
+// Version: 3.11.0 - ApplyTheme: the light or dark preset, the surfaces and ink from the theme roles
+// Version: 3.10.0 - an input method's composition is drawn in the caret's line,
+//                 underlined, instead of in the input method's own window
+//                 (DrawsTextComposition, GetCompositionText)
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -479,6 +484,17 @@ namespace UltraCanvas {
         // focus, so no caret is drawn and no key ever reaches them (see
         // SetDisplayOnly).
         bool AcceptsFocus() const override { return !displayOnly; }
+
+        // An input method's composition is shown in the caret's line,
+        // underlined, at the caret (TextComposition events), not in a window
+        // of its own. It is not part of GetText(), fires no onTextChanged and
+        // leaves no undo step; the committed text then arrives as typing. Not
+        // in hex mode, where a key is a hex digit and not text.
+        bool DrawsTextComposition() const override {
+            return !isReadOnly && !displayOnly && !IsDisabled() && editingMode != TextAreaEditingMode::Hex;
+        }
+        // The text being composed ("" when nothing is).
+        const std::string& GetCompositionText() const { return preeditText; }
         // Render method
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
@@ -497,6 +513,10 @@ namespace UltraCanvas {
 
         // Event handling
         virtual bool OnEvent(const UCEvent& event) override;
+        // The theme's roles over the light or dark token colours: the well
+        // behind the text, ink, the hover fill for the current line, the
+        // accent behind a selection, faint ink for line numbers
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void Invalidate();
         void InvalidateAllLineLayouts();
@@ -659,7 +679,12 @@ namespace UltraCanvas {
         bool CanRedo() const;
 
         // Properties
-        void SetReadOnly(bool readOnly) { isReadOnly = readOnly; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        void SetReadOnly(bool readOnly) {
+            isReadOnly = readOnly;
+            if (readOnly) ClearComposition();   // nothing is composed into a read-only area
+            isNeedRecalculateVisibleArea = true;
+            RequestRedraw();
+        }
         bool IsReadOnly() const { return isReadOnly; }
 
         // Hides/shows the blinking caret without affecting focus or selection.
@@ -877,6 +902,14 @@ namespace UltraCanvas {
         // Shift+Enter for a new line. Runs on the UI thread.
         std::function<bool(const UCEvent&)> onBeforeKeyDown;
 
+        // Called when the area takes the keyboard focus, and when it loses it -
+        // the same two the text input has, so a host that commits a field when
+        // it is left treats a single line and a paragraph alike. Runs on the UI
+        // thread, after the area's own handling (the caret hidden, the text
+        // settled), so the callback reads the final text.
+        std::function<void()> onFocusGained;
+        std::function<void()> onFocusLost;
+
         // Called just before a check is queued, with the exact text about to be
         // checked. Lets the host rebuild content-dependent options: in
         // particular SpellCheckOptions::shouldSkipRange, whose byte ranges have
@@ -955,8 +988,11 @@ namespace UltraCanvas {
 
         // parse the line text and create line layout
         std::unique_ptr<LineLayoutBase> MakeLineLayout(IRenderContext* ctx, int lineIndex);
-        // parse the plain line text and setup line layout
-        std::unique_ptr<LineLayoutBase> MakePlainLineLayout(IRenderContext* ctx, int lineIndex);
+        // parse the plain line text and setup line layout. With `withComposition`
+        // an input method's composition, if any, is spliced in at the caret
+        // (the caret's line only; the layout of the line being edited).
+        std::unique_ptr<LineLayoutBase> MakePlainLineLayout(IRenderContext* ctx, int lineIndex,
+                                                            bool withComposition = false);
         // The syntax state line `lineIndex` starts in: what the cached layout
         // of the line above left open, less a string or line comment when a
         // real line break (not a length split) separates them.
@@ -1082,6 +1118,16 @@ namespace UltraCanvas {
         // MarkdownHybrid current line. When the cursor enters a line, this line gets text
         // and used in rendering and measuring
         std::unique_ptr<LineLayoutBase> currentLine;
+
+        // Input method composition: the text being composed and its caret (a
+        // byte offset into it). Shown in currentLine at the caret, never in
+        // `lines`. compositionColumn is where it sits in currentLine's layout
+        // (a codepoint), set when that layout is built.
+        std::string preeditText;
+        int preeditCursor = 0;
+        int compositionColumn = -1;
+        bool HandleComposition(const UCEvent& event);
+        void ClearComposition();
 
         // Cursor / selection state is LineColumnIndex (codepoint-based); see fields above.
         float computedLineHeight = 12;

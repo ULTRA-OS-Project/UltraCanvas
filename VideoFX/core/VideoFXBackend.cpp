@@ -1,8 +1,9 @@
 // VideoFX/core/VideoFXBackend.cpp
 // Errors, backend setup, version shims, codec selection and the module-level
 // VideoFX_* functions.
+// Version: 0.14.1 - FeedBufferSource
 // Version: 0.12.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -265,6 +266,13 @@ const enum AVPixelFormat* SupportedPixelFormats(const AVCodec* codec)   { return
 const enum AVSampleFormat* SupportedSampleFormats(const AVCodec* codec) { return codec->sample_fmts; }
 const int* SupportedSampleRates(const AVCodec* codec)                   { return codec->supported_samplerates; }
 #endif
+
+// ===== BUFFER SOURCE =====
+
+int FeedBufferSource(AVFilterContext* source, AVFrame* frame, int flags) {
+    const int err = av_buffersrc_add_frame_flags(source, frame, flags);
+    return err == AVERROR_EOF ? 0 : err;
+}
 
 // ===== ENCODER SELECTION =====
 

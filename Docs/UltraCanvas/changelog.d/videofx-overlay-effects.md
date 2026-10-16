@@ -1,4 +1,4 @@
-- **VideoFX 0.14.0: effects on image and video overlays.** A new field,
+- **VideoFX 0.16.0: effects on image and video overlays.** A new field,
   `VideoFXOverlay::effects`, gives an overlay's own picture a look. It works
   on a logo or a picture-in-picture video, without touching the picture
   under it.

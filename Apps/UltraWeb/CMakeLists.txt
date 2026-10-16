@@ -7,6 +7,7 @@
 # without wasmtime it reports that it cannot run apps) and UltraNet, which
 # fetches apps from https:// addresses.
 #
+# Version: 0.7.0 - tabs (ui/UltraWebTab.cpp)
 # Version: 0.6.0 - a downloads list (host/UltraWebDownloadList.cpp, ui/UltraWebDownloadsPanel.cpp)
 # Version: 0.5.0 - downloads (host/UltraWebDownloads.cpp)
 # Version: 0.4.1 - file uploads (the file dialog), label clicks
@@ -38,6 +39,7 @@ add_executable(UltraWeb
     host/UltraWebDownloadList.cpp
     host/UltraWebStorage.cpp
     ui/UltraWebDownloadsPanel.cpp
+    ui/UltraWebTab.cpp
     ui/UltraWebWindow.cpp
 )
 

@@ -1,6 +1,6 @@
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); void Preview(int64_t id); UltraCanvasClipboardRecorder recorder; -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void SaveAs(int64_t id); void Delete(int64_t id); void Preview(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -99,7 +99,9 @@ is not recorded), `recordingPaused`, `imageThumbnails`, `previewStyle` (how
 UltraClipboard previews an image whose thumbnail the pointer rests on:
 `ClipboardPreviewStyle::Modern`, a pane over the right part of the list with
 the viewer's info line, or `Classic`, the picture alone floating over the
-middle of the list) and `excludedApplications` (`Defaults()`: UltraPassword,
+middle of the list), `iconSide` (where a row's action icons stand:
+`ClipboardIconSide::Right`, after the text at the row's right edge, or `Left`,
+between the thumbnail and the text) and `excludedApplications` (`Defaults()`: UltraPassword,
 UltraAuthenticator, KeePassXC, Bitwarden, 1Password).
 
 `EditClipboardText(text, edit)` is the edit dialog's text tools:
@@ -175,7 +177,10 @@ between them.
 applications' data folders, `UltraCanvasDataFolder.h`), else `~/.local/share`,
 `%LOCALAPPDATA%` on Windows (a machine-local store, so not the applications'
 roaming `%APPDATA%`) and `~/Library/Application Support` on macOS; `<config>`
-is the folder the desktop's settings use. The folders are owner-only.
+is the folder the desktop's settings use (`UltraCanvasDesktopSettingsFolder`:
+`%APPDATA%`, Application Support on macOS, `$XDG_CONFIG_HOME` or `~/.config`;
+on macOS a key kept under `~/.config` by earlier versions is moved there once).
+The folders are owner-only.
 
 With libsodium, titles, previews and payloads are sealed with
 XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the
@@ -222,6 +227,7 @@ listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row
     switch (rows->ActionAt(row, at)) {
         case ClipboardRowAction::Copy:   Copy(entry->id); break;
         case ClipboardRowAction::Edit:   Edit(entry->id); break;
+        case ClipboardRowAction::SaveAs: SaveAs(entry->id); break;   // only with style.saveAction
         case ClipboardRowAction::Delete: Delete(entry->id); break;
         default: break;
     }
@@ -240,9 +246,14 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
   swatch, a code tile, a link tile, file sheets with a `+n` badge), the
   title, a meta line (`DescribeClipboardEntry`: "Text · 2 lines · 29
-  characters · UltraMail · 5 min ago") and Copy, Edit and Delete. The light
-  style shows the actions on every row, the compact one on the hovered and
-  selected rows only. `ShowCopied(id)` turns Copy into a check with a
+  characters · UltraMail · 5 min ago") and Copy, Edit and Delete -
+  `ClipboardRowStyle::saveAction` adds Save as between Edit and Delete
+  (UltraClipboard). The actions stand at the row's right edge, or between the
+  thumbnail and the text with `actionsLeftOfText` (`SetActionsLeftOfText`
+  changes it on a delegate in use - UltraClipboard applies the policy's
+  `iconSide` this way); left of the text they keep their place while hidden,
+  so the text does not move. The light style shows the actions on every row,
+  the compact one on the hovered and selected rows only. `ShowCopied(id)` turns Copy into a check with a
   "Copied" pill for a moment; redraw while `IsShowingCopied()`.
   `IsOverThumbnail(posInCell)` says whether a point of a row is on the
   thumbnail's column (the tile's width, the row's whole height, so a pointer

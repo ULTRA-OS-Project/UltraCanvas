@@ -6,8 +6,8 @@
 
 The UltraCanvasDropDown is an interactive dropdown/combobox component that provides a user-friendly way to select from a list of options. It's part of the UltraCanvas Framework and offers styling, item icons, single or multiple selection, keyboard navigation, scrolling support, and event handling capabilities.
 
-**Version:** 1.2.5  
-**Last Modified:** 2026-10-07  
+**Version:** 1.3.0  
+**Last Modified:** 2026-10-15  
 **Author:** UltraCanvas Framework
 
 ## File Structure
@@ -26,7 +26,7 @@ UltraCanvas/
 - **Icons**: An optional icon per item, shown in the list and on the button
 - **Multi-selection**: Optional checkbox mode for picking several items
 - **Styling**: One `DropdownStyle` structure for the button, the list and the scrollbar
-- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape
+- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape, and type-ahead (letters go to the item starting with them)
 - **Mouse Interaction**: Click to open/close, hover states, item selection
 - **Scrolling**: Automatic scrollbar when items exceed maximum visible count
 - **Callbacks**: Event callbacks for selection changes, dropdown open/close events
@@ -47,6 +47,7 @@ struct DropdownItem {
     std::string text;          // Display text
     std::string value;         // Associated value
     std::string iconPath;      // Optional icon path
+    std::string tooltip;       // Shown over the item in the open list (optional)
     bool enabled = true;       // Is item selectable
     bool separator = false;    // Is this a separator
     bool selected = false;     // Checked state in multi-selection mode
@@ -98,6 +99,10 @@ struct DropdownStyle {
     // Icon dimensions
     float iconSize = 16.0f;
     float iconPadding = 4.0f;
+
+    // false: the button shows the selected item's icon alone (the list
+    // still shows icon and text) - a compact, icon-only selector
+    bool buttonShowsText = true;
 
     // Checkbox dimensions (for multi-select)
     float checkboxSize = 14.0f;
@@ -178,6 +183,13 @@ void CloseDropdown();
 bool IsDropdownOpen() const;
 ```
 
+### Keyboard Focus
+
+```cpp
+bool AcceptsFocus() const;          // true by default: Tab and a click focus it
+void SetAcceptsFocus(bool accept);  // false: out of the Tab order, mouse only
+```
+
 ### Styling
 
 ```cpp
@@ -232,12 +244,33 @@ The dropdown handles various event types:
 - **Item hover, click and wheel scrolling** are handled by the popup list view
 
 ### Keyboard Events
+A dropdown takes the keyboard focus as a button does: **Tab** reaches it and a
+click gives it the focus. It keeps the focus while its list is open - the
+popup list does not take it - so a click on an entry leaves the focus on the
+dropdown, drawn with `focusBorderColor`.
 - **Down/Space** (closed): Opens the dropdown
-- **Up/Down, Page Up/Page Down, Home/End** (open): Move through the list
-- **Return** (open): Selects the focused item (toggles it in multi-selection mode)
-- **Space** (open, multi-selection): Toggles the focused item
-- **Escape**: Closes dropdown
-- `onKeyDown` sees every key first; returning true stops the default handling
+- **Up/Down, Page Up/Page Down, Home/End** (open): Move the highlight through the list
+- **Return** (open): Chooses the highlighted item and closes the list (toggles
+  it in multi-selection mode)
+- **Space** (open, multi-selection): Toggles the highlighted item
+- **Escape**: Closes the list and keeps the chosen item
+- **Tab / Shift+Tab**: Move the focus on; an open list closes
+- `onKeyDown` sees every key the focused dropdown gets first; returning true
+  stops the default handling
+- **Letters (type-ahead)**: go to the first item whose text starts with them,
+  regardless of case - "libe" to *Liberation Mono* in a list of every
+  installed font. Letters typed within a second of each other build one
+  prefix, spaces included once it has begun ("liberation s"); the same
+  letter again steps on to the next item starting with it; each opening of
+  the list starts afresh. Return then chooses it. Focused, the
+  dropdown takes the letters itself; one left out of the focus
+  (`SetAcceptsFocus(false)`) leaves the keys to its open list, which passes
+  them on through `UltraCanvasListView::onKeyDown` - type-ahead works either
+  way.
+
+`SetAcceptsFocus(false)` leaves a dropdown out of the Tab order and a click no
+longer focuses it. Its open list still answers the keys then - the window hands
+them to the open popup - with Return or Space choosing the highlighted item.
 
 ### Focus Events
 - **FocusLost**: Closes the dropdown (not in multi-selection mode)
@@ -393,6 +426,25 @@ langs->AddItem("Rust", "rs");
 langs->onSelectedItemsChanged = [](const std::vector<DropdownItem>& picked) {
     std::cerr << picked.size() << " languages selected" << std::endl;
 };
+```
+
+### Icon-only Button
+
+With `buttonShowsText` off, the button shows just the selected item's icon,
+centred beside the arrow; the list still shows each item's icon and text, and
+the accessible value is still the selected item's text. The colour picker's
+design selector is one.
+
+```cpp
+auto view = CreateDropdown("view", 10, 120, 44, 24);
+view->AddItem("Details", "details", "media/icons/view-details.svg");
+view->AddItem("Icons", "icons", "media/icons/view-icons-medium.svg");
+DropdownStyle compact = view->GetStyle();
+compact.buttonShowsText = false;
+compact.iconSize = 18.0f;
+view->SetStyle(compact);
+view->SetSelectedIndex(0, false);
+view->SetAccessibleName("View");
 ```
 
 ## Performance Considerations

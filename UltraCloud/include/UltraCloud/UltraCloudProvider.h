@@ -2,8 +2,8 @@
 // The provider interface every cloud storage backend implements, and the
 // process-wide provider registry. Providers are stateless: every call gets
 // the account and the resolved credentials.
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0 - SetThreadSignInCancel / SignInCancelled
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -67,7 +67,9 @@ public:
     // ---- Sign-in (OAuth2 providers) ----------------------------------------
     // Interactive sign-in: `openUrl` shows the consent page (the system
     // browser); the tokens land in `out`. Password providers return
-    // Unsupported — they sign in with what the user typed.
+    // Unsupported — they sign in with what the user typed. A sign-in waits on
+    // the user for minutes; it asks SignInCancelled() while it does, and ends
+    // as ResultCode::Cancelled once that says true.
     virtual Result SignIn(const Account& account,
                           const std::function<void(const std::string& url)>& openUrl,
                           Credentials& out) {
@@ -88,6 +90,19 @@ public:
         return Result::Error(ResultCode::Unsupported, "no account info");
     }
 };
+
+// ---- Calling a sign-in off ---------------------------------------------------
+// A sign-in can wait minutes for the user to answer in the browser, and the
+// user can walk away: close the dialog that started it, or the application.
+// The thread that signs in sets a check for itself here; while it says false
+// nothing changes, and once it says true the browser wait ends within a
+// fraction of a second, a sign-in ends as ResultCode::Cancelled and
+// CloudService stores no account - not one the user has already given up on.
+// Returns the previous check, so a caller can put it back. Per thread, like
+// the log sink (UltraCloudLog.h); an empty function clears it.
+std::function<bool()> SetThreadSignInCancel(std::function<bool()> cancelled);
+// Whether the calling thread's sign-in has been called off.
+bool SignInCancelled();
 
 // ---- Registry ---------------------------------------------------------------
 // Register a provider (replaces one with the same id). The built-in set is

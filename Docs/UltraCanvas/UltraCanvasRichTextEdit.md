@@ -70,7 +70,6 @@ the result over.
 
 ```cpp
 #include "UltraCanvasFileLoader.h"
-#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 std::string error;
 if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
@@ -79,8 +78,10 @@ if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
     ShowError(error);
 }
 
-// Saving: the element hands back the same document, edits included.
-UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
+// Saving: the element hands back the same document, edits included. The
+// Save dialog's types are AddTextDocumentSaveTypes (ODT, DOCX), its Open
+// dialog's AddTextDocumentLoadTypes.
+UltraCanvasFileLoader::SaveTextDocument(*editor->GetDocument(), savePath, error);
 ```
 
 Because the element shares ownership of the document (`std::shared_ptr`), an
@@ -141,8 +142,9 @@ toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
 selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
-the reader produced, hands it to the element, and hands the same object back to
-`UCWordDocumentIO::Save` — no conversion in either direction. See
+`UltraCanvasFileLoader::LoadTextDocument` produced, hands it to the element, and
+hands the same object back to `SaveTextDocument` — no conversion in either
+direction. See
 `Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
 `SaveRichDocumentAs`) for a worked integration, including how the element is
 swapped into an existing tab layout and how a shared formatting toolbar drives
@@ -217,11 +219,18 @@ editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
+
+RichCharFormatDelta exactly;     // set, rather than flip: a checkbox's state
+exactly.setBold = true;
+exactly.bold = false;
+editor->ApplyCharFormat(exactly);
 ```
 
 With a selection these apply to it. With a collapsed caret they **arm** the
 format for the next typed character — pressing Bold and carrying on typing does
-what a word processor does.
+what a word processor does. `ApplyCharFormat` sets what the delta names to
+the value given, where the toggles flip it - the call for a panel of
+checkboxes, which knows what it wants rather than what the text has.
 
 ### Paragraph formatting
 
@@ -612,7 +621,12 @@ composition as `UCEventType::TextComposition` (`event.text`,
 `event.compositionCursor`) to an element whose `DrawsTextComposition()` is
 true: on X11 through an on-the-spot input context used while such an element
 has focus (other widgets keep the input method's own window), on Windows
-through the IMM composition string. `GetCompositionText()` reads it.
+through the IMM composition string, on macOS through the window's
+`NSTextInputClient` marked text (keys go through the input method only while
+such an element has focus), and in the browser (WebAssembly) through a
+transparent `<textarea>` that takes the keyboard while such an element has
+focus and whose `compositionupdate` / `compositionend` events are forwarded.
+`GetCompositionText()` reads it.
 
 ## Right-to-left text
 
@@ -976,6 +990,7 @@ back. `ExportToPdf` is built on the same three.
 ```cpp
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
 ```
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
@@ -984,6 +999,14 @@ it (with the desk either side) is wider than the element a horizontal
 scrollbar appears - drag it, Shift+wheel, or let the caret take the view
 along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
 it. UltraTexter's zoom box sets a word-processing tab's zoom.
+
+The text is laid out in document space and the zoom only scales the drawing,
+so the same words at another zoom wrap and sit exactly as they do at 100 %.
+That is what lets the element edit text lying on a zoomable canvas: a bitmap
+editor's text layer is drawn by this element at 1:1, and edited on the
+canvas by it at the canvas's zoom, with every glyph where the layer's pixels
+will be ([text layers](UltraCanvasPaintSurface.md#text-layers)).
+`SetZoomRange` widens the 0.25-5 range to whatever the canvas allows.
 
 ## What is not implemented yet
 
@@ -995,7 +1018,8 @@ Honest limits of this first version — none of them silently misbehave:
   and NSAccessibility bridges compile but have not yet been run against
   Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
-  next to the caret.
+  next to the caret, on X11 and Windows. On macOS and in the browser it opens
+  at the caret (where the composition starts).
 
 ## Related
 

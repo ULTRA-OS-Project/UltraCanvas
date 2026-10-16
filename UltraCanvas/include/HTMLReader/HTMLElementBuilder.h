@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.18.0 - onLinkActivatedNewWindow: a link whose target names another
+//                   window (target="_blank", <base target>) goes there
 // Version: 1.17.0 - onChooseFiles (file uploads); a <label>'s text acts on its
 //                   control
 // Version: 1.16.0 - BuildOptions::interactiveForms / onFormSubmit and
@@ -47,6 +49,7 @@
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -77,6 +80,12 @@ struct BuildOptions {
     // its text. Labels carry per-byte-range link data, so a run with several
     // links activates exactly the one under the pointer.
     std::function<void(const std::string& href)> onLinkActivated;
+    // A link that asks for another window - <a target="_blank">, a target
+    // naming a window ("help"), or no target under <base target="_blank"> -
+    // is activated here instead, when set (a browser opens a new tab).
+    // "_self", "_parent" and "_top" stay with onLinkActivated. Unset, every
+    // link goes to onLinkActivated.
+    std::function<void(const std::string& href)> onLinkActivatedNewWindow;
     // The link under the pointer, as it moves onto one (its href) and off it
     // (""): text links and linked pictures alike.
     std::function<void(const std::string& href)> onLinkHovered;
@@ -156,6 +165,19 @@ private:
     // link ranges found in it.
     std::string runPlain;
     std::vector<LabelTextLink> runLinks;
+    // Of those, the hrefs whose link asks for another window
+    // (onLinkActivatedNewWindow). By href: should one run link the same
+    // address both ways, both open in the other window.
+    std::set<std::string> runNewWindowHrefs;
+    // <base target>, the target a link without one of its own has.
+    std::string baseTarget;
+    // Whether the link <a> asks for another window; whether `node` sits in
+    // such a link.
+    bool OpensNewWindow(const Node& link) const;
+    bool InNewWindowLink(const Node& node) const;
+    // What a click on a link calls: onLinkActivatedNewWindow for one that
+    // asks for another window (when set), onLinkActivated otherwise.
+    std::function<void(const std::string& href)> LinkActivator(bool newWindow) const;
     // Images flowing in the current run, at U+FFFC placeholders of runPlain.
     // A picture-less one is room (AppendInlineSpace).
     std::vector<LabelInlineImage> runImages;

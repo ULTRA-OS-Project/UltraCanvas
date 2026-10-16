@@ -39,8 +39,18 @@ namespace AndroidJni {
     // runtime path, not just a programming-error backstop.
     bool ClearException(JNIEnv* env, const char* where);
 
-    // UTF-8 std::string from a jstring (empty for null).
+    // UTF-8 std::string from a jstring (empty for null). Real UTF-8, not
+    // JNI's modified UTF-8, so characters outside the BMP survive.
     std::string ToStdString(JNIEnv* env, jstring str);
+
+    // jstring from UTF-8 (a local ref; null only when the JVM is out of
+    // memory). Use this, not NewStringUTF, for any text that did not come
+    // from a string literal: NewStringUTF takes JNI's modified UTF-8, so an
+    // emoji arrives in Java as garbage, and malformed input aborts the
+    // process outright when CheckJNI is on (every debuggable APK). Malformed
+    // bytes become U+FFFD here.
+    jstring ToJString(JNIEnv* env, const std::string& utf8);
+    jstring ToJString(JNIEnv* env, const char* utf8);
 
     // Split a newline-separated list, dropping empty entries. The Java side
     // returns path lists this way (the SAF picker, the clipboard's URI items)

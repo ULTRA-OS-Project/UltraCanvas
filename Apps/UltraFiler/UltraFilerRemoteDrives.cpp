@@ -1,6 +1,6 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.6.0
-// Last Modified: 2026-10-09
+// Version: 1.8.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -22,6 +22,8 @@
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
 #include <UltraCloud/UltraCloudAccounts.h>
+#include <UltraCloud/UltraCloudHttp.h>   // RateLimitPolicy
+#include <UltraCloud/UltraCloudLog.h>
 #include <UltraCloud/UltraCloudProvider.h>
 #include <UltraCloud/UltraCloudSecrets.h>
 #include <UltraCloud/UltraCloudService.h>
@@ -38,13 +40,20 @@ namespace fs = std::filesystem;
 
 struct UltraFilerRemoteDrives::Impl {
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
-    UltraCloud::AccountStore accounts;
+    // Shared rather than owned: the service keeps the account store and the
+    // secret store alive, and the add-drive dialog's sign-in thread keeps the
+    // service alive - a browser sign-in can still be ending after the window
+    // that started it has closed and this object is gone.
+    std::shared_ptr<UltraCloud::AccountStore> accounts =
+            std::make_shared<UltraCloud::AccountStore>();
     // UltraFiler's own vault: ultrafiler.vault + device.key under the config
     // directory, unlocked without a prompt (UltraVault::DeviceKeyVault). The
-    // secret store writes into it under "cloud.<accountId>.*".
+    // secret store writes into it under "cloud.<accountId>.*" - through
+    // UltraVault's process-wide store, which this object only opens, so the
+    // secret store does not depend on it staying.
     UltraVault::DeviceKeyVault vault;
-    std::unique_ptr<UltraCloud::ISecretStore> secrets;
-    std::unique_ptr<UltraCloud::CloudService> service;
+    std::shared_ptr<UltraCloud::ISecretStore> secrets;
+    std::shared_ptr<UltraCloud::CloudService> service;
     bool opened = false;
 
     // Opens the account store, the vault and the secret store once. The
@@ -84,7 +93,7 @@ struct UltraFilerRemoteDrives::Impl {
             return false;
         }
         const UltraCloud::Result r =
-                accounts.Open("ultrafiler-cloud", dir + "/remote-drives.db");
+                accounts->Open("ultrafiler-cloud", dir + "/remote-drives.db");
         if (!r.IsOk()) {
             error = "cannot open the drive list: " + r.message;
             return false;
@@ -99,11 +108,11 @@ struct UltraFilerRemoteDrives::Impl {
                             vault.GetLastUnlockStatus());
             return false;
         }
-        secrets = std::make_unique<UltraCloud::VaultSecretStore>();
+        secrets = std::make_shared<UltraCloud::VaultSecretStore>();
         std::vector<UltraCloud::Account> known;
-        accounts.List(known);
+        accounts->List(known);
         UltraCloud::MigrateLegacyFileSecrets(dir + "/remote-drive-secrets", known, *secrets);
-        service = std::make_unique<UltraCloud::CloudService>(accounts, *secrets);
+        service = std::make_shared<UltraCloud::CloudService>(accounts, secrets);
         opened = true;
         return true;
     }
@@ -131,6 +140,10 @@ std::string DescribeResultCode(UltraCloud::ResultCode code) {
             words = "Invalid request - an address, path or name it cannot use"; break;
         case UltraCloud::ResultCode::IoError:         words = "Local file error"; break;
         case UltraCloud::ResultCode::Unknown:         words = "Unknown"; break;
+        case UltraCloud::ResultCode::RateLimited:
+            words = "Rate limited - the service asks to wait before more requests"; break;
+        case UltraCloud::ResultCode::Cancelled:
+            words = "Cancelled"; break;
     }
     return words + " (UltraCloud code " + std::to_string(static_cast<int>(code)) + ")";
 }
@@ -151,12 +164,39 @@ RemoteLogLine ToRemoteLogLine(const UltraNetFtpLogLine& in) {
     return line;
 }
 
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+// A line of a cloud provider's log (UltraCloudLog.h) as the connection log
+// keeps it: a request is the session's command, the HTTP status the reply's
+// code.
+RemoteLogLine ToRemoteLogLine(const UltraCloud::LogLine& in) {
+    RemoteLogLine line;
+    switch (in.kind) {
+        case UltraCloud::LogKind::Step:     line.kind = RemoteLogLine::Kind::Step; break;
+        case UltraCloud::LogKind::Request:  line.kind = RemoteLogLine::Kind::Command; break;
+        case UltraCloud::LogKind::Response: line.kind = RemoteLogLine::Kind::Response; break;
+        case UltraCloud::LogKind::Error:    line.kind = RemoteLogLine::Kind::Error; break;
+    }
+    line.text = in.text;
+    line.replyCode = in.httpStatus;
+    return line;
+}
+#endif
+
+// Whether a drive of this provider speaks HTTP - every one but FTP / SFTP.
+bool ProviderSpeaksHttp(const std::string& providerId) {
+    return providerId != "ftp";
+}
+
 // The same line as the status bar's step: a status as it is, the rest with
 // what kind of line it is in front, the way an FTP client's log reads.
-std::string StepText(const RemoteLogLine& line) {
+// `http`: a cloud drive's line, whose commands are requests.
+std::string StepText(const RemoteLogLine& line, bool http) {
     switch (line.kind) {
         case RemoteLogLine::Kind::Step:     return line.text;
-        case RemoteLogLine::Kind::Command:  return "Command: " + line.text;
+        // A request's URL is long; the status line gets its host and the end
+        // of its path, the connection log the whole of it.
+        case RemoteLogLine::Kind::Command:
+            return http ? "Request: " + ShortHttpRequestText(line.text) : "Command: " + line.text;
         case RemoteLogLine::Kind::Response: return "Response: " + line.text;
         case RemoteLogLine::Kind::Error:    return "Error: " + line.text;
     }
@@ -203,7 +243,7 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
     if (!impl_->Open(error)) return false;
 
     std::vector<UltraCloud::Account> accounts;
-    const UltraCloud::Result r = impl_->accounts.List(accounts);
+    const UltraCloud::Result r = impl_->accounts->List(accounts);
     if (!r.IsOk()) {
         error = "cannot read the drive list: " + r.message;
         return false;
@@ -1071,11 +1111,11 @@ void UltraFilerRemoteDrives::SaveDiskCache() {
     if (ec) fs::remove(UltraCanvas::PathFromUtf8(temp), ec);
 }
 
-UltraCloud::CloudService* UltraFilerRemoteDrives::Service() {
+std::shared_ptr<UltraCloud::CloudService> UltraFilerRemoteDrives::Service() {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
     return nullptr;
 #else
-    return impl_->service.get();
+    return impl_->service;
 #endif
 }
 
@@ -1089,6 +1129,19 @@ void UltraFilerRemoteDrives::Stop() {
     }
     cond_.notify_all();
     if (worker_.joinable()) worker_.join();
+    // A sign-in from the add-drive dialog still running is called off - the
+    // wait for the browser ends within a fraction of a second - and given a
+    // moment to end, so it is over before the application it reports to goes
+    // away with the window. One stuck in a request to a server that does not
+    // answer is not waited out: it holds the shared service, and through it
+    // the stores, so nothing it uses is freed under it, and called off it
+    // stores nothing when that request ends.
+    signIns_->stopping.store(true);
+    {
+        std::unique_lock<std::mutex> lk(signIns_->mutex);
+        signIns_->ended.wait_for(lk, std::chrono::seconds(2),
+                                 [this]() { return signIns_->running == 0; });
+    }
     // After the join: the worker writes the cache, and what it was fetching
     // when asked to stop is either in by now or never will be.
     SaveDiskCache();
@@ -1205,31 +1258,62 @@ void UltraFilerRemoteDrives::WorkerMain() {
         if (!job.isPrefetch) ReportActivity(activity, /*force=*/true);
 
         // The job as a session of the connection log. On an FTP or SFTP
-        // drive UltraNet logs every step of it on this thread - the sink
-        // below catches them, because the call goes through UltraCloud,
-        // which builds UltraNet's options itself and has no log to hand on.
+        // drive UltraNet logs every step of it on this thread, and on a cloud
+        // drive UltraCloud logs each request, the service's answer, a renewed
+        // sign-in and the pages of a listing - the sinks below catch them,
+        // because the call goes through UltraCloud, which builds UltraNet's
+        // options itself and has no log to hand on.
         const uint64_t logId = BeginLogSession(job);
+        bool http = false;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            const std::string accountId = RemoteFilerAccountId(job.path);
+            for (const RemoteDrive& d : drives_) {
+                if (d.accountId != accountId) continue;
+                http = ProviderSpeaksHttp(d.providerId);
+                break;
+            }
+        }
         // What the status line says about this job, shared by the two things
         // that move it on: each step of the connection, and each chunk of a
         // transfer. Both fire on this thread, inside the provider call, so
         // the copy needs no lock.
         auto current = std::make_shared<RemoteActivity>(activity);
         const bool reportsActivity = !job.isPrefetch;
-        UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
-                [this, logId, current, reportsActivity](const UltraNetFtpLogLine& in) {
-            const RemoteLogLine line = ToRemoteLogLine(in);
+        auto onLine = [this, logId, current, reportsActivity, http](const RemoteLogLine& line) {
             log_.Append(logId, line);
             NotifyLogChanged();
             if (!reportsActivity) return;
             // Every step, not one in eighty milliseconds: when a connection
             // hangs, the step on screen has to be the one it hangs at.
-            current->step = StepText(line);
+            current->step = StepText(line, http);
             {
                 std::lock_guard<std::mutex> lk(mutex_);
                 activeJobStep_ = current->step;
             }
             ReportActivity(*current, /*force=*/true);
-        });
+        };
+        UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
+                [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+        UltraCloud::LogCallback previousCloudLog = UltraCloud::SetThreadLog(
+                [onLine](const UltraCloud::LogLine& in) { onLine(ToRemoteLogLine(in)); });
+        // A cloud service that limits requests is waited out - as long as it
+        // asks, up to a minute - and the request sent again; the wait ends at
+        // once when the window closes, which joins this thread. A folder read
+        // ahead is not waited for: nobody is looking at it, and reading ahead
+        // is what ran into the limit.
+        UltraCloud::RateLimitPolicy rateLimit;
+        rateLimit.maxRetries = job.isPrefetch ? 0 : 3;
+        rateLimit.maxWaitSeconds = kRemoteRateLimitMaxWaitSeconds;
+        rateLimit.wait = [this](long long seconds) {
+            std::unique_lock<std::mutex> lk(mutex_);
+            return !cond_.wait_for(lk, std::chrono::seconds(seconds),
+                                   [this]() { return shutdown_; });
+        };
+        UltraCloud::RateLimitPolicy previousRateLimit =
+                UltraCloud::SetThreadRateLimitPolicy(std::move(rateLimit));
+#endif
 
         // A transfer counts its own bytes. UltraNet reports them through the
         // module's global transfer callbacks, which is why the previous bag is
@@ -1291,6 +1375,10 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
         }
         UltraNet_SetThreadFtpLog(std::move(previousLog));
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+        UltraCloud::SetThreadLog(std::move(previousCloudLog));
+        UltraCloud::SetThreadRateLimitPolicy(std::move(previousRateLimit));
+#endif
         connectionsOpen = true;
         log_.Finish(logId, outcome.failed, outcome.message, outcome.category,
                     outcome.diagnostics);
@@ -1424,6 +1512,7 @@ uint64_t UltraFilerRemoteDrives::BeginLogSession(const Job& job) {
             if (d.accountId != accountId) continue;
             header.drive = d.displayName;
             header.server = d.serverUrl;
+            header.http = ProviderSpeaksHttp(d.providerId);
             break;
         }
     }
@@ -1486,6 +1575,118 @@ void UltraFilerRemoteDrives::NotifyLogChanged() {
         // while it does posts a notice of its own.
         logChangePosted_.store(false);
         if (onConnectionLogChanged) onConnectionLogChanged();
+    });
+}
+
+// ===== The add-drive dialog's sign-ins =====
+
+struct RemoteSignInLog::State {
+    // Runs `work` on the UI thread, with the drives - if they still exist by
+    // then.
+    std::function<void(std::function<void(UltraFilerRemoteDrives&)>)> onDrives;
+    // The session the running sign-in writes to: the id is set and read on
+    // the UI thread only, by the tasks posted to it in order.
+    std::shared_ptr<uint64_t> sessionId;
+    // Shared with the drives: whether they are stopping, and how many
+    // sign-ins are still running.
+    std::shared_ptr<RemoteSignInTracker> tracker;
+    UltraNetFtpLogCallback previousFtpLog;
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+    UltraCloud::LogCallback previousCloudLog;
+#endif
+};
+
+std::shared_ptr<RemoteSignInLog> UltraFilerRemoteDrives::MakeSignInLog() {
+    auto log = std::make_shared<RemoteSignInLog>();
+    log->state_ = std::make_shared<RemoteSignInLog::State>();
+    log->state_->tracker = signIns_;
+    auto alive = alive_;
+    log->state_->onDrives = [this, alive](std::function<void(UltraFilerRemoteDrives&)> work) {
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, work]() {
+            if (!alive->load()) return;   // the drives are gone
+            work(*this);
+        });
+    };
+    return log;
+}
+
+void RemoteSignInLog::Begin(const std::string& providerId, const std::string& driveName,
+                            const std::string& server) {
+    if (!state_) return;
+    RemoteLogSession header;
+    header.operation = "Add drive";
+    header.drive = driveName;
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+    if (header.drive.empty())
+        if (auto provider = UltraCloud::GetProvider(providerId)) header.drive = provider->DisplayName();
+#endif
+    if (header.drive.empty()) header.drive = providerId;
+    header.server = server;
+    header.http = ProviderSpeaksHttp(providerId);
+
+    {
+        std::lock_guard<std::mutex> lk(state_->tracker->mutex);
+        ++state_->tracker->running;
+    }
+    auto id = std::make_shared<uint64_t>(0);
+    state_->sessionId = id;
+    state_->onDrives([id, header](UltraFilerRemoteDrives& drives) {
+        *id = drives.log_.Begin(header);
+        drives.NotifyLogChanged();
+    });
+    // Each line is stamped here, when it happened, not when the UI thread
+    // gets to it.
+    auto onDrives = state_->onDrives;
+    auto onLine = [onDrives, id](RemoteLogLine line) {
+        line.timeMs = RemoteLogNowMs();
+        onDrives([id, line](UltraFilerRemoteDrives& drives) {
+            if (*id == 0) return;
+            drives.log_.Append(*id, line);
+            drives.NotifyLogChanged();
+        });
+    };
+    state_->previousFtpLog = UltraNet_SetThreadFtpLog(
+            [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+    state_->previousCloudLog = UltraCloud::SetThreadLog(
+            [onLine](const UltraCloud::LogLine& in) { onLine(ToRemoteLogLine(in)); });
+#endif
+}
+
+bool RemoteSignInLog::Cancelled() const {
+    return state_ && state_->tracker && state_->tracker->stopping.load();
+}
+
+void RemoteSignInLog::End(const UltraCloud::Result& result) {
+    if (!state_ || !state_->sessionId) return;
+    UltraNet_SetThreadFtpLog(std::move(state_->previousFtpLog));
+    bool failed = false;
+    std::string message, category, diagnostics;
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+    UltraCloud::SetThreadLog(std::move(state_->previousCloudLog));
+    // Called off - the dialog's Cancel, or the window closing - is not a
+    // failure for the log button to count; its last line says so.
+    failed = !result && result.code != UltraCloud::ResultCode::Cancelled;
+    if (failed) {
+        message = result.message;
+        category = DescribeResultCode(result.code);
+        diagnostics = result.diagnostics;
+    }
+#else
+    (void)result;
+#endif
+    std::shared_ptr<uint64_t> id = std::move(state_->sessionId);
+    {
+        std::lock_guard<std::mutex> lk(state_->tracker->mutex);
+        --state_->tracker->running;
+    }
+    state_->tracker->ended.notify_all();
+    state_->onDrives([id, failed, message, category, diagnostics](UltraFilerRemoteDrives& drives) {
+        if (*id == 0) return;
+        drives.log_.Finish(*id, failed, message, category, diagnostics);
+        drives.NotifyLogChanged();
     });
 }
 

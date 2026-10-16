@@ -1,3 +1,12 @@
+#### 2026-10-14 *1.0.7*
+- **One UltraViewer at a time.** Opening a file while UltraViewer is already
+  running opens it in the running copy (in the viewer, in place of what it
+  showed) instead of starting a second one; starting it without a file brings
+  the open window forward. Two starts at the same moment cannot both stay, and
+  a copy that does not answer is reported with *"UltraViewer is already
+  running"*. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-10-13 *1.0.6*
 - **Save image as: every type this build writes, at another size, with the
   type's settings.** The Save dialog offered six types of the viewer's own

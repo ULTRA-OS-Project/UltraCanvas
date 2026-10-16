@@ -10,11 +10,13 @@
 // implement the error-handling contract in Docs/UltraMail/Concept.md —
 // AuthenticationFailed / TlsCertificateInvalid / HostNotFound and the rest map
 // to friendly text, with a retry option where a retry can succeed.
+// Version: 0.3.0 - the result-to-text helpers moved to the engine, naming the server
 // Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraCanvasAlert.h"
+#include "UltraMailResultText.h"
 
 #include <UltraDatabase/UltraDatabaseCore.h>
 #include <UltraNet/UltraNetCore.h>
@@ -25,16 +27,10 @@
 namespace UltraMail {
 
 // ===== RESULT -> TEXT =====
-
-// A short, actionable sentence for a failed network / mail operation, chosen
-// from the result code. Falls back to the result's own message when the code
-// carries no specific advice.
-std::string FriendlyMessage(const UltraNetResult& result);
-
-// The raw diagnostic for the alert's details line. Empty when the result says
-// nothing beyond the summary (so no empty second line is drawn).
-std::string DetailLine(const UltraNetResult& result);
-std::string DetailLine(const UltraDbResult& result);
+// FriendlyMessage, DetailLine and IsRetryable live in the engine
+// (engine/UltraMailResultText.h, included here) so the tests read them: the
+// sentence for a result code, naming what the operation talked to - the mail
+// server unless the caller says otherwise.
 
 // An alert's details for a failure that carries a connection chain
 // (UltraNetResult::diagnostics, SyncOutcome::diagnostics): the reason, then
@@ -42,10 +38,6 @@ std::string DetailLine(const UltraDbResult& result);
 // roots, system - as a code block, one line each, so it can be read and
 // copied into a bug report. Just `detail` when there is no chain.
 std::string WithDiagnostics(const std::string& detail, const std::string& diagnostics);
-
-// True when retrying the same operation could plausibly succeed (a transient
-// network condition rather than a wrong password or a missing plug-in).
-bool IsRetryable(const UltraNetResult& result);
 
 // ===== ALERTS =====
 // All are non-blocking and titled "UltraMail". `detail` is optional and is

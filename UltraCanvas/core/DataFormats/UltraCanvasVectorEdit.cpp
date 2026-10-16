@@ -1,7 +1,8 @@
 // core/DataFormats/UltraCanvasVectorEdit.cpp
 // The editing layer over VectorStorage::VectorDocument: see the header.
+// Version: 1.1.0 - SnapToPixels / SnapToPixel
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorEdit.h"
@@ -13,6 +14,7 @@
 #include <atomic>
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <set>
 
@@ -913,6 +915,237 @@ void DistributeElements(const std::vector<ElementPtr>& elements, DistributeMode 
             if (std::fabs(delta) > 1e-9) TranslateElements({items[i].second}, horizontal ? delta : 0, horizontal ? 0 : delta);
         }
     }
+}
+
+// ===== PIXEL ALIGNMENT =====
+
+double SnapToPixel(double value, double pixel, double origin, bool centre) {
+    if (!(pixel > 0)) return value;
+    const double offset = centre ? 0.5 : 0.0;
+    return origin + (std::round((value - origin) / pixel - offset) + offset) * pixel;
+}
+
+namespace {
+    // A transform that only scales and moves: document = scale * local + move.
+    struct AxisMap { double sx = 1, sy = 1, tx = 0, ty = 0; };
+
+    bool AxisAligned(const Matrix3x3& m, AxisMap& out) {
+        if (std::fabs(m.m[0][1]) > 1e-9 || std::fabs(m.m[1][0]) > 1e-9) return false;
+        if (std::fabs(m.m[0][0]) < 1e-12 || std::fabs(m.m[1][1]) < 1e-12) return false;
+        out = AxisMap{m.m[0][0], m.m[1][1], m.m[0][2], m.m[1][2]};
+        return true;
+    }
+
+    // The nodes of a path onto the grid. Every command is made absolute on
+    // the way (a relative one would carry its predecessor's correction);
+    // a curve's control points move with the node they leave or reach. A
+    // curve that fits inside one pixel - the round end of a bar a pixel
+    // wide - cannot show as a curve at that size, and its two nodes snapped
+    // apart would bend it into a hook: it becomes a straight line.
+    // `subPixel` says whether points (local) fit inside one pixel.
+    void SnapPath(PathData& path, const std::function<Point2Dd(const Point2Dd&)>& snap,
+                  const std::function<bool(std::initializer_list<Point2Dd>)>& subPixel) {
+        Point2Dd cur(0, 0), start(0, 0);       // where the path was
+        Point2Dd curS(0, 0), startS(0, 0);     // ... and where it is now
+        auto shift = [](const Point2Dd& p, const Point2Dd& from, const Point2Dd& to) {
+            return Point2Dd(p.x + to.x - from.x, p.y + to.y - from.y);
+        };
+        auto straighten = [](PathCommand& c, const Point2Dd& to) {
+            c.Type = PathCommandType::LineTo;
+            c.Parameters = {static_cast<float>(to.x), static_cast<float>(to.y)};
+        };
+        for (auto& c : path.commands) {
+            auto& v = c.Parameters;
+            const bool rel = c.Relative;
+            auto at = [&](size_t i) {
+                return rel ? Point2Dd(cur.x + v[i], cur.y + v[i + 1]) : Point2Dd(v[i], v[i + 1]);
+            };
+            switch (c.Type) {
+                case PathCommandType::MoveTo:
+                case PathCommandType::LineTo:
+                case PathCommandType::SmoothQuadraticTo: {
+                    if (v.size() < 2) break;
+                    const Point2Dd p = at(0), q = snap(p);
+                    v = {static_cast<float>(q.x), static_cast<float>(q.y)};
+                    if (c.Type == PathCommandType::MoveTo) { start = p; startS = q; }
+                    cur = p; curS = q;
+                    break;
+                }
+                case PathCommandType::HorizontalLineTo: {
+                    if (v.empty()) break;
+                    const Point2Dd p(rel ? cur.x + v[0] : v[0], cur.y), q = snap(p);
+                    v = {static_cast<float>(q.x)};
+                    cur = p; curS = Point2Dd(q.x, curS.y);
+                    break;
+                }
+                case PathCommandType::VerticalLineTo: {
+                    if (v.empty()) break;
+                    const Point2Dd p(cur.x, rel ? cur.y + v[0] : v[0]), q = snap(p);
+                    v = {static_cast<float>(q.y)};
+                    cur = p; curS = Point2Dd(curS.x, q.y);
+                    break;
+                }
+                case PathCommandType::CurveTo: {
+                    if (v.size() < 6) break;
+                    const Point2Dd c1 = at(0), c2 = at(2), p = at(4), q = snap(p);
+                    if (subPixel({cur, c1, c2, p})) { straighten(c, q); cur = p; curS = q; break; }
+                    const Point2Dd n1 = shift(c1, cur, curS), n2 = shift(c2, p, q);
+                    v = {static_cast<float>(n1.x), static_cast<float>(n1.y), static_cast<float>(n2.x),
+                         static_cast<float>(n2.y), static_cast<float>(q.x), static_cast<float>(q.y)};
+                    cur = p; curS = q;
+                    break;
+                }
+                case PathCommandType::SmoothCurveTo: {
+                    if (v.size() < 4) break;
+                    const Point2Dd c2 = at(0), p = at(2), q = snap(p);
+                    if (subPixel({cur, c2, p})) { straighten(c, q); cur = p; curS = q; break; }
+                    const Point2Dd n2 = shift(c2, p, q);
+                    v = {static_cast<float>(n2.x), static_cast<float>(n2.y), static_cast<float>(q.x), static_cast<float>(q.y)};
+                    cur = p; curS = q;
+                    break;
+                }
+                case PathCommandType::QuadraticTo: {
+                    if (v.size() < 4) break;
+                    const Point2Dd c1 = at(0), p = at(2), q = snap(p);
+                    if (subPixel({cur, c1, p})) { straighten(c, q); cur = p; curS = q; break; }
+                    // one control point for two nodes: it moves by their mean
+                    const Point2Dd n1(c1.x + (curS.x - cur.x + q.x - p.x) / 2, c1.y + (curS.y - cur.y + q.y - p.y) / 2);
+                    v = {static_cast<float>(n1.x), static_cast<float>(n1.y), static_cast<float>(q.x), static_cast<float>(q.y)};
+                    cur = p; curS = q;
+                    break;
+                }
+                case PathCommandType::ArcTo: {
+                    if (v.size() < 7) break;
+                    const Point2Dd p = at(5), q = snap(p);
+                    // an arc stays within its ellipse: radii under half a pixel fit in one
+                    if (subPixel({cur, p}) && subPixel({Point2Dd(0, 0), Point2Dd(2.0 * std::fabs(v[0]), 2.0 * std::fabs(v[1]))})) {
+                        straighten(c, q); cur = p; curS = q; break;
+                    }
+                    v[5] = static_cast<float>(q.x); v[6] = static_cast<float>(q.y);
+                    cur = p; curS = q;
+                    break;
+                }
+                case PathCommandType::ClosePath:
+                    cur = start; curS = startS;
+                    break;
+            }
+            c.Relative = false;
+        }
+        path.InvalidateCache();
+        path.length.reset();
+        path.flattenedPoints.reset();
+    }
+
+    void SnapElementToPixels(const ElementPtr& element, double pixel, const Point2Dd& origin, PixelSnapResult& result) {
+        if (!element) return;
+        if (auto group = std::dynamic_pointer_cast<VectorGroup>(element)) {
+            for (const auto& child : group->Children) SnapElementToPixels(child, pixel, origin, result);
+            return;
+        }
+        const VectorElementType type = element->Type;
+        const bool shape = type == VectorElementType::Rectangle || type == VectorElementType::Circle ||
+                           type == VectorElementType::Ellipse || type == VectorElementType::Line ||
+                           type == VectorElementType::Polyline || type == VectorElementType::Polygon ||
+                           type == VectorElementType::Path;
+        AxisMap map;
+        if (!shape || !AxisAligned(element->GetGlobalTransform(), map)) { ++result.skipped; return; }
+
+        // The line width in whole pixels decides where the points go.
+        bool centre = false;
+        const double scale = (std::fabs(map.sx) + std::fabs(map.sy)) / 2;
+        if (HasStroke(element->Style)) {
+            const double docWidth = element->Style.Stroke->Width * scale;
+            const long pixels = std::max(1L, std::lround(docWidth / pixel));
+            element->Style.Stroke->Width = static_cast<float>(pixels * pixel / scale);
+            centre = (pixels % 2) == 1;
+        }
+        auto X = [&](double x) { return (SnapToPixel(map.sx * x + map.tx, pixel, origin.x, centre) - map.tx) / map.sx; };
+        auto Y = [&](double y) { return (SnapToPixel(map.sy * y + map.ty, pixel, origin.y, centre) - map.ty) / map.sy; };
+        auto P = [&](const Point2Dd& p) { return Point2Dd(X(p.x), Y(p.y)); };
+        // A length in whole pixels (at least `minPixels`), in local units.
+        auto L = [&](double len, double s, long minPixels) {
+            const long n = std::max(minPixels, std::lround(std::fabs(len * s) / pixel));
+            return n * pixel / std::fabs(s);
+        };
+        // An edge pair onto the grid, never collapsing to nothing.
+        auto Span = [&](double a, double b, bool horizontal, double& lo, double& hi) {
+            const double s = horizontal ? map.sx : map.sy;
+            lo = horizontal ? X(std::min(a, b)) : Y(std::min(a, b));
+            hi = horizontal ? X(std::max(a, b)) : Y(std::max(a, b));
+            if (lo > hi) std::swap(lo, hi);
+            if (hi - lo < pixel / std::fabs(s) * 0.5) hi = lo + pixel / std::fabs(s);
+        };
+
+        switch (type) {
+            case VectorElementType::Rectangle: {
+                auto rect = std::static_pointer_cast<VectorRect>(element);
+                const Rect2Dd b = rect->Bounds;
+                double x0, x1, y0, y1;
+                Span(b.x, b.x + b.width, true, x0, x1);
+                Span(b.y, b.y + b.height, false, y0, y1);
+                rect->Bounds = Rect2Dd(x0, y0, x1 - x0, y1 - y0);
+                if (rect->RadiusX > 0) rect->RadiusX = static_cast<float>(L(rect->RadiusX, map.sx, 0));
+                if (rect->RadiusY > 0) rect->RadiusY = static_cast<float>(L(rect->RadiusY, map.sy, 0));
+                break;
+            }
+            case VectorElementType::Circle: {
+                auto circle = std::static_pointer_cast<VectorCircle>(element);
+                double x0, x1, y0, y1;
+                Span(circle->Center.x - circle->Radius, circle->Center.x + circle->Radius, true, x0, x1);
+                Span(circle->Center.y - circle->Radius, circle->Center.y + circle->Radius, false, y0, y1);
+                // a circle keeps one radius: its width decides it, its top its height
+                const double r = (x1 - x0) / 2;
+                circle->Center = Point2Dd((x0 + x1) / 2, y0 + r * std::fabs(map.sx / map.sy));
+                circle->Radius = static_cast<float>(r);
+                break;
+            }
+            case VectorElementType::Ellipse: {
+                auto ellipse = std::static_pointer_cast<VectorEllipse>(element);
+                double x0, x1, y0, y1;
+                Span(ellipse->Center.x - ellipse->RadiusX, ellipse->Center.x + ellipse->RadiusX, true, x0, x1);
+                Span(ellipse->Center.y - ellipse->RadiusY, ellipse->Center.y + ellipse->RadiusY, false, y0, y1);
+                ellipse->Center = Point2Dd((x0 + x1) / 2, (y0 + y1) / 2);
+                ellipse->RadiusX = static_cast<float>((x1 - x0) / 2);
+                ellipse->RadiusY = static_cast<float>((y1 - y0) / 2);
+                break;
+            }
+            case VectorElementType::Line: {
+                auto line = std::static_pointer_cast<VectorLine>(element);
+                line->Start = P(line->Start);
+                line->End = P(line->End);
+                break;
+            }
+            case VectorElementType::Polyline:
+                for (auto& pt : std::static_pointer_cast<VectorPolyline>(element)->Points) pt = P(pt);
+                break;
+            case VectorElementType::Polygon:
+                for (auto& pt : std::static_pointer_cast<VectorPolygon>(element)->Points) pt = P(pt);
+                break;
+            case VectorElementType::Path: {
+                auto subPixel = [&](std::initializer_list<Point2Dd> points) {
+                    double x0 = 1e300, y0 = 1e300, x1 = -1e300, y1 = -1e300;
+                    for (const auto& pt : points) {
+                        const double x = map.sx * pt.x, y = map.sy * pt.y;
+                        x0 = std::min(x0, x); x1 = std::max(x1, x);
+                        y0 = std::min(y0, y); y1 = std::max(y1, y);
+                    }
+                    return x1 - x0 < pixel && y1 - y0 < pixel;
+                };
+                SnapPath(std::static_pointer_cast<VectorPath>(element)->Path, P, subPixel);
+                break;
+            }
+            default:
+                break;
+        }
+        ++result.aligned;
+    }
+} // namespace
+
+PixelSnapResult SnapToPixels(const std::vector<ElementPtr>& elements, double pixel, const Point2Dd& origin) {
+    PixelSnapResult result;
+    if (!(pixel > 0)) return result;
+    for (const auto& element : elements) SnapElementToPixels(element, pixel, origin, result);
+    return result;
 }
 
 } // namespace VectorEdit

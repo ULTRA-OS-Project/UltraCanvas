@@ -60,13 +60,20 @@ application-facing view of the platform, is in
 The REQUIRED pkg-config dependencies (cairo + pixman, pango + pangocairo,
 fontconfig, freetype, harfbuzz, glib, tinyxml2, libvips + vips-cpp) do not
 ship as Emscripten ports. `build-wasm-sysroot.sh` cross-compiles all of them
-(plus zlib, libpng, expat, libffi, pcre2) into a static sysroot with
+(plus zlib, libpng, libjpeg-turbo, libtiff, libwebp, expat, libffi, pcre2)
+into a static sysroot with
 `.pc` files, following [kleisauke/wasm-vips](https://github.com/kleisauke/wasm-vips)
 where that project builds the same dependency — including its pre-patched
 glib and libvips branches. pango gets a small local patch
 (`patches/pango-1.52-wasm-function-pointers.patch`) fixing one-argument
 callbacks cast to `GInterfaceInitFunc`/`GFunc`: native ABIs tolerate the
 arity mismatch, wasm's strict indirect-call signature checking traps on it.
+A second pango patch (`patches/pango-1.52-wasm-no-threads.patch`) runs
+fontconfig's work (FcInit, matching, sorting) on the caller's thread when
+the build has no `-pthread`: pango otherwise hands it to a worker it starts
+with `g_thread_new`, and GLib aborts on the `pthread_create` a program
+without threads cannot make, at the first text drawn. The threaded build
+keeps its worker.
 glib gets one of the same kind (`patches/glib-2.89-wasm-free-full-casts.patch`):
 `g_slist_free_full`, `g_list_free_full`, `g_queue_free_full` and
 `g_queue_clear_full` called the `GDestroyNotify` through the two-argument
@@ -86,7 +93,17 @@ final link. `WASM_THREADS=0 ./build-wasm-sysroot.sh <other-dir>` builds a
 sysroot without `-pthread` for a single-threaded application
 (`-DULTRACANVAS_WASM_THREADS=OFF` on the library): no `SharedArrayBuffer`,
 so no isolation headers on the serving host, and no `std::thread` at run
-time. The two kinds never share a directory.
+time. It is also the one build of UltraCanvas without libvips, which the
+library's CMake leaves out of it: libvips runs every image on a worker
+thread, a program without `-pthread` cannot start one, and GLib aborts on
+the refused `pthread_create` at the first text. Such a program reads PNG
+through cairo's own reader, JPEG, BMP and GIF through the bundled
+`stb_image` (`third_party/stb`) and SVG through the Vector plugin, nothing
+else. The script also strips `-pthread` from every `.pc` file it installs
+in that sysroot (glib's and its dependants' carry it), so a consumer's
+`pkg-config --cflags` does not quietly turn `__EMSCRIPTEN_PTHREADS__` on in
+a program without threads. The two kinds of sysroot never share a
+directory.
 
 ### 2. The library / an application
 
@@ -203,17 +220,43 @@ serve the build directory with `serve.py`, and open:
   file; the photos the page shows are placeholder tiles except the three in
   `media/images/ultraos/`.
 
-The manually dispatched `wasm-build.yml` workflow configures the repository
-root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
-pages, in five variants - `baseline`, `min-size` (`-Os`), `no-vips`,
+The `wasm-build.yml` workflow - run on a pull request, and on a push to
+`main`, that touches the WebAssembly port, the sysroot script, the Cairo
+image code or the demo, and on a manual dispatch with an optional emsdk
+version - configures the repository root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
+pages, in four variants - `baseline`, `min-size` (`-Os`),
 `four-fonts` (`-DUC_WASM_FONTS=...`, the four the front page uses) and
 `single-thread` - writes each variant's download sizes (raw, gzip, Brotli)
 into its job summary, and uploads each as the `wasm-demo-<variant>`
 artifact, one folder with the three pages and `serve.py`: unzip one, run
 `python3 serve.py 8080` there and open any of the pages. The browser
 console then shows `first frame presented N ms after navigation start`,
-the port's time to first paint on that machine. The last three variants
-are measurements that may fail to build; they never fail the run.
+the port's time to first paint on that machine. The framework's
+`debugOutput` stream also lands in that console (stderr) in every build
+configuration, so a page that fails to build says why there
+(`Error creating example for <page>: ...`); a page can turn it off with
+`Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun` hook. `four-fonts`
+is a measurement that may fail to build; it never fails the run. (There is
+no variant without libvips any more but `single-thread`: libvips is part of
+UltraCanvas.) `baseline`, `min-size` and `single-thread` are required: the last is
+the build a static host without cross-origin isolation headers must serve.
+
+After the upload, each variant's job opens its pages in the runner's Google
+Chrome, headless, with `demo/smoke.mjs`: every page must present a frame
+(the `first frame presented` line) and keep a console free of
+`Error creating example`, uncaught errors and Emscripten aborts, or the job
+fails. The demo's start page, a few of its pages (`?component=...`) and the
+two validation apps are opened; the screenshots and console logs are the
+`wasm-smoke-<variant>` artifact. The same script runs on a local build:
+
+```
+npm install --no-save playwright          # the package; the browser is yours
+SMOKE_CHANNEL=chrome node UltraCanvas/OS/WASM/demo/smoke.mjs build-wasm \
+    UltraCanvasDemo.html 'UltraCanvasDemo.html?component=jpegimages'
+```
+
+`SMOKE_CHROME=<binary>` names a Chromium instead of a channel, and
+`SMOKE_OUT` the directory for the screenshots and logs.
 
 The same two sources build as desktop applications - configure the
 repository root with `-DBUILD_WASM_DEMOS=ON` and run `build/ultraos-frontpage`
@@ -223,6 +266,18 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
 
 ## Known limitations
 
+- **Image formats**: the sysroot's libvips reads and writes PNG, JPEG, TIFF
+  and WebP (libpng, libjpeg-turbo, libtiff and libwebp are built into the
+  sysroot) and reads GIF with its built-in decoder; QOI comes from the
+  framework's own codec and SVG from the Vector plugin (next item). No
+  HEIC / AVIF (libheif with dav1d or aom is a build of its own and megabytes
+  of download) and no BMP (ImageMagick). The demo's bitmap pages say so in
+  place of the picture; an application gets "format not supported" from
+  `UCImage`. The one build without libvips (the `single-thread`
+  variant) reads PNG through cairo's own reader, JPEG, BMP and GIF (first
+  frame) through the bundled `stb_image`, and SVG through the Vector
+  plugin, nothing else: no TIFF, WebP, HEIC or AVIF, and nothing is
+  written.
 - **SVG needs the Vector plugin registered**: the sysroot's libvips has no
   SVG loader (librsvg / resvg are not built), so `UCImage` reads an .svg
   through the vector preview seam the Vector plugin installs
@@ -244,8 +299,13 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
   the pointer re-enters (needs the Pointer Events capture API).
 - **Custom cursor images** fall back to the standard cursor (CSS cannot
   reference files inside the Emscripten virtual FS).
-- **IME composition, drag & drop between windows, window icons**: not
-  implemented.
+- **IME composition** reaches only an element that draws compositions
+  (`DrawsTextComposition()`: an editable text input,
+  text area or rich text editor): while one has focus a
+  transparent `<textarea>` at its caret takes the keyboard and forwards its
+  composition events (`UltraCanvasWASMApplication::UpdateImeTarget`). Other
+  elements keep the canvas, which gets no input method.
+- **Drag & drop between windows, window icons**: not implemented.
 - Presentation converts and uploads the full surface on every composition;
   damage-rect-limited `putImageData` is an easy future optimisation.
 - The browser logs a "blocking on the main thread" warning at startup

@@ -1,7 +1,7 @@
 // OS/Android/UltraCanvasAndroidApplication.cpp
 // Android platform implementation for UltraCanvas Framework.
 // Version: 1.0.0
-// Last Modified: 2026-08-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -12,6 +12,7 @@
 #include "UltraCanvasAndroidWindow.h"
 #include "UltraCanvasAndroidJni.h"
 #include "UltraCanvasCaret.h"
+#include "UltraCanvasUIElement.h"
 #include "UltraCanvasDebug.h"
 
 #include <android/configuration.h>
@@ -24,6 +25,7 @@
 #include <fontconfig/fontconfig.h>
 #include <pango/pangocairo.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -291,6 +293,9 @@ namespace UltraCanvas {
             if (source) source->process(androidApp, source);
         }
 
+        // What the Java InputConnection queued meanwhile (it woke the looper).
+        DrainImeQueue();
+
         if (androidApp->destroyRequested) {
             // The activity is being destroyed underneath us; leave Run().
             Exit();
@@ -468,6 +473,11 @@ namespace UltraCanvas {
         const size_t actionIndex =
                 static_cast<size_t>((action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK)
                                     >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT);
+
+        // The first finger down may move focus or the caret: what is being
+        // composed is kept as typed where it was, first - what an Android
+        // EditText does - rather than following the caret somewhere else.
+        if (maskedAction == AMOTION_EVENT_ACTION_DOWN) FinishCompositionForTap();
 
         // ---- Pass 1: every finger, as touch events ----
         switch (maskedAction) {
@@ -703,6 +713,165 @@ namespace UltraCanvas {
             event.character = utf8[0];
         }
         PushEvent(event);
+    }
+
+    // ===== IME QUEUE =====
+    // Everything the Java InputConnection produces arrives on the Java UI
+    // thread. It is queued here in arrival order and applied on the glue
+    // thread, for two reasons: only there may the focused element be asked
+    // whether it draws compositions, and a composition must never overtake
+    // the commit (or the backspaces) the IME sent after it.
+
+    void UltraCanvasAndroidApplication::QueueImeOp(ImeOp op) {
+        {
+            std::lock_guard<std::mutex> lock(imeQueueMutex);
+            imeQueue.push_back(std::move(op));
+        }
+        WakeUpEventLoop();
+    }
+
+    void UltraCanvasAndroidApplication::QueueImeCommit(const std::string& utf8) {
+        ImeOp op;
+        op.kind = ImeOp::Kind::Commit;
+        op.text = utf8;
+        QueueImeOp(std::move(op));
+    }
+
+    void UltraCanvasAndroidApplication::QueueImeComposition(const std::string& utf8,
+                                                            int caretBytes) {
+        ImeOp op;
+        op.kind = ImeOp::Kind::Compose;
+        op.text = utf8;
+        op.value = caretBytes;
+        QueueImeOp(std::move(op));
+    }
+
+    void UltraCanvasAndroidApplication::QueueImeFinishComposition() {
+        ImeOp op;
+        op.kind = ImeOp::Kind::Finish;
+        QueueImeOp(std::move(op));
+    }
+
+    void UltraCanvasAndroidApplication::QueueImeKeyEvent(bool down, int32_t keyCode,
+                                                         int32_t metaState,
+                                                         int32_t codePoint) {
+        ImeOp op;
+        op.kind = ImeOp::Kind::Key;
+        op.down = down;
+        op.keyCode = keyCode;
+        op.metaState = metaState;
+        op.codePoint = codePoint;
+        QueueImeOp(std::move(op));
+    }
+
+    void UltraCanvasAndroidApplication::QueueImeDeleteBefore(int count) {
+        ImeOp op;
+        op.kind = ImeOp::Kind::DeleteBefore;
+        op.value = count;
+        QueueImeOp(std::move(op));
+    }
+
+    void UltraCanvasAndroidApplication::DrainImeQueue() {
+        std::vector<ImeOp> ops;
+        {
+            std::lock_guard<std::mutex> lock(imeQueueMutex);
+            ops.swap(imeQueue);
+        }
+        for (const ImeOp& op : ops) ApplyImeOp(op);
+    }
+
+    void UltraCanvasAndroidApplication::ApplyImeOp(const ImeOp& op) {
+        using Kind = ImeOp::Kind;
+        switch (op.kind) {
+            case Kind::Key:
+                PushKeyEvent(op.down, op.keyCode, op.metaState, op.codePoint);
+                break;
+
+            case Kind::DeleteBefore:
+                EraseBefore(op.value);
+                break;
+
+            case Kind::Commit:
+                // commitText replaces whatever was being composed.
+                CommitComposition(op.text);
+                break;
+
+            case Kind::Finish:
+                // The composing text stays as typed - the IME's way of ending
+                // a word without choosing a candidate (and what it does when
+                // the keyboard closes mid-word).
+                if (!imeComposing.empty()) {
+                    CommitComposition(imeComposing);
+                } else {
+                    EndShownComposition();
+                }
+                break;
+
+            case Kind::Compose:
+                // "" ends the composition with nothing typed (the user
+                // backspaced through it).
+                imeComposing = op.text;
+                if (FocusedDrawsComposition()) {
+                    PushComposition(op.text, op.value);
+                } else {
+                    EndShownComposition();
+                }
+                break;
+        }
+    }
+
+    bool UltraCanvasAndroidApplication::FocusedDrawsComposition() {
+        UltraCanvasUIElement* focused = GetFocusedElement();
+        return focused && focused->DrawsTextComposition();
+    }
+
+    void UltraCanvasAndroidApplication::PushComposition(const std::string& utf8,
+                                                        int caretBytes) {
+        auto* win = GetPrimaryWindow();
+        if (!win) return;
+        UCEvent event;
+        event.type = UCEventType::TextComposition;
+        event.targetWindow = win->GetWindowWeakPtr();
+        event.nativeWindowHandle = win->GetNativeHandle();
+        event.text = utf8;
+        event.compositionCursor = std::clamp(caretBytes, 0, static_cast<int>(utf8.size()));
+        PushEvent(event);
+        imeCompositionShown = !utf8.empty();
+    }
+
+    void UltraCanvasAndroidApplication::EndShownComposition() {
+        if (imeCompositionShown) PushComposition(std::string(), 0);
+    }
+
+    void UltraCanvasAndroidApplication::CommitComposition(const std::string& utf8) {
+        // Ended before the text arrives, so the pre-edit never shows next to
+        // the same text typed for real.
+        EndShownComposition();
+        imeComposing.clear();
+        PushCommittedText(utf8);
+    }
+
+    void UltraCanvasAndroidApplication::FinishCompositionForTap() {
+        DrainImeQueue();                 // whatever the IME sent before the tap
+        if (imeComposing.empty()) return;
+        CommitComposition(imeComposing);
+        // The IME still holds the composition; restarting the input session
+        // drops it (UltraCanvasActivity ignores the old session from then
+        // on, so it cannot commit the same word a second time).
+        JNIEnv* env = AndroidJni::GetEnv();
+        jobject activity = AndroidJni::GetActivity();
+        if (env && activity) CallActivityVoid(env, activity, "restartInput");
+    }
+
+    // The framework has no "delete N characters" event, and text widgets
+    // already implement Backspace, so deletion is replayed as presses.
+    void UltraCanvasAndroidApplication::EraseBefore(int count) {
+        // A pathological count would flood the queue; a real backspace is 1.
+        count = std::clamp(count, 0, 64);
+        for (int i = 0; i < count; ++i) {
+            PushKeyEvent(true, AKEYCODE_DEL, 0, 0);
+            PushKeyEvent(false, AKEYCODE_DEL, 0, 0);
+        }
     }
 
     int32_t UltraCanvasAndroidApplication::GetUnicodeCharacter(int32_t deviceId,

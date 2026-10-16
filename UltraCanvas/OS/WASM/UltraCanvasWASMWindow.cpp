@@ -1,8 +1,10 @@
 // OS/WASM/UltraCanvasWASMWindow.cpp
 // WebAssembly (Emscripten) platform window implementation
+// Version: 2.2.0 - a click leaves the keyboard with the input method textarea
+//   while the window types through it; that focus move is not a window blur
 // Version: 2.1.0 - the first presented frame is logged with its time since navigation start
 // Version: 2.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -448,6 +450,16 @@ namespace UltraCanvas {
             default: return EM_FALSE;
         }
 
+        // A click ends an input method composition first (its text lands in
+        // the element that had it), and leaves the keyboard with the input
+        // method textarea when this window types through it.
+        bool keyboardInImeInput = false;
+        if (type == UCEventType::MouseDown) {
+            if (auto* app = UltraCanvasWASMApplication::GetInstance()) {
+                keyboardInImeInput = app->PrepareImeForClick(win);
+            }
+        }
+
         UCEvent event = win->MakeInputEvent(type);
         // targetX/Y are CSS px relative to the canvas — already logical units,
         // so no PhysicalToLogical conversion here (unlike X11).
@@ -464,7 +476,7 @@ namespace UltraCanvas {
         }
         win->PushToApplication(event);
 
-        if (type == UCEventType::MouseDown) {
+        if (type == UCEventType::MouseDown && !keyboardInImeInput) {
             // Keyboard focus follows the click (tabIndex makes the canvas
             // focusable, but not every browser focuses it automatically).
             EM_ASM({
@@ -577,6 +589,12 @@ namespace UltraCanvas {
                                                    void* userData) {
         auto* win = static_cast<UltraCanvasWASMWindow*>(userData);
         if (!win) return EM_FALSE;
+
+        // The keyboard moving between this canvas and the input method
+        // textarea (UltraCanvasWASMApplication::UpdateImeTarget) is not the
+        // window activating or deactivating.
+        auto* app = UltraCanvasWASMApplication::GetInstance();
+        if (app && app->IsSwitchingImeFocus()) return EM_TRUE;
 
         UCEvent event = win->MakeInputEvent(
                 (eventType == EMSCRIPTEN_EVENT_FOCUS) ? UCEventType::WindowFocus : UCEventType::WindowBlur);

@@ -38,6 +38,8 @@ public:
     std::string DisplayName() const override { return "Google Drive"; }
     ProviderCapabilities Capabilities() const override;
     UltraNetOAuth2Config OAuthConfig(const OAuthApp& app) const override;
+    // At the sign-in service this is the identity provider's "google".
+    std::string SignInServiceProviderId() const override { return "google"; }
 
     Result Verify(const Account& account, const Credentials& credentials) override;
     Result AccountInfo(const Account& account, const Credentials& credentials,

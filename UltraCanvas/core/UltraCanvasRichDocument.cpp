@@ -2,18 +2,20 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.3.2 - ToHTML writes font sizes dot-decimal under any locale
 // Version: 1.3.1 - ConcatenateRunText counts the first run's line break, as the
 //                  editor's positions do: a block's leading empty line is kept
 // Version: 1.3.0 - FromHTML reads through the HTMLReader's importer
 //                  (ImportHTMLToRichDocument); its own tokenizer, entity table
 //                  and CSS reader are gone
 // Version: 1.2.0
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "HTMLReader/HTMLRichDocumentImporter.h"   // FromHTML
+#include "UltraCanvasTextUtils.h"   // FormatFloatClassic
 
 #include <algorithm>
 #include <cmath>
@@ -1337,7 +1339,9 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
         if (!run.color.empty()) style += "color:" + run.color + ";";
         if (!run.highlightColor.empty()) style += "background-color:" + run.highlightColor + ";";
         if (!run.fontFamily.empty()) style += "font-family:'" + run.fontFamily + "';";
-        if (run.fontSizePt > 0) style += "font-size:" + std::to_string(run.fontSizePt) + "pt;";
+        // Dot-decimal whatever the desktop's locale: std::to_string wrote
+        // "24,500000pt" on a comma-decimal one, which no CSS reader takes.
+        if (run.fontSizePt > 0) style += "font-size:" + FormatFloatClassic(run.fontSizePt) + "pt;";
         if (!style.empty()) body = "<span style=\"" + style + "\">" + body + "</span>";
         if (!run.linkTarget.empty()) {
             body = "<a href=\"" + EscapeHtml(run.linkTarget) + "\">" + body + "</a>";

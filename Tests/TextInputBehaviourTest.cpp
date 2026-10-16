@@ -20,12 +20,23 @@
 //      type's formatter away again; Backspace/Delete of one character did not
 //      validate, and reported a change twice on a selection and once when
 //      nothing changed.
+//   8. An input method's composition (TextComposition) is drawn in the field
+//      at the caret and is never part of its text: committing it types it,
+//      an empty composition or losing the focus ends it, composing over a
+//      selection replaces the selection, and read-only and password fields
+//      leave the composing to the input method's own window.
+//   9. TextInputType::Search was described as a "search field with clear
+//      button" but nothing read it: a Search field had no clear button. It
+//      shows one now, and leaving Search takes it away again - unless the
+//      caller turned it on. The button empties the field when clicked.
 // Each section below fails without its fix.
 //
 // Runs headless: the field is driven through its public API and key and focus
-// events, without a window.
+// events, without a window; the composition is drawn into an offscreen context.
+// Version: 1.2.0 - TextInputType::Search shows the clear button
+// Version: 1.1.0 - input method composition
 // Version: 1.0.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 // Checked mode for this file's inline standard-library code: reading front() of
@@ -36,6 +47,8 @@
 #define _GLIBCXX_ASSERTIONS 1
 #endif
 
+#include "UltraCanvasImage.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasTextInput.h"
 
 #include <iostream>
@@ -90,6 +103,16 @@ UCEvent TextEvent(const std::string& utf8) {
 UCEvent FocusLostEvent() {
     UCEvent e;
     e.type = UCEventType::FocusLost;
+    return e;
+}
+
+// What an input method sends while it composes: the whole composing string
+// and its caret (a byte offset; -1 is the end). "" ends the composition.
+UCEvent CompositionEvent(const std::string& utf8, int cursor = -1) {
+    UCEvent e;
+    e.type = UCEventType::TextComposition;
+    e.text = utf8;
+    e.compositionCursor = cursor;
     return e;
 }
 
@@ -438,7 +461,168 @@ void TestFollowUps() {
           StateOf(*erasedForward) == ValidationState::Invalid);
 }
 
+// ===== 8. Input method composition =====
+// Dark pixels of the field drawn into a white offscreen surface.
+int InkOf(UltraCanvasTextInput& field) {
+    const int w = 200, h = 24;
+    auto ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+    if (!ctx) return -1;
+    ctx->Clear(Color(255, 255, 255, 255));
+    field.Render(ctx.get(), Rect2Df(0, 0, w, h));
+    UCPixmap pixmap;
+    pixmap.Init(w, h);
+    ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
+    pixmap.MarkDirty();
+    pixmap.Flush();
+    int ink = 0;
+    // Inside the frame only: the border is not text.
+    for (int y = 3; y < h - 3; ++y) {
+        for (int x = 3; x < w - 3; ++x) {
+            if (((pixmap.GetPixel(x, y) >> 8) & 0xFF) < 128) ++ink;
+        }
+    }
+    return ink;
+}
+
+void TestComposition() {
+    const std::string kana = "\xE3\x81\x8B\xE3\x81\xAA";   // two kana, being composed
+    const std::string kanji = "\xE4\xBB\xAE";                // what they convert to
+
+    auto field = MakeField();
+    field->SetText("ab");
+    field->SetCaretPosition(1);
+    int changes = 0;
+    field->onTextChanged = [&changes](const std::string&) { ++changes; };
+
+    CHECK("an editable field draws compositions itself", field->DrawsTextComposition());
+    CHECK("a composition is taken", field->OnEvent(CompositionEvent(kana)));
+    CHECK("it is the composition text", field->GetCompositionText() == kana);
+    CHECK("it is not in the text", field->GetText() == "ab");
+    CHECK("it reports no change", changes == 0);
+    CHECK("it leaves the caret where it was", field->GetCaretPosition() == 1);
+
+    field->OnEvent(CompositionEvent(kana, 3));   // caret after the first kana
+    CHECK("a composition's caret may sit inside it", field->GetCompositionText() == kana);
+
+    // The input method commits: the converted text arrives typed.
+    field->OnEvent(TextEvent(kanji));
+    CHECK("the committed text is typed at the caret", field->GetText() == "a" + kanji + "b");
+    CHECK("and the composition is gone", field->GetCompositionText().empty());
+    CHECK("the commit is one change", changes == 1);
+
+    field->OnEvent(CompositionEvent(kana));
+    field->OnEvent(CompositionEvent(""));
+    CHECK("an empty composition ends it", field->GetCompositionText().empty());
+    CHECK("without typing anything", field->GetText() == "a" + kanji + "b");
+
+    // A composition leaves no undo step: one Undo takes back SetText itself.
+    auto undone = MakeField();
+    undone->SetText("ab");
+    undone->OnEvent(CompositionEvent(kana));
+    undone->OnEvent(CompositionEvent(""));
+    undone->Undo();
+    CHECK("a composition leaves no undo step", undone->GetText().empty() && !undone->CanUndo());
+
+    // Composing over a selection replaces it, as typing would.
+    auto selected = MakeField();
+    selected->SetText("hello world");
+    selected->SetSelection(0, 5);
+    selected->OnEvent(CompositionEvent(kana));
+    CHECK("composing over a selection removes the selected text", selected->GetText() == " world");
+    CHECK("and the selection", !selected->HasSelection() && selected->GetCaretPosition() == 0);
+    CHECK("the composition stands in its place", selected->GetCompositionText() == kana);
+    selected->OnEvent(TextEvent(kanji));
+    CHECK("the commit lands where the selection was", selected->GetText() == kanji + " world");
+
+    // Leaving the field drops the composition, unfinished.
+    auto left = MakeField();
+    left->SetText("x");
+    left->OnEvent(CompositionEvent(kana));
+    left->OnEvent(FocusLostEvent());
+    CHECK("losing the focus ends the composition", left->GetCompositionText().empty());
+    CHECK("and types nothing", left->GetText() == "x");
+
+    // A line break in a composition cannot go into one line.
+    auto broken = MakeField();
+    broken->OnEvent(CompositionEvent("a\nb"));
+    CHECK("a line break in a composition shows as a space", broken->GetCompositionText() == "a b");
+
+    // Read-only and password fields leave composing to the input method.
+    auto readOnly = MakeField();
+    readOnly->SetReadOnly(true);
+    CHECK("a read-only field does not draw compositions", !readOnly->DrawsTextComposition());
+    CHECK("and does not take one", !readOnly->OnEvent(CompositionEvent(kana))
+          && readOnly->GetCompositionText().empty());
+    auto password = MakeField();
+    password->SetInputType(TextInputType::Password);
+    CHECK("a password field does not draw compositions", !password->DrawsTextComposition());
+    password->SetPasswordRevealed(true);
+    CHECK("not even revealed", !password->DrawsTextComposition());
+    CHECK("and does not take one", !password->OnEvent(CompositionEvent(kana))
+          && password->GetCompositionText().empty());
+    auto turned = MakeField();
+    turned->OnEvent(CompositionEvent(kana));
+    turned->SetReadOnly(true);
+    CHECK("turning read-only drops a composition", turned->GetCompositionText().empty());
+
+    // Drawn: an empty field with a composition shows it.
+    UCImage::InitializeImageSubsysterm("TextInputBehaviourTest");
+    auto drawn = MakeField();
+    CSSLayout::LayoutContext lctx;
+    drawn->Arrange(Rect2Df(0, 0, 200, 24), lctx);
+    const int empty = InkOf(*drawn);
+    drawn->OnEvent(CompositionEvent("WWW"));
+    const int composing = InkOf(*drawn);
+    CHECK("an empty field draws nothing", empty == 0);
+    CHECK("a composition is drawn in the field", composing > 20);
+    drawn->OnEvent(CompositionEvent(""));
+    CHECK("and is gone when it ends", InkOf(*drawn) == 0);
+}
+
 } // namespace
+
+// ===== 9. A Search field has the clear button =====
+void TestSearchClearButton() {
+    auto search = MakeField();
+    CHECK("a plain field has no clear button", !search->IsShowClearButton());
+    search->SetInputType(TextInputType::Search);
+    CHECK("SetInputType(Search) shows the clear button", search->IsShowClearButton());
+    search->SetInputType(TextInputType::Text);
+    CHECK("Search -> Text takes the button it showed away again", !search->IsShowClearButton());
+
+    auto own = MakeField();
+    own->SetShowClearButton(true);
+    own->SetInputType(TextInputType::Search);
+    own->SetInputType(TextInputType::Text);
+    CHECK("a clear button the caller turned on stays when the type moves on",
+          own->IsShowClearButton());
+
+    auto off = MakeField();
+    off->SetInputType(TextInputType::Search);
+    off->SetShowClearButton(false);
+    off->SetInputType(TextInputType::Search);
+    CHECK("the caller can still turn a Search field's button off, and Search again shows it",
+          off->IsShowClearButton());
+
+    // The button works: a click on it empties the field and says so.
+    auto field = MakeField();
+    field->SetInputType(TextInputType::Search);
+    field->SetText("query");
+    int cleared = 0;
+    std::string changedTo = "unset";
+    field->onCleared = [&cleared]() { ++cleared; };
+    field->onTextChanged = [&changedTo](const std::string& text) { changedTo = text; };
+    // The cross sits at the right end, inside the padding: well within the
+    // last 30 pixels of a field at least 100 wide, vertically centred.
+    UCEvent click;
+    click.type = UCEventType::MouseDown;
+    click.button = UCMouseButton::Left;
+    click.pointer = Point2Di(static_cast<int>(field->GetWidth()) - 8 - 7 - 2,
+                             static_cast<int>(field->GetHeight()) / 2);
+    field->OnEvent(click);
+    CHECK("a click on a Search field's clear button empties it",
+          field->GetText().empty() && cleared == 1 && changedTo.empty());
+}
 
 int main() {
     TestFormatterPlaceholder();
@@ -448,6 +632,8 @@ int main() {
     TestOneKeyOneUndo();
     TestFloatGeometry();
     TestFollowUps();
+    TestComposition();
+    TestSearchClearButton();
 
     std::cerr << "\nTextInputBehaviourTest: " << checkCount << " checks, " << failCount << " failures" << std::endl;
     return failCount == 0 ? 0 : 1;

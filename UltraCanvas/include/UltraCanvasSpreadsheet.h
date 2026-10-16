@@ -100,6 +100,7 @@ public:
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
     int activeSheetIndex_ = 0;
+    int firstVisibleTab_ = 0;   // first sheet tab shown in the tab strip
     std::unique_ptr<SpreadsheetFormulaEngine> formulaEngine_;
     std::map<std::string, NamedRange> namedRanges_;
     
@@ -159,6 +160,12 @@ private:
     // The built-in formatting context menu, created lazily on first use.
     std::shared_ptr<UltraCanvasMenu> formatMenu_;
     bool formatMenuEnabled_ = true;
+    // The formula bar's function menu and its "fx" button.
+    std::shared_ptr<UltraCanvasMenu> functionMenu_;
+    bool functionMenuEnabled_ = true;
+    // The caret the function hint was last drawn for: the editor moves its
+    // caret (arrow keys) without telling us, and repaints only itself.
+    size_t functionHintCaret_ = static_cast<size_t>(-1);
 
     // Header sort buttons (see SetHeaderSortEnabled). The last header sort is
     // remembered by sheet, range and column so its header can show the
@@ -318,6 +325,21 @@ public:
     void ShowFormatMenuAt(int windowX, int windowY);
     bool IsFormatMenuEnabled() const { return formatMenuEnabled_; }
     void SetFormatMenuEnabled(bool enabled) { formatMenuEnabled_ = enabled; }
+
+    // ===== FUNCTION MENU =====
+    // The "fx" button at the right end of the formula bar opens a menu of
+    // every function the formula engine knows, by category and A to Z; the
+    // name and description of each is shown. Picking one inserts it (see
+    // InsertFunction). Defined in UltraCanvasSpreadsheetFormatMenu.h/.cpp.
+    void ShowFunctionMenuAt(int windowX, int windowY);
+    bool IsFunctionMenuEnabled() const { return functionMenuEnabled_; }
+    void SetFunctionMenuEnabled(bool enabled) { functionMenuEnabled_ = enabled; Invalidate(); }
+    // Inserts NAME() at the caret of the formula being edited, with the caret
+    // between the parentheses. Not editing, it starts editing the active cell
+    // in the formula bar: a formula is wrapped (=A1+B1 becomes =NAME(A1+B1),
+    // the caret before the closing parenthesis), any other cell becomes
+    // =NAME().
+    void InsertFunction(const std::string& name);
     
     // ===== MERGE CELLS =====
     bool MergeSelection();
@@ -398,6 +420,14 @@ public:
     // move, and every selected column moves with them, so each row of the
     // block stays together; cells outside the selection are not touched.
     void SortSelectionByColumn(int column, SortOrder order);
+    // SortSelectionByColumn as the header sort buttons and the context
+    // menu's Sort entries run it: when the block holds formulas (and the
+    // formula warning is on) it first asks, OK/Cancel, whether to go ahead.
+    void RequestSortSelectionByColumn(int column, SortOrder order);
+    // Whether the selection can be sorted that way: one rectangular block of
+    // two or more rows, not whole columns or rows, not over merged cells -
+    // the selections that show header sort buttons.
+    bool IsSelectionSortable() const { CellRange range; return GetHeaderSortableRange(range); }
 
     // ===== AUTO-FILL =====
     // Fill `destination` - the selection extended down, up, right or left -
@@ -519,8 +549,22 @@ private:
     void RenderFormulaRangeHighlights(IRenderContext* ctx);
     void RenderFreezeLines(IRenderContext* ctx);
     void RenderSheetTabs(IRenderContext* ctx);
+    // The tab strip: the scroll buttons, the tabs that fit from the first
+    // scrolled-to tab on, and the "+" button. Shared by drawing and
+    // hit-testing so a click lands on what is drawn.
+    struct SheetTabLayout {
+        Rect2Di prevButton, nextButton, addButton;
+        std::vector<std::pair<int, Rect2Di>> tabs;   // sheet index, rect
+        bool canScrollPrev = false, canScrollNext = false;
+    };
+    SheetTabLayout LayoutSheetTabs(int firstTab) const;
+    int SheetTabWidth(const std::string& name) const;
+    void EnsureSheetTabVisible(int index);
     void RenderScrollbars(IRenderContext* ctx);
-    void RenderCellEditor(IRenderContext* ctx);   // draws the editor child
+    void RenderCellEditor(IRenderContext* ctx);
+    // While a formula is typed, the signature of the function call the caret
+    // is in, under the editor, with the argument being typed in bold.
+    void RenderFunctionHint(IRenderContext* ctx);   // draws the editor child
     void RenderClipboardIndicator(IRenderContext* ctx);
     void RenderAutoFillHandle(IRenderContext* ctx);
     
@@ -539,7 +583,11 @@ private:
                          Cell, ColumnResizer, RowResizer, SheetTab, 
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
                          ColumnSortButton };
-    struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1; };
+    struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1;
+                           bool addSheetButton = false; int tabScroll = 0;
+                           bool functionMenuButton = false; };
+    // The "fx" button at the right end of the formula bar (empty when off).
+    Rect2Di FunctionMenuButtonRect() const;
     HitTestResult HitTest(int x, int y) const;
 
     // Header sort buttons: the block they sort (false when the selection is
@@ -549,9 +597,6 @@ private:
     Rect2Di GetHeaderSortButtonRect(int colX, int colWidth) const;
     void RenderHeaderSortButton(IRenderContext* ctx, const Rect2Di& button, bool sorted,
                                 bool ascending, const Color& color);
-    // A header sort button was clicked: sorts, after the formula warning
-    // when the block holds formulas.
-    void RequestHeaderSort(int column, SortOrder order);
     // The fill-handle drag's destination for a pointer over (row, col): the
     // source extended along the axis the pointer has moved furthest out on.
     CellRange AutoFillTargetFor(int row, int col) const;
@@ -574,6 +619,7 @@ private:
     void UpdateFormulaBar();
     void CommitEdit();
     Point2Di CellToScreen(int row, int col) const;
+    Rect2Df CellAreaRect() const;   // the scrolling cell area, below/right of the headers
     CellAddress ScreenToCell(int x, int y) const;
     CellRange GetVisibleRange() const;
     bool IsCellVisible(int row, int col) const;

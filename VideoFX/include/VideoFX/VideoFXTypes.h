@@ -2,7 +2,12 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.14.0
+// Version: 0.16.0 - VideoFXOverlay::effects: an image or video overlay's own look
+// Version: 0.15.0 - keepInView / keepFacesInView on a video segment: the Fill crop
+//                  stays around the regions (faces found in a sampled frame)
+// Version: 0.14.0 - VideoFXFileFormat / VideoFXFileKind (VideoFX_GetFileFormats),
+//                  VideoFXPictureReader (VideoFX_SetPictureReader)
+// Version: 0.13.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
@@ -378,9 +383,14 @@ struct VideoFXSegment {
     // Image: regions the pan and zoom keep in shot all the way through -
     // faces, typically. The zoom goes no closer than holds them all (with a
     // little headroom) and the pan stays around them.
+    // File (video), with the export's fitMode Fill: the crop that fills the
+    // frame is placed around them instead of the picture's centre -
+    // fractions of the picture as the file shows it, before any effect.
     std::vector<VideoFXRect> keepInView;
     // Image: with no keepInView given, find the faces with VideoFX's built-in
-    // detector (VideoFX_DetectFaces) and keep those in shot
+    // detector (VideoFX_DetectFaces) and keep those in shot. File (video),
+    // fitMode Fill: the faces in one frame from the middle of the clip's
+    // used range place the crop (a clip of another shape keeps its people)
     bool keepFacesInView = false;
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);
@@ -427,6 +437,37 @@ enum class VideoFXAcceleration {
     AMF,                // AMD on Windows (h264_amf, ...)
     VideoToolbox,       // macOS (h264_videotoolbox, ...)
     MediaFoundation     // Windows (h264_mf, ...)
+};
+
+// What a file holds (VideoFXFileFormat)
+enum class VideoFXFileKind {
+    Video,                          // a film: picture, usually with sound
+    Audio,                          // sound only
+    Picture                         // a still picture (or an animated GIF)
+};
+
+// One kind of file and what this build does with it (VideoFX_GetFileFormats)
+struct VideoFXFileFormat {
+    std::string extension;                          // lowercase, no dot: "mp4"
+    std::vector<std::string> aliases;               // other extensions of it: "m4v"
+    std::string description;                        // "MPEG-4 container"; empty for a picture
+    VideoFXFileKind kind = VideoFXFileKind::Video;
+    bool canRead = false;                           // a segment, an overlay or a song can be this file
+    bool canWrite = false;                          // an export writes it: its muxer and usual encoder are here
+    VideoFXContainer container = VideoFXContainer::Auto;   // what an export to it uses; Auto when none does
+};
+
+// Picture types the host application reads for the engine, with its own
+// image library (VideoFX_SetPictureReader): a HEIC of tiles, a camera's raw
+// file - whatever FFmpeg does not open whole. Both calls come from the
+// engine's worker threads.
+struct VideoFXPictureReader {
+    std::vector<std::string> extensions;    // the types it takes over: lowercase, undotted
+    // The picture's size as shown (upright), read without decoding it;
+    // false when it cannot read the file
+    std::function<bool(const std::string& path, int& width, int& height)> size;
+    // The picture, upright, at its full size; false when it cannot read it
+    std::function<bool(const std::string& path, VideoFXFrame& frame)> decode;
 };
 
 // One encoder FFmpeg offers for a codec (VideoFX_ListVideoEncoders)

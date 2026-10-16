@@ -1,3 +1,118 @@
+#### 2026-10-15 *0.10.57*
+- **A failure names the server it talked to.** The sentence an alert leads
+  with for a failed network operation (`FriendlyMessage`) said *the mail
+  server* for every result code, whatever had been talked to, so a
+  one-click unsubscribe that could not reach the list's web server was
+  worded as a mail-server problem with advice about the account's server
+  address. The caller now names what it talked to - the mail server unless
+  it says otherwise - and the account advice (the password, the address and
+  port on the settings page) goes with the mail server only: *The sender's
+  unsubscribe server could not be found. Check your internet connection.*
+  An HTTP-level refusal says its status (*… answered with an error (HTTP
+  503).*). The helpers moved from the alert layer into the engine
+  (`UltraMailResultText.h`), where the tests read them.
+
+#### 2026-10-15 *0.10.56*
+- **The cards and list rows are the framework's.** The page, the white cards
+  and their captions (the Folders, message list and Message panes) are drawn
+  from the framework's `GroupBoxVisualStyle::SectionCard()` preset and its
+  `Colors::SectionPage` / `SectionCard*` colours, and the rows' hover and
+  selected tints are `Colors::ListRowHover` / `ListRowSelected`, instead of
+  UltraMail's own copies of the same values. UltraPaint's side panel uses
+  them too, so the two keep looking alike. No visible change (framework
+  changelog: `section-card-and-light-picker`).
+
+#### 2026-10-15 *0.10.55*
+- **A browser sign-in that fails before the browser opens says what
+  failed.** When the sign-in service could not be reached - its name did not
+  resolve, a proxy blocked it, the service was down - the alert said *The
+  mail server could not be found*, the wording for an IMAP server, and
+  dropped the real reason. It now gives the sign-in's own reason (*The
+  sign-in service did not answer: could not resolve host …*, or the
+  provider's refusal) and, for a service out of reach, the service's address
+  and its `/healthz` page to try. The timing trace (`trace.log`) says which
+  way every sign-in and token refresh goes - *through the sign-in service
+  https://…* or *directly, with this installation's own client (oauth.ini or
+  the environment)* - so an `oauth.ini` that still carries a `[google]`
+  client, which makes Google sign in directly and bypass the service, is
+  found in one look. Section 6 of `Docs/UltraMail/AccountSetup.md` has the
+  row.
+
+#### 2026-10-15 *0.10.54*
+- **No connection alert while a computer that was just switched on is still
+  getting online.** UltraMail now remembers when it last reached a mail
+  server (`last-connected` in the data folder, written at most once a
+  minute). When it starts, or the computer wakes, and that was more than ten
+  minutes ago, the computer was most likely switched off - and right after it
+  is switched on, the network is often not up yet. For the two minutes that
+  follow, a background mail check (or a folder opened) that fails raises no
+  alert, *whatever the reason*: the failure shows on the status line, and the
+  connection pill's tooltip says the computer was probably just switched on.
+  When the time is up, the accounts held back are checked once more, and only
+  what still fails then is reported.
+  - Until now only "the server could not be reached at all" was held back
+    (for ten minutes, which stays as it was). A network that is only half up
+    also breaks a connection off in the TLS handshake or in the middle of a
+    read - on Windows a certificate revocation check that cannot get out yet
+    can fail the handshake - and a clock not yet set after boot can make a good
+    certificate look expired; each of those raised *"New mail could not be
+    fetched"* at once.
+  - *Settings > Mail > Connection* sets how long: not at all, 30 seconds, 1,
+    2 (the default), 3, 5 or 10 minutes (`switch_on_quiet_sec` in
+    `preferences.ini`). Update in the toolbar always reports at once.
+  - A restart of UltraMail on a computer that was online a moment ago is not
+    a switch-on: there is nothing held back then. A missing or unreadable
+    `last-connected` file counts as switched off, the safe side.
+  - The timing trace says when the period began, and why.
+
+#### 2026-10-15 *0.10.53*
+- **The browser sign-in goes through the ULTRA OS sign-in service, and
+  UltraMail carries no OAuth secret any more.** Gmail, Outlook / Microsoft
+  365 and Yahoo sign in through `https://oauth-callback.ultraos.eu`
+  (`Server/OAuthCallback`, a small FastAPI application behind nginx): the
+  service holds the providers' OAuth client registrations - the client id
+  and the secret, which used to be baked into every build - and is the
+  public https address the providers send the browser back to. UltraMail
+  asks the service to start the sign-in (sending only the PKCE challenge),
+  opens the consent page, collects the authorization code from the service
+  once the provider has redirected there, and exchanges it - and later
+  refreshes the token - through the service. The PKCE verifier never leaves
+  UltraMail, so the code is useless to anyone else; the service stores
+  nothing. What changes for the user:
+  - **Yahoo signs in like everyone else.** Yahoo insists on an https
+    redirect, which a desktop program cannot be, so the sign-in used to end
+    on a code to copy out of the browser and paste into a dialog. Now
+    Yahoo's page sends the browser to the service, which says *Signed in
+    with Yahoo*, and the dialog is gone. (The app password stays the
+    recommended way in until Yahoo grants the client its Mail permission.)
+  - **The baked-in client is gone.** `ULTRAMAIL_GOOGLE_CLIENT_ID` and the
+    other configure-time credentials, their XOR obfuscation and
+    `scripts/generate_oauth_defaults.py` are removed; the service's address
+    is built into the framework's UltraNet instead
+    (`ULTRANET_OAUTH_SERVICE_URL`, default the public service,
+    `cmake/oauth.local.cmake` may set it, empty = none), one setting for the
+    process. `package-linux.sh` passes no credentials any more.
+  - **The composer's cloud links sign in the same way.** *Attach cloud
+    link…* with Google Drive, OneDrive or Dropbox goes through the service
+    too (UltraCloud), so those accounts need no client of their own either;
+    before, a build without a baked-in client could not sign in to them at
+    all.
+  - **An installation can point elsewhere, or sign in directly.**
+    `[service] url = …` in `oauth.ini` or `ULTRAMAIL_OAUTH_SERVICE_URL`
+    names another service, `off` turns it off; a client of the
+    installation's own (`[google] client_id = …`, `ULTRAMAIL_*_CLIENT_ID`)
+    still works as before and bypasses the service for that provider -
+    with Yahoo's pasted code in that case. The hint that said "no OAuth
+    client is configured" now says the service is off, and what to set.
+  - **A sign-in from an earlier build cannot be refreshed through the
+    service**, because its refresh token belongs to the old client. The
+    next refresh fails with *The sign-in has expired; sign in again*, and
+    *Sign in with …* on the account's settings page signs in anew.
+  Framework: the client side is UltraNet's (`UltraNetOAuth2Service.h`,
+  framework changelog `oauth2-sign-in-service`). The privacy notice
+  (`Docs/Legal/Privacy/UltraMail.md`) names the service as a recipient of
+  the sign-in's authorization code and refresh traffic.
+
 #### 2026-10-13 *0.10.52*
 - **The data folder is `~/Library/Application Support/UltraMail` on macOS.**
   macOS was treated like Linux, so the mailbox database, the credential vault

@@ -3,8 +3,9 @@
 // half every caller shares: a VectorDocument fitted into an offscreen render
 // context and read back as a pixmap.
 //
+// Version: 1.2.0 - LoadVectorPreviewDocumentFromMemory
 // Version: 1.1.0
-// Last Modified: 2026-09-26
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorPreview.h"
@@ -114,6 +115,19 @@ std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocument(
         if (!provider.ClaimsFile || !provider.ClaimsFile(path)) return nullptr;
     }
     return provider.Load(path);
+}
+
+std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocumentFromMemory(
+        const std::string& extension, const uint8_t* data, size_t size) {
+    if (!data || size == 0) return nullptr;
+    const VectorPreviewProvider provider = CurrentProvider();
+    if (!provider.Valid() || !provider.LoadFromMemory) return nullptr;
+    std::string ext = extension;
+    if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (!ProviderClaims(provider, ext)) return nullptr;
+    return provider.LoadFromMemory(ext, data, size);
 }
 
 std::shared_ptr<VectorStorage::VectorDocument> ImportVectorDocument(

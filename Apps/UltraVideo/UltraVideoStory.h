@@ -5,6 +5,7 @@
 // the engine on the worker (PlanStory) and opens the result on the timeline
 // as an ordinary project (BuildStoryDocument), so every automatic choice can
 // be changed afterwards.
+// Version: 0.2.0 - no palette parameter: the wizard's elements follow the theme
 // Version: 0.1.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -23,7 +24,7 @@ namespace UltraVideo {
 
 // Opens the wizard over `parent`, with `files` already chosen (what the
 // user dropped or had in the bin); `onMake` runs on *Make video*.
-void ShowStoryWizard(UltraCanvas::UltraCanvasWindow* parent, const Palette& palette, std::vector<std::string> files,
+void ShowStoryWizard(UltraCanvas::UltraCanvasWindow* parent, std::vector<std::string> files,
                      std::function<void(const StoryChoice&)> onMake);
 
 } // namespace UltraVideo

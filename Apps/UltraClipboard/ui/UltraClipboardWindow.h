@@ -2,8 +2,14 @@
 // UltraClipboard's main window: the whole clipboard history as a list
 // (Docs/Research/UltraClipboard/UltraClipboard-Overview.svg). A search field,
 // a filter by kind, the recording switch, settings; pinned entries first,
-// then by day; a thumbnail and Copy / Edit / Delete on every row; a status
-// line with the counts, and Undo after a removal.
+// then by day; a thumbnail and Copy / Edit / Save as / Delete on every row; a
+// status line with the counts, and Undo after a removal.
+//
+// Save as writes the entry to a file where the user chooses - text as a text
+// file (formatted text also as HTML, ODT or DOCX), an image as any picture
+// type this build writes, copied files into a folder (files that were cut
+// are moved there, as pasting them would) - and then asks whether to delete
+// the entry from the clipboard history.
 //
 // The history is the one UltraDesktop records into; this window shows it and
 // edits it, and reloads when the desktop records (the history's generation
@@ -11,7 +17,7 @@
 // window records itself while it is open.
 //
 // Keys: typing in the search field filters; Up / Down choose; Enter copies;
-// F2 or Ctrl+E edits; Delete deletes; Ctrl+P pins; Ctrl+F finds; Escape
+// F2 or Ctrl+E edits; Ctrl+S saves as; Delete deletes; Ctrl+P pins; Ctrl+F finds; Escape
 // closes the preview, then clears the search.
 //
 // The preview: resting the pointer on an image's thumbnail (or on the
@@ -26,7 +32,7 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
-// Version: 0.1.3
+// Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -57,6 +63,7 @@ namespace UltraCanvas {
     class UltraCanvasSwitch;
     class UltraCanvasTextInput;
     struct ClipboardHistoryEntry;
+    struct ClipboardSnapshot;
     struct UCEvent;
 }
 
@@ -93,6 +100,13 @@ private:
     void Undo();
     void TogglePin(int64_t id);
     void OpenInUltraPaint(int64_t id);
+    // Save as (see the top of this file), one per kind of entry.
+    void SaveEntryAs(int64_t id);
+    void SaveTextAs(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
+    void SaveImageAs(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
+    void SaveFilesTo(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
+    // After a save: "Delete the item from the clipboard?"
+    void OfferToDelete(int64_t id, const std::string& saved);
     void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
     void ShowMoreMenu();
     void OpenSettings();
@@ -142,6 +156,7 @@ private:
     bool copiedShowing_ = false;
     bool updatingRecording_ = false;
     int64_t pendingEdit_ = 0;
+    std::string saveFolder_;             // where the last Save as went: the next one starts there
 
     int64_t previewId_ = 0;              // the entry on show; 0 while hidden
     int64_t previewWantedId_ = 0;        // the thumbnail the pointer rests on, until the delay passes

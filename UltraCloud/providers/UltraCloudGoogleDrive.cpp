@@ -1,8 +1,9 @@
 // UltraCloud/providers/UltraCloudGoogleDrive.cpp
-// Version: 0.3.0
-// Last Modified: 2026-09-04
+// Version: 0.4.0 - each further page of a listing is logged
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudGoogleDrive.h>
+#include <UltraCloud/UltraCloudLog.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // NormalizePath
 
 #include "core/UltraCloudInternal.h"
@@ -129,6 +130,7 @@ Result GoogleDriveProvider::List(const Account&, const Credentials& credentials,
     if (!rid) return rid;
 
     std::string pageToken;
+    int page = 1;
     do {
         std::vector<std::pair<std::string, std::string>> params = {
             {"q", "'" + EscapeQuery(folderId) + "' in parents and trashed = false"},
@@ -151,6 +153,9 @@ Result GoogleDriveProvider::List(const Account&, const Credentials& credentials,
             out.push_back(std::move(e));
         }
         pageToken = v["nextPageToken"].GetString();
+        if (!pageToken.empty())
+            LogToThread(LogKind::Step, "The listing continues - page " + std::to_string(++page) +
+                                       " (" + std::to_string(out.size()) + " entries so far)");
     } while (!pageToken.empty());
 
     std::stable_sort(out.begin(), out.end(), [](const Entry& a, const Entry& b) {

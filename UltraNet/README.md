@@ -60,7 +60,8 @@ planned (see the status table below).
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
-| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build; text in any charset iconv knows (ISO-2022-JP - also raw in headers -, Shift_JIS, GB18030, KOI8-R, windows-125x, ...) converted to UTF-8, UTF-8 and Latin-1 without iconv; unlabelled 8-bit header text read in the body's charset or the best-scoring guess | `UltraNet/UltraNetMime.h` |
@@ -235,12 +236,37 @@ cfg.redirectUri           = "http://127.0.0.1:0/callback";  // 0 = ephemeral por
 
 UltraNetOAuth2Token token;
 auto r = UltraNet_OAuth2AuthorizeInteractive(
-    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token);
+    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token,
+    300000,                                  // how long the browser may take
+    [&] { return dialogClosed.load(); });    // optional: ends the wait early
+// A wait called off ends as UltraNetResultCode::Cancelled within a fraction
+// of a second, rather than holding its thread until the timeout.
 if (r) {
     // token.accessToken -> "authorization: Bearer ..." on API calls
     // token.refreshToken -> store in the credential vault;
     //   renew later with UltraNet_OAuth2Refresh(cfg, refreshToken, token)
 }
+```
+
+```cpp
+#include <UltraNet/UltraNetOAuth2Service.h>
+
+// The same sign-in through a sign-in service: the service holds the client
+// id and secret and is the https address the provider redirects to, so the
+// application carries only the service's address. Blocking - a worker thread.
+UltraNetOAuth2ServiceConfig svc;
+svc.serviceUrl = UltraNet_OAuth2SignInServiceUrl();   // the registry's: built in, or configured
+svc.providerId = "google";                        // "microsoft", "yahoo"
+svc.loginHint  = "erika@gmail.com";               // preselects the account
+svc.clientName = "UltraMail";                     // for the service's log
+
+UltraNetOAuth2Token token;
+auto r = UltraNet_OAuth2AuthorizeViaService(
+    svc, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token,
+    300000, [&] { return dialogClosed.load(); });
+// Later: UltraNet_OAuth2ServiceRefresh(svc, token.refreshToken, token).
+// The steps are exposed too (ServiceBegin, ServiceWaitForCode,
+// ServiceExchangeCode) and so are the answer parsers, for tests.
 ```
 
 ---
@@ -260,6 +286,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetCookies.h
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
+│   ├── UltraNetOAuth2Service.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
@@ -431,7 +458,10 @@ architecture.
   interfaces use `I<Category>ProtocolPlugin`. Callbacks use
   `on<Event>` (base verb form).
 * **Errors:** every blocking call returns `UltraNetResult`. Operator
-  `bool` for quick success checks; structured fields for diagnostics.
+  `bool` for quick success checks; structured fields for diagnostics. An
+  HTTP request that failed in transit (no answer, TLS refused, timed out)
+  carries the connection chain in `diagnostics`, as an FTP or mail failure
+  does (`UltraNetCurlError.h`).
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.

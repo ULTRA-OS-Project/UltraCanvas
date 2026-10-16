@@ -1,5 +1,6 @@
 # cmake/UltraCanvasWasmSysroot.cmake
-# Put the wasm sysroot on CMAKE_FIND_ROOT_PATH under Emscripten.
+# Put the wasm sysroot on CMAKE_FIND_ROOT_PATH under Emscripten, and make
+# every pkg-config query a static one.
 #
 # The sysroot that UltraCanvas/OS/WASM/build-wasm-sysroot.sh cross-compiles
 # (cairo, pango, glib, libvips, zlib, ...) is handed to a build only through
@@ -17,6 +18,13 @@
 # UltraCanvas/CMakeLists.txt (for a build that adds the library on its own,
 # like OS/WASM/demo); the guard makes the second include a no-op.
 if(EMSCRIPTEN)
+    # One statically linked program, so every pkg-config query asks for the
+    # static link list (Requires.private and Libs.private too). libwebp's
+    # .pc names libsharpyuv there only, and without it the link stops on
+    # SharpYuvConvert. Set before FindPkgConfig runs: it caches this value.
+    if(NOT "--static" IN_LIST PKG_CONFIG_ARGN)
+        list(APPEND PKG_CONFIG_ARGN "--static")
+    endif()
     find_package(PkgConfig QUIET)
     if(PKG_CONFIG_FOUND)
         pkg_check_modules(_uc_wasm_sysroot_zlib QUIET zlib)
