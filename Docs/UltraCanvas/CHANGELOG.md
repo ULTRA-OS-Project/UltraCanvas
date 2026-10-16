@@ -1,3 +1,81 @@
+#### 2026-10-16 *0.9.310*
+- **Every build saves GIF.** libvips writes GIF only when it was built with
+  cgif. The MSYS2 package (`-Dcgif=disabled`) and the macOS libraries have no
+  cgif, and ImageMagick's GIF coder is an optional delegate too. On those
+  builds `write_to_file` and `PixelFX::FileIO::Save` could not write a GIF,
+  and FileLoader's save list left GIF out. The image export and
+  `PixelFX::FileIO::SaveGif` each carried their own fallback to the
+  framework's encoder.
+  - The framework's GIF encoder is now a libvips saver, `ucgifsave` and
+    `ucgifsave_buffer` (`VipsGifPlugin.h`). It is registered with the ICO
+    and QOI plug-ins and ranks below libvips' own `gifsave`, so libvips uses
+    it for a `.gif` only where it has no GIF writer.
+  - It takes `bitdepth` and `interlace`. It accepts `dither`, as `gifsave`
+    does, but does not use it.
+  - `vips_foreign_gif_saver()` names the saver to call when the file name
+    does not end in `.gif`.
+  - The image export and `SaveGif` call that saver, so their two fallbacks
+    are gone. `UltraCanvasGifEncoder.h` gained `EncodeGif`, which encodes
+    to memory.
+  - `ImageGifSaverTest` (new) checks the saver: pixels, transparency, its
+    options, the buffer saver, and that libvips picks it only without cgif.
+- **libvips is part of UltraCanvas on every platform.** The
+  `ULTRACANVAS_ENABLE_VIPS` switch is gone:
+  - Configuring with `-DULTRACANVAS_ENABLE_VIPS=OFF` now stops with a message
+    saying where each platform gets libvips.
+  - The one build without libvips is a single-threaded WebAssembly program
+    (`-DULTRACANVAS_WASM_THREADS=OFF`). libvips runs every image on a worker
+    thread, which such a program cannot start. That build keeps the
+    stb_image and cairo fallbacks.
+- **Android builds libvips.** The Android defaults no longer turn libvips
+  off.
+  - `OS/Android/packaging/vcpkg.json` lists libvips with JPEG, PNG, WebP,
+    TIFF, EXIF, lcms, GIF and Netpbm. It comes from the macOS overlay port,
+    which names the built-in GIF and PPM loaders that vcpkg's own port
+    leaves out.
+  - `scripts/android-bootstrap-sysroot.sh` checks out vcpkg at the commit
+    `scripts/macos-deps.sh` pins when it is given no vcpkg.
+  - The script prints a configure line with the NDK's own toolchain, the
+    sysroot as CMake's find root and static pkg-config link lists. vcpkg's
+    toolchain would have installed the repository's root `vcpkg.json`, the
+    Windows set, for Android.
+- **New `android-build.yml` workflow.** It builds that sysroot for
+  arm64-android with the runner's NDK, keeps the libraries in vcpkg's binary
+  cache, and compiles the core library against it.
+  - The whole core library now compiles for Android, the first time it has.
+    The 3D contour chart's GL surface (`UltraCanvasContourSurfaceGL.cpp`)
+    did not: like the STL viewer, it included desktop OpenGL's `<GL/gl.h>`.
+    On Android it now includes `<GLES3/gl3.h>`, and its shaders begin with
+    `#version 300 es`.
+  - The Android READMEs, the Gradle template and the bootstrap script's
+    header no longer say the sysroot has never been built. No APK has been
+    built yet.
+- **CI changes.** The Build workflow's Android configure test installs
+  libvips. The WebAssembly workflow's `no-vips` variant is gone.
+- **PixelFX reports FileLoader's file types.**
+  `PixelFX::FileIO::GetSupportedLoadFormats` and `GetSupportedSaveFormats`
+  returned a fixed list. It offered HEIC and AVIF everywhere and a "raw" no
+  loader takes, and it left out ICO, QOI, JPEG XL, BMP, camera raw files and
+  everything else libvips reads. They are now FileLoader's lists, as this
+  build has them:
+  - Reading: every picture type `UltraCanvasFileLoader` reads, plus the
+    drawings and documents among its types that libvips itself opens (SVG,
+    PDF).
+  - Writing: every picture type it writes.
+  - HEIC follows libheif's decoder and encoder.
+  - `IsFormatSupported` accepts a type with its dot (".png").
+  - `FileLoaderTypeListsTest` holds PixelFX to FileLoader's lists.
+- **The STL viewer compiles for Android.** `UltraCanvasSTLElement.cpp` is part
+  of the core library. Its GL viewer included desktop OpenGL's `<GL/gl.h>`,
+  which the Android NDK does not have, and its shaders were written for GLSL
+  3.30 only, which OpenGL ES rejects.
+  - On Android it includes `<GLES3/gl3.h>`. Every call it makes is in OpenGL
+    ES 3.
+  - Its shaders begin with `#version 300 es`, and the fragment shader adds
+    the float precision that ES requires.
+  - Desktop OpenGL is unchanged. `glslangValidator` accepts both shaders as
+    GLSL ES 3.00.
+
 #### 2026-10-16 *0.9.309*
 - **`UltraCanvasPaintSurface` follows a resize.** When the element was
   resized (the window, a split pane), the view kept its old origin until the
