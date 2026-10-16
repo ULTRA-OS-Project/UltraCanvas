@@ -357,19 +357,26 @@ namespace UltraCanvas {
         rc->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
         rc->SetFontSize(style.fontSize);
 
-        if (!text.empty()) {
+        // An icon placed Center is drawn instead of the text.
+        const bool textShown = !text.empty() && !(HasIcon() && iconPosition == ButtonIconPosition::Center);
+        if (textShown) {
             Size2Di textSize = rc->GetTextLineDimensions(text);
             contentW += textSize.width;
             contentH = std::max(contentH, (float)textSize.height);
         }
 
-        // Primary icon
+        // Primary icon: beside the text it adds to the width, above or below
+        // it to the height (the width is then the wider of the two).
         if (HasIcon()) {
-            contentW += iconWidth;
-            contentH = std::max(contentH, (float)iconHeight);
-            if (!text.empty() &&
-                (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
-                contentW += style.iconSpacing;
+            const bool stacked = textShown &&
+                (iconPosition == ButtonIconPosition::Top || iconPosition == ButtonIconPosition::Bottom);
+            if (stacked) {
+                contentW = std::max(contentW, (float)iconWidth);
+                contentH += iconHeight + style.iconSpacing;
+            } else {
+                contentW += iconWidth;
+                contentH = std::max(contentH, (float)iconHeight);
+                if (textShown) contentW += style.iconSpacing;
             }
         }
 
@@ -427,7 +434,8 @@ namespace UltraCanvas {
 
         // The border-box width the text needs; 0 when there is nothing to fit.
         float needed = 0.f;
-        const bool hasText = !text.empty() ||
+        const bool hasText =
+            (!text.empty() && !(HasIcon() && iconPosition == ButtonIconPosition::Center)) ||
             (style.splitStyle.enabled && !style.splitStyle.secondaryText.empty());
         if (growToFitText && hasText) {
             rc->PushState();

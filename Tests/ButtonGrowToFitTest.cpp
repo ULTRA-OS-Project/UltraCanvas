@@ -13,12 +13,16 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasRenderContext.h"
+
+#include <cairo/cairo.h>
 #include "CSSLayout/CSSLayout.h"
 
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::CSSLayout;
@@ -68,9 +72,27 @@ std::shared_ptr<Element> Page() {
 
 const char* kLong = "Open the spreadsheet file in another language";
 
+// A square icon as an image decoded from a PNG made in memory.
+std::shared_ptr<UCImage> Square(int size) {
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size);
+    cairo_t* cr = cairo_create(surface);
+    cairo_set_source_rgb(cr, 0, 0, 0);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    std::vector<uint8_t> png;
+    cairo_surface_write_to_png_stream(surface, [](void* closure, const unsigned char* data, unsigned int length) {
+        auto* out = static_cast<std::vector<uint8_t>*>(closure);
+        out->insert(out->end(), data, data + length);
+        return CAIRO_STATUS_SUCCESS;
+    }, &png);
+    cairo_surface_destroy(surface);
+    return UCImage::GetFromMemory(png.data(), png.size());
+}
+
 } // namespace
 
 int main() {
+    UCImage::InitializeImageSubsysterm("ButtonGrowToFitTest");
     std::printf("=== Button grows to fit its text ===\n");
 
     std::printf("\n-- an absolutely placed button with a fixed width --\n");
@@ -111,6 +133,36 @@ int main() {
         page->AddChild(button);
         LayOut(page, 800, 200);
         Check(button->GetWidth() == 4.f, "a 4 px button without text stays 4 px");
+    }
+
+    std::printf("\n-- an icon above or below the text adds to the height, not the width --\n");
+    {
+        auto icon = Square(32);
+        auto page = Page();
+        auto above = std::make_shared<MeasuredButton>("above", 10, 10, 100, 70, "Upload");
+        auto beside = std::make_shared<MeasuredButton>("beside", 10, 100, 100, 40, "Upload");
+        above->SetIcon(icon);
+        above->SetIconSize(32, 32);
+        above->SetIconPosition(ButtonIconPosition::Top);
+        beside->SetIcon(icon);
+        beside->SetIconSize(32, 32);
+        beside->SetIconPosition(ButtonIconPosition::Left);
+        page->AddChild(above);
+        page->AddChild(beside);
+        LayOut(page, 800, 200);
+        std::printf("  (icon above needs %.1f px, beside %.1f px)\n", above->NeededWidth(), beside->NeededWidth());
+        Check(above->NeededWidth() + 30.f < beside->NeededWidth(),
+              "the icon above takes no width beside the text");
+        Check(above->GetWidth() == 100.f && beside->GetWidth() > 100.f,
+              "so with 100 px given, the icon above fits and the icon beside grows the button");
+
+        auto iconOnly = std::make_shared<MeasuredButton>("center", 10, 150, 40, 40, kLong);
+        iconOnly->SetIcon(icon);
+        iconOnly->SetIconSize(32, 32);
+        iconOnly->SetIconPosition(ButtonIconPosition::Center);
+        page->AddChild(iconOnly);
+        LayOut(page, 800, 200);
+        Check(iconOnly->GetWidth() == 40.f, "an icon placed Center hides the text, so the button stays 40 px");
     }
 
     std::printf("\n-- a flex row too narrow for its buttons --\n");
