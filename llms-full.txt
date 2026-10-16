@@ -18819,7 +18819,7 @@ snap-to-grid and alignment guides.
 **Header:** `include/Plugins/Diagrams/UltraCanvasCompositorDiagram.h`
 **Source:** `UltraCanvas/Plugins/Diagrams/UltraCanvasCompositorDiagram.cpp`
 **Base class:** `UltraCanvasUIElement`
-**Version:** 0.4.0
+**Version:** 0.4.1
 **Demo:** `Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp`
 (Diagrams → Compositor Diagram)
 
@@ -19470,7 +19470,7 @@ void RegisterDefaultGroupTemplate(const std::string& templateId = "group",
   is taken.
 - `Ungroup` promotes the group's children to the group's own parent (keeping
   their world positions and links) and removes the group node, as one undo
-  step.
+  step. Called on a node that is not a group, it does nothing.
 - `RegisterDefaultGroupTemplate` registers a group template in the
   "Layout" category with a grey header and a translucent body.
 
@@ -19582,20 +19582,20 @@ bool FromJson(const std::string& json);
 
 `ToJson` writes the viewport (zoom, pan), the registered templates, the nodes
 (position, width, collapsed state, title override, parent id, parameter
-values, preview handle) and the links (endpoints, style, width, label).
-Numbers are written with the classic locale, whatever the host's locale.
+values, preview handle) and the links (endpoints, style, width, line colour,
+label and label colours) - the same per-node and per-link records `Copy`
+writes. Numbers are written with the classic locale, whatever the host's
+locale.
 
 `FromJson` clears the diagram and reads the viewport, nodes and links back,
-with history recording off, then clears the undo history. What it does **not**
-restore (version 0.4.0):
+with history recording off, then clears the undo history. A saved subgraph
+loads as a subgraph: each node keeps its `parentId`. What it does **not**
+restore:
 
 - **Templates.** They are application behaviour (and `customPreviewRenderer`
   cannot be serialised). Register the templates before calling `FromJson`;
-  nodes whose template is unknown are skipped.
+  a node whose template is not registered is loaded but not drawn.
 - **The socket type registry** - register custom types again.
-- **`parentId`** of nodes and the **`label`** / colours of links are written
-  but not read back, so a saved subgraph loads with its children as root
-  nodes (at their relative coordinates). `Copy` / `Paste` do keep parent ids.
 
 ### Saving and loading through FileLoader
 
@@ -19742,7 +19742,7 @@ std::function<void(const std::string& nodeId,
 | Callback | Fires when |
 |----------|-----------|
 | `onNodeClick` | A node is clicked |
-| `onNodeDoubleClick` | Declared, but not fired by version 0.4.0 |
+| `onNodeDoubleClick` | A node is double-clicked with the left button (not on one of its sockets) |
 | `onNodeDrag` | Per node, on every move during a drag (`x`, `y` as stored on the node) |
 | `onLinkClick` | A link is clicked |
 | `onLinkCreated` / `onLinkRemoved` | A link is added or removed, by code or by the user (also for links removed with their node) |
@@ -20075,13 +20075,12 @@ current tab. Its buttons map one-to-one onto the API:
 | Ungroup | `Ungroup(id)` for each selected node |
 | Delete | `DeleteSelected()` |
 | Fit View | `FitView(40.0)` |
+| Save / Load | The active tab's graph to / from a JSON file, through the functions of [Saving and loading through FileLoader](#saving-and-loading-through-fileloader); load a file into the tab it was saved from, whose templates it uses |
 | Minimap / Controls | `SetMinimapVisible(!GetMinimapConfig().visible)` / `SetControlsVisible(!GetControlsConfig().visible)` |
 | Snap | `SetSnapToGrid(!IsSnapToGridEnabled())` |
 | Align Lines | `SetAlignmentGuidesEnabled(!IsAlignmentGuidesEnabled())` |
 
-The current demo source has no Save / Load buttons; add them with the
-functions of
-[Saving and loading through FileLoader](#saving-and-loading-through-fileloader).
+A double-click on a node names it in the status line (`onNodeDoubleClick`).
 A trimmed version of the bar:
 
 ```cpp
@@ -20102,11 +20101,8 @@ addBtn("bGroup", "Group", [diagram]() {
     diagram->Group("", "group", sel);
 });
 addBtn("bUngroup", "Ungroup", [diagram]() {
-    for (const auto& id : diagram->GetSelectedNodeIds()) {
-        const CompositorNode* n = diagram->GetNode(id);
-        const CompositorNodeTemplate* t = n ? diagram->GetTemplate(n->templateId) : nullptr;
-        if (t && t->isGroup) diagram->Ungroup(id);
-    }
+    // Ungroup ignores a selected node that is not a group.
+    for (const auto& id : diagram->GetSelectedNodeIds()) diagram->Ungroup(id);
 });
 addBtn("bFit", "Fit View", [diagram]() { diagram->FitView(40.0); });
 addBtn("tSnap", "Snap", [diagram]() {
@@ -20116,18 +20112,13 @@ addBtn("bSave", "Save", [diagram]() { SaveGraph(diagram); });
 addBtn("bLoad", "Load", [diagram]() { LoadGraph(diagram); });
 ```
 
-The Ungroup handler above checks `isGroup` first: `Ungroup` itself does not,
-and called on an ordinary node that has no children it removes that node.
-
 ## Known Limitations
 
-As of version 0.4.0:
+As of version 0.4.1:
 
-- `FromJson` does not restore templates, `parentId` or link labels / colours
-  (see [Serialization (Save / Load)](#serialization-save--load)).
-- `onNodeDoubleClick` is declared but never fired.
-- `Ungroup(id)` on a node that is not a group and has no children removes the
-  node.
+- `FromJson` does not restore templates or the socket type registry; the
+  application registers them (see
+  [Serialization (Save / Load)](#serialization-save--load)).
 - `NumberInput`, `ColorSwatch`, `TextInput` and `FileBrowser` rows have no
   in-place editor; the host edits them from `onParamChange`.
 - The clipboard is internal to one diagram instance; it does not use the OS

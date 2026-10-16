@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
-// Comprehensive demo for UltraCanvasCompositorDiagram v0.4.0.
+// Comprehensive demo for UltraCanvasCompositorDiagram v0.4.1.
+// Version: 1.1.0 - Save / Load buttons (the header listed them, the toolbar
+//                 had none); a double-click on a node names it in the status
 //
 // Layout pattern follows UltraCanvasNodeDiagramExamples.cpp (title + subtitle
 // + tabs + button bar + status bar).
@@ -14,7 +16,10 @@
 //
 // Global toolbar exposes Undo / Redo / Cut / Copy / Paste / Duplicate /
 // Group / Ungroup / Delete / Fit View / Save / Load + four toggles
-// (Minimap, Controls, Snap, Alignment guides).
+// (Minimap, Controls, Snap, Align Lines). Save writes the active tab's graph
+// as JSON (ToJson); Load reads one into the active tab (FromJson), whose
+// templates must match the file's - so a graph loads back into the tab it was
+// saved from.
 
 #include <stdexcept>  // ImageCairo.h uses std::runtime_error without including this
 #include "Plugins/Diagrams/UltraCanvasCompositorDiagram.h"
@@ -24,6 +29,9 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasPathUtf8.h"
+#include <cstdio>
 #include <memory>
 #include <vector>
 #include <string>
@@ -1662,6 +1670,54 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
         if (*activeDiagram) (*activeDiagram)->FitView(40.0);
     });
 
+    // Save / Load: the dialogs and the read go through the FileLoader, as
+    // every user file does; it has no writer for this JSON, so the text is
+    // written with OpenFileUtf8 (the path is UTF-8 throughout).
+    addBtn("bSave", "Save", B_W, act, [activeDiagram, statusLabel]() {
+        auto diagram = *activeDiagram;
+        if (!diagram) return;
+        FileDialogOptions opts;
+        opts.SetTitle("Save graph")
+            .AddFilter("Compositor graph (JSON)", std::vector<std::string>{ "json" })
+            .SetDefaultFileName("graph.json")
+            .SetDefaultExtension("json");
+        std::weak_ptr<UltraCanvasLabel> sl = statusLabel;
+        UltraCanvasFileLoader::SaveFileDialog(opts, [diagram, sl](DialogResult r, const std::string& path) {
+            if (r != DialogResult::OK || path.empty()) return;
+            const std::string json = diagram->ToJson();
+            bool saved = false;
+            if (std::FILE* f = OpenFileUtf8(path, "wb")) {
+                saved = std::fwrite(json.data(), 1, json.size(), f) == json.size();
+                saved = (std::fclose(f) == 0) && saved;
+            }
+            if (auto s = sl.lock()) s->SetText((saved ? "Saved " : "Could not write ") + path);
+        });
+    });
+    addBtn("bLoad", "Load", B_W, act, [activeDiagram, statusLabel]() {
+        auto diagram = *activeDiagram;
+        if (!diagram) return;
+        FileDialogOptions opts;
+        opts.SetTitle("Open graph")
+            .AddFilter("Compositor graph (JSON)", std::vector<std::string>{ "json" });
+        std::weak_ptr<UltraCanvasLabel> sl = statusLabel;
+        UltraCanvasFileLoader::OpenFileDialog(opts, [diagram, sl](DialogResult r, const std::string& path) {
+            if (r != DialogResult::OK || path.empty()) return;
+            const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
+            if (!file.success) {
+                if (auto s = sl.lock()) s->SetText("Could not open " + path + ": " + file.error);
+                return;
+            }
+            // Templates are the application's, not the file's: the file
+            // loads properly only into a tab that registered its templates.
+            diagram->FromJson(std::string(file.bytes.begin(), file.bytes.end()));
+            diagram->FitView(40.0);
+            if (auto s = sl.lock()) {
+                s->SetText("Loaded " + PathToUtf8(PathFromUtf8(path).filename()) + " - " +
+                           std::to_string(diagram->GetAllNodeIds().size()) + " node(s)");
+            }
+        });
+    });
+
     // Toggles
     addBtn("tMini", "Minimap", TOG_W, tog, [activeDiagram, statusLabel]() {
         if (!*activeDiagram) return;
@@ -1711,6 +1767,9 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
                    << " | redo " << d->GetRedoStackSize();
                 s->SetText(os.str());
             }
+        };
+        d->onNodeDoubleClick = [sl](const std::string& nodeId) {
+            if (auto s = sl.lock()) s->SetText("Double-clicked node: " + nodeId);
         };
         d->onConnectionRejected = [sl](const CompositorSocketSpec& src,
                                          const CompositorSocketSpec& dst) {
