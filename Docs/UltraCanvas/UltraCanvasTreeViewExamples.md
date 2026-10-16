@@ -23,7 +23,7 @@
   - [Filtering](#filtering)
   - [Visual Properties](#visual-properties)
   - [Check Flags (Checkable Nodes)](#check-flags-checkable-nodes)
-  - [Scroll-to-Top Button](#scroll-to-top-button)
+  - [Scroll-to-Top and Scroll-to-Selection Buttons](#scroll-to-top-and-scroll-to-selection-buttons)
   - [Measuring the Tree](#measuring-the-tree)
   - [Color Properties](#color-properties)
   - [Event Callbacks](#event-callbacks)

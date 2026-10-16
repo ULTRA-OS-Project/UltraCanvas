@@ -27,6 +27,7 @@
   - [Standard Button](#standard-button)
   - [Colored Button](#colored-button)
   - [Auto-sized Button](#auto-sized-button)
+  - [A Fixed Width Is a Minimum](#a-fixed-width-is-a-minimum)
   - [Split Button (a primary action plus a menu)](#split-button-a-primary-action-plus-a-menu)
   - [Disabled Button](#disabled-button)
 - [Keyboard Support](#keyboard-support)

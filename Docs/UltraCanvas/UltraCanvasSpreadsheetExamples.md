@@ -35,6 +35,8 @@
 - [Formula language and functions](#formula-language-and-functions)
 - [Column widths](#column-widths)
 - [Cell formatting menu](#cell-formatting-menu)
+- [Function menu](#function-menu)
+- [Sorting from the context menu](#sorting-from-the-context-menu)
 - [Fill handle](#fill-handle)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
 - [Best Practices](#best-practices)
