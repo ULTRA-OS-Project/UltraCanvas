@@ -24,6 +24,14 @@ modules › Ultra Message)
 
 ---
 
+## Contents
+
+- [1. What it shows](#1-what-it-shows)
+- [2. Quick start](#2-quick-start)
+- [3. API](#3-api)
+- [4. Threading and cost](#4-threading-and-cost)
+- [5. Rules kept](#5-rules-kept)
+
 ## 1. What it shows
 
 ```

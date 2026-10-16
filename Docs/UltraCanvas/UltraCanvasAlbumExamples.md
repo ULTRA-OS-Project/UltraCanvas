@@ -1,5 +1,27 @@
 # UltraCanvasAlbum Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Album Layout Designs (research)](#album-layout-designs-research)
+- [Class Reference](#class-reference)
+  - [Construction & Factory](#construction--factory)
+  - [Items](#items)
+  - [Automatic video poster frames](#automatic-video-poster-frames)
+  - [Pictures saved over](#pictures-saved-over)
+  - [Configuration](#configuration)
+  - [Image fit](#image-fit)
+  - [Hover video preview](#hover-video-preview)
+  - [Hover animation preview (GIF / animated WebP)](#hover-animation-preview-gif--animated-webp)
+  - [Actions & modes](#actions--modes)
+  - [Image corners](#image-corners)
+  - [Subtitle links](#subtitle-links)
+  - [Events](#events)
+- [Interaction](#interaction)
+- [Demo](#demo)
+
 ## Overview
 
 **UltraCanvasAlbum** is a self-rendered media gallery widget for displaying

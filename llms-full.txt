@@ -3273,6 +3273,32 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
 
 ---
 
+## Contents
+
+- [Library links — websites & source code](#library-links-—-websites--source-code)
+- [UltraCanvas (core)](#ultracanvas-core)
+  - [Spell checking (all optional)](#spell-checking-all-optional)
+- [Optional plugins](#optional-plugins)
+  - [PDF plugin (optional)](#pdf-plugin-optional)
+  - [CDR plugin (optional)](#cdr-plugin-optional)
+- [Demo application](#demo-application)
+- [Additional ULTRA OS modules](#additional-ultra-os-modules)
+  - [AudioFX module](#audiofx-module)
+  - [FileLoader module](#fileloader-module)
+  - [IODeviceManager module](#iodevicemanager-module)
+  - [PixelFX module](#pixelfx-module)
+  - [Smart Home module](#smart-home-module)
+  - [Ultra AI module](#ultra-ai-module)
+  - [UltraCloud module](#ultracloud-module)
+  - [UltraCrypt module](#ultracrypt-module)
+  - [UltraDatabase module](#ultradatabase-module)
+  - [Ultra Net module](#ultra-net-module)
+  - [UltraVault module](#ultravault-module)
+  - [UltraWin module](#ultrawin-module)
+  - [VideoFX module](#videofx-module)
+  - [VirtualFS module](#virtualfs-module)
+  - [WasmHost module](#wasmhost-module)
+
 ## Library links — websites & source code
 
 Every third-party library used across the UltraCanvas core and the ULTRA OS
@@ -7090,6 +7116,18 @@ FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
 
 # Adobe Illustrator (`.ai`) Artwork
 
+## Contents
+
+- [Overview](#overview)
+  - [Render trap: do not check an `.ai` against a PDF renderer](#render-trap-do-not-check-an-ai-against-a-pdf-renderer)
+- [Reading an `.ai`](#reading-an-ai)
+  - [What the reader understands](#what-the-reader-understands)
+  - [Coordinates](#coordinates)
+- [Example: the demo page](#example-the-demo-page)
+- [Writing `.ai`](#writing-ai)
+- [Shipped samples](#shipped-samples)
+- [See also](#see-also)
+
 ## Overview
 
 Since **Illustrator 9** an `.ai` file is a PDF — but that alone does not make
@@ -7506,6 +7544,47 @@ FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
 ==============================================================================
 
 # UltraCanvasAdjacencyDiagram Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [AdjacencyRoom](#adjacencyroom)
+  - [AdjacencyLink](#adjacencylink)
+  - [AdjacencyZone](#adjacencyzone)
+  - [AdjacencyDiagramStyle (selected fields)](#adjacencydiagramstyle-selected-fields)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Room API](#room-api)
+  - [Link API](#link-api)
+  - [Zone API](#zone-api)
+  - [Clear / View / Selection](#clear--view--selection)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Library branch — single-floor program](#library-branch-—-single-floor-program)
+  - [Adding direct, secondary, and service links](#adding-direct-secondary-and-service-links)
+  - [A floor zone wrapping all rooms](#a-floor-zone-wrapping-all-rooms)
+  - [Reporting selection through callbacks](#reporting-selection-through-callbacks)
+  - [Multi-floor villa — directed inter-floor circulation](#multi-floor-villa-—-directed-inter-floor-circulation)
+  - [Creating zones with a small helper lambda](#creating-zones-with-a-small-helper-lambda)
+  - [Office program — public and back-of-house zones](#office-program-—-public-and-back-of-house-zones)
+  - [Inspecting links on click](#inspecting-links-on-click)
+- [Render Order](#render-order)
+- [Manual Layout Notes](#manual-layout-notes)
+- [See Also](#see-also)
+- [The matrix view](#the-matrix-view)
+  - [Two axes: kind and priority](#two-axes-kind-and-priority)
+  - [Geometry](#geometry)
+  - [Ordering](#ordering)
+  - [Attribute columns](#attribute-columns)
+  - [Interaction](#interaction)
+  - [Legend](#legend)
+- [See also](#see-also-1)
 
 ## Overview
 
@@ -8096,6 +8175,28 @@ FILE: Docs/UltraCanvas/UltraCanvasAlbumExamples.md
 
 # UltraCanvasAlbum Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Album Layout Designs (research)](#album-layout-designs-research)
+- [Class Reference](#class-reference)
+  - [Construction & Factory](#construction--factory)
+  - [Items](#items)
+  - [Automatic video poster frames](#automatic-video-poster-frames)
+  - [Pictures saved over](#pictures-saved-over)
+  - [Configuration](#configuration)
+  - [Image fit](#image-fit)
+  - [Hover video preview](#hover-video-preview)
+  - [Hover animation preview (GIF / animated WebP)](#hover-animation-preview-gif--animated-webp)
+  - [Actions & modes](#actions--modes)
+  - [Image corners](#image-corners)
+  - [Subtitle links](#subtitle-links)
+  - [Events](#events)
+- [Interaction](#interaction)
+- [Demo](#demo)
+
 ## Overview
 
 **UltraCanvasAlbum** is a self-rendered media gallery widget for displaying
@@ -8483,6 +8584,17 @@ FILE: Docs/UltraCanvas/UltraCanvasAlert.md
 
 # UltraCanvas Alert Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Why it lives in the dialog system](#why-it-lives-in-the-dialog-system)
+- [Severities](#severities)
+- [Quick Start](#quick-start)
+- [Alerts without the severity icon](#alerts-without-the-severity-icon)
+- [Rich form](#rich-form)
+- [API](#api)
+- [Notes](#notes)
+
 ## Overview
 
 An **Alert** is a floating, always-on-top, **modal** message box that the user
@@ -8771,6 +8883,35 @@ FILE: Docs/UltraCanvas/UltraCanvasArcDiagramExamples.md
 ==============================================================================
 
 # UltraCanvasArcDiagram Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [ArcLegendEntry](#arclegendentry)
+  - [ArcNode](#arcnode)
+  - [ArcEdge](#arcedge)
+  - [ArcDiagramStyle (selected fields)](#arcdiagramstyle-selected-fields)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Node API](#node-api)
+  - [Edge API](#edge-api)
+  - [Style & Selection](#style--selection)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Character co-occurrence — degree-sized nodes, vertical labels, semicircles](#character-co-occurrence-—-degree-sized-nodes-vertical-labels-semicircles)
+  - [Canonical reference — axis arrow + color legend](#canonical-reference-—-axis-arrow--color-legend)
+  - [Directed flow — mid-arc arrowheads and self-loops](#directed-flow-—-mid-arc-arrowheads-and-self-loops)
+  - [Genomics — parallel bundles above and below](#genomics-—-parallel-bundles-above-and-below)
+  - [Reporting node and edge selection](#reporting-node-and-edge-selection)
+- [Render Order](#render-order)
+- [Encoding Cheat Sheet](#encoding-cheat-sheet)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -9342,6 +9483,35 @@ FILE: Docs/UltraCanvas/UltraCanvasAreaChartElement.md
 
 # UltraCanvasAreaChartElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Definition](#class-definition)
+  - [Header Information](#header-information)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Properties and Configuration Methods](#properties-and-configuration-methods)
+  - [Fill Style Configuration](#fill-style-configuration)
+  - [Line Style Configuration](#line-style-configuration)
+  - [Data Point Markers](#data-point-markers)
+  - [Smoothing](#smoothing)
+- [Core Methods](#core-methods)
+  - [RenderChart](#renderchart)
+  - [HandleChartMouseMove](#handlechartmousemove)
+- [Helper Steps](#helper-steps)
+- [Factory Function](#factory-function)
+- [Usage Example](#usage-example)
+- [Inherited Features from UltraCanvasChartElementBase](#inherited-features-from-ultracanvaschartelementbase)
+  - [Interactive Features](#interactive-features)
+  - [Visual Configuration](#visual-configuration)
+  - [Data Management](#data-management)
+- [Rendering Pipeline](#rendering-pipeline)
+- [Performance Considerations](#performance-considerations)
+- [Best Practices](#best-practices)
+- [Limitations](#limitations)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasAreaChartElement` is a sophisticated area chart visualization component in the UltraCanvas framework. It extends `UltraCanvasChartElementBase` to provide filled area charts with support for gradients, transparency, data point markers, smoothing, and interactive features like tooltips, zooming, and panning.
@@ -9626,6 +9796,23 @@ FILE: Docs/UltraCanvas/UltraCanvasAudio.md
 <!-- doc-check: namespace MyApp { std::shared_ptr<UCAudio> DecodeApe(const std::string& path); } std::shared_ptr<UCAudio> audio; std::string path; -->
 
 Cross-platform audio **playback** and **recording** for UltraCanvas.
+
+## Contents
+
+- [Status](#status)
+- [Format support](#format-support)
+  - [AAC and M4A](#aac-and-m4a)
+- [Public API surface](#public-api-surface)
+  - [Resource](#resource)
+  - [Adding a codec](#adding-a-codec)
+  - [Playback (non-visual)](#playback-non-visual)
+  - [Recording (non-visual)](#recording-non-visual)
+  - [Devices & permission](#devices--permission)
+- [Visual elements](#visual-elements)
+  - [`UltraCanvasAudioPlayerElement`](#ultracanvasaudioplayerelement)
+  - [`UltraCanvasAudioRecorderElement`](#ultracanvasaudiorecorderelement)
+- [Build](#build)
+- [Architecture notes](#architecture-notes)
 
 ## Status
 
@@ -10005,6 +10192,13 @@ Each tab has a signal picker (the bundled sample track plus three synthetic
 signals: chirp + tones, a 220 Hz tone with harmonics, and white noise), so the
 characteristic shapes of each plot can be compared across signal types.
 
+## Contents
+
+- [1. Spectrum plot (area chart)](#1-spectrum-plot-area-chart)
+- [2. Amplitude envelope (area chart)](#2-amplitude-envelope-area-chart)
+- [3. Correlogram (bar chart)](#3-correlogram-bar-chart)
+- [Related pages](#related-pages)
+
 ## 1. Spectrum plot (area chart)
 
 Frequency content of the whole signal:
@@ -10056,6 +10250,32 @@ FILE: Docs/UltraCanvas/UltraCanvasAutoCompleteExamples.md
 ==============================================================================
 
 # UltraCanvasAutoComplete Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [AutoCompleteItem Structure](#autocompleteitem-structure)
+  - [Item Management (Static Mode)](#item-management-static-mode)
+  - [Selected Item](#selected-item)
+  - [Popup State](#popup-state)
+  - [Styling](#styling)
+  - [Behavior](#behavior)
+- [AutoCompleteStyle Structure](#autocompletestyle-structure)
+- [Events and Callbacks](#events-and-callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic Static AutoComplete](#basic-static-autocomplete)
+  - [Display Text vs. Programmatic Value (Country Codes)](#display-text-vs-programmatic-value-country-codes)
+  - [Dynamic Suggestion Provider](#dynamic-suggestion-provider)
+  - [Large List with Automatic Scrollbar](#large-list-with-automatic-scrollbar)
+  - [Listening to Popup and Text Events](#listening-to-popup-and-text-events)
+  - [Custom Popup Style](#custom-popup-style)
+- [Behavior Notes](#behavior-notes)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -10399,6 +10619,16 @@ FILE: Docs/UltraCanvas/UltraCanvasBadge.md
 ==============================================================================
 
 # UltraCanvas Badge Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Shape: pill or rounded box](#shape-pill-or-rounded-box)
+- [Notes](#notes)
 
 ## Overview
 
@@ -10942,6 +11172,31 @@ FILE: Docs/UltraCanvas/UltraCanvasBarcodeElement.md
 
 # UltraCanvasBarcodeElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Supported Symbologies](#supported-symbologies)
+- [Class Hierarchy](#class-hierarchy)
+- [Quick Start](#quick-start)
+- [Builder Pattern](#builder-pattern)
+- [API](#api)
+  - [Data & symbology](#data--symbology)
+  - [Style](#style)
+  - [Encoder options](#encoder-options)
+  - [Callbacks](#callbacks)
+  - [Style presets](#style-presets)
+- [Symbology Notes](#symbology-notes)
+  - [Code 128 / GS1-128](#code-128--gs1-128)
+  - [EAN-13 / UPC-A / ISBN](#ean-13--upc-a--isbn)
+  - [UPC-E](#upc-e)
+  - [ITF-14](#itf-14)
+  - [Pharmacode](#pharmacode)
+- [Layout & Rotation](#layout--rotation)
+- [Error Handling](#error-handling)
+- [Demo](#demo)
+- [Implementation Files](#implementation-files)
+- [Roadmap](#roadmap)
+
 ## Overview
 
 `UltraCanvasBarcodeElement` is a 1D barcode widget that encodes a string into the chosen symbology and renders the resulting bar pattern via the standard `IRenderContext`. Encoders are pure C++20 with no external dependencies — Cairo (the existing render backend) handles all drawing.
@@ -11475,6 +11730,49 @@ FILE: Docs/UltraCanvas/UltraCanvasBitmapExamples.md
 
 # UltraCanvasImageElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Definition](#class-definition)
+- [Enumerations and Structures](#enumerations-and-structures)
+  - [ImageFitMode](#imagefitmode)
+  - [ImagePosition](#imageposition)
+- [Constructors](#constructors)
+- [Image Loading Methods](#image-loading-methods)
+  - [LoadFromFile](#loadfromfile)
+  - [LoadFromImage](#loadfromimage)
+  - [GetLastError](#getlasterror)
+- [Display Properties](#display-properties)
+  - [Fit, Position and Repeat](#fit-position-and-repeat)
+  - [Visual Effects](#visual-effects)
+- [Image Information](#image-information)
+- [Animation](#animation)
+- [Interaction Features](#interaction-features)
+  - [Click Support](#click-support)
+  - [Drag Support](#drag-support)
+- [Event Callbacks](#event-callbacks)
+- [Factory Functions](#factory-functions)
+  - [CreateImageElement](#createimageelement)
+  - [CreateImageFromFile](#createimagefromfile)
+  - [CreateImageFromMemory](#createimagefrommemory)
+  - [CreateScaledImage](#createscaledimage)
+  - [CreateClickableImage](#createclickableimage)
+- [Rendering Process](#rendering-process)
+- [Event Handling](#event-handling)
+- [Usage Examples](#usage-examples)
+  - [Basic Image Display](#basic-image-display)
+  - [Interactive Image](#interactive-image)
+  - [Draggable Image](#draggable-image)
+  - [Image Gallery with Loading Feedback](#image-gallery-with-loading-feedback)
+  - [Transformed Image](#transformed-image)
+  - [Positioned and Tiled Images](#positioned-and-tiled-images)
+- [Performance Considerations](#performance-considerations)
+- [Error Handling](#error-handling)
+- [Platform Notes](#platform-notes)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasImageElement** is a versatile image display component in the UltraCanvas framework that provides comprehensive image loading, caching, transformation, and interaction capabilities. It supports multiple image formats and offers various scaling modes for flexible image presentation.
@@ -11886,6 +12184,41 @@ FILE: Docs/UltraCanvas/UltraCanvasBlockDiagramExamples.md
 ==============================================================================
 
 # UltraCanvasBlockDiagram Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [Nested Enumerations on UltraCanvasBlockDiagram](#nested-enumerations-on-ultracanvasblockdiagram)
+  - [BlockNode](#blocknode)
+  - [BlockConnection](#blockconnection)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Node Management](#node-management)
+  - [Connection Management](#connection-management)
+  - [View Control](#view-control)
+  - [Grid & Background](#grid--background)
+  - [3D Isometric Rendering](#3d-isometric-rendering)
+  - [Edit Mode](#edit-mode)
+  - [Selection & Operations](#selection--operations)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Creating the diagram canvas](#creating-the-diagram-canvas)
+  - [Adding shaped, colored nodes](#adding-shaped-colored-nodes)
+  - [Connecting nodes with orthogonal routing](#connecting-nodes-with-orthogonal-routing)
+  - [Dashed control-signal lines](#dashed-control-signal-lines)
+  - [Toolbar wired to edit mode and view](#toolbar-wired-to-edit-mode-and-view)
+  - [Resetting layout and view](#resetting-layout-and-view)
+  - [Toggling grid visibility from a checkbox](#toggling-grid-visibility-from-a-checkbox)
+- [Render Pipeline](#render-pipeline)
+- [Mouse & Edit Behaviour](#mouse--edit-behaviour)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -12322,6 +12655,43 @@ FILE: Docs/UltraCanvas/UltraCanvasBreadcrumbExamples.md
 ==============================================================================
 
 # UltraCanvasBreadcrumb Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [BreadcrumbItem Structure](#breadcrumbitem-structure)
+  - [Item Management](#item-management)
+  - [Path Helpers](#path-helpers)
+  - [Folder Path Mechanism](#folder-path-mechanism)
+  - [Dropdowns](#dropdowns)
+  - [Current Item](#current-item)
+  - [Style Configuration](#style-configuration)
+  - [Hover, Press and Readability](#hover-press-and-readability)
+- [Enumerations](#enumerations)
+  - [BreadcrumbSeparatorStyle](#breadcrumbseparatorstyle)
+  - [BreadcrumbOverflowMode](#breadcrumboverflowmode)
+  - [BreadcrumbItemStyle](#breadcrumbitemstyle)
+- [Style Presets](#style-presets)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Usage Examples](#usage-examples)
+  - [Default Breadcrumb](#default-breadcrumb)
+  - [Style Presets](#style-presets-1)
+  - [Building a Breadcrumb from a Path String](#building-a-breadcrumb-from-a-path-string)
+  - [Iterating Separator Styles](#iterating-separator-styles)
+  - [Item with Dropdown Menu](#item-with-dropdown-menu)
+  - [Items with Icons](#items-with-icons)
+  - [Live Navigation (Truncate Path on Click)](#live-navigation-truncate-path-on-click)
+  - [Overflow: Collapse Middle Items](#overflow-collapse-middle-items)
+  - [Overflow: Ellipsize per-item Text](#overflow-ellipsize-per-item-text)
+  - [Overflow: ShrinkText](#overflow-shrinktext)
+  - [Custom Rounded Strip Style](#custom-rounded-strip-style)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -12929,6 +13299,22 @@ classic reference charts natively:
   including the nested-circles size legend (46.1 / 20.5 / 5.1) and the
   "Darkness relates to Food concerns" footnote.
 
+## Contents
+
+- [Creating a chart](#creating-a-chart)
+- [Data](#data)
+- [Size encoding](#size-encoding)
+- [Colour encoding](#colour-encoding)
+- [Style](#style)
+- [Labels](#labels)
+- [Size legend and annotations](#size-legend-and-annotations)
+- [Packed layout](#packed-layout)
+- [Hierarchical packing](#hierarchical-packing)
+- [Timeline bubbles](#timeline-bubbles)
+- [Interactivity](#interactivity)
+- [3D bubble chart (demo)](#3d-bubble-chart-demo)
+- [Feature research sources](#feature-research-sources)
+
 ## Creating a chart
 
 ```cpp
@@ -13126,6 +13512,15 @@ FILE: Docs/UltraCanvas/UltraCanvasBusyIndicator.md
 
 # UltraCanvas BusyIndicator Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Style](#style)
+- [DotRing fades](#dotring-fades)
+- [Threading](#threading)
+
 ## Overview
 
 **UltraCanvasBusyIndicator** is the animation that says *working on it*
@@ -13270,6 +13665,33 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 **Version:** 1.1.0 - the theme and the button's variant  
 **Last Modified:** 2026-10-14  
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Basic Usage](#basic-usage)
+  - [Including the Header](#including-the-header)
+  - [Creating a Button](#creating-a-button)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factories](#factories)
+  - [Core Methods](#core-methods)
+  - [Events](#events)
+  - [Event Usage Example](#event-usage-example)
+- [Button States](#button-states)
+- [ButtonStyle Structure](#buttonstyle-structure)
+- [The theme and the button's variant](#the-theme-and-the-buttons-variant)
+- [ButtonBuilder Pattern](#buttonbuilder-pattern)
+  - [Builder Usage Example](#builder-usage-example)
+- [Practical Examples](#practical-examples)
+  - [Standard Button](#standard-button)
+  - [Colored Button](#colored-button)
+  - [Auto-sized Button](#auto-sized-button)
+  - [Split Button (a primary action plus a menu)](#split-button-a-primary-action-plus-a-menu)
+  - [Disabled Button](#disabled-button)
+- [Keyboard Support](#keyboard-support)
+- [Rendering](#rendering)
+- [Version History](#version-history)
 
 ## Overview
 
@@ -13785,6 +14207,39 @@ FILE: Docs/UltraCanvas/UltraCanvasCDRExamples.md
 # UltraCanvasCDRElement Documentation
 
 <!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> document; -->
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Build-Time Guard: `ULTRACANVAS_HAS_CDR_PLUGIN`](#build-time-guard-ultracanvas_has_cdr_plugin)
+- [Enumerations & Structs](#enumerations--structs)
+  - [CDRFitMode](#cdrfitmode)
+  - [CDRGradientType](#cdrgradienttype)
+  - [CDRGradient](#cdrgradient)
+  - [CDRPage / CDRDocument](#cdrpage--cdrdocument)
+  - [CDRParagraphStyle / CDRCharacterStyle / CDRStyleState](#cdrparagraphstyle--cdrcharacterstyle--cdrstylestate)
+- [UltraCanvasCDRRenderer](#ultracanvascdrrenderer)
+- [UltraCanvasCDRElement](#ultracanvascdrelement)
+  - [Constructor](#constructor)
+  - [Loading](#loading)
+  - [Page Navigation](#page-navigation)
+  - [Zoom / Pan / Fit](#zoom--pan--fit)
+  - [Callbacks](#callbacks)
+  - [Rendering Override](#rendering-override)
+- [UltraCanvasCDRPlugin](#ultracanvascdrplugin)
+  - [Export ("Save As")](#export-save-as)
+  - [Plugin Registration](#plugin-registration)
+- [Convenience Factories](#convenience-factories)
+- [Usage Examples](#usage-examples)
+  - [Example 1: Loading and Displaying a CDR File](#example-1-loading-and-displaying-a-cdr-file)
+  - [Example 2: Click-to-Fullscreen Handler](#example-2-click-to-fullscreen-handler)
+  - [Example 3: Hover Highlight + Click-to-Open](#example-3-hover-highlight--click-to-open)
+  - [Example 4: Inline Multi-Page Navigation](#example-4-inline-multi-page-navigation)
+- [Supported Features (Plugin Summary)](#supported-features-plugin-summary)
+- [Integration Checklist](#integration-checklist)
+- [Writing CDR files (`UltraCanvasCDRConverter.h`)](#writing-cdr-files-ultracanvascdrconverterh)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -14457,6 +14912,25 @@ FILE: Docs/UltraCanvas/UltraCanvasChartEngine.md
 
 # UltraCanvasChartEngine Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [The content contract](#the-content-contract)
+- [Axes](#axes)
+- [Projections](#projections)
+- [Highlights (slot 200 wash / slot 700 overlay)](#highlights-slot-200-wash--slot-700-overlay)
+- [Phase-1 services](#phase-1-services)
+- [Bar series geometry](#bar-series-geometry)
+  - [Bar connections](#bar-connections)
+- [Phase-3 services](#phase-3-services)
+- [Themes and palettes](#themes-and-palettes)
+- [Hit regions and tooltips](#hit-regions-and-tooltips)
+- [Animation](#animation)
+- [Image paint patterns](#image-paint-patterns)
+- [The dirty model](#the-dirty-model)
+- [Named properties](#named-properties)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 `UltraCanvasChartEngineElement` is the chart engine's render driver: a chart
@@ -14875,6 +15349,44 @@ FILE: Docs/UltraCanvas/UltraCanvasCheckbox.md
 ==============================================================================
 
 # UltraCanvas Checkbox and Radio Button Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Which control to use](#which-control-to-use)
+- [Class Hierarchy](#class-hierarchy)
+- [Shared Toggle API](#shared-toggle-api)
+  - [CheckedState](#checkedstate)
+  - [State and label](#state-and-label)
+  - [Callbacks](#callbacks)
+  - [Shared visual fields](#shared-visual-fields)
+  - [Sizing and placement](#sizing-and-placement)
+- [UltraCanvasCheckbox](#ultracanvascheckbox)
+  - [Constructors and factory](#constructors-and-factory)
+  - [The three states](#the-three-states)
+  - [Appearance](#appearance)
+- [UltraCanvasRadio](#ultracanvasradio)
+  - [Constructors and factory](#constructors-and-factory-1)
+  - [Behaviour](#behaviour)
+  - [RadioVisualStyle](#radiovisualstyle)
+- [UltraCanvasRadioGroup](#ultracanvasradiogroup)
+  - [How the selection works](#how-the-selection-works)
+  - [onChecked belongs to the group](#onchecked-belongs-to-the-group)
+  - [Lifetime and ownership](#lifetime-and-ownership)
+- [Mouse and Keyboard](#mouse-and-keyboard)
+- [Usage Examples](#usage-examples)
+  - [Basic checkbox enabling a button](#basic-checkbox-enabling-a-button)
+  - ["Select all" with an indeterminate parent](#select-all-with-an-indeterminate-parent)
+  - [Tri-state cycling](#tri-state-cycling)
+  - [Custom styling](#custom-styling)
+  - [A radio group in a dialog class](#a-radio-group-in-a-dialog-class)
+  - [A radio group on a page built by a function](#a-radio-group-on-a-page-built-by-a-function)
+  - [Groups in a container](#groups-in-a-container)
+- [Rendering Details](#rendering-details)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+- [Version History](#version-history)
 
 ## Overview
 
@@ -15724,6 +16236,20 @@ FILE: Docs/UltraCanvas/UltraCanvasChip.md
 
 # UltraCanvas Chip & Tag Input Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [UltraCanvasChip](#ultracanvaschip)
+  - [Features](#features)
+  - [Quick Start](#quick-start)
+  - [Key API](#key-api)
+- [UltraCanvasTagInput](#ultracanvastaginput)
+  - [Features](#features-1)
+  - [Quick Start](#quick-start-1)
+  - [Key API](#key-api-1)
+  - [Keyboard](#keyboard)
+- [Notes](#notes)
+
 ## Overview
 
 `UltraCanvasChip.h` provides two related controls:
@@ -15867,6 +16393,24 @@ FILE: Docs/UltraCanvas/UltraCanvasCircleDiagram.md
 ==============================================================================
 
 # UltraCanvasCircleDiagram Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Presentation-only, by design](#presentation-only-by-design)
+- [Features](#features)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Design & palette](#design--palette)
+  - [Nodes & satellites](#nodes--satellites)
+  - [Hub](#hub)
+  - [Geometry](#geometry)
+  - [Appearance & interaction](#appearance--interaction)
+- [Usage Example](#usage-example)
+- [Node count and layout](#node-count-and-layout)
+- [Notes & Conventions](#notes--conventions)
 
 ## Overview
 
@@ -16321,6 +16865,29 @@ FILE: Docs/UltraCanvas/UltraCanvasCircularProgressChart.md
 
 # UltraCanvasCircularProgressChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Data Management](#data-management)
+  - [Sub-Style & Geometry](#sub-style--geometry)
+  - [Arcs & Tracks](#arcs--tracks)
+  - [Labels & Centre](#labels--centre)
+  - [Legend](#legend)
+  - [Formatting & Interaction](#formatting--interaction)
+- [Usage Examples](#usage-examples)
+  - [Circular infographic (concentric rings, numbered legend, centre disc)](#circular-infographic-concentric-rings-numbered-legend-centre-disc)
+  - [Stacked start labels (the "radial bar card" look)](#stacked-start-labels-the-radial-bar-card-look)
+  - [Single completion ring](#single-completion-ring)
+  - [Progress pie](#progress-pie)
+- [Factory Functions](#factory-functions)
+- [Notes & Conventions](#notes--conventions)
+
 ## Overview
 
 The `UltraCanvasCircularProgressChart` is the angle-encoded member of the UltraCanvas circular chart family. Each ring carries **one value**, drawn as an arc whose sweep is proportional to that value within the ring's own range — the "concentric progress rings" / "activity rings" chart. Sub-styles cover the single thick progress ring ("Completed 72 %") and the progress pie (a filled sector over a track disc). It complements `UltraCanvasRadialBarChart` (value → ray **length**) and `UltraCanvasPieChartElement` (slices as **shares of one total**): here, rings are independent percentages, not parts of a whole.
@@ -16541,6 +17108,19 @@ typed relationships whose line style and end decorations follow the UML rules.
 - Demo: `Apps/DemoApp/UltraCanvasClassDiagramExamples.cpp` (Diagrams → Class Diagram)
 - Tests: `Tests/ClassLayoutTest.cpp` (target `ClassLayoutTest`)
 - Version: 1.0.1
+
+## Contents
+
+- [The three layers](#the-three-layers)
+- [Quick start](#quick-start)
+- [Relationships](#relationships)
+- [Themes and styling](#themes-and-styling)
+- [Rendering rules](#rendering-rules)
+- [Layout](#layout)
+- [Interaction](#interaction)
+- [Demo scenarios](#demo-scenarios)
+- [Known limitations](#known-limitations)
+- [See also](#see-also)
 
 ## The three layers
 
@@ -17106,6 +17686,19 @@ FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 # UltraCanvas Colour Picker Documentation
 
 <!-- doc-check: Color SampleScreenPixelUnderCursor(); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Definition](#class-definition)
+- [Basic Usage](#basic-usage)
+  - [Presentation variants](#presentation-variants)
+  - [Light and dark styles](#light-and-dark-styles)
+  - [Compact (sliders-only) variant](#compact-sliders-only-variant)
+- [Colour Space Helpers](#colour-space-helpers)
+- [Interaction Summary](#interaction-summary)
+- [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
 
 ## Overview
 
@@ -17704,6 +18297,25 @@ function, or a raw point cloud it converts into a density field for you.
 [`UltraCanvasHeatmapChart`](UltraCanvasHeatmapChart.md), so every colour map,
 value-range, log-scale, diverging and colour-bar option documented there applies
 here too — and "heatmap cells with isolines on top" is just another render mode.
+
+## Contents
+
+- [Quick start](#quick-start)
+- [Render modes](#render-modes)
+- [Levels](#levels)
+- [Contours from a point cloud](#contours-from-a-point-cloud)
+- [Isoline styling and labels](#isoline-styling-and-labels)
+- [Legend and axes](#legend-and-axes)
+- [Dark themes](#dark-themes)
+- [Zoom, pan and the view window](#zoom-pan-and-the-view-window)
+- [Crosshair and click callback](#crosshair-and-click-callback)
+- [Exporting the contour geometry](#exporting-the-contour-geometry)
+- [Field preparation](#field-preparation)
+- [3D contour surface](#3d-contour-surface)
+  - [Why it is software-rendered](#why-it-is-software-rendered)
+  - [The OpenGL variant](#the-opengl-variant)
+- [Notes](#notes)
+- [Demo](#demo)
 
 ## Quick start
 
@@ -18648,6 +19260,20 @@ design brief was *good usability above all*, so this document first surveys the
 common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
+## Contents
+
+- [1. Selection philosophies surveyed](#1-selection-philosophies-surveyed)
+  - [Key usability findings baked into this widget](#key-usability-findings-baked-into-this-widget)
+- [2. The two widgets](#2-the-two-widgets)
+- [3. `UCDate`](#3-ucdate)
+- [4. `UltraCanvasDatePicker` (dropdown + text entry)](#4-ultracanvasdatepicker-dropdown--text-entry)
+- [5. `UltraCanvasCalendarView` (inline)](#5-ultracanvascalendarview-inline)
+- [6. Date range picking & blocked dates](#6-date-range-picking--blocked-dates)
+  - [Blocking dates from selection](#blocking-dates-from-selection)
+- [6b. Multi-month blocks & scroll navigation](#6b-multi-month-blocks--scroll-navigation)
+- [7. Keyboard reference (day grid)](#7-keyboard-reference-day-grid)
+- [8. Demo](#8-demo)
+
 ## 1. Selection philosophies surveyed
 
 Picking a date sounds trivial but the "right" UI depends heavily on **what kind
@@ -18909,6 +19535,40 @@ FILE: Docs/UltraCanvas/UltraCanvasDendrogramExamples.md
 **Version:** 1.5.1
 **Last Modified:** 2026-08-01
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Data](#data)
+  - [Layout Control](#layout-control)
+  - [Style](#style)
+  - [Node sizing (1.5.0)](#node-sizing-150)
+  - [Hierarchical edge bundling (1.5.0)](#hierarchical-edge-bundling-150)
+  - [Selection](#selection)
+  - [Zoom, Pan, Custom Positions](#zoom-pan-custom-positions)
+  - [Callbacks](#callbacks)
+- [Data Structures](#data-structures)
+  - [DendrogramNode (Input)](#dendrogramnode-input)
+  - [DendrogramGroup](#dendrogramgroup)
+  - [DendrogramStyle (excerpt)](#dendrogramstyle-excerpt)
+  - [Enumerations](#enumerations)
+  - [DendrogramRelation (1.5.0)](#dendrogramrelation-150)
+  - [Data Source Interfaces](#data-source-interfaces)
+- [Usage Examples](#usage-examples)
+  - [Building a Tree from a Flat Spec List](#building-a-tree-from-a-flat-spec-list)
+  - [Demo 1 — Top-Down Hierarchical Clustering](#demo-1-—-top-down-hierarchical-clustering)
+  - [Demo 2 — Left-Right Curved Cladogram](#demo-2-—-left-right-curved-cladogram)
+  - [Demo 3 — Radial Tree of Life with Sector Fills](#demo-3-—-radial-tree-of-life-with-sector-fills)
+  - [Demo 7 — Radial Tree with Bundled Relations and Sized Nodes (1.5.0)](#demo-7-—-radial-tree-with-bundled-relations-and-sized-nodes-150)
+  - [Demo 6 — Branch Color By Value Gradient](#demo-6-—-branch-color-by-value-gradient)
+  - [Control Bar (Zoom, Reset, Collapse, Expand)](#control-bar-zoom-reset-collapse-expand)
+- [Mouse & Keyboard Cheat-Sheet](#mouse--keyboard-cheat-sheet)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -20761,6 +21421,48 @@ FILE: Docs/UltraCanvas/UltraCanvasDivergingChartExamples.md
 
 # UltraCanvasDivergingBarChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Hierarchy](#class-hierarchy)
+- [File Structure](#file-structure)
+- [Data Structures](#data-structures)
+  - [DivergingChartStyle Enum](#divergingchartstyle-enum)
+  - [DivergingCategory Structure](#divergingcategory-structure)
+  - [DivergingChartPoint Structure](#divergingchartpoint-structure)
+  - [DivergingDataSource Class](#divergingdatasource-class)
+- [Constructor](#constructor)
+- [Public Methods](#public-methods)
+  - [Data Management](#data-management)
+  - [Configuration](#configuration)
+  - [Rendering](#rendering)
+  - [Interaction](#interaction)
+  - [Callbacks](#callbacks)
+- [Factory Functions](#factory-functions)
+  - [CreateDivergingBarChart](#createdivergingbarchart)
+  - [CreatePopulationPyramid](#createpopulationpyramid)
+  - [CreateLikertChart](#createlikertchart)
+- [Private Properties](#private-properties)
+  - [Visual Properties](#visual-properties)
+  - [Labels and Text](#labels-and-text)
+  - [Interaction State](#interaction-state)
+  - [Animation](#animation)
+  - [Cached Calculations](#cached-calculations)
+- [Usage Examples](#usage-examples)
+  - [Creating a Likert Scale Chart](#creating-a-likert-scale-chart)
+  - [Creating a Population Pyramid](#creating-a-population-pyramid)
+  - [Creating a Tornado Chart](#creating-a-tornado-chart)
+- [Rendering Styles](#rendering-styles)
+  - [Population Pyramid](#population-pyramid)
+  - [Likert Scale](#likert-scale)
+  - [Tornado Chart](#tornado-chart)
+  - [Opposing Bars](#opposing-bars)
+- [Best Practices](#best-practices)
+- [Performance Considerations](#performance-considerations)
+- [Dependencies](#dependencies)
+- [Notes](#notes)
+
 ## Overview
 
 The `UltraCanvasDivergingBarChart` is a specialized chart component in the UltraCanvas framework designed for displaying multi-valued categorical data that diverges from a central axis. This chart type is ideal for visualizing data with opposing or contrasting values, such as population pyramids, Likert scale survey responses, tornado charts, and other comparative visualizations.
@@ -21269,6 +21971,51 @@ FILE: Docs/UltraCanvas/UltraCanvasDropDownExamples.md
 # UltraCanvasDropDown Control Documentation
 
 <!-- doc-check: void ApplyTheme(const std::string& name); -->
+
+## Contents
+
+- [Overview](#overview)
+- [File Structure](#file-structure)
+- [Key Features](#key-features)
+- [Class Structure](#class-structure)
+  - [Main Class: `UltraCanvasDropdown`](#main-class-ultracanvasdropdown)
+  - [Supporting Structures](#supporting-structures)
+- [Public API](#public-api)
+  - [Constructors](#constructors)
+  - [Item Management Methods](#item-management-methods)
+  - [Selection Management](#selection-management)
+  - [Multi-selection](#multi-selection)
+  - [Dropdown State Control](#dropdown-state-control)
+  - [Keyboard Focus](#keyboard-focus)
+  - [Styling](#styling)
+  - [Event Callbacks](#event-callbacks)
+- [Styles](#styles)
+- [Factory Functions](#factory-functions)
+  - [CreateDropdown](#createdropdown)
+- [Event Handling](#event-handling)
+  - [Mouse Events](#mouse-events)
+  - [Keyboard Events](#keyboard-events)
+  - [Focus Events](#focus-events)
+- [Implementation Details](#implementation-details)
+  - [Rendering Pipeline](#rendering-pipeline)
+  - [Scrolling System](#scrolling-system)
+  - [Position Calculation](#position-calculation)
+- [Usage Examples](#usage-examples)
+  - [Basic Dropdown](#basic-dropdown)
+  - [Dropdown with Separators](#dropdown-with-separators)
+  - [Dropdown with Custom Styling](#dropdown-with-custom-styling)
+  - [Dropdown with Event Handlers](#dropdown-with-event-handlers)
+  - [Dynamic Item Management](#dynamic-item-management)
+  - [Items with Icons and Multi-selection](#items-with-icons-and-multi-selection)
+  - [Icon-only Button](#icon-only-button)
+- [Performance Considerations](#performance-considerations)
+- [Integration Notes](#integration-notes)
+  - [Z-Order Management](#z-order-management)
+  - [Window Coordination](#window-coordination)
+- [Known Limitations](#known-limitations)
+- [Future Enhancements](#future-enhancements)
+- [Dependencies](#dependencies)
+- [Version History](#version-history)
 
 ## Overview
 
@@ -21784,6 +22531,18 @@ because the connector length *is* the difference.
 - Base class: `UltraCanvasChartElementBase` (`include/Plugins/Charts/UltraCanvasChartElementBase.h`)
 - Demo: `Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp` (Charts → Dumbbell Chart)
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data](#data)
+- [Layout](#layout)
+- [Axis range](#axis-range)
+- [Value labels](#value-labels)
+- [Sorting](#sorting)
+- [Interaction](#interaction)
+- [Configuration reference](#configuration-reference)
+- [Notes](#notes)
+
 ## Quick start
 
 ```cpp
@@ -22000,6 +22759,19 @@ FILE: Docs/UltraCanvas/UltraCanvasEPSExamples.md
 
 # UltraCanvasEPS Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Known gaps (diagnosed, approximated)](#known-gaps-diagnosed-approximated)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [EPSDocument](#epsdocument)
+  - [UltraCanvasEPSElement](#ultracanvasepselement)
+  - [UltraCanvasEPSPlugin](#ultracanvasepsplugin)
+- [Writing EPS files (`UltraCanvasEPSConverter.h`)](#writing-eps-files-ultracanvasepsconverterh)
+- [Usage Example](#usage-example)
+
 ## Overview
 
 The `UltraCanvasEPSElement` is a UI element that loads and renders **Encapsulated PostScript** (`.eps`, `.epsf`, `.ps`) drawings inside an UltraCanvas window. It is part of the `UltraCanvasEPSPlugin`.
@@ -22145,6 +22917,39 @@ FILE: Docs/UltraCanvas/UltraCanvasERDiagram.md
 ==============================================================================
 
 # UltraCanvasERDiagram Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [`ERDiagramAttribute`](#erdiagramattribute)
+  - [`ERDiagramEntity`](#erdiagramentity)
+  - [`ERDiagramLeg` and `ERDiagramRelationship`](#erdiagramleg-and-erdiagramrelationship)
+  - [`ERDiagramAnnotation`](#erdiagramannotation)
+  - [`ERDiagramRolePalette`](#erdiagramrolepalette)
+  - [`ERDiagramStyle`](#erdiagramstyle)
+- [Constructor and Factory](#constructor-and-factory)
+- [API Reference](#api-reference)
+  - [Entities](#entities)
+  - [Attributes](#attributes)
+  - [Relationships](#relationships)
+  - [Annotations](#annotations)
+  - [Notation](#notation)
+  - [Layout](#layout)
+  - [Styling and themes](#styling-and-themes)
+  - [Crow's-foot row layout](#crows-foot-row-layout)
+  - [Canvas chrome](#canvas-chrome)
+  - [Viewport](#viewport)
+  - [Selection and interaction](#selection-and-interaction)
+  - [Measurement](#measurement)
+  - [Serialization](#serialization)
+  - [Callbacks](#callbacks)
+- [Quick Start](#quick-start)
+- [Notes and limits](#notes-and-limits)
 
 ## Overview
 
@@ -24332,6 +25137,83 @@ A second factory overload sets the folder immediately:
 ```cpp
 auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 600);
 ```
+
+## Contents
+
+- [View types](#view-types)
+- [Scroll position across a resize](#scroll-position-across-a-resize)
+- [Empty display](#empty-display)
+- [Sorting](#sorting)
+- [Resizable columns](#resizable-columns)
+- [Long names](#long-names)
+- [File extensions](#file-extensions)
+- [File icons](#file-icons)
+- [Name tooltips](#name-tooltips)
+- [Context menu](#context-menu)
+- [Programs inside archives](#programs-inside-archives)
+- [Selective previews](#selective-previews)
+  - [Per-format switches (the list of files)](#per-format-switches-the-list-of-files)
+  - [Embedded preview bitmaps](#embedded-preview-bitmaps)
+  - [E-book covers](#e-book-covers)
+  - [File types the FileLoader knows](#file-types-the-fileloader-knows)
+  - [Native application icons](#native-application-icons)
+  - [Thumbnail memory](#thumbnail-memory)
+  - [Thumbnails between runs](#thumbnails-between-runs)
+- [Shortcuts](#shortcuts)
+  - [Windows shortcuts (.lnk)](#windows-shortcuts-lnk)
+  - [Desktop entries (.desktop)](#desktop-entries-desktop)
+  - [macOS shortcuts and application bundles](#macos-shortcuts-and-application-bundles)
+  - [What the host sees](#what-the-host-sees)
+- [Selection info bar](#selection-info-bar)
+- [Files in use](#files-in-use)
+- [Remote folders](#remote-folders)
+  - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
+  - [Changing a remote folder](#changing-a-remote-folder)
+- [Folder listing prefetch](#folder-listing-prefetch)
+- [Hidden entries](#hidden-entries)
+- [Hidden-items notice](#hidden-items-notice)
+- [Hiding Details columns](#hiding-details-columns)
+- [Entry filter](#entry-filter)
+- [Ignored names](#ignored-names)
+- [Curated home folder](#curated-home-folder)
+- [Entry names](#entry-names)
+  - [Names in every script, and names that are not UTF-8](#names-in-every-script-and-names-that-are-not-utf-8)
+- [File type colours](#file-type-colours)
+  - [Programs are not libraries](#programs-are-not-libraries)
+  - [Caption ink](#caption-ink)
+  - [What the extension cannot say](#what-the-extension-cannot-say)
+- [Folder icons](#folder-icons)
+- [Favorite mark](#favorite-mark)
+- [Folder previews](#folder-previews)
+- [Selection access](#selection-access)
+- [Hover icon menu](#hover-icon-menu)
+  - [The hover follows the cursor, not the content](#the-hover-follows-the-cursor-not-the-content)
+- [File operations](#file-operations)
+  - [Delete: to the Trash, or permanently](#delete-to-the-trash-or-permanently)
+  - [Progress window (copy / move / delete)](#progress-window-copy--move--delete)
+  - [Activating files — running applications](#activating-files-—-running-applications)
+  - [Launch feedback — the busy pointer](#launch-feedback-—-the-busy-pointer)
+  - [Delete problems (locked / failing entries)](#delete-problems-locked--failing-entries)
+  - [Selection after a delete](#selection-after-a-delete)
+- [Watching the shown folder](#watching-the-shown-folder)
+- [Compressing and extracting](#compressing-and-extracting)
+- [Clipboard interop with other programs](#clipboard-interop-with-other-programs)
+  - [The operation dialog](#the-operation-dialog)
+  - [Name conflicts](#name-conflicts)
+  - [The summary at the end](#the-summary-at-the-end)
+- [Drag & drop](#drag--drop)
+  - [Drops from elsewhere](#drops-from-elsewhere)
+  - [Drag overlay](#drag-overlay)
+- [Keyboard](#keyboard)
+- [Directory scanning](#directory-scanning)
+- [Folder modifications](#folder-modifications)
+- [File list (search results)](#file-list-search-results)
+  - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
+- [Name filter (filter-as-you-type)](#name-filter-filter-as-you-type)
+- [File type filter (load / save dialogs)](#file-type-filter-load--save-dialogs)
+- [Callbacks](#callbacks)
+- [Styling](#styling)
+- [Demo](#demo)
 
 ## View types
 
@@ -27111,6 +27993,44 @@ FILE: Docs/UltraCanvas/UltraCanvasFinancialChart.md
 
 <!-- doc-check: std::shared_ptr<FinancialChartDataVector> GenerateSampleStockData(const std::string& symbol, int days); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+  - [Display Modes](#display-modes)
+- [Class Hierarchy](#class-hierarchy)
+- [Data Structures](#data-structures)
+  - [FinancialChartDataPoint](#financialchartdatapoint)
+  - [FinancialChartDataVector](#financialchartdatavector)
+- [Constructor](#constructor)
+- [Configuration Methods](#configuration-methods)
+  - [Chart Style Configuration](#chart-style-configuration)
+  - [Volume Panel Configuration](#volume-panel-configuration)
+  - [Moving Average Configuration](#moving-average-configuration)
+  - [Data Management](#data-management)
+- [Enumerations](#enumerations)
+  - [CandleDisplayStyle](#candledisplaystyle)
+- [Factory Functions](#factory-functions)
+  - [CreateFinancialChartElement](#createfinancialchartelement)
+  - [CreateFinancialChartWithData](#createfinancialchartwithdata)
+- [Usage Examples](#usage-examples)
+  - [Basic Chart Creation](#basic-chart-creation)
+  - [Loading and Displaying Data](#loading-and-displaying-data)
+  - [Customizing Appearance](#customizing-appearance)
+  - [Interactive Features](#interactive-features)
+  - [Complete Example Application](#complete-example-application)
+- [Rendering Pipeline](#rendering-pipeline)
+  - [Key Rendering Methods](#key-rendering-methods)
+- [Event Handling](#event-handling)
+- [Performance Considerations](#performance-considerations)
+- [Dependencies](#dependencies)
+- [Platform Support](#platform-support)
+- [Best Practices](#best-practices)
+- [Limitations](#limitations)
+- [Future Enhancements](#future-enhancements)
+- [Version History](#version-history)
+
 ## Overview
 
 The `UltraCanvasFinancialChartElement` is a sophisticated financial charting component within the UltraCanvas framework designed for displaying stock market, cryptocurrency, and forex data. It provides professional-grade OHLC (Open, High, Low, Close) candlestick charts with integrated volume visualization, moving averages, and interactive features.
@@ -27531,6 +28451,24 @@ spine, **cause categories** on the ribs, **causes** on the twigs, and optional
 **Last Modified:** 2026-08-07
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Class hierarchy](#class-hierarchy)
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+- [Designs](#designs)
+- [Layout](#layout)
+- [Palettes and color](#palettes-and-color)
+- [Style toggles](#style-toggles)
+- [Text handling](#text-handling)
+- [Interaction](#interaction)
+- [Geometry queries](#geometry-queries)
+- [Category presets](#category-presets)
+- [Text interchange](#text-interchange)
+- [Validation and queries](#validation-and-queries)
+- [Sample data](#sample-data)
+- [Not yet implemented](#not-yet-implemented)
+
 ## Class hierarchy
 
 ```
@@ -27819,6 +28757,38 @@ FILE: Docs/UltraCanvas/UltraCanvasFlowChartExamples.md
 
 **Version:** 2.2.1
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Node Management](#node-management)
+  - [Connection Management](#connection-management)
+  - [Styling & Theme](#styling--theme)
+  - [Interaction](#interaction)
+  - [Edit Modes](#edit-modes)
+  - [Callbacks](#callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Palette Class](#palette-class)
+- [Data Structures](#data-structures)
+  - [FlowChartNode](#flowchartnode)
+  - [FlowChartConnection](#flowchartconnection)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Pre-built Order Processing Chart](#pre-built-order-processing-chart)
+  - [Toolbar — Switching Edit Mode and Zoom](#toolbar-—-switching-edit-mode-and-zoom)
+  - [Grid + Snap-to-Grid Checkboxes](#grid--snap-to-grid-checkboxes)
+  - [Shape Palette — Click to Place](#shape-palette-—-click-to-place)
+  - [Live Editing of the Selected Node](#live-editing-of-the-selected-node)
+  - [Live Editing of the Selected Connection](#live-editing-of-the-selected-connection)
+  - [Adding a Sticky Note at Runtime](#adding-a-sticky-note-at-runtime)
+  - [Delete Selected and Clear All](#delete-selected-and-clear-all)
+- [Edit Mode Cheat-Sheet](#edit-mode-cheat-sheet)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -29016,6 +29986,22 @@ is drawn from the one above it. If your stages do not nest, reach for
 inverted pyramid, which looks like a funnel but still means "parts of a whole" —
 or for `UltraCanvasPopulationChart` or a plain bar chart.
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data](#data)
+  - [Derived metrics](#derived-metrics)
+- [Shape modes](#shape-modes)
+- [Scale modes](#scale-modes)
+- [Labels](#labels)
+- [Colour](#colour)
+- [Stacked funnels](#stacked-funnels)
+- [Analysis overlays](#analysis-overlays)
+- [Interaction](#interaction)
+- [Animation](#animation)
+- [Choosing the settings](#choosing-the-settings)
+- [Demo tabs](#demo-tabs)
+
 ## Quick start
 
 ```cpp
@@ -29287,6 +30273,36 @@ FILE: Docs/UltraCanvas/UltraCanvasGLSurfaceExamples.md
 <!-- doc-check: struct GLResources { unsigned int program = 0; unsigned int vao = 0; unsigned int vbo = 0; int modelViewLoc = -1; int projectionLoc = -1; int colorLoc = -1; bool initialized = false; void UploadCube(); void DrawCube(const float* modelView, const float* projection) const; };
 struct CubeState { Color clearColor = Color(30, 30, 40, 255); bool spinning = true; float rotationX = 0.0f; float rotationY = 0.0f; float rotationSpeed = 1.0f; };
 unsigned int CreateShaderProgram(); void ClearFrame(const Color& color); void MatrixPerspective(float* m, float fovY, float aspect, float zNear, float zFar); void MatrixIdentity(float* m); void MatrixTranslate(float* m, float x, float y, float z); void MatrixRotateX(float* m, float angle); void MatrixRotateY(float* m, float angle); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [GLSurfaceConfig](#glsurfaceconfig)
+  - [Render modes](#render-modes)
+  - [Callbacks](#callbacks)
+  - [RenderSurfaceInfo](#rendersurfaceinfo)
+  - [Rendering control](#rendering-control)
+  - [Context access](#context-access)
+  - [Surface dimensions](#surface-dimensions)
+  - [Factory functions](#factory-functions)
+- [Events / Callbacks](#events--callbacks)
+- [The 3D Showcase Demo](#the-3d-showcase-demo)
+- [Usage Examples](#usage-examples)
+  - [Application state](#application-state)
+  - [Configuring and creating the surface](#configuring-and-creating-the-surface)
+  - [Init callback — create GL resources](#init-callback-—-create-gl-resources)
+  - [Render callback — draw each frame](#render-callback-—-draw-each-frame)
+  - [Cleanup callback — release GL resources](#cleanup-callback-—-release-gl-resources)
+  - [Driving rotation from UltraCanvas widgets](#driving-rotation-from-ultracanvas-widgets)
+  - [OnDemand rendering pattern](#ondemand-rendering-pattern)
+- [Compositing and Performance Notes](#compositing-and-performance-notes)
+- [Best Practices](#best-practices)
+- [Platform Notes](#platform-notes)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -29693,6 +30709,22 @@ palette system modeled on common real-world Gantt styles.
 - Date helpers (header-only): `include/Plugins/Charts/UltraCanvasCalendarDate.h`
 - Demo: `Apps/DemoApp/UltraCanvasGanttChartExamples.cpp`
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Dates](#dates)
+- [Data model](#data-model)
+  - [Tasks](#tasks)
+  - [Dependencies](#dependencies)
+  - [Critical path](#critical-path)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+  - [Table columns](#table-columns)
+  - [Time scale](#time-scale)
+- [Interaction](#interaction)
+- [Element API summary](#element-api-summary)
+- [Demo page](#demo-page)
+
 ## Quick start
 
 ```cpp
@@ -29872,6 +30904,47 @@ FILE: Docs/UltraCanvas/UltraCanvasGaugeExamples.md
 ==============================================================================
 
 # UltraCanvasGauge Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Factory Function](#factory-function)
+  - [Gauge Modes](#gauge-modes)
+  - [Supporting Enumerations](#supporting-enumerations)
+  - [Data Structures](#data-structures)
+  - [Mode & Value](#mode--value)
+  - [Title & Unit](#title--unit)
+  - [Visual Style](#visual-style)
+  - [Colours](#colours)
+  - [Round-Gauge (CircularRing) Styling](#round-gauge-circularring-styling)
+  - [Ranges, Thresholds & Pointers](#ranges-thresholds--pointers)
+  - [Sub-Dial](#sub-dial)
+  - [Display Options](#display-options)
+  - [Digital Display & Clock](#digital-display--clock)
+  - [Stopwatch Controls](#stopwatch-controls)
+  - [Callbacks](#callbacks)
+- [Examples](#examples)
+  - [1. Analog Speedometer](#1-analog-speedometer)
+  - [2. Semicircular Gauge with Coloured Ranges](#2-semicircular-gauge-with-coloured-ranges)
+  - [3. Compass with a Sub-Dial](#3-compass-with-a-sub-dial)
+  - [4. Analog Clock (live)](#4-analog-clock-live)
+  - [5. Stopwatch with Start/Stop/Reset](#5-stopwatch-with-startstopreset)
+  - [6. Linear Progress Bar](#6-linear-progress-bar)
+  - [7. Vertical LED VU Meter](#7-vertical-led-vu-meter)
+  - [8. Multi-Pointer Bar](#8-multi-pointer-bar)
+  - [9. Linear Scale with Thresholds (Radio Tuner)](#9-linear-scale-with-thresholds-radio-tuner)
+  - [10. Round Gauge (CircularRing)](#10-round-gauge-circularring)
+  - [11. Battery](#11-battery)
+  - [12. Thermometer](#12-thermometer)
+  - [13. Cylinder](#13-cylinder)
+  - [14. Digital LED Panel](#14-digital-led-panel)
+  - [15. Digital Clock](#15-digital-clock)
+  - [16. Driving a Gauge from a Slider](#16-driving-a-gauge-from-a-slider)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -30499,6 +31572,54 @@ FILE: Docs/UltraCanvas/UltraCanvasGitGraphExamples.md
 # UltraCanvasGitGraph Documentation
 
 <!-- doc-check: std::string MyRelativeTime(int64_t when); std::string MyPatchFor(const std::string& sha, const std::string& path); std::string AskUserForBranchName(); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [GitGraphCommit](#gitgraphcommit)
+  - [GitGraphRef](#gitgraphref)
+  - [GitGraphFileChange / GitGraphAnnotation](#gitgraphfilechange--gitgraphannotation)
+  - [GitGraphStyle (selected fields)](#gitgraphstyle-selected-fields)
+- [Class Reference](#class-reference)
+  - [Constructor and factory](#constructor-and-factory)
+  - [Data](#data)
+  - [Authoring (teaching diagrams)](#authoring-teaching-diagrams)
+  - [Layout](#layout)
+  - [Style, selection, view and export](#style-selection-view-and-export)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [A git-flow swimlane diagram](#a-git-flow-swimlane-diagram)
+  - [The repository lane view](#the-repository-lane-view)
+  - [Loading a real repository](#loading-a-real-repository)
+  - [Per-commit changed-file boxes](#per-commit-changed-file-boxes)
+  - [Wiring callbacks to a status label](#wiring-callbacks-to-a-status-label)
+  - [Toolbar bindings](#toolbar-bindings)
+  - [Lazy loading a large history](#lazy-loading-a-large-history)
+  - [Reading a real repository](#reading-a-real-repository)
+  - [Mermaid import and export](#mermaid-import-and-export)
+  - [Filtering](#filtering)
+  - [Crossing reduction](#crossing-reduction)
+  - [Search](#search)
+  - [Commit table pane](#commit-table-pane)
+  - [Minimap](#minimap)
+  - [Time-proportional axis](#time-proportional-axis)
+  - [Collapsing linear runs](#collapsing-linear-runs)
+  - [Parallel rows](#parallel-rows)
+  - [Badges](#badges)
+  - [JSON export](#json-export)
+  - [Explicit lane ordering](#explicit-lane-ordering)
+  - [Diff pane](#diff-pane)
+  - [Drag to author](#drag-to-author)
+  - [Locating a commit on screen](#locating-a-commit-on-screen)
+- [Using the layout core on its own](#using-the-layout-core-on-its-own)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Performance Notes](#performance-notes)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -31268,6 +32389,42 @@ FILE: Docs/UltraCanvas/UltraCanvasGourceTreeExamples.md
 
 # UltraCanvasGourceTree Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [GourceFileInfo](#gourcefileinfo)
+  - [GourceNode](#gourcenode)
+  - [GourceLink](#gourcelink)
+  - [GourceStyle (selected fields)](#gourcestyle-selected-fields)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Node Management](#node-management)
+  - [Node State](#node-state)
+  - [Layout, Highlight, Theme](#layout-highlight-theme)
+  - [View Control](#view-control)
+  - [Layout Computation](#layout-computation)
+  - [Data Export](#data-export)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Building and configuring a project tree](#building-and-configuring-a-project-tree)
+  - [Wiring node callbacks to a status label](#wiring-node-callbacks-to-a-status-label)
+  - [Theme, layout, and highlight dropdowns](#theme-layout-and-highlight-dropdowns)
+  - [Zoom and expand-all buttons](#zoom-and-expand-all-buttons)
+  - [Highlighting recent vs. old files](#highlighting-recent-vs-old-files)
+  - [Max-depth slider with an "unlimited" checkbox](#max-depth-slider-with-an-unlimited-checkbox)
+  - [Exporting to SVG](#exporting-to-svg)
+  - [Generating a synthetic large tree for performance benchmarking](#generating-a-synthetic-large-tree-for-performance-benchmarking)
+  - [Adding nodes interactively from a form](#adding-nodes-interactively-from-a-form)
+- [Rendering Pipeline](#rendering-pipeline)
+- [Layout Modes](#layout-modes)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasGourceTree** is a Gource-style radial tree diagram for visualizing filesystems, storage devices, and other hierarchical data. Files are drawn as colored dots around their parent directory, directories form rings out from a root center, and file size is represented by a translucent halo around each file dot. Date-based highlight modes can fade old or recently-accessed files. Three layout modes (Static, Animated, Hybrid) trade off determinism vs. visual smoothness.
@@ -31887,6 +33044,24 @@ FILE: Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md
 # UltraCanvasGroupBox Documentation
 
 <!-- doc-check: UltraCanvasRadioGroup foodGroup; -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factory Functions](#factory-functions)
+  - [Key Methods](#key-methods)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic framed group](#basic-framed-group)
+  - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
+  - [Switch-activated section with an info icon](#switch-activated-section-with-an-info-icon)
+  - [Collapsible card](#collapsible-card)
+  - [Sections of a window as cards](#sections-of-a-window-as-cards)
+- [Demo](#demo)
 
 ## Overview
 
@@ -33115,6 +34290,20 @@ density grids, or audio **spectrograms** produced by an STFT in front of it.
 - Source: `Plugins/Charts/UltraCanvasHeatmapChart.cpp`
 - Base class: `UltraCanvasChartElementBase`
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+- [Value range and scaling](#value-range-and-scaling)
+- [Colour maps](#colour-maps)
+  - [Discrete colour levels](#discrete-colour-levels)
+  - [Diverging colour mapping](#diverging-colour-mapping)
+- [Cell shape and spacing](#cell-shape-and-spacing)
+- [Triangular masking](#triangular-masking)
+- [Orientation and render strategy](#orientation-and-render-strategy)
+- [Labels, titles, colour bar](#labels-titles-colour-bar)
+- [Using it for spectrograms](#using-it-for-spectrograms)
+
 ## Quick start
 
 ```cpp
@@ -33721,6 +34910,36 @@ double t0; double t1; double d0; double d1;
 UltraCanvasWindowBase* win; IRenderContext* ctx;
 std::shared_ptr<UltraCanvasImageElement> imageElement;
 -->
+
+## Contents
+
+- [Overview](#overview)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [UCImage (loading and saving the source image)](#ucimage-loading-and-saving-the-source-image)
+  - [UCImageSave::ImageExportOptions](#ucimagesaveimageexportoptions)
+  - [UltraCanvasImageElement (used for thumbnails)](#ultracanvasimageelement-used-for-thumbnails)
+  - [Codec table (file-local)](#codec-table-file-local)
+  - [CodecResult (per-codec output row)](#codecresult-per-codec-output-row)
+  - [Helpers (file-local)](#helpers-file-local)
+  - [CodecComparisonChartElement (the grouped bar chart, file-local)](#codeccomparisonchartelement-the-grouped-bar-chart-file-local)
+  - [PanelState (shared by every lambda of the page)](#panelstate-shared-by-every-lambda-of-the-page)
+- [Events / Callbacks](#events--callbacks)
+- [Test Modes (Pipeline Phases)](#test-modes-pipeline-phases)
+  - [Full Pipeline (encode + write + read + decode)](#full-pipeline-encode--write--read--decode)
+  - [Decompress + Draw](#decompress--draw)
+  - [Draw Only](#draw-only)
+- [Usage Examples](#usage-examples)
+  - [Driving the benchmark from a "Choose Image" handler](#driving-the-benchmark-from-a-choose-image-handler)
+  - [Encoding one codec and timing the round-trip](#encoding-one-codec-and-timing-the-round-trip)
+  - [Encoding with the bundled QOI path](#encoding-with-the-bundled-qoi-path)
+  - [Encoding with the bundled BMP path](#encoding-with-the-bundled-bmp-path)
+  - [Hooking thumbnail clicks to the 1:1 viewer](#hooking-thumbnail-clicks-to-the-11-viewer)
+  - [Live status updates per codec](#live-status-updates-per-codec)
+- [Why "Force Eager Decode" Matters](#why-force-eager-decode-matters)
+- [Best Practices](#best-practices)
+- [Codec Support Matrix](#codec-support-matrix)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -34398,6 +35617,44 @@ FILE: Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md
 ==============================================================================
 
 # UltraCanvasJitterPlotElement Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+  - [Fixed in 1.3.0](#fixed-in-130)
+- [Enumerations](#enumerations)
+- [Configuration Structs](#configuration-structs)
+  - [JitterCategoryData](#jittercategorydata)
+  - [BeeswarmPoint (Public Inner)](#beeswarmpoint-public-inner)
+- [Constructor](#constructor)
+- [Public Methods](#public-methods)
+  - [Jitter & Representation](#jitter--representation)
+  - [Point Appearance](#point-appearance)
+  - [Statistical Overlays](#statistical-overlays)
+  - [Axis & Layout](#axis--layout)
+  - [Grouping (Hue)](#grouping-hue)
+  - [Hybrid Overlay Settings](#hybrid-overlay-settings)
+  - [Beeswarm Configuration](#beeswarm-configuration)
+  - [Data Loading & Filtering](#data-loading--filtering)
+  - [Per-Point Size Encoding (1.3.0)](#per-point-size-encoding-130)
+  - [Per-Point Colour Encoding (1.3.0)](#per-point-colour-encoding-130)
+  - [Background / Grid / Axes](#background--grid--axes)
+  - [Overrides](#overrides)
+- [Factory Functions](#factory-functions)
+- [Usage Examples](#usage-examples)
+  - [Example 1: Brazil School Scores — Classic Gaussian Jitter](#example-1-brazil-school-scores-—-classic-gaussian-jitter)
+  - [Example 2: Brazil School Scores — Beeswarm Packing](#example-2-brazil-school-scores-—-beeswarm-packing)
+  - [Example 3: Continental Population (Simple Jitter)](#example-3-continental-population-simple-jitter)
+  - [Example 4: Market Capitalization — Logarithmic Y-Axis](#example-4-market-capitalization-—-logarithmic-y-axis)
+  - [Example 5: Hybrid Jitter + Box Plot Overlay (Interactive)](#example-5-hybrid-jitter--box-plot-overlay-interactive)
+  - [Example 6: Scientific Cross-Mean Markers (Publication Style)](#example-6-scientific-cross-mean-markers-publication-style)
+  - [Example 7: Raincloud Plot (Half-Violin + Jitter)](#example-7-raincloud-plot-half-violin--jitter)
+  - [Example 8: Bubble Beeswarm with a Diverging Colour Scale (1.3.0)](#example-8-bubble-beeswarm-with-a-diverging-colour-scale-130)
+- [Internal Pipeline](#internal-pipeline)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -35230,6 +36487,21 @@ real-world board styles.
 - Demo: `Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp`
 - Research & roadmap: [`UltraCanvasKanbanBoardProposal.md`](UltraCanvasKanbanBoardProposal.md)
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+  - [Columns](#columns)
+  - [Swimlanes](#swimlanes)
+  - [Cards](#cards)
+  - [History & flow metrics](#history--flow-metrics)
+- [Text definitions (Mermaid `kanban`)](#text-definitions-mermaid-kanban)
+- [JSON persistence](#json-persistence)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Factories](#factories)
+
 ## Quick start
 
 ```cpp
@@ -35769,6 +37041,38 @@ FILE: Docs/UltraCanvas/UltraCanvasLabelExamples.md
 ==============================================================================
 
 # UltraCanvasLabel Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Constructors](#constructors)
+- [LabelStyle](#labelstyle)
+  - [Predefined styles](#predefined-styles)
+  - [The theme and the label's variant](#the-theme-and-the-labels-variant)
+- [Methods](#methods)
+  - [Text](#text)
+  - [Style and font](#style-and-font)
+  - [From UltraCanvasUIElement](#from-ultracanvasuielement)
+  - [Text links](#text-links)
+  - [Inline Images](#inline-images)
+  - [Inline boxes](#inline-boxes)
+  - [Selectable text](#selectable-text)
+- [Event Callbacks](#event-callbacks)
+  - [Example Event Handling](#example-event-handling)
+- [Factory Functions](#factory-functions)
+- [Builder](#builder)
+- [Usage Examples](#usage-examples)
+  - [Basic label](#basic-label)
+  - [Header](#header)
+  - [Status indicators](#status-indicators)
+  - [Text that wraps](#text-that-wraps)
+  - [Rounded Corner Labels](#rounded-corner-labels)
+  - [A label that follows its text](#a-label-that-follows-its-text)
+  - [Label with a shadow](#label-with-a-shadow)
+- [Rendering](#rendering)
+  - [Where the text layout comes from](#where-the-text-layout-comes-from)
+- [Notes](#notes)
 
 ## Overview
 
@@ -36661,6 +37965,23 @@ on its **Layout** page (`Apps/DemoApp/UltraCanvasLayoutExamples.cpp`), whose
 second tab covers label placement for charts and diagrams
 ([UltraCanvasLabelPlacement.md](UltraCanvasLabelPlacement.md)).
 
+## Contents
+
+- [The pieces](#the-pieces)
+- [The constructor decides who sizes the element](#the-constructor-decides-who-sizes-the-element)
+- [A row: a toolbar](#a-row-a-toolbar)
+- [A column: a sidebar](#a-column-a-sidebar)
+- [A grid: tiles](#a-grid-tiles)
+- [Wrapping: cards that flow onto new lines](#wrapping-cards-that-flow-onto-new-lines)
+- [Gaps, padding and margins](#gaps-padding-and-margins)
+- [Alignment and stretching](#alignment-and-stretching)
+- [A form](#a-form)
+- [Nesting: an application shell](#nesting-an-application-shell)
+- [Changing the layout at run time](#changing-the-layout-at-run-time)
+- [Common mistakes](#common-mistakes)
+- [What replaced the old layout managers](#what-replaced-the-old-layout-managers)
+- [See also](#see-also)
+
 ## The pieces
 
 | You want | Write |
@@ -37092,6 +38413,14 @@ public and reusable anywhere a compact live meter is needed.
 
 Header: `include/UltraCanvasAudioRecorderElement.h`
 
+## Contents
+
+- [Creating](#creating)
+- [API](#api)
+- [Driving the meter](#driving-the-meter)
+- [Theming](#theming)
+- [Demo](#demo)
+
 ## Creating
 
 ```cpp
@@ -37161,6 +38490,47 @@ FILE: Docs/UltraCanvas/UltraCanvasLineChartElement.md
 ==============================================================================
 
 # UltraCanvasLineChartElement Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+  - [Visual Customization](#visual-customization)
+  - [Interactivity](#interactivity)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Public Methods](#public-methods)
+  - [Line Configuration](#line-configuration)
+  - [Data Point Configuration](#data-point-configuration)
+  - [Inherited Methods from Base Class](#inherited-methods-from-base-class)
+- [Usage Examples](#usage-examples)
+  - [Basic Line Chart Setup](#basic-line-chart-setup)
+  - [Advanced Configuration with Smoothing](#advanced-configuration-with-smoothing)
+  - [Dynamic Data Updates](#dynamic-data-updates)
+  - [Interactive Features Setup](#interactive-features-setup)
+- [Data Source Interface](#data-source-interface)
+  - [ChartDataPoint Structure](#chartdatapoint-structure)
+- [Rendering Pipeline](#rendering-pipeline)
+- [Mouse Interaction](#mouse-interaction)
+  - [Supported Events](#supported-events)
+  - [Tooltip Behavior](#tooltip-behavior)
+- [Performance Considerations](#performance-considerations)
+  - [Optimization Features](#optimization-features)
+  - [Best Practices](#best-practices)
+- [Factory Function](#factory-function)
+- [Integration with UltraCanvas](#integration-with-ultracanvas)
+  - [Container Hierarchy](#container-hierarchy)
+  - [Event Propagation](#event-propagation)
+- [Common Issues and Solutions](#common-issues-and-solutions)
+  - [Issue: Chart not displaying data](#issue-chart-not-displaying-data)
+  - [Issue: Tooltips not appearing](#issue-tooltips-not-appearing)
+  - [Issue: Smooth lines look incorrect](#issue-smooth-lines-look-incorrect)
+  - [Issue: Performance degradation with large datasets](#issue-performance-degradation-with-large-datasets)
+- [Related Classes](#related-classes)
+- [Version History](#version-history)
 
 ## Overview
 
@@ -37710,6 +39080,39 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 ==============================================================================
 
 # UltraCanvasListView Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Model / Delegate / Selection wiring](#model--delegate--selection-wiring)
+  - [Styling](#styling)
+  - [Column widths](#column-widths)
+  - [Scrolling](#scrolling)
+  - [Tooltips](#tooltips)
+- [Model Reference](#model-reference)
+  - [Data roles](#data-roles)
+  - [IListModel interface](#ilistmodel-interface)
+  - [UltraCanvasSimpleListModel (single column)](#ultracanvassimplelistmodel-single-column)
+  - [UltraCanvasMultiColumnListModel](#ultracanvasmulticolumnlistmodel)
+- [Delegate Reference](#delegate-reference)
+  - [IItemDelegate](#iitemdelegate)
+  - [UltraCanvasDefaultListDelegate](#ultracanvasdefaultlistdelegate)
+- [Selection Reference](#selection-reference)
+- [Events / Callbacks](#events--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Simple single-selection list](#simple-single-selection-list)
+  - [Multi-column list with header](#multi-column-list-with-header)
+  - [Styled list with alternating rows and multi-select](#styled-list-with-alternating-rows-and-multi-select)
+  - [A list on a section card](#a-list-on-a-section-card)
+  - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
+  - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -39084,6 +40487,29 @@ zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
 the House's competitive-assessment block. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
+## Contents
+
+- [Which element do I want?](#which-element-do-i-want)
+- [Header](#header)
+- [Class hierarchy](#class-hierarchy)
+- [The three primitives](#the-three-primitives)
+- [Shapes](#shapes)
+  - [The X shape](#the-x-shape)
+  - [The Y shape](#the-y-shape)
+  - [The House of Quality](#the-house-of-quality)
+  - [The form header band](#the-form-header-band)
+- [Relationship scales](#relationship-scales)
+- [Roll-ups](#roll-ups)
+- [Presentation](#presentation)
+- [Interaction](#interaction)
+- [Pan and zoom](#pan-and-zoom)
+- [Keyboard](#keyboard)
+- [Editing](#editing)
+- [Interchange](#interchange)
+- [Samples](#samples)
+- [Validation](#validation)
+- [See also](#see-also)
+
 ## Which element do I want?
 
 | You have | Use |
@@ -40422,6 +41848,14 @@ share by sector Marimekko, a product vs. region sales mix with percent labels
 and a cumulative X axis, and a Bar-Mekko cloud-provider revenue example, plus
 interactive controls for mode, labels, sorting and random data.
 
+## Contents
+
+- [Creating a chart](#creating-a-chart)
+- [Data model](#data-model)
+- [Configuration](#configuration)
+- [Interaction](#interaction)
+- [Notes](#notes)
+
 ## Creating a chart
 
 ```cpp
@@ -40538,6 +41972,17 @@ save the result so it survives a restart. It works together with two supporting
 pieces of infrastructure — a **command registry** and a **serializable menu
 layout** — that together form the "special way to organise menus" that makes menus
 reconfigurable.
+
+## Contents
+
+- [Why the extra infrastructure is needed](#why-the-extra-infrastructure-is-needed)
+- [1. Register commands](#1-register-commands)
+- [2. Describe the default layout](#2-describe-the-default-layout)
+- [3. Show the widget and wire the buttons](#3-show-the-widget-and-wire-the-buttons)
+  - [Layout of the widget](#layout-of-the-widget)
+- [4. Apply vs Save](#4-apply-vs-save)
+- [Persistence format](#persistence-format)
+- [Files](#files)
 
 ## Why the extra infrastructure is needed
 
@@ -40709,6 +42154,50 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 # UltraCanvasMenu Documentation
 
 <!-- doc-check: void OpenWithDefaultApplication(); void onToggleStandardToolbar(bool); void onToggleFormattingToolbar(bool); void onToggleDrawingToolbar(bool); void SetShowHiddenFiles(bool on); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Structure](#class-structure)
+  - [Main Classes](#main-classes)
+- [Menu Types](#menu-types)
+  - [MenuType Enumeration](#menutype-enumeration)
+  - [MenuOrientation](#menuorientation)
+- [Menu Items](#menu-items)
+  - [MenuItemType](#menuitemtype)
+  - [MenuItemData Structure](#menuitemdata-structure)
+  - [Factory Methods for Menu Items](#factory-methods-for-menu-items)
+- [Menu Styling](#menu-styling)
+  - [MenuStyle Structure](#menustyle-structure)
+  - [The Panel](#the-panel)
+  - [Pre-built Themes](#pre-built-themes)
+- [Core Methods](#core-methods)
+  - [Construction and Initialization](#construction-and-initialization)
+  - [Item Management](#item-management)
+  - [Display Control](#display-control)
+  - [Submenu Management](#submenu-management)
+  - [Event Callbacks](#event-callbacks)
+- [Menu Builder Pattern](#menu-builder-pattern)
+- [Event Handling](#event-handling)
+  - [Keyboard Navigation](#keyboard-navigation)
+- [Usage Examples](#usage-examples)
+  - [Creating a Menu Bar](#creating-a-menu-bar)
+  - [Creating a Context Menu](#creating-a-context-menu)
+  - [Creating Hierarchical Menus](#creating-hierarchical-menus)
+  - [Radio Indicator Shape](#radio-indicator-shape)
+  - [Checkbox Indicator Shape](#checkbox-indicator-shape)
+  - [Icon and Indicator Columns](#icon-and-indicator-columns)
+  - [Icon Colours](#icon-colours)
+  - [Custom Styling](#custom-styling)
+- [Animation Support](#animation-support)
+- [Performance Considerations](#performance-considerations)
+- [Platform-Specific Notes](#platform-specific-notes)
+- [Thread Safety](#thread-safety)
+- [Dependencies](#dependencies)
+- [Known Limitations](#known-limitations)
+- [Best Practices](#best-practices)
+- [Future Enhancements](#future-enhancements)
 
 ## Overview
 
@@ -41541,6 +43030,14 @@ modules › Ultra Message)
 
 ---
 
+## Contents
+
+- [1. What it shows](#1-what-it-shows)
+- [2. Quick start](#2-quick-start)
+- [3. API](#3-api)
+- [4. Threading and cost](#4-threading-and-cost)
+- [5. Rules kept](#5-rules-kept)
+
 ## 1. What it shows
 
 ```
@@ -41771,6 +43268,44 @@ FILE: Docs/UltraCanvas/UltraCanvasMindMapExamples.md
 ==============================================================================
 
 # UltraCanvasMindMap Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Header Include](#header-include)
+- [Quick start](#quick-start)
+- [Structures](#structures)
+  - [Spacing](#spacing)
+  - [Alignment (the infographic look)](#alignment-the-infographic-look)
+  - [Per-branch structure](#per-branch-structure)
+  - [Animated re-layout](#animated-re-layout)
+  - [Manual placement](#manual-placement)
+- [Styling](#styling)
+  - [Style by level](#style-by-level)
+  - [Branch colour cascade](#branch-colour-cascade)
+  - [Per-topic override](#per-topic-override)
+  - [Shapes](#shapes)
+  - [Shadows, dimming and a background layer](#shadows-dimming-and-a-background-layer)
+  - [Themes](#themes)
+- [Connectors](#connectors)
+  - [Attachment and labels](#attachment-and-labels)
+  - [Connector badges](#connector-badges)
+- [Node content](#node-content)
+  - [Callout cards](#callout-cards)
+  - [Application data](#application-data)
+  - [Numbering](#numbering)
+- [Relationships](#relationships)
+- [Collapse and navigation](#collapse-and-navigation)
+- [Editing](#editing)
+  - [Keyboard](#keyboard)
+  - [Mouse](#mouse)
+  - [Clipboard](#clipboard)
+- [Exchange](#exchange)
+  - [Interchange formats](#interchange-formats)
+- [Callbacks](#callbacks)
+- [Working with the model directly](#working-with-the-model-directly)
+- [Performance notes](#performance-notes)
+- [Demo](#demo)
 
 ## Overview
 
@@ -42385,6 +43920,17 @@ STL is documented separately in
 [UltraCanvasSTLElement.md](UltraCanvasSTLElement.md): its loader lives in the
 core library rather than in this plugin, because the Filer's thumbnails and the
 media viewer need one reader that is always present.
+
+## Contents
+
+- [Reading a file](#reading-a-file)
+- [What each format carries](#what-each-format-carries)
+- [Writing](#writing)
+  - [What each writer cannot carry](#what-each-writer-cannot-carry)
+- [Three things that surprise people](#three-things-that-surprise-people)
+- [Displaying a model](#displaying-a-model)
+- [Warnings](#warnings)
+- [See also](#see-also)
 
 ## Reading a file
 
@@ -43003,6 +44549,31 @@ FILE: Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md
 
 # UltraCanvasNestedAreaChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Hierarchy](#class-hierarchy)
+- [File Structure](#file-structure)
+- [Data Structures](#data-structures)
+  - [NestedAreaDataPoint Structure](#nestedareadatapoint-structure)
+  - [NestedAreaDataSource Class](#nestedareadatasource-class)
+  - [Enums](#enums)
+- [API Reference](#api-reference)
+  - [Construction](#construction)
+  - [Data Management](#data-management)
+  - [Configuration](#configuration)
+  - [Selection & Interaction](#selection--interaction)
+- [Usage Examples](#usage-examples)
+  - [Quick Start](#quick-start)
+  - [Rich Data Points](#rich-data-points)
+  - [Builder Pattern](#builder-pattern)
+  - [Interaction Callbacks](#interaction-callbacks)
+  - [Custom Colors](#custom-colors)
+- [How the Scaling Works](#how-the-scaling-works)
+- [Demo Application](#demo-application)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 The `UltraCanvasNestedAreaChart` is a chart component in the UltraCanvas framework for comparing the magnitude of a small set of values at a glance. Each value is drawn as a shape (square, circle, or rounded square) whose **area** is proportional to the value, and all shapes are layered on top of each other sharing a common anchor point. This makes relative size differences immediately visible — the classic "how big is X compared to Y" infographic.
@@ -43280,6 +44851,50 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
 ==============================================================================
 
 # UltraCanvasNodeDiagram Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [NodeHandle](#nodehandle)
+  - [NodeDiagramNode](#nodediagramnode)
+  - [NodeDiagramLink](#nodediagramlink)
+  - [NodeDiagramSizing (2.2.0)](#nodediagramsizing-220)
+  - [NodeDiagramGroup (2.2.0)](#nodediagramgroup-220)
+  - [NodeDiagramLegendConfig (2.2.0)](#nodediagramlegendconfig-220)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Node Management (Simple API)](#node-management-simple-api)
+  - [Handle Management](#handle-management)
+  - [Link Management](#link-management)
+  - [Layout](#layout)
+  - [Data-driven node sizing (2.2.0)](#data-driven-node-sizing-220)
+  - [Cluster containers (2.2.0)](#cluster-containers-220)
+  - [Color legend (2.2.0)](#color-legend-220)
+  - [Styling & Theme](#styling--theme)
+  - [Selection](#selection)
+  - [Viewport](#viewport)
+  - [Snap-to-Grid & Interaction](#snap-to-grid--interaction)
+  - [Minimap & Controls Overlay](#minimap--controls-overlay)
+  - [Label Measurement](#label-measurement)
+  - [Serialization](#serialization)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Simple API — Friends network with force-directed layout](#simple-api-—-friends-network-with-force-directed-layout)
+  - [Verbose API — Workflow editor with handles](#verbose-api-—-workflow-editor-with-handles)
+  - [Link styles showcase](#link-styles-showcase)
+  - [Multi-select with keyboard](#multi-select-with-keyboard)
+  - [JSON round-trip](#json-round-trip)
+  - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
+  - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
+  - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -44156,6 +45771,15 @@ rather than an Alert
 
 ---
 
+## Contents
+
+- [1. What a toast looks like](#1-what-a-toast-looks-like)
+- [2. Which notifications the host draws](#2-which-notifications-the-host-draws)
+- [3. What happens to a toast](#3-what-happens-to-a-toast)
+- [4. Using the host](#4-using-the-host)
+- [5. The window](#5-the-window)
+- [6. Notes](#6-notes)
+
 ## 1. What a toast looks like
 
 ```
@@ -44258,6 +45882,36 @@ FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
 # UltraCanvasPDF Documentation
 
 <!-- doc-check: std::unique_ptr<IPDFDocument> doc; std::unique_ptr<IPDFDocument> other; -->
+
+## Contents
+
+- [Overview](#overview)
+  - [Choosing a widget](#choosing-a-widget)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Quick Start: a minimal viewer](#quick-start-a-minimal-viewer)
+- [Class Reference: `UltraCanvasPDFView`](#class-reference-ultracanvaspdfview)
+  - [Document](#document)
+  - [Navigation](#navigation)
+  - [Zoom](#zoom)
+  - [Search](#search)
+  - [Images](#images)
+  - [Text selection & export](#text-selection--export)
+  - [Layout & style](#layout--style)
+  - [Editing passthroughs](#editing-passthroughs)
+  - [Callbacks](#callbacks)
+  - [Built-in interaction](#built-in-interaction)
+- [Example: the full demo toolbar](#example-the-full-demo-toolbar)
+  - [Search with up/down navigation](#search-with-updown-navigation)
+- [Class Reference: `IPDFDocument` (headless engine)](#class-reference-ipdfdocument-headless-engine)
+  - [I/O & metadata](#io--metadata)
+  - [Rendering](#rendering)
+  - [Text & search](#text--search)
+  - [Images](#images-1)
+  - [Page operations](#page-operations)
+  - [Content editing & annotations](#content-editing--annotations)
+- [Implementation Notes](#implementation-notes)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -44915,6 +46569,31 @@ Last Modified: 2026-07-31
 
 ---
 
+## Contents
+
+- [What it is](#what-it-is)
+- [Quick start](#quick-start)
+- [The model](#the-model)
+  - [Fields](#fields)
+  - [Field kinds](#field-kinds)
+  - [Sub-fields](#sub-fields)
+  - [Layers](#layers)
+- [Layout modes](#layout-modes)
+  - [Fields that wrap](#fields-that-wrap)
+  - [Proportional scaling](#proportional-scaling)
+- [Rulers and gutters](#rulers-and-gutters)
+- [Annotations](#annotations)
+- [Colour and theme](#colour-and-theme)
+- [Field values](#field-values)
+- [Interaction](#interaction)
+- [Validation](#validation)
+- [Text specs (Mermaid-compatible)](#text-specs-mermaid-compatible)
+- [Built-in templates](#built-in-templates)
+- [Legend](#legend)
+- [Using the layout engine directly](#using-the-layout-engine-directly)
+- [Not yet implemented (Phase 2+)](#not-yet-implemented-phase-2)
+- [See also](#see-also)
+
 ## What it is
 
 A packet diagram answers three questions at a glance: *what fields exist*,
@@ -45367,6 +47046,18 @@ FILE: Docs/UltraCanvas/UltraCanvasPagination.md
 ==============================================================================
 
 # UltraCanvas Pagination Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Modes (`PaginationMode`)](#modes-paginationmode)
+- [Quick Start](#quick-start)
+- [Windowing](#windowing)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Keyboard](#keyboard)
+- [Notes](#notes)
 
 ## Overview
 
@@ -45964,6 +47655,17 @@ FILE: Docs/UltraCanvas/UltraCanvasParallelCoordinateChart.md
 
 # UltraCanvasParallelCoordinateChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Reading the chart](#reading-the-chart)
+- [Basic usage](#basic-usage)
+- [Normalisation](#normalisation)
+- [Lines and colour](#lines-and-colour)
+- [Interaction](#interaction)
+- [Named properties](#named-properties)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 `UltraCanvasParallelCoordinateChartElement` renders multi-dimensional records
@@ -46102,6 +47804,31 @@ FILE: Docs/UltraCanvas/UltraCanvasParliamentDiagram.md
 **Version:** 1.0.0
 **Last Modified:** 2026-09-10
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Layouts](#layouts)
+- [Header Include](#header-include)
+- [Data Model](#data-model)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Party Management](#party-management)
+  - [Layout](#layout)
+  - [Appearance](#appearance)
+  - [Selection & Interaction](#selection--interaction)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Sample Data](#sample-data)
+- [Usage Examples](#usage-examples)
+  - [Basic Hemicycle](#basic-hemicycle)
+  - [Horseshoe and Circle](#horseshoe-and-circle)
+  - [Westminster Benches](#westminster-benches)
+  - [Coalition Builder](#coalition-builder)
+  - [Hover and Selection Callbacks](#hover-and-selection-callbacks)
+- [Demo Application](#demo-application)
+- [Notes & Best Practices](#notes--best-practices)
 
 ## Overview
 
@@ -46425,6 +48152,30 @@ FILE: Docs/UltraCanvas/UltraCanvasPertChartExamples.md
 
 **Version:** 1.2.1
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Construction](#construction)
+  - [Activity Management](#activity-management)
+  - [Dependency Management](#dependency-management)
+  - [Groups (team color-coding)](#groups-team-color-coding)
+  - [Schedule Analysis](#schedule-analysis)
+  - [Design Options](#design-options)
+  - [Flexible Node Templates](#flexible-node-templates)
+  - [Palette Options](#palette-options)
+  - [Layout & View](#layout--view)
+  - [Interaction & Callbacks](#interaction--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Minimal network with critical path](#minimal-network-with-critical-path)
+  - [Teams, three-point estimates and a probability read-out](#teams-three-point-estimates-and-a-probability-read-out)
+  - [Switching designs and palettes at runtime](#switching-designs-and-palettes-at-runtime)
+- [Demo](#demo)
+- [Notes & Limitations](#notes--limitations)
 
 ## Overview
 
@@ -46792,6 +48543,41 @@ FILE: Docs/UltraCanvas/UltraCanvasPieChartExamples.md
 ==============================================================================
 
 # UltraCanvasPieChartElement Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Enumerations](#enumerations)
+  - [LabelPosition](#labelposition)
+  - [LabelContent](#labelcontent)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Public Methods](#public-methods)
+  - [Palette & Borders](#palette--borders)
+  - [Donut / Ring](#donut--ring)
+  - [Explosion](#explosion)
+  - [Per-Slice Height (3D Extrusion)](#per-slice-height-3d-extrusion)
+  - [Labels](#labels)
+  - [Fills](#fills)
+  - [3D Mode](#3d-mode)
+  - [Tooltips](#tooltips)
+  - [Export](#export)
+- [Factory Function](#factory-function)
+- [Usage Examples](#usage-examples)
+  - [Sample Data Setup](#sample-data-setup)
+  - [Example 1: Market Share Pie Chart (Auto-Labeled)](#example-1-market-share-pie-chart-auto-labeled)
+  - [Example 2: Budget Allocation with Outside Labels and Leader Lines](#example-2-budget-allocation-with-outside-labels-and-leader-lines)
+  - [Example 3: 3D Donut with Highlighted Slice and Radial Gradients](#example-3-3d-donut-with-highlighted-slice-and-radial-gradients)
+  - [Example 4: Stylized Pie Chart with Bold Labels](#example-4-stylized-pie-chart-with-bold-labels)
+  - [Wiring Live Controls (Donut / 3D / Gradients / Explosion)](#wiring-live-controls-donut--3d--gradients--explosion)
+- [Data Source Interface](#data-source-interface)
+- [Slice Cache and Hit Testing](#slice-cache-and-hit-testing)
+- [Rendering Pipeline](#rendering-pipeline)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -47259,6 +49045,34 @@ FILE: Docs/UltraCanvas/UltraCanvasPolarChart.md
 
 # UltraCanvasPolarChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Series management](#series-management)
+  - [Angular axis](#angular-axis)
+  - [Radial axis](#radial-axis)
+  - [Grid, background and bands](#grid-background-and-bands)
+  - [Series layout and styling](#series-layout-and-styling)
+  - [Legend and interaction](#legend-and-interaction)
+  - [Coordinate helpers](#coordinate-helpers)
+- [Factory Functions](#factory-functions)
+- [Usage Examples](#usage-examples)
+  - [Polar scatter with a numeric angle axis](#polar-scatter-with-a-numeric-angle-axis)
+  - [Stacked polar columns (Nightingale rose)](#stacked-polar-columns-nightingale-rose)
+  - [Tolerance bands behind a categorical line](#tolerance-bands-behind-a-categorical-line)
+  - [A 270° fan with a donut hole](#a-270°-fan-with-a-donut-hole)
+  - [Dual angle axis](#dual-angle-axis)
+- [Rendering Order](#rendering-order)
+- [Interaction Details](#interaction-details)
+- [Notes and Limitations](#notes-and-limitations)
+- [Demo](#demo)
+
 ## Overview
 
 The `UltraCanvasPolarChart` is the general-purpose polar coordinate chart of the UltraCanvas framework. Every observation is an (angle, radius) pair: the angular axis positions the point around the circle, the radial axis positions it away from the centre. One element covers the whole family of round plots that share that coordinate system — polar scatter, polar line and spline, polar area, and polar columns (the Nightingale rose / stacked polar column chart).
@@ -47622,6 +49436,37 @@ FILE: Docs/UltraCanvas/UltraCanvasPopulationChartExamples.md
 ==============================================================================
 
 # UltraCanvasPopulationChart Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Configuration Structs](#configuration-structs)
+  - [PopulationAgeGroup](#populationagegroup)
+  - [PopulationLegendItem](#populationlegenditem)
+  - [PopulationChartUtils::DemographicStats](#populationchartutilsdemographicstats)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+- [Public Methods](#public-methods)
+  - [Data Management](#data-management)
+  - [Chart Configuration](#chart-configuration)
+  - [Axis Configuration](#axis-configuration)
+  - [Color Configuration](#color-configuration)
+  - [Display Options](#display-options)
+  - [Legend](#legend)
+  - [Layout](#layout)
+  - [Interaction](#interaction)
+  - [Aggregate Data Access](#aggregate-data-access)
+  - [Rendering & Events (Overrides)](#rendering--events-overrides)
+- [Utility Functions](#utility-functions)
+- [Usage Examples](#usage-examples)
+  - [Example 1: Germany Population Pyramid (2024)](#example-1-germany-population-pyramid-2024)
+  - [Example 2: Russia Population Pyramid (2024)](#example-2-russia-population-pyramid-2024)
+  - [Putting it Together: Side-by-Side Comparison](#putting-it-together-side-by-side-comparison)
+- [Internal Rendering Pipeline](#internal-rendering-pipeline)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -48244,6 +50089,29 @@ higher tiers are smaller, rarer or more selective.
 - Base class: `UltraCanvasChartElementBase` (`include/Plugins/Charts/UltraCanvasChartElementBase.h`)
 - Demo: `Apps/DemoApp/UltraCanvasPyramidChartExamples.cpp` (Charts → Pyramid Diagram)
 
+## Contents
+
+  - [Which chart do you actually want?](#which-chart-do-you-actually-want)
+- [Quick start](#quick-start)
+- [Data](#data)
+  - [Which end is the apex?](#which-end-is-the-apex)
+  - [Derived metrics](#derived-metrics)
+- [Shape modes](#shape-modes)
+  - [The apex](#the-apex)
+  - [3D](#3d)
+- [Scale modes](#scale-modes)
+- [Colour](#colour)
+- [Labels](#labels)
+  - [Text inside a tier](#text-inside-a-tier)
+- [Callouts](#callouts)
+- [Badges](#badges)
+- [Stacked pyramids](#stacked-pyramids)
+- [Analysis overlays](#analysis-overlays)
+- [Interaction](#interaction)
+- [Animation](#animation)
+- [Choosing the settings](#choosing-the-settings)
+- [Demo tabs](#demo-tabs)
+
 ### Which chart do you actually want?
 
 Three elements in this repository get called "pyramid" and they are not
@@ -48669,6 +50537,35 @@ FILE: Docs/UltraCanvas/UltraCanvasQRCodeExamples.md
 ==============================================================================
 
 # UltraCanvasQRCode Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Enums](#enums)
+  - [Configuration Structures](#configuration-structures)
+  - [Content & Configuration](#content--configuration)
+  - [Styling](#styling)
+  - [Logo](#logo)
+  - [State & Inspection](#state--inspection)
+  - [Export](#export)
+  - [Free Functions — `QRCodeUtils`](#free-functions-—-qrcodeutils)
+- [Examples](#examples)
+  - [1. Basic QR Code from a URL](#1-basic-qr-code-from-a-url)
+  - [2. Choosing an Error-Correction Level](#2-choosing-an-error-correction-level)
+  - [3. Custom Colours, Size, and Module Style](#3-custom-colours-size-and-module-style)
+  - [4. A Foreground Gradient](#4-a-foreground-gradient)
+  - [5. Embedding a Centre Logo](#5-embedding-a-centre-logo)
+  - [6. Tuning the Style via `QRStyleConfig`](#6-tuning-the-style-via-qrstyleconfig)
+  - [7. Structured Content Helpers](#7-structured-content-helpers)
+  - [8. Exporting to Image and SVG](#8-exporting-to-image-and-svg)
+  - [9. Generating Without a Widget](#9-generating-without-a-widget)
+  - [10. Decoding an Image](#10-decoding-an-image)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -49130,6 +51027,33 @@ FILE: Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md
 **Last Modified:** 2026-07-25
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Chart Type & Configuration](#chart-type--configuration)
+  - [Data Management](#data-management)
+  - [Visual Toggles](#visual-toggles)
+  - [Interaction Settings](#interaction-settings)
+  - [Selection Management](#selection-management)
+  - [Quadrant Utilities](#quadrant-utilities)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Sample Data Generators](#sample-data-generators)
+- [Usage Examples](#usage-examples)
+  - [Basic SWOT Analysis](#basic-swot-analysis)
+  - [BCG Matrix with Bubble Sizes](#bcg-matrix-with-bubble-sizes)
+  - [Fully Custom Quadrants](#fully-custom-quadrants)
+  - [Custom Data Range and Division Point](#custom-data-range-and-division-point)
+  - [Selection, Callbacks and Statistics](#selection-callbacks-and-statistics)
+  - [Switching Styles at Runtime](#switching-styles-at-runtime)
+- [Demo Application](#demo-application)
+- [Notes & Best Practices](#notes--best-practices)
+
 ## Overview
 
 `UltraCanvasQuadrantChart` renders interactive 2x2 strategic-analysis matrices. Data points are placed on a two-axis plane that is divided into four quadrants by a configurable center point. The element ships with presets for the most common business frameworks — **SWOT**, **BCG matrix**, **Ansoff growth matrix**, **Eisenhower decision matrix**, **Gartner-style magic quadrant**, **risk matrix** (probability vs impact) and **priority matrix** (impact vs effort) — plus a fully custom mode where every quadrant label, color and axis caption is user-defined.
@@ -49435,6 +51359,52 @@ FILE: Docs/UltraCanvas/UltraCanvasRadarChartElement.md
 ==============================================================================
 
 # UltraCanvasRadarChartElement Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Definition](#class-definition)
+  - [Header Information](#header-information)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Data Model](#data-model)
+  - [RadarChartAxis](#radarchartaxis)
+  - [RadarChartSeries](#radarchartseries)
+- [Axis Management](#axis-management)
+  - [AddAxis](#addaxis)
+  - [SetAxisProperties](#setaxisproperties)
+  - [SetAxisRange](#setaxisrange)
+  - [GetAxisCount](#getaxiscount)
+- [Series Management](#series-management)
+  - [AddSeries](#addseries)
+  - [SetSeriesProperties](#setseriesproperties)
+  - [SetSeriesPointDisplay](#setseriespointdisplay)
+  - [ClearSeries](#clearseries)
+  - [GetSeriesCount](#getseriescount)
+- [Visual Configuration](#visual-configuration)
+  - [SetGridDisplay](#setgriddisplay)
+  - [SetAxisLabels](#setaxislabels)
+  - [SetValueLabels](#setvaluelabels)
+  - [SetRadarOrientation](#setradarorientation)
+  - [SetLegendDisplay](#setlegenddisplay)
+  - [Accessors](#accessors)
+- [Animation](#animation)
+  - [SetAnimationEnabled](#setanimationenabled)
+  - [StartAnimation](#startanimation)
+- [Core Methods](#core-methods)
+  - [Render](#render)
+  - [RenderChart](#renderchart)
+  - [HandleChartMouseMove](#handlechartmousemove)
+- [Factory Function](#factory-function)
+- [Usage Example](#usage-example)
+  - [Live Data Replacement](#live-data-replacement)
+- [Coordinate System](#coordinate-system)
+- [Inherited Features from UltraCanvasChartElementBase](#inherited-features-from-ultracanvaschartelementbase)
+- [Rendering Pipeline](#rendering-pipeline)
+- [Best Practices](#best-practices)
+- [Limitations](#limitations)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -49804,6 +51774,27 @@ FILE: Docs/UltraCanvas/UltraCanvasRadialBarChartExamples.md
 
 # UltraCanvasRadialBarChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Data Management](#data-management)
+  - [Geometry](#geometry)
+  - [Value Scaling](#value-scaling)
+  - [Style](#style)
+  - [Guides, Center & Labels](#guides-center--labels)
+  - [Interaction](#interaction)
+- [Usage Examples](#usage-examples)
+  - [Multi-Sensor Dashboard](#multi-sensor-dashboard)
+  - [Radial Line (Spoke) Style](#radial-line-spoke-style)
+  - [Fan With Manual Range and Arrow Tips](#fan-with-manual-range-and-arrow-tips)
+- [Demo](#demo)
+
 ## Overview
 
 The `UltraCanvasRadialBarChart` is a radial "ray" chart component within the UltraCanvas framework. Values are drawn as rays radiating outward from a base ring, with ray length proportional to the value. Series (e.g. sensors, continents, teams) occupy contiguous angular sectors separated by configurable gaps — the classic multi-sensor / time-series radial dashboard. It complements `UltraCanvasSunburstChart`: a sunburst encodes values as **angular spans across hierarchy rings**, while the radial bar chart encodes them as **ray lengths**.
@@ -49952,6 +51943,19 @@ FILE: Docs/UltraCanvas/UltraCanvasRating.md
 ==============================================================================
 
 # UltraCanvas Rating Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Symbol sources](#symbol-sources)
+  - [Built-in shapes](#built-in-shapes)
+  - [Custom vector (SVG) files](#custom-vector-svg-files)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Keyboard](#keyboard)
+- [Notes](#notes)
 
 ## Overview
 
@@ -50415,6 +52419,57 @@ FILE: Docs/UltraCanvas/UltraCanvasRequirementDiagramExamples.md
 # UltraCanvasRequirementDiagram Documentation
 
 <!-- doc-check: std::vector<RequirementNode> LoadNodes(); std::vector<RequirementRelation> LoadRelations(); -->
+
+## Contents
+
+- [Overview](#overview)
+  - [Model and view](#model-and-view)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Nodes](#nodes)
+  - [Adding nodes](#adding-nodes)
+  - [Node kinds and default shapes](#node-kinds-and-default-shapes)
+  - [Requirement specialisations](#requirement-specialisations)
+  - [Detail levels](#detail-levels)
+- [Compartment templates](#compartment-templates)
+- [Relationships](#relationships)
+  - [Notation](#notation)
+  - [Hiding a relationship](#hiding-a-relationship)
+  - [Routing](#routing)
+- [Model queries and integrity](#model-queries-and-integrity)
+  - [Building a whole diagram at once](#building-a-whole-diagram-at-once)
+- [Layout](#layout)
+- [Callouts](#callouts)
+- [Categories, colours and the legend](#categories-colours-and-the-legend)
+- [Palettes and style](#palettes-and-style)
+- [Title banner](#title-banner)
+- [Viewport and interaction](#viewport-and-interaction)
+  - [Selection API](#selection-api)
+  - [Callbacks](#callbacks)
+- [Endpoint semantics](#endpoint-semantics)
+- [Hierarchical id numbering](#hierarchical-id-numbering)
+- [Compartment notation](#compartment-notation)
+- [Coverage analysis](#coverage-analysis)
+- [Trace highlighting and filters](#trace-highlighting-and-filters)
+- [Expand / collapse](#expand--collapse)
+- [Layout modes and routing](#layout-modes-and-routing)
+- [Editing](#editing)
+- [Diagram frame](#diagram-frame)
+- [Copy semantics](#copy-semantics)
+- [Search](#search)
+- [Traceability matrix](#traceability-matrix)
+- [Package regions, overlays and decorations](#package-regions-overlays-and-decorations)
+- [Force-directed layout](#force-directed-layout)
+- [Serialization](#serialization)
+  - [Mermaid](#mermaid)
+  - [CSV](#csv)
+  - [ReqIF](#reqif)
+- [Complete example — HybridSUV requirement tree](#complete-example-—-hybridsuv-requirement-tree)
+- [Live demo](#live-demo)
+- [Notes and limitations](#notes-and-limitations)
+- [Related Documentation](#related-documentation)
 
 ## Overview
 
@@ -51363,6 +53418,48 @@ state of the selection** rather than two asterisks in a buffer.
 - Editing core (UI-free): `UltraCanvas/include/UltraCanvasRichDocumentEditor.h`
 - Document model: `UltraCanvas/include/UltraCanvasRichDocument.h`
 - Design notes: [`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md)
+
+## Contents
+
+- [When to use it (and when not to)](#when-to-use-it-and-when-not-to)
+- [Three layers](#three-layers)
+- [Minimal use](#minimal-use)
+- [Opening and saving documents](#opening-and-saving-documents)
+  - [From HTML, and back](#from-html-and-back)
+  - [Quote levels](#quote-levels)
+- [Building the toolbar](#building-the-toolbar)
+- [The editing surface](#the-editing-surface)
+  - [Character formatting](#character-formatting)
+  - [Paragraph formatting](#paragraph-formatting)
+  - [Named styles](#named-styles)
+  - [Contents, captions, bookmarks and cross-references](#contents-captions-bookmarks-and-cross-references)
+  - [Comments](#comments)
+  - [Tracked changes](#tracked-changes)
+  - [Tables](#tables)
+  - [Pictures: selecting, resizing, alt text](#pictures-selecting-resizing-alt-text)
+  - [Floating pictures](#floating-pictures)
+  - [Check lists](#check-lists)
+  - [Formulas](#formulas)
+  - [Structure](#structure)
+- [Keyboard](#keyboard)
+- [Autoformat as you type](#autoformat-as-you-type)
+- [Input methods](#input-methods)
+- [Right-to-left text](#right-to-left-text)
+- [Fonts for other scripts](#fonts-for-other-scripts)
+- [Accessibility](#accessibility)
+- [Drag and drop](#drag-and-drop)
+- [Find and replace](#find-and-replace)
+- [Spell checking](#spell-checking)
+- [Undo](#undo)
+- [Clipboard](#clipboard)
+- [Style](#style)
+- [Paragraph layout from documents](#paragraph-layout-from-documents)
+- [Read-only rendering](#read-only-rendering)
+- [Page view](#page-view)
+- [PDF and printing](#pdf-and-printing)
+- [Zoom and scrolling sideways](#zoom-and-scrolling-sideways)
+- [What is not implemented yet](#what-is-not-implemented-yet)
+- [Related](#related)
 
 ## When to use it (and when not to)
 
@@ -52410,6 +54507,15 @@ directions.
 (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`), which reads every `.stl` file in
 `media/3D/STL`.
 
+## Contents
+
+- [What is supported](#what-is-supported)
+- [Displaying a model](#displaying-a-model)
+- [Reading and writing meshes](#reading-and-writing-meshes)
+- [Through FileLoader](#through-fileloader)
+- [Build](#build)
+- [See also](#see-also)
+
 ## What is supported
 
 | Feature | Support |
@@ -52561,6 +54667,13 @@ parser - was never in the build and was removed in 2026-10; the demo page
 that carried its name had been showing SVG files through
 `UltraCanvasImageElement` all along.)
 
+## Contents
+
+- [Showing an SVG](#showing-an-svg)
+- [Rasterizing an SVG](#rasterizing-an-svg)
+- [Reading and writing SVG (`UltraCanvasVectorConverter.h`)](#reading-and-writing-svg-ultracanvasvectorconverterh)
+- [See Also](#see-also)
+
 ## Showing an SVG
 
 ```cpp
@@ -52631,6 +54744,32 @@ FILE: Docs/UltraCanvas/UltraCanvasSWOTDiagramExamples.md
 **Version:** 1.0.0
 **Last Modified:** 2026-07-28
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Design Presets](#design-presets)
+- [Header Include](#header-include)
+- [Data Model](#data-model)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Design & Theme](#design--theme)
+  - [Quadrant Configuration](#quadrant-configuration)
+  - [Data Management](#data-management)
+  - [Visual Toggles](#visual-toggles)
+  - [Selection & Interaction](#selection--interaction)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Sample Data](#sample-data)
+- [Usage Examples](#usage-examples)
+  - [Basic SWOT Diagram (reference infographic style)](#basic-swot-diagram-reference-infographic-style)
+  - [Classic Matrix with Axis Captions](#classic-matrix-with-axis-captions)
+  - [Custom Titles, Colors and Center Text](#custom-titles-colors-and-center-text)
+  - [Selection Callbacks](#selection-callbacks)
+  - [Switching Designs at Runtime](#switching-designs-at-runtime)
+- [Demo Application](#demo-application)
+- [Notes & Best Practices](#notes--best-practices)
 
 ## Overview
 
@@ -52908,6 +55047,35 @@ FILE: Docs/UltraCanvas/UltraCanvasSankeyExamples.md
 **Version:** 1.3.1
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Node Management](#node-management)
+  - [Link Management](#link-management)
+  - [Data I/O](#data-io)
+  - [Layout Configuration](#layout-configuration)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Function](#factory-function)
+- [Data Structures](#data-structures)
+  - [SankeyNode](#sankeynode)
+  - [SankeyLink](#sankeylink)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Energy Flow Example](#energy-flow-example)
+  - [Hosting the Diagram in a Container](#hosting-the-diagram-in-a-container)
+  - [Live Configuration via Controls](#live-configuration-via-controls)
+  - [Financial Flow Example](#financial-flow-example)
+  - [Web Traffic Flow Example](#web-traffic-flow-example)
+  - [Manual Column Ordering and Custom Theme](#manual-column-ordering-and-custom-theme)
+  - [Custom Builder Tab (Add Link at Runtime)](#custom-builder-tab-add-link-at-runtime)
+  - [Performance Test (Random Diagram)](#performance-test-random-diagram)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -53510,6 +55678,48 @@ FILE: Docs/UltraCanvas/UltraCanvasScatterPlotElement.md
 ==============================================================================
 
 # UltraCanvasScatterPlotElement Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Declaration](#class-declaration)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Enumerations](#enumerations)
+  - [PointShape](#pointshape)
+  - [TrendLineStyle](#trendlinestyle)
+- [Configuration Methods](#configuration-methods)
+  - [Point Appearance](#point-appearance)
+  - [Correlation / Trend Line](#correlation--trend-line)
+  - [Per-Point Colors](#per-point-colors)
+  - [Data Management](#data-management)
+  - [Chart Properties](#chart-properties)
+  - [Interactive Features](#interactive-features)
+- [Factory Function](#factory-function)
+- [Rendering Implementation](#rendering-implementation)
+  - [RenderChart Method](#renderchart-method)
+  - [Point Shape Rendering](#point-shape-rendering)
+- [Mouse Interaction](#mouse-interaction)
+  - [HandleChartMouseMove](#handlechartmousemove)
+- [Usage Example](#usage-example)
+  - [Basic Setup](#basic-setup)
+  - [Dynamic Shape Cycling](#dynamic-shape-cycling)
+  - [Advanced Customization](#advanced-customization)
+- [Best Practices](#best-practices)
+  - [Performance Optimization](#performance-optimization)
+  - [Data Preparation](#data-preparation)
+  - [Empty Data and Undefined Fits](#empty-data-and-undefined-fits)
+- [Integration with Chart Framework](#integration-with-chart-framework)
+  - [Inherited Features](#inherited-features)
+  - [Coordinate System](#coordinate-system)
+  - [Event Handling](#event-handling)
+- [Typical Use Cases](#typical-use-cases)
+- [Limitations and Considerations](#limitations-and-considerations)
+- [Related Components](#related-components)
+- [Version History](#version-history)
 
 ## Overview
 
@@ -54123,6 +56333,36 @@ FILE: Docs/UltraCanvas/UltraCanvasScrollbarExamples.md
 
 # UltraCanvasScrollbar Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factory Functions](#factory-functions)
+  - [Enumerations](#enumerations)
+  - [ScrollbarStyle Structure](#scrollbarstyle-structure)
+  - [Style Presets](#style-presets)
+  - [Orientation](#orientation)
+  - [Style](#style)
+  - [Scroll Parameters](#scroll-parameters)
+  - [Scroll Position](#scroll-position)
+  - [Scroll Operations](#scroll-operations)
+  - [Scrollability and Visibility](#scrollability-and-visibility)
+  - [State Access](#state-access)
+  - [Callback](#callback)
+  - [Rendering and Events](#rendering-and-events)
+- [Examples](#examples)
+  - [1. Preset Styles](#1-preset-styles)
+  - [2. Colour Options](#2-colour-options)
+  - [3. Corner Radius / End Shape](#3-corner-radius--end-shape)
+  - [4. Custom SVG Handle](#4-custom-svg-handle)
+  - [5. Horizontal Orientation](#5-horizontal-orientation)
+  - [6. Reacting to Scroll Changes](#6-reacting-to-scroll-changes)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasScrollbar** is a standalone scrollbar control with full interaction support: thumb dragging, track paging, mouse-wheel scrolling, and optional arrow buttons. It works in either vertical or horizontal orientation and is configured through a single `ScrollbarStyle` struct that controls dimensions, colours (with separate normal / hover / pressed states), corner radius / end shape, an optional custom image (PNG or SVG) thumb handle, and scrolling behaviour. Several built-in style presets are provided, and a `std::function<void(int)> onScrollChange` callback reports live position changes.
@@ -54576,6 +56816,38 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
 
 # UltraCanvasSegmentedControl Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Functions](#factory-functions)
+  - [Segment Management](#segment-management)
+  - [Segment Properties](#segment-properties)
+  - [Selection — Single Mode](#selection-—-single-mode)
+  - [Selection — Multiple / Toggle Modes](#selection-—-multiple--toggle-modes)
+  - [Selection Mode](#selection-mode)
+  - [Styling](#styling)
+- [Enumerations](#enumerations)
+  - [SegmentWidthMode](#segmentwidthmode)
+  - [SegmentSelectionMode](#segmentselectionmode)
+- [SegmentedControlStyle Structure](#segmentedcontrolstyle-structure)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Usage Examples](#usage-examples)
+  - [Basic Bordered Style (Single Selection)](#basic-bordered-style-single-selection)
+  - [iOS-Style (Modern Preset)](#ios-style-modern-preset)
+  - [Flat Style (Spaced Segments)](#flat-style-spaced-segments)
+  - [Bar Style with Custom Colors](#bar-style-with-custom-colors)
+  - [Toggle Mode (Text Formatting Toolbar)](#toggle-mode-text-formatting-toolbar)
+  - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
+  - [Disabled Segments](#disabled-segments)
+  - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
+- [Keyboard Navigation](#keyboard-navigation)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
@@ -54983,6 +57255,24 @@ message indices, never to coordinates, and the layout is a single walk down
 the message list.
 
 ---
+
+## Contents
+
+- [1. The model](#1-the-model)
+  - [Lifelines](#lifelines)
+  - [Message kinds](#message-kinds)
+  - [Activations are computed, not drawn by hand](#activations-are-computed-not-drawn-by-hand)
+  - [Message numbering](#message-numbering)
+  - [Combined fragments](#combined-fragments)
+  - [Notes](#notes)
+  - [Maintenance and validation](#maintenance-and-validation)
+- [2. Text export](#2-text-export)
+- [3. The element](#3-the-element)
+  - [Themes](#themes)
+  - [View and interaction](#view-and-interaction)
+  - [Layout behaviour worth knowing](#layout-behaviour-worth-knowing)
+- [4. Samples](#4-samples)
+- [See also](#see-also)
 
 ## 1. The model
 
@@ -55493,6 +57783,44 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
 
 <!-- doc-check: void updateProgressBar(float value); void rotateObject(float angle); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Functionality](#core-functionality)
+- [Class Definition](#class-definition)
+- [Enumerations](#enumerations)
+  - [SliderStyle](#sliderstyle)
+  - [SliderValueDisplay](#slidervaluedisplay)
+  - [SliderOrientation](#sliderorientation)
+  - [SliderState](#sliderstate)
+  - [SliderHandleShape](#sliderhandleshape)
+- [Visual Style Structure](#visual-style-structure)
+- [Constructor](#constructor)
+- [Key Methods](#key-methods)
+  - [Value Management](#value-management)
+  - [Style Configuration](#style-configuration)
+  - [Appearance Customization](#appearance-customization)
+  - [Range Mode (two handles)](#range-mode-two-handles)
+- [Event Callbacks](#event-callbacks)
+- [Factory Functions](#factory-functions)
+- [Keyboard Controls](#keyboard-controls)
+- [Usage Examples](#usage-examples)
+  - [Basic Horizontal Slider](#basic-horizontal-slider)
+  - [Vertical Slider with Percentage](#vertical-slider-with-percentage)
+  - [Circular Knob Control](#circular-knob-control)
+  - [Custom Styled Slider](#custom-styled-slider)
+  - [Progress Bar Style](#progress-bar-style)
+- [Rendering Details](#rendering-details)
+- [Advanced Features](#advanced-features)
+  - [Step Snapping](#step-snapping)
+  - [Custom Value Formatting](#custom-value-formatting)
+  - [Range Validation](#range-validation)
+- [Integration Notes](#integration-notes)
+- [Dependencies](#dependencies)
+- [Performance Considerations](#performance-considerations)
+- [See Also](#see-also)
+
 ## Overview
 
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.
@@ -55989,6 +58317,47 @@ FILE: Docs/UltraCanvas/UltraCanvasSlideshowExamples.md
 ==============================================================================
 
 # UltraCanvasSlideshow Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [SlideshowSlide Structure](#slideshowslide-structure)
+  - [Configuration](#configuration)
+  - [Slide Management](#slide-management)
+  - [Playback Control](#playback-control)
+  - [Events](#events)
+  - [Overrides](#overrides)
+- [Enumerations](#enumerations)
+  - [SlideshowFadeStyle](#slideshowfadestyle)
+  - [SlideshowTextMode](#slideshowtextmode)
+  - [SlideshowInfoLayout](#slideshowinfolayout)
+  - [SlideshowGapFill](#slideshowgapfill)
+  - [SlideshowIndicatorShape](#slideshowindicatorshape)
+  - [SlideshowIndicatorEdge](#slideshowindicatoredge)
+- [Data Structures](#data-structures)
+  - [SlideshowIndicatorStyle](#slideshowindicatorstyle)
+  - [SlideshowConfig](#slideshowconfig)
+- [Examples](#examples)
+  - [Basic Timed Slideshow with an Info Panel](#basic-timed-slideshow-with-an-info-panel)
+  - [Bars Indicator](#bars-indicator)
+  - [Dots Indicator](#dots-indicator)
+  - [Progress Bar](#progress-bar)
+  - [Story Bars](#story-bars)
+  - [Counter](#counter)
+  - [Thumbnails](#thumbnails)
+  - [Labels](#labels)
+  - [Choosing the Indicator Edge](#choosing-the-indicator-edge)
+  - [Manual Navigation Controls](#manual-navigation-controls)
+  - [Overlay Layout with a Scrim](#overlay-layout-with-a-scrim)
+  - [Image Fitting and Gap Fill](#image-fitting-and-gap-fill)
+  - [Static Text Mode](#static-text-mode)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -56761,6 +59130,14 @@ signal into a 2D time × frequency magnitude matrix and renders it as a heatmap
 - Element: `include/Plugins/Charts/UltraCanvasSpectrogram.h` / `Plugins/Charts/UltraCanvasSpectrogram.cpp`
 - FFT backend: vendored [KissFFT](https://github.com/mborgerding/kissfft) (BSD-3-Clause) under `libspecific/FFT/`
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Defaults](#defaults)
+- [STFT parameters](#stft-parameters)
+- [Using the STFT engine directly](#using-the-stft-engine-directly)
+- [Notes](#notes)
+
 ## Quick start
 
 ```cpp
@@ -57323,6 +59700,21 @@ FILE: Docs/UltraCanvas/UltraCanvasSpinner.md
 
 # UltraCanvas Spinner / SpinBox Control Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Value Modes (`SpinnerValueType`)](#value-modes-spinnervaluetype)
+  - [Layouts (`SpinnerLayout`)](#layouts-spinnerlayout)
+  - [Button Glyphs (`SpinnerButtonGlyph`)](#button-glyphs-spinnerbuttonglyph)
+  - [Behaviour](#behaviour)
+- [Class Definition](#class-definition)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Keyboard Reference](#keyboard-reference)
+- [Notes](#notes)
+
 ## Overview
 
 The **UltraCanvasSpinner** is the UltraCanvas control for selecting a value with
@@ -57623,6 +60015,24 @@ FILE: Docs/UltraCanvas/UltraCanvasSplitPane.md
 # UltraCanvas Split Pane Documentation
 
 <!-- doc-check: void SaveLayout(const std::vector<double>& weights); void Log(const std::string& line); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Pane management](#pane-management)
+- [Styling the splitter](#styling-the-splitter)
+- [Splitter handle](#splitter-handle)
+  - [Image handles](#image-handles)
+- [Action icons on the split line](#action-icons-on-the-split-line)
+  - [Icon API](#icon-api)
+  - [Icon styling](#icon-styling)
+  - [Behaviour](#behaviour)
+- [Callbacks](#callbacks)
+- [Nesting](#nesting)
+- [Notes](#notes)
+- [Demo](#demo)
 
 ## Overview
 
@@ -57947,6 +60357,44 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 # UltraCanvasSpreadsheet Documentation
 
 <!-- doc-check: int MyTextMetrics(const std::string& text, const CellFont& font); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors and Factory](#constructors-and-factory)
+  - [Cell Access (workbook-level convenience)](#cell-access-workbook-level-convenience)
+  - [Sheet Management](#sheet-management)
+  - [Selection and Navigation](#selection-and-navigation)
+  - [Formatting (applies to current selection)](#formatting-applies-to-current-selection)
+  - [Rows, Columns, Merge, and Freeze](#rows-columns-merge-and-freeze)
+  - [Clipboard, Undo/Redo, Formula Engine](#clipboard-undoredo-formula-engine)
+  - [Sorting](#sorting)
+  - [Auto-Fill](#auto-fill)
+  - [File Operations](#file-operations)
+  - [View Settings](#view-settings)
+  - [Callbacks](#callbacks)
+  - [SpreadsheetCell](#spreadsheetcell)
+  - [NumberFormat factories (`UltraCanvasSpreadsheetTypes.h`)](#numberformat-factories-ultracanvasspreadsheettypesh)
+  - [Addresses and Ranges](#addresses-and-ranges)
+- [Examples](#examples)
+  - [1. Create a Spreadsheet Element](#1-create-a-spreadsheet-element)
+  - [2. Seed Sample Data with Formatting](#2-seed-sample-data-with-formatting)
+  - [3. Formulas and Recalculation](#3-formulas-and-recalculation)
+  - [4. Open a Spreadsheet File (.ods / .csv)](#4-open-a-spreadsheet-file-ods--csv)
+  - [5. Import CSV with Explicit Options](#5-import-csv-with-explicit-options)
+  - [6. Save: ODS Directly, CSV via Export Dialog](#6-save-ods-directly-csv-via-export-dialog)
+  - [7. Working with Multiple Sheets](#7-working-with-multiple-sheets)
+  - [8. Reading Cell Values Back](#8-reading-cell-values-back)
+- [Formula language and functions](#formula-language-and-functions)
+- [Column widths](#column-widths)
+- [Cell formatting menu](#cell-formatting-menu)
+- [Fill handle](#fill-handle)
+- [Sorting a selection from the header](#sorting-a-selection-from-the-header)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -58960,6 +61408,18 @@ FILE: Docs/UltraCanvas/UltraCanvasStepper.md
 
 # UltraCanvas Stepper Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Design choices (all configurable)](#design-choices-all-configurable)
+- [States](#states)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Custom (SVG) markers](#custom-svg-markers)
+- [Key API](#key-api)
+- [Keyboard](#keyboard)
+- [Notes](#notes)
+
 ## Overview
 
 **UltraCanvasStepper** is a progress / wizard control: a sequence of numbered or
@@ -59098,6 +61558,32 @@ FILE: Docs/UltraCanvas/UltraCanvasSunburstChartExamples.md
 ==============================================================================
 
 # UltraCanvasSunburstChart Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+  - [SunburstNode](#sunburstnode)
+- [Enumerations](#enumerations)
+  - [SunburstLabelContent](#sunburstlabelcontent)
+  - [SunburstLabelOrientation](#sunburstlabelorientation)
+  - [SunburstShadeMode](#sunburstshademode)
+- [Public API](#public-api)
+  - [Data Management](#data-management)
+  - [Geometry](#geometry)
+  - [Colors & Borders](#colors--borders)
+  - [Center](#center)
+  - [Labels](#labels)
+  - [Interaction](#interaction)
+- [Usage Examples](#usage-examples)
+  - [Basic Three-Level Sunburst](#basic-three-level-sunburst)
+  - [Path-Based Construction](#path-based-construction)
+  - [Two-Level Grouped Factory](#two-level-grouped-factory)
+  - [Partial-Sweep Fan With Explicit Branch Colors](#partial-sweep-fan-with-explicit-branch-colors)
+- [Demo](#demo)
 
 ## Overview
 
@@ -59564,6 +62050,14 @@ through one API whatever platform the application runs on. The DemoApp shows
 them all live under *ULTRA OS modules → System dialogs*
 (`Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp`).
 
+## Contents
+
+- [Two implementations, one call](#two-implementations-one-call)
+- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs-—-ultracanvasfileloader)
+- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog-—-ultracanvasnativedialogs--iodevicemanager)
+- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs-—-ultracanvasdialogmanager)
+- [See also](#see-also)
+
 ## Two implementations, one call
 
 Every dialog below comes in two forms, and the application picks with one
@@ -59679,6 +62173,54 @@ FILE: Docs/UltraCanvas/UltraCanvasTabExamples.md
 ==============================================================================
 
 # UltraCanvasTabbedContainer Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Features](#core-features)
+  - [Enhanced Dropdown Features](#enhanced-dropdown-features)
+- [Class Definition](#class-definition)
+- [Enumerations](#enumerations)
+  - [TabPosition](#tabposition)
+  - [TabStyle](#tabstyle)
+  - [TabCloseMode](#tabclosemode)
+  - [OverflowDropdownPosition](#overflowdropdownposition)
+  - [NewTabButtonPosition](#newtabbuttonposition)
+  - [NewTabButtonShape](#newtabbuttonshape)
+- [TabData Structure](#tabdata-structure)
+- [Public Methods](#public-methods)
+  - [Construction and Initialization](#construction-and-initialization)
+  - [Tab Management](#tab-management)
+  - [Tab Properties](#tab-properties)
+  - [Container Configuration](#container-configuration)
+  - [Query Methods](#query-methods)
+- [Event Callbacks](#event-callbacks)
+- [Styling Properties](#styling-properties)
+  - [Color Properties](#color-properties)
+  - [Layout Properties](#layout-properties)
+  - [Dragging a tab to another place](#dragging-a-tab-to-another-place)
+- [Factory Functions](#factory-functions)
+  - [CreateTabbedContainerWithDropdown](#createtabbedcontainerwithdropdown)
+  - [CreateTabbedContainer](#createtabbedcontainer)
+- [Usage Examples](#usage-examples)
+  - [Basic Tab Container](#basic-tab-container)
+  - [Advanced Configuration with Dropdown](#advanced-configuration-with-dropdown)
+  - [Nested Tabs Example](#nested-tabs-example)
+  - [Pill Style (TabStyle::Pill)](#pill-style-tabstylepill)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Event Flow](#event-flow)
+  - [Tab Selection](#tab-selection)
+  - [Tab Closure](#tab-closure)
+  - [Dropdown Search](#dropdown-search)
+- [Rendering Details](#rendering-details)
+- [Performance Considerations](#performance-considerations)
+- [Best Practices](#best-practices)
+- [Migration from Previous Versions](#migration-from-previous-versions)
+  - [From v1.5.x to v1.6.0](#from-v15x-to-v160)
+- [Thread Safety](#thread-safety)
+- [Dependencies](#dependencies)
+- [Platform Support](#platform-support)
 
 ## Overview
 
@@ -60454,6 +62996,52 @@ FILE: Docs/UltraCanvas/UltraCanvasTextAreaExamples.md
 ==============================================================================
 
 # UltraCanvasTextArea Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Key Features](#key-features)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+- [Core Properties](#core-properties)
+  - [TextAreaStyle Structure](#textareastyle-structure)
+  - [TokenStyle Structure](#tokenstyle-structure)
+- [Public Methods](#public-methods)
+  - [Text Manipulation](#text-manipulation)
+  - [Cursor Movement](#cursor-movement)
+  - [Selection Management](#selection-management)
+  - [Clipboard Operations](#clipboard-operations)
+  - [Syntax Highlighting](#syntax-highlighting)
+  - [Property Setters](#property-setters)
+  - [Styling](#styling)
+  - [Theme Application](#theme-application)
+  - [Scrolling](#scrolling)
+- [Callbacks](#callbacks)
+- [Event Handling](#event-handling)
+  - [Keyboard Events](#keyboard-events)
+  - [Mouse Events](#mouse-events)
+  - [Input Method Composition](#input-method-composition)
+- [Usage Example](#usage-example)
+- [Advanced Features](#advanced-features)
+  - [Custom Syntax Highlighting](#custom-syntax-highlighting)
+  - [CSS Highlighting](#css-highlighting)
+  - [Constructs Spanning Lines](#constructs-spanning-lines)
+  - [Single Selection](#single-selection)
+  - [Performance Optimization](#performance-optimization)
+- [Integration with Other Components](#integration-with-other-components)
+- [Spell Checking](#spell-checking)
+  - [Options](#options)
+  - [Supplying your own context menu](#supplying-your-own-context-menu)
+  - [Reading and applying results](#reading-and-applying-results)
+  - [API](#api)
+- [Character Range Geometry](#character-range-geometry)
+- [Links in Markdown mode](#links-in-markdown-mode)
+- [Math in Markdown mode](#math-in-markdown-mode)
+- [Notes and Best Practices](#notes-and-best-practices)
+- [Related Components](#related-components)
+- [Platform-Specific Notes](#platform-specific-notes)
+- [Version History](#version-history)
 
 ## Overview
 The **UltraCanvasTextArea** is an advanced multi-line text editing control within the UltraCanvas framework, designed for sophisticated text manipulation with features including syntax highlighting, line numbers, selection management, and extensive customization options.
@@ -61432,6 +64020,80 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 ==============================================================================
 
 # UltraCanvasTextInput Control Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+  - [Core Capabilities](#core-capabilities)
+  - [Visual Features](#visual-features)
+- [Class Definition](#class-definition)
+  - [Header File Location](#header-file-location)
+  - [Namespace](#namespace)
+- [Constructor](#constructor)
+- [Input Types](#input-types)
+  - [TextInputType Enum](#textinputtype-enum)
+  - [Setting Input Type](#setting-input-type)
+- [Text Management](#text-management)
+  - [Basic Text Operations](#basic-text-operations)
+  - [Text Properties](#text-properties)
+  - [Text and UTF-8](#text-and-utf-8)
+- [Validation System](#validation-system)
+  - [ValidationRule Structure](#validationrule-structure)
+  - [Predefined Validation Rules](#predefined-validation-rules)
+  - [Using Validation](#using-validation)
+  - [ValidationResult Structure](#validationresult-structure)
+  - [Validation States](#validation-states)
+- [Text Formatting](#text-formatting)
+  - [TextFormatter Structure](#textformatter-structure)
+  - [Predefined Formatters](#predefined-formatters)
+  - [Using Formatters](#using-formatters)
+- [Selection and Cursor Management](#selection-and-cursor-management)
+  - [Selection Operations](#selection-operations)
+  - [Clipboard](#clipboard)
+  - [Cursor Operations](#cursor-operations)
+- [Event Handling](#event-handling)
+  - [Keyboard Events](#keyboard-events)
+  - [Mouse Events](#mouse-events)
+  - [Input Method Composition](#input-method-composition)
+  - [Event Callbacks](#event-callbacks)
+- [Styling System](#styling-system)
+  - [TextInputStyle Structure](#textinputstyle-structure)
+  - [Predefined Styles](#predefined-styles)
+  - [Applying Styles](#applying-styles)
+- [Undo/Redo System](#undoredo-system)
+  - [Operations](#operations)
+- [Clear Button](#clear-button)
+- [Auto-completion](#auto-completion)
+- [Password Reveal ("Show Password")](#password-reveal-show-password)
+  - [In-field eye button](#in-field-eye-button)
+  - [Explicit "Show password" flag](#explicit-show-password-flag)
+  - [API](#api)
+- [Factory Functions](#factory-functions)
+  - [Convenience Creation Functions](#convenience-creation-functions)
+- [Builder Pattern](#builder-pattern)
+  - [TextInputBuilder](#textinputbuilder)
+- [Usage Examples](#usage-examples)
+  - [Basic Text Input](#basic-text-input)
+  - [Email Input with Validation](#email-input-with-validation)
+  - [Password Input](#password-input)
+  - [Phone Number Input](#phone-number-input)
+  - [Search Field](#search-field)
+  - [Custom Validation](#custom-validation)
+- [Performance Considerations](#performance-considerations)
+  - [Text Width Caching](#text-width-caching)
+  - [Scrolling for Long Text](#scrolling-for-long-text)
+  - [Event Optimization](#event-optimization)
+- [Thread Safety](#thread-safety)
+- [Integration with UltraCanvas Framework](#integration-with-ultracanvas-framework)
+  - [Rendering System](#rendering-system)
+  - [Event System](#event-system)
+  - [Focus Management](#focus-management)
+- [Best Practices](#best-practices)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+- [Version History](#version-history)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -62454,6 +65116,25 @@ FILE: Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md
 
 # UltraCanvas Text Rendering Settings Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Header Include](#header-include)
+- [API Reference](#api-reference)
+- [Antialias Modes](#antialias-modes)
+- [Hint Styles](#hint-styles)
+- [Hint Metrics](#hint-metrics)
+- [Events / Callbacks](#events--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Reading the current value into a dropdown](#reading-the-current-value-into-a-dropdown)
+  - [Wiring the antialias dropdown](#wiring-the-antialias-dropdown)
+  - [Hint style dropdown](#hint-style-dropdown)
+  - [Hint metrics dropdown](#hint-metrics-dropdown)
+  - [Building a preview that re-renders on change](#building-a-preview-that-re-renders-on-change)
+- [Best Practices](#best-practices)
+- [Thread Safety](#thread-safety)
+- [See Also](#see-also)
+
 ## Overview
 
 UltraCanvas exposes the Cairo/Pango text rendering pipeline through a small set of global, process-wide settings: **antialiasing mode**, **font hinting style**, and **hint metrics**. These three settings control how every glyph is rasterized — from "no antialiasing, no hinting" (pixel-blocky, fastest) to "subpixel antialiasing with full hinting" (sharpest body text on LCD displays).
@@ -62862,6 +65543,24 @@ FILE: Docs/UltraCanvas/UltraCanvasTickerBoard.md
 
 # UltraCanvasTickerBoard Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Data Model](#data-model)
+- [Basic Usage](#basic-usage)
+  - [A crawling message](#a-crawling-message)
+  - [Re-pricing while it rolls](#re-pricing-while-it-rolls)
+- [Motion](#motion)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Accessibility](#accessibility)
+- [Quote formatting](#quote-formatting)
+- [API Reference](#api-reference)
+- [Demo](#demo)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasTickerBoard` is the **ticker board**: a strip of items - a label,
@@ -63128,6 +65827,19 @@ FILE: Docs/UltraCanvas/UltraCanvasTimePicker.md
 ==============================================================================
 
 # UltraCanvas Time Picker Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [The `UCTime` value type](#the-uctime-value-type)
+  - [Format tokens (`UCTime::Format`)](#format-tokens-uctimeformat)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [The clock-face dial (`TimePickerPopupStyle::Clock`)](#the-clock-face-dial-timepickerpopupstyleclock)
+- [Keyboard & Mouse](#keyboard--mouse)
+- [Notes](#notes)
 
 ## Overview
 
@@ -63484,6 +66196,24 @@ graph — it is the stakeholder view, not the working schedule.
 **Last Modified:** 2026-07-31
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Class hierarchy](#class-hierarchy)
+- [Quick start](#quick-start)
+- [Dates](#dates)
+- [Data model](#data-model)
+  - [Building data](#building-data)
+- [Lane packing](#lane-packing)
+- [Lane modes: packed or swimlanes](#lane-modes-packed-or-swimlanes)
+- [Axis, scale and view](#axis-scale-and-view)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Geometry queries](#geometry-queries)
+- [Using TimeAxis on its own](#using-timeaxis-on-its-own)
+- [Sample data](#sample-data)
+- [Not yet implemented](#not-yet-implemented)
+
 ## Class hierarchy
 
 ```
@@ -63805,6 +66535,23 @@ the presentation timeline rather than a date-accurate schedule.
 **Version:** 1.0.0
 **Last Modified:** 2026-07-30
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Class hierarchy](#class-hierarchy)
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+  - [Managing items](#managing-items)
+- [Designs](#designs)
+- [Layout options](#layout-options)
+  - [Even vs. proportional placement](#even-vs-proportional-placement)
+- [Palettes and color](#palettes-and-color)
+- [Style](#style)
+- [Text handling](#text-handling)
+- [Interaction](#interaction)
+- [Geometry queries](#geometry-queries)
+- [Sample data](#sample-data)
+- [Not yet implemented](#not-yet-implemented)
 
 ## Class hierarchy
 
@@ -64208,6 +66955,41 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 ==============================================================================
 
 # UltraCanvasToolbar Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Configuration](#configuration)
+  - [Item Management](#item-management)
+  - [Item Badges](#item-badges)
+  - [Convenience Methods](#convenience-methods)
+  - [Tool Groups](#tool-groups)
+  - [Auto-Hide](#auto-hide)
+  - [Drag and Drop](#drag-and-drop)
+- [Enumerations](#enumerations)
+  - [ToolbarOrientation](#toolbarorientation)
+  - [ToolbarPosition](#toolbarposition)
+  - [ToolbarStyle](#toolbarstyle)
+  - [ToolbarOverflowMode](#toolbaroverflowmode)
+  - [ToolbarIconSize](#toolbariconsize)
+- [ToolbarAppearance Structure](#toolbarappearance-structure)
+- [Items are widgets](#items-are-widgets)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Preset Factories](#preset-factories)
+- [Usage Examples](#usage-examples)
+  - [Standard Horizontal Toolbar (Builder)](#standard-horizontal-toolbar-builder)
+  - [Toolbar with Dropdowns and Toggles](#toolbar-with-dropdowns-and-toggles)
+  - [Flat Style Toolbar](#flat-style-toolbar)
+  - [Vertical Sidebar Toolbar](#vertical-sidebar-toolbar)
+  - [Ribbon-Style Toolbar (Grouped)](#ribbon-style-toolbar-grouped)
+  - [Badges and Reordering — a Taskbar](#badges-and-reordering-—-a-taskbar)
+- [Implementation Notes](#implementation-notes)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -64757,6 +67539,21 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 **Last Modified:** 2026-10-05  
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Basic Usage](#basic-usage)
+  - [Including the Header](#including-the-header)
+  - [Automatic tooltips](#automatic-tooltips)
+  - [Showing a tooltip manually](#showing-a-tooltip-manually)
+- [TooltipContent Reference](#tooltipcontent-reference)
+- [TooltipStyle Reference](#tooltipstyle-reference)
+  - [Presets](#presets)
+  - [Soft shadow](#soft-shadow)
+- [Manager API Reference](#manager-api-reference)
+- [Rendering Integration Notes](#rendering-integration-notes)
+- [Dependencies](#dependencies)
+
 ## Overview
 
 `UltraCanvasTooltipManager` is the framework-wide tooltip system. It shows a
@@ -65066,6 +67863,34 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeMapExamples.md
 **Version:** 1.1.0
 **Last Modified:** 2026-08-31
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Mouse interaction](#mouse-interaction)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Data Management](#data-management)
+  - [Layout & Style Configuration](#layout--style-configuration)
+  - [Navigation](#navigation)
+  - [Selection & Search](#selection--search)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Function](#factory-function)
+- [Data Structures](#data-structures)
+  - [TreeMapNode](#treemapnode)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Basic Hierarchical Treemap](#basic-hierarchical-treemap)
+  - [Cycling Layout Algorithms](#cycling-layout-algorithms)
+  - [Cycling Visual Styles](#cycling-visual-styles)
+  - [Cycling Color Schemes](#cycling-color-schemes)
+  - [Toggling Labels and Values](#toggling-labels-and-values)
+  - [Reset to Default Configuration](#reset-to-default-configuration)
+- [Tiling Algorithms](#tiling-algorithms)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -65409,6 +68234,53 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 # UltraCanvasTreeView Documentation
 
 <!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Class Architecture](#class-architecture)
+  - [Main Classes](#main-classes)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [TreeNodeIcon Structure](#treenodeicon-structure)
+  - [TreeNodeData Structure](#treenodedata-structure)
+  - [Columnar Layout: `UltraCanvasColumnsTreeView`](#columnar-layout-ultracanvascolumnstreeview)
+  - [Sorting Modes](#sorting-modes)
+- [API Reference](#api-reference)
+  - [Constructor](#constructor)
+  - [Tree Structure Management](#tree-structure-management)
+  - [Selection Management](#selection-management)
+  - [Expansion Management](#expansion-management)
+  - [Filtering](#filtering)
+  - [Visual Properties](#visual-properties)
+  - [Check Flags (Checkable Nodes)](#check-flags-checkable-nodes)
+  - [Scroll-to-Top Button](#scroll-to-top-button)
+  - [Measuring the Tree](#measuring-the-tree)
+  - [Color Properties](#color-properties)
+  - [Event Callbacks](#event-callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic Tree Creation](#basic-tree-creation)
+  - [File Explorer Example](#file-explorer-example)
+  - [Event Handling](#event-handling)
+  - [Using TreeViewBuilder](#using-treeviewbuilder)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Mouse Interaction](#mouse-interaction)
+  - [Click Behaviors](#click-behaviors)
+  - [Expand/Collapse Button](#expandcollapse-button)
+  - [Check Flag](#check-flag)
+  - [Scrolling](#scrolling)
+- [Rendering Details](#rendering-details)
+  - [Visual Elements](#visual-elements)
+  - [Performance Optimizations](#performance-optimizations)
+- [TreeNode Class Methods](#treenode-class-methods)
+- [Default Values](#default-values)
+- [Platform Integration](#platform-integration)
+- [Best Practices](#best-practices)
+- [Known Limitations](#known-limitations)
+- [Version History](#version-history)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -67146,6 +70018,19 @@ FILE: Docs/UltraCanvas/UltraCanvasVectorCanvas.md
 
 <!-- doc-check: std::vector<VectorEdit::ElementPtr> els; VectorEdit::ElementPtr el; Point2Dd pivot; std::shared_ptr<VectorStorage::VectorGroup> otherGroup; std::shared_ptr<VectorStorage::VectorPath> path; struct EditorTool { void OnPress(const VectorPointerEvent& e); void OnDrag(const VectorPointerEvent& e); void OnRelease(const VectorPointerEvent& e); bool OnKey(const UCEvent& k); void DrawOverlay(IRenderContext* ctx, const VectorViewTransform& v); }; std::shared_ptr<EditorTool> tool; -->
 
+## Contents
+
+- [Overview](#overview)
+- [The document and its Ids](#the-document-and-its-ids)
+- [Selection](#selection)
+- [History](#history)
+- [Hit testing](#hit-testing)
+- [Operations](#operations)
+  - [Pixel alignment](#pixel-alignment)
+- [The Bézier node model](#the-bézier-node-model)
+- [The canvas element](#the-canvas-element)
+- [Tests](#tests)
+
 ## Overview
 
 The **vector-editing layer** is what a vector drawing editor needs on top of
@@ -67449,6 +70334,18 @@ FILE: Docs/UltraCanvas/UltraCanvasVectorConverters.md
 The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file formats and the framework's in-memory `VectorStorage::VectorDocument` model. Every converter implements `UltraCanvas::VectorConverter::IVectorFormatConverter` (`UltraCanvasVectorConverter.h`): `Import`/`ImportFromString`/`ImportFromStream` produce a `VectorDocument`, `Export`/`ExportToString`/`ExportToStream` serialize one, and `ValidateFile`/`ValidateData` sniff signatures.
 
 **Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`), `UltraCanvasCADConverters.h` (`DXFConverter`, `DWGConverter`), `UltraCanvasVectorFormatsPlugin.h` (the graphics plugin exposing the matrix to `LoadGraphicsFile` / `SaveGraphicsFile`).
+
+## Contents
+
+- [The matrix](#the-matrix)
+- [The document model](#the-document-model)
+- [Usage](#usage)
+- [The DWG family](#the-dwg-family)
+- [Previews: what the media viewer and the Filer show](#previews-what-the-media-viewer-and-the-filer-show)
+- [Registration: automatic, once, for every application](#registration-automatic-once-for-every-application)
+- [The graphics plugin (load and save through the registry)](#the-graphics-plugin-load-and-save-through-the-registry)
+- [Tests](#tests)
+- [See Also](#see-also)
 
 ## The matrix
 
@@ -67910,6 +70807,35 @@ FILE: Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md
 **Last Modified:** 2026-07-13
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Circle Management](#circle-management)
+  - [Item Management](#item-management)
+  - [Layout Management](#layout-management)
+  - [Style Management](#style-management)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Function](#factory-function)
+- [Data Structures](#data-structures)
+  - [VennCircle](#venncircle)
+  - [VennRegion](#vennregion)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Two-Circle Venn (Cats vs Dogs)](#two-circle-venn-cats-vs-dogs)
+  - [Three-Circle Venn (Developer Skills)](#three-circle-venn-developer-skills)
+  - [Four-Circle Venn (SDLC)](#four-circle-venn-sdlc)
+  - [Set Hierarchy (Rectangular / Nested, LaTeX style)](#set-hierarchy-rectangular--nested-latex-style)
+  - [Toggling Shape at Runtime](#toggling-shape-at-runtime)
+  - [Switching Style at Runtime](#switching-style-at-runtime)
+  - [Hover Callback Wiring](#hover-callback-wiring)
+  - [Cloud Platform Comparison (Custom Item Distribution)](#cloud-platform-comparison-custom-item-distribution)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasVennDiagramElement` renders interactive Venn / Euler diagrams with two to five sets. Each set owns a collection of items, and items can additionally be assigned to specific intersections of sets. The element handles automatic layout for the common 2/3/4/5-set arrangements plus a **nested containment layout** (the LaTeX set-hierarchy style), draws sets either as **circles or rounded rectangles**, supports multiple visual styles (classic outlines, modern, minimal, filled), and exposes hover/click callbacks for both individual sets and computed regions.
@@ -68317,6 +71243,21 @@ Cross-platform video **playback** and **recording** for UltraCanvas. Mirrors the
 three-layer design of UltraCanvas Audio: a frame resource, non-visual engines,
 and composite UI elements, all behind a pluggable platform backend.
 
+## Contents
+
+- [Status](#status)
+- [Architecture](#architecture)
+- [Public API surface](#public-api-surface)
+  - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
+  - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
+  - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
+  - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
+  - [UI elements](#ui-elements)
+  - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+- [Adding a container or codec](#adding-a-container-or-codec)
+- [Build](#build)
+- [Notes / follow-ups](#notes--follow-ups)
+
 ## Status
 
 API + UI implemented. The default build compiles a **null backend** so app code
@@ -68612,6 +71553,19 @@ child elements of its own)
 **Version:** 1.0.0
 **Last Modified:** 2026-10-11
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Status](#status)
+- [The model](#the-model)
+- [Public API surface](#public-api-surface)
+  - [Providers](#providers)
+  - [Changes](#changes)
+  - [Other callbacks](#other-callbacks)
+  - [The operations on their own](#the-operations-on-their-own)
+- [Keyboard and mouse](#keyboard-and-mouse)
+- [Style](#style)
+- [Notes](#notes)
 
 ## Status
 
@@ -69015,6 +71969,44 @@ FILE: Docs/UltraCanvas/UltraCanvasWatefallChartExamples.md
 ==============================================================================
 
 # UltraCanvasWaterfallChart Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+  - [File Structure](#file-structure)
+  - [Class Hierarchy](#class-hierarchy)
+- [Data Structures](#data-structures)
+  - [WaterfallChartDataPoint](#waterfallchartdatapoint)
+  - [WaterfallChartDataVector](#waterfallchartdatavector)
+- [Enumerations](#enumerations)
+- [Configuration Methods](#configuration-methods)
+  - [Color Customization](#color-customization)
+  - [Visual Configuration](#visual-configuration)
+  - [Data Management](#data-management)
+- [Usage Examples](#usage-examples)
+  - [Basic Waterfall Chart](#basic-waterfall-chart)
+  - [Cash Flow with Subtotals](#cash-flow-with-subtotals)
+  - [Loading Steps](#loading-steps)
+  - [Factory Functions](#factory-functions)
+- [Rendering Pipeline](#rendering-pipeline)
+  - [Main Render Method](#main-render-method)
+  - [Rendering Cache](#rendering-cache)
+- [Interactive Features](#interactive-features)
+  - [Tooltips](#tooltips)
+  - [Mouse Interaction](#mouse-interaction)
+- [Value Formatting](#value-formatting)
+- [Default Styling](#default-styling)
+  - [Color Palette](#color-palette)
+  - [Default Settings](#default-settings)
+- [Performance Considerations](#performance-considerations)
+- [Integration with UltraCanvas Framework](#integration-with-ultracanvas-framework)
+- [Best Practices](#best-practices)
+- [Limitations](#limitations)
+- [Version History](#version-history)
+- [Dependencies](#dependencies)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -69505,6 +72497,15 @@ min/max sample envelope, an optional **RMS** band, a zero/silence axis and a
 movable **playhead**. It is module-agnostic: it consumes a neutral
 `WaveformChannelData` struct and carries no dependency on the audio backend, so
 it can visualise any source of summarised sample data.
+
+## Contents
+
+- [Status](#status)
+- [Data model](#data-model)
+- [Public API surface](#public-api-surface)
+  - [AudioFX adapter](#audiofx-adapter)
+  - [From a media file, through VideoFX](#from-a-media-file-through-videofx)
+- [Wiring to the audio player](#wiring-to-the-audio-player)
 
 ## Status
 
@@ -70623,6 +73624,29 @@ FILE: Docs/UltraCanvas/UltraCanvasWordCloudExamples.md
 **Last Modified:** 2026-07-22
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Quick Start](#quick-start)
+- [The Center Image](#the-center-image)
+- [Mask Images (shape from an image)](#mask-images-shape-from-an-image)
+- [Full Option Reference](#full-option-reference)
+  - [Words](#words)
+  - [Sizing](#sizing)
+  - [Fonts](#fonts)
+  - [Rotation](#rotation)
+  - [Colors](#colors)
+  - [Layout](#layout)
+  - [Interactivity](#interactivity)
+  - [Layout results](#layout-results)
+  - [Animation](#animation)
+- [Layout Algorithm](#layout-algorithm)
+- [Word Cloud Library Research](#word-cloud-library-research)
+- [Complete Example](#complete-example)
+- [Demo](#demo)
+
 ## Overview
 
 `UltraCanvasWordCloudElement` renders word clouds / word maps: a set of words sized by weight (frequency, importance, revenue…) and packed together without overlaps. The layout engine uses **greedy spiral placement over an occupancy grid** — the same family of algorithms used by wordcloud2.js, ECharts wordCloud and the Python `wordcloud` package. Its option set was designed as the superset of the options offered by the major word-cloud libraries (see the comparison at the end of this document), including:
@@ -70895,6 +73919,37 @@ FILE: Docs/UltraCanvas/UltraCanvasXARExamples.md
 ==============================================================================
 
 # UltraCanvasXAR Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Where the format comes from](#where-the-format-comes-from)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Format Constants](#format-constants)
+  - [Coordinate Helper](#coordinate-helper)
+  - [Key Enumerations](#key-enumerations)
+  - [XARMatrix](#xarmatrix)
+  - [XARDocument](#xardocument)
+  - [How colours resolve](#how-colours-resolve)
+  - [Two attributes that are easy to read wrong](#two-attributes-that-are-easy-to-read-wrong)
+  - [XARNode](#xarnode)
+  - [UltraCanvasXARElement](#ultracanvasxarelement)
+  - [UltraCanvasXARPlugin](#ultracanvasxarplugin)
+  - [XARElementBuilder](#xarelementbuilder)
+- [XAR Converter (`UltraCanvasXARConverter.h`)](#xar-converter-ultracanvasxarconverterh)
+  - [Writing XAR files](#writing-xar-files)
+  - [Filer thumbnails](#filer-thumbnails)
+- [Examples](#examples)
+  - [Example 1: Loading and Displaying a XAR File](#example-1-loading-and-displaying-a-xar-file)
+  - [Example 2: Click-to-Fullscreen Handler with Zoom](#example-2-click-to-fullscreen-handler-with-zoom)
+  - [Example 3: Hover Highlight + Click-to-Open](#example-3-hover-highlight--click-to-open)
+  - [Example 4: Building an Element with `XARElementBuilder`](#example-4-building-an-element-with-xarelementbuilder)
+  - [Example 5: Registering the Plugin and Inspecting the Document](#example-5-registering-the-plugin-and-inspecting-the-document)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -72520,6 +75575,26 @@ FILE: Docs/Modules/AudioFX/README.md
 
 # AudioFX - Professional Audio Processing for Modern Applications
 
+## Contents
+
+- [Complete Audio Processing in a Single Library](#complete-audio-processing-in-a-single-library)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Universal Audio Loading](#universal-audio-loading)
+  - [Professional Effects Processing](#professional-effects-processing)
+  - [Intelligent Audio Analysis](#intelligent-audio-analysis)
+  - [Noise Reduction & Cleanup](#noise-reduction--cleanup)
+  - [Effect Chains & Batch Processing](#effect-chains--batch-processing)
+- [Supported Operations](#supported-operations)
+- [Why AudioFX?](#why-audiofx)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+  - [For Users](#for-users)
+- [Perfect For](#perfect-for)
+- [Get Started](#get-started)
+- [Technical Specifications](#technical-specifications)
+- [The Bottom Line](#the-bottom-line)
+
 ## Complete Audio Processing in a Single Library
 
 **AudioFX** is a comprehensive, cross-platform audio processing library that brings professional-grade audio capabilities to any application. Whether you're building music software, podcasting tools, video editors, or game engines, AudioFX provides a unified API for loading, processing, analyzing, and exporting audio across all major formats.
@@ -72713,6 +75788,29 @@ FILE: Docs/Modules/FileLoader/README.md
 ==============================================================================
 
 # FileLoader - Universal File Handling for Modern Applications
+
+## Contents
+
+- [Simplify File Management Across All Formats](#simplify-file-management-across-all-formats)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Generic File Loading](#generic-file-loading)
+  - [Typed Object Loaders](#typed-object-loaders)
+  - [Editable Vector Documents](#editable-vector-documents)
+  - [Save Settings](#save-settings)
+  - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [Transparent Decompression](#transparent-decompression)
+  - [Runtime Format Inventory](#runtime-format-inventory)
+  - [A Dialog's File Types](#a-dialogs-file-types)
+  - [Extensible Plugin Architecture](#extensible-plugin-architecture)
+- [Supported Formats](#supported-formats)
+- [Why FileLoader?](#why-fileloader)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+  - [For Users](#for-users)
+- [Perfect For](#perfect-for)
+- [Get Started](#get-started)
+- [The Bottom Line](#the-bottom-line)
 
 ## Simplify File Management Across All Formats
 
@@ -75388,6 +78486,24 @@ local-first OCR implementation that complements both.
 
 ---
 
+## Contents
+
+- [1. Goals](#1-goals)
+- [2. Engine survey](#2-engine-survey)
+  - [Recommendation](#recommendation)
+- [3. Integration shape](#3-integration-shape)
+- [4. Proposed C++ API](#4-proposed-c-api)
+  - [Why these shapes](#why-these-shapes)
+- [5. Pre-processing (PixelFX)](#5-pre-processing-pixelfx)
+- [6. Bundled data](#6-bundled-data)
+- [7. UI integration](#7-ui-integration)
+- [8. Threading & cancellation](#8-threading--cancellation)
+- [9. Testing](#9-testing)
+- [9a. Troubleshooting](#9a-troubleshooting)
+- [10. Risks & open questions](#10-risks--open-questions)
+- [11. Phased delivery](#11-phased-delivery)
+- [12. Recommendation](#12-recommendation)
+
 ## 1. Goals
 
 1. **Local, offline, deterministic OCR** — no network round-trip
@@ -76204,7 +79320,7 @@ Before starting Milestone 1, please confirm:
 FILE: Docs/Modules/PixelFX/README.md
 ==============================================================================
 
-###PixelFX -- Professional Bitmap Processing for UltraCanvas
+# PixelFX — Professional Bitmap Processing for UltraCanvas
 -----------------------
 
 **Transform pixels into perfection with industrial-strength image processing**
@@ -79951,6 +83067,22 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 
 ---
 
+## Contents
+
+- [Why it exists](#why-it-exists)
+- [Protocols at a glance](#protocols-at-a-glance)
+  - [Core (Tier 1, in module)](#core-tier-1-in-module)
+  - [Plugin-supplied (Tier 2/3)](#plugin-supplied-tier-23)
+- [Architecture](#architecture)
+- [Quick examples](#quick-examples)
+- [Module layout](#module-layout)
+- [Debugging a mail connection](#debugging-a-mail-connection)
+- [The FTP session log](#the-ftp-session-log)
+- [Integration with sibling modules](#integration-with-sibling-modules)
+- [Conventions](#conventions)
+- [Status](#status)
+- [Reference](#reference)
+
 ## Why it exists
 
 Networking is exactly the kind of concern an OS owns once: TLS
@@ -81320,6 +84452,21 @@ context action) and the PDF viewer ("Vectorize page" for scanned
 diagrams).
 
 ---
+
+## Contents
+
+- [1. Goals](#1-goals)
+- [2. Library survey](#2-library-survey)
+  - [Recommendation](#recommendation)
+- [3. Architecture](#3-architecture)
+- [4. Public API (C++)](#4-public-api-c)
+- [5. Rust shim (`vtracer-c`)](#5-rust-shim-vtracer-c)
+- [6. Build dependency on `cargo`](#6-build-dependency-on-cargo)
+- [7. UI integration (phase 2)](#7-ui-integration-phase-2)
+- [7.1 Demo screen](#71-demo-screen)
+- [8. Risks](#8-risks)
+- [9. Phased delivery](#9-phased-delivery)
+- [10. Recommendation](#10-recommendation)
 
 ## 1. Goals
 

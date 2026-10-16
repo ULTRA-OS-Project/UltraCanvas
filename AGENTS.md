@@ -45,6 +45,13 @@ before adding cross-module code.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
   index / full concatenation of the docs corpus for LLM consumption.
   Regenerate with `python3 scripts/generate_llms_txt.py` after editing docs.
+- Every document the demo app opens (the `Docs/....md` paths in
+  `Apps/DemoApp/*.cpp`) starts with a generated `## Contents` inventory
+  linking each `##` / `###` section. After adding, renaming or removing a
+  section, run `python3 scripts/generate_doc_toc.py` (before
+  `generate_llms_txt.py`); CI runs it with `--check`. Never edit the list by
+  hand, and never put prose inside it - it is rewritten up to the next
+  heading.
 
 ## Core conventions
 

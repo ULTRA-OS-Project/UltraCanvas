@@ -77,6 +77,25 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 
 ---
 
+## Contents
+
+- [Part 1 — Current state survey](#part-1-—-current-state-survey)
+  - [1.1 TextArea (`include/UltraCanvasTextArea.h`, `core/UltraCanvasTextArea*.cpp`)](#11-textarea-includeultracanvastextareah-coreultracanvastextareacpp)
+  - [1.2 Bitmap / Image (`include/UltraCanvasImage.h`, `libspecific/Cairo/ImageCairo.cpp`)](#12-bitmap--image-includeultracanvasimageh-libspecificcairoimagecairocpp)
+  - [1.3 LaTeX (`Plugins/LaTeX/`, `core/UltraCanvasLaTeXModuleLoader.cpp`)](#13-latex-pluginslatex-coreultracanvaslatexmoduleloadercpp)
+  - [1.4 Spreadsheet (`core/UltraCanvasSpreadsheetFileIO.cpp`)](#14-spreadsheet-coreultracanvasspreadsheetfileiocpp)
+  - [1.5 FileLoader (`include/UltraCanvasFileLoader.h`, `core/UltraCanvasFileLoader.cpp`)](#15-fileloader-includeultracanvasfileloaderh-coreultracanvasfileloadercpp)
+  - [1.6 Reusable infrastructure already in the tree](#16-reusable-infrastructure-already-in-the-tree)
+- [Part 2 — Proposal](#part-2-—-proposal)
+  - [2.1 Format primer](#21-format-primer)
+  - [2.2 Core architectural decision: an intermediate document model](#22-core-architectural-decision-an-intermediate-document-model)
+  - [2.3 Shared packaging layer (also unblocks XLSX)](#23-shared-packaging-layer-also-unblocks-xlsx)
+  - [2.4 Consumer wiring per element](#24-consumer-wiring-per-element)
+  - [2.5 Legacy `.doc` strategy](#25-legacy-doc-strategy)
+  - [2.6 Packaging](#26-packaging)
+  - [2.7 Phased plan](#27-phased-plan)
+  - [2.8 Validation](#28-validation)
+
 ## Part 1 — Current state survey
 
 ### 1.1 TextArea (`include/UltraCanvasTextArea.h`, `core/UltraCanvasTextArea*.cpp`)

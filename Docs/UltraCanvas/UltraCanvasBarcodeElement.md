@@ -1,5 +1,30 @@
 # UltraCanvasBarcodeElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Supported Symbologies](#supported-symbologies)
+- [Class Hierarchy](#class-hierarchy)
+- [Quick Start](#quick-start)
+- [Builder Pattern](#builder-pattern)
+- [API](#api)
+  - [Data & symbology](#data--symbology)
+  - [Style](#style)
+  - [Encoder options](#encoder-options)
+  - [Callbacks](#callbacks)
+  - [Style presets](#style-presets)
+- [Symbology Notes](#symbology-notes)
+  - [Code 128 / GS1-128](#code-128--gs1-128)
+  - [EAN-13 / UPC-A / ISBN](#ean-13--upc-a--isbn)
+  - [UPC-E](#upc-e)
+  - [ITF-14](#itf-14)
+  - [Pharmacode](#pharmacode)
+- [Layout & Rotation](#layout--rotation)
+- [Error Handling](#error-handling)
+- [Demo](#demo)
+- [Implementation Files](#implementation-files)
+- [Roadmap](#roadmap)
+
 ## Overview
 
 `UltraCanvasBarcodeElement` is a 1D barcode widget that encodes a string into the chosen symbology and renders the resulting bar pattern via the standard `IRenderContext`. Encoders are pure C++20 with no external dependencies — Cairo (the existing render backend) handles all drawing.

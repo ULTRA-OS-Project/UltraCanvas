@@ -18,6 +18,23 @@ on its **Layout** page (`Apps/DemoApp/UltraCanvasLayoutExamples.cpp`), whose
 second tab covers label placement for charts and diagrams
 ([UltraCanvasLabelPlacement.md](UltraCanvasLabelPlacement.md)).
 
+## Contents
+
+- [The pieces](#the-pieces)
+- [The constructor decides who sizes the element](#the-constructor-decides-who-sizes-the-element)
+- [A row: a toolbar](#a-row-a-toolbar)
+- [A column: a sidebar](#a-column-a-sidebar)
+- [A grid: tiles](#a-grid-tiles)
+- [Wrapping: cards that flow onto new lines](#wrapping-cards-that-flow-onto-new-lines)
+- [Gaps, padding and margins](#gaps-padding-and-margins)
+- [Alignment and stretching](#alignment-and-stretching)
+- [A form](#a-form)
+- [Nesting: an application shell](#nesting-an-application-shell)
+- [Changing the layout at run time](#changing-the-layout-at-run-time)
+- [Common mistakes](#common-mistakes)
+- [What replaced the old layout managers](#what-replaced-the-old-layout-managers)
+- [See also](#see-also)
+
 ## The pieces
 
 | You want | Write |

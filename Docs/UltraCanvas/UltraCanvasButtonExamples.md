@@ -6,6 +6,33 @@
 **Last Modified:** 2026-10-14  
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Basic Usage](#basic-usage)
+  - [Including the Header](#including-the-header)
+  - [Creating a Button](#creating-a-button)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factories](#factories)
+  - [Core Methods](#core-methods)
+  - [Events](#events)
+  - [Event Usage Example](#event-usage-example)
+- [Button States](#button-states)
+- [ButtonStyle Structure](#buttonstyle-structure)
+- [The theme and the button's variant](#the-theme-and-the-buttons-variant)
+- [ButtonBuilder Pattern](#buttonbuilder-pattern)
+  - [Builder Usage Example](#builder-usage-example)
+- [Practical Examples](#practical-examples)
+  - [Standard Button](#standard-button)
+  - [Colored Button](#colored-button)
+  - [Auto-sized Button](#auto-sized-button)
+  - [Split Button (a primary action plus a menu)](#split-button-a-primary-action-plus-a-menu)
+  - [Disabled Button](#disabled-button)
+- [Keyboard Support](#keyboard-support)
+- [Rendering](#rendering)
+- [Version History](#version-history)
+
 ## Overview
 
 UltraCanvasButton is a customizable button control in the UltraCanvas framework that provides cross-platform button functionality with consistent behavior across Windows, Linux, macOS, and UltraOS.

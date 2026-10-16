@@ -2,6 +2,53 @@
 
 <!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Class Architecture](#class-architecture)
+  - [Main Classes](#main-classes)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [TreeNodeIcon Structure](#treenodeicon-structure)
+  - [TreeNodeData Structure](#treenodedata-structure)
+  - [Columnar Layout: `UltraCanvasColumnsTreeView`](#columnar-layout-ultracanvascolumnstreeview)
+  - [Sorting Modes](#sorting-modes)
+- [API Reference](#api-reference)
+  - [Constructor](#constructor)
+  - [Tree Structure Management](#tree-structure-management)
+  - [Selection Management](#selection-management)
+  - [Expansion Management](#expansion-management)
+  - [Filtering](#filtering)
+  - [Visual Properties](#visual-properties)
+  - [Check Flags (Checkable Nodes)](#check-flags-checkable-nodes)
+  - [Scroll-to-Top Button](#scroll-to-top-button)
+  - [Measuring the Tree](#measuring-the-tree)
+  - [Color Properties](#color-properties)
+  - [Event Callbacks](#event-callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic Tree Creation](#basic-tree-creation)
+  - [File Explorer Example](#file-explorer-example)
+  - [Event Handling](#event-handling)
+  - [Using TreeViewBuilder](#using-treeviewbuilder)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Mouse Interaction](#mouse-interaction)
+  - [Click Behaviors](#click-behaviors)
+  - [Expand/Collapse Button](#expandcollapse-button)
+  - [Check Flag](#check-flag)
+  - [Scrolling](#scrolling)
+- [Rendering Details](#rendering-details)
+  - [Visual Elements](#visual-elements)
+  - [Performance Optimizations](#performance-optimizations)
+- [TreeNode Class Methods](#treenode-class-methods)
+- [Default Values](#default-values)
+- [Platform Integration](#platform-integration)
+- [Best Practices](#best-practices)
+- [Known Limitations](#known-limitations)
+- [Version History](#version-history)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.

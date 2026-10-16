@@ -29,6 +29,24 @@ spine, **cause categories** on the ribs, **causes** on the twigs, and optional
 **Last Modified:** 2026-08-07
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Class hierarchy](#class-hierarchy)
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+- [Designs](#designs)
+- [Layout](#layout)
+- [Palettes and color](#palettes-and-color)
+- [Style toggles](#style-toggles)
+- [Text handling](#text-handling)
+- [Interaction](#interaction)
+- [Geometry queries](#geometry-queries)
+- [Category presets](#category-presets)
+- [Text interchange](#text-interchange)
+- [Validation and queries](#validation-and-queries)
+- [Sample data](#sample-data)
+- [Not yet implemented](#not-yet-implemented)
+
 ## Class hierarchy
 
 ```

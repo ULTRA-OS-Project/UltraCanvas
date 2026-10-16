@@ -1,4 +1,4 @@
-###PixelFX -- Professional Bitmap Processing for UltraCanvas
+# PixelFX — Professional Bitmap Processing for UltraCanvas
 -----------------------
 
 **Transform pixels into perfection with industrial-strength image processing**

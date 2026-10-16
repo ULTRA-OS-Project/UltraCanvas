@@ -2,6 +2,24 @@
 
 <!-- doc-check: void SaveLayout(const std::vector<double>& weights); void Log(const std::string& line); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Pane management](#pane-management)
+- [Styling the splitter](#styling-the-splitter)
+- [Splitter handle](#splitter-handle)
+  - [Image handles](#image-handles)
+- [Action icons on the split line](#action-icons-on-the-split-line)
+  - [Icon API](#icon-api)
+  - [Icon styling](#icon-styling)
+  - [Behaviour](#behaviour)
+- [Callbacks](#callbacks)
+- [Nesting](#nesting)
+- [Notes](#notes)
+- [Demo](#demo)
+
 ## Overview
 
 **UltraCanvasSplitPane** is a container that divides its content area into *N*

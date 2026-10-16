@@ -9,6 +9,17 @@ pieces of infrastructure — a **command registry** and a **serializable menu
 layout** — that together form the "special way to organise menus" that makes menus
 reconfigurable.
 
+## Contents
+
+- [Why the extra infrastructure is needed](#why-the-extra-infrastructure-is-needed)
+- [1. Register commands](#1-register-commands)
+- [2. Describe the default layout](#2-describe-the-default-layout)
+- [3. Show the widget and wire the buttons](#3-show-the-widget-and-wire-the-buttons)
+  - [Layout of the widget](#layout-of-the-widget)
+- [4. Apply vs Save](#4-apply-vs-save)
+- [Persistence format](#persistence-format)
+- [Files](#files)
+
 ## Why the extra infrastructure is needed
 
 Menus are normally built imperatively with lambdas:

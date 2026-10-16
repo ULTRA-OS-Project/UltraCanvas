@@ -14,6 +14,29 @@ zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
 the House's competitive-assessment block. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
+## Contents
+
+- [Which element do I want?](#which-element-do-i-want)
+- [Header](#header)
+- [Class hierarchy](#class-hierarchy)
+- [The three primitives](#the-three-primitives)
+- [Shapes](#shapes)
+  - [The X shape](#the-x-shape)
+  - [The Y shape](#the-y-shape)
+  - [The House of Quality](#the-house-of-quality)
+  - [The form header band](#the-form-header-band)
+- [Relationship scales](#relationship-scales)
+- [Roll-ups](#roll-ups)
+- [Presentation](#presentation)
+- [Interaction](#interaction)
+- [Pan and zoom](#pan-and-zoom)
+- [Keyboard](#keyboard)
+- [Editing](#editing)
+- [Interchange](#interchange)
+- [Samples](#samples)
+- [Validation](#validation)
+- [See also](#see-also)
+
 ## Which element do I want?
 
 | You have | Use |

@@ -1,5 +1,17 @@
 # Adobe Illustrator (`.ai`) Artwork
 
+## Contents
+
+- [Overview](#overview)
+  - [Render trap: do not check an `.ai` against a PDF renderer](#render-trap-do-not-check-an-ai-against-a-pdf-renderer)
+- [Reading an `.ai`](#reading-an-ai)
+  - [What the reader understands](#what-the-reader-understands)
+  - [Coordinates](#coordinates)
+- [Example: the demo page](#example-the-demo-page)
+- [Writing `.ai`](#writing-ai)
+- [Shipped samples](#shipped-samples)
+- [See also](#see-also)
+
 ## Overview
 
 Since **Illustrator 9** an `.ai` file is a PDF — but that alone does not make

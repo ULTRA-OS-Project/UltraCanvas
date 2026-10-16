@@ -15,6 +15,22 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 
 ---
 
+## Contents
+
+- [Why it exists](#why-it-exists)
+- [Protocols at a glance](#protocols-at-a-glance)
+  - [Core (Tier 1, in module)](#core-tier-1-in-module)
+  - [Plugin-supplied (Tier 2/3)](#plugin-supplied-tier-23)
+- [Architecture](#architecture)
+- [Quick examples](#quick-examples)
+- [Module layout](#module-layout)
+- [Debugging a mail connection](#debugging-a-mail-connection)
+- [The FTP session log](#the-ftp-session-log)
+- [Integration with sibling modules](#integration-with-sibling-modules)
+- [Conventions](#conventions)
+- [Status](#status)
+- [Reference](#reference)
+
 ## Why it exists
 
 Networking is exactly the kind of concern an OS owns once: TLS

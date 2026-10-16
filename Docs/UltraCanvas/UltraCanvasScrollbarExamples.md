@@ -1,5 +1,35 @@
 # UltraCanvasScrollbar Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factory Functions](#factory-functions)
+  - [Enumerations](#enumerations)
+  - [ScrollbarStyle Structure](#scrollbarstyle-structure)
+  - [Style Presets](#style-presets)
+  - [Orientation](#orientation)
+  - [Style](#style)
+  - [Scroll Parameters](#scroll-parameters)
+  - [Scroll Position](#scroll-position)
+  - [Scroll Operations](#scroll-operations)
+  - [Scrollability and Visibility](#scrollability-and-visibility)
+  - [State Access](#state-access)
+  - [Callback](#callback)
+  - [Rendering and Events](#rendering-and-events)
+- [Examples](#examples)
+  - [1. Preset Styles](#1-preset-styles)
+  - [2. Colour Options](#2-colour-options)
+  - [3. Corner Radius / End Shape](#3-corner-radius--end-shape)
+  - [4. Custom SVG Handle](#4-custom-svg-handle)
+  - [5. Horizontal Orientation](#5-horizontal-orientation)
+  - [6. Reacting to Scroll Changes](#6-reacting-to-scroll-changes)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasScrollbar** is a standalone scrollbar control with full interaction support: thumb dragging, track paging, mouse-wheel scrolling, and optional arrow buttons. It works in either vertical or horizontal orientation and is configured through a single `ScrollbarStyle` struct that controls dimensions, colours (with separate normal / hover / pressed states), corner radius / end shape, an optional custom image (PNG or SVG) thumb handle, and scrolling behaviour. Several built-in style presets are provided, and a `std::function<void(int)> onScrollChange` callback reports live position changes.
