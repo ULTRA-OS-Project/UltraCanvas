@@ -23,21 +23,40 @@
 //   }
 //
 // Compression: none and deflate (a zlib stream, RFC 1950) are written; none,
-// deflate and gzip (RFC 1952) are read. LZMA is not supported, and neither
-// is encryption yet: a password-protected file opens (header, thumbnail and
-// section list) but its encrypted sections do not decode - Decode says so.
-// Writers always put an INDX first (§4.2.1).
+// deflate and gzip (RFC 1952) are read. LZMA is not supported. Writers always
+// put an INDX first (§4.2.1).
+//
+// Password protection (key source 1, §4.3): Writer::SetPassword encrypts
+// every section but INDX and SECU with XChaCha20-Poly1305 under an Argon2id
+// key; a reader opens such a file as usual - header, thumbnail, section list -
+// and Unlock(password) then lets Decode decrypt. A wrong password is told
+// apart from a damaged file. SuperVault (key source 2) is not supported.
+// The cryptography is UltraCrypt's; without libsodium it fails closed
+// (EncryptionAvailable() is false) and nothing is ever written unprotected
+// that was asked to be protected.
+//
+//   UCD::Writer w("UCBitmap");
+//   w.SetPassword(password);                      // hidePreview: no thumbnail either
+//   ...
+//   UCD::Reader r;
+//   r.Open(path, error);
+//   if (r.NeedsPassword() && !r.Unlock(password, error)) ...   // "the password is not right"
 //
 // UI-free, no libvips: compression is the vendored miniz, so it builds
 // wherever the framework does (wasm included).
+// Version: 1.1.0 - password protection: Writer::SetPassword, Reader::NeedsPassword / Unlock
 // Version: 1.0.0
 // Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h - a key never leaves it
 
 namespace UltraCanvas {
 namespace UCD {
@@ -47,7 +66,7 @@ constexpr size_t  kFixedHeaderSize   = 28;
 constexpr size_t  kSectionHeaderSize = 12;
 constexpr size_t  kPreambleSize      = 8;
 constexpr uint8_t kVersionMajor      = 2;
-constexpr uint8_t kVersionMinor      = 1;
+constexpr uint8_t kVersionMinor      = 2;
 
 // Header byte 15 / section header byte 8.
 enum class Compression : uint8_t {
@@ -101,12 +120,22 @@ struct Section {
     uint64_t offset = 0;             // file offset of its 12-byte header
     Compression compression = Compression::Uncompressed;   // resolved: never HeaderDefault
     bool encrypted = false;
+    std::array<uint8_t, 12> header{};   // its header as stored: an encrypted section's associated data
     std::vector<uint8_t> stored;     // the payload as in the file
 };
+
+// True when this build can protect and open protected documents (UltraCrypt
+// with its libsodium backend).
+bool EncryptionAvailable();
 
 // ===== READING =====
 class Reader {
 public:
+    Reader();
+    ~Reader();
+    Reader(Reader&&) noexcept;
+    Reader& operator=(Reader&&) noexcept;
+
     // Reads the whole file: header, extension, thumbnail and every section.
     // A truncated section or a bad signature fails; unknown section types
     // are listed like any other (the caller skips what it does not know).
@@ -120,10 +149,20 @@ public:
     // how other sections refer to it (§4.2).
     std::vector<const Section*> FindSections(const std::string& type) const;
 
-    // The payload as it was serialized: decompressed. False with `error` for
-    // an encrypted section, an unsupported compression or damaged data.
-    // `limit` caps what a section may decompress to, so a damaged or hostile
-    // file cannot make the reader allocate without bound.
+    // A password-protected document not unlocked yet: its encrypted sections
+    // do not decode until Unlock succeeds.
+    bool NeedsPassword() const;
+    // Derives the document key from `password` and the SECU parameters and
+    // checks it against the SECU's check tag. False with `error` - "the
+    // password is not right" for a wrong one; a damaged or missing SECU, a
+    // SuperVault document or a build without libsodium say so instead.
+    bool Unlock(const std::string& password, std::string& error);
+
+    // The payload as it was serialized: decrypted (once unlocked) and
+    // decompressed. False with `error` for an encrypted section before
+    // Unlock, an unsupported compression or damaged data. `limit` caps what
+    // a section may decompress to, so a damaged or hostile file cannot make
+    // the reader allocate without bound.
     bool Decode(const Section& section, std::vector<uint8_t>& out, std::string& error,
                 size_t limit = size_t(1) << 31) const;
 
@@ -131,15 +170,25 @@ private:
     Header header;
     std::vector<uint8_t> thumbnail;
     std::vector<Section> sections;
+    std::unique_ptr<UltraCryptSecureBuffer> key;   // set by Unlock
 };
 
 // ===== WRITING =====
 class Writer {
 public:
     explicit Writer(const std::string& descriptor);
+    ~Writer();
 
     // A PNG thumbnail (HEIC would need an encoder this build may not have).
     void SetThumbnailPng(std::vector<uint8_t> png) { thumbnail = std::move(png); }
+    // Protects the document with `password` (key source 1, §4.3): a SECU
+    // after the INDX, every other section encrypted. `hidePreview` marks it
+    // PRIVATE and leaves the thumbnail out. An empty password protects
+    // nothing. WriteToBuffer fails - rather than writing it unprotected -
+    // where EncryptionAvailable() is false.
+    void SetPassword(const std::string& password, bool hidePreview = false);
+    // The same, from a password already held in a secure buffer (copied).
+    void SetPassword(const UltraCryptSecureBuffer& password, bool hidePreview = false);
     // A section of `type` holding `payload` (as serialized). `compression`:
     // Uncompressed or Deflate; data that is already compressed (a PNG, an ODT)
     // is better stored Uncompressed.
@@ -162,6 +211,8 @@ private:
     std::string descriptor;
     std::vector<uint8_t> thumbnail;
     std::vector<Pending> pending;
+    std::unique_ptr<UltraCryptSecureBuffer> password;   // set by SetPassword
+    bool hidePreview = false;
 };
 
 // ===== SUB-FORMAT PREAMBLE (§4.5) =====

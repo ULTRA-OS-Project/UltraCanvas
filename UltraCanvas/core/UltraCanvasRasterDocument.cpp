@@ -13,6 +13,8 @@
 // it in its undo entry (RasterUndoEntry::textBefore), the same way it keeps
 // the pixels; structural operations carry the text with the layer objects
 // they share or replace.
+// Version: 1.5.0 - password-protected *.ucd: the document keeps its password (secure buffer)
+//                 and saves with it; LoadUCD opens one with its password
 // Version: 1.4.0 - *.ucd: the UCD 2.1 layered image (SaveUCD / LoadUCD) - layers, blend
 //                 modes and text layers as text frames, with a PNG thumbnail
 // Version: 1.3.0 - text layers (RasterizeLayer, ReplaceLayer, in-place edit,
@@ -29,6 +31,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasFileLoader.h"   // the user's save settings per format
 #include "UltraCanvasUCDContainer.h"
+#include "UltraCrypt/UltraCryptCore.h"   // the *.ucd password's secure buffer
 
 #include "miniz.h"   // the *.ucd thumbnail's PNG
 
@@ -919,6 +922,24 @@ bool UCRasterDocument::IsUCDFile(const std::string& path) {
     return LowerExt(path) == "ucd";
 }
 
+bool UCRasterDocument::IsPasswordProtected(const std::string& path) {
+    if (!IsUCDFile(path)) return false;
+    UCD::Header header;
+    std::vector<uint8_t> thumbnail;
+    std::string error;
+    return UCD::ReadHeaderAndThumbnail(path, header, thumbnail, error) && header.IsEncrypted();
+}
+
+void UCRasterDocument::SetUCDPassword(const std::string& password, bool hidePreview) {
+    if (password.empty()) {
+        ucdPassword.reset();
+        ucdHidePreview = false;
+        return;
+    }
+    ucdPassword = std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size());
+    ucdHidePreview = hidePreview;
+}
+
 bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error) {
     if (IsUCDFile(path)) return LoadUCD(path, error);
     if (IsProjectFile(path)) return LoadProject(path, error);
@@ -944,6 +965,7 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
         width = layer->GetWidth(); height = layer->GetHeight();
         layers.clear();
         layers.push_back(layer);
+        SetUCDPassword(std::string());   // another file: its own protection, which is none
         activeLayer = 0;
         selection.Resize(width, height);
         ResetComposite();
@@ -1161,6 +1183,7 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
     if (loaded.empty()) { error = "Project has no layers"; return false; }
     width = w; height = h;
     layers.swap(loaded);
+    SetUCDPassword(std::string());
     activeLayer = std::clamp(static_cast<int>(doc.Get("activeLayer").GetInteger(0)), 0, static_cast<int>(layers.size()) - 1);
     selection.Resize(width, height);
     ResetComposite();
@@ -1400,6 +1423,7 @@ bool UCRasterDocument::SaveUCD(const std::string& path, std::string& error) {
 
     UCD::Writer writer("UCBitmap");
     if (auto flat = Flatten()) writer.SetThumbnailPng(ThumbnailPng(*flat));
+    if (ucdPassword) writer.SetPassword(*ucdPassword, ucdHidePreview);
     writer.AddSection("LAYR", std::move(stack));
     for (size_t i = 0; i < layers.size(); ++i) {
         writer.AddSection("BMAP", BitmapPayload(*layers[i]));
@@ -1412,12 +1436,16 @@ bool UCRasterDocument::SaveUCD(const std::string& path, std::string& error) {
     return true;
 }
 
-bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error) {
+bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error, const std::string& password) {
     UCD::Reader reader;
     if (!reader.Open(path, error)) return false;
-    if (reader.GetHeader().IsEncrypted()) {
-        error = "This UltraCanvas document is password-protected, which this program cannot open yet";
-        return false;
+    const bool isProtected = reader.GetHeader().IsEncrypted();
+    if (isProtected) {
+        if (password.empty()) {
+            error = "This UltraCanvas document is password-protected: it opens with its password";
+            return false;
+        }
+        if (!reader.Unlock(password, error)) return false;
     }
     const auto bitmaps = reader.FindSections("BMAP");
     const auto frames = reader.FindSections("VECT");
@@ -1507,6 +1535,8 @@ bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error) {
     width = w;
     height = h;
     layers.swap(loaded);
+    // Saved again, it stays as protected - and as private - as it was.
+    SetUCDPassword(isProtected ? password : std::string(), reader.GetHeader().IsPrivate());
     activeLayer = std::clamp(active, 0, static_cast<int>(layers.size()) - 1);
     selection.Resize(width, height);
     ResetComposite();

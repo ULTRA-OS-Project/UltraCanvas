@@ -6,6 +6,7 @@
 // keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
 // surface's view through a resize, and the PNG and .ucraster round trips (the
 // last three only with libvips).
+// Version: 1.6.0 - TestProtectedUCD: a password-protected *.ucd, saved, refused, opened, kept
 // Version: 1.5.0 - TestLayeredUCD: *.ucd keeps layers, blend modes and text layers as text
 // Version: 1.4.1 - TestSurfaceFollowsResize: a document change after a resize reports the move
 // Version: 1.4.0 - TestSurfaceFollowsResize: the view re-centres when the element is resized
@@ -1173,7 +1174,7 @@ static void TestLayeredUCD() {
     UCD::Header header;
     std::vector<uint8_t> thumbnail;
     CHECK(UCD::ReadHeaderAndThumbnail(path, header, thumbnail, err));
-    CHECK(header.descriptor == "UCBitmap" && header.versionMajor == 2 && header.versionMinor == 1);
+    CHECK(header.descriptor == "UCBitmap" && header.versionMajor == 2 && header.versionMinor == 2);
     CHECK(header.HasThumbnail() && header.ThumbnailIsPng() && !header.IsEncrypted());
     int tw = 0, th = 0;
     CHECK(PngSize(thumbnail, tw, th) && tw == 256 && th == 128);   // the longer side at 256
@@ -1291,6 +1292,65 @@ static void TestLayeredUCD() {
     std::filesystem::remove_all(dir);
 }
 
+// A password-protected UCD layered image: saved with the document's
+// password, refused without it or with a wrong one (the open document left
+// as it was), opened with it - and saved again still protected, still private.
+static void TestProtectedUCD() {
+    if (!UCD::EncryptionAvailable()) {
+        std::printf("TestProtectedUCD: libsodium not available - skipped\n");
+        return;
+    }
+    std::string err;
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-ucd-pw";
+    std::filesystem::create_directories(dir);
+    const std::string path = PathToUtf8(dir / "secret.ucd");
+
+    UCRasterDocument doc(64, 40, RasterPixel(10, 20, 30, 255));
+    const int top = doc.AddLayer("top", RasterPixel(0, 0, 0, 0));
+    doc.GetLayer(top)->FillRect(Rect2Di(4, 4, 20, 10), RasterPixel(250, 0, 0, 255));
+    auto text = RenderTextLayer(MakeTextContent(), 64, 40, err);
+    if (text) doc.AddLayer(text);
+    CHECK(!doc.HasUCDPassword());
+    doc.SetUCDPassword("p\xC3\xA4sswort", true);
+    CHECK(doc.HasUCDPassword() && doc.GetUCDHidesPreview());
+    CHECK(doc.SaveToFile(path, err));
+    CHECK(UCRasterDocument::IsPasswordProtected(path));
+    UCD::Header header;
+    std::vector<uint8_t> thumb;
+    CHECK(UCD::ReadHeaderAndThumbnail(path, header, thumb, err) && header.IsPrivate() && thumb.empty());
+
+    UCRasterDocument other(3, 3, RasterPixel(1, 1, 1, 255));
+    std::string why;
+    CHECK(!other.LoadFromFile(path, why) && why.find("password") != std::string::npos);
+    why.clear();
+    CHECK(!other.LoadUCD(path, why, "passwort") && why.find("not right") != std::string::npos);
+    CHECK(other.GetWidth() == 3 && other.GetLayerCount() == 1 && !other.HasUCDPassword());
+
+    CHECK(other.LoadUCD(path, err, "p\xC3\xA4sswort"));
+    CHECK(other.GetLayerCount() == doc.GetLayerCount() && other.GetWidth() == 64);
+    for (int i = 0; i < std::min(other.GetLayerCount(), doc.GetLayerCount()); ++i) {
+        CHECK(SamePixels(*other.GetLayer(i), *doc.GetLayer(i)));
+        CHECK(other.GetLayer(i)->IsTextLayer() == doc.GetLayer(i)->IsTextLayer());
+    }
+    CHECK(other.HasUCDPassword() && other.GetUCDHidesPreview());
+
+    // Saved again under another name: protected and private as it was.
+    const std::string again = PathToUtf8(dir / "again.ucd");
+    CHECK(other.SaveToFile(again, err));
+    UCRasterDocument third;
+    CHECK(!third.LoadUCD(again, why) && third.LoadUCD(again, err, "p\xC3\xA4sswort"));
+    CHECK(UCD::ReadHeaderAndThumbnail(again, header, thumb, err) && header.IsPrivate());
+
+    // The protection removed: the next save is in the clear; and opening an
+    // unprotected file leaves the document without a password.
+    other.SetUCDPassword("");
+    const std::string plain = PathToUtf8(dir / "plain.ucd");
+    CHECK(other.SaveToFile(plain, err) && !UCRasterDocument::IsPasswordProtected(plain));
+    third.SetUCDPassword("x");
+    CHECK(third.LoadFromFile(plain, err) && !third.HasUCDPassword());
+    std::filesystem::remove_all(dir);
+}
+
 int main() {
 #ifdef HAS_LIBVIPS
     if (VIPS_INIT("RasterEditingTest")) { std::printf("vips init failed\n"); return 1; }
@@ -1308,6 +1368,7 @@ int main() {
     TestTextLayers();
     TestSurfaceFollowsResize();
     TestLayeredUCD();
+    TestProtectedUCD();
 #ifdef HAS_LIBVIPS
     TestTextLayerProject();
     TestPixelFXAndFiles();
