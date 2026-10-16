@@ -5802,6 +5802,28 @@ else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TREE VIEW SCROLL BUTTONS TEST =====
+# The tree view's floating "move to the top" and "go to the selected entry"
+# buttons: when each shows, where it sits, and what a click on it does.
+# Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewScrollButtonsTest...")
+    add_executable(TreeViewScrollButtonsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewScrollButtonsTest.cpp
+    )
+    target_include_directories(TreeViewScrollButtonsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewScrollButtonsTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewScrollButtonsTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewScrollButtonsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewScrollButtonsTest COMMAND TreeViewScrollButtonsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewScrollButtonsTest")
+else()
+    message(STATUS "  TreeViewScrollButtonsTest skipped (UltraCanvas target not present)")
+endif()
+
 # UltraCanvasTreeView::SetFilterText: the rows matching a text, expanded to
 # them, and the tree put back when the filter ends. Headless.
 if(TARGET UltraCanvas)
