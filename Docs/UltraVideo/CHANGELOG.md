@@ -37,6 +37,20 @@
   a proxy half as tall, *Strong blur* looked twice as strong in the viewer
   as in the export.
 
+#### 2026-10-16 *0.6.1*
+- **A project saved on Windows finds its media on Linux and macOS.** The
+  `.ultravideo` file holds the media bin's, the titles' fonts', the overlays'
+  and the sounds' paths relative to its folder, and on Windows it wrote them
+  with `\` between the parts (`media\beach.mp4`) - a file name, not a folder,
+  everywhere else. They are written with `/` on every system now
+  (`FileText` in `UltraVideoDocument.cpp`), as the engine's own project text
+  already was; Windows reads `/` as well. No project written before is
+  affected in practice: UltraVideo did not start on Windows until framework
+  0.9.312 (`libVideoFX.dll` was not found).
+- `UltraVideoDocumentTest` runs on the Windows CI rows as well
+  (`ULTRACANVAS_BUILD_VIDEOFX_TESTS`), and fails on a `\` between a saved
+  path's parts.
+
 #### 2026-10-14 *0.6.0*
 - **Clips keep their faces when they fill the frame.** The wizard's *Keep
   faces in shot* now covers the clips as well as the photos: a clip of

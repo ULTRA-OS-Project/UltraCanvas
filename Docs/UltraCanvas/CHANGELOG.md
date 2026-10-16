@@ -1,3 +1,54 @@
+#### 2026-10-16 *0.9.319*
+- **VideoFX 0.15.1: no experimental encoder is chosen, listed or reported.**
+  Built on an FFmpeg without libvorbis, VideoFX took FFmpeg's own Vorbis
+  encoder for Ogg (and Vorbis in WebM and MKV) and reported Ogg as written,
+  but that encoder is marked experimental and takes stereo only: any other
+  export failed with "Cannot open the vorbis encoder: Operation not
+  permitted". Every encoder VideoFX picks, lists (`VideoFX_ListVideoEncoders`)
+  or counts (`VideoFX_IsAudioEncoderAvailable`, `VideoFX_GetFileFormats`) now
+  comes through `FindEncoderByName` (`VideoFXBackend.h`), which leaves out
+  the ones FFmpeg marks experimental - its own Vorbis and Opus encoders. Ogg
+  then takes Opus or FLAC, or is not reported as written; the two places
+  that opened an experimental encoder in experimental mode are gone.
+  Reproduced on FFmpeg 9.0.2 without libvorbis, where `VideoFXTest`'s "every
+  type it writes is written, and read back" failed on Ogg and now passes.
+- **The Windows CI rows run `UltraVideoDocumentTest` too**, beside
+  `VideoFXTest` (`ULTRACANVAS_BUILD_VIDEOFX_TESTS`, now in
+  `Tests/VideoFXTests.cmake`): UltraVideo's document on the engine, and the
+  `.ultravideo` file's paths written with `/` on Windows (UltraVideo 0.6.1).
+
+#### 2026-10-16 *0.9.318*
+- **Switching Demo pages could crash on a freed focused element.** Leaving
+  the Album page for the Colour Picker sometimes crashed with an access
+  violation in `IsDescendantOf`: the window still held a focus pointer to an
+  element that had been destroyed, because destroying an element only cleared
+  the focus of the window it named at that moment. Every window alive in the
+  process, whether registered with the application or not (popups, tool
+  windows), now forgets a destroyed element as its focus
+  (`UltraCanvasWindowBase::ForgetFocusedElement`), and an element gives up its
+  focus whenever it leaves its window, including a move to another window.
+  An element destroyed while focused in a window it does not belong to is
+  reported on `debugOutput`, so the next bookkeeping slip of this kind shows
+  up in a debug log instead of as a crash.
+
+#### 2026-10-16 *0.9.317*
+- **The tree view's "move to the top" button stays in its corner.** It used to
+  slide up as the view neared the end of the list, so it would not cover the
+  last rows; that moved it under the pointer and is gone, together with
+  `TreeScrollToTopStyle::keepClearRows`. The button now always rests in the
+  bottom-right corner of the rows.
+- **The tree view has a "go to the selected entry" button.** Directly above the
+  top button's corner slot, a second floating button - a dot with an arrow
+  pointing at it - shows while the selected row is not fully on screen
+  (scrolled away, or under a collapsed parent). A click opens the collapsed
+  parents and brings the row to the middle of the view, animated with smooth
+  scrolling; the selection does not change. On by default,
+  `SetShowScrollToSelectionButton(false)` (also on `TreeViewBuilder`) switches
+  it off, `ScrollToSelection()` does the same from code, and it shares
+  `TreeScrollToTopStyle` with the top button. `UltraCanvasColumnsTreeView`
+  inherits it. The DemoApp's multi-select tree has a check box for it, and
+  `Tests/TreeViewScrollButtonsTest.cpp` covers both buttons.
+
 #### 2026-10-16 *0.9.316*
 - **A button grows to fit its text.** Buttons were given fixed widths sized
   for their English labels, and a longer label - a translation, a larger

@@ -67,12 +67,40 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // Every window alive in the process, whether or not it was registered
+        // with the application. Windows are created and destroyed on the UI
+        // thread, the only thread that reads this.
+        std::vector<UltraCanvasWindowBase*>& LiveWindows() {
+            static std::vector<UltraCanvasWindowBase*> live;
+            return live;
+        }
+    }
+
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0) {
         // Configure container for window behavior
         _windowVisible = false;
         window = this;
         nativeSurface = nullptr;
+        LiveWindows().push_back(this);
+    }
+
+    void UltraCanvasWindowBase::ForgetFocusedElement(UltraCanvasUIElement* element) {
+        if (!element) return;
+        UltraCanvasWindowBase* own = element->GetWindow();
+        for (auto* win : LiveWindows()) {
+            if (win->_focusedElement != element) continue;
+            if (win != own) {
+                debugOutput << "UltraCanvas: warning: element '" << element->GetIdentifier()
+                            << "' was destroyed while focused in a window it does not belong to"
+                            << " (window '" << win->GetIdentifier() << "', element names "
+                            << (own ? "'" + own->GetIdentifier() + "'" : std::string("no window"))
+                            << "); its focus was not cleared when it left that window" << std::endl;
+            }
+            win->_focusedElement = nullptr;
+            win->_focusedElementNotifiedActive = false;
+        }
     }
 
     UltraCanvasWindowBase::~UltraCanvasWindowBase() {
@@ -82,6 +110,8 @@ namespace UltraCanvas {
         CloseAllPopups();
         _state = WindowState::Closed;
         _focusedElement = nullptr;
+        auto& live = LiveWindows();
+        live.erase(std::remove(live.begin(), live.end(), this), live.end());
         debugOutput << "UltraCanvas: Window deleted" << std::endl;
     }
 

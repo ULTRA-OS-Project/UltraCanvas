@@ -9,6 +9,7 @@
 // (FFmpeg) for the probes and the clips it generates; without it the suite
 // skips itself.
 // Version: 0.8.0 - effects on overlay clips; a slider's drag as one undo step
+// Version: 0.6.1 - runs on Windows too: the file holds '/' between a path's parts
 // Version: 0.7.0 - the palettes' contrast, as the tokens promise it
 // Version: 0.6.0 - a HEIC imported and exported through the framework's image reader
 // Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
@@ -65,7 +66,9 @@ static std::string TempPath(const std::string& name) {
         fs::create_directories(d / "media");
         return d;
     }();
-    return PathToUtf8(dir / PathFromUtf8(name));
+    // Normal form: on Windows '\' throughout, as the paths a load gives back
+    // ("media/x" appended as it is would keep its '/')
+    return PathToUtf8((dir / PathFromUtf8(name)).lexically_normal());
 }
 
 static VideoFXFrame Solid(int w, int h, uint8_t r, uint8_t g, uint8_t b) {
@@ -861,6 +864,9 @@ int main() {
         if (f) { char buf[4096]; size_t n; while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n); std::fclose(f); }
         CHECK(text.find("\"format\": \"ultravideo\"") != std::string::npos, "an ultravideo file");
         CHECK(text.find("media/pattern.mkv") != std::string::npos && text.find(TempPath("media/pattern.mkv")) == std::string::npos, "media paths relative to the file");
+        // "media\\" in the JSON text is a '\' after "media" in a path: a
+        // project saved on Windows would not find its media elsewhere
+        CHECK(text.find("media\\\\") == std::string::npos, "'/' between the parts on every system");
     }
     Document loaded;
     std::vector<std::string> missing;

@@ -1249,10 +1249,13 @@ jobs:
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
 
       # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
-      # ships - and through the Windows file names, cache folder and fonts.
+      # ships - and through the Windows file names, cache folder and fonts;
+      # then UltraVideo's document on it, whose .ultravideo file must hold
+      # '/' between a path's parts where Windows joins them with '\'.
       # As on Linux (below), the stub would pass VideoFXTest on its
-      # filter-text checks alone, so first prove the engine was configured.
-      - name: Verify the VideoFX engine and run VideoFXTest (Windows)
+      # filter-text checks alone (and UltraVideoDocumentTest skips itself),
+      # so first prove the engine was configured.
+      - name: Verify the VideoFX engine and run its tests (Windows)
         if: runner.os == 'Windows'
         run: |
           set -eu
@@ -1261,7 +1264,7 @@ jobs:
             exit 1
           fi
           cd build
-          ctest --output-on-failure --no-tests=error -R "^VideoFXTest$"
+          ctest --output-on-failure --no-tests=error -R "^(VideoFXTest|UltraVideoDocumentTest)$"
 
       # UltraCloud's module suite - the account store on UltraDatabase, the
       # secret stores on UltraVault, every provider against an injected fake

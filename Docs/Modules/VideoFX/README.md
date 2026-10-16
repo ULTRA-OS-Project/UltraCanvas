@@ -132,7 +132,11 @@ by hand:
   Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
   `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
   it: the muxer and the container's usual encoders are there. `container`
-  then names the `VideoFXContainer` an export to it uses.
+  then names the `VideoFXContainer` an export to it uses. An encoder FFmpeg
+  marks experimental does not count, here or anywhere VideoFX picks or lists
+  one: FFmpeg's own Vorbis encoder takes stereo only, so a build without
+  libvorbis writes no Vorbis (Ogg then takes another of its codecs, or is
+  not written).
 - Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
   FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
   opens it, but a phone's HEIC is a grid of tiles in a stream group, which

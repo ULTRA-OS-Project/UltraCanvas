@@ -65537,7 +65537,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Connecting Lines**: Dotted or solid parent/child connectors, root level included
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
-- **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
+- **Scroll-to-Top / Scroll-to-Selection Buttons**: Floating "move to the top" and "go to the selected entry" affordances for long trees
 - **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
@@ -66102,12 +66102,14 @@ backupTree->onNodeCheckChanged = [backupTree](TreeNode*, TreeCheckState) {
 };
 ```
 
-### Scroll-to-Top Button
+### Scroll-to-Top and Scroll-to-Selection Buttons
 
-When a tree grows past its viewport, getting back to the root can take a lot of
-wheel turns. The tree therefore draws a small floating **"move to the top"**
-button over the bottom-right corner of its content area once the view has been
-scrolled down:
+When a tree grows past its viewport, getting back to the root - or back to the
+row you selected - can take a lot of wheel turns. The tree therefore draws two
+small floating buttons over the bottom-right corner of its content area: a
+**"move to the top"** button once the view has been scrolled down, and directly
+above it a **"go to the selected entry"** button (a dot with an arrow pointing
+at it) while the selected row is out of view.
 
 ```cpp
 void SetShowScrollToTopButton(bool show);
@@ -66120,6 +66122,14 @@ bool    IsScrollToTopButtonActive() const;   // on screen right now?
 Rect2Di GetScrollToTopButtonRect() const;   // element-local rect (empty when inactive)
 
 void ScrollToTop();                          // what the button does; callable directly
+
+void SetShowScrollToSelectionButton(bool show);
+bool GetShowScrollToSelectionButton() const;
+
+bool    IsScrollToSelectionButtonActive() const;   // on screen right now?
+Rect2Di GetScrollToSelectionButtonRect() const;   // element-local rect (empty when inactive)
+
+void ScrollToSelection();                    // what that button does; callable directly
 ```
 
 The other scrolling calls bring a node into view or move the view by pixels:
@@ -66138,23 +66148,35 @@ Behaviour:
   visible area, so a tree that overflows by a row or two never grows a button.
 - **Appears only once the user has scrolled down**: while the first row is on
   screen there is nothing to go back to, so the button stays hidden.
-- **Dodges the end of the list**: as the view approaches the bottom, the button
-  slides up so it never covers the last `TreeScrollToTopStyle::keepClearRows`
-  (3 by default) rows. Away from the bottom it rests in the corner.
+- **Always rests in the corner**, also at the end of the list.
 - **Never overlaps the vertical scrollbar** — it is placed to the left of it.
 - Clicking it jumps back to the first row, animated when the scrollbar has
   smooth scrolling enabled. The click is consumed by the button, so the row
   underneath is neither selected nor expanded.
 
-`UltraCanvasColumnsTreeView` inherits the button, and it is placed below the
-optional column header band.
+The scroll-to-selection button:
+
+- **Enabled by default.** `SetShowScrollToSelectionButton(false)` turns it off.
+- **Sits directly above the top button's corner slot** - in the same place
+  whether or not the top button is showing, so it never jumps under the
+  pointer.
+- **Appears only while the selected row is not fully on screen**: scrolled
+  away, or hidden under a collapsed parent. With no selection, or a selected
+  row hidden by a filter, it stays hidden.
+- Clicking it opens the collapsed parents of the first selected node and
+  brings its row to the middle of the view, animated when the scrollbar has
+  smooth scrolling enabled. The selection itself does not change, and the
+  click does not reach the row underneath.
+- It shares `TreeScrollToTopStyle` with the top button.
+
+`UltraCanvasColumnsTreeView` inherits both buttons, and they are placed below
+the optional column header band.
 
 ```cpp
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
-    int   margin          = 8;     // gap between the button and the content edges
-    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
-    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    int   margin          = 8;     // gap between a button and the content edges / the other button
+    int   minHiddenRows   = 3;     // top button: show only when MORE than this many rows are out of view
     float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
     Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);
     Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
@@ -66163,20 +66185,21 @@ struct TreeScrollToTopStyle {
 };
 ```
 
-Example — a larger, lighter button that keeps five rows clear:
+Example — larger, blue buttons that wait for five hidden rows:
 
 ```cpp
 auto tree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
 
 TreeScrollToTopStyle style;
 style.size            = 32;
-style.keepClearRows   = 5;
+style.minHiddenRows   = 5;
 style.background      = Color(0x20, 0x60, 0xC0, 0xC0);
 style.hoverBackground = Color(0x20, 0x60, 0xC0, 0xF0);
 tree->SetScrollToTopButtonStyle(style);
 
-// ...or switch the affordance off entirely:
+// ...or switch the affordances off entirely:
 // tree->SetShowScrollToTopButton(false);
+// tree->SetShowScrollToSelectionButton(false);
 ```
 
 ### Measuring the Tree
@@ -66360,7 +66383,8 @@ auto treeView = TreeViewBuilder("MyTree", 10, 10, 300, 400)
 ```
 
 The builder also offers `SetShowRootLines()`, `SetShowCheckboxes()`,
-`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()` and the callback setters
+`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()`,
+`SetShowScrollToSelectionButton()` and the callback setters
 `OnNodeSelected()`, `OnNodeDoubleClicked()`, `OnNodeExpanded()`,
 `OnNodeCollapsed()`, `OnNodeRightClicked()` and `OnNodeCheckChanged()`.
 
@@ -81895,7 +81919,11 @@ by hand:
   Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
   `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
   it: the muxer and the container's usual encoders are there. `container`
-  then names the `VideoFXContainer` an export to it uses.
+  then names the `VideoFXContainer` an export to it uses. An encoder FFmpeg
+  marks experimental does not count, here or anywhere VideoFX picks or lists
+  one: FFmpeg's own Vorbis encoder takes stereo only, so a build without
+  libvorbis writes no Vorbis (Ogg then takes another of its codecs, or is
+  not written).
 - Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
   FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
   opens it, but a phone's HEIC is a grid of tiles in a stream group, which
