@@ -21,10 +21,10 @@
 // by whichever Vector plugin the application registered - see
 // UltraCanvasVectorPreview.h), and audio / video through the
 // framework's UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement.
-// UltraCanvas Document containers (*.ucd) are recognised too: until the UCD v2
-// engine lands, the viewer shows the container's embedded preview thumbnail
-// (readable without parsing the body — the format is designed for that) plus
-// the header details; files without a thumbnail get a header summary. The
+// UltraCanvas Document containers (*.ucd) are recognised too: the viewer
+// shows the container's embedded preview thumbnail (readable without parsing
+// the body — the format is designed for that, UltraCanvasUCDContainer.h)
+// plus the header details; files without a thumbnail get a header summary. The
 // right view is chosen automatically from the file kind, and the toolbar
 // offers only the tools that kind takes (GetAvailableTools): colour
 // adjustments and Curves for bitmaps, rotate / mirror / save for anything on

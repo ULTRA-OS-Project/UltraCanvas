@@ -1148,7 +1148,9 @@ engine; these classes hold the pixels being edited and hand them to it.
   ApplyFilterToLayer/PreviewFilter` (selection-aware PixelFX ops),
   `CopySelection/CopySelectionMerged/DeleteSelection/FillSelection`,
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
-  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
+  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
+  `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1159,6 +1161,13 @@ engine; these classes hold the pixels being edited and hand them to it.
   FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
   with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
+- **UCD container** (`UltraCanvasUCDContainer.{h,cpp}`, namespace `UCD`) — the
+  UltraCanvas Document v2 container (`Docs/UltraCanvas/UCD-FileFormat-v2.md`):
+  `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
+  `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
+  `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
+  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,

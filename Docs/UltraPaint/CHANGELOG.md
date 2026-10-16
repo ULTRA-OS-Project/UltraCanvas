@@ -1,3 +1,28 @@
+#### 2026-10-16 *0.2.24*
+- **Layered images in the UCD format.** *Save As* offers *UltraCanvas layered
+  image (.ucd)* beside the *UltraPaint project*: an UltraCanvas Document
+  (UCD 2.1) that keeps every layer - its pixels, name, visibility, lock,
+  opacity and blend mode - and a text layer's words as text, so it opens as
+  text again, with a thumbnail of the picture straight after its header that
+  UltraFiler and UltraViewer show without opening the layers. Open takes it
+  too, and a `.ucd` dropped on UltraPaint's icon opens (MIME type
+  `image/x-ultracanvas-bitmap`, told from other UltraCanvas documents by its
+  signature). The two layered formats now come from the framework's format
+  inventory (*Layered images*) instead of a list of UltraPaint's own
+  (framework changelog, pending entry `ucd-layered-images`).
+- **Escape in the Text tool's lists leaves you typing.** Opening the *Font*
+  or *Align* list while typing a text and closing it with Escape - or with
+  the entry it already had - left the keyboard on the list's button, so what
+  was typed next went nowhere until the text was clicked again. The keys now
+  go back to the text, as they do after picking a font; Tab or a click
+  elsewhere still moves them where they were sent.
+- **The text being typed stays on its box when the document changes before
+  the window has redrawn.** A change to the document (a layer added, the
+  canvas resized) between a window resize and the next redraw moved the view
+  without telling the window, so the editor could sit off its text until the
+  next redraw (framework changelog, pending entry
+  `paint-surface-reports-document-moves`).
+
 #### 2026-10-15 *0.2.23*
 - **Text is typed on the image, and stays text.** The Text tool no longer
   asks for its words in a window and stamps them into the active layer: a

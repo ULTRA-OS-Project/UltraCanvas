@@ -286,6 +286,11 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
 **Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
+
+**Layered images** (`MediaFormatCategory::LayeredImage`): `.ucd`, the UCD 2.1
+layered image (load + save, no libvips needed), and `.ucraster`, the UltraPaint
+project (load + save, libvips) - files that keep an image's layers and its text
+layers as text, read and written by `UCRasterDocument`.
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*

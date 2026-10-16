@@ -50,6 +50,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.4 - layered images (LayeredImage: *.ucd, *.ucraster) are filed as images; a
+//                  bitmap the image pipeline does not decode thumbnails from the preview
+//                  it carries (a *.ucd's)
 // Version: 1.38.3 - host icons that are on screen are never evicted from the
 //                  icon cache, and a program or library keys by type: a
 //                  maximised window of DLLs no longer flickers forever
@@ -70,7 +73,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -619,6 +622,8 @@ namespace UltraCanvas {
                 case MediaFormatCategory::Audio:       return FilerFileCategory::Audio;
                 case MediaFormatCategory::Video:       return FilerFileCategory::Video;
                 case MediaFormatCategory::Font:        return FilerFileCategory::Font;
+                // A picture, whose layers the file keeps.
+                case MediaFormatCategory::LayeredImage: return FilerFileCategory::Image;
             }
             return FilerFileCategory::Other;
         }
@@ -1011,7 +1016,9 @@ namespace UltraCanvas {
         bool ThumbnailProducibleFor(const std::string& ext, FilerPreviewType kind) {
             switch (kind) {
                 case FilerPreviewType::Bitmaps:
-                    return ImagePipelineLoadsExtension(ext);
+                    // Decoded, or - a layered image (*.ucd) - the preview
+                    // it carries.
+                    return ImagePipelineLoadsExtension(ext) || FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::VectorGraphics:
                     // Three ways to a picture, in the order the worker tries
                     // them: the image pipeline rasterizes it, a registered
@@ -10857,9 +10864,10 @@ namespace UltraCanvas {
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::Bitmaps:
                 // The Image category is wider than what the image pipeline
-                // decodes.
-                return ImagePipelineLoadsExtension(e.extension) ? e.path
-                                                                : std::string{};
+                // decodes; a layered image (*.ucd) carries a preview.
+                return ImagePipelineLoadsExtension(e.extension) ||
+                               FormatCarriesEmbeddedPreview(e.extension)
+                           ? e.path : std::string{};
             case FilerPreviewType::VectorGraphics:
                 // svg/svgz rasterize through the built-in SVG renderer, and
                 // eps/ps through libvips where that build has a PostScript
@@ -12091,9 +12099,17 @@ namespace UltraCanvas {
                     break;
                 }
                 default: {
-                    auto img = UCImage::GetFresh(req.path);
-                    if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                        pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                    const std::string ext = LowerExtension(req.path);
+                    if (ImagePipelineLoadsExtension(ext) || !FormatCarriesEmbeddedPreview(ext)) {
+                        auto img = UCImage::GetFresh(req.path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                        }
+                    }
+                    // A layered image (*.ucd): the thumbnail it carries.
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
+                                                         req.fit, req.scale);
                     }
                     break;
                 }
