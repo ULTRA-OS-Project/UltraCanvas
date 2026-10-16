@@ -19,9 +19,11 @@
 //     its real bytes for every file operation while showing decoded;
 //   * NormalizePath gives that folder, asked for with a separator at its
 //     end, exactly one native separator there (Windows doubled it), and a
-//     path that does not exist back whole (Linux cut it short).
+//     path that does not exist back whole (Linux cut it short); a name
+//     ending in '\' outside Windows is a file's, with no '/' put after it.
+// Version: 1.2.0 - a file name ending in '\' (Linux, macOS) keeps it last
 // Version: 1.1.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -257,6 +259,14 @@ int main() {
     CheckEqual(NormalizePath("C:/"), "C:\\", "the root of a drive");
 #else
     CheckEqual(NormalizePath("/"), "/", "the root");
+    // '\' is a character of a name here, not a separator: a file named "a\"
+    // came back as "a\/", which reaches nothing.
+    std::ofstream(PathFromUtf8(PathToUtf8(dir) + "/a\\")) << "x";
+    const std::string endsInBackslash = NormalizePath(PathToUtf8(dir) + "/a\\");
+    CheckEqual(endsInBackslash, folder + "a\\", "a file whose name ends in '\\' keeps it last");
+    Check(fs::exists(PathFromUtf8(endsInBackslash)), "and reaches the file");
+    CheckEqual(NormalizePath(PathToUtf8(dir) + "/b\\"), PathToUtf8(dir) + "/b\\",
+               "a missing one too");
 #endif
     std::string missing = PathToUtf8(dir) + "/" + kThai + "-missing/sub/file.txt";
     std::string missingExpected = missing;
