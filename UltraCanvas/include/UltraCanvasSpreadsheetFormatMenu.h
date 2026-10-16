@@ -51,6 +51,11 @@ bool SpreadsheetNumberFormatsEqual(const NumberFormat& a, const NumberFormat& b)
 // the menu opens so the state stays current.
 std::vector<MenuItemData> BuildSpreadsheetFormatMenuItems(UltraCanvasSpreadsheet* sheet);
 
+// The formula bar's function menu: a submenu per function category and one
+// with every function A to Z. Each entry shows the function's name and
+// description and calls sheet->InsertFunction(name).
+std::vector<MenuItemData> BuildSpreadsheetFunctionMenuItems(UltraCanvasSpreadsheet* sheet);
+
 // Replace `menu`'s contents with the items above.
 void PopulateSpreadsheetFormatMenu(UltraCanvasMenu& menu, UltraCanvasSpreadsheet* sheet);
 

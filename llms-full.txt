@@ -57992,6 +57992,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
+- **Function Menu**: an **fx** button at the end of the formula bar lists every formula function by category and A to Z, and inserts the one picked (see [Function menu](#function-menu))
 - **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, sorting, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
@@ -58709,6 +58710,27 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Function menu
+
+The **fx** button at the right end of the formula bar opens a menu of every
+function the formula engine knows - a submenu per category (Date and time,
+Financial, Information, Logical, Lookup, Math, Statistical, Text) and one with
+all of them A to Z. Each entry shows the function's name and its description.
+Picking one inserts the call:
+
+| When | The formula bar gets |
+|---|---|
+| editing a formula | `NAME()` at the caret |
+| on a formula cell, not editing | the formula wrapped: `=A1/B1` becomes `=ROUND(A1/B1)` |
+| on any other cell | `=NAME()` |
+
+The caret is left inside the call - between the parentheses, or before the
+closing one of a wrapped formula - ready for the arguments. Functions an
+application registers on the engine appear too; the menu is rebuilt each time
+it opens. From code: `InsertFunction("ROUND")` does what a pick does,
+`BuildSpreadsheetFunctionMenuItems()` returns the items for a menu of your
+own, and `SetFunctionMenuEnabled(false)` removes the button.
 
 ## Sorting from the context menu
 

@@ -3867,6 +3867,20 @@ add_test(NAME SpreadsheetSortMenuTest COMMAND SpreadsheetSortMenuTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetSortMenuTest")
 
+message(STATUS "  Building SpreadsheetFunctionMenuTest...")
+add_executable(SpreadsheetFunctionMenuTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetFunctionMenuTest.cpp
+)
+target_include_directories(SpreadsheetFunctionMenuTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetFunctionMenuTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetFunctionMenuTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetFunctionMenuTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetFunctionMenuTest COMMAND SpreadsheetFunctionMenuTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetFunctionMenuTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

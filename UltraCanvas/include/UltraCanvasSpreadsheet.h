@@ -160,6 +160,9 @@ private:
     // The built-in formatting context menu, created lazily on first use.
     std::shared_ptr<UltraCanvasMenu> formatMenu_;
     bool formatMenuEnabled_ = true;
+    // The formula bar's function menu and its "fx" button.
+    std::shared_ptr<UltraCanvasMenu> functionMenu_;
+    bool functionMenuEnabled_ = true;
 
     // Header sort buttons (see SetHeaderSortEnabled). The last header sort is
     // remembered by sheet, range and column so its header can show the
@@ -319,6 +322,21 @@ public:
     void ShowFormatMenuAt(int windowX, int windowY);
     bool IsFormatMenuEnabled() const { return formatMenuEnabled_; }
     void SetFormatMenuEnabled(bool enabled) { formatMenuEnabled_ = enabled; }
+
+    // ===== FUNCTION MENU =====
+    // The "fx" button at the right end of the formula bar opens a menu of
+    // every function the formula engine knows, by category and A to Z; the
+    // name and description of each is shown. Picking one inserts it (see
+    // InsertFunction). Defined in UltraCanvasSpreadsheetFormatMenu.h/.cpp.
+    void ShowFunctionMenuAt(int windowX, int windowY);
+    bool IsFunctionMenuEnabled() const { return functionMenuEnabled_; }
+    void SetFunctionMenuEnabled(bool enabled) { functionMenuEnabled_ = enabled; Invalidate(); }
+    // Inserts NAME() at the caret of the formula being edited, with the caret
+    // between the parentheses. Not editing, it starts editing the active cell
+    // in the formula bar: a formula is wrapped (=A1+B1 becomes =NAME(A1+B1),
+    // the caret before the closing parenthesis), any other cell becomes
+    // =NAME().
+    void InsertFunction(const std::string& name);
     
     // ===== MERGE CELLS =====
     bool MergeSelection();
@@ -560,7 +578,10 @@ private:
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
                          ColumnSortButton };
     struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1;
-                           bool addSheetButton = false; int tabScroll = 0; };
+                           bool addSheetButton = false; int tabScroll = 0;
+                           bool functionMenuButton = false; };
+    // The "fx" button at the right end of the formula bar (empty when off).
+    Rect2Di FunctionMenuButtonRect() const;
     HitTestResult HitTest(int x, int y) const;
 
     // Header sort buttons: the block they sort (false when the selection is

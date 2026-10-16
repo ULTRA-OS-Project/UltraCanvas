@@ -7,6 +7,7 @@
 #include "UltraCanvasSpreadsheetFormatMenu.h"
 #include "UltraCanvasWindow.h"
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <sstream>
 
@@ -379,6 +380,67 @@ std::vector<MenuItemData> BuildSpreadsheetFormatMenuItems(UltraCanvasSpreadsheet
     items.push_back(MenuItemData::Action("Merge cells", [sheet]() { sheet->MergeSelection(); }));
     items.push_back(MenuItemData::Action("Unmerge cells", [sheet]() { sheet->UnmergeSelection(); }));
     return items;
+}
+
+std::vector<MenuItemData> BuildSpreadsheetFunctionMenuItems(UltraCanvasSpreadsheet* sheet) {
+    std::vector<MenuItemData> items;
+    SpreadsheetFormulaEngine* engine = sheet ? sheet->GetFormulaEngine() : nullptr;
+    if (!engine) return items;
+    const FormulaFunctionLibrary& library = engine->GetFunctionLibrary();
+
+    // name -> definition, sorted; and the categories they fall in, sorted.
+    std::map<std::string, const FunctionDefinition*> byName;
+    std::map<std::string, std::vector<const FunctionDefinition*>> byCategory;
+    for (const auto& name : library.GetFunctionNames()) {
+        const FunctionDefinition* def = library.GetFunction(name);
+        if (!def) continue;
+        byName[def->name] = def;
+    }
+    for (const auto& [name, def] : byName) {
+        std::string category = def->category.empty() ? std::string("Other") : def->category;
+        if (category == "DateTime") category = "Date and time";
+        byCategory[category].push_back(def);
+    }
+
+    auto entry = [sheet](const FunctionDefinition* def) {
+        const std::string name = def->name;
+        MenuItemData item = MenuItemData::Action(name, [sheet, name]() { sheet->InsertFunction(name); });
+        // The description sits in the right-hand column, where a menu shows
+        // shortcuts, and in full in the tooltip.
+        item.shortcut = def->description;
+        item.tooltip = def->description;
+        item.ellipsize = EllipsizeMode::EllipsizeEnd;
+        return item;
+    };
+
+    items.push_back(MenuItemData::Header("Insert function (" + std::to_string(byName.size()) + ")"));
+    for (const auto& [category, defs] : byCategory) {
+        std::vector<MenuItemData> sub;
+        for (const auto* def : defs) sub.push_back(entry(def));
+        items.push_back(MenuItemData::Submenu(category + " (" + std::to_string(defs.size()) + ")", sub));
+    }
+    items.push_back(MenuItemData::Separator());
+    std::vector<MenuItemData> all;
+    for (const auto& [name, def] : byName) all.push_back(entry(def));
+    items.push_back(MenuItemData::Submenu("All functions A to Z", all));
+    return items;
+}
+
+void UltraCanvasSpreadsheet::ShowFunctionMenuAt(int windowX, int windowY) {
+    UltraCanvasWindowBase* window = GetWindow();
+    if (!window) return;
+    if (!functionMenu_) {
+        functionMenu_ = std::make_shared<UltraCanvasMenu>(GetIdentifier() + "_FunctionMenu", 0, 0, 260, 0);
+        functionMenu_->SetMenuType(MenuType::PopupMenu);
+    }
+    // Rebuilt each time: an application may register functions later.
+    functionMenu_->Clear();
+    for (const auto& item : BuildSpreadsheetFunctionMenuItems(this)) functionMenu_->AddItem(item);
+
+    PopupElementSettings settings;
+    settings.closeByEscapeKey = true;
+    settings.closeByClickOutside = true;
+    functionMenu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
 }
 
 void PopulateSpreadsheetFormatMenu(UltraCanvasMenu& menu, UltraCanvasSpreadsheet* sheet) {

@@ -32,3 +32,14 @@
   engine had parsed the formula - which it does on first evaluation - so in a
   loaded workbook `=SUM(D2:D8)` showed no outline while `=SUM(C2:C8)` beside
   it did. The highlight parses an unparsed formula itself.
+- **Spreadsheet: an "fx" function menu in the formula bar.** A button at the
+  bar's right end lists all formula functions - a submenu per category and
+  one A to Z - with each one's description. Picking one inserts it at the
+  caret while editing, wraps the cell's formula (=A1/B1 becomes
+  =ROUND(A1/B1)), or starts =NAME(); the caret is left inside the call.
+  `InsertFunction()`, `BuildSpreadsheetFunctionMenuItems()` and
+  `SetFunctionMenuEnabled()` are public.
+- **Spreadsheet: the formula bar no longer shows its text twice while
+  editing.** The bar drew the text and the editor drew it again 10 px to the
+  right, so a formula read "==SUM(...)"; the bar now leaves the text to the
+  editor, which sits where the text was.

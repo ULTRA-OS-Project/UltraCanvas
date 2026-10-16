@@ -151,6 +151,29 @@ void UltraCanvasSpreadsheet::RenderFormulaBar(IRenderContext* ctx) {
                   Point2Df(formulaBarBounds_.x + 6,
                   formulaBarBounds_.y + (formulaBarBounds_.height - ctx->GetTextLineHeight(addrText)) / 2));
 
+    // The "fx" button that opens the function menu
+    const Rect2Di fx = FunctionMenuButtonRect();
+    if (fx.width > 0) {
+        ctx->SetFillPaint(headerBackgroundColor_);
+        ctx->FillRectangle(Rect2Df(fx.x, fx.y, fx.width, fx.height));
+        ctx->SetStrokePaint(gridlineColor_);
+        ctx->DrawRectangle(Rect2Df(fx.x, fx.y, fx.width, fx.height));
+        ctx->SetFontFace("Times New Roman", FontWeight::Bold, FontSlant::Italic);
+        ctx->SetFontSize(13);
+        const std::string fxLabel = "fx";
+        const int arrowW = 7;
+        const int labelW = ctx->GetTextLineWidth(fxLabel);
+        const int startX = fx.x + (fx.width - labelW - arrowW - 3) / 2;
+        ctx->SetTextPaint(headerTextColor_);
+        ctx->DrawText(fxLabel, Point2Df(startX, fx.y + (fx.height - ctx->GetTextLineHeight(fxLabel)) / 2));
+        const double ax = startX + labelW + 3, ay = fx.y + fx.height * 0.5 - 1.5;
+        ctx->SetFillPaint(headerTextColor_);
+        ctx->FillLinePath(std::vector<Point2Dd>{ Point2Dd(ax, ay), Point2Dd(ax + arrowW, ay),
+                                                 Point2Dd(ax + arrowW / 2.0, ay + 4) });
+        ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
+        ctx->SetFontSize(11);
+    }
+
     // Formula/value text
     int textX = formulaBarBounds_.x + nameBoxWidth + 10;
     std::string displayText = editBuffer_;
@@ -162,9 +185,24 @@ void UltraCanvasSpreadsheet::RenderFormulaBar(IRenderContext* ctx) {
         }
     }
 
-    ctx->DrawText(displayText,
-                  Point2Df(textX,
-                  formulaBarBounds_.y + (formulaBarBounds_.height - ctx->GetTextLineHeight(displayText)) / 2));
+    const int textRight = fx.width > 0 ? fx.x - 4 : formulaBarBounds_.x + formulaBarBounds_.width - 4;
+    ctx->PushState();
+    ctx->ClipRect(Rect2Df(textX, formulaBarBounds_.y, static_cast<float>(std::max(0, textRight - textX)), formulaBarBounds_.height));
+    // Being edited here, the editor draws the text itself; drawn as well, the
+    // two copies sat a few pixels apart and read as "==SUM(...)".
+    if (!(editMode_ == SpreadsheetEditMode::Editing && cellEditor)) {
+        ctx->DrawText(displayText,
+                      Point2Df(textX,
+                      formulaBarBounds_.y + (formulaBarBounds_.height - ctx->GetTextLineHeight(displayText)) / 2));
+    }
+    ctx->PopState();
+}
+
+Rect2Di UltraCanvasSpreadsheet::FunctionMenuButtonRect() const {
+    if (!showFormulaBar_ || !functionMenuEnabled_) return Rect2Di(0, 0, 0, 0);
+    const int width = 36;
+    return Rect2Di(formulaBarBounds_.x + formulaBarBounds_.width - width - 2,
+                   formulaBarBounds_.y + 2, width, std::max(0, static_cast<int>(formulaBarBounds_.height) - 4));
 }
 
 void UltraCanvasSpreadsheet::RenderCornerHeader(IRenderContext* ctx) {
@@ -1152,7 +1190,14 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
         }
         
         case HitArea::FormulaBar: {
-            if (!IsEditing()) {
+            if (hit.functionMenuButton) {
+                // Opens under the button; an edit in progress stays open so
+                // the chosen function lands at its caret.
+                const Rect2Di fx = FunctionMenuButtonRect();
+                const Point2Df origin = GetPositionInWindow();
+                ShowFunctionMenuAt(static_cast<int>(origin.x + fx.x),
+                                   static_cast<int>(origin.y + fx.y + fx.height));
+            } else if (!IsEditing()) {
                 StartEditing();
             }
             break;
@@ -1282,7 +1327,9 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
     switch (hit.area) {
         case HitArea::ColumnResizer: SetMouseCursor(UCMouseCursor::SizeWE); break;
         case HitArea::RowResizer:    SetMouseCursor(UCMouseCursor::SizeNS); break;
-        case HitArea::FormulaBar:    SetMouseCursor(UCMouseCursor::Text);   break;
+        case HitArea::FormulaBar:
+            SetMouseCursor(hit.functionMenuButton ? UCMouseCursor::Hand : UCMouseCursor::Text);
+            break;
         case HitArea::ColumnSortButton: SetMouseCursor(UCMouseCursor::Hand); break;
         case HitArea::AutoFillHandle: SetMouseCursor(UCMouseCursor::Cross);  break;
         default:                     SetMouseCursor(UCMouseCursor::Default); break;
@@ -1466,6 +1513,7 @@ UltraCanvasSpreadsheet::HitTestResult UltraCanvasSpreadsheet::HitTest(int x, int
     // Formula bar
     if (showFormulaBar_ && formulaBarBounds_.Contains(x, y)) {
         result.area = HitArea::FormulaBar;
+        result.functionMenuButton = FunctionMenuButtonRect().Contains(x, y);
         return result;
     }
     
@@ -1812,11 +1860,14 @@ Rect2Df UltraCanvasSpreadsheet::EditorRect() const {
                        static_cast<float>(std::max(8, b.width - 2 * padding)),
                        static_cast<float>(std::max(8, b.height - 4)));
     }
-    // Formula-bar editing: the text area to the right of the name box.
-    const int nameBoxWidth = 90;
+    // Formula-bar editing: the text area to the right of the name box, where
+    // RenderFormulaBar draws the text when not editing (so it does not move).
+    const int nameBoxWidth = 80;
     float x = formulaBarBounds_.x + nameBoxWidth + 10;
+    const Rect2Di fx = FunctionMenuButtonRect();
+    const float right = fx.width > 0 ? fx.x - 4.0f : formulaBarBounds_.x + formulaBarBounds_.width - 8.0f;
     return Rect2Df(x, formulaBarBounds_.y + 2,
-                   std::max(8.0f, formulaBarBounds_.width - (x - formulaBarBounds_.x) - 8.0f),
+                   std::max(8.0f, right - x),
                    std::max(8.0f, formulaBarBounds_.height - 4.0f));
 }
 
@@ -1899,6 +1950,42 @@ void UltraCanvasSpreadsheet::StartEditingAt(int row, int col) {
     }
     BuildCellEditor(initial, false);
 
+    if (onFormulaBarChange) onFormulaBarChange();
+    Invalidate();
+}
+
+void UltraCanvasSpreadsheet::InsertFunction(const std::string& name) {
+    if (name.empty()) return;
+    if (!IsEditing()) {
+        StartEditing();   // in the formula bar
+        if (!cellEditor) return;
+        if (editBuffer_.size() > 1 && editBuffer_[0] == '=') {
+            // A formula is wrapped: =A1+B1 becomes =ROUND(A1+B1), the caret
+            // before the closing parenthesis for the remaining arguments.
+            const std::string text = "=" + name + "(" + editBuffer_.substr(1) + ")";
+            cellEditor->SetText(text);
+            cellEditor->SetSelection(text.size() - 1, text.size() - 1);
+            editBuffer_ = text;
+            cellEditor->SetFocus(true);
+            if (onFormulaBarChange) onFormulaBarChange();
+            Invalidate();
+            return;
+        }
+        // Anything else: the cell becomes a call of the function.
+        cellEditor->SetText("=");
+        cellEditor->SetSelection(1, 1);
+    }
+    if (!cellEditor) return;
+    std::string text = cellEditor->GetText();
+    size_t caret = std::min(cellEditor->GetCaretPosition(), text.size());
+    if (text.empty()) { text = "="; caret = 1; }
+    text.insert(caret, name + "()");
+    // The caret between the parentheses, ready for the arguments.
+    caret += name.size() + 1;
+    cellEditor->SetText(text);
+    cellEditor->SetSelection(caret, caret);
+    editBuffer_ = text;
+    cellEditor->SetFocus(true);
     if (onFormulaBarChange) onFormulaBarChange();
     Invalidate();
 }
