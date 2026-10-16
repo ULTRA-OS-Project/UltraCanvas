@@ -67,15 +67,17 @@ enum class TreeSortMode {
 };
 
 // ===== SCROLL-TO-TOP BUTTON STYLE =====
-// Look and thresholds of the floating "move to the top" button that the tree
-// draws over the bottom-right corner of its content area once the rows overflow
-// the visible area and the view has been scrolled down.
-// See UltraCanvasTreeView::SetShowScrollToTopButton().
+// Look and thresholds of the floating buttons the tree draws over the
+// bottom-right corner of its content area: "move to the top" (once the rows
+// overflow the visible area and the view has been scrolled down) and, stacked
+// directly above it, "go to the selected entry" (while the selected row is out
+// of view). Both buttons share this style.
+// See UltraCanvasTreeView::SetShowScrollToTopButton() and
+// UltraCanvasTreeView::SetShowScrollToSelectionButton().
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
-    int   margin          = 8;     // gap between the button and the content edges
-    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
-    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    int   margin          = 8;     // gap between a button and the content edges / the other button
+    int   minHiddenRows   = 3;     // top button: show only when MORE than this many rows are out of view
     float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
     Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);  // translucent so rows stay readable
     Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
@@ -303,7 +305,11 @@ private:
     // Floating "move to the top" button (bottom-right of the content area)
     bool showScrollToTopButton = true;   // feature is on by default
     bool scrollToTopHovered = false;     // pointer currently over the button
-    TreeScrollToTopStyle scrollToTopStyle;
+    TreeScrollToTopStyle scrollToTopStyle;   // shared by both floating buttons
+
+    // Floating "go to the selected entry" button, stacked above the top button
+    bool showScrollToSelectionButton = true;   // feature is on by default
+    bool scrollToSelectionHovered = false;     // pointer currently over the button
 
     // Interaction state
 //    bool isDragging;               // Currently dragging scrollbar
@@ -537,6 +543,10 @@ public:
     void ScrollBy(int deltaY);
     // Jump back to the first row (animated when the scrollbar has smooth scrolling on).
     void ScrollToTop();
+    // Bring the first selected node into the middle of the view, expanding its
+    // collapsed ancestors first (animated when the scrollbar has smooth
+    // scrolling on). Does nothing without a selection.
+    void ScrollToSelection();
 
     // ===== MEASURING =====
     // The width the tree needs to show its widest row in full: from its left
@@ -553,8 +563,7 @@ public:
     // A floating "move to the top" button drawn over the bottom-right corner of
     // the content area. It appears once the view is scrolled down AND more than
     // TreeScrollToTopStyle::minHiddenRows rows are outside the visible area, and
-    // slides up as the view nears the end of the list so it never covers the last
-    // TreeScrollToTopStyle::keepClearRows rows. Enabled by default.
+    // always rests in that corner. Enabled by default.
     void SetShowScrollToTopButton(bool show);
     bool GetShowScrollToTopButton() const { return showScrollToTopButton; }
 
@@ -568,6 +577,22 @@ public:
 
     // Element-local rect the button occupies right now; empty when not active.
     Rect2Di GetScrollToTopButtonRect() const;
+
+    // ===== SCROLL-TO-SELECTION BUTTON =====
+    // A floating "go to the selected entry" button (a dot with an arrow pointing
+    // at it), stacked directly above the scroll-to-top button's corner slot. It
+    // appears while a node is selected and its row is not fully on screen -
+    // scrolled away, or hidden under a collapsed parent. Clicking it calls
+    // ScrollToSelection(). Shares the scroll-to-top button's style. Enabled by
+    // default.
+    void SetShowScrollToSelectionButton(bool show);
+    bool GetShowScrollToSelectionButton() const { return showScrollToSelectionButton; }
+
+    // True while the button is actually on screen.
+    bool IsScrollToSelectionButtonActive() const;
+
+    // Element-local rect the button occupies right now; empty when not active.
+    Rect2Di GetScrollToSelectionButtonRect() const;
 
 
     // ===== EVENT HANDLING =====
@@ -672,11 +697,20 @@ private:
 
     int GetTotalVisibleHeight();
 
-    // ===== SCROLL-TO-TOP BUTTON =====
+    // ===== FLOATING SCROLL BUTTONS =====
     void RenderScrollToTopButton(IRenderContext* ctx);
-    // Consume pointer events that land on the button (hover tracking + click).
+    void RenderScrollToSelectionButton(IRenderContext* ctx);
+    // Rounded backdrop shared by both floating buttons.
+    void RenderFloatingButtonFrame(IRenderContext* ctx, const Rect2Di& r, bool hovered);
+    // The rect of the floating button in corner slot `slot` (0 = bottom-right
+    // corner, 1 = directly above it).
+    Rect2Di GetFloatingButtonSlotRect(int slot) const;
+    // Consume pointer events that land on either button (hover tracking + click).
     // Returns true when the event was handled and must not reach the rows.
     bool HandleScrollToTopButtonEvent(const UCEvent& event);
+    // Display y (content coordinates) of `node`, or -1 when its row is not on
+    // show (a collapsed or hidden ancestor, or filtered out).
+    int FindShownNodeY(const TreeNode* node) const;
 
     int GetNodeDisplayY(TreeNode* node);
     
@@ -838,6 +872,11 @@ public:
 
     TreeViewBuilder& SetScrollToTopButtonStyle(const TreeScrollToTopStyle& style) {
         treeView->SetScrollToTopButtonStyle(style);
+        return *this;
+    }
+
+    TreeViewBuilder& SetShowScrollToSelectionButton(bool show) {
+        treeView->SetShowScrollToSelectionButton(show);
         return *this;
     }
 
