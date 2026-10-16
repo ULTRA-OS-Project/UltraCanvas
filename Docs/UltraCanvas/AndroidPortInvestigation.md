@@ -271,13 +271,14 @@ pkg-config. The port needs a prebuilt Android sysroot (vcpkg's
 `arm64-android` triplet is the first thing to evaluate; Conan or hand-rolled
 meson cross-files are the fallback) with `PKG_CONFIG_LIBDIR` pointed at it.
 
-**Status: the vcpkg route is written but unproven.**
-`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below and
-`scripts/android-bootstrap-sysroot.sh` drives vcpkg with the NDK chainloaded.
-Neither has ever been run — the environment they were written in has no NDK and
-no route to download one — so this is the plan encoded, not a working sysroot.
-**This remains the one blocker between "compiles in CI" and "runs on a
-device".**
+**Status: the vcpkg route runs in CI.**
+`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below,
+libvips included, and `scripts/android-bootstrap-sysroot.sh` drives vcpkg (at
+the commit `scripts/macos-deps.sh` pins) with the NDK chainloaded.
+`.github/workflows/android-build.yml` builds that sysroot for `arm64-android`
+on GitHub's runner, with its NDK, keeps the libraries in vcpkg's binary cache,
+and compiles the core library against it with the NDK's toolchain. What is
+left between that and "runs on a device" is the APK (packaging/README.md).
 
 ### 4.1 Irreducible core stack (must cross-compile)
 
@@ -299,7 +300,7 @@ device".**
 
 | Dependency | Action |
 |---|---|
-| **libvips** (+ ~10 transitive libs) | Currently `REQUIRED` but `HAS_LIBVIPS`/`LIBVIPS_FOUND` guards already exist throughout — **make it optional** (drop `REQUIRED` at `UltraCanvas/CMakeLists.txt:146`, conditionalize the link). This is the single highest-leverage build change and benefits WASM too. Image decode on Android can later go through a smaller path (stb/libjpeg-turbo/libpng or JNI `BitmapFactory`) |
+| **libvips** (+ ~10 transitive libs) | ~~Make it optional~~ **Decided otherwise (2026-10-15): libvips is part of UltraCanvas on every platform, Android included** — it is in the vcpkg manifest with JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF and Netpbm, from the macOS overlay port. The optional build that the first milestone used is gone; only a single-threaded WebAssembly program goes without it, where libvips cannot run |
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
 | GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android. **Status:** done with the NDK's MediaCodec, Camera2 and AAudio (`libspecific/Video/VideoBackendAndroid*.cpp`). No ExoPlayer, so no Java dependency. |
@@ -422,8 +423,9 @@ Process lessons for the Android effort:
 ## 7. Phased implementation plan
 
 **Phase 0 — build foundations** (no Android code yet)
-- Make libvips optional; conditionalize the required-deps block
-  (`UltraCanvas/CMakeLists.txt:128-182`) per platform.
+- ~~Make libvips optional~~ (done for the first milestone, then reversed:
+  libvips is part of UltraCanvas on Android too; §4.2). Conditionalize the
+  rest of the required-deps block per platform.
 - Add `if(ANDROID)` platform arm + `OS/Android/` skeleton + NDK toolchain CI
   job that configures (even if it only builds core + stubs).
 - Produce the dependency sysroot (vcpkg `arm64-android` evaluation:

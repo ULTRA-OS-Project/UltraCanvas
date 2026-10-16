@@ -414,7 +414,9 @@ backend: `CAIRO_FILTER_NEAREST`). Default on; the surface turns it off above
 
 ## Building without libvips
 
-The layer, selection, document, brush engine and surface compile without
+libvips is part of UltraCanvas on every platform; the one build without it is
+a single-threaded WebAssembly program, where it cannot run. There the layer,
+selection, document, brush engine and surface compile without
 `HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
 `ApplyFilter` / `PreviewFilter`, file load / save and `.ucraster` projects;
 `ScaleImage` falls back to the layer's bilinear resample. Text layers are

@@ -1883,10 +1883,12 @@ jobs:
         timeout-minutes: 20
         run: |
           scripts/ci-apt.sh update
+          # libvips-dev: the Android arm requires libvips like every other
+          # (the real one comes from the vcpkg sysroot; android-build.yml).
           scripts/ci-apt.sh install cmake pkg-config \
             libcairo2-dev libpango1.0-dev libfontconfig-dev libglib2.0-dev \
             libtinyxml2-dev libfreetype-dev libfmt-dev libssl-dev \
-            libcurl4-openssl-dev libc-ares-dev
+            libcurl4-openssl-dev libc-ares-dev libvips-dev
 
       - name: Syntax-check OS/Android against the NDK
         run: scripts/android-syntax-check.sh "$ANDROID_NDK_LATEST_HOME"
@@ -1899,8 +1901,9 @@ jobs:
       - name: Configure-only test of the Android CMake arms
         # -DANDROID=1 stands in for the toolchain file (host compilers, host
         # pkg-config deps): validates platform detection, the glue-source
-        # wiring, forced-off GL/plugins, and the UltraNet Android arm with
-        # c-ares present. A full toolchain configure needs the dep sysroot.
+        # wiring, forced-off GL/plugins, libvips required, and the UltraNet
+        # Android arm with c-ares present. The full NDK build against the
+        # vcpkg sysroot is android-build.yml.
         run: |
           cmake -B build-android-cfgtest \
             -DANDROID=1 \

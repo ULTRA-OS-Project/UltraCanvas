@@ -93,8 +93,8 @@ final link. `WASM_THREADS=0 ./build-wasm-sysroot.sh <other-dir>` builds a
 sysroot without `-pthread` for a single-threaded application
 (`-DULTRACANVAS_WASM_THREADS=OFF` on the library): no `SharedArrayBuffer`,
 so no isolation headers on the serving host, and no `std::thread` at run
-time. It is also a build without libvips, which the library's CMake forces
-(`ULTRACANVAS_ENABLE_VIPS=OFF`): libvips runs every image on a worker
+time. It is also the one build of UltraCanvas without libvips, which the
+library's CMake leaves out of it: libvips runs every image on a worker
 thread, a program without `-pthread` cannot start one, and GLib aborts on
 the refused `pthread_create` at the first text. Such a program reads PNG
 through cairo's own reader, JPEG, BMP and GIF through the bundled
@@ -224,7 +224,7 @@ The `wasm-build.yml` workflow - run on a pull request, and on a push to
 `main`, that touches the WebAssembly port, the sysroot script, the Cairo
 image code or the demo, and on a manual dispatch with an optional emsdk
 version - configures the repository root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
-pages, in five variants - `baseline`, `min-size` (`-Os`), `no-vips`,
+pages, in four variants - `baseline`, `min-size` (`-Os`),
 `four-fonts` (`-DUC_WASM_FONTS=...`, the four the front page uses) and
 `single-thread` - writes each variant's download sizes (raw, gzip, Brotli)
 into its job summary, and uploads each as the `wasm-demo-<variant>`
@@ -235,9 +235,10 @@ the port's time to first paint on that machine. The framework's
 `debugOutput` stream also lands in that console (stderr) in every build
 configuration, so a page that fails to build says why there
 (`Error creating example for <page>: ...`); a page can turn it off with
-`Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun` hook. `no-vips` and
-`four-fonts` are measurements that may fail to build; they never fail the
-run. `baseline`, `min-size` and `single-thread` are required: the last is
+`Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun` hook. `four-fonts`
+is a measurement that may fail to build; it never fails the run. (There is
+no variant without libvips any more but `single-thread`: libvips is part of
+UltraCanvas.) `baseline`, `min-size` and `single-thread` are required: the last is
 the build a static host without cross-origin isolation headers must serve.
 
 After the upload, each variant's job opens its pages in the runner's Google
@@ -272,8 +273,8 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
   HEIC / AVIF (libheif with dav1d or aom is a build of its own and megabytes
   of download) and no BMP (ImageMagick). The demo's bitmap pages say so in
   place of the picture; an application gets "format not supported" from
-  `UCImage`. A build without libvips (the `no-vips` and `single-thread`
-  variants) reads PNG through cairo's own reader, JPEG, BMP and GIF (first
+  `UCImage`. The one build without libvips (the `single-thread`
+  variant) reads PNG through cairo's own reader, JPEG, BMP and GIF (first
   frame) through the bundled `stb_image`, and SVG through the Vector
   plugin, nothing else: no TIFF, WebP, HEIC or AVIF, and nothing is
   written.

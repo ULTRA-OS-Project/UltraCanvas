@@ -1,5 +1,8 @@
 // PixelFX/core/PixelFX.cpp
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
+// Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
+//                  FileLoader's lists, not a fixed one; SaveGif through
+//                  libvips' GIF saver, the framework's where it has none
 // Version: 1.3.1 - Generate::CopyBlank passes its 0.0 without braces (-Wbraced-scalar-init;
 //                 the same new_from_image(double) call)
 // Version: 1.3.0
@@ -9,8 +12,10 @@
 #include "PixelFX/PixelFX.h"
 #include "PixelFX/PixelFXMetadataDecode.h"
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasFileLoader.h"              // the types Load and Save offer
+#include "UltraCanvasImage.h"                   // VipsCanDecode
 #include "../libspecific/Cairo/VipsQoiLoader.h"
-#include "../libspecific/Cairo/UltraCanvasGifEncoder.h"
+#include "../libspecific/Cairo/VipsGifPlugin.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -307,41 +312,11 @@ namespace PixelFX {
         }
 
         bool SaveGif(const PFXImage& image, const std::string& filename) {
+            // libvips' gifsave (cgif) where it has one, else the framework's
+            // encoder registered as ucgifsave (VipsGifPlugin.h) - by name, so
+            // the file is a GIF whatever it is called.
             return WriteStaged(filename, "Failed to save GIF: ", [&](const std::string& out) {
-                // gifsave only exists when libvips was built with cgif. On
-                // builds without it the old fallback used ImageMagick's
-                // magicksave, but that fails at run time when ImageMagick has
-                // no GIF encode delegate (NoEncodeDelegateForThisImageFormat
-                // `gif'). Use the bundled, dependency-free encoder instead.
-                if (vips_type_find("VipsOperation", "gifsave") != 0) {
-                    image.gifsave(out.c_str());
-                    return;
-                }
-                vips::VImage img = image;
-                if (img.interpretation() != VIPS_INTERPRETATION_sRGB) {
-                    img = img.colourspace(VIPS_INTERPRETATION_sRGB);
-                }
-                int bands = img.bands();
-                if (bands == 1) {
-                    img = img.bandjoin({ img, img });
-                    bands = 3;
-                } else if (bands == 2) {
-                    vips::VImage gray  = img.extract_band(0);
-                    vips::VImage alpha = img.extract_band(1);
-                    img = gray.bandjoin({ gray, gray, alpha });
-                    bands = 4;
-                } else if (bands > 4) {
-                    img = img.extract_band(0, vips::VImage::option()->set("n", 4));
-                    bands = 4;
-                }
-                if (img.format() != VIPS_FORMAT_UCHAR) {
-                    img = img.cast(VIPS_FORMAT_UCHAR);
-                }
-                img = img.copy_memory();
-                std::string err = UltraCanvas::GifEncode::EncodeGifFile(
-                        out, static_cast<const uint8_t*>(img.data()),
-                        img.width(), img.height(), bands, 8, false);
-                if (!err.empty()) throw PixelFXException("Failed to save GIF: " + err);
+                PFXImage::call(vips_foreign_gif_saver(), PFXImage::option()->set("in", image)->set("filename", out.c_str()));
             });
         }
 
@@ -369,17 +344,33 @@ namespace PixelFX {
             });
         }
 
+        // FileLoader's lists, never one of PixelFX's own (AGENTS.md: the files
+        // a user loads or saves are FileLoader's). Load hands a file to
+        // libvips, so it reads every picture type FileLoader reads - libvips'
+        // loaders, ImageMagick's through it, the framework's ICO and QOI - and
+        // the drawings and documents among FileLoader's types that libvips
+        // itself opens (SVG, PDF, PostScript), not those of a plug-in. A fixed
+        // list offered HEIC where libheif has no HEVC decoder and missed ICO,
+        // QOI, JPEG XL and the rest.
         std::vector<std::string> GetSupportedLoadFormats() {
-            return {"png", "jpg", "jpeg", "webp", "tiff", "tif", "gif", "heic", "heif", "avif", "pdf", "svg", "raw", "ppm", "fits", "exr"};
+            using namespace UltraCanvas;
+            std::vector<std::string> out = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+            for (MediaFormatCategory category : {MediaFormatCategory::Vector, MediaFormatCategory::Document})
+                for (const std::string& ext : UltraCanvasFileLoader::GetSupportedLoadExtensions(category))
+                    if (VipsCanDecode("." + ext) && std::find(out.begin(), out.end(), ext) == out.end())
+                        out.push_back(ext);
+            return out;
         }
 
+        // Every picture type FileLoader writes: a libvips saver that can
+        // encode here, which is what Save's write_to_file looks for.
         std::vector<std::string> GetSupportedSaveFormats() {
-            return {"png", "jpg", "jpeg", "webp", "tiff", "tif", "gif", "heic", "heif", "avif", "ppm", "fits"};
+            return UltraCanvas::UltraCanvasFileLoader::GetSupportedSaveExtensions(UltraCanvas::MediaFormatCategory::Bitmap);
         }
 
         bool IsFormatSupported(const std::string& format) {
             auto formats = GetSupportedLoadFormats();
-            std::string lower = format;
+            std::string lower = !format.empty() && format[0] == '.' ? format.substr(1) : format;
             std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             return std::find(formats.begin(), formats.end(), lower) != formats.end();
         }

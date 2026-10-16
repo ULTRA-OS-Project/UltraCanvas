@@ -393,7 +393,7 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [qr](DialogResult result, const std:
 });
 ```
 
-Writing the raster file goes through libvips, so in a build without it (the no-vips wasm variant, for one) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
+Writing the raster file goes through libvips, so in the one build without it (a single-threaded WebAssembly program) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
 
 ### 9. Generating Without a Widget
 

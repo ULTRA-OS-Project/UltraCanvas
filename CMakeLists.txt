@@ -265,9 +265,9 @@ if(ANDROID)
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
-    # Image processing: libvips' ~10-library transitive stack is not in a
-    # minimal sysroot; the HAS_LIBVIPS fallbacks cover phase 1.
-    set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing")
+    # libvips is not in this list: it is part of UltraCanvas on Android as on
+    # every platform, built into the sysroot with the rest of the stack
+    # (UltraCanvas/OS/Android/packaging/vcpkg.json).
     # Runtime-dlopen'ed plugin DSOs don't load from outside the APK on Android
     # (investigation §4.3); MuPDF/tesseract/cargo builds are all post-phase-1.
     set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)")
@@ -867,8 +867,8 @@ if(BUILD_DEMO_APP)
     )
 
     # These files depend on libvips (the performance page benchmarks its
-    # codecs through vips::VImage directly; without libvips the no-vips
-    # WebAssembly variant failed to compile it).
+    # codecs through vips::VImage directly), which the single-threaded
+    # WebAssembly build has not got.
     if(LIBVIPS_FOUND)
         list(APPEND DEMO_SOURCES
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
