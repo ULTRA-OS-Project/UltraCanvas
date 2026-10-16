@@ -2200,7 +2200,7 @@ Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
 libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
 FFmpeg header or type appears in a public header. FFmpeg is optional at build
 time: without it the same API links from a stub whose calls return
-`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
+`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 9.x.
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
@@ -2336,10 +2336,13 @@ reaches a caller, so the engine can be replaced (WAMR is the measured
 fallback). UI-free and thread-agnostic; an instance belongs to the thread
 that created it.
 
-**Implementation status:** Phase 1 started. On by default on Linux
-(`ULTRACANVAS_ENABLE_WASM_HOST`); elsewhere, and wherever no prebuilt wasmtime
-exists (the MSYS2 CLANG64 `gnullvm` builds), the library builds without an
-engine and every call says so.
+**Implementation status:** Phase 1 started. On by default on Linux and on
+Windows (`ULTRACANVAS_ENABLE_WASM_HOST`). The MSYS2 CLANG64 / CLANGARM64
+builds (the `gnullvm` ABI), for which wasmtime publishes no library, compile
+its C API from the source release with Cargo (the native
+`mingw-w64-clang-*-rust`; `ULTRACANVAS_WASMTIME_FROM_SOURCE=ON` forces that
+path anywhere). Off, or without a library and a Rust toolchain, the library
+builds without an engine and every call says so.
 
 - Types: `UltraCanvasWasmInstance`, `WasmImport`, `WasmHostFunction`,
   `WasmCaller` (guest memory, `Trap`), `WasmValue`, `WasmValueType`,

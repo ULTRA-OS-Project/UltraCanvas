@@ -2,13 +2,15 @@
 // Internal: FFmpeg includes, owning wrappers and version shims shared by the
 // VideoFX sources. Never included from a public header.
 //
-// Supported FFmpeg range: 4.4 (Ubuntu 22.04, libavcodec 58) to 8.x. The
+// Supported FFmpeg range: 4.4 (Ubuntu 22.04, libavcodec 58) to 9.x. The
 // channel-layout API (AVChannelLayout, FFmpeg 5.1), the stream side-data move
-// (codecpar->coded_side_data, 6.1) and the supported-config query (7.1) are
+// (codecpar->coded_side_data, 6.1), the supported-config query (7.1) and a
+// buffer source that refuses frames once its filters are done (9.0) are
 // wrapped here so the pipeline code does not care which one it runs on.
+// Version: 0.14.1 - FeedBufferSource: FFmpeg 9's closed buffer source
 // Version: 0.14.0 - HostPictureExtensions
 // Version: 0.12.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -114,6 +116,14 @@ int GetFrameRotation(const AVFrame* frame);
 const enum AVPixelFormat* SupportedPixelFormats(const AVCodec* codec);
 const enum AVSampleFormat* SupportedSampleFormats(const AVCodec* codec);
 const int* SupportedSampleRates(const AVCodec* codec);
+
+// Hand `frame` to a buffer source (nullptr: the end), flags as for
+// av_buffersrc_add_frame_flags. Once the filters behind the source have all
+// they take - a trim past its end - FFmpeg 9 closes the source and answers
+// AVERROR_EOF for every later frame, where older versions took the frame and
+// dropped it. The pipelines decode on past a cut's end, so that is not a
+// failure: it returns 0 then, and FFmpeg's error code otherwise.
+int FeedBufferSource(AVFilterContext* source, AVFrame* frame, int flags);
 
 // ===== FONTS (VideoFXFonts.cpp) =====
 // Font file for text overlays with no fontPath; "" = none found

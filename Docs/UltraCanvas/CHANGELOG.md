@@ -1,3 +1,290 @@
+#### 2026-10-16 *0.9.314*
+- **The STL viewer compiles for Android.** `UltraCanvasSTLElement.cpp` is part
+  of the core library. Its GL viewer included desktop OpenGL's `<GL/gl.h>`,
+  which the Android NDK does not have, and its shaders were written for GLSL
+  3.30 only, which OpenGL ES rejects.
+  - On Android it includes `<GLES3/gl3.h>`. Every call it makes is in OpenGL
+    ES 3.
+  - Its shaders begin with `#version 300 es`, and the fragment shader adds
+    the float precision that ES requires.
+  - Desktop OpenGL is unchanged. `glslangValidator` accepts both shaders as
+    GLSL ES 3.00.
+
+#### 2026-10-16 *0.9.313*
+- **The doc-examples check caches its precompiled header in CI.**
+  `scripts/check_doc_examples.py` reuses the precompiled header of all public
+  headers by what it was built from (the headers' content, the flags and the
+  clang, printed by `--pch-key`) rather than by mtimes, and confirms it with
+  one compile; `doc-examples.yml` caches it under that key, saving about a
+  minute per run.
+
+#### 2026-10-16 *0.9.312*
+- **UltraVideo starts on Windows.** It stopped at once with "libVideoFX.dll
+  was not found" (German: "libVideoFX.dll nicht gefunden"), from the build
+  tree and from the package alike. VideoFX sent its DLL to `bin/`, beside
+  `videofx.exe` and `VideoFXTest.exe`, while UltraVideo - like every
+  application - is built into the build root, and Windows looks for a DLL
+  only in the folder of the executable that loads it (and on `PATH`).
+  `package-win.sh` copies the build root's DLLs, so the package had no
+  `libVideoFX.dll` at all, and its `videofx.exe` could not start either.
+  On Windows the DLL, `videofx.exe` and the VideoFX tests now go where the
+  build puts the applications (`CMAKE_RUNTIME_OUTPUT_DIRECTORY`, exported as
+  `VIDEOFX_RUNTIME_DIR`); Linux and macOS are unchanged (VideoFX 0.14.1,
+  `VideoFX/CMakeLists.txt`, `Tests/CMakeLists.txt`).
+- **`package-win.sh` refuses a package missing a DLL of its own build.** Each
+  packaged executable's and DLL's imports are read with objdump, and one that
+  names a DLL the build made but the package does not hold fails the build
+  with the importer and the DLL named. The dependency closure follows only
+  the MinGW prefix, so a DLL a CMakeLists sends outside the build root was
+  left behind without a word - this is what let `libVideoFX.dll` go missing.
+- **The Windows package has the video engine.** The Windows CI rows install
+  MSYS2's FFmpeg (`-ffmpeg`, FFmpeg 9), so VideoFX there is built on it
+  rather than from its stub, and the package's UltraVideo can open, play and
+  export; `package-win.sh` ships FFmpeg's DLLs with the rest. That includes
+  the Khronos Vulkan loader, `vulkan-1.dll` (and on ARM64 `OpenCL.dll`):
+  MSYS2's libavfilter links libplacebo, which links it, so without it
+  UltraVideo would not start on a PC without a GPU driver. Its system name
+  is allowed by name (`is_khronos_loader`), being the very library a driver
+  installs under it; every other system name still fails the package. MSYS2 builds
+  FFmpeg with `--enable-gpl --enable-version3` (libx264, libx265), so
+  libVideoFX and UltraVideo in the Windows package are GPL-3.0-or-later
+  (`THIRD_PARTY_LICENSES.md`). The Windows rows also run `VideoFXTest`
+  (`ULTRACANVAS_BUILD_VIDEOFX_TESTS`, `Tests/VideoFXTests.cmake`) after
+  checking that the engine, not the stub, was configured.
+- **VideoFX runs on FFmpeg 9** (the one MSYS2 ships, and the Windows package
+  now). A trim failed there with "Cannot feed the audio effect chain: End of
+  file": FFmpeg 9 closes a filter graph's buffer source once the filters
+  behind it are done - a trim past its end - and refuses every later frame
+  with `AVERROR_EOF`, where older versions took the frame and dropped it, and
+  VideoFX decodes on past a cut's end. Every frame now reaches a graph
+  through `FeedBufferSource` (`VideoFXBackend.h`, where the FFmpeg version
+  differences live), which takes that answer as success. Supported range:
+  FFmpeg 4.4 to 9.x. `VideoFXTest`'s pixel helpers no longer crash the run
+  on a frame that failed to extract; the failed step reports itself.
+
+#### 2026-10-16 *0.9.311*
+- **Windows: the applications with command-line modes no longer open a
+  console window when the Start menu or Explorer starts them.**
+  - These are UltraDesktop, DeviceExplorer, UltraCleaner, UltraNetMonitor,
+    UltraCanvasStart, UltraWeb, UltraClaude, UltraFIBU and UltraPress.
+  - Their Release builds are GUI programs now, each with a console companion
+    beside it: `<App>.com`, built from the new
+    `OS/MSWindows/AppEntry/UltraCanvasConsoleCompanion.cpp` by the new
+    `ultracanvas_windows_console_companion()`
+    (`cmake/UltraCanvasWindowsGuiApp.cmake`).
+  - cmd and PowerShell try `.COM` before `.EXE`, so the bare name typed at a
+    prompt (`UltraCleaner --scan`) runs the companion. It starts the `.exe`
+    with the same command line, waits for it and returns its exit code, so
+    prompts and batch files behave as they did with a console program.
+  - On a console, the `.exe` attaches to the companion's console, so input
+    and Ctrl+C work as before. Redirected, it is handed the companion's
+    handles.
+  - The companion links nothing of the framework and its C++ runtime
+    statically. It is the pattern of Visual Studio's `devenv.com`.
+  - UltraFIBU's commands-only build, which has no window, stays a console
+    program.
+- `package-win.sh` and `scripts/package-ultracanvasstart.sh` ship the `.com`
+  files, and their PE headers are checked like the `.exe` files'. The test's
+  probe stays out of the package, and the installer CI step fails if any
+  test program is installed.
+- The new `ConsoleCompanionTest` (Windows CI rows) drives a probe made the
+  way the applications are, on real Windows:
+  - Redirected: the arguments arrive whole, stdout and stderr stay apart,
+    and the exit code comes back.
+  - On a console of its own, as typed at a prompt: the program prints into
+    the companion's console and reads a line typed there.
+  - Ctrl+C reaches the program, and the companion hands back its exit code.
+- The Windows CI rows check the installed applications:
+  - every installed console-mode application has its companion;
+  - each `.exe` is a GUI program and each `.com` a console program;
+  - `UltraDesktop --version` typed at a cmd prompt goes through the companion
+    and returns 0.
+
+#### 2026-10-16 *0.9.310*
+- **Every build saves GIF.** libvips writes GIF only when it was built with
+  cgif. The MSYS2 package (`-Dcgif=disabled`) and the macOS libraries have no
+  cgif, and ImageMagick's GIF coder is an optional delegate too. On those
+  builds `write_to_file` and `PixelFX::FileIO::Save` could not write a GIF,
+  and FileLoader's save list left GIF out. The image export and
+  `PixelFX::FileIO::SaveGif` each carried their own fallback to the
+  framework's encoder.
+  - The framework's GIF encoder is now a libvips saver, `ucgifsave` and
+    `ucgifsave_buffer` (`VipsGifPlugin.h`). It is registered with the ICO
+    and QOI plug-ins and ranks below libvips' own `gifsave`, so libvips uses
+    it for a `.gif` only where it has no GIF writer.
+  - It takes `bitdepth` and `interlace`. It accepts `dither`, as `gifsave`
+    does, but does not use it.
+  - `vips_foreign_gif_saver()` names the saver to call when the file name
+    does not end in `.gif`.
+  - The image export and `SaveGif` call that saver, so their two fallbacks
+    are gone. `UltraCanvasGifEncoder.h` gained `EncodeGif`, which encodes
+    to memory.
+  - `ImageGifSaverTest` (new) checks the saver: pixels, transparency, its
+    options, the buffer saver, and that libvips picks it only without cgif.
+- **libvips is part of UltraCanvas on every platform.** The
+  `ULTRACANVAS_ENABLE_VIPS` switch is gone:
+  - Configuring with `-DULTRACANVAS_ENABLE_VIPS=OFF` now stops with a message
+    saying where each platform gets libvips.
+  - The one build without libvips is a single-threaded WebAssembly program
+    (`-DULTRACANVAS_WASM_THREADS=OFF`). libvips runs every image on a worker
+    thread, which such a program cannot start. That build keeps the
+    stb_image and cairo fallbacks.
+- **Android builds libvips.** The Android defaults no longer turn libvips
+  off.
+  - `OS/Android/packaging/vcpkg.json` lists libvips with JPEG, PNG, WebP,
+    TIFF, EXIF, lcms, GIF and Netpbm. It comes from the macOS overlay port,
+    which names the built-in GIF and PPM loaders that vcpkg's own port
+    leaves out.
+  - `scripts/android-bootstrap-sysroot.sh` checks out vcpkg at the commit
+    `scripts/macos-deps.sh` pins when it is given no vcpkg.
+  - The script prints a configure line with the NDK's own toolchain, the
+    sysroot as CMake's find root and static pkg-config link lists. vcpkg's
+    toolchain would have installed the repository's root `vcpkg.json`, the
+    Windows set, for Android.
+- **New `android-build.yml` workflow.** It builds that sysroot for
+  arm64-android with the runner's NDK, keeps the libraries in vcpkg's binary
+  cache, and compiles the core library against it.
+  - The whole core library now compiles for Android, the first time it has.
+    The 3D contour chart's GL surface (`UltraCanvasContourSurfaceGL.cpp`)
+    did not: like the STL viewer, it included desktop OpenGL's `<GL/gl.h>`.
+    On Android it now includes `<GLES3/gl3.h>`, and its shaders begin with
+    `#version 300 es`.
+  - The Android READMEs, the Gradle template and the bootstrap script's
+    header no longer say the sysroot has never been built. No APK has been
+    built yet.
+- **CI changes.** The Build workflow's Android configure test installs
+  libvips. The WebAssembly workflow's `no-vips` variant is gone.
+- **PixelFX reports FileLoader's file types.**
+  `PixelFX::FileIO::GetSupportedLoadFormats` and `GetSupportedSaveFormats`
+  returned a fixed list. It offered HEIC and AVIF everywhere and a "raw" no
+  loader takes, and it left out ICO, QOI, JPEG XL, BMP, camera raw files and
+  everything else libvips reads. They are now FileLoader's lists, as this
+  build has them:
+  - Reading: every picture type `UltraCanvasFileLoader` reads, plus the
+    drawings and documents among its types that libvips itself opens (SVG,
+    PDF).
+  - Writing: every picture type it writes.
+  - HEIC follows libheif's decoder and encoder.
+  - `IsFormatSupported` accepts a type with its dot (".png").
+  - `FileLoaderTypeListsTest` holds PixelFX to FileLoader's lists.
+- **The STL viewer compiles for Android.** `UltraCanvasSTLElement.cpp` is part
+  of the core library. Its GL viewer included desktop OpenGL's `<GL/gl.h>`,
+  which the Android NDK does not have, and its shaders were written for GLSL
+  3.30 only, which OpenGL ES rejects.
+  - On Android it includes `<GLES3/gl3.h>`. Every call it makes is in OpenGL
+    ES 3.
+  - Its shaders begin with `#version 300 es`, and the fragment shader adds
+    the float precision that ES requires.
+  - Desktop OpenGL is unchanged. `glslangValidator` accepts both shaders as
+    GLSL ES 3.00.
+
+#### 2026-10-16 *0.9.309*
+- **`UltraCanvasPaintSurface` follows a resize.** When the element was
+  resized (the window, a split pane), the view kept its old origin until the
+  next document change re-clamped it, so a grown window showed the image
+  stuck in a corner of the new space, and only a later edit snapped it to
+  the centre. The view now keeps the image point at its centre where it was,
+  at the same zoom, and centres an image smaller than itself again, in the
+  frame that shows the new size (or at the next view call, if one comes
+  first); `onViewChanged` reports it. A loupe keeps the point `SetLoupeView`
+  put at its centre. Doc: `UltraCanvasPaintSurface.md`, *The element*.
+- **A rich document's HTML lost its font sizes on a comma-decimal desktop.**
+  `UCRichDocument::ToHTML` wrote a run's size with `std::to_string`, which
+  renders through `LC_NUMERIC` - set from the desktop by the Linux backend - so
+  on a German or French desktop a 24.5 pt run was written
+  `font-size:24,500000pt`, which no CSS reader takes: a rich copy, a mail's
+  HTML body or an export read back without its sizes. It is written with
+  `FormatFloatClassic` now (`font-size:24.5pt`). `HTMLRichImportTest` checks
+  it under a comma-decimal locale where one is installed.
+- **`check_locale_numbers.py` sees more writers and more floats.** A file that
+  defines a serializer (`X::ToHTML(`, `ToMarkdown`, `ToJSON`, `ToSVG`,
+  `ToXML`, `ToCSS`) is checked as a format writer whatever it is called, and
+  `std::to_string` of a name declared `float` or `double` - in the file, or
+  for a member access (`run.fontSizePt`) in a repository header it includes -
+  counts as a float; an argument cast to an integer does not. The ToHTML site
+  is what it had missed; two display formatters it now reads are marked
+  `// locale-ok`.
+- **The other writers it found write dot-decimal too.** The node and
+  compositor diagrams' JSON (the saved diagram and the compositor's clipboard
+  copy) and the mind map's FreeMind, OPML and SVG exports pin their streams to
+  the classic locale, so a host that sets the C++ global locale no longer
+  turns `"zoom": 1.5` into `"zoom": 1,5` or an SVG's `x="10.5"` into
+  `x="10,5"`. The 3DS reader keeps a material's shininess strength and a
+  camera's target and bank as text, and the MilkShape reader its frame rate:
+  written with `std::to_string`, they read `0,350000` on a comma-decimal
+  desktop and `0.35` now. None of them is in `locale_numbers_baseline.txt`
+  any more. `DiagramJsonLocaleTest` (new), `MindMapIOTest`, `Model3DSTest`
+  (a file made in the test with a camera and a shininess strength) and
+  `ModelMS3DTest` each check theirs under a comma-decimal locale.
+- **The locale tests run in CI and in cloud sessions.** They hold file formats
+  to dot-decimal numbers under `de_DE.UTF-8` and skip without it, and neither
+  CI's runner image nor the cloud image was known to have it. CI's Linux rows
+  now generate it (the step fails if it does not take), and
+  `.claude/hooks/session-start.sh` generates it in a cloud session.
+- **Text layers: a raster document keeps text as words until it is merged.**
+  `UCRasterLayer::text` (`RasterTextContent`: a `UCRichDocument` in a box on
+  the canvas, with a default font, size and colour) makes a layer a text
+  layer, whose pixels are a rendering of its words. `UltraCanvasRasterText.h`
+  draws one - `RenderTextLayer`, `RenderTextLayerLike` - through
+  `UltraCanvasRichTextEdit` offscreen, and readies that element to edit the
+  words on the canvas (`PrepareTextLayerEditor`, `TextLayerEditStyle`): it
+  lays text out in its own document space and draws its zoom as a scale, so
+  an editor at the canvas's zoom puts every glyph where the layer's pixels
+  will be. `UCRasterDocument` keeps a text layer text through attribute
+  edits, duplication, canvas resizes and crops (the box moves along), and
+  makes it a bitmap at a pixel edit (undo makes it text again - the entry
+  keeps the text, `RasterUndoEntry::textBefore`), Merge Down, Flatten,
+  scaling, flipping and rotating; `RasterizeLayer` does it explicitly,
+  `ReplaceLayer` is public (a text drawn again), `AddLayer` takes an undo
+  label, and `SetInPlaceEditLayer` leaves a layer out of the views'
+  composite while a host draws it itself. `.ucraster` projects keep text
+  layers as text, the words as an OpenDocument text (`layers/<n>.odt`); the
+  renderer states a document's paragraph spacing so it reads back laid out
+  the same. Doc: `UltraCanvasPaintSurface.md`, *Text layers*.
+- **`GetInstalledFontFamilies()`** (`UltraCanvasApplication.h`): every
+  scalable font family the process can set text in - the system's installed
+  fonts with the bundled and registered ones, as Pango sees them (fontconfig
+  on Linux and Windows, CoreText on macOS) - sorted regardless of case. For
+  font pickers.
+- **`UltraCanvasRichTextEdit`:** `SetZoomRange` (follow a canvas's zoom past
+  0.25-5) and `ApplyCharFormat` (set bold, italic, a font ... exactly, as a
+  checkbox reads, where the toggles flip).
+- **`UltraCanvasDropdown` type-ahead:** letters typed in the open list go to
+  the first item that starts with them, regardless of case; letters within a
+  second build one prefix (spaces too, once it has begun: "liberation s"),
+  the same letter again steps to the next match, and
+  Return chooses. A focused dropdown takes the letters itself; for one left
+  out of the focus (`SetAcceptsFocus(false)`) the window hands the keys to
+  its open list, so `UltraCanvasListView` gains `onKeyDown` (a key reaches
+  the owner first) and `SetFocusedRow` (the arrow keys' move, from code).
+
+#### 2026-10-15 *0.9.308*
+- **A dropdown takes the keyboard focus.** `UltraCanvasDropdown` returned
+  false from `AcceptsFocus()`, so Tab never reached it and its own keys -
+  Down or Space to open it - were never delivered: a dropdown could only be
+  opened with the mouse. It takes the focus now as a button does, from Tab
+  and from a click, and draws `focusBorderColor` while focused;
+  `SetAcceptsFocus(false)` leaves one out of the Tab order again. Dropdowns
+  therefore join the Tab order of every dialog that has one. The focus stays
+  on the dropdown while its list is open: `UltraCanvasListView` (1.4.0) gains
+  `SetAcceptsFocus`, and the popup list turns it off - a click on an entry
+  used to move the focus to the list, which then closed. `DropdownKeyboardTest`
+  covers Tab, a click, Down / Space / Return / Escape and the opt-out.
+- **WasmHost runs WebAssembly on Windows.** The MSYS2 CLANG64 / CLANGARM64
+  builds had no engine, because wasmtime publishes no library for their
+  `gnullvm` ABI. `cmake/UltraCanvasWasmtime.cmake` (1.2.0) now builds
+  wasmtime's C API from its source release there, offline, with the native
+  Rust toolchain (`mingw-w64-clang-*-rust`, which the Vectorizer plugin
+  already needs).
+  - The source release is hash-checked like the prebuilt archives.
+  - Only the features WasmHost uses are built: Cranelift, WebAssembly
+    text, WASI, parallel compilation, and the GC behind exceptions.
+  - `ULTRACANVAS_ENABLE_WASM_HOST` is now on by default for MinGW builds.
+    Without a Rust toolchain the build carries on without an engine and
+    says why, and the no-engine message names the package to install.
+  - `ULTRACANVAS_WASMTIME_FROM_SOURCE=ON` takes the same path on any
+    platform.
+
 #### 2026-10-15 *0.9.307*
 - **A shared card look for window sections, and a light colour picker.**
   UltraMail's panes and UltraPaint's side panel each kept their own copy of

@@ -2379,7 +2379,7 @@ Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
 libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
 FFmpeg header or type appears in a public header. FFmpeg is optional at build
 time: without it the same API links from a stub whose calls return
-`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
+`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 9.x.
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
@@ -2515,10 +2515,13 @@ reaches a caller, so the engine can be replaced (WAMR is the measured
 fallback). UI-free and thread-agnostic; an instance belongs to the thread
 that created it.
 
-**Implementation status:** Phase 1 started. On by default on Linux
-(`ULTRACANVAS_ENABLE_WASM_HOST`); elsewhere, and wherever no prebuilt wasmtime
-exists (the MSYS2 CLANG64 `gnullvm` builds), the library builds without an
-engine and every call says so.
+**Implementation status:** Phase 1 started. On by default on Linux and on
+Windows (`ULTRACANVAS_ENABLE_WASM_HOST`). The MSYS2 CLANG64 / CLANGARM64
+builds (the `gnullvm` ABI), for which wasmtime publishes no library, compile
+its C API from the source release with Cargo (the native
+`mingw-w64-clang-*-rust`; `ULTRACANVAS_WASMTIME_FROM_SOURCE=ON` forces that
+path anywhere). Off, or without a library and a Rust toolchain, the library
+builds without an engine and every call says so.
 
 - Types: `UltraCanvasWasmInstance`, `WasmImport`, `WasmHostFunction`,
   `WasmCaller` (guest memory, `Trap`), `WasmValue`, `WasmValueType`,
@@ -4180,8 +4183,9 @@ Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
 `./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
 command prompt with the MSYS2 `bin` directory on `PATH`. In a Release build
 the executables are GUI-subsystem programs, so they print nothing to a console
-(the few with command-line modes, such as DeviceExplorer, stay console
-programs and close the console a double-click opens for them);
+(the few with command-line modes, such as DeviceExplorer, have a console
+companion, `DeviceExplorer.com`, which a prompt runs for the bare name and
+waits for);
 `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
 build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
 
@@ -4387,7 +4391,8 @@ GUI-subsystem program, so no console opens beside the window, and still lets
 `--help` print into the prompt it was typed at (for an app in this repository,
 add it to the list under *Hide console window on Windows Release builds* in the
 root `CMakeLists.txt`; an app whose command-line modes print into the prompt
-stays off that list), and embed the icon in the `.exe` with
+goes on the list of console companions there,
+`ultracanvas_windows_console_companion()`), and embed the icon in the `.exe` with
 `ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
 Explorer and the taskbar read.
 
@@ -5563,13 +5568,14 @@ pkg-config. The port needs a prebuilt Android sysroot (vcpkg's
 `arm64-android` triplet is the first thing to evaluate; Conan or hand-rolled
 meson cross-files are the fallback) with `PKG_CONFIG_LIBDIR` pointed at it.
 
-**Status: the vcpkg route is written but unproven.**
-`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below and
-`scripts/android-bootstrap-sysroot.sh` drives vcpkg with the NDK chainloaded.
-Neither has ever been run — the environment they were written in has no NDK and
-no route to download one — so this is the plan encoded, not a working sysroot.
-**This remains the one blocker between "compiles in CI" and "runs on a
-device".**
+**Status: the vcpkg route runs in CI.**
+`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below,
+libvips included, and `scripts/android-bootstrap-sysroot.sh` drives vcpkg (at
+the commit `scripts/macos-deps.sh` pins) with the NDK chainloaded.
+`.github/workflows/android-build.yml` builds that sysroot for `arm64-android`
+on GitHub's runner, with its NDK, keeps the libraries in vcpkg's binary cache,
+and compiles the core library against it with the NDK's toolchain. What is
+left between that and "runs on a device" is the APK (packaging/README.md).
 
 ### 4.1 Irreducible core stack (must cross-compile)
 
@@ -5591,7 +5597,7 @@ device".**
 
 | Dependency | Action |
 |---|---|
-| **libvips** (+ ~10 transitive libs) | Currently `REQUIRED` but `HAS_LIBVIPS`/`LIBVIPS_FOUND` guards already exist throughout — **make it optional** (drop `REQUIRED` at `UltraCanvas/CMakeLists.txt:146`, conditionalize the link). This is the single highest-leverage build change and benefits WASM too. Image decode on Android can later go through a smaller path (stb/libjpeg-turbo/libpng or JNI `BitmapFactory`) |
+| **libvips** (+ ~10 transitive libs) | ~~Make it optional~~ **Decided otherwise (2026-10-15): libvips is part of UltraCanvas on every platform, Android included** — it is in the vcpkg manifest with JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF and Netpbm, from the macOS overlay port. The optional build that the first milestone used is gone; only a single-threaded WebAssembly program goes without it, where libvips cannot run |
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
 | GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android. **Status:** done with the NDK's MediaCodec, Camera2 and AAudio (`libspecific/Video/VideoBackendAndroid*.cpp`). No ExoPlayer, so no Java dependency. |
@@ -5714,8 +5720,9 @@ Process lessons for the Android effort:
 ## 7. Phased implementation plan
 
 **Phase 0 — build foundations** (no Android code yet)
-- Make libvips optional; conditionalize the required-deps block
-  (`UltraCanvas/CMakeLists.txt:128-182`) per platform.
+- ~~Make libvips optional~~ (done for the first milestone, then reversed:
+  libvips is part of UltraCanvas on Android too; §4.2). Conditionalize the
+  rest of the required-deps block per platform.
 - Add `if(ANDROID)` platform arm + `OS/Android/` skeleton + NDK toolchain CI
   job that configures (even if it only builds core + stubs).
 - Produce the dependency sysroot (vcpkg `arm64-android` evaluation:
@@ -21267,8 +21274,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDropDownExamples.md
 
 The UltraCanvasDropDown is an interactive dropdown/combobox component that provides a user-friendly way to select from a list of options. It's part of the UltraCanvas Framework and offers styling, item icons, single or multiple selection, keyboard navigation, scrolling support, and event handling capabilities.
 
-**Version:** 1.2.5  
-**Last Modified:** 2026-10-07  
+**Version:** 1.3.0  
+**Last Modified:** 2026-10-15  
 **Author:** UltraCanvas Framework
 
 ## File Structure
@@ -21287,7 +21294,7 @@ UltraCanvas/
 - **Icons**: An optional icon per item, shown in the list and on the button
 - **Multi-selection**: Optional checkbox mode for picking several items
 - **Styling**: One `DropdownStyle` structure for the button, the list and the scrollbar
-- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape
+- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape, and type-ahead (letters go to the item starting with them)
 - **Mouse Interaction**: Click to open/close, hover states, item selection
 - **Scrolling**: Automatic scrollbar when items exceed maximum visible count
 - **Callbacks**: Event callbacks for selection changes, dropdown open/close events
@@ -21444,6 +21451,13 @@ void CloseDropdown();
 bool IsDropdownOpen() const;
 ```
 
+### Keyboard Focus
+
+```cpp
+bool AcceptsFocus() const;          // true by default: Tab and a click focus it
+void SetAcceptsFocus(bool accept);  // false: out of the Tab order, mouse only
+```
+
 ### Styling
 
 ```cpp
@@ -21498,17 +21512,33 @@ The dropdown handles various event types:
 - **Item hover, click and wheel scrolling** are handled by the popup list view
 
 ### Keyboard Events
-The dropdown does not take the keyboard focus (`AcceptsFocus()` is false), so
-it is opened with the mouse. While its list is open the window hands the keys
-to the list:
-- **Up/Down, Page Up/Page Down, Home/End**: Move the highlight through the list
-- **Return** or **Space**: Chooses the highlighted item and closes the list
-  (toggles it in multi-selection mode) - the list's `onItemActivated`
+A dropdown takes the keyboard focus as a button does: **Tab** reaches it and a
+click gives it the focus. It keeps the focus while its list is open - the
+popup list does not take it - so a click on an entry leaves the focus on the
+dropdown, drawn with `focusBorderColor`.
+- **Down/Space** (closed): Opens the dropdown
+- **Up/Down, Page Up/Page Down, Home/End** (open): Move the highlight through the list
+- **Return** (open): Chooses the highlighted item and closes the list (toggles
+  it in multi-selection mode)
+- **Space** (open, multi-selection): Toggles the highlighted item
 - **Escape**: Closes the list and keeps the chosen item
+- **Tab / Shift+Tab**: Move the focus on; an open list closes
+- `onKeyDown` sees every key the focused dropdown gets first; returning true
+  stops the default handling
+- **Letters (type-ahead)**: go to the first item whose text starts with them,
+  regardless of case - "libe" to *Liberation Mono* in a list of every
+  installed font. Letters typed within a second of each other build one
+  prefix, spaces included once it has begun ("liberation s"); the same
+  letter again steps on to the next item starting with it; each opening of
+  the list starts afresh. Return then chooses it. Focused, the
+  dropdown takes the letters itself; one left out of the focus
+  (`SetAcceptsFocus(false)`) leaves the keys to its open list, which passes
+  them on through `UltraCanvasListView::onKeyDown` - type-ahead works either
+  way.
 
-The dropdown's own key handling (Down/Space to open a closed dropdown,
-`onKeyDown` seeing each key first) applies only to keys delivered to the
-dropdown itself, which does not happen while it cannot take the focus.
+`SetAcceptsFocus(false)` leaves a dropdown out of the Tab order and a click no
+longer focuses it. Its open list still answers the keys then - the window hands
+them to the open popup - with Return or Space choosing the highlighted item.
 
 ### Focus Events
 - **FocusLost**: Closes the dropdown (not in multi-selection mode)
@@ -37689,7 +37719,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -37894,9 +37924,13 @@ public:
 ```cpp
 void ScrollToRow(int row);
 void EnsureRowVisible(int row);
+void SetFocusedRow(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+`SetFocusedRow` is what the arrow keys do, from code: the keyboard's row and
+the selection go to `row`, which is scrolled into view, and Return then
+activates it (a dropdown's type-ahead moves its open list this way).
 Called before the view has been laid out (no height yet), `EnsureRowVisible`
 remembers the row and reveals it once the view has its size, so a list filled
 and selected while its window is still being built opens with that row in view.
@@ -38150,6 +38184,10 @@ std::function<void(int row)> onItemDoubleClicked;
 std::function<void(int row)> onItemActivated;
 std::function<void(const std::vector<int>&)> onSelectionChanged;
 std::function<void(int row)> onItemHovered;
+// A key pressed in the view, before the view's own handling (the arrows,
+// Return): true consumes it. A dropdown's open list routes typed letters to
+// the dropdown's type-ahead this way.
+std::function<bool(const UCEvent&)> onKeyDown;
 
 // Cell-level (multi-column aware). posInCell is relative to the cell's
 // top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
@@ -38542,6 +38580,13 @@ a key, or the application through `GetSelection()->Select(row)` - after it
 rebuilt or re-sorted the rows and selected the one the user was on, Down moves
 to the row below that one. `ResetSelection()` clears the focus as well, so the
 first Down after it selects the first row.
+
+A list view takes the keyboard focus (Tab, a click) by default. A list that is
+part of another element turns that off with `SetAcceptsFocus(false)`, so the
+focus stays with the element - the dropdown does this for its popup list, which
+would otherwise take the focus on a click and then close with it. The keys
+above still work such a list while the window hands them to it (an open popup
+gets them when nothing focused takes them).
 
 ## Best Practices
 
@@ -45462,7 +45507,7 @@ FILE: Docs/UltraCanvas/UltraCanvasPaintSurface.md
 
 # UltraCanvas Raster Editing: PaintSurface, RasterDocument, Brush Engine
 
-<!-- doc-check: void RebuildLayerPanel(); void UpdateUndoButtons(); -->
+<!-- doc-check: void RebuildLayerPanel(); void UpdateUndoButtons(); std::shared_ptr<UCRasterLayer> layer; std::shared_ptr<UltraCanvasPaintSurface> surface; std::shared_ptr<UltraCanvasRichTextEdit> editor; int layerIndex; -->
 
 ## Overview
 
@@ -45480,11 +45525,12 @@ them back. The first application built on it is **UltraPaint**
 | `UCRasterLayer` | One straight-RGBA 8-bit pixel buffer with name / visibility / lock / opacity / blend mode; blend arithmetic; compositing onto a premultiplied pixmap; PixelFX round trip | `include/UltraCanvasRasterLayer.h`, `core/UltraCanvasRasterLayer.cpp` |
 | `UCRasterSelection` | Soft coverage mask (0..255 per pixel): rectangle, ellipse, polygon, arbitrary mask; replace / add / subtract / intersect; feather, grow, shrink, invert; marching-ants outline | `include/UltraCanvasRasterSelection.h`, `core/UltraCanvasRasterSelection.cpp` |
 | `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
+| `RasterTextContent`, `RenderTextLayer` | Text layers: words kept as a rich document in a box on the canvas (`UCRasterLayer::text`), drawn into the layer through the WYSIWYG element that also edits them on the canvas, editable until the layer is merged or rasterized | `include/UltraCanvasRasterText.h`, `core/UltraCanvasRasterText.cpp` |
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
 
-**Version**: 1.0.1 - `DrawCurve`, `DrawArrow`
-**Last Modified**: 2026-10-12
+**Version**: 1.1.0 - text layers
+**Last Modified**: 2026-10-15
 **Author**: UltraCanvas Framework
 
 None of the model classes touch a window; `UltraCanvasPaintSurface` is the
@@ -45639,10 +45685,144 @@ the region to the colour, alpha included, where the default `Blend` paints
 over it - the way to fill with transparency), `MagicWandMask` (the same
 region test as a coverage map for `UCRasterSelection::SetMask`),
 `FillGradient` (linear / radial / reflected, interpolated in premultiplied
-space), `StampMask` (a coverage map in a colour — what the text tool uses
-with a `PixelFX::Generate::Text` mask), `SampleColour`.
+space), `StampMask` (a coverage map in a colour, such as a
+`PixelFX::Generate::Text` mask), `SampleColour`.
 
 None of this needs libvips.
+
+## Text layers
+
+A bitmap editor's text should stay text until the user says otherwise: the
+words re-editable, the font, size and colour changeable, the box movable -
+and only then pixels. A **text layer** is a `UCRasterLayer` that carries the
+words it shows, `UCRasterLayer::text`, a `RasterTextContent`:
+
+| Field | What it is |
+|---|---|
+| `document` | the words, as a `UCRichDocument`: runs with their own font, size, colour, bold / italic / underline; paragraphs with their alignment. Shared and immutable - an edit makes a new one |
+| `x`, `y`, `width` | the box on the canvas, in pixels: its corner and the width the lines wrap at |
+| `height` | what the text took when it was last laid out (`RenderTextLayer` fills it in) |
+| `fontFamily`, `fontSizePx`, `colour` | what a run without a font, size or colour of its own is set in |
+
+The layer's pixels are a rendering of that, so everything that only reads
+pixels - compositing, blend modes, opacity, `Flatten`, saving a PNG -
+works on a text layer unchanged.
+
+### Drawing one
+
+`RenderTextLayer` (`UltraCanvasRasterText.h`) lays the words out and draws
+them into a new canvas-sized layer:
+
+```cpp
+#include "UltraCanvasRasterText.h"
+#include "UltraCanvasRasterDocument.h"
+
+auto doc = std::make_shared<UCRasterDocument>(1024, 768, RasterPixel(255, 255, 255, 255));
+
+auto words = std::make_shared<UCRichDocument>();
+RichDocBlock paragraph;
+RichTextRun run;
+run.text = "Hello";
+run.bold = true;
+paragraph.runs.push_back(run);
+paragraph.align = RichTextAlign::Center;
+words->blocks.push_back(paragraph);
+
+RasterTextContent text;
+text.document = words;
+text.x = 40;
+text.y = 30;
+text.width = 400;                      // the lines wrap at 400 px, centred in them
+text.fontFamily = "Sans";
+text.fontSizePx = 48;
+text.colour = RasterPixel(20, 20, 20, 255);
+
+std::string error;
+if (auto layer = RenderTextLayer(text, doc->GetWidth(), doc->GetHeight(), error)) {
+    doc->AddLayer(layer, -1, "Text");  // above the active layer, one undo step
+}
+```
+
+It draws through `UltraCanvasRichTextEdit` - the framework's WYSIWYG element
+- offscreen at 1:1, with the style `TextLayerEditStyle` gives it (no
+background, border, padding or scrolling; the content's default font, size
+and colour). The box's corner is put on whole pixels. The layer's copy of the
+document has its paragraph spacing **stated** (the gaps it was laid out with,
+written out), so it reads back from a file laid out exactly the same.
+
+### Editing one on the canvas
+
+Because the renderer *is* the editing element, the element can edit the
+words on the canvas and show exactly what the layer will hold. It lays text
+out in its own document space and draws its zoom as a scale, so an editor at
+the canvas's zoom puts every glyph where the layer's pixels will be - at any
+zoom (`SetZoomRange` lifts its 0.25-5 limit for this):
+
+```cpp
+#include "UltraCanvasRasterText.h"
+#include "UltraCanvasPaintSurface.h"
+
+auto doc = surface->GetDocument();
+PrepareTextLayerEditor(*editor, *layer->text, surface->GetZoom());
+editor->SetDocument(std::make_shared<UCRichDocument>(*layer->text->document));
+doc->SetInPlaceEditLayer(layer);       // its own pixels would show under the editor
+// Place the editor over the box: its corner at surface->ImageToView(box.x, box.y),
+// box.width * zoom wide, at least editor->GetContentHeight() * zoom tall.
+
+// ... the user types; then, to commit:
+RasterTextContent edited = *layer->text;
+edited.document = std::make_shared<UCRichDocument>(*editor->GetDocument());
+doc->SetInPlaceEditLayer(nullptr);
+std::string error;
+if (auto redrawn = RenderTextLayerLike(*layer, edited, error)) {
+    doc->ReplaceLayer(layerIndex, redrawn, "Edit Text");   // one undo step
+}
+```
+
+`SetInPlaceEditLayer` leaves the layer out of the composite the views show
+(not out of `Flatten` or saving) while the host draws it itself.
+`RenderTextLayerLike` keeps the old layer's name, visibility, lock, opacity
+and blend mode. UltraPaint's Text tool is this, with the editor in a frame the
+size of the canvas so it is cut off where the box runs past the view.
+
+### When it stops being text
+
+A text layer stays text through everything that keeps its pixels as the text
+draws them, and becomes a bitmap at the first change that does not:
+
+| Stays text | Becomes a bitmap (the text is taken off) |
+|---|---|
+| attributes (name, opacity, blend, visibility, lock), moving it in the stack, `DuplicateLayer` | a pixel edit on it - `BeginEdit` / `EndEdit`, `RecordEdit`, `ApplyFilter`, `FillSelection`, `DeleteSelection` - whose **undo makes it text again** |
+| `ResizeCanvas` and `CropTo` - the box moves with the pixels | `MergeLayerDown` (onto or into it), `FlattenImage` |
+| `ReplaceLayer` with a layer drawn again (`RenderTextLayerLike`) | `ScaleImage`, `FlipHorizontal` / `FlipVertical`, `Rotate90` / `Rotate180` |
+| | `RasterizeLayer(index)` - the explicit way, one undo step |
+
+`CopySelection` hands out pixels, never a text layer. A pixel edit takes the
+text off in place and keeps it in its undo entry
+(`RasterUndoEntry::textBefore`); an edit that changes nothing, or is
+cancelled, leaves the text where it was. An editor asks before a tool paints
+on a text layer; the model does not rely on it.
+
+### In a project
+
+`SaveProject` keeps a text layer as text: its PNG as for any layer, its box
+and default font in `document.json`, and the words beside the PNG as
+`layers/<n>.odt` - an OpenDocument text, which keeps every run's font, size
+and colour and the paragraphs' alignment and spacing, and which any word
+processor opens. `LoadProject` shows the PNG (so a font missing on another
+machine changes nothing until the text is edited) and makes the layer text
+again; a project whose text cannot be read still opens, with the layer as
+the bitmap it shows.
+
+### The fonts on offer
+
+`GetInstalledFontFamilies()` (`UltraCanvasApplication.h`) lists every
+font family this process can set text in - the system's installed fonts
+(TrueType, OpenType, Type 1) with the bundled and registered ones, as the
+text engine sees them, scalable only, sorted regardless of case. UltraPaint's
+Text tool offers all of them, and the dropdown's type-ahead
+([`UltraCanvasDropDownExamples.md`](UltraCanvasDropDownExamples.md)) makes a
+long list quick to pick from.
 
 ## The element
 
@@ -45669,6 +45849,13 @@ over the canvas. The surface handles what every tool shares:
   200 % (see `IRenderContext::SetImageSmoothing`) so pixels read as pixels.
 - **Pan** with the middle button or Space+drag; `SetPanMode(true)` makes
   every drag a pan (a Pan tool).
+- **Resizing** (the window, a split pane) keeps the view on what it showed:
+  the image point at the centre of the view stays at its centre, at the same
+  zoom, and an image smaller than the view is centred in it again. It
+  happens in the frame that shows the new size - or at the next view call
+  (`SetZoom`, `ScrollToImagePoint`, ...) if that comes first - and
+  `onViewChanged` reports it, so overlays placed in view coordinates (an
+  editor over a text layer, the status bar's zoom) follow.
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
@@ -45708,7 +45895,8 @@ loupe->SetLoupeCrosshair(true, 8.0);   // the default: two diagonals, 8 px clear
 ```
 
 - `SetLoupeView(zoom, imageX, imageY)` puts that image point at the centre
-  of the element at that zoom (clamped to the surface's own 1 %..12800 %).
+  of the element at that zoom (clamped to the surface's own 1 %..12800 %);
+  it stays at the centre when the loupe is resized.
 - The **crosshair** is two translucent diagonals from the corners that stop
   `gap` pixels short of the centre, so the pixel under the pointer stays
   clear; a light line under a dark one reads on dark and light pixels alike.
@@ -45733,10 +45921,14 @@ backend: `CAIRO_FILTER_NEAREST`). Default on; the surface turns it off above
 
 ## Building without libvips
 
-The layer, selection, document, brush engine and surface compile without
+libvips is part of UltraCanvas on every platform; the one build without it is
+a single-threaded WebAssembly program, where it cannot run. There the layer,
+selection, document, brush engine and surface compile without
 `HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
 `ApplyFilter` / `PreviewFilter`, file load / save and `.ucraster` projects;
-`ScaleImage` falls back to the layer's bilinear resample.
+`ScaleImage` falls back to the layer's bilinear resample. Text layers are
+drawn without libvips (through the render context); only keeping them in a
+project needs it, as every project does.
 
 ## Tests
 
@@ -45744,7 +45936,15 @@ The layer, selection, document, brush engine and surface compile without
 `RasterEditingTest`) covers the layer and blend arithmetic, the selection
 shapes and set algebra, strokes (opacity cap, erase, selection clipping, the
 one-pixel pencil), shapes / fills / gradients / wand, document undo / redo
-across pixel and structural edits, selection-aware `ApplyFilter`, the
+across pixel and structural edits, selection-aware `ApplyFilter`, text
+layers (drawn inside their box in their runs' colours; the editor at 1:1
+drawing exactly the layer's pixels; staying text through attribute edits,
+canvas resizes and crops and becoming bitmaps through pixel edits, merges,
+flips, rotations and scaling, with undo making them text again; a project
+round trip that draws again to the same pixels), the installed font list, the
+surface's view through a resize (an image smaller than the view centred
+again in the next frame, a larger one keeping its centre point, zooming about
+the pointer between a resize and the frame, and a loupe keeping its point), the
 PNG and `.ucraster` round trips, and saving back over the file a document was
 opened from -- that the image survives the round trip, that the temporary
 file the save goes through leaves no trace, and that neither a save nor an export
@@ -48863,7 +49063,7 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [qr](DialogResult result, const std:
 });
 ```
 
-Writing the raster file goes through libvips, so in a build without it (the no-vips wasm variant, for one) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
+Writing the raster file goes through libvips, so in the one build without it (a single-threaded WebAssembly program) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
 
 ### 9. Generating Without a Widget
 
@@ -51373,11 +51573,18 @@ editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
+
+RichCharFormatDelta exactly;     // set, rather than flip: a checkbox's state
+exactly.setBold = true;
+exactly.bold = false;
+editor->ApplyCharFormat(exactly);
 ```
 
 With a selection these apply to it. With a collapsed caret they **arm** the
 format for the next typed character — pressing Bold and carrying on typing does
-what a word processor does.
+what a word processor does. `ApplyCharFormat` sets what the delta names to
+the value given, where the toggles flip it - the call for a panel of
+checkboxes, which knows what it wants rather than what the text has.
 
 ### Paragraph formatting
 
@@ -52137,6 +52344,7 @@ back. `ExportToPdf` is built on the same three.
 ```cpp
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
 ```
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
@@ -52145,6 +52353,14 @@ it (with the desk either side) is wider than the element a horizontal
 scrollbar appears - drag it, Shift+wheel, or let the caret take the view
 along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
 it. UltraTexter's zoom box sets a word-processing tab's zoom.
+
+The text is laid out in document space and the zoom only scales the drawing,
+so the same words at another zoom wrap and sit exactly as they do at 100 %.
+That is what lets the element edit text lying on a zoomable canvas: a bitmap
+editor's text layer is drawn by this element at 1:1, and edited on the
+canvas by it at the canvas's zoom, with every glyph where the layer's pixels
+will be ([text layers](UltraCanvasPaintSurface.md#text-layers)).
+`SetZoomRange` widens the 0.25-5 range to whatever the canvas allows.
 
 ## What is not implemented yet
 
@@ -69653,12 +69869,12 @@ on another.
 
 Windows applications built from this repository are linked as **GUI-subsystem**
 executables (`set_target_properties(... WIN32_EXECUTABLE TRUE)` in
-`CMakeLists.txt`). The exceptions are the apps whose command-line modes print
-into the prompt they were typed at (DeviceExplorer, UltraCleaner,
-UltraNetMonitor and a few more, listed there): they stay console programs, and
-started by a double-click they close the console Windows opened for them as
-their window comes up (`ReleaseOwnConsole()`), so what follows applies to them
-too. A GUI-subsystem process is not given a console, so:
+`CMakeLists.txt`). That includes the apps whose command-line modes print into
+the prompt they were typed at (UltraDesktop, DeviceExplorer, UltraCleaner,
+UltraNetMonitor and a few more, listed there). Each of those has a console
+companion beside it, `<App>.com`, which a prompt runs for the bare name: it
+starts the `.exe`, waits and hands back the exit code (see *Console
+companions* below). A GUI-subsystem process is not given a console, so:
 
 - `std::cerr`, `printf` and the framework's `debugOutput` have nowhere to write;
 - an unhandled exception kills the process without printing anything;
@@ -70388,6 +70604,36 @@ therefore also gets `OS/MSWindows/AppEntry/UltraCanvasWindowsAttachConsole.cpp`
 compiled in, which calls `AttachParentConsole()` before `main()`. It is part of
 the executable, not of the core: a DLL's static initialisers run under the
 loader lock.
+
+### Console companions
+
+A prompt waits for a console program and sees its exit code; for a GUI
+program it does neither. An application whose command line prints - a
+listing, a check, commands - is therefore made a GUI program with
+`ultracanvas_windows_console_companion(MyApp)` rather than
+`ultracanvas_windows_gui_app()`. That also builds `MyApp.com` beside
+`MyApp.exe` from `OS/MSWindows/AppEntry/UltraCanvasConsoleCompanion.cpp`: a
+small console program that starts the `.exe` with its own command line, waits
+for it and returns its exit code. It links nothing of the framework and its C++
+runtime statically, as Visual Studio's `devenv.com` does for `devenv.exe`.
+
+- cmd and PowerShell try `.COM` before `.EXE` (`PATHEXT`), so `MyApp --list`
+  typed at a prompt, or in a batch file, runs the companion. The prompt waits,
+  and `%ERRORLEVEL%` / `$LASTEXITCODE` is the application's.
+- The Start menu, Explorer, a double-click and the sign-in start `MyApp.exe`:
+  no console window opens.
+- Typed as `MyApp.exe`, it is the GUI program, and the prompt does not wait.
+- With all three standard handles on a console, the companion hands the
+  `.exe` none, and the `.exe` attaches to the console before `main()`. Input
+  and Ctrl+C then work as in a console program.
+- With any of them redirected (`> file`, a pipe, a script capturing the
+  output), the companion hands the `.exe` its three handles, and Ctrl+C ends
+  it.
+
+`ConsoleCompanionTest` (`Tests/ConsoleCompanionTest.cpp`, on the Windows CI
+rows) checks both cases on real Windows. For the console case it starts itself
+again in a hidden console of its own, types a line into it, reads the screen
+back and presses Ctrl+C there.
 
 An application embedding the framework in its own `WinMain` gets all of this by
 calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is
@@ -72654,7 +72900,9 @@ this build writes a bitmap type. A picture's Save offers
 `AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
 and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
 (see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
-by the framework's own libvips plugins. An AVIF or HEIC type is offered to
+by the framework's own libvips plugins, and GIF is written on every build:
+where libvips has no GIF writer of its own (cgif - not in the MSYS2 package or
+the macOS libraries), the framework's encoder takes the save. An AVIF or HEIC type is offered to
 save only where libheif can encode it, and to open only where it can decode
 it: libvips' HEIF loader takes both file endings wherever libheif is, but
 libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
@@ -76004,6 +76252,7 @@ PixelFX is UltraCanvas's comprehensive bitmap manipulation and analytics engine,
 -   **Colour Keying** -- `Colour::ColourToAlpha` turns a chosen colour into transparency with a tolerance, a soft ramp that keeps anti-aliased edges clean, a strength so the colour can be faded rather than only removed, and fringe removal
 -   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements
 -   **File handling** -- a finished load stays in libvips' operation cache, which keeps the source file open and, for JPEG, memory-mapped; `ReleaseCachedFiles()` lets go of them. Call it before writing over a file the application read earlier -- Windows refuses to truncate a file that has a mapping open in the process, so without it saving an edited image back over itself fails
+-   **File types** -- `FileIO::GetSupportedLoadFormats` / `GetSupportedSaveFormats` are FileLoader's lists, as this build has them: every picture type `UltraCanvasFileLoader` reads (ICO and QOI through the framework's own loaders, HEIC only where libheif decodes it), the drawings and documents among its types that libvips opens (SVG, PDF), and every picture type it writes. `IsFormatSupported(".png")` asks the first list. An application's dialogs take their types from FileLoader itself (`AddLoadTypes` / `AddSaveTypes`, see [FileLoader](../FileLoader/README.md))
 -   **Metadata** -- `Header::HasMetadata` / `ReadMetadata` / `MetadataToText` read what a file carries (EXIF, IPTC, XMP, ICC, the image's own geometry), tidy it for a person (tag names without their `exif-ifd0-` prefix, values without libvips' encoding suffix, IPTC and XMP decoded tag by tag, other binary blocks by size) and write it out as Markdown or plain text -- see [UltraCanvasMetadataDialog](../../UltraCanvas/UltraCanvasMetadataDialog.md)
 ----------------
 ### Why PixelFX?
@@ -81453,7 +81702,7 @@ segments.
 > VA-API, AMF, VideoToolbox, Media Foundation) by choice, voice-overs and
 > sound effects placed at any time, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
-> command-line tool work today, on FFmpeg 4.4 to 8.x.
+> command-line tool work today, on FFmpeg 4.4 to 9.x.
 > Keyframed parameters are planned (see *Roadmap*).
 
 ---
@@ -82537,9 +82786,12 @@ call returns `VideoFXResult::NotAvailable` — applications need no `#ifdef`.
 
 Link `VideoFX::VideoFX`. FFmpeg stays a private dependency of the library.
 
-VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux,
-`libVideoFX.dylib` on macOS and `libVideoFX.dll` / `VideoFX.dll` on Windows,
-next to `videofx` and `VideoFXTest` in `bin/`. It is not built into the
+VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux and
+`libVideoFX.dylib` on macOS, in the build's `lib/` (`videofx` and
+`VideoFXTest` are in `bin/`), and `libVideoFX.dll` / `VideoFX.dll` on
+Windows, in the build root beside the applications that load it -
+`UltraVideo.exe`, `videofx.exe`, `VideoFXTest.exe` - because Windows looks
+for a DLL in the folder of the executable that loads it. It is not built into the
 UltraCanvas core, so an application that does no video never loads it or
 FFmpeg, and every application that does shares one copy. While VideoFX is
 0.x, every minor version may change the binary interface, so the minor
@@ -84635,6 +84887,14 @@ UltraDesktop --version | --help
 
 The headless modes print what the module sees, which makes it checkable over
 ssh (`--windows` needs a display; `--apps` and `--devices` do not).
+
+On Windows `UltraDesktop.exe` is a GUI program, so no console window flashes
+up when the sign-in, the Start menu or UOS-Settings starts it. Beside it,
+`UltraDesktop.com` is its console companion. Typed at a prompt without an
+extension, `UltraDesktop --windows` runs the companion: it starts the `.exe`,
+waits for it and returns its exit code, so the listings print and the prompt
+waits as for any console program. Typed as `UltraDesktop.exe --windows`, the
+prompt does not wait.
 
 ## Settings file
 

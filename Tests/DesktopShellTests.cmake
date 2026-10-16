@@ -6,6 +6,11 @@
 # against a real desktop: its window list, monitor, screen edges, hot keys,
 # screenshot, the Start menu, the shell guard and the notification area.
 # Paths are relative to this file, so either includer works.
+#
+# Also ConsoleCompanionTest (Windows Release builds, where console companions
+# exist): the .com an application's command line runs through, on real
+# Windows - redirected, and on a console of its own with typed input and
+# Ctrl+C.
 
 set(_DST_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(_DST_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../UltraCanvas/include")
@@ -45,6 +50,28 @@ if(TARGET UltraCanvas)
     add_test(NAME DesktopShellTest COMMAND DesktopShellTest
              WORKING_DIRECTORY ${_DST_BIN_DIR})
     message(STATUS "    Test registered: DesktopShellTest")
+
+    # ===== CONSOLE COMPANION TEST (Windows Release) =====
+    # ConsoleCompanionProbe.exe / .com are made the way the applications'
+    # are (ultracanvas_windows_console_companion()), so the test drives the
+    # real companion and the real console attach of the .exe.
+    if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        include(${_DST_DIR}/../cmake/UltraCanvasWindowsGuiApp.cmake)
+        add_executable(ConsoleCompanionProbe ${_DST_DIR}/ConsoleCompanionProbe.cpp)
+        target_compile_features(ConsoleCompanionProbe PRIVATE cxx_std_20)
+        target_link_libraries(ConsoleCompanionProbe PRIVATE UltraCanvas)
+        set_target_properties(ConsoleCompanionProbe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${_DST_BIN_DIR})
+        ultracanvas_windows_console_companion(ConsoleCompanionProbe)
+
+        add_executable(ConsoleCompanionTest ${_DST_DIR}/ConsoleCompanionTest.cpp)
+        target_compile_features(ConsoleCompanionTest PRIVATE cxx_std_20)
+        target_link_libraries(ConsoleCompanionTest PRIVATE shell32)
+        set_target_properties(ConsoleCompanionTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${_DST_BIN_DIR})
+        add_dependencies(ConsoleCompanionTest ConsoleCompanionProbe)
+        add_test(NAME ConsoleCompanionTest COMMAND ConsoleCompanionTest
+                 WORKING_DIRECTORY ${_DST_BIN_DIR})
+        message(STATUS "    Test registered: ConsoleCompanionTest")
+    endif()
 else()
     message(STATUS "  DesktopShellTest skipped (UltraCanvas target not present)")
 endif()

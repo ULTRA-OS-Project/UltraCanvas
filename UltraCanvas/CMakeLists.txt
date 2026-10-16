@@ -93,13 +93,15 @@ option(ULTRACANVAS_PLUGIN_MODELS "Build 3D model formats plugin (3DS, OBJ, PLY, 
 set(ULTRACANVAS_LATEX_ENGINE "native" CACHE STRING "Default LaTeX typesetter: native or microtex")
 set_property(CACHE ULTRACANVAS_LATEX_ENGINE PROPERTY STRINGS native microtex)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
-# libvips is ON by default (desktop builds keep the hard requirement), but can
-# be opted out for platforms where its dependency graph is impractical
-# (Android, WASM). Without it, raster image loading/saving and PixelFX compile
-# to their HAS_LIBVIPS-guarded fallbacks: PNG is read through cairo's own
-# reader, JPEG / BMP / GIF through the bundled stb_image, SVG through the
-# Vector plugin, QOI is written but not read.
-option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
+# libvips is part of UltraCanvas on every platform: the desktops' packages,
+# Android's sysroot (OS/Android/packaging/vcpkg.json) and WebAssembly's
+# (OS/WASM/build-wasm-sysroot.sh) all have it, and there is no switch to build
+# without it. The one build that cannot have it is a single-threaded
+# WebAssembly program (ULTRACANVAS_WASM_THREADS=OFF below): libvips runs every
+# image on a worker thread. That build's raster pictures take the
+# HAS_LIBVIPS-guarded fallbacks: PNG through cairo's own reader, JPEG / BMP /
+# GIF through the bundled stb_image, SVG through the Vector plugin, QOI
+# written but not read.
 # WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
 # the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
 # single-threaded program that any static host can serve; it must link
@@ -225,12 +227,23 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     # at the first icon. wasm-vips itself requires threads. So a
     # single-threaded program is a libvips-free one: PNG through cairo's
     # reader, JPEG / BMP / GIF through stb_image, SVG through the Vector
-    # plugin, QOI written but not read.
-    if(NOT ULTRACANVAS_WASM_THREADS AND ULTRACANVAS_ENABLE_VIPS)
-        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, ULTRACANVAS_ENABLE_VIPS is OFF (PNG through cairo's reader, JPEG / BMP / GIF through stb_image, SVG through the Vector plugin)")
-        set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing" FORCE)
+    # plugin, QOI written but not read (ULTRACANVAS_HAS_VIPS, below).
+    if(NOT ULTRACANVAS_WASM_THREADS)
+        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, so it is left out (PNG through cairo's reader, JPEG / BMP / GIF through stb_image, SVG through the Vector plugin)")
     endif()
 endif()
+
+# The switch that built without libvips is gone (see above). A build directory
+# that still carries it off says so instead of configuring a framework without
+# its image pipeline.
+if(DEFINED ULTRACANVAS_ENABLE_VIPS AND NOT ULTRACANVAS_ENABLE_VIPS AND NOT (EMSCRIPTEN AND NOT ULTRACANVAS_WASM_THREADS))
+    message(FATAL_ERROR "ULTRACANVAS_ENABLE_VIPS=OFF is gone: libvips is part of UltraCanvas on every "
+                        "platform. Drop the setting (cmake -U ULTRACANVAS_ENABLE_VIPS) and give the "
+                        "build libvips - Android: scripts/android-bootstrap-sysroot.sh; WebAssembly: "
+                        "UltraCanvas/OS/WASM/build-wasm-sysroot.sh. Only a single-threaded WebAssembly "
+                        "build (-DULTRACANVAS_WASM_THREADS=OFF) goes without it.")
+endif()
+unset(ULTRACANVAS_ENABLE_VIPS CACHE)
 
 
 # The core library links fmt::fmt, so it must resolve the dependency itself
@@ -299,21 +312,19 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
-# libvips - Image processing. Still REQUIRED when enabled, so a missing dev
-# package stays a loud configure error rather than a silently crippled build;
-# pass -DULTRACANVAS_ENABLE_VIPS=OFF to build without it.
-if(ULTRACANVAS_ENABLE_VIPS)
-    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
-endif()
-# Freeze the core-library decision now: plugin subdirectories (XAR, CDR, OCR,
+# libvips - image processing. REQUIRED wherever it can run, so a missing dev
+# package is a loud configure error rather than a silently crippled build; a
+# single-threaded WebAssembly program goes without it (see the WASM block).
+# The decision is frozen here: plugin subdirectories (XAR, CDR, OCR,
 # Vectorizer) run their own pkg_check_modules(LIBVIPS ...) later, and those
 # cached results leak back into this scope after add_subdirectory. Every
-# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) must use
-# this variable so a -DULTRACANVAS_ENABLE_VIPS=OFF core stays vips-free.
-if(ULTRACANVAS_ENABLE_VIPS AND LIBVIPS_FOUND)
-    set(ULTRACANVAS_HAS_VIPS TRUE)
-else()
+# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) uses this
+# variable, so the single-threaded WebAssembly core stays vips-free.
+if(EMSCRIPTEN AND NOT ULTRACANVAS_WASM_THREADS)
     set(ULTRACANVAS_HAS_VIPS FALSE)
+else()
+    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+    set(ULTRACANVAS_HAS_VIPS TRUE)
 endif()
 
 # librsvg - parse-once SVG documents (optional). With it, SVG files are parsed
@@ -524,6 +535,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBrushEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPaintSurface.cpp
+        # Text layers: the words drawn into a layer through the WYSIWYG element
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorRaster.cpp
         # The vector drawing viewer (VectorStorage::VectorDocument on screen,
         # zoom / pan / bounding-box selection). The model it shows is in
@@ -1435,10 +1448,12 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
 )
 if(ULTRACANVAS_HAS_VIPS)
     # vips foreign loader and saver for QOI — consumes the codec symbols
-    # above — and the framework's own Windows icon (.ico) loader and saver.
+    # above — the framework's own Windows icon (.ico) loader and saver, and
+    # its GIF saver for a libvips without one.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
 endif()
 if(LIBRSVG_FOUND)
@@ -2272,7 +2287,7 @@ endif()
 # final .exe) exactly like on macOS above — otherwise lld-link reports "could not open 'cairo.lib'".
 # And under Emscripten: the wasm sysroot's lib/ is no default search directory of wasm-ld either.
 # With libvips on, LIBVIPS_LIBRARY_DIRS (PUBLIC, above) happened to carry it for every library;
-# a -DULTRACANVAS_ENABLE_VIPS=OFF build then failed to find pango, cairo, glib and the rest
+# the single-threaded WebAssembly build (no libvips) then failed to find pango, cairo, glib and the rest
 # (wasm-build.yml's no-vips variant, 2026-10-13).
 # (Build-interface only under Emscripten: _uc_public_link_directories above.)
 if(WIN32 OR EMSCRIPTEN)
@@ -2625,10 +2640,12 @@ _ultracanvas_module_home(NetworkMonitor uc-networkmonitor)
 # wasmtime header reaches its users. Without an engine - the option off, or
 # a platform with no prebuilt library - the library still builds and every
 # call reports that there is no engine, so its users link everywhere.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MINGW)
+    # Windows (MSYS2 CLANG64 / CLANGARM64): wasmtime's C API is built from
+    # its source release with the native Rust toolchain.
     set(_uc_wasm_host_default ON)
 else()
-    # Not yet built in CI on macOS or Windows; see UltraCanvasWasmtime.cmake.
+    # Not yet built in CI on macOS; see UltraCanvasWasmtime.cmake.
     set(_uc_wasm_host_default OFF)
 endif()
 option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})
@@ -3705,9 +3722,9 @@ elseif(NOT ULTRACANVAS_PLUGIN_PDF)
 endif()
 
 # OCR Plugin. It hands libvips images to tesseract (its CMakeLists.txt
-# requires vips), so a core built with ULTRACANVAS_ENABLE_VIPS=OFF skips it.
+# requires vips), so the libvips-free single-threaded WebAssembly core skips it.
 if(ULTRACANVAS_PLUGIN_OCR AND NOT ULTRACANVAS_HAS_VIPS)
-    message(STATUS "  [✗] OCR Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+    message(STATUS "  [✗] OCR Plugin - DISABLED (needs libvips, which a single-threaded WebAssembly build has not got)")
 elseif(ULTRACANVAS_PLUGIN_OCR)
     pkg_check_modules(TESSERACT tesseract)
     pkg_check_modules(LEPTONICA lept)
@@ -3731,10 +3748,10 @@ endif()
 
 # Vectorizer Plugin (raster → SVG via VTracer through a Rust shim). It loads
 # the raster it traces through PixelFX, which a core built with
-# ULTRACANVAS_ENABLE_VIPS=OFF has not got (the link then fails on
+# the single-threaded WebAssembly build has not got (the link then fails on
 # PixelFX::PFXImage::FromFile), so such a core skips it.
 if(ULTRACANVAS_PLUGIN_VECTORIZER AND NOT ULTRACANVAS_HAS_VIPS)
-    message(STATUS "  [✗] Vectorizer Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+    message(STATUS "  [✗] Vectorizer Plugin - DISABLED (needs libvips, which a single-threaded WebAssembly build has not got)")
 elseif(ULTRACANVAS_PLUGIN_VECTORIZER)
     find_program(CARGO_EXECUTABLE cargo)
     if(CARGO_EXECUTABLE)
@@ -4169,7 +4186,7 @@ endif()
 if(ULTRACANVAS_HAS_VIPS)
     message(STATUS "  libvips: ${LIBVIPS_vips_VERSION}")
 else()
-    message(STATUS "  libvips: DISABLED (raster image formats limited to built-in codecs)")
+    message(STATUS "  libvips: none - a single-threaded WebAssembly build (PNG through cairo, JPEG / BMP / GIF through stb_image)")
 endif()
 if(LIBRSVG_FOUND)
     message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents)")

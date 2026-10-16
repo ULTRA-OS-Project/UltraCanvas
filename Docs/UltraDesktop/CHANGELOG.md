@@ -1,3 +1,12 @@
+#### 2026-10-15 *0.4.1*
+- **No console window flashes up when UltraDesktop starts on Windows.**
+  `UltraDesktop.exe` is a GUI program now, so starting it beside Explorer at
+  sign-in, from the Start menu or from UOS-Settings shows the desktop alone.
+  Beside it, `UltraDesktop.com` is its console companion, which a prompt runs
+  for the bare name: `UltraDesktop --windows` starts the `.exe`, waits for it
+  and returns its exit code, as before (framework changelog:
+  `windows-console-companions`).
+
 #### 2026-10-15 *0.4.0*
 - **UltraDesktop can run instead of Explorer, not only beside it.** On
   Windows, *UltraDesktop instead of Explorer* (UOS-Settings → Desktop → At

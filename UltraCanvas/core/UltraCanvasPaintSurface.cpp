@@ -2,9 +2,11 @@
 // Editable raster view: zoom / pan, checkerboard, pixel grid, marching-ants
 // selection, brush cursor, and pointer events forwarded to the active tool
 // in image coordinates.
+// Version: 1.2.0 - FollowResize: a resized view keeps the image point at its centre (and
+//                  re-centres an image smaller than itself) at once, not at the next edit
 // Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
 // Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPaintSurface.h"
@@ -76,7 +78,26 @@ void UltraCanvasPaintSurface::SetDocument(std::shared_ptr<UCRasterDocument> doc)
 // VIEW
 // ===========================================================================
 
+bool UltraCanvasPaintSurface::FollowResize() {
+    const Rect2Df b = GetLocalBounds();
+    if (b.width == viewWidth && b.height == viewHeight) return false;
+    // The image point at the centre of the old size goes to the centre of
+    // the new one: a window grown or shrunk on both sides by half the change
+    // shows what it showed, and the clamp then centres an image smaller
+    // than the view.
+    const double dx = (static_cast<double>(b.width) - viewWidth) * 0.5;
+    const double dy = (static_cast<double>(b.height) - viewHeight) * 0.5;
+    viewWidth = b.width;
+    viewHeight = b.height;
+    // A pending fit lays the view out for the new size by itself.
+    if (!document || fitPending) return false;
+    view.originX += dx;
+    view.originY += dy;
+    return true;
+}
+
 void UltraCanvasPaintSurface::ClampView() {
+    FollowResize();
     if (!document || loupeMode) return;
     const Rect2Df b = GetLocalBounds();
     const double imgW = document->GetWidth() * view.zoom;
@@ -93,6 +114,7 @@ void UltraCanvasPaintSurface::ClampView() {
 void UltraCanvasPaintSurface::SetZoomAt(double zoom, const Point2Di& at) {
     zoom = std::clamp(zoom, kMinZoom, kMaxZoom);
     if (!document) { view.zoom = zoom; return; }
+    FollowResize();
     const Point2Dd img = view.ViewToImage(at.x, at.y);
     view.zoom = zoom;
     view.originX = at.x - img.x * zoom;
@@ -124,6 +146,7 @@ void UltraCanvasPaintSurface::ZoomStep(int direction) {
 
 void UltraCanvasPaintSurface::ZoomToFit() {
     if (!document) return;
+    FollowResize();
     const Rect2Df b = GetLocalBounds();
     if (b.width <= 0 || b.height <= 0) { fitPending = true; return; }
     const double pad = 24.0;
@@ -136,6 +159,7 @@ void UltraCanvasPaintSurface::ZoomToFit() {
 
 void UltraCanvasPaintSurface::CenterImage() {
     if (!document) return;
+    FollowResize();
     const Rect2Df b = GetLocalBounds();
     view.originX = (b.width - document->GetWidth() * view.zoom) * 0.5;
     view.originY = (b.height - document->GetHeight() * view.zoom) * 0.5;
@@ -152,6 +176,7 @@ void UltraCanvasPaintSurface::PanBy(double dx, double dy) {
 }
 
 void UltraCanvasPaintSurface::ScrollToImagePoint(double ix, double iy) {
+    FollowResize();
     const Rect2Df b = GetLocalBounds();
     view.originX = b.width * 0.5 - ix * view.zoom;
     view.originY = b.height * 0.5 - iy * view.zoom;
@@ -178,6 +203,7 @@ void UltraCanvasPaintSurface::SetLoupeMode(bool on) {
 }
 
 void UltraCanvasPaintSurface::SetLoupeView(double zoom, double imageX, double imageY) {
+    FollowResize();
     const Rect2Df b = GetLocalBounds();
     view.zoom = std::clamp(zoom, kMinZoom, kMaxZoom);
     view.originX = b.width * 0.5 - imageX * view.zoom;
@@ -376,6 +402,11 @@ void UltraCanvasPaintSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
     ctx->DrawFilledRectangle(Rect2Dd(b.x, b.y, b.width, b.height), canvasColor, 0.0f);
 
     if (document && document->IsValid()) {
+        // The window (or a split) resized the element since the last frame.
+        if (FollowResize()) {
+            ClampView();
+            if (onViewChanged) onViewChanged();
+        }
         if (fitPending) ZoomToFit();
         const double iw = document->GetWidth(), ih = document->GetHeight();
         const Rect2Dd imageArea = view.ImageToView(Rect2Dd(0, 0, iw, ih));

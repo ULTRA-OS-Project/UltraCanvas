@@ -193,6 +193,14 @@ UltraDesktop --version | --help
 The headless modes print what the module sees, which makes it checkable over
 ssh (`--windows` needs a display; `--apps` and `--devices` do not).
 
+On Windows `UltraDesktop.exe` is a GUI program, so no console window flashes
+up when the sign-in, the Start menu or UOS-Settings starts it. Beside it,
+`UltraDesktop.com` is its console companion. Typed at a prompt without an
+extension, `UltraDesktop --windows` runs the companion: it starts the `.exe`,
+waits for it and returns its exit code, so the listings print and the prompt
+waits as for any console program. Typed as `UltraDesktop.exe --windows`, the
+prompt does not wait.
+
 ## Settings file
 
 `~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set;

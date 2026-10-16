@@ -22,6 +22,7 @@
 // Author: UltraCanvas Framework
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <atomic>
 #include <iostream>
@@ -744,6 +745,47 @@ namespace UltraCanvas {
         // pango_cairo_font_map_get_default() build one. Contexts that already
         // exist keep the map they hold until their surface is recreated.
         pango_cairo_font_map_set_default(nullptr);
+    }
+
+    std::vector<std::string> GetInstalledFontFamilies() {
+        std::vector<std::string> names;
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (!fontMap) return names;
+        PangoFontFamily** families = nullptr;
+        int familyCount = 0;
+        pango_font_map_list_families(fontMap, &families, &familyCount);
+        for (int i = 0; i < familyCount; ++i) {
+            const char* name = pango_font_family_get_name(families[i]);
+            if (!name || !*name) continue;
+            // A face made of bitmaps lists the sizes it has; a scalable one
+            // lists none.
+            PangoFontFace** faces = nullptr;
+            int faceCount = 0;
+            pango_font_family_list_faces(families[i], &faces, &faceCount);
+            bool scalable = faceCount == 0;
+            for (int f = 0; f < faceCount && !scalable; ++f) {
+                int* sizes = nullptr;
+                int sizeCount = 0;
+                pango_font_face_list_sizes(faces[f], &sizes, &sizeCount);
+                if (!sizes) scalable = true;
+                g_free(sizes);
+            }
+            g_free(faces);
+            if (scalable) names.emplace_back(name);
+        }
+        g_free(families);
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+            return s;
+        };
+        std::sort(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            const std::string la = lower(a), lb = lower(b);
+            return la != lb ? la < lb : a < b;
+        });
+        names.erase(std::unique(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            return lower(a) == lower(b);
+        }), names.end());
+        return names;
     }
 
     bool UltraCanvasApplicationBase::RegisterFontFile(const std::string& fontFilePath) {

@@ -176,13 +176,17 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     # taskbar read it off the binary itself - neither looks at _NET_WM_ICON or
     # at a desktop entry.
     #
-    # Deliberately NOT a WIN32_EXECUTABLE, unlike the other apps' Release
-    # builds: a GUI-subsystem program cannot print into the prompt it was
-    # started from, and the commands are half of this one. The console a
-    # double-click opens is closed again as the window comes up, by the
-    # framework (ReleaseOwnConsole() in OS/MSWindows/UltraCanvasWindowsDiagnostics.h).
     ultracanvas_embed_app_icon(ultrafibu
         "${CMAKE_SOURCE_DIR}/media/appicon/UltraFIBU.png")
+
+    # The commands are half of this program, and a prompt waits only for a
+    # console program: on Windows ultrafibu.exe is a GUI program (no console
+    # window beside the window) and ultrafibu.com its console companion, which
+    # cmd and PowerShell run for the bare name `ultrafibu` - it starts the
+    # .exe, waits and returns its exit code (cmake/UltraCanvasWindowsGuiApp.cmake).
+    # The commands-only build below stays a console program: it has no window.
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
+    ultracanvas_windows_console_companion(ultrafibu)
 
     # The freedesktop shortcut and the icon it names. `Icon=UltraFIBU` is an
     # icon *name* resolved through the installed themes, so the file has to land

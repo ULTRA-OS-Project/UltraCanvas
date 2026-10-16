@@ -1,5 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.8.0 - GIF through libvips everywhere: its gifsave, else the
+//                  framework's encoder registered as ucgifsave (VipsGifPlugin)
 // Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
 //                  AVIF (AV1) here
 // Version: 2.6.0 - ICO and QOI written by the framework's own libvips savers
@@ -14,7 +16,7 @@
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
 //                  drops it; RemoveFromCache releases libvips' cached operations
 //                  too; pixmap keys carry the source stamp
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -32,7 +34,7 @@
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #include "VipsIcoPlugin.h"
-#include "UltraCanvasGifEncoder.h"
+#include "VipsGifPlugin.h"
 #endif
 #ifdef HAS_LIBHEIF
 #include <libheif/heif.h>                          // VipsCanDecode: which codecs decode here
@@ -201,6 +203,7 @@ namespace UltraCanvas {
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
         vips_foreign_ico_init_types();
+        vips_foreign_gif_init_types();
         return true;
     }
 
@@ -1234,45 +1237,6 @@ namespace UltraCanvas {
         return ExportVImage(vImg, imagePath, opts);
     }
 
-    // Bundled, dependency-free GIF89a writer, used when this libvips build has
-    // no native cgif `gifsave`. Normalises the VImage to 8-bit sRGB (RGB, or
-    // RGBA when transparency must be kept), hands the raw buffer to the bundled
-    // encoder, and returns "" on success or an error string. See
-    // UltraCanvasGifEncoder.h for why the encoder exists.
-    static std::string EncodeGIFFromVImage(vips::VImage vImg, const std::string& imagePath,
-                                           int maxColorBits, bool interlace) {
-        try {
-            if (vImg.interpretation() != VIPS_INTERPRETATION_sRGB) {
-                vImg = vImg.colourspace(VIPS_INTERPRETATION_sRGB);
-            }
-            int bands = vImg.bands();
-            if (bands == 1) {
-                vImg = vImg.bandjoin({ vImg, vImg });        // gray → RGB
-                bands = 3;
-            } else if (bands == 2) {
-                // gray + alpha → RGB + alpha (keep binary transparency)
-                vips::VImage gray  = vImg.extract_band(0);
-                vips::VImage alpha = vImg.extract_band(1);
-                vImg = gray.bandjoin({ gray, gray, alpha });
-                bands = 4;
-            } else if (bands > 4) {
-                vImg = vImg.extract_band(0, vips::VImage::option()->set("n", 4));
-                bands = 4;
-            }
-            if (vImg.format() != VIPS_FORMAT_UCHAR) {
-                vImg = vImg.cast(VIPS_FORMAT_UCHAR);
-            }
-            vImg = vImg.copy_memory();   // guarantee a contiguous buffer
-            const int width  = vImg.width();
-            const int height = vImg.height();
-            const uint8_t* data = static_cast<const uint8_t*>(vImg.data());
-            return UltraCanvas::GifEncode::EncodeGifFile(
-                    imagePath, data, width, height, bands, maxColorBits, interlace);
-        } catch (vips::VError& err) {
-            return std::string("GIF encode: ") + err.what();
-        }
-    }
-
     // The encoding half of ExportVImage. It writes wherever it is told, which
     // is never the caller's file directly - see ExportVImage below.
     static std::string EncodeVImageTo(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
@@ -1302,27 +1266,16 @@ namespace UltraCanvas {
             switch (opts.format) {
                 case UCImageSaveFormat::GIF:
                     bitDepth = std::min(8, ColorDepthToBitDepth(opts.gif.colorDepth));
-                    if (vips_type_find("VipsOperation", "gifsave") != 0) {
-                        vImg.gifsave(imagePath.c_str(), vips::VImage::option()
-                                ->set("bitdepth", bitDepth)
-                                ->set("interlace", opts.gif.interlace)
-                                ->set("dither", opts.gif.dithering ? 1.0 : 0.0));
-                    } else {
-                        // This libvips build has no native cgif writer (MSYS2
-                        // passes -Dcgif=disabled). The previous fallback routed
-                        // GIF through ImageMagick's magicksave, but that fails
-                        // at run time on systems whose ImageMagick lacks the
-                        // optional GIF encode delegate:
-                        //   magicksave: libMagick error:
-                        //   NoEncodeDelegateForThisImageFormat `gif'
-                        // Use the bundled, dependency-free encoder instead so
-                        // GIF export works regardless of cgif/ImageMagick.
-                        // (bitdepth carries over; interlace is honoured; the
-                        // encoder quantises to <=256 colours itself.)
-                        std::string gifErr = EncodeGIFFromVImage(
-                                vImg, imagePath, bitDepth, opts.gif.interlace);
-                        if (!gifErr.empty()) return gifErr;
-                    }
+                    // libvips' gifsave (cgif) where it has one, else the
+                    // framework's encoder registered as ucgifsave
+                    // (VipsGifPlugin.h): not ImageMagick, whose GIF coder is
+                    // an optional delegate.
+                    vips::VImage::call(vips_foreign_gif_saver(), vips::VImage::option()
+                            ->set("in", vImg)
+                            ->set("filename", imagePath.c_str())
+                            ->set("bitdepth", bitDepth)
+                            ->set("interlace", opts.gif.interlace)
+                            ->set("dither", opts.gif.dithering ? 1.0 : 0.0));
                     break;
 
                 case UCImageSaveFormat::PNG: {

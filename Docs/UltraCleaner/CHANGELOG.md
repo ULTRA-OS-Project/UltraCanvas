@@ -1,3 +1,11 @@
+#### 2026-10-15 *0.64*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraCleaner.exe` is a GUI program now. Beside it,
+  `UltraCleaner.com` is its console companion, which a prompt runs for the
+  bare name: `UltraCleaner --scan` starts the `.exe`, waits for it and
+  returns its exit code, as before. Typed as `UltraCleaner.exe`, the prompt
+  no longer waits (framework changelog: `windows-console-companions`).
+
 #### 2026-10-14 *0.63*
 - **Wildcard rules find caches under a folder named outside the Windows code
   page.** A rule root with a `*` in it - the browser-profile and container

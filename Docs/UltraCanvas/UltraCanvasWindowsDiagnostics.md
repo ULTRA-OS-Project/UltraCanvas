@@ -9,12 +9,12 @@ on another.
 
 Windows applications built from this repository are linked as **GUI-subsystem**
 executables (`set_target_properties(... WIN32_EXECUTABLE TRUE)` in
-`CMakeLists.txt`). The exceptions are the apps whose command-line modes print
-into the prompt they were typed at (DeviceExplorer, UltraCleaner,
-UltraNetMonitor and a few more, listed there): they stay console programs, and
-started by a double-click they close the console Windows opened for them as
-their window comes up (`ReleaseOwnConsole()`), so what follows applies to them
-too. A GUI-subsystem process is not given a console, so:
+`CMakeLists.txt`). That includes the apps whose command-line modes print into
+the prompt they were typed at (UltraDesktop, DeviceExplorer, UltraCleaner,
+UltraNetMonitor and a few more, listed there). Each of those has a console
+companion beside it, `<App>.com`, which a prompt runs for the bare name: it
+starts the `.exe`, waits and hands back the exit code (see *Console
+companions* below). A GUI-subsystem process is not given a console, so:
 
 - `std::cerr`, `printf` and the framework's `debugOutput` have nowhere to write;
 - an unhandled exception kills the process without printing anything;
@@ -744,6 +744,36 @@ therefore also gets `OS/MSWindows/AppEntry/UltraCanvasWindowsAttachConsole.cpp`
 compiled in, which calls `AttachParentConsole()` before `main()`. It is part of
 the executable, not of the core: a DLL's static initialisers run under the
 loader lock.
+
+### Console companions
+
+A prompt waits for a console program and sees its exit code; for a GUI
+program it does neither. An application whose command line prints - a
+listing, a check, commands - is therefore made a GUI program with
+`ultracanvas_windows_console_companion(MyApp)` rather than
+`ultracanvas_windows_gui_app()`. That also builds `MyApp.com` beside
+`MyApp.exe` from `OS/MSWindows/AppEntry/UltraCanvasConsoleCompanion.cpp`: a
+small console program that starts the `.exe` with its own command line, waits
+for it and returns its exit code. It links nothing of the framework and its C++
+runtime statically, as Visual Studio's `devenv.com` does for `devenv.exe`.
+
+- cmd and PowerShell try `.COM` before `.EXE` (`PATHEXT`), so `MyApp --list`
+  typed at a prompt, or in a batch file, runs the companion. The prompt waits,
+  and `%ERRORLEVEL%` / `$LASTEXITCODE` is the application's.
+- The Start menu, Explorer, a double-click and the sign-in start `MyApp.exe`:
+  no console window opens.
+- Typed as `MyApp.exe`, it is the GUI program, and the prompt does not wait.
+- With all three standard handles on a console, the companion hands the
+  `.exe` none, and the `.exe` attaches to the console before `main()`. Input
+  and Ctrl+C then work as in a console program.
+- With any of them redirected (`> file`, a pipe, a script capturing the
+  output), the companion hands the `.exe` its three handles, and Ctrl+C ends
+  it.
+
+`ConsoleCompanionTest` (`Tests/ConsoleCompanionTest.cpp`, on the Windows CI
+rows) checks both cases on real Windows. For the console case it starts itself
+again in a hidden console of its own, types a line into it, reads the screen
+back and presses Ctrl+C there.
 
 An application embedding the framework in its own `WinMain` gets all of this by
 calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is

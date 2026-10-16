@@ -11,10 +11,12 @@
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
 // Version: 0.15.0 - the Fill crop around a video segment's keepInView
+// Version: 0.14.1 - a frame that failed to extract reads as black, not a crash;
+//                  the project tests run on Windows (drive-rooted paths, compared as paths)
 // Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
 //                  VideoFX_SetPictureReader: picture types the application reads
 // Version: 0.13.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -744,6 +746,22 @@ static void TestFaceDetector() {
 
 // A project with every field away from its default, so a field the reader
 // forgets shows as a difference when the loaded project is written again
+// The start of an absolute path on this system. The project tests write
+// paths only as text, and "/work/holiday" has no drive on Windows: there it
+// is relative, and the project makes it absolute against the current drive.
+#ifdef _WIN32
+static const std::string kRoot = "C:/";
+#else
+static const std::string kRoot = "/";
+#endif
+
+// Whether two UTF-8 paths name the same place. A path read back from a
+// project is the system's own spelling - on Windows with '\' where the
+// project's text has '/' - so it is compared as a path, not as text.
+static bool SamePath(const std::string& a, const std::string& b) {
+    return UltraCanvas::PathFromUtf8(a) == UltraCanvas::PathFromUtf8(b);
+}
+
 static VideoFXProject RichTimeline(const std::string& dir) {
     VideoFXSegment clip = VideoFXSegment::FromFile(dir + "/clips/beach.mp4", 2.5, 9.75);
     clip.speed = 1.5;
@@ -751,7 +769,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     clip.effects = {VideoFXEffect::Brightness(0.25), VideoFXEffect::Crop(10, 20, 640, 360),
                     VideoFXEffect::LUT(dir + "/looks/warm.cube", 0.7), VideoFXEffect::FadeOut(1.25)};
     VideoFXOverlay title = VideoFXOverlay::Text("Sommer \xC3\xBC 2026\nZweite Zeile", VideoFXAnchor::Custom, 0.08);
-    title.fontPath = "/fonts/Brand.ttf";             // outside the project: stays absolute
+    title.fontPath = kRoot + "fonts/Brand.ttf";      // outside the project: stays absolute
     title.textColor = 0x12AB9F;
     title.shadow = false;
     title.box = true;
@@ -789,7 +807,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     settings.audioBitRate = 96000;
     settings.threads = 3;
     settings.music = VideoFXMusic::FromFile(dir + "/music/one.mp3", 0.6);
-    settings.music.playlist = {dir + "/music/two.flac", "/library/three.ogg"};
+    settings.music.playlist = {dir + "/music/two.flac", kRoot + "library/three.ogg"};
     settings.music.crossfade = 4.5;
     settings.music.start = 12.0;
     settings.music.loop = false;
@@ -799,7 +817,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
     VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver(dir + "/sound/intro.wav", 1.25, 0.8);
     voice.start = 0.5; voice.end = 7.5; voice.fadeIn = 0.2; voice.fadeOut = 0.3;
-    settings.audioClips = {voice, VideoFXAudioClip::Sound("/library/whoosh.wav", 9.0, 1.5)};
+    settings.audioClips = {voice, VideoFXAudioClip::Sound(kRoot + "library/whoosh.wav", 9.0, 1.5)};
 
     VideoFXProject p = VideoFXProject::FromTimeline({clip, photo, card, pattern}, settings);
     p.title = "Ferien \xE2\x80\x93 Sommer";
@@ -825,7 +843,7 @@ static VideoFXProject RichSlideshow(const std::string& dir) {
     settings.container = VideoFXContainer::MKV;
     settings.videoCodec = VideoFXVideoCodec::FFV1;
     settings.audioCodec = VideoFXAudioCodec::FLAC;
-    VideoFXProject p = VideoFXProject::FromSlideshow({dir + "/p/1.jpg", dir + "/p/2.jpg", "/elsewhere/3.png"}, o,
+    VideoFXProject p = VideoFXProject::FromSlideshow({dir + "/p/1.jpg", dir + "/p/2.jpg", kRoot + "elsewhere/3.png"}, o,
                                                      settings);
     p.title = "Trip";
     return p;
@@ -834,7 +852,7 @@ static VideoFXProject RichSlideshow(const std::string& dir) {
 static void TestProjectFiles() {
     std::printf("Project files: round trip, paths, versions, errors\n");
     namespace stdfs = std::filesystem;
-    const std::string dir = "/work/holiday";        // nothing is read: the paths are only text here
+    const std::string dir = kRoot + "work/holiday"; // nothing is read: the paths are only text here
     std::string json, again, error;
 
     // ---- every field survives a save and a load ----
@@ -847,15 +865,15 @@ static void TestProjectFiles() {
     CHECK(loaded.segments.size() == 4 && loaded.title == rich.title, "four segments, the UTF-8 title");
     if (loaded.segments.size() == 4) {
         const VideoFXSegment& c = loaded.segments[0];
-        CHECK(c.path == dir + "/clips/beach.mp4" && Near(c.start, 2.5, 1e-12) && Near(c.end, 9.75, 1e-12) &&
+        CHECK(SamePath(c.path, dir + "/clips/beach.mp4") && Near(c.start, 2.5, 1e-12) && Near(c.end, 9.75, 1e-12) &&
               Near(c.speed, 1.5, 1e-12) && c.mute, "the clip: path back absolute, range, speed, mute");
         CHECK(c.effects.size() == 4 && c.effects[1].type == VideoFXEffectType::Crop && c.effects[1].width == 640 &&
-              c.effects[2].path == dir + "/looks/warm.cube", "effects: a crop's rectangle, a LUT's file");
+              SamePath(c.effects[2].path, dir + "/looks/warm.cube"), "effects: a crop's rectangle, a LUT's file");
         CHECK(c.overlays.size() == 3 && c.overlays[0].text == rich.segments[0].overlays[0].text &&
-              c.overlays[0].textColor == 0x12AB9F && c.overlays[0].fontPath == "/fonts/Brand.ttf" &&
-              c.overlays[1].imagePath == dir + "/logo.png", "overlays: text, colour, font, image");
+              c.overlays[0].textColor == 0x12AB9F && SamePath(c.overlays[0].fontPath, kRoot + "fonts/Brand.ttf") &&
+              SamePath(c.overlays[1].imagePath, dir + "/logo.png"), "overlays: text, colour, font, image");
         CHECK(c.overlays.size() == 3 && c.overlays[2].kind == VideoFXOverlayKind::Video &&
-              c.overlays[2].videoPath == dir + "/clips/cam.mp4" && Near(c.overlays[2].videoStart, 1.5, 1e-12) &&
+              SamePath(c.overlays[2].videoPath, dir + "/clips/cam.mp4") && Near(c.overlays[2].videoStart, 1.5, 1e-12) &&
               Near(c.overlays[2].imageHeight, 0.3, 1e-12) && Near(c.overlays[2].end, 6.0, 1e-12),
               "a video overlay: its file (relative in the text), start, size, window");
         CHECK(json.find("\"video\": \"clips/cam.mp4\"") != std::string::npos, "the overlay's file stored relative to the project");
@@ -873,15 +891,15 @@ static void TestProjectFiles() {
           Near(st.frameRate, 29.97, 1e-12) && st.fitMode == VideoFXFitMode::Fill && st.quality == 77 &&
           st.videoBitRate == 4000000 && st.encoderPreset == "slow" && st.channels == 1 && st.threads == 3 &&
           Near(st.keyframeInterval, 1.5, 1e-12) && st.acceleration == VideoFXAcceleration::QuickSync &&
-          st.audioClips.size() == 2 && st.audioClips[0].path == dir + "/sound/intro.wav" && st.audioClips[0].ducksMusic &&
+          st.audioClips.size() == 2 && SamePath(st.audioClips[0].path, dir + "/sound/intro.wav") && st.audioClips[0].ducksMusic &&
           Near(st.audioClips[0].at, 1.25, 1e-12) && Near(st.audioClips[0].end, 7.5, 1e-12) &&
           Near(st.audioClips[0].fadeOut, 0.3, 1e-12) && !st.audioClips[1].ducksMusic &&
-          st.audioClips[1].path == "/library/whoosh.wav" && Near(st.audioClips[1].volume, 1.5, 1e-12),
+          SamePath(st.audioClips[1].path, kRoot + "library/whoosh.wav") && Near(st.audioClips[1].volume, 1.5, 1e-12),
           "export settings");
     CHECK(st.music.Songs().size() == 3 && Near(st.music.crossfade, 4.5, 1e-12) && !st.music.loop &&
           Near(st.music.duckingThresholdDb, -15.0, 1e-12) && Near(st.music.duckingLevel, 0.2, 1e-12),
           "music: the song list, crossfade, loop, ducking");
-    CHECK(loaded.outputPath == dir + "/out/holiday.webm", "the output file");
+    CHECK(SamePath(loaded.outputPath, dir + "/out/holiday.webm"), "the output file");
 
     const VideoFXProject show = RichSlideshow(dir);
     CHECK(VideoFX_ProjectToJson(show, json, dir) == VideoFXResult::Ok &&
@@ -895,10 +913,10 @@ static void TestProjectFiles() {
           "images, captions, regions, beats, faces off, songs, codecs");
 
     // ---- paths: inside the project relative, outside absolute ----
-    CHECK(json.find("\"p/1.jpg\"") != std::string::npos && json.find("\"/elsewhere/3.png\"") != std::string::npos,
+    CHECK(json.find("\"p/1.jpg\"") != std::string::npos && json.find("\"" + kRoot + "elsewhere/3.png\"") != std::string::npos,
           "media in the project's folder relative, others absolute");
-    CHECK(VideoFX_ProjectFromJson(json, loaded, "/moved/there") == VideoFXResult::Ok &&
-          loaded.images[0] == "/moved/there/p/1.jpg" && loaded.images[2] == "/elsewhere/3.png",
+    CHECK(VideoFX_ProjectFromJson(json, loaded, kRoot + "moved/there") == VideoFXResult::Ok &&
+          SamePath(loaded.images[0], kRoot + "moved/there/p/1.jpg") && SamePath(loaded.images[2], kRoot + "elsewhere/3.png"),
           "a moved project finds its own media where it now is");
     CHECK(VideoFX_ProjectToJson(show, json) == VideoFXResult::Ok && json.find("\"" + dir + "/p/1.jpg\"") != std::string::npos,
           "no base directory: paths kept as given");
@@ -941,7 +959,7 @@ static void TestProjectFiles() {
     std::vector<std::string> missing;
     CHECK(VideoFX_LoadProject(file, loaded, &missing) == VideoFXResult::Ok && loaded.images.size() == 2,
           "loaded back");
-    CHECK(missing.size() == 1 && missing[0] == base + "/photos/2.jpg", "the one missing photo reported");
+    CHECK(missing.size() == 1 && SamePath(missing[0], base + "/photos/2.jpg"), "the one missing photo reported");
     CHECK(VideoFX_LoadProject(base + "/none.vfxproj", loaded) == VideoFXResult::FileNotFound, "no such project");
     CHECK(VideoFX_SaveProject(onDisk, base + "/no/such/dir/x.vfxproj") == VideoFXResult::WriteError,
           "an unwritable place refused");
@@ -1115,9 +1133,12 @@ static bool Exists(const std::string& p) {
     return fs::exists(UltraCanvas::PathFromUtf8(p), ec);
 }
 
-// Average of a frame's centre 8x8 block
+// Average of a frame's centre 8x8 block. A frame that is not valid (its
+// extraction failed, which a check already reported) reads as black rather
+// than ending the run on a stray read.
 static void CentreColour(const VideoFXFrame& f, double& r, double& g, double& b) {
     r = g = b = 0.0;
+    if (!f.IsValid() || f.width < 8 || f.height < 8) return;
     int n = 0;
     for (int y = f.height / 2 - 4; y < f.height / 2 + 4; ++y)
         for (int x = f.width / 2 - 4; x < f.width / 2 + 4; ++x) {
@@ -1129,6 +1150,8 @@ static void CentreColour(const VideoFXFrame& f, double& r, double& g, double& b)
 }
 
 static void PixelAt(const VideoFXFrame& f, int x, int y, int& r, int& g, int& b) {
+    r = g = b = 0;
+    if (!f.IsValid() || x < 0 || y < 0 || x >= f.width || y >= f.height) return;
     const uint8_t* p = &f.pixels[(static_cast<size_t>(y) * f.width + x) * 4];
     r = p[0]; g = p[1]; b = p[2];
 }

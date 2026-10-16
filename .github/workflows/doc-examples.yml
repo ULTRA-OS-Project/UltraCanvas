@@ -66,5 +66,39 @@ jobs:
             libglib2.0-dev libcairo2-dev libpango1.0-dev libharfbuzz-dev \
             libfreetype6-dev libvips-dev libcurl4-openssl-dev libx11-dev \
             libgl1-mesa-dev
+      # The precompiled header of all public headers takes the checker about
+      # a minute to build and is the same for every run on the same headers,
+      # flags and clang - which is what --pch-key digests, and what the checker
+      # reuses a header by, after one compile against it to be sure. Clang
+      # holds a precompiled header to the mtime of every file it read, and a
+      # checkout stamps every file with the time of the checkout, so every
+      # tracked file is given one fixed mtime first: the restored header then
+      # sees the files it was built from. The entry is small (the header
+      # compresses well) and a pull request that changes headers reuses its
+      # own on the next push, so every run saves on a miss - unlike ccache in
+      # build.yml, whose gigabyte entries from pull requests evicted main's.
+      - name: Give every tracked file one fixed mtime
+        run: git ls-files -z | xargs -0 touch -h -d '2000-01-01T00:00:00Z'
+      - name: Key of the precompiled header
+        id: pch
+        run: echo "key=doc-examples-pch-$(python3 scripts/check_doc_examples.py --pch-key)" >> "$GITHUB_OUTPUT"
+      - name: Restore the precompiled header
+        id: pch-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            build/doc-examples/umbrella.h
+            build/doc-examples/umbrella.h.pch
+            build/doc-examples/umbrella.stamp
+          key: ${{ steps.pch.outputs.key }}
       - name: Check the docs' C++
         run: python3 scripts/check_doc_examples.py --all --strict
+      - name: Save the precompiled header
+        if: always() && steps.pch-cache.outputs.cache-hit != 'true' && hashFiles('build/doc-examples/umbrella.stamp') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            build/doc-examples/umbrella.h
+            build/doc-examples/umbrella.h.pch
+            build/doc-examples/umbrella.stamp
+          key: ${{ steps.pch.outputs.key }}

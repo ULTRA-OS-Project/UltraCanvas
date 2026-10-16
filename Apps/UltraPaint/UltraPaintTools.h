@@ -7,10 +7,12 @@
 // Tools are stateless between activations except for what their options
 // hold; PaintToolOptions is the shared, user-editable state (brush sizes,
 // tolerances, shape style, …) that survives tool switches.
+// Version: 1.3.0 - the Text tool types on the canvas into a text layer: requestText with a box,
+//                  textOptionChanged, askRasterize; italic, underline and alignment options
 // Version: 1.2.1 - shortcutShift / ShortcutLabel: a tool's key can need Shift (the Eraser's Shift+X)
 // Version: 1.2.0 - Polyline, Arrow and Curve, the Lines group's tools beside Line
 // Version: 1.1.0 - WantsMagnifier: a tool that places things to the pixel asks for the magnifying glass
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,6 +20,7 @@
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 
 #include <functional>
 #include <memory>
@@ -71,9 +74,13 @@ struct PaintToolOptions {
     int   eyedropperRadius = 0;
     bool  eyedropperMerged = true;
 
+    // The Text tool: what a new text starts in, and what the panel shows.
     std::string textFont = "Sans";
-    int   textSize = 32;
+    int   textSize = 32;              // pixels
     bool  textBold = false;
+    bool  textItalic = false;
+    bool  textUnderline = false;
+    int   textAlign = 0;              // 0 left, 1 centre, 2 right
 
     bool  moveSelectionOnly = true;
 
@@ -90,8 +97,18 @@ struct PaintToolContext {
     std::function<void(const RasterPixel&)> setForeground;
     std::function<void(const RasterPixel&)> setBackground;
     std::function<void(const std::string&)> setStatus;
-    // The text tool asks the window to show its dialog at an image point.
-    std::function<void(double, double)> requestText;
+    // The Text tool: start typing at an image point - into the text layer
+    // whose box is under it, or into a new text there. `boxWidth` > 0 when a
+    // box was dragged out: the lines wrap at that width.
+    std::function<void(double x, double y, double boxWidth)> requestText;
+    // A Text tool option changed - "font", "size", "bold", "italic",
+    // "underline" or "align": the window applies it to the text being typed
+    // (its selection, or what is typed next) or to the active text layer.
+    std::function<void(const std::string& option)> textOptionChanged;
+    // A tool is about to paint on a text layer: the window offers to
+    // rasterize it (the tool does nothing this time). `action` names what
+    // was about to happen ("Paintbrush", "Fill").
+    std::function<void(const std::string& action)> askRasterize;
     // A tool changed something the option panel shows (e.g. brush size by
     // bracket keys): rebuild it.
     std::function<void()> refreshOptions;
@@ -167,9 +184,10 @@ namespace PaintOptionWidgets {
                       const std::function<void(float)>& onChange, float labelWidth = 0);
     void AddCheckbox(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
                      bool checked, const std::function<void(bool)>& onChange);
-    void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
-                     const std::vector<std::string>& items, int selected,
-                     const std::function<void(int)>& onChange);
+    // Returns the dropdown, for a caller that styles it further.
+    UltraCanvasDropdown* AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
+                                     const std::vector<std::string>& items, int selected,
+                                     const std::function<void(int)>& onChange);
     // A one-line hint under the controls, in quiet grey.
     void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text);
     // The rows every brush-like tool shares.

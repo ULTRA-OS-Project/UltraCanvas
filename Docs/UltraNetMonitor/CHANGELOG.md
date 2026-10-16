@@ -1,3 +1,12 @@
+#### 2026-10-15 *0.17*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraNetMonitor.exe` is a GUI program now. Beside it,
+  `UltraNetMonitor.com` is its console companion, which a prompt runs for
+  the bare name: `UltraNetMonitor --list` starts the `.exe`, waits for it
+  and returns its exit code, as before. Typed as `UltraNetMonitor.exe`, the
+  prompt no longer waits (framework changelog:
+  `windows-console-companions`).
+
 #### 2026-10-13 *0.16*
 - **The activity store is found in a home folder named in any script.**
   `HOME` and `XDG_DATA_HOME` were read through the narrow `getenv`, which

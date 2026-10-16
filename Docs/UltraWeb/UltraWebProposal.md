@@ -200,8 +200,10 @@ The build takes wasmtime's **prebuilt C-API release** through
 crate, so no Rust toolchain is needed where a prebuilt library exists. The
 library is Apache-2.0-WITH-LLVM-exception. The Windows CI builds use MSYS2
 CLANG64/CLANGARM64 (the `gnullvm` ABI), for which there is no prebuilt
-library. There, wasmtime's `c-api` crate has to be built with Corrosion, as
-the Vectorizer builds its crate for that ABI (§14, question 2).
+library. There the build compiles wasmtime's `c-api` crate from its source
+release (its crates vendored, so Cargo runs offline) with the native Rust
+toolchain the Vectorizer plugin already needs (done 2026-10-15, UltraWeb
+0.8.1; §14, question 2).
 
 **WAMR stays the fallback** for targets wasmtime does not reach (ULTRA OS on
 small devices, BSD); that is what the wrapper is for.

@@ -740,7 +740,9 @@ produces that model.
 recorded (§4.3: 11.24 MB raw, 3.9 MB Brotli for the front page demo), and
 `wasm-build.yml` now builds the levers as variants beside it — `min-size`
 (`-Os`), `no-vips` (`-DULTRACANVAS_ENABLE_VIPS=OFF`; the demo's PNG pictures
-then do not load, the module is the measurement), `four-fonts`
+then do not load, the module is the measurement - the variant and the switch
+have since gone: libvips is part of UltraCanvas, and only the single-threaded
+build is without it), `four-fonts`
 (`-DUC_WASM_FONTS=…`) and `single-thread` (`-DULTRACANVAS_WASM_THREADS=OFF`
 against a sysroot built with `WASM_THREADS=0`) — each with its own size
 table; the window logs its time to first paint to the browser console, so a

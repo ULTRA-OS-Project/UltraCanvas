@@ -1,3 +1,12 @@
+#### 2026-10-15 *0.4.1*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraCanvasStart.exe` is a GUI program now. Beside it,
+  `UltraCanvasStart.com` is its console companion, which a prompt runs for
+  the bare name: `UltraCanvasStart --check` starts the `.exe`, waits for it
+  and returns its exit code, as before. Typed as `UltraCanvasStart.exe`, the
+  prompt no longer waits (framework changelog:
+  `windows-console-companions`).
+
 #### 2026-10-12 *0.4.0*
 - **Step 6, Build: the project compiled from the window.** The proof that
   the installation works: the two commands a programmer runs are shown for

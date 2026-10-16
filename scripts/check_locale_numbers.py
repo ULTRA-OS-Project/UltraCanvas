@@ -40,11 +40,20 @@ What is reported:
 
   locale-write
       In a file that writes a format — Storage / Writer / Export / FileIO /
-      Serializer, or anything under DataFormats/ or Plugins/Vector/ — a
-      std::to_string of something that looks like a float, a printf-family
+      Serializer, anything under DataFormats/ or Plugins/Vector/, or a file
+      that defines a serializer (`X::ToHTML(`, `ToMarkdown`, `ToJSON`, `ToSVG`,
+      `ToXML`, `ToCSS`) — a std::to_string of a float, a printf-family
       %f/%g/%e, or an ostringstream that is never imbued with
       std::locale::classic(). The unimbued stream is the one that hid
       SerializePathData's `M 1,5 2` for three releases.
+
+      "A float" is a decimal literal, an `f` suffix or a float/double cast in
+      the argument - or a name the file itself, or a repository header it
+      includes directly, declares `float` or `double`, so a member such as
+      `run.fontSizePt` counts. `UCRichDocument::ToHTML` wrote
+      `font-size:24,000000pt` that way, unseen, because the run's field is
+      declared a header away. An argument cast to an integer
+      (`static_cast<int>(...)`, `std::lround(...)`) is not a float.
 
       The stream rule only looks at files that mention std::locale::classic
       NOWHERE. A writer that has the idiom is trusted with it: the SVG
@@ -103,6 +112,9 @@ PARSE_RE = re.compile(
 WRITER_NAME_RE = re.compile(r"(Storage|Writer|Export|FileIO|Serializ|Converter)",
                             re.IGNORECASE)
 WRITER_DIR_RE = re.compile(r"/(DataFormats|Vector)/")
+# A file that defines a serializer writes a format, whatever it is called.
+SERIALIZER_DEF_RE = re.compile(
+    r"\b\w+::(?:To|Write)(?:HTML|Html|Markdown|JSON|Json|SVG|Svg|XML|Xml|CSS|Css)\w*\s*\(")
 
 PRINTF_FLOAT_RE = re.compile(
     r"\b(?:sn|s)?printf\s*\([^;]*?%[-+ #0-9.*]*[fgeFGE]\b")
@@ -111,14 +123,94 @@ PRINTF_FLOAT_RE = re.compile(
 TO_STRING_FLOAT_RE = re.compile(
     r"\bto_string\s*\((?P<arg>[^();]*(?:\([^()]*\)[^();]*)*)\)")
 FLOATISH_RE = re.compile(r"\d*\.\d|\b\d+\.?\d*f\b|\b(?:float|double)\b")
+# An argument that is cast to an integer first is an integer, whatever floats
+# go into it.
+INT_CAST_RE = re.compile(
+    r"^\s*(?:static_cast\s*<\s*(?:int|long|long\s+long|unsigned|size_t|u?int\d+_t)\s*>"
+    r"|\(\s*(?:int|long|unsigned|size_t)\s*\)|(?:std::)?l?l?round\b)")
+# Declarations of names as float / double, and as anything integral - a name
+# declared both ways (in two structs) is not known to be a float. A
+# declaration may name several (`uint8_t r, g, b, a;`, `float x = 0, y = 0;`).
+FLOAT_DECL_RE = re.compile(r"\b(?:float|double)\s+([A-Za-z_][^;(){}]*);")
+OTHER_DECL_RE = re.compile(
+    r"\b(?:int|long|short|unsigned|size_t|bool|char|u?int\d+_t|std::string)\s+([A-Za-z_][^;(){}]*);")
+DECLARATOR_RE = re.compile(r"^\s*\**\s*([A-Za-z_]\w*)")
+# The last name of an argument: `run.fontSizePt`, `p->x`, `scale`.
+LAST_NAME_RE = re.compile(r"(\w+)\s*$")
+INCLUDE_RE = re.compile(r'^\s*#\s*include\s*"([^"]+)"', re.M)
+INCLUDE_ROOTS = ["UltraCanvas/include", "UltraCanvas/core", "UltraCanvas/Plugins",
+                 "UltraCloud/include", "UltraAI/include", "VirtualFS/include", "SmartHome/include"]
 STREAM_DECL_RE = re.compile(r"\b(?:std::)?(?:o|i)?stringstream\s+(?P<name>\w+)\s*[;(]")
 IMBUE_RE = re.compile(r"\.imbue\s*\(\s*std::locale::classic\s*\(\s*\)\s*\)")
 STREAM_FLOAT_RE = re.compile(r"<<\s*[^;]*\b(?:\d*\.\d|[a-zA-Z_]\w*\.(?:x|y|X|Y)\b)")
 
 
-def is_writer(relative: str) -> bool:
+def is_writer(relative: str, text: str = "") -> bool:
     return bool(WRITER_NAME_RE.search(Path(relative).name)
-                or WRITER_DIR_RE.search("/" + relative))
+                or WRITER_DIR_RE.search("/" + relative)
+                or SERIALIZER_DEF_RE.search(text))
+
+
+def included_texts(path: Path, text: str) -> list[str]:
+    """The repository headers `text` includes directly (quoted includes,
+    found beside the file or under the include roots)."""
+    out = []
+    for name in INCLUDE_RE.findall(text):
+        for base in [path.parent] + [REPO_ROOT / r for r in INCLUDE_ROOTS]:
+            candidate = base / name
+            if candidate.is_file():
+                try:
+                    out.append(candidate.read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    pass
+                break
+    return out
+
+
+def _declared(sources: list[str]) -> tuple[set[str], set[str]]:
+    """(names declared float/double, names declared integral) in `sources`."""
+    def names(declarators: str) -> set[str]:
+        out = set()
+        for piece in declarators.split(","):
+            m = DECLARATOR_RE.match(piece)
+            if m:
+                out.add(m.group(1))
+        return out
+
+    floats: set[str] = set()
+    others: set[str] = set()
+    for source in sources:
+        for d in FLOAT_DECL_RE.findall(source):
+            floats |= names(d)
+        for d in OTHER_DECL_RE.findall(source):
+            others |= names(d)
+    return floats, others
+
+
+def float_names(path: Path, text: str) -> tuple[set[str], set[str]]:
+    """(plain names, member names) known to be float or double: a plain
+    name declared so in the file or a header it includes, and never as
+    anything integral; a member (`run.fontSizePt`) declared so in one of those
+    headers - the file's own locals say nothing about another object's
+    field."""
+    own_floats, own_others = _declared([text])
+    head_floats, head_others = _declared(included_texts(path, text))
+    plain = (own_floats | head_floats) - (own_others | head_others)
+    members = head_floats - head_others
+    return plain, members
+
+
+def is_floatish(arg: str, floats: tuple[set[str], set[str]]) -> bool:
+    if INT_CAST_RE.search(arg):
+        return False
+    if FLOATISH_RE.search(arg):
+        return True
+    last = LAST_NAME_RE.search(arg)
+    if not last:
+        return False
+    plain, members = floats
+    member_access = re.search(r"(?:\.|->)\s*\w+\s*$", arg) is not None
+    return last.group(1) in (members if member_access else plain)
 
 
 class Finding:
@@ -192,6 +284,8 @@ def check_file(path: Path) -> list[Finding]:
     relative = path.relative_to(REPO_ROOT).as_posix()
     lines = text.splitlines()
     findings: list[Finding] = []
+    writer = is_writer(relative, text)
+    floats = float_names(path, text) if writer else (set(), set())
 
     for number, line in enumerate(lines, start=1):
         if EXEMPT_RE.search(line):
@@ -208,7 +302,7 @@ def check_file(path: Path) -> list[Finding]:
                 f"reader's locale with `// locale-ok: …`",
                 symbol=fn))
 
-        if not is_writer(relative):
+        if not writer:
             continue
 
         if PRINTF_FLOAT_RE.search(code):
@@ -219,7 +313,7 @@ def check_file(path: Path) -> list[Finding]:
                 symbol="printf"))
 
         for m in TO_STRING_FLOAT_RE.finditer(code):
-            if FLOATISH_RE.search(m.group("arg")):
+            if is_floatish(m.group("arg"), floats):
                 findings.append(Finding(
                     path, number, "locale-write",
                     "std::to_string of a float in a format writer renders "
@@ -231,7 +325,7 @@ def check_file(path: Path) -> list[Finding]:
     # Skipped entirely for a file that knows the idiom somewhere - it either
     # imbues its streams or funnels them through a helper that does, and
     # neither is distinguishable from the outside by looking at the `<<`.
-    if is_writer(relative) and "locale::classic" not in text:
+    if writer and "locale::classic" not in text:
         for m in STREAM_DECL_RE.finditer(text):
             name = m.group("name")
             after = text[m.end():m.end() + 4000]
