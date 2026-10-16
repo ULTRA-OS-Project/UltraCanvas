@@ -1743,7 +1743,7 @@ namespace UltraCanvas {
                             ImplementationStatus::FullyImplemented,
                             [this]() { return CreateCircularInfoGraphicExamples(); },
                             "DemoApp/UltraCanvasCircularInfoGraphicExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasCircularInfoGraphicExamples.md")
+                            "Docs/UltraCanvas/UltraCanvasCircularInfoGraphic.md")
                 .AddVariant("circularinfo", "Corporate Hierarchy")
                 .AddVariant("circularinfo", "Technology Ecosystem (270°)")
                 .AddVariant("circularinfo", "Multi-Track Genomic Style")

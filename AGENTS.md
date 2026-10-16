@@ -49,7 +49,8 @@ before adding cross-module code.
   `Apps/DemoApp/*.cpp`) starts with a generated `## Contents` inventory
   linking each `##` / `###` section. After adding, renaming or removing a
   section, run `python3 scripts/generate_doc_toc.py` (before
-  `generate_llms_txt.py`); CI runs it with `--check`. Never edit the list by
+  `generate_llms_txt.py`); CI runs it with `--check`, which also fails when a
+  demo page names a `Docs/....md` that does not exist. Never edit the list by
   hand, and never put prose inside it - it is rewritten up to the next
   heading.
 

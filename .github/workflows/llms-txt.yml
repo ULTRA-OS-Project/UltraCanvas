@@ -5,7 +5,8 @@ name: llms.txt sync
 # from <Name>/README.md; the list is MIRRORED_READMES in the script) in
 # sync with the markdown corpus. Fails when a docs change was committed
 # without rerunning scripts/generate_llms_txt.py. Also checks the "## Contents"
-# inventory of every document the demo app opens (scripts/generate_doc_toc.py).
+# inventory of every document the demo app opens, and that each one exists
+# (scripts/generate_doc_toc.py).
 
 # Trigger policy matches build.yml: `pull_request` covers feature branches, so
 # listing them under `push` too would run this check twice per commit.
@@ -22,6 +23,7 @@ on:
       - 'scripts/generate_llms_txt.py'
       - 'scripts/generate_doc_toc.py'
       - 'Apps/DemoApp/*.cpp'
+      - 'Apps/DemoApp/*.h'
       - 'llms.txt'
       - 'llms-full.txt'
       - '.github/workflows/llms-txt.yml'
@@ -47,6 +49,7 @@ on:
       - 'scripts/generate_llms_txt.py'
       - 'scripts/generate_doc_toc.py'
       - 'Apps/DemoApp/*.cpp'
+      - 'Apps/DemoApp/*.h'
       - 'llms.txt'
       - 'llms-full.txt'
       - '.github/workflows/llms-txt.yml'
@@ -61,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Demo-app documents have a current inventory
+      - name: Demo-app documents exist and have a current inventory
         run: python3 scripts/generate_doc_toc.py --check
       - name: Regenerate llms.txt / llms-full.txt and the README mirror
         run: python3 scripts/generate_llms_txt.py

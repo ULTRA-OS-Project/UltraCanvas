@@ -16,6 +16,9 @@ inside the inventory.
     python3 scripts/generate_doc_toc.py           # rewrite the inventories
     python3 scripts/generate_doc_toc.py --check   # fail when one is stale
 
+Either way it fails when a demo source names a "Docs/....md" that does not
+exist: that page's Documentation button would open nothing.
+
 A mirrored README (MIRRORED_READMES in generate_llms_txt.py) is updated in its
 source file; rerun scripts/generate_llms_txt.py afterwards to refresh the
 mirror. Standard library only.
@@ -34,7 +37,7 @@ TOC_LEVELS = (2, 3)
 # Too few sections for an inventory to help.
 MIN_ENTRIES = 2
 # The changelog is a dated log, not a guide; its versions are not sections.
-EXCLUDED = {"Docs/UltraCanvas/CHANGELOG.md", "Docs/CHANGELOG.md"}
+EXCLUDED = {"Docs/UltraCanvas/CHANGELOG.md"}
 
 DOC_REF_RE = re.compile(r'"(Docs/[^"]+\.md)"')
 HEADING_RE = re.compile(r"^(#{1,6}) +(.*?)\s*$")
@@ -42,11 +45,28 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 LINK_TARGET_RE = re.compile(r"\]\([^)]*\)")
 
 
+def demo_doc_refs():
+    """(doc, "file:line") of every "Docs/....md" path in the demo's sources."""
+    refs = []
+    demo = REPO_ROOT / "Apps" / "DemoApp"
+    for src in sorted(list(demo.glob("*.cpp")) + list(demo.glob("*.h"))):
+        text = src.read_text(encoding="utf-8", errors="replace")
+        for n, line in enumerate(text.split("\n"), 1):
+            for doc in DOC_REF_RE.findall(line):
+                refs.append((doc, f"{src.relative_to(REPO_ROOT).as_posix()}:{n}"))
+    return refs
+
+
+def missing_docs():
+    """References to a document that does not exist - a Documentation
+    button that opens nothing."""
+    return [(doc, where) for doc, where in demo_doc_refs()
+            if not (REPO_ROOT / doc).is_file()]
+
+
 def demo_docs():
     """The documents the demo app's pages open, in a stable order."""
-    docs = set()
-    for src in sorted((REPO_ROOT / "Apps" / "DemoApp").glob("*.cpp")):
-        docs.update(DOC_REF_RE.findall(src.read_text(encoding="utf-8", errors="replace")))
+    docs = {doc for doc, _ in demo_doc_refs()}
     mirror_sources = {v: k for k, v in MIRRORED_READMES.items()}
     out = []
     for doc in sorted(docs - EXCLUDED):
@@ -163,6 +183,11 @@ def main():
             stale.append(doc)
             if not check:
                 path.write_text(result, encoding="utf-8")
+    missing = missing_docs()
+    for doc, where in missing:
+        print(f"{where}: {doc} does not exist")
+    if missing:
+        print("Write the document, or point the page at one that exists.")
     if check and stale:
         for doc in stale:
             print(f"stale inventory: {doc}")
@@ -170,7 +195,7 @@ def main():
         return 1
     if not check:
         print(f"{len(stale)} document(s) updated")
-    return 0
+    return 1 if missing else 0
 
 
 if __name__ == "__main__":
