@@ -224,9 +224,9 @@ ASCII that the syntax tokenizer would otherwise recognise and open as source.
 ### UltraCanvas Documents (`MediaKind::UCDoc`)
 
 `*.ucd` containers (see `Docs/UltraCanvas/UCD-FileFormat-v2.md`) are
-recognised by the 12-byte signature of the fixed header. Until the UCD v2
-engine lands the viewer shows what the format deliberately makes available
-without parsing the body:
+recognised by the 12-byte signature of the fixed header, read through the
+container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
+format deliberately makes available without parsing the body:
 
 - the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
   fixed header) on the image surface, when present — respecting the
@@ -234,10 +234,12 @@ without parsing the body:
 - otherwise a **header summary** in the text view.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
-container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`, …),
-version, body encoding, compression, encryption and thumbnail info. A
-`*.ucd` file without a valid v2 signature (e.g. a v1 XML/JSON document) gets
-a summary saying so.
+container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
+`UCBitmap` …), version, body encoding, compression, encryption (always
+XChaCha20-Poly1305; the key from a password or from SuperVault) and
+thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
+document) gets a summary saying why. A layered image (`UCBitmap`) shows its
+thumbnail here; `UCRasterDocument` opens it with its layers.
 
 ## Details panel
 

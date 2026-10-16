@@ -10,12 +10,15 @@
 // which are EPS) carry one either as the TIFF section of a DOS EPS binary
 // header or as the hex-encoded EPSI preview in their comment block. The
 // first two are ordinary images once extracted; the EPSI preview is turned
-// into a PGM here, which the image pipeline reads like any other bitmap.
+// into a PGM here, which the image pipeline reads like any other bitmap. An
+// UltraCanvas Document (.ucd) keeps a PNG or HEIC thumbnail straight after
+// its fixed header (UltraCanvasUCDContainer.h).
 //
 // The extraction is pure file parsing - no graphics plugin, no render
 // context - so it is safe to call from a worker thread.
+// Version: 1.2.0 - UltraCanvas Documents (*.ucd)
 // Version: 1.1.0
-// Last Modified: 2026-09-03
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 

@@ -5659,6 +5659,28 @@ else()
     message(STATUS "  DiagramJsonLocaleTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== UCD CONTAINER TEST =====
+# The UCD v2 container (UltraCanvasUCDContainer.h) against its spec: the
+# signature and header bytes, the thumbnail, INDX, zlib / gzip sections, the
+# header-default code, unknown sections, and what it refuses. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UCDContainerTest...")
+    add_executable(UCDContainerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UCDContainerTest.cpp
+    )
+    target_include_directories(UCDContainerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(UCDContainerTest PRIVATE cxx_std_20)
+    target_link_libraries(UCDContainerTest PRIVATE UltraCanvas)
+    set_target_properties(UCDContainerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UCDContainerTest COMMAND UCDContainerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UCDContainerTest")
+else()
+    message(STATUS "  UCDContainerTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ICO / QOI TEST =====
 # The framework's own libvips loaders and savers for Windows icons and QOI:
 # written without ImageMagick, read back pixel for pixel, bitmap icons made by

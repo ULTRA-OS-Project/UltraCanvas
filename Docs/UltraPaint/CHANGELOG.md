@@ -1,4 +1,15 @@
 #### 2026-10-16 *0.2.24*
+- **Layered images in the UCD format.** *Save As* offers *UltraCanvas layered
+  image (.ucd)* beside the *UltraPaint project*: an UltraCanvas Document
+  (UCD 2.1) that keeps every layer - its pixels, name, visibility, lock,
+  opacity and blend mode - and a text layer's words as text, so it opens as
+  text again, with a thumbnail of the picture straight after its header that
+  UltraFiler and UltraViewer show without opening the layers. Open takes it
+  too, and a `.ucd` dropped on UltraPaint's icon opens (MIME type
+  `image/x-ultracanvas-bitmap`, told from other UltraCanvas documents by its
+  signature). The two layered formats now come from the framework's format
+  inventory (*Layered images*) instead of a list of UltraPaint's own
+  (framework changelog, pending entry `ucd-layered-images`).
 - **Escape in the Text tool's lists leaves you typing.** Opening the *Font*
   or *Align* list while typing a text and closing it with Escape - or with
   the entry it already had - left the keyboard on the list's button, so what

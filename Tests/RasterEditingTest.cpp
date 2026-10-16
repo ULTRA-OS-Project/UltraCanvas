@@ -6,6 +6,7 @@
 // keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
 // surface's view through a resize, and the PNG and .ucraster round trips (the
 // last three only with libvips).
+// Version: 1.5.0 - TestLayeredUCD: *.ucd keeps layers, blend modes and text layers as text
 // Version: 1.4.1 - TestSurfaceFollowsResize: a document change after a resize reports the move
 // Version: 1.4.0 - TestSurfaceFollowsResize: the view re-centres when the element is resized
 // Version: 1.3.0 - TestTextLayers, TestTextLayerProject: text layers stay
@@ -25,6 +26,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
 #include "UltraCanvasPaintSurface.h"
+#include "UltraCanvasUCDContainer.h"
 
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
@@ -37,6 +39,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
@@ -1125,6 +1128,169 @@ static void TestSurfaceFollowsResize() {
     CHECK_NEAR(loupeCentre.y, 60, 1);
 }
 
+// The PNG IHDR's width and height (big-endian at bytes 16 and 20).
+static bool PngSize(const std::vector<uint8_t>& png, int& w, int& h) {
+    static const uint8_t sig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+    if (png.size() < 24 || !std::equal(sig, sig + 8, png.begin())) return false;
+    auto be = [&](size_t at) {
+        return (static_cast<int>(png[at]) << 24) | (static_cast<int>(png[at + 1]) << 16) |
+               (static_cast<int>(png[at + 2]) << 8) | static_cast<int>(png[at + 3]);
+    };
+    w = be(16);
+    h = be(20);
+    return true;
+}
+
+// A UCD layered image (spec 4.7) keeps what a project keeps - layers, their
+// attributes, text layers as text - without libvips, and reads at every
+// depth: the thumbnail, the pixels, the words.
+static void TestLayeredUCD() {
+    std::string err;
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-ucd";
+    std::filesystem::create_directories(dir);
+
+    UCRasterDocument doc(300, 150, RasterPixel(255, 255, 255, 255));
+    const int painted = doc.AddLayer("Ebene \xC3\xBC \xE2\x80\x94 rot", RasterPixel(0, 0, 0, 0));
+    doc.GetLayer(painted)->FillRect(Rect2Di(20, 30, 100, 50), RasterPixel(200, 10, 20, 180));
+    doc.SetLayerOpacity(painted, 0.4f);
+    doc.SetLayerBlendMode(painted, RasterBlendMode::Multiply);
+    doc.SetLayerLocked(painted, true);
+    const int hidden = doc.AddLayer("hidden", RasterPixel(0, 255, 0, 255));
+    doc.SetLayerVisible(hidden, false);
+    doc.SetLayerBlendMode(hidden, RasterBlendMode::SoftLight);
+    auto text = RenderTextLayer(MakeTextContent(), 300, 150, err);
+    CHECK(text != nullptr);
+    if (!text) return;
+    doc.AddLayer(text);
+    doc.SetActiveLayerIndex(painted);
+
+    const std::string path = PathToUtf8(dir / "layers.ucd");
+    CHECK(UCRasterDocument::IsUCDFile(path) && UCRasterDocument::IsProjectFile(path));
+    CHECK(doc.SaveToFile(path, err));
+    CHECK(doc.GetFilePath() == path && !doc.IsModified());
+
+    // A filer's read: header and thumbnail, nothing else.
+    UCD::Header header;
+    std::vector<uint8_t> thumbnail;
+    CHECK(UCD::ReadHeaderAndThumbnail(path, header, thumbnail, err));
+    CHECK(header.descriptor == "UCBitmap" && header.versionMajor == 2 && header.versionMinor == 1);
+    CHECK(header.HasThumbnail() && header.ThumbnailIsPng() && !header.IsEncrypted());
+    int tw = 0, th = 0;
+    CHECK(PngSize(thumbnail, tw, th) && tw == 256 && th == 128);   // the longer side at 256
+
+    // The container: INDX, LAYR, then a BMAP per layer and a VECT per text layer.
+    UCD::Reader reader;
+    CHECK(reader.Open(path, err));
+    CHECK(reader.GetSections().size() == 7 && reader.GetSections()[0].type == "INDX" &&
+          reader.GetSections()[1].type == "LAYR");
+    CHECK(reader.FindSections("BMAP").size() == 4 && reader.FindSections("VECT").size() == 1);
+
+    // An editor's read: everything back.
+    UCRasterDocument loaded;
+    CHECK(loaded.LoadFromFile(path, err));
+    CHECK(loaded.GetWidth() == 300 && loaded.GetHeight() == 150 && loaded.GetLayerCount() == 4);
+    if (loaded.GetLayerCount() != 4) return;
+    CHECK(loaded.GetActiveLayerIndex() == painted && loaded.GetFilePath() == path && !loaded.IsModified());
+    for (int i = 0; i < 4; ++i) {
+        const auto a = doc.GetLayer(i), b = loaded.GetLayer(i);
+        CHECK(SamePixels(*a, *b));
+        CHECK(a->name == b->name && a->visible == b->visible && a->locked == b->locked);
+        CHECK(a->opacity == b->opacity && a->blendMode == b->blendMode);
+        CHECK(a->IsTextLayer() == b->IsTextLayer());
+    }
+    const auto back = loaded.GetLayer(3);
+    if (back->text && text->text) {
+        const RasterTextContent& a = *text->text;
+        const RasterTextContent& b = *back->text;
+        CHECK(a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height);
+        CHECK(a.fontFamily == b.fontFamily && a.fontSizePx == b.fontSizePx && a.colour == b.colour);
+        CHECK(b.document && b.document->ToPlainText() == a.document->ToPlainText());
+        // The words draw again into the same pixels.
+        auto again = RenderTextLayer(b, 300, 150, err);
+        CHECK(again && SamePixels(*again, *text));
+    }
+
+    // A UCBitmap without a layer stack is one image: its first BMAP (here
+    // RGB8, the third of UCRW's pixel formats), as the Background.
+    {
+        std::vector<uint8_t> bmap;
+        UCD::AppendPreamble(bmap, "UCRW", 1);
+        UCD::ByteWriter w(bmap);
+        w.U16(2); w.U16(1); w.U8(1); w.Zeros(3);
+        const uint8_t rgb[6] = { 10, 20, 30, 40, 50, 60 };
+        w.Bytes(rgb, sizeof(rgb));
+        UCD::Writer single("UCBitmap");
+        single.AddSection("XTND", { 1, 2, 3 });       // unknown to this reader: skipped
+        single.AddSection("BMAP", bmap);
+        const std::string one = PathToUtf8(dir / "single.ucd");
+        CHECK(single.WriteToFile(one, err));
+        UCRasterDocument image;
+        CHECK(image.LoadFromFile(one, err));
+        CHECK(image.GetLayerCount() == 1 && image.GetWidth() == 2 && image.GetHeight() == 1);
+        if (image.GetLayerCount() == 1) {
+            CHECK(image.GetLayer(0)->name == "Background");
+            CHECK(image.GetLayer(0)->GetPixel(1, 0) == RasterPixel(40, 50, 60, 255));
+        }
+    }
+
+    // A text frame this cannot read leaves the layer the bitmap it shows;
+    // an unknown blend mode composites as Normal.
+    {
+        std::vector<uint8_t> stack;
+        UCD::ByteWriter s(stack);
+        s.U8(1); s.Zeros(3); s.U32(4); s.U32(4); s.I32(0); s.U32(1);
+        std::vector<uint8_t> record;
+        UCD::ByteWriter r(record);
+        r.U8(0x01); r.U8(99); r.U16(0); r.F32(1.0f); r.I32(1); r.I32(1);
+        r.U32(0); r.U32(0); r.String16("words");
+        r.U32(0xDEADBEEF);                          // a field from a later revision: skipped
+        s.U32(static_cast<uint32_t>(record.size()));
+        s.Bytes(record.data(), record.size());
+        std::vector<uint8_t> bmap;
+        UCD::AppendPreamble(bmap, "UCRW", 1);
+        UCD::ByteWriter b(bmap);
+        b.U16(1); b.U16(1); b.U8(0); b.Zeros(3);
+        const uint8_t px[4] = { 1, 2, 3, 4 };
+        b.Bytes(px, 4);
+        std::vector<uint8_t> frame;
+        UCD::AppendPreamble(frame, "UCTF", 1);
+        UCD::ByteWriter f(frame);
+        f.F64(0); f.F64(0); f.F64(4); f.F64(4); f.Zeros(4); f.F32(12.0f); f.String16("Sans");
+        f.FourCC("ODT "); f.U32(5); f.Bytes("broke", 5);   // not an OpenDocument text
+        UCD::Writer w("UCBitmap");
+        w.AddSection("LAYR", stack);
+        w.AddSection("BMAP", bmap);
+        w.AddSection("VECT", frame, UCD::Compression::Uncompressed);
+        const std::string odd = PathToUtf8(dir / "odd.ucd");
+        CHECK(w.WriteToFile(odd, err));
+        UCRasterDocument image;
+        CHECK(image.LoadFromFile(odd, err));
+        CHECK(image.GetLayerCount() == 1);
+        if (image.GetLayerCount() == 1) {
+            const auto l = image.GetLayer(0);
+            CHECK(!l->IsTextLayer() && l->name == "words" && l->blendMode == RasterBlendMode::Normal);
+            CHECK(l->GetPixel(1, 1) == RasterPixel(1, 2, 3, 4) && l->GetPixel(0, 0).a == 0);   // placed at (1, 1)
+        }
+    }
+
+    // What this cannot open says why, and leaves the document as it was.
+    {
+        UCRasterDocument keep(5, 5, RasterPixel(9, 9, 9, 255));
+        const std::string notUcd = PathToUtf8(dir / "not.ucd");
+        { std::ofstream(PathFromUtf8(notUcd), std::ios::binary) << "UCD\x01 an old one"; }
+        std::string why;
+        CHECK(!keep.LoadFromFile(notUcd, why) && why.find("version 1") != std::string::npos);
+        UCD::Writer empty("UCDoc");
+        empty.AddSection("META", { 0 });
+        const std::string doc2 = PathToUtf8(dir / "doc.ucd");
+        CHECK(empty.WriteToFile(doc2, err));
+        why.clear();
+        CHECK(!keep.LoadFromFile(doc2, why) && why.find("holds no image") != std::string::npos);
+        CHECK(keep.GetWidth() == 5 && keep.GetLayerCount() == 1);
+    }
+    std::filesystem::remove_all(dir);
+}
+
 int main() {
 #ifdef HAS_LIBVIPS
     if (VIPS_INIT("RasterEditingTest")) { std::printf("vips init failed\n"); return 1; }
@@ -1141,6 +1307,7 @@ int main() {
     TestInstalledFontFamilies();
     TestTextLayers();
     TestSurfaceFollowsResize();
+    TestLayeredUCD();
 #ifdef HAS_LIBVIPS
     TestTextLayerProject();
     TestPixelFXAndFiles();

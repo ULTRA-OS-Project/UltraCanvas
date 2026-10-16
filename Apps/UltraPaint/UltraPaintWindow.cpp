@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.8.0 - Open / Save As offer FileLoader's layered images: *.ucd (UCD 2.1, layers
+//                  and text kept) beside *.ucraster, from the inventory, not a list of our own
 // Version: 1.7.1 - the Text tool's Font and Align lists closed with Escape give the keyboard
 //                  back to the text being typed (ReturnKeyboardToText)
 // Version: 1.7.0 - text typed on the canvas: an UltraCanvasRichTextEdit over the canvas
@@ -2036,11 +2038,14 @@ void UltraPaintWindow::CmdNewWindow() {
 }
 
 // Everything this build will take in the Open / Import dialogs: the bitmap
-// formats, the editor's own projects, and whatever vector artwork it can
-// rasterize (which depends on libvips and on the registered plugins).
+// formats, the layered images (UltraCanvas documents, UltraPaint projects),
+// and whatever vector artwork it can rasterize (which depends on libvips and
+// on the registered plugins) - all from FileLoader's inventory.
 std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
     std::vector<std::string> exts = ReadableImageExtensions();
-    exts.push_back("ucraster");
+    for (const auto& l : UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::LayeredImage)) {
+        if (std::find(exts.begin(), exts.end(), l) == exts.end()) exts.push_back(l);
+    }
     for (const auto& v : GetVectorRasterExtensions()) {
         if (std::find(exts.begin(), exts.end(), v) == exts.end()) exts.push_back(v);
     }
@@ -2054,9 +2059,10 @@ void UltraPaintWindow::CmdOpen() {
     CommitTextEdit();
     FileDialogOptions opts;
     opts.SetTitle("Open image")
-        .AddFilter("Images, drawings and UltraPaint projects", OpenableExtensions())
-        .AddFilter("UltraPaint projects", std::vector<std::string>{ "ucraster" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+        .AddFilter("Images, drawings and layered images", OpenableExtensions());
+    UltraCanvasFileLoader::AddLoadTypes(opts, "Layered images (layers and text kept)",
+                                        { MediaFormatCategory::LayeredImage });
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
@@ -2070,7 +2076,7 @@ void UltraPaintWindow::CmdImport() {
     CommitTextEdit();
     FileDialogOptions opts;
     opts.SetTitle("Import image")
-        .AddFilter("Images, drawings and UltraPaint projects", OpenableExtensions())
+        .AddFilter("Images, drawings and layered images", OpenableExtensions())
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
@@ -2099,13 +2105,13 @@ void UltraPaintWindow::CmdSaveAs() {
     if (!document) return;
     FileDialogOptions opts;
     std::string def = document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath());
-    opts.SetTitle("Save image as");
-    // FileLoader's types - every bitmap type this build writes - and the
-    // editor's own project, which keeps the layers.
+    // The name first: the type it ends in is the one the dialog starts on.
+    opts.SetTitle("Save image as").SetDefaultFileName(def);
+    // FileLoader's types: every bitmap type this build writes, and the
+    // layered images, which keep the layers and the text as text.
     UltraCanvasFileLoader::AddImageSaveTypes(opts);
-    opts.AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
-        .SetDefaultFileName(def)
+    UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::LayeredImage);
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         // The picture's size, so the Settings of a bitmap type offer to write
         // it at another size.
         .SetImageSize(document->GetWidth(), document->GetHeight())
