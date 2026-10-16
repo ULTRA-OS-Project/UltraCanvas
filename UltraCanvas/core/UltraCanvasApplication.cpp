@@ -1183,14 +1183,7 @@ namespace UltraCanvas {
         // moved could otherwise stay a window's focused element after it was
         // freed, and the next focus change walked its freed parent chain
         // (the Demo crashed in IsDescendantOf when leaving the Album page).
-        auto forget = [elem](UltraCanvasWindowBase* win) {
-            if (win && win->_focusedElement == elem) {
-                win->_focusedElement = nullptr;
-                win->_focusedElementNotifiedActive = false;
-            }
-        };
-        forget(elem->GetWindow());
-        for (auto& win : windows) forget(win.get());
+        UltraCanvasWindowBase::ForgetFocusedElement(elem);
     }
 
     // ===== MODAL WINDOW MANAGEMENT =====

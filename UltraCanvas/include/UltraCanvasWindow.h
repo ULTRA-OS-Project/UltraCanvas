@@ -374,6 +374,13 @@ namespace UltraCanvas {
         // Get the currently focused element in this window
         UltraCanvasUIElement* GetFocusedElement() const { return _focusedElement; }
 
+        // Called as an element is destroyed: every window still alive -
+        // registered with the application or not (popups, tool windows) -
+        // forgets it as its focused element. A window it was focused in that
+        // is not the window the element names is a bookkeeping bug that would
+        // have left a dangling focus pointer; it is reported on debugOutput.
+        static void ForgetFocusedElement(UltraCanvasUIElement* element);
+
         // Clear focus from current element
         virtual void ClearFocus();
 
