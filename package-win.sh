@@ -6,7 +6,9 @@
 #   ./package-win.sh [--no-sign] [--installer] [package-name.zip]
 #     --no-sign     Skip Authenticode signing of the EXEs. Signing reads the
 #                   certificate's password from ULTRACANVAS_SIGN_PFX_PASSWORD
-#                   (SignUltraDemo.ps1 / SignUltraTexter.ps1)
+#                   (SignUltraDemo.ps1 / SignUltraTexter.ps1), and stops on
+#                   the one published in the repository's history until the
+#                   PFX is put under a new one (-Mode RotatePassword)
 #     --installer   Also build the installer from the same folder:
 #                   UltraCanvas-Setup-Windows-<version>-<arch>.exe beside the
 #                   zip (scripts/build-windows-installer.sh; needs NSIS -

@@ -17,11 +17,16 @@
 # account's store - the old one in ULTRACANVAS_SIGN_OLD_PFX_PASSWORD (or
 # -OldPfxPassword), so the PFX can be read. The same certificate and key are
 # exported again under the new password, the new file is opened once to prove
-# it, and it replaces the old one. The password this file used to contain,
-# which is in the repository's history, is refused. Copies of the old PFX
-# elsewhere (backups, other machines) still open with the old password:
-# delete them. -Description is the name the signature shows (what Windows names
-# in its prompts), "UltraCanvas" unless given.
+# it, and it replaces the old one. Copies of the old PFX elsewhere (backups,
+# other machines) still open with the old password: delete them.
+#
+# The password this file used to contain is in the repository's history.
+# Every mode that takes it refuses it - Sign and CreateAndSign as well as
+# RotatePassword, as the new one - so a machine still on it stops signing,
+# saying how to rotate, instead of signing on with a published password.
+#
+# -Description is the name the signature shows (what Windows names in its
+# prompts), "UltraCanvas" unless given.
 
 param(
     [Parameter(Mandatory=$true)]
@@ -81,11 +86,31 @@ function Find-SignTool {
     return $null
 }
 
+# SHA-256 of the password this script once contained, published with the
+# repository's history: never to be used again. Only the hash is kept here.
+$PublishedPasswordHash = "c16616c02453714733fd24bf24620a8a5f61c5bfb8fa8411e373fd0e10cc2a7d"
+
+function Get-Sha256Hex([string]$text) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text))
+        return -join ($bytes | ForEach-Object { $_.ToString("x2") })
+    } finally {
+        $sha.Dispose()
+    }
+}
+
 # The PFX password, from -PfxPassword or ULTRACANVAS_SIGN_PFX_PASSWORD - never
-# a default in this file.
+# a default in this file, and never the published one.
 function Get-PfxPassword {
     if ([string]::IsNullOrEmpty($PfxPassword)) {
         throw "No PFX password: set ULTRACANVAS_SIGN_PFX_PASSWORD (or pass -PfxPassword)."
+    }
+    if ((Get-Sha256Hex $PfxPassword) -eq $PublishedPasswordHash) {
+        throw ("ULTRACANVAS_SIGN_PFX_PASSWORD (or -PfxPassword) is the password published in the repository's " +
+               "history, so nothing is signed or exported under it. Put the PFX under a new one first: set " +
+               "ULTRACANVAS_SIGN_OLD_PFX_PASSWORD to this old password, ULTRACANVAS_SIGN_PFX_PASSWORD to a new " +
+               "one of 12 characters or more, and run this script once with -Mode RotatePassword.")
     }
     return $PfxPassword
 }
@@ -159,26 +184,9 @@ function New-SelfSignedCodeCert {
 
 # ===== MODE: A NEW PFX PASSWORD =====
 
-# SHA-256 of the password this script once contained, published with the
-# repository's history: never to be used again. Only the hash is kept here.
-$PublishedPasswordHash = "c16616c02453714733fd24bf24620a8a5f61c5bfb8fa8411e373fd0e10cc2a7d"
-
-function Get-Sha256Hex([string]$text) {
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text))
-        return -join ($bytes | ForEach-Object { $_.ToString("x2") })
-    } finally {
-        $sha.Dispose()
-    }
-}
-
 function Invoke-RotatePassword {
     Write-Step "Putting the PFX under a new password"
-    $newPassword = Get-PfxPassword
-    if ((Get-Sha256Hex $newPassword) -eq $PublishedPasswordHash) {
-        throw "That is the password published in the repository's history. Choose another one."
-    }
+    $newPassword = Get-PfxPassword   # refuses the published password
     if ($newPassword.Length -lt 12) {
         throw "The new password is shorter than 12 characters."
     }

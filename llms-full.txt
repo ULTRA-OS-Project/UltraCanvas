@@ -4645,9 +4645,11 @@ repository's history: on the signing machine, set a new one in
 `-Mode RotatePassword`. It exports the same certificate and key again under the
 new password, opens the result once to prove it, and replaces the old `.pfx`.
 When the certificate is not in the account's store, it also needs the old
-password, in `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD`. It refuses the published
-password. Delete any other copy of the old `.pfx` - it still opens with the old
-password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
+password, in `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD`. Every mode that takes the
+password refuses the published one, so on a machine still using it `-Mode Sign` - and with it
+`package-win.sh` - stops and names these steps instead of signing; `--no-sign`
+still packages. Delete any other copy of the old `.pfx` - it still opens with
+the old password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
 bumping the version; the CMake configure warns when they are stale and
