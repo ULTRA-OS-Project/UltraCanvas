@@ -632,9 +632,18 @@ void UltraCanvasSpreadsheet::RenderFormulaRangeHighlights(IRenderContext* ctx) {
         collect(live);
     } else {
         const auto& selection = sheet->GetSelection();
-        const SpreadsheetCell* cell =
+        SpreadsheetCell* cell =
             sheet->GetCellIfExists(selection.activeCell.row, selection.activeCell.col);
         if (cell && cell->HasFormula()) {
+            // The engine parses a formula the first time it evaluates the
+            // cell, so one loaded with its cached result (most of a file) has
+            // only its text yet: parse it here, as the engine would.
+            if (!cell->GetFormula()) {
+                auto parsed = std::make_shared<SpreadsheetFormula>(cell->GetFormulaText(),
+                                                                   cell->GetAddress());
+                parsed->Parse();
+                cell->SetParsedFormula(parsed);
+            }
             collect(cell->GetFormula());
         }
     }

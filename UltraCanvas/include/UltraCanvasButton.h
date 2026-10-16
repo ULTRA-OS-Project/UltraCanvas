@@ -171,6 +171,7 @@ namespace UltraCanvas {
         float declaredWidth = -1.f;
         float grownWidth = -1.f;
         float fitMinWidth = -1.f;   // the min-width the fit set, -1 when none
+        float relayoutForMinWidth = -1.f;   // the minimum a relayout was last asked for
 
         // Cached layout calculations
         Rect2Df iconRect;

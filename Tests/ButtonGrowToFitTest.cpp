@@ -122,6 +122,14 @@ int main() {
         row->AddChild(a);
         row->AddChild(b);
         LayOut(row, 120, 40);
+        // The row read the buttons' minimum before they had measured their
+        // text; drawing them asks for the pass that applies it, as a frame
+        // on a window does.
+        auto paint = CreateRenderContext(Size2Di(16, 16), nullptr);
+        a->Render(paint.get(), Rect2Df(0, 0, 16, 16));
+        b->Render(paint.get(), Rect2Df(0, 0, 16, 16));
+        Check(!row->IsLayoutValid(), "drawing a squeezed button asks for a new layout");
+        LayOut(row, 120, 40);
         Check(a->GetWidth() >= a->NeededWidth() - 0.5f, "the first button is not shrunk below its text");
         Check(b->GetWidth() >= b->NeededWidth() - 0.5f, "nor is the second");
         Check(b->GetX() >= a->GetX() + a->GetWidth() - 0.5f, "and they do not overlap");

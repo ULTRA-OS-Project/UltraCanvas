@@ -1072,9 +1072,17 @@ namespace UltraCanvas {
 
 // ===== MAIN RENDER METHOD =====
     void UltraCanvasButton::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
-        // A layout that read the fixed width before the button measured its
-        // text (a flex row's base size) gets the fitted width on the next pass.
-        if (FitWidthToText(ctx)) InvalidateLayout();
+        // A layout that read the width or min-width before the button
+        // measured its text (a flex row's base size and minimum) gets the
+        // fitted width on the next pass. Once per minimum: a parent that
+        // forces a narrower box (a fixed grid column) must not be asked
+        // again on every frame.
+        bool relayout = FitWidthToText(ctx);
+        if (fitMinWidth > 0.f && GetWidth() + 0.5f < fitMinWidth && relayoutForMinWidth != fitMinWidth) {
+            relayoutForMinWidth = fitMinWidth;
+            relayout = true;
+        }
+        if (relayout) InvalidateLayout();
         if (style.splitStyle.enabled) {
             DrawSplitButton(ctx);
         } else {
