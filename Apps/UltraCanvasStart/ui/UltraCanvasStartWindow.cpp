@@ -1,4 +1,6 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.4.1 - None (a local IDE or compiler) first among the AI assistants,
+//                  in red; it turns the instruction file and the cloud option off
 // Version: 0.4.0 - step 6, Build: the skeleton compiled from the window (StartBuild),
 //                  the first prompt and the report after it
 // Version: 0.3.1 - the Tools step: a row per check with a switch for whether
@@ -53,8 +55,9 @@ const DependencyGroup kGroups[] = {
 
 // The pickers' segments, in order.
 const Platform kPlatforms[] = { Platform::Linux, Platform::MacOS, Platform::Windows };
-const Assistant kAssistants[] = { Assistant::ClaudeCode, Assistant::Codex, Assistant::Copilot,
-                                  Assistant::Gemini, Assistant::Other };
+const Assistant kAssistants[] = { Assistant::None, Assistant::ClaudeCode, Assistant::Codex,
+                                  Assistant::Copilot, Assistant::Gemini, Assistant::Other };
+constexpr int kAssistantCount = static_cast<int>(sizeof(kAssistants) / sizeof(kAssistants[0]));
 
 int PlatformIndex(Platform platform) {
     for (int i = 0; i < 3; ++i) if (kPlatforms[i] == platform) return i;
@@ -62,14 +65,14 @@ int PlatformIndex(Platform platform) {
 }
 
 int AssistantIndex(Assistant assistant) {
-    for (int i = 0; i < 5; ++i) if (kAssistants[i] == assistant) return i;
+    for (int i = 0; i < kAssistantCount; ++i) if (kAssistants[i] == assistant) return i;
     return 0;
 }
 
 // What each step decides, under its heading.
 const char* kStepHints[kStepCount] = {
     "What this computer has, and the way in for any platform. Nothing to decide here.",
-    "Which features the application needs, and which assistant you work with.",
+    "Which features the application needs, and which AI assistant you work with.",
     "Whether the tools and libraries are there; what is missing can be installed from here.",
     "Where find_package(UltraCanvas) will look: the prebuilt SDK, or a clone built from source.",
     "The application: its name and folder, then the files are written.",
@@ -269,7 +272,7 @@ std::shared_ptr<UltraCanvasStepper> UltraCanvasStartWindow::BuildStepper() {
                                  kWindowWidth - 2 * kSideMargin, kStepperHeight);
     stepper->SetSteps({
         { "Your computer", "what was found" },
-        { "Features",      "what for, which assistant" },
+        { "Features",      "what for, which AI assistant" },
         { "Tools",         "checks and install" },
         { "Framework",     "SDK or source" },
         { "Project",       "name, folder, create" },
@@ -452,18 +455,23 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFeaturesStep(
     }
     pane->AddChild(features);
 
-    auto assistant = Theme::MakeCard("ucsAssistantCard", "Which assistant do you work with?");
+    auto assistant = Theme::MakeCard("ucsAssistantCard", "Which AI assistant do you work with?");
     auto pickRow = Theme::MakeRow("ucsAssistantRow");
     std::vector<std::string> names;
-    for (auto a : kAssistants) names.push_back(a == Assistant::Other ? "Other" : AssistantName(a));
+    for (auto a : kAssistants) {
+        names.push_back(a == Assistant::None ? "None" : a == Assistant::Other ? "Other" : AssistantName(a));
+    }
     assistantPicker_ = Theme::MakeSegmented("ucsAssistantPicker", names,
-                                            AssistantIndex(choices_.assistant), 540);
+                                            AssistantIndex(choices_.assistant), 648);
+    // None - a local IDE or the compiler, no assistant - stands out in red.
+    assistantPicker_->SetSegmentTextColor(AssistantIndex(Assistant::None), Theme::kAlertText);
     assistantPicker_->onSegmentSelected = [this](int index) { SelectAssistant(kAssistants[index]); };
     pickRow->AddChild(assistantPicker_);
     assistant->AddChild(pickRow);
     aiBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseAi", 0, 0, 800, Theme::kRowHeight,
         "Write its instruction file into the project and prepare the first prompt",
-        choices_.useAi);
+        choices_.useAi && choices_.assistant != Assistant::None);
+    aiBox_->SetDisabled(choices_.assistant == Assistant::None);
     cloudBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsCloud", 0, 0, 800, Theme::kRowHeight,
         "...through GitHub only, with no compiler on this machine (Docs/GettingStarted-Cloud.md)",
         choices_.cloudOnly);
@@ -788,7 +796,7 @@ void UltraCanvasStartWindow::OnEnterStep(int index) {
     if (index == static_cast<int>(Step::Build)) RefreshBuildStep();
     static const char* kStatus[kStepCount] = {
         "Step 1 of 6: this is what was found. Next goes on to the features.",
-        "Step 2 of 6: tick what the application needs and pick your assistant.",
+        "Step 2 of 6: tick what the application needs and pick your AI assistant, or None.",
         "Step 3 of 6: the checks run now; Install what is missing runs the package manager.",
         "Step 4 of 6: fetch the SDK here, or choose to build the framework from source.",
         "Step 5 of 6: name the application and create it.",
@@ -824,6 +832,10 @@ void UltraCanvasStartWindow::SelectGuidePlatform(Platform platform) {
 void UltraCanvasStartWindow::SelectAssistant(Assistant assistant) {
     choices_.assistant = assistant;
     if (aiView_) aiView_->SetText(AiGuide(ai_, profile_.platform, assistant), false);
+    // Without an assistant there is no instruction file to write and no
+    // GitHub-only way of working.
+    if (aiBox_) aiBox_->SetDisabled(assistant == Assistant::None);
+    ReadChoicesFromPanes();
     RefreshPlan();
 }
 
@@ -1197,7 +1209,7 @@ void UltraCanvasStartWindow::ReadChoicesFromPanes() {
         choices_.useSdk = wayPicker_->GetSelectedIndex() == 0;
         choices_.cloneFramework = !choices_.useSdk;
     }
-    if (aiBox_)    choices_.useAi = aiBox_->IsChecked();
+    if (aiBox_)    choices_.useAi = aiBox_->IsChecked() && choices_.assistant != Assistant::None;
     if (cloudBox_) choices_.cloudOnly = cloudBox_->IsChecked() && choices_.useAi;
     if (appNameInput_ && !appNameInput_->GetText().empty()) choices_.appName = appNameInput_->GetText();
     if (folderInput_) choices_.projectFolder = folderInput_->GetText();

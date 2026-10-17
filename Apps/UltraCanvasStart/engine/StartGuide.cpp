@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.1 - AiGuide for no AI assistant: the local IDE or compiler
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.2 - the guide names the steps, not the pages
 // Version: 0.1.1 - AiGuide per assistant
@@ -123,6 +124,18 @@ std::string InstallPreview(const Plan& plan) {
 }
 
 std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) {
+    if (assistant == Assistant::None) {
+        return "### No AI assistant\n\n"
+               "You write the code yourself, in a local IDE or an editor and the compiler. "
+               "The project gets no assistant instruction file and there is no first prompt; "
+               "everything else - the packages, the framework, the project and its build - is the same.\n\n"
+               "### Working without an assistant\n\n"
+               "- Open the project folder in an IDE that reads CMake presets (CLion, Visual Studio, "
+               "VS Code with CMake Tools, Qt Creator), or build from a terminal with " +
+               Code("cmake --preset default") + " and " + Code("cmake --build --preset default") + ".\n"
+               "- The element catalogue is " + Link("Docs/UltraCanvas", std::string(kRepository) + "/tree/main/Docs/UltraCanvas") +
+               ": read an element's page before using it.\n";
+    }
     const std::string name = AssistantName(assistant);
     std::string out = "### " + (assistant == Assistant::Other ? std::string("Another assistant") : name) + "\n\n";
     if (assistant == Assistant::Other) {

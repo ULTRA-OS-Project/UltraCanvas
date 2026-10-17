@@ -2,6 +2,7 @@
 // The Markdown the pages show: one action per numbered step, links that
 // open, the SDK named for real, and the plain-text reduction the report uses;
 // and the words of the Tools step's rows and of what Install will do.
+// Version: 0.2.1 - no AI assistant: its guide and --assistant none
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.1 - the assistant choice
 // Version: 0.1.0
@@ -129,6 +130,12 @@ TEST(AiGuide_covers_every_assistant) {
     const std::string other = AiGuide(none, Platform::Linux, Assistant::Other);
     REQUIRE(other.find("llms-full.txt") != std::string::npos);
     REQUIRE(other.find("was not found") == std::string::npos);
+    // None: a local IDE or the compiler; nothing to install, no instruction file.
+    const std::string noAi = AiGuide(none, Platform::Linux, Assistant::None);
+    REQUIRE(noAi.find("No AI assistant") != std::string::npos);
+    REQUIRE(noAi.find("`cmake --preset default`") != std::string::npos);
+    REQUIRE(noAi.find("was not found") == std::string::npos);
+    REQUIRE(noAi.find("CLAUDE.md") == std::string::npos);
     // Every install step is one action.
     for (auto assistant : { Assistant::ClaudeCode, Assistant::Codex, Assistant::Copilot, Assistant::Gemini }) {
         for (const auto& step : AssistantInstallInstructions(assistant, Platform::Linux)) {
@@ -146,6 +153,8 @@ TEST(Assistant_names_files_and_cli_words) {
     REQUIRE(AssistantFromName("copilot", a));
     REQUIRE(a == Assistant::Copilot);
     REQUIRE(!AssistantFromName("hal", a));
+    REQUIRE(AssistantFromName("none", a));
+    REQUIRE(a == Assistant::None);
     REQUIRE_EQ(AssistantName(Assistant::Codex), std::string("Codex"));
 }
 

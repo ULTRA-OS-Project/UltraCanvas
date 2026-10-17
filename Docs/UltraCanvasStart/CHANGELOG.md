@@ -1,3 +1,15 @@
+#### 2026-10-17 *0.4.2*
+- **"None" among the AI assistants, first and in red.** Step 2 offers
+  *None* - a local IDE or the compiler alone - before Claude Code, Codex,
+  Copilot, Gemini and Other. It writes no instruction file and prepares no
+  first prompt (the instruction-file and GitHub-only boxes turn off), and its
+  guide says how to open the project in an IDE or build it from a terminal.
+  `--assistant none` chooses it from the command line. The red comes from
+  the segmented control's new per-segment text colour (framework changelog:
+  `segmented-control-segment-text-color`).
+- **"AI assistant", not "assistant"**, in step 2's heading, its card title,
+  its hint and its status line.
+
 #### 2026-10-15 *0.4.1*
 - **No console window on Windows when it is started from the Start menu or
   Explorer.** `UltraCanvasStart.exe` is a GUI program now. Beside it,
