@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.11.0 - ClosingEndsApplication
 // Version: 1.10.2 - ToFontconfigPath turns '\' into '/' only on Windows: elsewhere it is
 //                   part of a folder's name
 // Version: 1.10.1 - two -Wswitch / -Wtautological warnings in DispatchEvent fixed (the
@@ -20,7 +21,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -1295,6 +1296,25 @@ namespace UltraCanvas {
                         << " of closing parent " << parent << std::endl;
             child->PerformClose();
         }
+    }
+
+    bool UltraCanvasApplicationBase::ClosingEndsApplication(UltraCanvasWindowBase* window) {
+        for (const auto& other : windows) {
+            if (!other || other.get() == window) continue;
+            const WindowState state = other->GetState();
+            if (state == WindowState::Closing || state == WindowState::Closed) continue;
+            // Up the parent chain, comparing pointers first: a parent that is
+            // no longer registered is gone, and is not read.
+            bool goesWithIt = false;
+            UltraCanvasWindowBase* p = other->GetConfig().parentWindow;
+            while (p) {
+                if (p == window) { goesWithIt = true; break; }
+                if (!IsWindowRegistered(p)) break;
+                p = p->GetConfig().parentWindow;
+            }
+            if (!goesWithIt) return false;
+        }
+        return true;
     }
 
     void UltraCanvasApplicationBase::UnregisterWindow(UltraCanvasWindowBase* window) {

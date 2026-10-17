@@ -1,10 +1,11 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
 // Version: 1.8.1 - IsKeyPressed checks the key code against the table (KeyStateCount)
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -288,6 +289,15 @@ namespace UltraCanvas {
         // orphaned modal child would keep swallowing the whole application's
         // input while its parent is already gone.
         void CloseChildWindows(UltraCanvasWindowBase* parent);
+
+        // Whether closing `window` leaves the application without a window, so
+        // that Run() returns and the process ends: every other window is
+        // already closing, or is a child of `window` (its config parentWindow,
+        // at any depth), which CloseChildWindows takes down with it. An
+        // application that has something to lose by quitting - an upload still
+        // running - asks in that window's onWindowClosing when this is true,
+        // and lets any other window close as it always did.
+        bool ClosingEndsApplication(UltraCanvasWindowBase* window);
 
         void ProcessEvents();
         bool PopEvent(UCEvent& event);

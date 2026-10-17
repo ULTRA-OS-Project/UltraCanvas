@@ -296,6 +296,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     log. While the drive works, the status line shows the request short -
     *Request: PROPFIND cloud.example.org/.../erika/Fotos Mai/* - and the log
     keeps the whole address.
+  - **Quitting during a transfer asks first.** Closing UltraFiler while an
+    upload or a download is running, or waiting its turn, on a remote drive
+    asks *An upload is still running — quit anyway?*, naming the file and the
+    drive. *Keep UltraFiler open* (the default) changes nothing; *Quit anyway*
+    stops the running one where it is and drops the rest, and UltraFiler is
+    gone within a second rather than staying in the background until the
+    upload is done. A download stopped part way leaves no half a file.
   - **A service that limits requests is waited out.** When a cloud service
     answers that it is limiting requests, the drive waits as long as it
     asks (1, 2, 4 s when it does not say) and asks again, up to three times;

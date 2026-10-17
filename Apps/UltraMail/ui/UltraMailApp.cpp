@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.35 - the last-window test is the framework's
+//                   (UltraCanvasApplicationBase::ClosingEndsApplication)
 // Version: 0.9.34 - quitting while a cloud upload or download runs asks first
 //                   ("An upload is still running — quit anyway?")
 // Version: 0.9.33 - the cloud stores and service are shared, and the compose
@@ -1184,28 +1186,6 @@ void UltraMailApp::RetireComposer(UltraCanvasWindow* window) {
     else drop();
 }
 
-namespace {
-
-// Whether closing `closing` leaves UltraMail without a window, so that the
-// event loop - and the process - ends: every other window is already going,
-// or is a dialog over `closing`, which goes with it.
-bool ClosingEndsApplication(UltraCanvasWindowBase* closing) {
-    auto* app = UltraCanvasApplicationBase::GetCurrent();
-    if (!app) return true;
-    for (const auto& other : app->GetWindows()) {
-        if (!other || other.get() == closing) continue;
-        const WindowState state = other->GetState();
-        if (state == WindowState::Closing || state == WindowState::Closed) continue;
-        bool overClosing = false;
-        for (UltraCanvasWindowBase* p = other->GetParentWindow(); p; p = p->GetParentWindow())
-            if (p == closing) { overClosing = true; break; }
-        if (!overClosing) return false;
-    }
-    return true;
-}
-
-} // namespace
-
 void UltraMailApp::GuardQuitDuringTransfers(const std::shared_ptr<UltraCanvasWindow>& window) {
     if (!window) return;
     std::weak_ptr<UltraCanvasWindow> weak = window;
@@ -1215,7 +1195,8 @@ void UltraMailApp::GuardQuitDuringTransfers(const std::shared_ptr<UltraCanvasWin
         // Asked already, and not answered yet: the question stays the one on
         // screen.
         if (quitQuestionOpen_) return false;
-        if (!ClosingEndsApplication(self.get())) return true;
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (app && !app->ClosingEndsApplication(self.get())) return true;
         const std::vector<UltraCloud::CloudService::Transfer> transfers =
                 cloud_->TransfersInProgress();
         if (transfers.empty()) return true;

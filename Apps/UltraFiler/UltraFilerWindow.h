@@ -80,10 +80,12 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.28.0 - AllowCloseDuringTransfers: closing during an upload or a
+//                  download asks first
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -445,6 +447,14 @@ private:
     // Opens the connection log window, or brings it to the front with the
     // log as it is now.
     void OpenConnectionLog();
+    // The window's onWindowClosing. Closing it ends UltraFiler - and with it
+    // the uploads and downloads still running or waiting on a remote drive,
+    // which UltraFilerRemoteDrives::Stop() calls off. So a close that would
+    // end the application while there are any (PendingTransfers) asks first
+    // - "An upload is still running — quit anyway?" - and holds the window
+    // open until "Quit anyway" is chosen. True lets the close go ahead.
+    bool AllowCloseDuringTransfers();
+    void AskQuitDuringTransfers(const std::vector<RemoteTransfer>& transfers);
     // Hands the open log window the log as it is now; called a moment after
     // a change, so a burst of steps is one refresh.
     void ScheduleConnectionLogRefresh();
@@ -1082,6 +1092,11 @@ private:
     // How many failed connections the log window has shown: the button
     // counts the ones beyond this.
     std::size_t connectionLogSeenErrors = 0;
+    // The answer to AllowCloseDuringTransfers' question: "Quit anyway" lets
+    // the close it repeats go through. While the question is open, a second
+    // close does not ask it again.
+    bool quitConfirmed = false;
+    bool quitQuestionOpen = false;
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;

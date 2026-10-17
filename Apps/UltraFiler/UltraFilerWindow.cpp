@@ -61,6 +61,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.33.0 - closing during an upload or a download asks first
+//                  ("An upload is still running — quit anyway?")
 // Version: 1.32.0 - the connection log button on every remote drive; add-drive
 //                  sign-ins in the connection log; "+ Drive > Connection log..."
 // Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
@@ -68,7 +70,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -970,6 +972,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
+    // Quitting stops the remote drives' uploads and downloads: asked first.
+    window->onWindowClosing = [this]() { return AllowCloseDuringTransfers(); };
 
     // Whether this system can make RAM discs, and which are mounted: asked
     // on a worker, since the first question launches a shell on Windows and
@@ -6515,6 +6519,95 @@ void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
             badge->SetVisible(unseen > 0);
         }
     }
+}
+
+bool UltraFilerWindow::AllowCloseDuringTransfers() {
+    if (quitConfirmed || !remoteDrives || !window) return true;
+    // Asked already, and not answered yet: the question stays the one on
+    // screen.
+    if (quitQuestionOpen) return false;
+    // A window that is not the last one closes as it always did: the drives
+    // work on behind the ones still open.
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (app && !app->ClosingEndsApplication(window.get())) return true;
+    const std::vector<RemoteTransfer> transfers = remoteDrives->PendingTransfers();
+    if (transfers.empty()) return true;
+    AskQuitDuringTransfers(transfers);
+    return false;
+}
+
+void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>& transfers) {
+    std::size_t uploads = 0, running = 0;
+    for (const RemoteTransfer& t : transfers) {
+        if (t.upload) ++uploads;
+        if (t.running) ++running;
+    }
+    const std::size_t waiting = transfers.size() - running;
+    // "An upload is still running", "3 downloads are still waiting",
+    // "4 transfers are still running or waiting".
+    std::string what;
+    if (transfers.size() == 1) {
+        what = uploads ? "An upload is" : "A download is";
+    } else {
+        const char* kind = uploads == transfers.size() ? " uploads"
+                         : uploads == 0                ? " downloads"
+                                                       : " transfers";
+        what = std::to_string(transfers.size()) + kind + " are";
+    }
+    const char* state = waiting == 0 ? " still running"
+                      : running == 0 ? " still waiting"
+                                     : " still running or waiting";
+
+    std::string details;
+    for (const RemoteTransfer& t : transfers) {
+        if (!t.running) continue;
+        details += "\"" + t.name + "\" is being " +
+                   (t.upload ? "uploaded to " : "downloaded from ") + t.drive + ".\n";
+    }
+    if (waiting > 0) {
+        details += running ? "Waiting after it: " : "Waiting: ";
+        std::size_t named = 0;
+        for (const RemoteTransfer& t : transfers) {
+            if (t.running) continue;
+            if (named == 3) break;
+            details += (named ? ", " : "") + ("\"" + t.name + "\"");
+            ++named;
+        }
+        if (waiting > named) details += " and " + std::to_string(waiting - named) + " more";
+        details += ".\n";
+    }
+    details += running == 0  ? "Quitting drops them before they start."
+             : waiting == 0  ? "Quitting stops it part way: the file does not arrive whole."
+                             : "Quitting stops the one running part way, and drops the rest "
+                               "before they start.";
+
+    DialogConfig cfg;
+    cfg.title = "Quit UltraFiler?";
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = what + state + " — quit anyway?";
+    cfg.details = details;
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 500;
+    cfg.height = 200;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: the window stays, and so do the transfers
+    // The safe answer is the one Return gives: UltraFiler stays.
+    dialog->AddCustomButton("Keep UltraFiler open", DialogResult::Cancel,
+                            DialogButtonRole::Default);
+    dialog->AddCustomButton("Quit anyway", DialogResult::Yes, DialogButtonRole::Destructive);
+    dialog->onResult = [this](DialogResult result) {
+        quitQuestionOpen = false;
+        if (result != DialogResult::Yes) return;
+        quitConfirmed = true;
+        // The close the question held back, once the dialog has finished
+        // closing - not from inside it. Raw `this`: the window outlives the
+        // event loop that runs this.
+        auto close = [this]() { if (window) window->Close(); };
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(close);
+        else close();
+    };
+    quitQuestionOpen = true;
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
 }
 
 void UltraFilerWindow::OpenConnectionLog() {

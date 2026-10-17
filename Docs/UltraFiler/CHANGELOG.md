@@ -1,3 +1,26 @@
+#### 2026-10-17 *1.75.0*
+- **Quitting during an upload or a download asks first, and quits at once.**
+  Closing UltraFiler while a remote drive was copying dropped every upload
+  and download still waiting, without a word, and the one running kept the
+  process alive with no window on screen until its last byte had gone - for
+  a large file over a slow line, minutes. Now that close asks *An upload is still running — quit
+  anyway?* (or *3 uploads are still running or waiting*, *A download is
+  still running*), naming the file being copied, the drive and the ones
+  waiting behind it. *Keep UltraFiler open* (the default, and what Return
+  gives) leaves everything as it was; *Quit anyway* stops the running
+  transfer where it is, drops the rest, and UltraFiler is gone within a
+  second. With nothing to copy, closing asks nothing. The drive worker calls
+  the transfer off through UltraNet's new per-thread abort check, and the
+  question is asked only when the close would end the application
+  (`UltraCanvasApplicationBase::ClosingEndsApplication`); both are in the
+  framework changelog.
+- **A download that fails part way leaves no half a file.** An FTP download
+  writes straight into the file it was given, so one cut off - the
+  connection lost, or UltraFiler quit during it - left the first part of the
+  file in the folder under its full name. It is removed when the download
+  fails; the name was a free one when the download was queued, so nothing
+  else is touched.
+
 #### 2026-10-15 *1.74.1*
 - **The colour popup's picker is the framework's light picker.** Settings >
   Display > Treeview opens the colour picker with the framework's

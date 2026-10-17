@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.8.0
-// Last Modified: 2026-10-14
+// Version: 1.9.0 - PendingTransfers; Stop() calls a running transfer off; a
+//                  failed download leaves no half-written file
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -878,10 +879,19 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
             r = impl_->service->Upload(accountId, job.argument, parent + "/" + name);
             break;
         }
-        case RemoteOperation::Download:
+        case RemoteOperation::Download: {
             // The full local path was settled when the job was queued.
             r = impl_->service->Download(accountId, remotePath, job.argument);
+            // A download that failed part way - the connection lost, the
+            // window closed (Stop) - leaves no half a file behind: an FTP
+            // download writes straight into it. The name was a free one when
+            // the job was queued, so what is there is this job's own.
+            if (!r.IsOk()) {
+                std::error_code ec;
+                fs::remove(PathFromUtf8(job.argument), ec);
+            }
             break;
+        }
     }
 
     std::lock_guard<std::mutex> lk(mutex_);
@@ -1119,7 +1129,42 @@ std::shared_ptr<UltraCloud::CloudService> UltraFilerRemoteDrives::Service() {
 #endif
 }
 
+bool UltraFilerRemoteDrives::DescribeTransferLocked(const Job& job, RemoteTransfer& out) const {
+    if (job.isListing || job.isPreview) return false;
+    if (job.operation != RemoteOperation::Upload && job.operation != RemoteOperation::Download)
+        return false;
+    out = RemoteTransfer{};
+    out.upload = job.operation == RemoteOperation::Upload;
+    // An upload's job names the folder it goes into and the local file; a
+    // download's the remote file and where it lands.
+    out.name = out.upload ? PathToUtf8(PathFromUtf8(job.argument).filename())
+                          : RemoteFilerName(job.path);
+    const std::string accountId = RemoteFilerAccountId(job.path);
+    out.drive = accountId;
+    for (const RemoteDrive& d : drives_) {
+        if (d.accountId != accountId) continue;
+        out.drive = d.displayName;
+        break;
+    }
+    return true;
+}
+
+std::vector<RemoteTransfer> UltraFilerRemoteDrives::PendingTransfers() const {
+    std::lock_guard<std::mutex> lk(mutex_);
+    std::vector<RemoteTransfer> out;
+    if (activeIsTransfer_) out.push_back(activeTransfer_);
+    for (const Job& job : queue_) {
+        RemoteTransfer t;
+        if (DescribeTransferLocked(job, t)) out.push_back(t);
+    }
+    return out;
+}
+
 void UltraFilerRemoteDrives::Stop() {
+    // First, without the lock: the worker's abort check reads it on every
+    // progress callback of the transfer it is in the middle of, which ends
+    // within a second as Cancelled rather than running to its last byte.
+    stopping_.store(true);
     {
         std::lock_guard<std::mutex> lk(mutex_);
         shutdown_ = true;
@@ -1192,6 +1237,10 @@ void UltraFilerRemoteDrives::ReportActivity(const RemoteActivity& activity,
 }
 
 void UltraFilerRemoteDrives::WorkerMain() {
+    // Every transfer this thread makes - HTTP for the cloud drives, FTP -
+    // asks this as it runs, and ends as Cancelled once Stop() has been
+    // called: quitting does not wait for a large upload to finish.
+    UltraNet_SetThreadAbortCheck([this]() { return stopping_.load(); });
     // Whether a job has run since the FTP connections this thread keeps open
     // were last closed (UltraNet_FtpCloseIdleConnections).
     bool connectionsOpen = false;
@@ -1237,6 +1286,8 @@ void UltraFilerRemoteDrives::WorkerMain() {
             // half of the same story, for the status strip.
             activeJobPath_ = job.path;
             activeJobSince_ = std::chrono::steady_clock::now();
+            activeIsTransfer_ = DescribeTransferLocked(job, activeTransfer_);
+            activeTransfer_.running = activeIsTransfer_;
         }
 
         // What this job is, said before it starts rather than after: the whole
@@ -1388,6 +1439,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
             std::lock_guard<std::mutex> lk(mutex_);
             activeJobPath_.clear();
             activeJobStep_.clear();
+            activeIsTransfer_ = false;
         }
 
         // A preview copy changed nothing anybody is looking at: it is renamed

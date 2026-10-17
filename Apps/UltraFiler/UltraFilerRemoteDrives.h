@@ -49,9 +49,12 @@
 // (RemoteActivity::step), and a failure keeps its codes and diagnostics for
 // the log window. A sign-in from the add-drive dialog is a session too
 // (RemoteSignInLog), and a cloud service that limits requests is waited out
-// and asked again (kRemoteRateLimitMaxWaitSeconds).
-// Version: 1.9.0
-// Last Modified: 2026-10-14
+// and asked again (kRemoteRateLimitMaxWaitSeconds). The uploads and
+// downloads not finished yet are listed for the window's question before it
+// quits (PendingTransfers), and Stop() calls the running one off rather than
+// waiting for it.
+// Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -159,6 +162,15 @@ struct RemoteActivity {
 };
 
 class UltraFilerRemoteDrives;
+
+// An upload or a download the drives were asked for and have not finished:
+// the one under way, or one waiting its turn behind it (PendingTransfers).
+struct RemoteTransfer {
+    bool upload = true;     // false: a download
+    bool running = false;   // false: queued, not started yet
+    std::string name;       // the file's name
+    std::string drive;      // the drive's name, as the folder tree shows it
+};
 
 // The add-drive dialog's sign-ins still running, shared between the drives
 // and each RemoteSignInLog: UltraFilerRemoteDrives::Stop() sets `stopping`,
@@ -381,11 +393,19 @@ public:
     // is gone if need be.
     std::shared_ptr<UltraCloud::CloudService> Service();
 
-    // Joins the worker, calls off a sign-in the add-drive dialog is still
-    // running and waits up to two seconds for it to end (RemoteSignInLog),
-    // then writes the prefetching drives' listings to disk for the next run.
-    // Must run before the owner is destroyed - the worker posts into it.
-    // Idempotent.
+    // The uploads and downloads under way or waiting, the running one first;
+    // empty when there are none. What a window asks about before it quits:
+    // Stop() ends the running one part way and drops the rest. Preview copies
+    // are not among them - nobody asked for those. Any thread.
+    std::vector<RemoteTransfer> PendingTransfers() const;
+
+    // Stops the worker: the jobs still queued are dropped, and a transfer
+    // under way is called off where it is (UltraNet_SetThreadAbortCheck), so
+    // the join takes a second, not as long as a large upload has left to go.
+    // Then calls off a sign-in the add-drive dialog is still running and
+    // waits up to two seconds for it to end (RemoteSignInLog), and writes
+    // the prefetching drives' listings to disk for the next run. Must run
+    // before the owner is destroyed - the worker posts into it. Idempotent.
     void Stop();
 
     // Where the listings are kept between runs: remote-listings.cache in
@@ -522,9 +542,20 @@ private:
     // ... and the step its connection is at (RemoteActivity::step), for the
     // same notice.
     std::string activeJobStep_;
+    // The upload or download the worker is carrying out, for
+    // PendingTransfers; activeIsTransfer_ is false for any other job.
+    // Written by the worker under the lock.
+    bool activeIsTransfer_ = false;
+    RemoteTransfer activeTransfer_;
+    // `job` as PendingTransfers lists it; false for a job that is not an
+    // upload or a download the user asked for. Called with the lock held.
+    bool DescribeTransferLocked(const Job& job, RemoteTransfer& out) const;
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
+    // Set by Stop(), read by the worker's abort check on every progress
+    // callback of the transfer it is running - without the lock.
+    std::atomic<bool> stopping_{false};
     // The local paths downloads have been promised but not yet written. A
     // queued download has nothing on the disk to collide with, so without
     // this every file of one name queued together would be given that same

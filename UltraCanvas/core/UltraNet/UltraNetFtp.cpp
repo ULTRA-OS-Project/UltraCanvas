@@ -15,9 +15,11 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.6.1 - an upload or download ends when its thread's abort check
+//                  says so (UltraNet_SetThreadAbortCheck)
 // Version: 0.6.0 - SFTP with a private key
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetFtp.h"
@@ -288,7 +290,9 @@ int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dl
         cb.onUploadProgress(static_cast<int64_t>(ulnow),
                             static_cast<int64_t>(ultotal));
     }
-    return 0;   // non-zero would abort the transfer
+    // Non-zero aborts the transfer: the calling thread's owner wants it back
+    // (UltraNet_SetThreadAbortCheck), and it ends as Cancelled.
+    return UltraNet_ThreadAbortRequested() ? 1 : 0;
 }
 
 // Turns the progress callback on for one handle. Only the two file transfers
