@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.36 - the quit question says that what an upload to an FTP or
+//                   SFTP account sent is removed the next time it is used
 // Version: 0.9.35 - the last-window test is the framework's
 //                   (UltraCanvasApplicationBase::ClosingEndsApplication)
 // Version: 0.9.34 - quitting while a cloud upload or download runs asks first
@@ -1240,6 +1242,18 @@ void UltraMailApp::AskQuitDuringTransfers(
     details += transfers.size() == 1
                        ? "Quitting stops it, and the file does not arrive."
                        : "Quitting stops them, and the files do not arrive.";
+    // An upload to an FTP or SFTP account leaves what it sent on the server,
+    // which UltraCloud removes the next time UltraMail uses that account.
+    for (const Transfer& t : transfers) {
+        if (t.kind != Transfer::Kind::Upload) continue;
+        UltraCloud::Account account;
+        if (!cloud_->Accounts().Get(t.accountId, account)) continue;
+        std::shared_ptr<UltraCloud::ICloudProvider> provider = cloud_->ProviderFor(account);
+        if (!provider || !provider->Capabilities().partialUploadsRemain) continue;
+        details += " What was sent is removed from " + account.displayName +
+                   " the next time UltraMail uses it.";
+        break;
+    }
 
     DialogConfig cfg;
     cfg.title = "Quit UltraMail?";

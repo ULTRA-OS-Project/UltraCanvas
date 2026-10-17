@@ -1,3 +1,17 @@
+#### 2026-10-17 *0.10.60*
+- **An *Attach cloud link* upload to an FTP or SFTP account no longer leaves
+  half a file behind.** Such a server writes an upload into the file as it
+  arrives, so quitting UltraMail during one - or a connection that broke -
+  left the part already sent on the server under the file's full name, and
+  an upload that replaced a file had destroyed the old one with its first
+  byte. The upload now goes to a hidden part name (`.report.pdf.part`) and
+  is renamed into place once complete, and what one that did not finish
+  left is removed the next time UltraMail uses that account - even when
+  UltraMail was quit, or ended, during the upload. The quit question says
+  so: *What was sent is removed from Studio FTP the next time UltraMail uses
+  it.* UltraCloud does this for every application (framework changelog:
+  `ftp-uploads-in-place`).
+
 #### 2026-10-17 *0.10.59*
 - **Closing a compose window during a cloud upload no longer risks a
   crash.** *Attach cloud link* uploads a file, lists folders and makes the

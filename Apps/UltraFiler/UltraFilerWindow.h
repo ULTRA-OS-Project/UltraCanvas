@@ -81,7 +81,8 @@
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
 // Version: 1.28.0 - AllowCloseDuringTransfers: closing during an upload or a
-//                  download asks first
+//                  download asks first; an upload onto a name that is taken
+//                  asks Keep both / Replace / Skip (PlanRemoteUploads)
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
@@ -138,6 +139,9 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+// One drop's name conflicts on a drive, asked about in turn (UltraFilerWindow.cpp).
+struct RemoteUploadConflicts;
 
 class UltraFilerWindow {
 public:
@@ -800,9 +804,31 @@ private:
     // reason for what was left out comes back in `firstRefusal`. Used by a
     // drop on a remote row of the tree and by a drop onto a remote folder in
     // a display (the widget's remoteUpload hook).
+    //
+    // A file whose name is already taken in the folder is not replaced
+    // without a word: it is asked about the way a paste is (PlanRemoteUploads).
+    // The folder is listed afresh first - a file of that name may have
+    // appeared since it was last opened - and the files wait for the answer
+    // (uploadsAwaitingListing); they count as queued meanwhile.
     int UploadToRemoteFolder(const std::string& folder,
                              const std::vector<std::string>& files,
                              std::string& firstRefusal);
+    // The uploads of `files` into `folder` once `there`, its listing, is
+    // known. A file whose name is taken there is settled by Settings >
+    // Handling's standing answer (settings.conflictPolicy) - or, when that is
+    // Ask, asked about: Keep both (uploaded beside it as "name (2)"), Replace,
+    // Skip or Stop, with "Apply to all" for the rest. The others are queued
+    // at once. Returns how many were queued or are being asked about.
+    int PlanRemoteUploads(const std::string& folder, const std::vector<std::string>& files,
+                          const std::vector<FilerEntry>& there, std::string& firstRefusal);
+    // Asks about the next taken name of `run`, queueing what each answer says.
+    void AskRemoteUploadConflict(const std::shared_ptr<RemoteUploadConflicts>& run);
+    // Queues (local file, name on the drive - empty for its own) pairs and
+    // puts on the status bar how many are on their way where, and why any
+    // were left out.
+    int QueueRemoteUploads(const std::string& folder,
+                           const std::vector<std::pair<std::string, std::string>>& items,
+                           std::string& firstRefusal);
     // The mirror of it: queues the download of the remote `files` into the
     // local folder `folder`, one request per file, and puts what happened on
     // the status bar. Returns the number queued, with the first reason for
@@ -1097,6 +1123,14 @@ private:
     // close does not ask it again.
     bool quitConfirmed = false;
     bool quitQuestionOpen = false;
+    // Uploads waiting for their folder's listing, so that the names taken
+    // there are known before anything is replaced (UploadToRemoteFolder).
+    // Taken up again by onListingArrived for that folder.
+    struct UploadsAwaitingListing {
+        std::string folder;
+        std::vector<std::string> files;
+    };
+    std::vector<UploadsAwaitingListing> uploadsAwaitingListing;
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;

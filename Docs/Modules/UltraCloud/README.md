@@ -297,6 +297,50 @@ within a fraction of a second, the sign-in ends as `ResultCode::Cancelled`,
 and `CloudService::AddAccount` / `SignInAccount` store no account. The
 dialog's *Cancel* and close box set it, and so does `watch.cancelled`.
 
+## Uploads to a server that writes them as they arrive
+
+An FTP, FTPS or SFTP server writes an upload into the file as it comes in
+(`ProviderCapabilities::partialUploadsRemain`), and the protocol has no way
+to take one back: sent straight to its name, an upload that replaces a file
+destroys the old one with its first byte, and one stopped part way leaves
+the part looking like the file. `CloudService::Upload` and `UploadAndShare`
+therefore, for every application (`UltraCloudUploads.h`):
+
+- write the upload to a hidden part name beside the file
+  (`UploadPartName`: `.report.pdf.part`) and rename it into place once the
+  last byte is in (`PutUploadInPlace`). A server that will not rename onto
+  an existing file - OpenSSH's SFTP, some Windows servers - has the old one
+  set aside (`.report.pdf.replaced`) for that moment and put back if the
+  rename fails.
+- go straight to the name for an anonymous FTP login, a name too long to
+  mark, a server that refuses the part name at STOR, and an account whose
+  server refused to rename an upload - remembered in the account store for
+  30 days (`AccountStore::UploadsDirect`).
+- keep a `PendingUpload` in the account store while anything the upload
+  wrote could be left behind: from before the first byte at a part name,
+  from the moment the server created the file at its own name (the FTP
+  provider watches the reply to STOR; on SFTP, which says nothing, a name
+  that was free before the upload counts). A process that ends during the
+  upload leaves the record too.
+
+Every later call on that account - in the same run or the next - first
+removes what those records point to, where it is still the upload's
+(`IsLeftByPendingUpload`: any part; at the file's own name, one shorter than
+the whole file), and says each step in the thread's log:
+
+```text
+An upload of "big.bin" did not finish: removing what it left (/up/.big.bin.part)
+Not in the listing - the server may leave out names that start with a dot: removing it by name
+Removed /up/.big.bin.part
+```
+
+A part the server will not remove stays recorded for the next run; one whose
+server did not answer is asked again straight after a later call gets
+through (`kPendingCleanupTriesPerRun` times a run), and a listing then
+leaves out what was removed. An application has nothing to do for any of
+this; one that asks before it quits can say that what an upload sent is
+removed later (`partialUploadsRemain` on the account's provider).
+
 ## Quick examples
 
 ```cpp
@@ -386,7 +430,8 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
-| `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
+| `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault; the uploads' records: `AddPendingUpload`, `RemovePendingUpload`, `ListPendingUploads`, `SetUploadsDirect`, `UploadsDirect`), `MakeAccountId` |
+| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory); `TransfersInProgress` - the uploads and downloads under way, for a host that asks before it quits |
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
@@ -412,7 +457,10 @@ answers with canned bodies, and the OAuth flow through `OAuthHooks`. The
 large-upload paths are exercised with small thresholds
 (`SetUploadLimits(simpleLimit, chunkSize)` on the three hosted providers),
 so a 25-byte file walks the same start / append / finish, upload-session or
-resumable code as a multi-gigabyte one. Chunks are read from disk as they are
+resumable code as a multi-gigabyte one. The FTP uploads' part names, their
+records and the cleanup run against a fake FTP server that can refuse
+renames, deletes or dot names, hide dot names from a listing, break an
+upload part way or not answer (`test_uploads.cpp`). Chunks are read from disk as they are
 sent; a large upload never holds more than one chunk in memory.
 
 ## Roadmap

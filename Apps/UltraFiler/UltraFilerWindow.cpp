@@ -79,6 +79,7 @@
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasCheckbox.h"      // the upload conflict question's "Apply to all"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
@@ -113,10 +114,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <unordered_set>
@@ -3675,6 +3679,19 @@ void UltraFilerWindow::BuildFolderTree() {
         ScheduleConnectionLogRefresh();
     };
     remoteDrives->onListingArrived = [this](const std::string& path) {
+        // Uploads that waited for this folder's listing go on: the names
+        // taken there are known now (or the listing failed, and there is
+        // nothing to ask about).
+        for (std::size_t i = 0; i < uploadsAwaitingListing.size();) {
+            if (uploadsAwaitingListing[i].folder != path) { ++i; continue; }
+            const std::vector<std::string> files = std::move(uploadsAwaitingListing[i].files);
+            uploadsAwaitingListing.erase(uploadsAwaitingListing.begin() +
+                                         static_cast<std::ptrdiff_t>(i));
+            std::vector<FilerEntry> there;
+            remoteDrives->CachedListing(path, there);
+            std::string why;
+            PlanRemoteUploads(path, files, there, why);
+        }
         // Only the display actually showing that folder needs redoing.
         RefreshRemoteFolderDisplays(path);
         // The tree too: this is the answer its row was waiting for, whether
@@ -3881,15 +3898,264 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
     return true;
 }
 
+// One drop's files whose names are taken in the folder they go to, asked
+// about one at a time (UltraFilerWindow::AskRemoteUploadConflict).
+struct RemoteUploadConflicts {
+    std::string folder;
+    std::vector<std::string> files;   // the local files, in the order dropped
+    std::size_t next = 0;
+    std::vector<FilerEntry> there;    // the folder's listing
+    std::set<std::string> taken;      // its names, and those Keep both gave out since
+    bool applyToAll = false;
+    std::size_t applied = 0;          // the answer applied to the rest
+};
+
+namespace {
+
+// "28 B", "512.0 KB", "40.0 MB": the sizes the status bar shows.
+std::string SizeForConflict(uint64_t bytes) {
+    if (bytes < 1024) return std::to_string(bytes) + " B";
+    const char* units[] = {"KB", "MB", "GB", "TB"};
+    double value = static_cast<double>(bytes) / 1024.0;
+    std::size_t unit = 0;
+    while (value >= 1024.0 && unit + 1 < sizeof(units) / sizeof(units[0])) {
+        value /= 1024.0;
+        ++unit;
+    }
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.1f %s", value, units[unit]);
+    return buf;
+}
+
+// "40.0 MB, modified 17 Oct 2026 20:10" for the conflict question's two lines.
+std::string DescribeForConflict(uint64_t size, std::time_t modified) {
+    std::string out = SizeForConflict(size);
+    if (modified > 0) {
+        std::tm tm{};
+#if defined(_WIN32)
+        localtime_s(&tm, &modified);
+#else
+        localtime_r(&modified, &tm);
+#endif
+        char buf[64];
+        if (std::strftime(buf, sizeof buf, "%d %b %Y %H:%M", &tm) > 0)
+            out += std::string(", modified ") + buf;
+    }
+    return out;
+}
+
+// A local file's modification time as a time_t: the file clock's distance
+// from now, laid onto the system clock (no clock_cast in every library).
+std::time_t LocalFileTime(fs::file_time_type t) {
+    using namespace std::chrono;
+    const auto sys = time_point_cast<system_clock::duration>(
+            t - fs::file_time_type::clock::now() + system_clock::now());
+    return system_clock::to_time_t(sys);
+}
+
+} // namespace
+
 int UltraFilerWindow::UploadToRemoteFolder(const std::string& folder,
                                            const std::vector<std::string>& files,
                                            std::string& firstRefusal) {
     firstRefusal.clear();
     if (!remoteDrives || files.empty()) return 0;
-    int queued = 0, skipped = 0;
+    // What is there now, not what the cache saw when the folder was last
+    // opened - someone may have put a file of that name there since. Asked
+    // for like any listing, so it never holds this thread; the display goes
+    // on showing what it has, and the files wait for the answer.
+    uploadsAwaitingListing.push_back({folder, files});
+    remoteDrives->Revalidate(folder);
+    if (statusLabel) {
+        RemoteDrive drive;
+        std::string where = remoteDrives->Find(RemoteFilerAccountId(folder), drive)
+                                    ? drive.displayName : std::string("the drive");
+        const std::string sub = RemoteFilerName(folder);
+        if (!sub.empty()) where += " / " + sub;
+        statusLabel->SetText("Looking in " + where + " for names already taken...");
+    }
+    return static_cast<int>(files.size());
+}
+
+int UltraFilerWindow::PlanRemoteUploads(const std::string& folder,
+                                        const std::vector<std::string>& files,
+                                        const std::vector<FilerEntry>& there,
+                                        std::string& firstRefusal) {
+    auto run = std::make_shared<RemoteUploadConflicts>();
+    run->folder = folder;
+    run->there = there;
+    for (const FilerEntry& e : there) run->taken.insert(e.name);
+    auto findThere = [&there](const std::string& name) -> const FilerEntry* {
+        for (const FilerEntry& e : there)
+            if (e.name == name) return &e;
+        return nullptr;
+    };
+
+    std::vector<std::pair<std::string, std::string>> now;
+    std::error_code ec;
     for (const std::string& f : files) {
+        const std::string name = PathToUtf8(PathFromUtf8(f).filename());
+        const FilerEntry* existing = findThere(name);
+        // Nothing in the way - or nothing that is an upload at all (a folder,
+        // a remote path), which the drives refuse with their own reason.
+        if (!existing || IsRemoteFilerPath(f) || fs::is_directory(PathFromUtf8(f), ec)) {
+            now.emplace_back(f, std::string());
+            continue;
+        }
+        FilerConflictPolicy policy = settings.conflictPolicy;
+        // A file cannot replace a folder: beside it, then.
+        if (existing->isDirectory && policy == FilerConflictPolicy::Replace)
+            policy = FilerConflictPolicy::KeepBoth;
+        switch (policy) {
+            case FilerConflictPolicy::KeepBoth: {
+                const std::string free = UniqueRemoteFilerName(
+                        name, [&run](const std::string& n) { return run->taken.count(n) > 0; });
+                run->taken.insert(free);
+                now.emplace_back(f, free);
+                break;
+            }
+            case FilerConflictPolicy::Replace:
+                now.emplace_back(f, std::string());
+                break;
+            case FilerConflictPolicy::Skip:
+                break;
+            case FilerConflictPolicy::Ask:
+                run->files.push_back(f);
+                break;
+        }
+    }
+    const int queued = now.empty() ? 0 : QueueRemoteUploads(folder, now, firstRefusal);
+    if (!run->files.empty()) AskRemoteUploadConflict(run);
+    return queued + static_cast<int>(run->files.size());
+}
+
+void UltraFilerWindow::AskRemoteUploadConflict(const std::shared_ptr<RemoteUploadConflicts>& run) {
+    // The answers, in the order the buttons are offered.
+    enum Answer : std::size_t { KeepBoth = 0, Replace = 1, Skip = 2, Stop = 3 };
+    auto apply = [this, run](std::size_t answer, const std::string& f) {
+        const std::string name = PathToUtf8(PathFromUtf8(f).filename());
         std::string why;
-        if (remoteDrives->Upload(folder, f, why)) ++queued;
+        if (answer == KeepBoth) {
+            const std::string free = UniqueRemoteFilerName(
+                    name, [&run](const std::string& n) { return run->taken.count(n) > 0; });
+            run->taken.insert(free);
+            QueueRemoteUploads(run->folder, {{f, free}}, why);
+        } else if (answer == Replace) {
+            QueueRemoteUploads(run->folder, {{f, std::string()}}, why);
+        }
+    };
+
+    while (run->next < run->files.size()) {
+        const std::string f = run->files[run->next];
+        const std::string name = PathToUtf8(PathFromUtf8(f).filename());
+        const FilerEntry* existing = nullptr;
+        for (const FilerEntry& e : run->there)
+            if (e.name == name) { existing = &e; break; }
+        // "Apply to all" - except Replace onto a folder, which cannot be.
+        if (run->applyToAll && !(run->applied == Replace && existing && existing->isDirectory)) {
+            ++run->next;
+            apply(run->applied, f);
+            continue;
+        }
+
+        const std::size_t remaining = run->files.size() - run->next - 1;
+        RemoteDrive drive;
+        const std::string driveName =
+                remoteDrives && remoteDrives->Find(RemoteFilerAccountId(run->folder), drive)
+                        ? drive.displayName : std::string("the drive");
+        std::string folderName = RemoteFilerName(run->folder);
+        if (folderName.empty()) folderName = driveName;
+        const bool isFolder = existing && existing->isDirectory;
+        const std::string keepBothName = UniqueRemoteFilerName(
+                name, [&run](const std::string& n) { return run->taken.count(n) > 0; });
+
+        std::error_code ec;
+        const uint64_t localSize = static_cast<uint64_t>(fs::file_size(PathFromUtf8(f), ec));
+        std::time_t localModified = 0;
+        {
+            std::error_code tec;
+            const fs::file_time_type t = fs::last_write_time(PathFromUtf8(f), tec);
+            if (!tec) localModified = LocalFileTime(t);
+        }
+        std::string details;
+        details += isFolder ? "Existing: a folder\n"
+                            : "Existing: " + DescribeForConflict(existing ? existing->size : 0,
+                                                                 existing ? existing->modifiedTime : 0) + "\n";
+        details += "Uploaded: " + DescribeForConflict(ec ? 0 : localSize, localModified) + "\n\n";
+        details += isFolder ? "A file cannot replace a folder. "
+                            : "Replace overwrites the file on the drive. ";
+        details += "Keep both uploads this one as \"" + keepBothName + "\".";
+
+        DialogConfig cfg;
+        cfg.title = "Upload: the name is already taken";
+        cfg.dialogType = DialogType::Question;
+        cfg.message = isFolder ? "A folder \"" + name + "\" already exists in \"" + folderName +
+                                         "\" on " + driveName + "."
+                               : "\"" + name + "\" already exists in \"" + folderName +
+                                         "\" on " + driveName + ".";
+        cfg.details = details;
+        cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+        cfg.width = 560;
+        cfg.height = 240;
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) return;   // no dialogs: nothing is replaced, nothing more goes up
+
+        auto applyToAll = std::make_shared<bool>(run->applyToAll);
+        if (remaining > 0) {
+            const std::string label = "Apply to all " + std::to_string(remaining) +
+                                      " remaining conflict" + (remaining == 1 ? "" : "s");
+            const float fontSize = dialog->GetStyle().detailsFontSize;
+            // An explicit width, as the filer's own question has: the bar is
+            // laid out before there is a context to measure the label with.
+            const float width = 26.0f + 0.58f * fontSize * static_cast<float>(label.size());
+            auto box = std::make_shared<UltraCanvasCheckbox>("UploadConflictApplyAll", 0, 0,
+                                                             width, 22.0f, label);
+            box->SetFontSize(fontSize);
+            box->size.width = CSSLayout::Dimension::Px(width);
+            box->size.height = CSSLayout::Dimension::Px(22);
+            box->onStateChanged = [applyToAll](CheckedState, CheckedState state) {
+                *applyToAll = state == CheckedState::Checked;
+            };
+            dialog->AddFooterElement(box);
+        }
+        // The buttons only record which one was pressed; the answer runs once
+        // the dialog has closed, so the next question never stacks on it.
+        auto chosen = std::make_shared<std::optional<std::size_t>>();
+        dialog->AddCustomButton("Keep both", DialogResult::Yes, DialogButtonRole::Default,
+                                [chosen]() { *chosen = KeepBoth; });
+        if (!isFolder)
+            dialog->AddCustomButton("Replace", DialogResult::Yes, DialogButtonRole::Normal,
+                                    [chosen]() { *chosen = Replace; });
+        dialog->AddCustomButton("Skip", DialogResult::Yes, DialogButtonRole::Normal,
+                                [chosen]() { *chosen = Skip; });
+        dialog->AddCustomButton("Stop", DialogResult::Cancel, DialogButtonRole::Cancel,
+                                [chosen]() { *chosen = Stop; });
+        dialog->onResult = [this, run, chosen, applyToAll, apply, f](DialogResult) {
+            // Escape and the close box are Stop: nothing more goes up.
+            const std::size_t answer = chosen->has_value() ? **chosen : Stop;
+            if (answer == Stop) return;
+            ++run->next;
+            run->applyToAll = *applyToAll;
+            run->applied = answer;
+            apply(answer, f);
+            auto next = [this, run]() { AskRemoteUploadConflict(run); };
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(next);
+            else next();
+        };
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
+        return;
+    }
+}
+
+int UltraFilerWindow::QueueRemoteUploads(
+        const std::string& folder, const std::vector<std::pair<std::string, std::string>>& items,
+        std::string& firstRefusal) {
+    firstRefusal.clear();
+    if (!remoteDrives || items.empty()) return 0;
+    int queued = 0, skipped = 0;
+    for (const auto& [f, remoteName] : items) {
+        std::string why;
+        if (remoteDrives->Upload(folder, f, why, remoteName)) ++queued;
         else { ++skipped; if (firstRefusal.empty()) firstRefusal = why; }
     }
     if (statusLabel) {
