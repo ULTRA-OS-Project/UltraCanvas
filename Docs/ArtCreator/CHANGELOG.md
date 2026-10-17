@@ -1,3 +1,13 @@
+#### 2026-10-17 *0.7.3*
+- **The colour picker stays as it was left.** ArtCreator opens the picker
+  with the design chosen in its list and the channels open or folded as they
+  were when it was last used. It keeps them in a settings file of its own,
+  `config.ini` in the UltraCanvas settings folder
+  (`~/.config/UltraCanvas/ArtCreator/` on Linux), as `picker.design`
+  (`circle`, `square`, `rectangle` or `sliders`) and `picker.channels`
+  (`open` or `folded`) - the names UltraPaint's settings use - saved as the
+  picker changes (framework changelog: `colour-picker-design-names`).
+
 #### 2026-10-16 *0.7.2*
 - **The colour panel takes less room.** The picker in the right-hand panel
   folds its channels away: the HSV / HSL / RGB tabs and the channel sliders
