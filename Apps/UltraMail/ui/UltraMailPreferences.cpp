@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.13.0 - switch_on_quiet_sec (alerts wait after the computer was switched on)
 // Version: 0.12.0 - folder_tree_content (current / all), account_order
 // Version: 0.11.0 - trusted_senders, blocked_senders
 // Version: 0.10.0 - warn_* (Settings > Spam/scam warnings)
@@ -135,6 +136,10 @@ bool Preferences::Load(const std::string& path) {
             try { checkMailEverySec = NearestCheckMailChoice(std::stoi(Trim(value))); }
             catch (...) { /* keeps the default */ }
         }
+        if (key == "switch_on_quiet_sec") {
+            try { switchOnQuietSec = NearestSwitchOnQuietChoice(std::stoi(Trim(value))); }
+            catch (...) { /* keeps the default */ }
+        }
         if (key == "trusted_image_domains") {
             std::size_t start = 0;
             while (start <= value.size()) {
@@ -212,6 +217,7 @@ bool Preferences::Save(const std::string& path) const {
     file << "needs_answer_only_written_to = " << (needsAnswerOnlyWrittenTo ? "true" : "false") << "\n";
     file << "list_sort = " << listSort.ToString() << "\n";
     file << "check_mail_every_sec = " << checkMailEverySec << "\n";
+    file << "switch_on_quiet_sec = " << switchOnQuietSec << "\n";
     file << "notify_new_mail = " << (notifyNewMail ? "true" : "false") << "\n";
     auto flag = [&file](const char* key, bool on) {
         file << key << " = " << (on ? "true" : "false") << "\n";
@@ -261,6 +267,28 @@ std::string Preferences::CheckMailLabel(int seconds) {
     const int minutes = seconds / 60;
     if (seconds % 60 == 0) return minutes == 1 ? "1 minute" : std::to_string(minutes) + " minutes";
     return std::to_string(seconds) + " seconds";
+}
+
+const std::vector<int>& Preferences::SwitchOnQuietChoices() {
+    static const std::vector<int> choices = { 0, 30, 60, 120, 180, 300, 600 };
+    return choices;
+}
+
+int Preferences::NearestSwitchOnQuietChoice(int seconds) {
+    int best = kDefaultSwitchOnQuietSec;
+    long long bestDistance = -1;
+    for (int choice : SwitchOnQuietChoices()) {
+        const long long distance = std::llabs(static_cast<long long>(seconds) - choice);
+        if (bestDistance < 0 || distance < bestDistance) {   // the shorter on a tie
+            best = choice;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+std::string Preferences::SwitchOnQuietLabel(int seconds) {
+    return seconds <= 0 ? std::string("Off") : CheckMailLabel(seconds);
 }
 
 std::string Preferences::NormalizeDomain(const std::string& text) {

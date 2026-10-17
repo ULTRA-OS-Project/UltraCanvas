@@ -2,6 +2,44 @@
 
 <!-- doc-check: void updateProgressBar(float value); void rotateObject(float angle); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Functionality](#core-functionality)
+- [Class Definition](#class-definition)
+- [Enumerations](#enumerations)
+  - [SliderStyle](#sliderstyle)
+  - [SliderValueDisplay](#slidervaluedisplay)
+  - [SliderOrientation](#sliderorientation)
+  - [SliderState](#sliderstate)
+  - [SliderHandleShape](#sliderhandleshape)
+- [Visual Style Structure](#visual-style-structure)
+- [Constructor](#constructor)
+- [Key Methods](#key-methods)
+  - [Value Management](#value-management)
+  - [Style Configuration](#style-configuration)
+  - [Appearance Customization](#appearance-customization)
+  - [Range Mode (two handles)](#range-mode-two-handles)
+- [Event Callbacks](#event-callbacks)
+- [Factory Functions](#factory-functions)
+- [Keyboard Controls](#keyboard-controls)
+- [Usage Examples](#usage-examples)
+  - [Basic Horizontal Slider](#basic-horizontal-slider)
+  - [Vertical Slider with Percentage](#vertical-slider-with-percentage)
+  - [Circular Knob Control](#circular-knob-control)
+  - [Custom Styled Slider](#custom-styled-slider)
+  - [Progress Bar Style](#progress-bar-style)
+- [Rendering Details](#rendering-details)
+- [Advanced Features](#advanced-features)
+  - [Step Snapping](#step-snapping)
+  - [Custom Value Formatting](#custom-value-formatting)
+  - [Range Validation](#range-validation)
+- [Integration Notes](#integration-notes)
+- [Dependencies](#dependencies)
+- [Performance Considerations](#performance-considerations)
+- [See Also](#see-also)
+
 ## Overview
 
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.

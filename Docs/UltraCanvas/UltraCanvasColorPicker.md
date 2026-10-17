@@ -2,6 +2,19 @@
 
 <!-- doc-check: Color SampleScreenPixelUnderCursor(); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Definition](#class-definition)
+- [Basic Usage](#basic-usage)
+  - [Presentation variants](#presentation-variants)
+  - [Light and dark styles](#light-and-dark-styles)
+  - [Compact (sliders-only) variant](#compact-sliders-only-variant)
+- [Colour Space Helpers](#colour-space-helpers)
+- [Interaction Summary](#interaction-summary)
+- [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
+
 ## Overview
 
 The **UltraCanvasColorPicker** is a comprehensive, self-contained colour selection
@@ -13,8 +26,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.5.0
-**Last Modified**: 2026-10-05
+**Version**: 1.8.0
+**Last Modified**: 2026-10-16
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -42,9 +55,27 @@ natively with the framework's `IRenderContext` primitives.
   Both hue × lightness styles pick at **full saturation** (HSL S = 1); the
   hue is kept at black and white so the markers stay on the chosen colour,
   and the channel sliders below still edit any colour.
+- ✅ **Design selector** (optional) — `SetShowWheelStyleSelector(true)` puts
+  a small dropdown in the top-right corner that lets the user switch between
+  the four designs, each shown by its icon: **colour circle** (`Ring`),
+  **colour slider + square** (`Bar`), **colour rectangle**
+  (`HueLightnessField`) and **colour + brightness sliders**
+  (`HueLightnessSliders`). The button shows the current design's icon alone;
+  the list names each one. On the two rectangular designs it sits over the
+  corner of the colour area, so it **hides while a drag on the colour area or
+  the colour bar runs** and comes back on release; beside the circle the
+  corner is free and it stays, and the two sliders end short of it, so all of
+  the colour range stays left of it. `onWheelStyleChanged` reports the user's
+  choice (not `SetWheelStyle`), for a host that remembers it. The icons are
+  `media/icons/colorpicker/{ring,bar,field,sliders}.svg`.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
   maximised rectangle (Bar). The first pixel column/row is 0 and the last is
   100 %, and each pixel is drawn in exactly the colour a click on it picks.
+  The marker is grabbed wherever it is hit, including the part that hangs
+  over the area's edge: a press on it keeps the colour and the drag moves it
+  from there, while a press elsewhere (or just beside the area, which picks
+  the nearest edge) jumps the colour to the pointer. The hue × lightness
+  field's marker works the same way.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
@@ -77,28 +108,44 @@ natively with the framework's `IRenderContext` primitives.
   digits + `.`/`-`).
 - ✅ **Model selector** — either a **tab bar** (default) or a **dropdown**
   switches the channel editors between **HSV**, **HSL** and **RGB**. The two
-  presentations are mutually exclusive (`SetModeSelector`).
+  presentations are mutually exclusive (`SetModeSelector`). The dropdown is a
+  real `UltraCanvasDropdown` child, so its list opens as a popup above the
+  rest of the window.
 - ✅ **Hover tooltips** — resting the pointer over a model choice (HSV / HSL /
-  RGB) or a channel / hex label (H, S, V, A, L, R, G, B, Hex) shows a short
-  tooltip explaining what it is and its value range.
+  RGB: a tab, the dropdown, or an entry of its open list) or a channel / hex
+  label (H, S, V, A, L, R, G, B, Hex) shows a short tooltip explaining what it
+  is and its value range.
 - ✅ **Channel sliders** — three colour channels plus alpha, each with a live
   gradient track and an editable numeric value box. Two presentations
   (`SetSliderStyle`): **Thin** (thin track, overhanging handle) or **Thick**
   (a thick bar that fully encloses the control point, Slider-demo style).
 - ✅ **Value steppers** — optional `<` and `>` arrows inside each value field
   step the value by one unit (`SetShowValueSpinners`).
-- ✅ **Collapsible sliders** — optionally hide the four sliders behind a
-  disclosure (dropdown-icon) row; **starts collapsed by default**
-  (`SetSlidersCollapsible`). The widget keeps a **fixed size**: the colour
-  wheel / shading area fills the space the collapsed sliders leave free, so
-  expanding the sliders shrinks the shading area by exactly the space they
-  occupy (and collapsing gives it straight back) instead of resizing the
-  widget. The shading area absorbs the change best in **Bar** wheel style,
-  where the SV rectangle fills the full available height. A `PixelExact` area
-  does not grow past 256 pixels, so it is the other way round there:
+- ✅ **Collapsible colour definitions** — optionally hide the colour
+  definitions - the **HSV / HSL / RGB tab bar and the four sliders** under it -
+  behind a disclosure (dropdown-icon) row; **starts collapsed by default**
+  (`SetSlidersCollapsible`). The disclosure row comes first and the section
+  opens under it. By default the widget keeps a **fixed size**: the colour
+  wheel / shading area fills the space the collapsed section leaves free, so
+  expanding shrinks the shading area by exactly the space the section takes
+  (and collapsing gives it straight back) instead of resizing the widget. The
+  shading area absorbs the change best in **Bar** wheel style, where the SV
+  rectangle fills the full available height. A `PixelExact` area does not grow
+  past 256 pixels, so it is the other way round there:
   `PreferredHeightForWidth` sizes a collapsible PixelExact picker for its
   **expanded** sliders, which then open into the free space under the
   controls and leave the area exact in both states.
+  `onSlidersExpandedChanged` reports the user opening or folding the section
+  (not `SetSlidersExpanded`), for a host that remembers it.
+- ✅ **Auto height** — `SetAutoHeight(true)` makes the widget take the height
+  its content needs and keep it as the content changes: the colour
+  definitions opened or closed, another design chosen (also from the design
+  selector), the alpha row, the UI scale. It sets the height in the layout
+  too, so in a flex column - a **toolbox panel** - what is below the picker
+  moves up when the section folds and down when it opens: a folded picker
+  takes only the room it uses. The height is `PreferredHeightForWidth`'s,
+  except that a folded PixelExact area keeps no room for the sliders: the
+  widget grows for them. Off by default.
 - ✅ **Alpha channel** — checkerboard-backed alpha slider with rounded ends (the
   checkerboard is clipped to the rounded track so it matches the slider shape).
 - ✅ **UI scaling** — `SetUIScale(0.6f)` renders the whole picker at 60% (all
@@ -136,12 +183,15 @@ namespace UltraCanvas {
         void SetModeSelector(ColorPickerModeSelector s); // tab bar OR dropdown
         void SetSliderStyle(ColorPickerSliderStyle s);   // thin / thick bars
         void SetWheelStyle(ColorPickerWheelStyle s);     // ring / bar / hue x lightness
+        void SetShowWheelStyleSelector(bool show);       // design dropdown, top right
         void SetSVAreaShape(ColorPickerSVAreaShape s);   // Bar: fill / 1:1 / 1:1 at 256 px
         static constexpr int PixelExactSVSide = 256;     // one pixel per 8-bit step
         void SetShowValueSpinners(bool show);            // < > arrows in value box
         void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         void SetSlidersExpanded(bool expanded);
+        void SetAutoHeight(bool on);                     // height follows the content
         void SetUIScale(float scale);                    // 0.6 = 60% sized picker
+        void SetStyle(const ColorPickerStyle& s);        // ColorPickerStyle::Light() / Dark()
 
         void SetShowColorWheel(bool show);               // compact mode when false
         void SetShowAlpha(bool show);
@@ -162,6 +212,8 @@ namespace UltraCanvas {
 
         std::function<void(const Color&)> onColorChanged;
         std::function<void(const Color&)> onColorChanging;
+        std::function<void(ColorPickerWheelStyle)> onWheelStyleChanged; // user's design choice
+        std::function<void(bool expanded)> onSlidersExpandedChanged; // user opened / folded the section
         std::function<void(bool foreground)> onScreenColorPick; // host override
     };
 }
@@ -209,15 +261,53 @@ picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessSliders);
 picker->SetElementSize(UltraCanvas::Size2Df(290, picker->PreferredHeightForWidth(290)));
 
+// Let the user choose the design (circle, slider + square, rectangle) from
+// a dropdown in the top-right corner, and remember the choice:
+picker->SetShowWheelStyleSelector(true);
+picker->onWheelStyleChanged = [](UltraCanvas::ColorPickerWheelStyle design) {
+    printf("Design: %d\n", static_cast<int>(design));   // e.g. save it in the settings
+};
+
 // < and > stepper arrows inside the numeric value fields:
 picker->SetShowValueSpinners(true);
 
-// Hide the four sliders behind a disclosure icon, collapsed by default:
+// Hide the colour definitions (the HSV / HSL / RGB tabs and the four
+// sliders) behind a disclosure icon, collapsed by default, and remember
+// whether the user leaves them open:
 picker->SetSlidersCollapsible(true, false);
+picker->onSlidersExpandedChanged = [](bool expanded) {
+    printf("Channels %s\n", expanded ? "open" : "folded");   // e.g. save it in the settings
+};
+
+// In a toolbox column: let the picker's height follow what it shows, so the
+// tools below move up when the colour definitions fold away:
+picker->SetAutoHeight(true);
+picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
 // A 60% sized picker (pair the scale with a smaller widget size):
 auto small = UltraCanvas::CreateColorPicker("small", color, 20, 20, 174, 282);
 small->SetUIScale(0.6f);
+```
+
+### Light and dark styles
+
+A picker draws its own surface, and left as constructed it is the dark one: a
+charcoal panel with a red accent. In a light window take
+`ColorPickerStyle::Light()` - a white surface, grey hairline fields and
+outlines, near-black text and a blue accent - rather than filling in the
+colours by hand. `ColorPickerStyle::Dark()` names the default. On a surface
+that is not white (a dialog's grey), set `backgroundColor` to that surface so
+the picker does not stand out as a block. The presets leave `uiScale` at 1, so
+scale after setting the style.
+
+```cpp
+picker->SetStyle(UltraCanvas::ColorPickerStyle::Light());
+picker->SetUIScale(0.78f);
+
+// On a dialog's own grey:
+UltraCanvas::ColorPickerStyle onGrey = UltraCanvas::ColorPickerStyle::Light();
+onGrey.backgroundColor = UltraCanvas::Colors::WindowBackground;
+picker->SetStyle(onGrey);
 ```
 
 ### Compact (sliders-only) variant
@@ -245,8 +335,11 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 |--------|--------|
 | Drag on the hue ring / hue bar | Sets hue |
 | Drag inside the SV area | Sets saturation & value |
+| Press the SV marker and drag | Moves the marker from where it was grabbed, without first jumping |
 | Drag inside the hue × lightness field | Sets hue (vertical) and lightness (horizontal) at full saturation |
 | Drag the intensity bar | Sets lightness: white (left) → pure colour → black (right) |
+| Click the design selector (top right, when shown) | Lists colour circle / colour slider + square / colour rectangle; picking one switches the design |
+| Drag on a rectangular design's colour area or bar | Hides the design selector until the button is released |
 | Hover a swatch | Floods the whole widget surface with that colour for a big-area preview |
 | Click background (previous) swatch | Reverts to the background colour |
 | Click the corner swap symbol | Swaps foreground and background colours |
@@ -262,8 +355,12 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 | Enter / Esc while editing | Commits / cancels the edit |
 | Click `<` / `>` in a value box | Steps the value by one unit (when spinners are enabled) |
 | Click a tab or the dropdown | Switches HSV / HSL / RGB channel editors |
-| Click the disclosure arrow | Shows/hides the channel sliders (when collapsible) |
+| Click the disclosure arrow | Shows/hides the HSV / HSL / RGB tabs and the channel sliders (when collapsible); with `SetAutoHeight` the widget grows or shrinks with them |
 | Drag a channel/alpha slider | Adjusts that component |
+
+Every drag captures the mouse: it keeps following the pointer outside the
+picker (clamped to the end of the scale) and ends where the button is
+released, wherever that is.
 
 ## Screen colour picker (eyedropper)
 

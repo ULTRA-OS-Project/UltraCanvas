@@ -94,7 +94,7 @@ namespace UltraCanvas {
             return slash == std::string::npos ? p : p.substr(slash + 1);
         };
 
-        auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Open...");
+        auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Open");
         auto playerWeak = std::weak_ptr<UltraCanvasAudioPlayerElement>(player);
         // Open through the shared FileLoader facade: it shows the native dialog
         // (with default audio filters) and hands back a decoded UCAudio buffer,
@@ -184,7 +184,7 @@ namespace UltraCanvas {
             status->SetText("Save cancelled or no recording available.");
         };
 
-        auto saveBtn = CreateButton("SaveAudio", 780, 239, 95, 36, "Save...");
+        auto saveBtn = CreateButton("SaveAudio", 780, 239, 95, 36, "Save");
         auto formatDdWeak = std::weak_ptr<UltraCanvasDropdown>(formatDd);
         // Saves whatever audio the page currently holds — the captured recording
         // when one is available, otherwise the loaded file — encoding it in the

@@ -1,3 +1,34 @@
+#### 2026-10-17 *0.4.2*
+- **"None" among the AI assistants, first and in red.** Step 2 offers
+  *None* - a local IDE or the compiler alone - before Claude Code, Codex,
+  Copilot, Gemini and Other. It writes no instruction file and prepares no
+  first prompt (the instruction-file and GitHub-only boxes turn off), and its
+  guide says how to open the project in an IDE or build it from a terminal.
+  `--assistant none` chooses it from the command line. The red comes from
+  the segmented control's new per-segment text colour (framework changelog:
+  `segmented-control-segment-text-color`).
+- **The SDK comes from the UltraOS download page.** Step 4's *Download page*
+  opens [ultraos.eu/download-file](https://ultraos.eu/download-file/) in the
+  browser, where the archive the step names is downloaded; *Unpack...* picks
+  the downloaded archive (through the file loader's dialog), unpacks it beside
+  itself and fills the SDK prefix in - from the folder named like the archive
+  first, then any SDK beside it, so the file need not keep its name. The
+  GitHub release stays linked as *Also on GitHub*; the Actions-page row is
+  gone. The application no longer downloads anything itself, so it no longer
+  links UltraNet (`StartSdk` 0.2.0: `DownloadSdk`, `SdkDownloadAvailable` and
+  `SdkReleaseAssetUrl` removed, `SdkUnpackedFolder` added).
+- **"AI assistant", not "assistant"**, in step 2's heading, its card title,
+  its hint and its status line.
+
+#### 2026-10-15 *0.4.1*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraCanvasStart.exe` is a GUI program now. Beside it,
+  `UltraCanvasStart.com` is its console companion, which a prompt runs for
+  the bare name: `UltraCanvasStart --check` starts the `.exe`, waits for it
+  and returns its exit code, as before. Typed as `UltraCanvasStart.exe`, the
+  prompt no longer waits (framework changelog:
+  `windows-console-companions`).
+
 #### 2026-10-12 *0.4.0*
 - **Step 6, Build: the project compiled from the window.** The proof that
   the installation works: the two commands a programmer runs are shown for

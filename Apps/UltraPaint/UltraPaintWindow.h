@@ -8,6 +8,12 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
+// Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
+//                  the keyboard back to the text being typed
+// Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
+//                  canvas at its zoom edits a text layer; Layer > Edit Text / Rasterize Layer
+// Version: 1.5.0 - the right panel's sections are group boxes (optionsPanel, layersPanel)
 // Version: 1.4.0 - BringForward: restores and raises the window (a file handed over by a
 //                  second start opens in a window of its own and comes to the front)
 // Version: 1.3.0 - toolSlots: the palette's tools in groups, one slot each, with a fold-out bar
@@ -17,7 +23,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,8 +37,10 @@
 #include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 
 #include "UltraPaintTools.h"
@@ -83,6 +91,9 @@ private:
     void BuildToolbar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next editor opens it the way it was left.
+    void RememberColourPicker();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
@@ -197,7 +208,53 @@ private:
     void StartLayerRename(int index);
     void FinishLayerRename(bool keep, const std::string& name);
     PaintTool* ActiveTool() const;
-    void PlaceText(double x, double y, const UltraPaintTextResult& r);
+
+    // ----- the Text tool: typing on the canvas -----
+    // A text is typed into an UltraCanvasRichTextEdit lying over the canvas
+    // at the canvas's zoom, in the text's box; it lays the words out as the
+    // text layer will hold them (UltraCanvasRasterText.h), so what is typed is
+    // what the layer gets. The layer being edited is left out of the canvas
+    // meanwhile (UCRasterDocument::SetInPlaceEditLayer), and the edit goes
+    // into the document - a new text layer, or the edited one drawn again -
+    // as one undo step when it is committed.
+    struct TextEditSession {
+        std::shared_ptr<UCRasterLayer> layer;      // the text layer being edited; null for a new text
+        RasterTextContent content;                 // its box and default font (the edit's words are the editor's)
+    };
+    // Starts typing at (x, y): into the text layer whose box is there, or a
+    // new text there. `boxWidth` > 0 when a box was dragged out.
+    void BeginTextEdit(double x, double y, double boxWidth);
+    // The editor opened on layer `layerIndex` (a text layer), or on a new
+    // text at (x, y) when it is -1.
+    void OpenTextSession(int layerIndex, double x, double y, double boxWidth);
+    // Puts what was typed into the document and closes the editor. A new text
+    // left empty adds nothing; an edited text emptied is removed.
+    void CommitTextEdit();
+    bool IsEditingText() const { return textSession != nullptr; }
+    // Keeps the editor on the box as the view zooms and pans, and as tall as
+    // what is typed.
+    void PlaceTextEditor();
+    // A Text tool option changed: applied to the editor's selection (or what
+    // is typed next), else to the whole active text layer.
+    void ApplyTextOption(const std::string& option);
+    // A Text option's control let go of the keyboard without a change (a
+    // list closed with Escape): after the event that closed it, the keys go
+    // back to the text being typed - if the control still has them; Tab or a
+    // click elsewhere put them where they were meant to go.
+    void ReturnKeyboardToText(UltraCanvasUIElement& control);
+    // The topmost visible text layer whose box holds (x, y), or -1.
+    int TextLayerAt(double x, double y) const;
+    // Before painting on a text layer: asks whether to rasterize it.
+    void AskRasterize(const std::string& action);
+    // For a command that changes the active layer's pixels (a filter, Fill,
+    // Delete): finishes a text being typed and, when the active layer is a
+    // text layer, asks to rasterize it and returns true - the command stops.
+    bool StopsAtTextLayer(const std::string& action);
+    // Draws the box of the text being typed (and, with the Text tool, every
+    // text layer's) over the canvas.
+    void DrawTextBoxes(IRenderContext* ctx, const PaintViewTransform& view);
+    void CmdEditText();
+    void CmdRasterizeLayer();
 
     // ----- the mouse pointer magnification glass -----
     // A loupe over a corner of the canvas (a UltraCanvasPaintSurface in loupe
@@ -236,9 +293,11 @@ private:
     std::shared_ptr<UltraCanvasContainer>      rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>    colorPicker;
     std::shared_ptr<UltraCanvasColorSwatchBar> swatches;
-    std::shared_ptr<UltraCanvasContainer>      optionsPanel;
-    std::shared_ptr<UltraCanvasLabel>          optionsTitle;
-    std::shared_ptr<UltraCanvasContainer>      layersPanel;
+    // Two of the right panel's cards (BuildRightPanel; the Colour card holds
+    // the picker and swatches): the active tool's options, captioned with the
+    // tool's name, and Layers.
+    std::shared_ptr<UltraCanvasGroupBox>       optionsPanel;
+    std::shared_ptr<UltraCanvasGroupBox>       layersPanel;
     std::shared_ptr<UltraCanvasContainer>      layerRows;
     std::shared_ptr<UltraCanvasSlider>         layerOpacity;
     std::shared_ptr<UltraCanvasDropdown>       layerBlend;
@@ -248,6 +307,9 @@ private:
     // The palette's slots, one per tool group (UltraPaintWindow.cpp:
     // PaletteGroups), top to bottom.
     std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
+    std::shared_ptr<UltraCanvasContainer>      textEditorHost;   // over the canvas while a text is typed
+    std::shared_ptr<UltraCanvasRichTextEdit>   textEditor;       // in it, on the text's box
+    std::unique_ptr<TextEditSession>           textSession;
     std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
     std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it
     int magnifierCorner = 1;                                      // where it sits now

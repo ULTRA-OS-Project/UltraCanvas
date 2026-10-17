@@ -1,5 +1,7 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.4.0 - the House of Quality's competitive-assessment block
+// Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
 // Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
 // Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
 // Version: 1.1.0 - Phase 2: X (blank or captioned hub) and Y shapes on one cell lattice, form header band, cell tint, hover bands across panels
@@ -155,6 +157,9 @@ namespace UltraCanvas {
         showAxes = false;
         backgroundColor = Color(252, 252, 253, 255);
 
+        viewport.SetRepaintCallback([this] { RequestRedraw(); });
+        viewport.SetZoomRange(0.25, 6.0);
+
         legend = std::make_unique<ChartLegend>();
         legend->SetPosition(ChartLegendPosition::BottomCenter);
         legend->SetOrientation(LegendOrientation::Horizontal);
@@ -215,6 +220,7 @@ namespace UltraCanvas {
     void UltraCanvasMatrixDiagram::SetShape(MatrixShape shape) {
         if (model.shape == shape) return;
         model.shape = shape;
+        RebuildLegend();   // the competitors' entries come and go with the House
         DropLayoutCache();
         RequestRedraw();
     }
@@ -291,11 +297,90 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasMatrixDiagram::SetPanZoomEnabled(bool on) {
+        if (panZoomEnabled == on) return;
+        panZoomEnabled = on;
+        // Turning it off must not leave the diagram stranded at a zoom the
+        // user can no longer undo.
+        if (!on) ResetView();
+        RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::ZoomViewIn() {
+        viewport.ZoomAtPoint(Point2Di(static_cast<int>(layout.content.x + layout.content.width / 2.0),
+                                      static_cast<int>(layout.content.y + layout.content.height / 2.0)),
+                             1.25);
+        RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::ZoomViewOut() {
+        viewport.ZoomAtPoint(Point2Di(static_cast<int>(layout.content.x + layout.content.width / 2.0),
+                                      static_cast<int>(layout.content.y + layout.content.height / 2.0)),
+                             1.0 / 1.25);
+        RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::ResetView() {
+        viewport.CancelZoomAnimation();
+        viewport.SetZoomLevel(1.0);
+        viewport.SetPanOffset(0.0, 0.0);
+        RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::SetEditable(bool on) {
+        editable = on;
+    }
+
+    bool UltraCanvasMatrixDiagram::CycleCell(const MatrixRef& ref, bool backwards) {
+        if (!ref.IsCell() || ref.panel >= static_cast<int>(model.panels.size())) return false;
+        const MatrixScale& scale = model.panels[static_cast<size_t>(ref.panel)].scale;
+        if (scale.levels.empty()) return false;
+
+        // Empty -> strongest -> ... -> weakest -> empty, or the reverse.
+        const int count = static_cast<int>(scale.levels.size());
+        const MatrixCell* cell = model.FindCell(ref.panel, ref.row, ref.col);
+        const int current = cell ? scale.IndexOf(cell->levelId) : -1;
+        const std::string note = cell ? cell->note : std::string();
+        int next = backwards ? (current < 0 ? count - 1 : current - 1)
+                             : (current + 1 >= count ? -1 : current + 1);
+
+        std::string levelId;
+        if (next < 0) {
+            model.ClearCell(ref.panel, ref.row, ref.col);
+        } else {
+            levelId = scale.levels[static_cast<size_t>(next)].id;
+            if (!model.SetCellAt(ref.panel, ref.row, ref.col, levelId, note)) return false;
+        }
+        if (onCellEdited) onCellEdited(ref, levelId);
+        RequestRedraw();
+        return true;
+    }
+
+    void UltraCanvasMatrixDiagram::SelectCell(const MatrixRef& ref) {
+        if (ref == selected) return;
+        selected = ref;
+        if (onSelectionChanged) onSelectionChanged(selected);
+        KeepSelectionVisible();
+        RequestRedraw();
+    }
+
     void UltraCanvasMatrixDiagram::SetRollUp(MatrixRollUp presentation) {
         if (rollUp == presentation) return;
         rollUp = presentation;
         DropLayoutCache();
         RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::SetShowCompetitiveAssessment(bool on) {
+        if (showCompetitive == on) return;
+        showCompetitive = on;
+        RebuildLegend();
+        DropLayoutCache();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasMatrixDiagram::CompetitiveShown() const {
+        return showCompetitive && model.shape == MatrixShape::House && !model.competitors.empty();
     }
 
     void UltraCanvasMatrixDiagram::SetShowImportance(bool on) {
@@ -333,8 +418,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMatrixDiagram::ClearSelection() {
         if (!selected.IsValid()) return;
-        selected = MatrixRef();
-        RequestRedraw();
+        SelectCell(MatrixRef());
     }
 
     void UltraCanvasMatrixDiagram::SetLevelFilter(const std::string& levelId) {
@@ -374,6 +458,26 @@ namespace UltraCanvas {
                     case MatrixMarkShape::Triangle: entry.swatch = LegendSwatch::Marker; break;
                     case MatrixMarkShape::Disc:
                     default:                     entry.swatch = LegendSwatch::Circle; break;
+                }
+                entries.push_back(entry);
+            }
+        }
+
+        // The competitors of a House's assessment share the key: their marks
+        // are what the block is read by.
+        if (CompetitiveShown()) {
+            for (const MatrixCompetitor& competitor : model.competitors) {
+                ChartLegendEntry entry;
+                entry.id = "competitor:" + competitor.id;
+                entry.label = competitor.name.empty() ? competitor.id : competitor.name;
+                entry.color = competitor.color;
+                switch (competitor.mark) {
+                    case MatrixMarkShape::Ring:     entry.swatch = LegendSwatch::Ring;   break;
+                    case MatrixMarkShape::Square:
+                    case MatrixMarkShape::Cross:    entry.swatch = LegendSwatch::Square; break;
+                    case MatrixMarkShape::Triangle:
+                    case MatrixMarkShape::Diamond:  entry.swatch = LegendSwatch::Marker; break;
+                    default:                        entry.swatch = LegendSwatch::Circle; break;
                 }
                 entries.push_back(entry);
             }
@@ -705,7 +809,11 @@ namespace UltraCanvas {
         const double tgtH = anyTarget ? style.targetRowHeight : 0.0;
 
         const double gridLeft = area.x + axisTitleSpace + pl.rowLabels.width + impW;
-        const double room = area.x + area.width - gridLeft;
+        // The competitive block takes its width off the right before the cells
+        // are sized, and the rotated headers may not lean into it either.
+        const double compGap = 10.0;
+        const double compW = CompetitiveShown() ? style.competitiveWidth + compGap : 0.0;
+        const double room = area.x + area.width - gridLeft - compW;
         const double gridAvailW = room - (rowTotals ? style.totalsGutterSize : 0.0);
 
         // The roof's height is cols * w / 2, so capping it caps w.
@@ -759,6 +867,11 @@ namespace UltraCanvas {
         if (rowTotals) {
             pl.rowTotals = Rect2Dd(pl.grid.x + pl.grid.width, pl.grid.y,
                                    style.totalsGutterSize, pl.grid.height);
+        }
+        if (compW > 0.0) {
+            const double left = (rowTotals ? pl.rowTotals.x + pl.rowTotals.width : pl.grid.x + pl.grid.width)
+                                + compGap;
+            pl.competitive = Rect2Dd(left, pl.grid.y, style.competitiveWidth, pl.grid.height);
         }
         if (colTotals) {
             pl.colTotals = Rect2Dd(pl.grid.x, pl.grid.y + pl.grid.height + tgtH,
@@ -1333,6 +1446,7 @@ namespace UltraCanvas {
         }
 
         layout.content = area;
+        viewport.SetViewportSize(local.width, local.height);
 
         if (!model.panels.empty() && area.width > 0.0 && area.height > 0.0) {
             switch (model.shape) {
@@ -1393,6 +1507,12 @@ namespace UltraCanvas {
         // instead of painting over the legend below.
         ctx->PushState();
         ctx->ClipRect(layout.content);
+        // The view: identity unless pan and zoom have moved it. The clip above
+        // is in element space, so the matrix never zooms over the titles or
+        // the legend.
+        const Point2Dd pan = viewport.GetPanOffset();
+        ctx->Translate(pan.x, pan.y);
+        ctx->Scale(viewport.GetZoomLevel(), viewport.GetZoomLevel());
         if (model.shape == MatrixShape::X && layout.hub.width > 0.0) RenderHub(ctx);
         for (const PanelLayout& pl : layout.panels) {
             RenderPanel(ctx, pl);
@@ -1404,7 +1524,39 @@ namespace UltraCanvas {
                 RenderArmTitle(ctx, arm);
             }
         }
+
+        // The keyboard's cell: outlined while the diagram has the focus, so
+        // it is clear where the arrows will go.
+        if (selected.IsCell() && IsFocused()) {
+            if (const PanelLayout* pl = PanelAt(selected.panel)) {
+                if (CellExists(*pl, selected.row, selected.col)) {
+                    ctx->SetStrokePaint(style.markHighlightRing);
+                    ctx->SetStrokeWidth(2.0f / static_cast<float>(viewport.GetZoomLevel()));
+                    ctx->DrawLinePath(CellQuad(*pl, selected.row, selected.col, 1, 1), true);
+                }
+            }
+        }
         ctx->PopState();
+
+        if (panZoomEnabled) {
+            const DiagramContentBounds content(layout.content.x, layout.content.y,
+                                               layout.content.x + layout.content.width,
+                                               layout.content.y + layout.content.height);
+            if (viewport.IsMinimapVisible()) {
+                viewport.RenderMinimap(ctx, content, [this, ctx](const DiagramMinimapProjection& proj) {
+                    ctx->SetFillPaint(viewport.MinimapConfig().nodeColor);
+                    for (const PanelLayout& pl : layout.panels) {
+                        const Point2Dd a = proj.WorldToMinimap(pl.grid.x, pl.grid.y);
+                        const Point2Dd b = proj.WorldToMinimap(pl.grid.x + pl.grid.width,
+                                                               pl.grid.y + pl.grid.height);
+                        ctx->FillRectangle(Rect2Dd(a.x, a.y, b.x - a.x, b.y - a.y));
+                    }
+                });
+            }
+            if (viewport.AreControlsVisible()) {
+                viewport.RenderControls(ctx, hoveredControlButton, false);
+            }
+        }
     }
 
     void UltraCanvasMatrixDiagram::RenderTitles(IRenderContext* ctx) {
@@ -1436,6 +1588,7 @@ namespace UltraCanvas {
         RenderColumnLabels(ctx, pl);
         RenderTotals(ctx, pl);
         RenderHouseBands(ctx, pl);
+        RenderCompetitive(ctx, pl);
         if (showAxisTitles) RenderAxisTitles(ctx, pl);
     }
 
@@ -1966,6 +2119,115 @@ namespace UltraCanvas {
         }
     }
 
+    // The competitive assessment: a track per need from 1 to ratingMax, each
+    // competitor's rating a marker on it, and each competitor's markers
+    // joined row to row so the eye follows one product down the needs - the
+    // way a House of Quality is read. A gap in a competitor's ratings breaks
+    // its line rather than bridging it.
+    void UltraCanvasMatrixDiagram::RenderCompetitive(IRenderContext* ctx, const PanelLayout& pl) {
+        if (pl.competitive.width <= 0.0 || pl.rows == 0) return;
+        const MatrixItemSet* needs = model.RowSet(pl.panelIndex);
+        if (!needs) return;
+
+        const Rect2Dd& band = pl.competitive;
+        const double maxValue = std::max(1.0, model.ratingMax);
+        const double pad = style.ratingMarkerRadius + 4.0;
+        auto xOf = [&](double value) {
+            const double t = (maxValue > 1.0) ? (value - 1.0) / (maxValue - 1.0) : 0.5;
+            return band.x + pad + t * (band.width - pad * 2.0);
+        };
+        auto yOf = [&](int row) { return pl.grid.y + (row + 0.5) * pl.cellHeight; };
+
+        ctx->SetFillPaint(style.competitiveBackground);
+        ctx->FillRectangle(band);
+
+        // The hovered need lights up here as it does in the grid.
+        if (hovered.IsValid() && hovered.row >= 0 &&
+            model.panels[static_cast<size_t>(hovered.panel)].rowSetId ==
+                    model.panels[static_cast<size_t>(pl.panelIndex)].rowSetId &&
+            hovered.row < pl.rows) {
+            ctx->SetFillPaint(style.hoverBandColor);
+            ctx->FillRectangle(Rect2Dd(band.x, pl.grid.y + hovered.row * pl.cellHeight,
+                                       band.width, pl.cellHeight));
+        }
+
+        // One tick line per whole step, numbered above the block.
+        ctx->SetStrokePaint(style.competitiveTickColor);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->SetFontSize(style.totalsFontSize - 1.0f);
+        ctx->SetTextPaint(style.axisTitleColor);
+        const int steps = static_cast<int>(std::floor(maxValue));
+        for (int v = 1; v <= steps; ++v) {
+            const double x = xOf(v);
+            ctx->DrawLine(Point2Dd(x, band.y), Point2Dd(x, band.y + band.height));
+            const std::string label = std::to_string(v);
+            Size2Di s = ctx->GetTextLineDimensions(label);
+            ctx->DrawText(label, Point2Dd(x - s.width / 2.0, band.y - s.height - 3.0));
+        }
+        for (int r = 1; r < pl.rows; ++r) {
+            ctx->DrawLine(Point2Dd(band.x, pl.grid.y + r * pl.cellHeight),
+                          Point2Dd(band.x + band.width, pl.grid.y + r * pl.cellHeight));
+        }
+        ctx->SetStrokePaint(style.gridLineColor);
+        ctx->SetStrokeWidth(style.gridLineWidth);
+        ctx->DrawRectangle(band);
+
+        // The block's caption, above the numbers - wrapped rather than cut
+        // when the block is narrower than the words.
+        ctx->SetFontSize(style.axisTitleFontSize);
+        ctx->SetFontWeight(FontWeight::Bold);
+        ctx->SetTextPaint(style.axisTitleColor);
+        const std::vector<std::string> caption = WrapToLines(ctx, "Competitive assessment", band.width, 2);
+        const double captionLine = style.axisTitleFontSize * 1.3;
+        double cy = band.y - style.totalsFontSize * 1.3 - 8.0 - caption.size() * captionLine;
+        for (const std::string& line : caption) {
+            Size2Di cs = ctx->GetTextLineDimensions(line);
+            ctx->DrawText(line, Point2Dd(band.x + (band.width - cs.width) / 2.0, cy));
+            cy += captionLine;
+        }
+        ctx->SetFontWeight(FontWeight::Normal);
+
+        // Lines first, markers on top; a highlighted competitor last of all.
+        auto drawCompetitor = [&](const MatrixCompetitor& competitor, bool dimmed) {
+            Color line = competitor.color;
+            if (dimmed) line.a = static_cast<uint8_t>(line.a / 5);
+            ctx->SetStrokePaint(line);
+            ctx->SetStrokeWidth(style.competitiveLineWidth);
+            bool havePrev = false;
+            Point2Dd prev;
+            for (int r = 0; r < pl.rows && r < needs->Count(); ++r) {
+                double value = 0.0;
+                if (!model.RatingOf(needs->items[static_cast<size_t>(r)].id, competitor.id, value)) {
+                    havePrev = false;
+                    continue;
+                }
+                const Point2Dd at(xOf(value), yOf(r));
+                if (havePrev) ctx->DrawLine(prev, at);
+                prev = at;
+                havePrev = true;
+            }
+
+            MatrixLevel marker;
+            marker.shape = competitor.mark;
+            marker.color = competitor.color;
+            const double side = style.ratingMarkerRadius * 2.0 / std::max(0.05, style.markSize);
+            for (int r = 0; r < pl.rows && r < needs->Count(); ++r) {
+                double value = 0.0;
+                if (!model.RatingOf(needs->items[static_cast<size_t>(r)].id, competitor.id, value)) continue;
+                DrawMark(ctx, marker, Rect2Dd(xOf(value) - side / 2.0, yOf(r) - side / 2.0, side, side),
+                         dimmed);
+            }
+        };
+        for (const MatrixCompetitor& competitor : model.competitors) {
+            if (competitor.id == competitorFilter) continue;
+            drawCompetitor(competitor, !competitorFilter.empty());
+        }
+        if (!competitorFilter.empty()) {
+            const int at = model.IndexOfCompetitor(competitorFilter);
+            if (at >= 0) drawCompetitor(model.competitors[static_cast<size_t>(at)], false);
+        }
+    }
+
     // The column scores as a strip of bars - the QFD presentation of the
     // roll-up. Each column shows its bar, its score and its rank; the top
     // three ranks stand out in their own colour.
@@ -2178,8 +2440,16 @@ namespace UltraCanvas {
     }
 
     MatrixRef UltraCanvasMatrixDiagram::HitTest(const Point2Di& point) const {
-        const double px = static_cast<double>(point.x);
-        const double py = static_cast<double>(point.y);
+        // Only what is drawn can be hit: a zoomed matrix is clipped to the
+        // content area, so a point outside it is never a cell.
+        if (!layout.content.Contains(static_cast<double>(point.x), static_cast<double>(point.y))) {
+            return MatrixRef();
+        }
+        const Point2Dd world = viewport.ScreenToWorld(point);
+        return HitTestLayout(world.x, world.y);
+    }
+
+    MatrixRef UltraCanvasMatrixDiagram::HitTestLayout(double px, double py) const {
 
         for (const PanelLayout& pl : layout.panels) {
             if (pl.cellWidth <= 0.0 || pl.cellHeight <= 0.0) continue;
@@ -2207,7 +2477,9 @@ namespace UltraCanvas {
                     px >= pl.rowLabels.x && px < pl.rowLabels.x + pl.rowLabels.width;
             const bool inImportance = pl.importance.width > 0.0 &&
                     px >= pl.importance.x && px < pl.importance.x + pl.importance.width;
-            if (inGridY && (inRowLabels || inImportance)) {
+            const bool inCompetitive = pl.competitive.width > 0.0 &&
+                    px >= pl.competitive.x && px < pl.competitive.x + pl.competitive.width;
+            if (inGridY && (inRowLabels || inImportance || inCompetitive)) {
                 MatrixRef ref;
                 ref.panel = pl.panelIndex;
                 ref.row = std::clamp(static_cast<int>((py - pl.grid.y) / pl.cellHeight),
@@ -2267,11 +2539,90 @@ namespace UltraCanvas {
     bool UltraCanvasMatrixDiagram::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
+        const Point2Di point(event.pointer.x, event.pointer.y);
+
         switch (event.type) {
+            case UCEventType::KeyDown:
+                if (HandleKeyDown(event)) return true;
+                break;
+
+            case UCEventType::MouseWheel:
+                if (panZoomEnabled && layout.content.Contains(static_cast<double>(point.x),
+                                                              static_cast<double>(point.y))) {
+                    viewport.ZoomAtPoint(point, event.wheelDelta > 0 ? 1.1 : 1.0 / 1.1);
+                    RequestRedraw();
+                    return true;
+                }
+                break;
+
+            case UCEventType::MouseMove:
+                if (minimapDragging) {
+                    viewport.HandleMinimapDrag(point, DiagramContentBounds(
+                            layout.content.x, layout.content.y,
+                            layout.content.x + layout.content.width,
+                            layout.content.y + layout.content.height));
+                    RequestRedraw();
+                    return true;
+                }
+                if (panDragging) {
+                    viewport.PanBy(point.x - lastDragPoint.x, point.y - lastDragPoint.y);
+                    lastDragPoint = point;
+                    RequestRedraw();
+                    return true;
+                }
+                if (panZoomEnabled && viewport.AreControlsVisible()) {
+                    const int over = viewport.FindControlButtonAt(point);
+                    if (over != hoveredControlButton) {
+                        hoveredControlButton = over;
+                        RequestRedraw();
+                    }
+                }
+                break;
+
+            case UCEventType::MouseUp:
+                if (panDragging || minimapDragging) {
+                    panDragging = minimapDragging = false;
+                    return true;
+                }
+                break;
+
             case UCEventType::MouseDown: {
+                SetFocus(true);
+
+                // The middle button pans anywhere, as in the other diagrams.
+                if (panZoomEnabled && event.button == UCMouseButton::Middle) {
+                    panDragging = true;
+                    lastDragPoint = point;
+                    return true;
+                }
                 if (event.button != UCMouseButton::Left) break;
 
-                const Point2Di point(event.pointer.x, event.pointer.y);
+                if (panZoomEnabled && viewport.AreControlsVisible()) {
+                    const int button = viewport.FindControlButtonAt(point);
+                    if (button >= 0) {
+                        const DiagramContentBounds content(
+                                layout.content.x, layout.content.y,
+                                layout.content.x + layout.content.width,
+                                layout.content.y + layout.content.height);
+                        // "Fit" means the diagram as laid out, which already
+                        // fits its element - not the content stretched to the
+                        // whole element, which the clip would cut.
+                        if (viewport.ApplyControlButton(button, content) == DiagramControlButton::FitView) {
+                            ResetView();
+                        }
+                        RequestRedraw();
+                        return true;
+                    }
+                }
+                if (panZoomEnabled && viewport.IsMinimapVisible() && viewport.PointInMinimap(point)) {
+                    minimapDragging = true;
+                    viewport.HandleMinimapDrag(point, DiagramContentBounds(
+                            layout.content.x, layout.content.y,
+                            layout.content.x + layout.content.width,
+                            layout.content.y + layout.content.height));
+                    RequestRedraw();
+                    return true;
+                }
 
                 // A legend click filters the marks by level.
                 if (legend && legend->IsVisible()) {
@@ -2280,6 +2631,15 @@ namespace UltraCanvas {
                                      static_cast<double>(point.y)));
                     if (entry != SIZE_MAX && entry < legend->GetEntryCount()) {
                         const std::string& id = legend->GetEntry(entry).id;
+                        // A competitor's entry highlights its line in the
+                        // assessment; a level's filters the marks.
+                        if (id.rfind("competitor:", 0) == 0) {
+                            const std::string competitor = id.substr(11);
+                            competitorFilter = (competitorFilter == competitor) ? std::string() : competitor;
+                            legend->SetHighlightedEntry(competitorFilter.empty() ? SIZE_MAX : entry);
+                            RequestRedraw();
+                            return true;
+                        }
                         SetLevelFilter(levelFilter == id ? std::string() : id);
                         legend->SetHighlightedEntry(levelFilter.empty() ? SIZE_MAX : entry);
                         return true;
@@ -2287,10 +2647,26 @@ namespace UltraCanvas {
                 }
 
                 MatrixRef clicked = HitTest(point);
-                if (!clicked.IsValid()) break;
+                if (!clicked.IsValid()) {
+                    // Empty space: the start of a pan when that is on.
+                    if (panZoomEnabled && layout.content.Contains(static_cast<double>(point.x),
+                                                                  static_cast<double>(point.y))) {
+                        panDragging = true;
+                        lastDragPoint = point;
+                        return true;
+                    }
+                    break;
+                }
 
                 if (clicked.IsCell()) {
-                    selected = (clicked == selected) ? MatrixRef() : clicked;
+                    if (editable) {
+                        // An editor keeps the cell selected while it is
+                        // being stepped through its levels.
+                        SelectCell(clicked);
+                        CycleCell(clicked, event.shift);
+                    } else {
+                        SelectCell(clicked == selected ? MatrixRef() : clicked);
+                    }
                     if (onCellClick) onCellClick(clicked);
                 } else if (clicked.row >= 0 && onRowClick) {
                     const MatrixItemSet* rows = model.RowSet(clicked.panel);
@@ -2322,6 +2698,140 @@ namespace UltraCanvas {
         }
 
         return UltraCanvasChartElementBase::OnEvent(event);
+    }
+
+// =============================================================================
+// KEYBOARD
+// =============================================================================
+
+    bool UltraCanvasMatrixDiagram::CellExists(const PanelLayout& pl, int row, int col) const {
+        return row >= 0 && row < pl.rows && col >= 0 && col < pl.cols &&
+               (!pl.upperTriangle || col > row);
+    }
+
+    bool UltraCanvasMatrixDiagram::HandleKeyDown(const UCEvent& event) {
+        if (panZoomEnabled && (event.ctrl || event.meta)) {
+            switch (event.virtualKey) {
+                case UCKeys::Plus:
+                case UCKeys::Equal: ZoomViewIn();  return true;
+                case UCKeys::Minus: ZoomViewOut(); return true;
+                case UCKeys::Key0:  ResetView();   return true;
+                default: break;
+            }
+        }
+
+        switch (event.virtualKey) {
+            case UCKeys::Left:  return MoveSelection(-1.0, 0.0);
+            case UCKeys::Right: return MoveSelection(1.0, 0.0);
+            case UCKeys::Up:    return MoveSelection(0.0, -1.0);
+            case UCKeys::Down:  return MoveSelection(0.0, 1.0);
+            case UCKeys::Tab:   return SelectPanel(event.shift ? -1 : 1);
+
+            case UCKeys::Escape:
+                if (!selected.IsValid()) return false;
+                SelectCell(MatrixRef());
+                return true;
+
+            case UCKeys::Space:
+            case UCKeys::Return:        // the same code as UCKeys::Enter
+            case UCKeys::NumPadEnter:
+                if (!selected.IsCell()) return false;
+                if (editable) CycleCell(selected, event.shift);
+                if (onCellClick) onCellClick(selected);
+                return true;
+
+            case UCKeys::Delete:
+            case UCKeys::Backspace:
+                if (!editable || !selected.IsCell()) return false;
+                if (model.ClearCell(selected.panel, selected.row, selected.col)) {
+                    if (onCellEdited) onCellEdited(selected, std::string());
+                    RequestRedraw();
+                }
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    bool UltraCanvasMatrixDiagram::SelectPanel(int step) {
+        if (layout.panels.empty()) return false;
+        int at = -1;
+        for (size_t i = 0; i < layout.panels.size(); ++i) {
+            if (layout.panels[i].panelIndex == selected.panel) at = static_cast<int>(i);
+        }
+        const int n = static_cast<int>(layout.panels.size());
+        const int next = (at < 0) ? 0 : ((at + step) % n + n) % n;
+        const PanelLayout& pl = layout.panels[static_cast<size_t>(next)];
+
+        // The first cell that exists: (0, 0), or (0, 1) on a roof.
+        MatrixRef ref;
+        ref.panel = pl.panelIndex;
+        ref.row = 0;
+        ref.col = pl.upperTriangle ? 1 : 0;
+        if (!CellExists(pl, ref.row, ref.col)) return false;
+        SelectCell(ref);
+        return true;
+    }
+
+    // The arrow keys move on the screen, not in the model: a turned X
+    // quadrant's model rows run across, a Y panel's along a seam, a roof's
+    // at 45 degrees. So each of the four neighbours is scored by how far its
+    // step on screen goes the arrow's way, and the best one that exists wins.
+    bool UltraCanvasMatrixDiagram::MoveSelection(double dx, double dy) {
+        if (!selected.IsCell()) return SelectPanel(0);
+        const PanelLayout* pl = PanelAt(selected.panel);
+        if (!pl) return false;
+
+        struct Step { int dr; int dc; double score; };
+        Step steps[4] = {{1, 0, 0.0}, {-1, 0, 0.0}, {0, 1, 0.0}, {0, -1, 0.0}};
+        for (Step& s : steps) {
+            const Point2Dd v(s.dr * pl->rowStep.x + s.dc * pl->colStep.x,
+                             s.dr * pl->rowStep.y + s.dc * pl->colStep.y);
+            const double len = VecLength(v);
+            s.score = len > 0.0 ? (v.x * dx + v.y * dy) / len : 0.0;
+        }
+        // Stable, so a tie - a roof diamond has two neighbours equally "down" -
+        // always resolves the same way: the row step before the column step.
+        std::stable_sort(std::begin(steps), std::end(steps),
+                         [](const Step& a, const Step& b) { return a.score > b.score; });
+
+        for (const Step& s : steps) {
+            if (s.score <= 0.1) break;   // not this arrow's way at all
+            const int r = selected.row + s.dr, c = selected.col + s.dc;
+            if (!CellExists(*pl, r, c)) continue;
+            MatrixRef ref = selected;
+            ref.row = r;
+            ref.col = c;
+            SelectCell(ref);
+            return true;
+        }
+        return true;   // at the edge: the key is still ours, nothing moves
+    }
+
+    // When the keyboard walks off the visible part of a zoomed matrix, bring
+    // the cell back into view.
+    void UltraCanvasMatrixDiagram::KeepSelectionVisible() {
+        if (!panZoomEnabled || !selected.IsCell()) return;
+        const PanelLayout* pl = PanelAt(selected.panel);
+        if (!pl || !CellExists(*pl, selected.row, selected.col)) return;
+
+        const Point2Dd centre = LatticeAt(pl->origin, selected.row + 0.5, pl->rowStep,
+                                          selected.col + 0.5, pl->colStep);
+        const Point2Dd onScreen = viewport.WorldToScreenD(centre);
+        const double margin = 12.0;
+        if (onScreen.x < layout.content.x + margin ||
+            onScreen.x > layout.content.x + layout.content.width - margin ||
+            onScreen.y < layout.content.y + margin ||
+            onScreen.y > layout.content.y + layout.content.height - margin) {
+            // CenterOn centres on the element; shift by the content area's
+            // offset from it so the cell lands in the middle of the matrix.
+            viewport.CenterOn(centre.x, centre.y);
+            const Point2Dd pan = viewport.GetPanOffset();
+            viewport.SetPanOffset(
+                    pan.x + (layout.content.x + layout.content.width / 2.0) - viewport.GetViewportWidth() / 2.0,
+                    pan.y + (layout.content.y + layout.content.height / 2.0) - viewport.GetViewportHeight() / 2.0);
+        }
     }
 
 // =============================================================================
@@ -2429,6 +2939,16 @@ namespace UltraCanvas {
         } else if (ref.row >= 0 && ref.row < rows->Count()) {
             const MatrixItem& item = rows->items[static_cast<size_t>(ref.row)];
             out << item.label << "\ntotal " << FormatTotal(model.RowScore(ref.panel, ref.row));
+            // A need's ratings, when the House shows them.
+            if (ref.panel == 0 && CompetitiveShown()) {
+                for (const MatrixCompetitor& competitor : model.competitors) {
+                    double value = 0.0;
+                    if (model.RatingOf(item.id, competitor.id, value)) {
+                        out << "\n" << (competitor.name.empty() ? competitor.id : competitor.name)
+                            << " " << FormatFloatClassic(value, 3);
+                    }
+                }
+            }
             if (!item.note.empty()) out << "\n" << item.note;
         } else if (ref.col >= 0 && ref.col < cols->Count()) {
             const MatrixItem& item = cols->items[static_cast<size_t>(ref.col)];

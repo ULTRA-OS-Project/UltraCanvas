@@ -1,5 +1,46 @@
 # UltraCanvasAdjacencyDiagram Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [AdjacencyRoom](#adjacencyroom)
+  - [AdjacencyLink](#adjacencylink)
+  - [AdjacencyZone](#adjacencyzone)
+  - [AdjacencyDiagramStyle (selected fields)](#adjacencydiagramstyle-selected-fields)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Room API](#room-api)
+  - [Link API](#link-api)
+  - [Zone API](#zone-api)
+  - [Clear / View / Selection](#clear--view--selection)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Library branch — single-floor program](#library-branch-—-single-floor-program)
+  - [Adding direct, secondary, and service links](#adding-direct-secondary-and-service-links)
+  - [A floor zone wrapping all rooms](#a-floor-zone-wrapping-all-rooms)
+  - [Reporting selection through callbacks](#reporting-selection-through-callbacks)
+  - [Multi-floor villa — directed inter-floor circulation](#multi-floor-villa-—-directed-inter-floor-circulation)
+  - [Creating zones with a small helper lambda](#creating-zones-with-a-small-helper-lambda)
+  - [Office program — public and back-of-house zones](#office-program-—-public-and-back-of-house-zones)
+  - [Inspecting links on click](#inspecting-links-on-click)
+- [Render Order](#render-order)
+- [Manual Layout Notes](#manual-layout-notes)
+- [See Also](#see-also)
+- [The matrix view](#the-matrix-view)
+  - [Two axes: kind and priority](#two-axes-kind-and-priority)
+  - [Geometry](#geometry)
+  - [Ordering](#ordering)
+  - [Attribute columns](#attribute-columns)
+  - [Interaction](#interaction)
+  - [Legend](#legend)
+- [See also](#see-also-1)
+
 ## Overview
 
 **UltraCanvasAdjacencyDiagram** is an architectural space-planning adjacency diagram. Rooms are drawn as **area-proportional circles** colored by their functional type (Public, Private, Service, Support, Circulation, or a Custom override), adjacency requirements between rooms are drawn as solid (direct), dashed (secondary), or dotted (service) lines with optional arrowheads, and functional zones are drawn as dashed translucent bounding regions grouping related rooms (e.g. floors). Layout is fully manual — the designer iterates on spatial proximity by setting room x/y values directly.

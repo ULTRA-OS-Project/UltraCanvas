@@ -4,13 +4,15 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.6.0 - RequestDocumentPassword; OpenTextDocument and LoadTextDocument open
+//                  password-protected .docx files
 // Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
 //                  AddTextDocumentLoadTypes, SaveTextDocument, AddTextDocumentSaveTypes
 // Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -202,7 +204,9 @@ namespace UltraCanvas {
         // .md/.markdown parse as Markdown; anything
         // else readable as text becomes plain paragraphs. Legacy Word 97-2003
         // .doc files are detected and rejected with a clear loadError telling
-        // the user to convert to .docx. If the caller supplies no filters,
+        // the user to convert to .docx. A password-protected .docx asks for
+        // its password first (RequestDocumentPassword); cancelling that
+        // reports Cancel, like the file dialog. If the caller supplies no filters,
         // AddTextDocumentLoadTypes' are offered. On cancel, onResult fires
         // with dialogResult == Cancel and a null document; on parse failure,
         // loadError is populated and the document is null.
@@ -211,8 +215,24 @@ namespace UltraCanvas {
 
         // Dialog-free core of OpenTextDocument: parses filePath into a
         // UCRichDocument. Returns null and fills outError on failure.
+        // `password` opens a password-protected .docx (UCWordDocumentIO::Load).
         static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
-                                                                std::string& outError);
+                                                                std::string& outError,
+                                                                const std::string& password = std::string());
+
+        // ===== PASSWORD-PROTECTED DOCUMENTS =====
+        // Asks for the password of a password-protected Office file - an
+        // .xlsx, .docx or .pptx saved with "Encrypt with Password"
+        // (UltraCanvasOfficeEncryption.h) - and checks it before calling
+        // back, asking again with "The password is not correct" after a
+        // wrong one. onResult(true, password) once it is right, then load
+        // with it (UltraCanvasSpreadsheet::LoadFromFile, LoadTextDocument);
+        // onResult(false, "") when the user cancels. A file that needs no
+        // password - not encrypted, or encrypted in a way the loader will
+        // refuse with its own message - calls back at once with (true, "").
+        static void RequestDocumentPassword(const std::string& filePath,
+                                            UltraCanvasWindowBase* parent,
+                                            std::function<void(bool proceed, const std::string& password)> onResult);
         // The Open dialog's file types for a text document: one "Documents"
         // filter with every type LoadTextDocument reads (ODT, DOCX, DOC,
         // LaTeX, Markdown, plain text), then each under its name.

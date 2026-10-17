@@ -1,5 +1,43 @@
 # UltraCanvasMindMap Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Header Include](#header-include)
+- [Quick start](#quick-start)
+- [Structures](#structures)
+  - [Spacing](#spacing)
+  - [Alignment (the infographic look)](#alignment-the-infographic-look)
+  - [Per-branch structure](#per-branch-structure)
+  - [Animated re-layout](#animated-re-layout)
+  - [Manual placement](#manual-placement)
+- [Styling](#styling)
+  - [Style by level](#style-by-level)
+  - [Branch colour cascade](#branch-colour-cascade)
+  - [Per-topic override](#per-topic-override)
+  - [Shapes](#shapes)
+  - [Shadows, dimming and a background layer](#shadows-dimming-and-a-background-layer)
+  - [Themes](#themes)
+- [Connectors](#connectors)
+  - [Attachment and labels](#attachment-and-labels)
+  - [Connector badges](#connector-badges)
+- [Node content](#node-content)
+  - [Callout cards](#callout-cards)
+  - [Application data](#application-data)
+  - [Numbering](#numbering)
+- [Relationships](#relationships)
+- [Collapse and navigation](#collapse-and-navigation)
+- [Editing](#editing)
+  - [Keyboard](#keyboard)
+  - [Mouse](#mouse)
+  - [Clipboard](#clipboard)
+- [Exchange](#exchange)
+  - [Interchange formats](#interchange-formats)
+- [Callbacks](#callbacks)
+- [Working with the model directly](#working-with-the-model-directly)
+- [Performance notes](#performance-notes)
+- [Demo](#demo)
+
 ## Overview
 
 **UltraCanvasMindMap** is an interactive mind map element: a rooted topic tree on

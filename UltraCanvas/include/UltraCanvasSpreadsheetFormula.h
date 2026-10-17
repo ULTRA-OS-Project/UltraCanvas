@@ -438,6 +438,15 @@ public:
     // Get all functions
     std::vector<std::string> GetFunctionNames() const;
     std::vector<std::string> GetFunctionsByCategory(const std::string& category) const;
+
+    // The call as a user writes it, with the argument names Excel uses:
+    // "ROUND(number, num_digits)", "IF(logical_test, value_if_true,
+    // [value_if_false])", "SUM(number1, [number2], ...)". Empty for an
+    // unknown function.
+    std::string GetSignature(const std::string& name) const;
+    // The same, one string per argument ("number", "[num_digits]"), with
+    // "..." last when the function takes more arguments than it names.
+    std::vector<std::string> GetSignatureArguments(const std::string& name) const;
     
 private:
     // Register built-in functions
@@ -453,7 +462,18 @@ private:
     // lookups, conditional aggregation, rounding, statistics, character-wise
     // text functions, dates, IS* and the newer logical functions.
     void RegisterExcelFunctions();
+    // Gives every built-in function its argument names (one table, in
+    // UltraCanvasSpreadsheetFormulaFunctions.cpp); run after registration.
+    void ApplyArgumentNames();
 };
+
+// The function call the caret of a formula being typed is in: its name (upper
+// case) and the zero-based argument the caret is at. For "=ROUND(A1/B1, |"
+// that is ROUND and 1. Strings, quoted sheet names and array constants are
+// skipped; a bracket without a name before it (a group) belongs to the call
+// around it. False when the caret is in no call.
+bool FindFormulaCallAtCaret(const std::string& formula, size_t caret,
+                            std::string& functionName, int& argumentIndex);
 
 // ============================================================================
 // FORMULA EVALUATOR

@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include "../../../include/UltraCanvasPathUtf8.h"
+#include "UltraCanvasTextUtils.h"   // FormatFloatClassic
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -465,7 +466,7 @@ public:
         document_ = std::make_shared<ModelDocument>();
         document_->SourceFormat = "ms3d";
         document_->Metadata["ms3d.version"] = std::to_string(file.Version);
-        document_->Metadata["ms3d.framesPerSecond"] = std::to_string(file.FramesPerSecond);
+        document_->Metadata["ms3d.framesPerSecond"] = FormatFloatClassic(file.FramesPerSecond);
         document_->Metadata["ms3d.totalFrames"] = std::to_string(file.TotalFrames);
         if (!file.ModelComment.empty()) document_->Metadata["ms3d.comment"] = file.ModelComment;
         if (file.HasModelExtra && file.TransparencyMode != 0)

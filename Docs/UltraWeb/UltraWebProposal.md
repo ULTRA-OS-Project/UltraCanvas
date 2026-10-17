@@ -200,8 +200,10 @@ The build takes wasmtime's **prebuilt C-API release** through
 crate, so no Rust toolchain is needed where a prebuilt library exists. The
 library is Apache-2.0-WITH-LLVM-exception. The Windows CI builds use MSYS2
 CLANG64/CLANGARM64 (the `gnullvm` ABI), for which there is no prebuilt
-library. There, wasmtime's `c-api` crate has to be built with Corrosion, as
-the Vectorizer builds its crate for that ABI (§14, question 2).
+library. There the build compiles wasmtime's `c-api` crate from its source
+release (its crates vendored, so Cargo runs offline) with the native Rust
+toolchain the Vectorizer plugin already needs (done 2026-10-15, UltraWeb
+0.8.1; §14, question 2).
 
 **WAMR stays the fallback** for targets wasmtime does not reach (ULTRA OS on
 small devices, BSD); that is what the wrapper is for.
@@ -407,7 +409,8 @@ and the eBook viewer can later delegate to it.
   search URL template.
 - Tabs on `UltraCanvasTabbedContainer`, its strip above the toolbar and
   its pages in a detached content host (done in 0.7.0, with Ctrl+T,
-  Ctrl+W, Ctrl+Tab and Ctrl+L).
+  Ctrl+W, Ctrl+Tab and Ctrl+L; `target="_blank"` links open a new tab
+  since 0.8.0).
 - A status bar.
 - Keyboard: Ctrl+L, Ctrl+T, Ctrl+W, Ctrl+R / F5, Alt+Left / Alt+Right,
   Ctrl+F, and Ctrl+plus / minus / 0.
@@ -757,9 +760,9 @@ Done in UltraWeb 0.3.0 ([`UltraWeb.md`](UltraWeb.md#web-pages)):
 
 Next:
 - A history and bookmarks kept across runs, with the downloads list and
-  the open tabs; `target="_blank"` links in a new tab (downloads are done
-  since UltraWeb 0.5.0, a list of this run's since 0.6.0, both
-  2026-10-12, and tabs since 0.7.0, 2026-10-14).
+  the open tabs (downloads are done since UltraWeb 0.5.0, a list of this
+  run's since 0.6.0, both 2026-10-12, tabs since 0.7.0 and
+  `target="_blank"` links in a new tab since 0.8.0, both 2026-10-14).
 - (`@import`, inline elements' margins, padding, backgrounds and borders,
   and forms with file uploads and label clicks (§6.5) are done since
   2026-10-12.)

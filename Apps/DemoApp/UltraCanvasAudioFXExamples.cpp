@@ -762,7 +762,7 @@ namespace {
         sampleDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         sourceRow->AddChild(sampleDropdown);
 
-        auto uploadBtn = std::make_shared<UltraCanvasButton>("AudioFXUpload", 0, 0, 130, 30, "Upload audio…");
+        auto uploadBtn = std::make_shared<UltraCanvasButton>("AudioFXUpload", 0, 0, 130, 30, "Upload audio");
         uploadBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         sourceRow->AddChild(uploadBtn);
 

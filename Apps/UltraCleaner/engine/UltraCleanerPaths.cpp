@@ -1,4 +1,8 @@
 // Apps/UltraCleaner/engine/UltraCleanerPaths.cpp
+// The platform rules below are other programs' conventions, not the
+// framework's own data folder rule - UltraCleanerPaths.h says why.
+// Version: 0.65 - '\' is a separator on Windows only (IsSeparator, ToForwardSlashes)
+// Version: 0.1.1 - says why these are not the framework's data folder helpers
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerPaths.h"
@@ -27,10 +31,21 @@ std::string EnvOrEmpty(const char* name) {
     return UltraCanvas::GetEnvUtf8(name);
 }
 
+// '\' separates a path's parts on Windows only; on Linux and macOS it is a
+// character of a name, so "/home/u/.cache\x" - a file in the home folder -
+// must not become "/home/u/.cache/x", inside the cache.
+bool IsSeparator(char c) {
+#ifdef _WIN32
+    return c == '/' || c == '\\';
+#else
+    return c == '/';
+#endif
+}
+
 // Trailing separators make "inside" comparisons and joins awkward; strip them
 // (but never turn "/" or "C:/" into "").
 std::string StripTrailingSeparator(std::string path) {
-    while (path.size() > 1 && (path.back() == '/' || path.back() == '\\')) {
+    while (path.size() > 1 && IsSeparator(path.back())) {
         if (path.size() == 3 && path[1] == ':') break;   // "C:/"
         path.pop_back();
     }
@@ -38,7 +53,9 @@ std::string StripTrailingSeparator(std::string path) {
 }
 
 std::string ToForwardSlashes(std::string path) {
+#ifdef _WIN32
     std::replace(path.begin(), path.end(), '\\', '/');
+#endif
     return StripTrailingSeparator(std::move(path));
 }
 
@@ -350,9 +367,13 @@ std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern,
                 continue;
             }
             if (prefix.empty()) continue;   // a relative pattern cannot start with '*'
+            // `prefix` is UTF-8 text, so it goes through PathFromUtf8: handed
+            // over as it is, Windows read it in the ANSI code page and a
+            // folder named outside it (a Thai user name) listed nothing.
             std::error_code ec;
             std::filesystem::directory_iterator iterator(
-                prefix, std::filesystem::directory_options::skip_permission_denied, ec);
+                PathFromUtf8(prefix),
+                std::filesystem::directory_options::skip_permission_denied, ec);
             if (ec) {
                 if (refused && IsSystemRefusal(ec)) ++*refused;
                 continue;

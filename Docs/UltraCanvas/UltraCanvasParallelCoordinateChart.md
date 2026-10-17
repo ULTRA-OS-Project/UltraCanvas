@@ -1,5 +1,16 @@
 # UltraCanvasParallelCoordinateChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Reading the chart](#reading-the-chart)
+- [Basic usage](#basic-usage)
+- [Normalisation](#normalisation)
+- [Lines and colour](#lines-and-colour)
+- [Interaction](#interaction)
+- [Named properties](#named-properties)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 `UltraCanvasParallelCoordinateChartElement` renders multi-dimensional records

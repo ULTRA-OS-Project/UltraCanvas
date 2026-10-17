@@ -8,7 +8,9 @@ Quick pointers:
 - Module registry: `Masterfile_modules.md`
 - Component docs (consult before using any widget): `Docs/UltraCanvas/`
 - LLM-ready docs index: `llms.txt` (full corpus: `llms-full.txt`)
-- After editing docs, run `python3 scripts/generate_llms_txt.py`; after
+- After editing docs, run `python3 scripts/generate_doc_toc.py` (the
+  `## Contents` inventory of every demo-app doc) and then
+  `python3 scripts/generate_llms_txt.py`; after
   editing a component doc, `python3 scripts/check_doc_examples.py <doc>`
   compiles its C++ against the headers (CI runs it over every component doc
   and fails on any finding)

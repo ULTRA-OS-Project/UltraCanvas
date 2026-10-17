@@ -4,6 +4,36 @@
 struct CubeState { Color clearColor = Color(30, 30, 40, 255); bool spinning = true; float rotationX = 0.0f; float rotationY = 0.0f; float rotationSpeed = 1.0f; };
 unsigned int CreateShaderProgram(); void ClearFrame(const Color& color); void MatrixPerspective(float* m, float fovY, float aspect, float zNear, float zFar); void MatrixIdentity(float* m); void MatrixTranslate(float* m, float x, float y, float z); void MatrixRotateX(float* m, float angle); void MatrixRotateY(float* m, float angle); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [GLSurfaceConfig](#glsurfaceconfig)
+  - [Render modes](#render-modes)
+  - [Callbacks](#callbacks)
+  - [RenderSurfaceInfo](#rendersurfaceinfo)
+  - [Rendering control](#rendering-control)
+  - [Context access](#context-access)
+  - [Surface dimensions](#surface-dimensions)
+  - [Factory functions](#factory-functions)
+- [Events / Callbacks](#events--callbacks)
+- [The 3D Showcase Demo](#the-3d-showcase-demo)
+- [Usage Examples](#usage-examples)
+  - [Application state](#application-state)
+  - [Configuring and creating the surface](#configuring-and-creating-the-surface)
+  - [Init callback — create GL resources](#init-callback-—-create-gl-resources)
+  - [Render callback — draw each frame](#render-callback-—-draw-each-frame)
+  - [Cleanup callback — release GL resources](#cleanup-callback-—-release-gl-resources)
+  - [Driving rotation from UltraCanvas widgets](#driving-rotation-from-ultracanvas-widgets)
+  - [OnDemand rendering pattern](#ondemand-rendering-pattern)
+- [Compositing and Performance Notes](#compositing-and-performance-notes)
+- [Best Practices](#best-practices)
+- [Platform Notes](#platform-notes)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasGLSurface** is a UI element that hosts a real OpenGL rendering context inside the UltraCanvas widget tree. It owns an EGL/OpenGL context, renders to an offscreen framebuffer (FBO), and composites the result into the surrounding Cairo surface, letting hardware-accelerated 3D content live side-by-side with regular UltraCanvas widgets.
@@ -380,7 +410,11 @@ surface->RequestRender();
 ## Platform Notes
 
 - **Linux:** uses EGL on top of the X11/Wayland surface
-- **macOS:** uses the OpenGL framework via `#include <OpenGL/gl3.h>`
+- **macOS:** uses the OpenGL framework via `#include <OpenGL/gl3.h>` (CGL).
+  Apple has deprecated OpenGL since macOS 10.14, so the framework is looked
+  up only when `ULTRACANVAS_ENABLE_GL` is on. An SDK without it turns the GL
+  surface off with a warning, as a missing GLEW does on Windows, and a build
+  with `-DULTRACANVAS_ENABLE_GL=OFF` needs no OpenGL at all.
 - **Windows:** uses WGL/EGL depending on the build configuration
 
 ## See Also

@@ -1,5 +1,79 @@
 # UltraCanvasTextInput Control Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+  - [Core Capabilities](#core-capabilities)
+  - [Visual Features](#visual-features)
+- [Class Definition](#class-definition)
+  - [Header File Location](#header-file-location)
+  - [Namespace](#namespace)
+- [Constructor](#constructor)
+- [Input Types](#input-types)
+  - [TextInputType Enum](#textinputtype-enum)
+  - [Setting Input Type](#setting-input-type)
+- [Text Management](#text-management)
+  - [Basic Text Operations](#basic-text-operations)
+  - [Text Properties](#text-properties)
+  - [Text and UTF-8](#text-and-utf-8)
+- [Validation System](#validation-system)
+  - [ValidationRule Structure](#validationrule-structure)
+  - [Predefined Validation Rules](#predefined-validation-rules)
+  - [Using Validation](#using-validation)
+  - [ValidationResult Structure](#validationresult-structure)
+  - [Validation States](#validation-states)
+- [Text Formatting](#text-formatting)
+  - [TextFormatter Structure](#textformatter-structure)
+  - [Predefined Formatters](#predefined-formatters)
+  - [Using Formatters](#using-formatters)
+- [Selection and Cursor Management](#selection-and-cursor-management)
+  - [Selection Operations](#selection-operations)
+  - [Clipboard](#clipboard)
+  - [Cursor Operations](#cursor-operations)
+- [Event Handling](#event-handling)
+  - [Keyboard Events](#keyboard-events)
+  - [Mouse Events](#mouse-events)
+  - [Input Method Composition](#input-method-composition)
+  - [Event Callbacks](#event-callbacks)
+- [Styling System](#styling-system)
+  - [TextInputStyle Structure](#textinputstyle-structure)
+  - [Predefined Styles](#predefined-styles)
+  - [Applying Styles](#applying-styles)
+- [Undo/Redo System](#undoredo-system)
+  - [Operations](#operations)
+- [Clear Button](#clear-button)
+- [Auto-completion](#auto-completion)
+- [Password Reveal ("Show Password")](#password-reveal-show-password)
+  - [In-field eye button](#in-field-eye-button)
+  - [Explicit "Show password" flag](#explicit-show-password-flag)
+  - [API](#api)
+- [Factory Functions](#factory-functions)
+  - [Convenience Creation Functions](#convenience-creation-functions)
+- [Builder Pattern](#builder-pattern)
+  - [TextInputBuilder](#textinputbuilder)
+- [Usage Examples](#usage-examples)
+  - [Basic Text Input](#basic-text-input)
+  - [Email Input with Validation](#email-input-with-validation)
+  - [Password Input](#password-input)
+  - [Phone Number Input](#phone-number-input)
+  - [Search Field](#search-field)
+  - [Custom Validation](#custom-validation)
+- [Performance Considerations](#performance-considerations)
+  - [Text Width Caching](#text-width-caching)
+  - [Scrolling for Long Text](#scrolling-for-long-text)
+  - [Event Optimization](#event-optimization)
+- [Thread Safety](#thread-safety)
+- [Integration with UltraCanvas Framework](#integration-with-ultracanvas-framework)
+  - [Rendering System](#rendering-system)
+  - [Event System](#event-system)
+  - [Focus Management](#focus-management)
+- [Best Practices](#best-practices)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+- [Version History](#version-history)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options. It is a single-line field; for multi-line text use `UltraCanvasTextArea`.
@@ -17,7 +91,7 @@
 - **Undo/Redo**: Undo/redo stack holding the last 50 states
 - **Selection Management**: Text selection with keyboard and mouse support
 - **Clipboard**: Copy, cut and paste from the keyboard or from code
-- **Clear Button**: Optional in-field button that empties the field
+- **Clear Button**: Optional in-field button that empties the field - a cross, or a word such as "Reset"
 - **Placeholder Text**: Contextual hints when field is empty
 - **Read-only Mode**: Disable editing while maintaining visual presentation
 - **UTF-8 Text**: Every position the field keeps is a character boundary, so accented, umlauted and non-Latin text edits like any other (see [Text and UTF-8](#text-and-utf-8))
@@ -78,7 +152,7 @@ enum class TextInputType {
     Time,          // Time input
     DateTime,      // Combined date and time
     URL,           // URL with validation
-    Search,        // Search field with clear button
+    Search,        // Search field: shows the clear button
     Custom         // Custom validation rules
 };
 ```
@@ -689,6 +763,38 @@ When on, a small button at the right of the field empties it. It is shown only
 while the field has text and is not read-only. Clicking it saves an undo state,
 clears the text and calls `onTextChanged` and then `onCleared`.
 
+`SetInputType(TextInputType::Search)` turns it on, and changing the type away
+from `Search` turns it off again - unless it was on before, or the caller
+switched it with `SetShowClearButton`, which is always the caller's own choice.
+
+The button is part of the text input; nothing is placed over the field. It is
+a cross by default. `SetClearButtonText` puts a word on it instead - "Reset",
+"Clear" - and it becomes a small button inside the right end of the field, as
+wide as the word, in a font a little smaller than the field's. It behaves as
+the cross does; an empty text puts the cross back.
+
+```cpp
+void SetClearButtonText(const std::string& text);
+const std::string& GetClearButtonText() const;
+```
+
+<!-- doc-check:
+std::shared_ptr<UltraCanvasTreeView> tree;
+-->
+```cpp
+// A filter field: "Reset" inside it empties the field and ends the filter.
+auto filter = std::make_shared<UltraCanvasTextInput>("Filter", 10, 10, 300, 30);
+filter->SetPlaceholder("Filter components");
+filter->SetShowClearButton(true);
+filter->SetClearButtonText("Reset");
+filter->onTextChanged = [tree](const std::string& text) { tree->SetFilterText(text); };
+filter->onCleared = []() { /* the field was emptied by its button */ };
+```
+
+The DemoApp's *Text Input* page shows both, the cross and "Reset", and the
+demo's component tree has such a filter field over it
+(see [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md#filtering)).
+
 ## Auto-completion
 
 `UltraCanvasTextInput` has no suggestion list of its own. The header declares an
@@ -881,9 +987,8 @@ phoneInput->SetFormatter(TextFormatter::Phone());
 ```cpp
 auto searchInput = std::make_shared<UltraCanvasTextInput>(
     "search", 50, 250, 250, 35);
-searchInput->SetInputType(TextInputType::Search);
+searchInput->SetInputType(TextInputType::Search);   // shows the clear button
 searchInput->SetPlaceholder("Search...");
-searchInput->SetShowClearButton(true);
 searchInput->onEnterPressed = [](const std::string& query) {
     std::cerr << "Search for: " << query << std::endl;
     return true;

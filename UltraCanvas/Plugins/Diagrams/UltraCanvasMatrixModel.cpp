@@ -1,5 +1,7 @@
 // Plugins/Diagrams/UltraCanvasMatrixModel.cpp
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.4.0 - competitive assessment: competitors and their per-need ratings
+// Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
 // Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
@@ -8,6 +10,7 @@
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
 #include "UltraCanvasTextUtils.h"
+#include "DataFormats/UltraCanvasJSON.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -462,6 +465,34 @@ namespace UltraCanvas {
             }
         }
 
+        // The competitive assessment rates the needs - panel 0's rows - so
+        // every rating must name one of them and a competitor that exists.
+        for (size_t a = 0; a < competitors.size(); ++a) {
+            if (competitors[a].id.empty()) fail("competitor " + std::to_string(a) + " has an empty id");
+            for (size_t b = a + 1; b < competitors.size(); ++b) {
+                if (competitors[a].id == competitors[b].id) {
+                    fail("competitor id '" + competitors[a].id + "' appears twice");
+                }
+            }
+        }
+        if (!ratings.empty() && !(ratingMax >= 1.0)) fail("ratingMax must be at least 1");
+        {
+            const MatrixItemSet* needs = RowSet(0);
+            for (size_t r = 0; r < ratings.size(); ++r) {
+                const MatrixRating& rating = ratings[r];
+                const std::string where = "rating " + std::to_string(r);
+                if (!needs || needs->IndexOf(rating.itemId) < 0) {
+                    fail(where + " rates '" + rating.itemId + "', which is not a row of panel 0");
+                }
+                if (IndexOfCompetitor(rating.competitorId) < 0) {
+                    fail(where + " names unknown competitor '" + rating.competitorId + "'");
+                }
+                if (!(rating.value >= 1.0 && rating.value <= ratingMax)) {
+                    fail(where + " is outside 1.." + FormatFloatClassic(ratingMax, 3));
+                }
+            }
+        }
+
         for (size_t c = 0; c < cells.size(); ++c) {
             const MatrixCell& cell = cells[c];
             const std::string where = "cell " + std::to_string(c);
@@ -510,6 +541,58 @@ namespace UltraCanvas {
         panels.clear();
         cells.clear();
         headerFields.clear();
+        competitors.clear();
+        ratings.clear();
+        ratingMax = 5.0;
+    }
+
+// =============================================================================
+// MODEL - COMPETITIVE ASSESSMENT
+// =============================================================================
+
+    MatrixCompetitor& MatrixModel::AddCompetitor(const std::string& id, const std::string& name,
+                                                 const Color& color, MatrixMarkShape mark) {
+        competitors.emplace_back(id, name, color, mark);
+        return competitors.back();
+    }
+
+    int MatrixModel::IndexOfCompetitor(const std::string& id) const {
+        for (size_t i = 0; i < competitors.size(); ++i) {
+            if (competitors[i].id == id) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    bool MatrixModel::SetRating(const std::string& itemId, const std::string& competitorId,
+                                double value) {
+        const MatrixItemSet* needs = RowSet(0);
+        if (!needs || needs->IndexOf(itemId) < 0) return false;
+        if (IndexOfCompetitor(competitorId) < 0) return false;
+        if (!(value >= 1.0 && value <= ratingMax)) return false;   // also refuses NaN
+
+        for (MatrixRating& rating : ratings) {
+            if (rating.itemId == itemId && rating.competitorId == competitorId) {
+                rating.value = value;
+                return true;
+            }
+        }
+        ratings.push_back({itemId, competitorId, value});
+        return true;
+    }
+
+    bool MatrixModel::RatingOf(const std::string& itemId, const std::string& competitorId,
+                               double& value) const {
+        for (const MatrixRating& rating : ratings) {
+            if (rating.itemId == itemId && rating.competitorId == competitorId) {
+                value = rating.value;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void MatrixModel::ClearRatings() {
+        ratings.clear();
     }
 
 // =============================================================================
@@ -778,6 +861,312 @@ namespace UltraCanvas {
         }
         out = model;
         return true;
+    }
+
+// =============================================================================
+// JSON
+// =============================================================================
+
+    namespace {
+
+        const char* kMatrixFormat = "ultracanvas-matrix";
+        const int64_t kMatrixFormatVersion = 1;
+
+        // Enum names as they appear in a file. The tables are the single
+        // source for both directions, so a name can never round-trip wrong.
+        const std::pair<MatrixShape, const char*> kShapeNames[] = {
+                {MatrixShape::L, "L"}, {MatrixShape::T, "T"}, {MatrixShape::Y, "Y"},
+                {MatrixShape::X, "X"}, {MatrixShape::House, "House"}};
+        const std::pair<MatrixMarkShape, const char*> kMarkNames[] = {
+                {MatrixMarkShape::Disc, "disc"}, {MatrixMarkShape::Ring, "ring"},
+                {MatrixMarkShape::Triangle, "triangle"}, {MatrixMarkShape::Square, "square"},
+                {MatrixMarkShape::Diamond, "diamond"}, {MatrixMarkShape::Cross, "cross"},
+                {MatrixMarkShape::Text, "text"}};
+        const std::pair<MatrixImprovement, const char*> kImprovementNames[] = {
+                {MatrixImprovement::NoDirection, "none"}, {MatrixImprovement::Maximize, "maximize"},
+                {MatrixImprovement::Minimize, "minimize"}, {MatrixImprovement::Target, "target"}};
+
+        template <typename E, size_t N>
+        const char* NameOf(const std::pair<E, const char*> (&table)[N], E value) {
+            for (const auto& entry : table) if (entry.first == value) return entry.second;
+            return table[0].second;
+        }
+
+        template <typename E, size_t N>
+        bool ValueOf(const std::pair<E, const char*> (&table)[N], const std::string& name, E& out) {
+            for (const auto& entry : table) {
+                if (name == entry.second) { out = entry.first; return true; }
+            }
+            return false;
+        }
+
+        // Set a member only when it says something: an empty string, a
+        // default number or a transparent colour is left out of the file.
+        void SetText(JSONValue& object, const char* key, const std::string& text) {
+            if (!text.empty()) object.Set(key, text);
+        }
+
+    } // namespace
+
+    JSONValue MatrixModelToJson(const MatrixModel& model) {
+        JSONValue doc = JSONValue::MakeObject();
+        doc.Set("format", kMatrixFormat);
+        doc.Set("version", kMatrixFormatVersion);
+        SetText(doc, "title", model.title);
+        SetText(doc, "subtitle", model.subtitle);
+        doc.Set("shape", NameOf(kShapeNames, model.shape));
+
+        if (!model.headerFields.empty()) {
+            JSONValue header = JSONValue::MakeArray();
+            for (const MatrixHeaderField& field : model.headerFields) {
+                header.Append(JSONValue::MakeObject().Set("label", field.label).Set("value", field.value));
+            }
+            doc.Set("header", header);
+        }
+
+        JSONValue sets = JSONValue::MakeArray();
+        for (const MatrixItemSet& set : model.sets) {
+            JSONValue s = JSONValue::MakeObject();
+            s.Set("id", set.id);
+            SetText(s, "title", set.title);
+            s.Set("accent", JSON::FromColor(set.accent));
+            JSONValue items = JSONValue::MakeArray();
+            for (const MatrixItem& item : set.items) {
+                JSONValue i = JSONValue::MakeObject();
+                i.Set("id", item.id);
+                if (item.label != item.id) i.Set("label", item.label);
+                if (item.importance != 1.0) i.Set("importance", item.importance);
+                if (item.accent.a != 0) i.Set("accent", JSON::FromColor(item.accent));
+                SetText(i, "note", item.note);
+                if (item.improvement != MatrixImprovement::NoDirection) {
+                    i.Set("improvement", NameOf(kImprovementNames, item.improvement));
+                }
+                SetText(i, "target", item.target);
+                items.Append(i);
+            }
+            s.Set("items", items);
+            sets.Append(s);
+        }
+        doc.Set("sets", sets);
+
+        JSONValue panels = JSONValue::MakeArray();
+        for (const MatrixPanel& panel : model.panels) {
+            JSONValue p = JSONValue::MakeObject();
+            p.Set("rows", panel.rowSetId);
+            p.Set("columns", panel.colSetId);
+            if (panel.symmetric) p.Set("symmetric", true);
+
+            JSONValue scale = JSONValue::MakeObject();
+            SetText(scale, "title", panel.scale.title);
+            JSONValue levels = JSONValue::MakeArray();
+            for (const MatrixLevel& level : panel.scale.levels) {
+                JSONValue l = JSONValue::MakeObject();
+                l.Set("id", level.id);
+                SetText(l, "label", level.label);
+                SetText(l, "glyph", level.glyph);
+                l.Set("shape", NameOf(kMarkNames, level.shape));
+                l.Set("color", JSON::FromColor(level.color));
+                l.Set("weight", level.weight);
+                if (level.sizeScale != 1.0) l.Set("size", level.sizeScale);
+                levels.Append(l);
+            }
+            scale.Set("levels", levels);
+            p.Set("scale", scale);
+            panels.Append(p);
+        }
+        doc.Set("panels", panels);
+
+        JSONValue cells = JSONValue::MakeArray();
+        for (const MatrixCell& cell : model.cells) {
+            const MatrixItemSet* rows = model.RowSet(cell.panel);
+            const MatrixItemSet* cols = model.ColSet(cell.panel);
+            if (!rows || !cols || cell.row < 0 || cell.row >= rows->Count() ||
+                cell.col < 0 || cell.col >= cols->Count()) {
+                continue;   // a dangling cell has no ids to write
+            }
+            JSONValue c = JSONValue::MakeObject();
+            c.Set("panel", static_cast<int64_t>(cell.panel));
+            c.Set("row", rows->items[static_cast<size_t>(cell.row)].id);
+            c.Set("column", cols->items[static_cast<size_t>(cell.col)].id);
+            c.Set("level", cell.levelId);
+            SetText(c, "note", cell.note);
+            cells.Append(c);
+        }
+        doc.Set("cells", cells);
+
+        if (!model.competitors.empty()) {
+            JSONValue competitors = JSONValue::MakeArray();
+            for (const MatrixCompetitor& c : model.competitors) {
+                competitors.Append(JSONValue::MakeObject()
+                        .Set("id", c.id).Set("name", c.name)
+                        .Set("color", JSON::FromColor(c.color))
+                        .Set("mark", NameOf(kMarkNames, c.mark)));
+            }
+            doc.Set("competitors", competitors);
+            if (model.ratingMax != 5.0) doc.Set("ratingMax", model.ratingMax);
+            JSONValue ratings = JSONValue::MakeArray();
+            for (const MatrixRating& r : model.ratings) {
+                ratings.Append(JSONValue::MakeObject()
+                        .Set("item", r.itemId).Set("competitor", r.competitorId).Set("value", r.value));
+            }
+            doc.Set("ratings", ratings);
+        }
+        return doc;
+    }
+
+    std::string ExportMatrixJson(const MatrixModel& model, bool pretty) {
+        JSONSerializeOptions options;
+        options.pretty = pretty;
+        options.indentWidth = 2;
+        return JSON::Serialize(MatrixModelToJson(model), options);
+    }
+
+    bool MatrixModelFromJson(const JSONValue& json, MatrixModel& out, std::string* error) {
+        auto failWith = [error](const std::string& message) {
+            if (error) *error = message;
+            return false;
+        };
+
+        if (!json.IsObject()) return failWith("the document is not a JSON object");
+        if (json.Get("format").GetString() != kMatrixFormat) {
+            return failWith("not a matrix diagram (format is not \"" + std::string(kMatrixFormat) + "\")");
+        }
+        const int64_t version = json.Get("version").GetInteger(0);
+        if (version < 1 || version > kMatrixFormatVersion) {
+            return failWith("format version " + std::to_string(version) + " is not one this build reads");
+        }
+
+        MatrixModel model;
+        model.title = json.Get("title").GetString();
+        model.subtitle = json.Get("subtitle").GetString();
+        const std::string shapeName = json.Get("shape").GetString("L");
+        if (!ValueOf(kShapeNames, shapeName, model.shape)) {
+            return failWith("unknown shape '" + shapeName + "'");
+        }
+
+        for (const JSONValue& field : json.Get("header").GetElements()) {
+            model.headerFields.emplace_back(field.Get("label").GetString(), field.Get("value").GetString());
+        }
+
+        for (const JSONValue& s : json.Get("sets").GetElements()) {
+            MatrixItemSet set(s.Get("id").GetString(), s.Get("title").GetString());
+            if (set.id.empty()) return failWith("a set has no id");
+            if (s.Contains("accent") && !JSON::ToColor(s.Get("accent"), set.accent)) {
+                return failWith("set '" + set.id + "' has an unreadable accent colour");
+            }
+            for (const JSONValue& i : s.Get("items").GetElements()) {
+                MatrixItem item;
+                item.id = i.Get("id").GetString();
+                item.label = i.Get("label").GetString(item.id);
+                if (item.id.empty()) item.id = item.label;
+                if (item.id.empty()) return failWith("set '" + set.id + "' has an item with no id or label");
+                item.importance = i.Get("importance").GetNumber(1.0);
+                if (i.Contains("accent")) JSON::ToColor(i.Get("accent"), item.accent);
+                item.note = i.Get("note").GetString();
+                item.target = i.Get("target").GetString();
+                const std::string improvement = i.Get("improvement").GetString("none");
+                if (!ValueOf(kImprovementNames, improvement, item.improvement)) {
+                    return failWith("item '" + item.id + "' has an unknown improvement '" + improvement + "'");
+                }
+                set.items.push_back(item);
+            }
+            model.sets.push_back(set);
+        }
+
+        for (const JSONValue& p : json.Get("panels").GetElements()) {
+            MatrixPanel panel;
+            panel.rowSetId = p.Get("rows").GetString();
+            panel.colSetId = p.Get("columns").GetString();
+            panel.symmetric = p.Get("symmetric").GetBoolean(false);
+            const JSONValue& scale = p.Get("scale");
+            panel.scale.title = scale.Get("title").GetString();
+            for (const JSONValue& l : scale.Get("levels").GetElements()) {
+                MatrixLevel level;
+                level.id = l.Get("id").GetString();
+                if (level.id.empty()) return failWith("a scale level has no id");
+                level.label = l.Get("label").GetString();
+                level.glyph = l.Get("glyph").GetString();
+                const std::string shape = l.Get("shape").GetString("disc");
+                if (!ValueOf(kMarkNames, shape, level.shape)) {
+                    return failWith("level '" + level.id + "' has an unknown shape '" + shape + "'");
+                }
+                if (l.Contains("color") && !JSON::ToColor(l.Get("color"), level.color)) {
+                    return failWith("level '" + level.id + "' has an unreadable colour");
+                }
+                level.weight = l.Get("weight").GetNumber(1.0);
+                level.sizeScale = l.Get("size").GetNumber(1.0);
+                panel.scale.levels.push_back(level);
+            }
+            model.panels.push_back(panel);
+        }
+
+        // Cells go in through SetCell, so an unknown item or level is caught
+        // here rather than stored, and a symmetric pair lands above the
+        // diagonal whichever way round the file wrote it.
+        const std::vector<JSONValue>& cells = json.Get("cells").GetElements();
+        for (size_t n = 0; n < cells.size(); ++n) {
+            const JSONValue& c = cells[n];
+            const int panel = static_cast<int>(c.Get("panel").GetInteger(0));
+            const std::string row = c.Get("row").GetString();
+            const std::string col = c.Get("column").GetString();
+            const std::string level = c.Get("level").GetString();
+            if (!model.SetCell(panel, row, col, level)) {
+                return failWith("cell " + std::to_string(n) + " (" + row + " x " + col + " = " + level
+                                + ") names a panel, item or level that does not exist");
+            }
+            const std::string note = c.Get("note").GetString();
+            if (!note.empty()) {
+                const MatrixItemSet* rows = model.RowSet(panel);
+                const MatrixItemSet* colSet = model.ColSet(panel);
+                model.SetCellAt(panel, rows->IndexOf(row), colSet->IndexOf(col), level, note);
+            }
+        }
+
+        model.ratingMax = json.Get("ratingMax").GetNumber(5.0);
+        for (const JSONValue& c : json.Get("competitors").GetElements()) {
+            MatrixCompetitor competitor;
+            competitor.id = c.Get("id").GetString();
+            competitor.name = c.Get("name").GetString(competitor.id);
+            if (c.Contains("color") && !JSON::ToColor(c.Get("color"), competitor.color)) {
+                return failWith("competitor '" + competitor.id + "' has an unreadable colour");
+            }
+            const std::string mark = c.Get("mark").GetString("disc");
+            if (!ValueOf(kMarkNames, mark, competitor.mark)) {
+                return failWith("competitor '" + competitor.id + "' has an unknown mark '" + mark + "'");
+            }
+            model.competitors.push_back(competitor);
+        }
+        for (const JSONValue& r : json.Get("ratings").GetElements()) {
+            const std::string item = r.Get("item").GetString();
+            const std::string competitor = r.Get("competitor").GetString();
+            const double value = r.Get("value").GetNumber(0.0);
+            if (!model.SetRating(item, competitor, value)) {
+                return failWith("rating of '" + item + "' for '" + competitor + "' ("
+                                + FormatFloatClassic(value, 3) + ") names an unknown need or "
+                                "competitor, or lies outside 1.." + FormatFloatClassic(model.ratingMax, 3));
+            }
+        }
+
+        const MatrixValidation validation = model.Validate();
+        if (!validation.valid) {
+            return failWith(validation.errors.empty() ? std::string("the model does not validate")
+                                                      : validation.errors.front());
+        }
+        out = model;
+        return true;
+    }
+
+    bool ImportMatrixJson(const std::string& text, MatrixModel& out, std::string* error) {
+        JSONParseResult parsed;
+        const JSONValue json = JSON::Parse(text, &parsed);
+        if (!parsed.success) {
+            if (error) {
+                *error = "not valid JSON: " + parsed.errorMessage + " at line "
+                         + std::to_string(parsed.errorLine) + ", column " + std::to_string(parsed.errorColumn);
+            }
+            return false;
+        }
+        return MatrixModelFromJson(json, out, error);
     }
 
 // =============================================================================
@@ -1084,6 +1473,26 @@ namespace UltraCanvas {
                 {"Lighting output",  "Lock mounting",     "positive"},
             };
             for (const Pair& pair : pairs) model.SetCell(1, pair.a, pair.b, pair.level);
+
+            // How commuters rate this bicycle and two rivals on each need,
+            // 1 (poor) to 5 (excellent): the gaps the requirements must close.
+            model.AddCompetitor("ours",    "Our bicycle",    Color( 40,  44,  52, 255), MatrixMarkShape::Disc);
+            model.AddCompetitor("cruiser", "City Cruiser X", Color(214, 110,  40, 255), MatrixMarkShape::Square);
+            model.AddCompetitor("urban",   "Urban Pro",      Color( 60, 120, 200, 255), MatrixMarkShape::Triangle);
+            struct Rating { const char* need; double ours, cruiser, urban; };
+            static const Rating ratings[] = {
+                {"light",    2, 4, 3},
+                {"comfort",  4, 3, 4},
+                {"safe",     3, 3, 5},
+                {"weather",  2, 4, 3},
+                {"lowmaint", 3, 2, 4},
+                {"secure",   4, 3, 2},
+            };
+            for (const Rating& r : ratings) {
+                model.SetRating(r.need, "ours", r.ours);
+                model.SetRating(r.need, "cruiser", r.cruiser);
+                model.SetRating(r.need, "urban", r.urban);
+            }
             return model;
         }
 

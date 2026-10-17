@@ -7,6 +7,8 @@
 //
 // Builds without the UI stack (the parser, the style resolver, the model and
 // the editing core are all UI-free), so it needs no display.
+// Version: 1.3.0 - ToHTML writes a run's font size dot-decimal under a
+//                  comma-decimal locale
 // Version: 1.2.0 - Word list paragraphs; the newlines of a <pre>
 // Version: 1.1.0 - dir="rtl", preAsCodeBlock, skipWordListLabels
 // Version: 1.0.0
@@ -15,6 +17,7 @@
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasTextUtils.h"
 
+#include <clocale>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -513,6 +516,42 @@ static void TestPreNewlines() {
     }
 }
 
+// A run's font size goes into the HTML as CSS, and CSS numbers are
+// dot-decimal. ToHTML wrote it with std::to_string, which renders through
+// LC_NUMERIC - and the Linux backend sets that from the desktop - so on a
+// German or French desktop a 24.5 pt run came out as "24,500000pt", which no
+// CSS reader takes: pasted, mailed or read back it lost its size. Skipped where
+// the C library has no comma-decimal locale installed (a bare CI image often
+// has only "C"), rather than failing for a missing locale.
+static void TestFontSizeIgnoresLocale() {
+    const char* original = std::setlocale(LC_NUMERIC, nullptr);
+    const std::string saved = original ? original : "C";
+    const char* commaLocale = nullptr;
+    for (const char* candidate : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "de_DE"}) {
+        if (std::setlocale(LC_NUMERIC, candidate)) { commaLocale = candidate; break; }
+    }
+    if (!commaLocale) {
+        std::cout << "SKIP TestFontSizeIgnoresLocale: no comma-decimal locale installed\n";
+        return;
+    }
+
+    UCRichDocument doc;
+    RichDocBlock block;
+    RichTextRun run;
+    run.text = "sized";
+    run.fontSizePt = 24.5f;
+    block.runs.push_back(run);
+    doc.blocks.push_back(block);
+    const std::string html = doc.ToHTML();
+    CHECK(Contains(html, "font-size:24.5pt;"));
+    CHECK(!Contains(html, "24,5"));
+    UCRichDocument back = ImportHTMLToRichDocument(html);
+    CHECK(!back.blocks.empty() && !back.blocks[0].runs.empty() &&
+          back.blocks[0].runs[0].fontSizePt > 24.4f && back.blocks[0].runs[0].fontSizePt < 24.6f);
+
+    std::setlocale(LC_NUMERIC, saved.c_str());
+}
+
 int main() {
     TestParagraphsAndRuns();
     TestLineBreaksAndDivs();
@@ -528,6 +567,7 @@ int main() {
     TestDirectionAndPasteOptions();
     TestWordLists();
     TestPreNewlines();
+    TestFontSizeIgnoresLocale();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

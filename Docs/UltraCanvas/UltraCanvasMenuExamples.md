@@ -2,6 +2,50 @@
 
 <!-- doc-check: void OpenWithDefaultApplication(); void onToggleStandardToolbar(bool); void onToggleFormattingToolbar(bool); void onToggleDrawingToolbar(bool); void SetShowHiddenFiles(bool on); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Structure](#class-structure)
+  - [Main Classes](#main-classes)
+- [Menu Types](#menu-types)
+  - [MenuType Enumeration](#menutype-enumeration)
+  - [MenuOrientation](#menuorientation)
+- [Menu Items](#menu-items)
+  - [MenuItemType](#menuitemtype)
+  - [MenuItemData Structure](#menuitemdata-structure)
+  - [Factory Methods for Menu Items](#factory-methods-for-menu-items)
+- [Menu Styling](#menu-styling)
+  - [MenuStyle Structure](#menustyle-structure)
+  - [The Panel](#the-panel)
+  - [Pre-built Themes](#pre-built-themes)
+- [Core Methods](#core-methods)
+  - [Construction and Initialization](#construction-and-initialization)
+  - [Item Management](#item-management)
+  - [Display Control](#display-control)
+  - [Submenu Management](#submenu-management)
+  - [Event Callbacks](#event-callbacks)
+- [Menu Builder Pattern](#menu-builder-pattern)
+- [Event Handling](#event-handling)
+  - [Keyboard Navigation](#keyboard-navigation)
+- [Usage Examples](#usage-examples)
+  - [Creating a Menu Bar](#creating-a-menu-bar)
+  - [Creating a Context Menu](#creating-a-context-menu)
+  - [Creating Hierarchical Menus](#creating-hierarchical-menus)
+  - [Radio Indicator Shape](#radio-indicator-shape)
+  - [Checkbox Indicator Shape](#checkbox-indicator-shape)
+  - [Icon and Indicator Columns](#icon-and-indicator-columns)
+  - [Icon Colours](#icon-colours)
+  - [Custom Styling](#custom-styling)
+- [Animation Support](#animation-support)
+- [Performance Considerations](#performance-considerations)
+- [Platform-Specific Notes](#platform-specific-notes)
+- [Thread Safety](#thread-safety)
+- [Dependencies](#dependencies)
+- [Known Limitations](#known-limitations)
+- [Best Practices](#best-practices)
+- [Future Enhancements](#future-enhancements)
+
 ## Overview
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.

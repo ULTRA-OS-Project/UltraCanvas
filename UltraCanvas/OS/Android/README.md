@@ -7,9 +7,10 @@ EGL/GLES context manager, clipboard, soft keyboard and full IME, multi-touch
 with pinch/rotate gestures, message dialogs, SAF file opening and saving, and
 APK asset extraction.
 
-**Still open, and it gates everything: the cross-compiled dependency sysroot
-and APK packaging.** No APK can be built until that exists, so none of this has
-run on a device — it is compiled continuously in CI, not observed. See
+**Still open, and it gates everything: APK packaging.** The cross-compiled
+dependency sysroot builds in CI, and the core library compiles against it
+(`.github/workflows/android-build.yml`), but no APK has been built, so none of
+this has run on a device — it is compiled continuously in CI, not observed. See
 [`packaging/`](packaging/README.md), and
 [`AndroidOnLinuxInvestigation.md`](../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md)
 for how to run the first APK on a Linux box rather than a phone (and what to
@@ -32,7 +33,7 @@ Android).
 | `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, the text being composed, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. They arrive on the Java UI thread and are queued, in order, for the glue thread (`DrainImeQueue`). |
 | `UltraCanvasAndroidAssets.{h,cpp}` | Unpacks the APK's `assets/` tree into `$HOME/share` on the first launch after an install or update (stamped against the APK's mtime+size). Inside an APK nothing is on the filesystem, so without this every path-based `fopen` for a font, icon or media file fails. Uses Java `AssetManager.list()` to walk the tree — the NDK's `AAssetDir` cannot see subdirectories — and the native `AAssetManager` to read contents. |
 | `UltraCanvasAndroidPermissions.{h,cpp}` | Runtime permissions (`IsGranted`, `Request` with the answer posted to the UI thread) and the display rotation, over JNI. `Request` needs `UltraCanvasActivity`, whose `onRequestPermissionsResult` carries the answer back. Used by the video backend for CAMERA and RECORD_AUDIO. |
-| `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the sysroot blocker that stops one being built today. |
+| `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the vcpkg manifest for the dependency sysroot. |
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` no-op. |
 | `GLContextManagerEGL_Android.cpp` | EGL + **OpenGL ES** context manager (ES 3 preferred, ES 2 fallback) behind the same `CreateGLContextManagerEGL()` factory symbol the dispatcher uses on Linux. Same offscreen model as the Linux EGL manager: 1×1 pbuffer made current, all real rendering into FBOs (`GLFramebuffer.cpp` compiles against `<GLES3/gl3.h>` on Android, and `ICompositeStrategy.cpp` reads back `GL_RGBA` + swizzles to Cairo's word order, since core GLES has no `GL_BGRA` readback). `GLSurfaceConfig`'s desktop fields (`glVersionMajor/Minor`, `coreProfile`) are ignored. Note: the FBO layer uses ES 3 sized formats (`GL_RGBA8`), so the ES 2 fallback context is best-effort only — every `minSdk 26` device ships ES 3.x. |
 
@@ -398,33 +399,38 @@ Native crashes are separate: those go to the tombstone, and
 ## Building
 
 Needs the NDK toolchain plus a cross-compiled dependency sysroot (cairo, pango,
-glib, harfbuzz, fontconfig, freetype, tinyxml2) reachable through
-`PKG_CONFIG_LIBDIR` — see investigation §4:
+glib, harfbuzz, fontconfig, freetype, tinyxml2, libvips) reachable through
+`PKG_CONFIG_LIBDIR` — `scripts/android-bootstrap-sysroot.sh` builds it with
+vcpkg and prints the configure line (investigation §4):
 
 ```sh
-cmake -B build-android \
+PKG_CONFIG_LIBDIR=$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig \
+cmake -G Ninja -B build-android \
   -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
+  -DCMAKE_FIND_ROOT_PATH=$SYSROOT -DPKG_CONFIG_ARGN=--static
 ```
 
 The root CMakeLists defaults everything except the core library OFF for
-Android (apps, plugins, vips, video, UltraNet, database, VirtualFS);
+Android (apps, plugins, UltraNet, database, VirtualFS); libvips is part of
+the core library, as on every platform, and comes from the sysroot;
 each is an ordinary cache option that `-D...=ON` re-enables once its
 dependency exists in the sysroot. GL surfaces stay ON: EGL and GLESv3 come
 from the NDK sysroot itself (no pkg-config probing), wired through
 `GLContextManagerEGL_Android.cpp`.
 
-**That sysroot does not exist yet, so no APK can be built and none of this has
-run on a device.** Everything here is compiled in CI against the real NDK, and
-the Java against `android.jar`, so the code is type-checked continuously — but
-treat the runtime behaviour described in this file as designed and reviewed,
-not as observed. `packaging/` holds the manifest and Gradle scaffolding, and
-spells out what the sysroot needs to contain.
+`.github/workflows/android-build.yml` builds that sysroot for `arm64-v8a` and
+compiles the core library against it with exactly that configure line. **No
+APK has been built yet, so none of this has run on a device.** Everything here
+is compiled in CI against the real NDK, and the Java against `android.jar`, so
+the code is type-checked continuously — but treat the runtime behaviour
+described in this file as designed and reviewed, not as observed. `packaging/`
+holds the manifest, the Gradle scaffolding and the sysroot's vcpkg manifest.
 
 ## Still to come (phases 2–3, investigation §7)
 
-The cross-compiled dependency sysroot and a real APK build (the blocker for
-everything below, since nothing can be observed until then), clipboard
+A real APK build (the blocker for everything below, since nothing can be
+observed until then), clipboard
 images/files **copying** (pasting is done — it needs an app-declared
 `ContentProvider`, see above), and PDF. **Video is on** (see Video above). **Audio is
 on**: its backend is miniaudio, which is vendored rather than waiting on the

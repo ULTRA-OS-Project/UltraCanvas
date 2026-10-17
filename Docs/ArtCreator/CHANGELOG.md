@@ -1,3 +1,23 @@
+#### 2026-10-16 *0.7.2*
+- **The colour panel takes less room.** The picker in the right-hand panel
+  folds its channels away: the HSV / HSL / RGB tabs and the channel sliders
+  sit under a *Channels* row that opens them, so the panel starts with the
+  hue ring, the swatches and the hex field, and the active tool's options
+  move up into view. A list top right switches the picker between the colour
+  circle, the slider and square, the colour rectangle and the two sliders
+  (hue and brightness); the picker is as tall as what it shows, so the
+  panels below move up and down with it (framework changelog:
+  `colour-picker-toolbox`).
+
+#### 2026-10-15 *0.7.1*
+- **The colour picker is light, like the panel it sits in.** The picker in
+  the right-hand panel was the framework's default dark one - a charcoal
+  block with a red accent in the middle of the light grey panel. It now takes
+  the framework's `ColorPickerStyle::Light()` on the panel's own grey: white
+  fields with grey hairline outlines, near-black text and a blue accent, the
+  same picker UltraPaint and UltraFiler show (framework changelog:
+  `section-card-and-light-picker`).
+
 #### 2026-10-14 *0.7.0*
 - **Icon mode: draw an icon for the size it is shown at.** An icon shown at
   24 px is sharp only where its straight edges land on whole pixels; drawn

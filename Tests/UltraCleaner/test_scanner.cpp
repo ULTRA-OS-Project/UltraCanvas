@@ -6,6 +6,7 @@
 #include "test_framework.h"
 #include "test_support.h"
 
+#include "UltraCleanerPaths.h"     // NormalizeForCompare
 #include "UltraCleanerScanner.h"
 
 #include <filesystem>
@@ -76,8 +77,28 @@ TEST(ScannerHonoursTheAgeFilter) {
     const ScanReport report = scanner.Scan({ ContentsRule(cache, /*minAgeDays=*/7) });
 
     REQUIRE_EQ(report.totalItems, static_cast<size_t>(1));
-    REQUIRE(report.items[0].path == stale);
+    // Compared the way the engine compares paths: on Windows the scanner
+    // joins the root and the name with a backslash, where TempTree wrote '/'.
+    REQUIRE(NormalizeForCompare(report.items[0].path) == NormalizeForCompare(stale));
     (void)fresh;
+}
+
+// Until the guard kept both spellings of a root, everything under a root
+// reached through a link was refused as outside the roots - on macOS, every
+// temp-file rule, since $TMPDIR and /tmp both sit behind /var-style links.
+TEST(ScannerFindsItemsUnderARootReachedThroughASymlink) {
+    TempTree tree;
+    tree.File("real/cache/a.bin", 10);
+    std::error_code ec;
+    std::filesystem::create_directory_symlink(
+        UltraCanvas::PathFromUtf8(tree.Path("real")),
+        UltraCanvas::PathFromUtf8(tree.Path("link")), ec);
+    if (ec) return;   // filesystem without symlinks (some CI Windows runners)
+
+    Scanner scanner;
+    const ScanReport report = scanner.Scan({ ContentsRule(tree.Path("link/cache")) });
+    REQUIRE_EQ(report.totalItems, static_cast<size_t>(1));
+    REQUIRE_EQ(report.skippedProtected, static_cast<size_t>(0));
 }
 
 TEST(ScannerHonoursExcludeNames) {

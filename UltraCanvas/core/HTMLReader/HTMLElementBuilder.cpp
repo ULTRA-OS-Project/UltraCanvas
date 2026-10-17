@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.34.0 - target="_blank" (and named targets, <base target>): such a
+//                   link goes to BuildOptions::onLinkActivatedNewWindow
 // Version: 1.33.0 - file uploads (a chooser button, BuildOptions::onChooseFiles);
 //                   a <label>'s text acts on its control
 // Version: 1.32.0 - BuildOptions::interactiveForms: real form widgets on the line
@@ -769,6 +771,26 @@ std::string ElementBuilder::ExpandImports(const std::string& css, const std::str
     return out + css;
 }
 
+bool ElementBuilder::OpensNewWindow(const Node& link) const {
+    std::string target = link.HasAttribute("target") ? link.GetAttribute("target") : baseTarget;
+    target.erase(0, target.find_first_not_of(" \t\n\r\f"));
+    target.erase(target.find_last_not_of(" \t\n\r\f") + 1);
+    std::transform(target.begin(), target.end(), target.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    // A top-level page is its own parent and top.
+    return !target.empty() && target != "_self" && target != "_parent" && target != "_top";
+}
+
+bool ElementBuilder::InNewWindowLink(const Node& node) const {
+    for (const Node* p = &node; p; p = p->parent)
+        if (p->IsElement("a") && p->HasAttribute("href")) return OpensNewWindow(*p);
+    return false;
+}
+
+std::function<void(const std::string& href)> ElementBuilder::LinkActivator(bool newWindow) const {
+    return newWindow && opts.onLinkActivatedNewWindow ? opts.onLinkActivatedNewWindow : opts.onLinkActivated;
+}
+
 BuildResult ElementBuilder::Build(const std::string& html, const BuildOptions& options) {
     Parser parser;
     Document doc = parser.Parse(html);
@@ -782,6 +804,12 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     elementCount = 0;
     nextId = 0;
     currentDocument = &document;
+    // <base target="_blank">: every link without a target of its own asks
+    // for another window.
+    baseTarget.clear();
+    if (document.root)
+        if (Node* base = document.root->FindFirst("base"))
+            if (base->HasAttribute("target")) baseTarget = base->GetAttribute("target");
     labelTargets = std::make_shared<LabelTargets>();
     builtForms.clear();
     formByNode.clear();
@@ -1621,6 +1649,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     std::string markup;
     runPlain.clear();
     runLinks.clear();
+    runNewWindowHrefs.clear();
     runImages.clear();
     runBoxes.clear();
     runRoomEnd = std::string::npos;
@@ -1668,7 +1697,10 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         const int end = static_cast<int>(runPlain.size());
         if (end > start) {
             std::string href = AncestorLink(*node);
-            if (!href.empty()) runLinks.push_back({ start, end, href });
+            if (!href.empty()) {
+                runLinks.push_back({ start, end, href });
+                if (InNewWindowLink(*node)) runNewWindowHrefs.insert(href);
+            }
             // Inside a <label> the builder looked through (it holds its
             // control): a click on the text acts on the control.
             else if (opts.interactiveForms)
@@ -1746,12 +1778,20 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     // rendered text, so only the link actually under the pointer activates.
     const bool labelLinks = std::any_of(runLinks.begin(), runLinks.end(),
                                         [](const LabelTextLink& l) { return l.quiet; });
-    if (!runLinks.empty() && (opts.onLinkActivated || labelLinks)) {
+    // A link that asks for another window goes to its own callback.
+    std::function<void(const std::string&)> follow = opts.onLinkActivated;
+    if (opts.onLinkActivatedNewWindow && !runNewWindowHrefs.empty()) {
+        follow = [newWindow = runNewWindowHrefs, same = opts.onLinkActivated,
+                  other = opts.onLinkActivatedNewWindow](const std::string& href) {
+            if (newWindow.count(href)) other(href);
+            else if (same) same(href);
+        };
+    }
+    if (!runLinks.empty() && (follow || labelLinks)) {
         label->SetTextLinks(runLinks);
         if (labelLinks) {
             // A <label>'s text acts on its control; any other link is the page's.
             auto targets = labelTargets;
-            auto follow = opts.onLinkActivated;
             label->onLinkActivated = [targets, follow](const std::string& href) {
                 static const std::string kLabel = "#ucform-label:";
                 if (href.compare(0, kLabel.size(), kLabel) == 0) {
@@ -1765,7 +1805,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                 if (follow) follow(href);
             };
         } else {
-            label->onLinkActivated = opts.onLinkActivated;
+            label->onLinkActivated = follow;
         }
         label->onLinkHovered = opts.onLinkHovered;
         label->SetShowLinkTooltips(opts.linkTooltips);
@@ -1961,6 +2001,7 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         const int linkEnd = static_cast<int>(runPlain.size());
         if (linkEnd > linkStart) {
             runLinks.push_back({linkStart, linkEnd, style.href});
+            if (InNewWindowLink(node)) runNewWindowHrefs.insert(style.href);
         }
     } else if (node.tag == "label" && opts.interactiveForms) {
         // <label for="id">Name</label>: a click on its text acts on the control.
@@ -2094,9 +2135,10 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
             image->SetBoxAspectRatio(used.size.width / used.size.height);
     }
     image->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
-    if (!linkHref.empty() && opts.onLinkActivated) {
+    auto activate = linkHref.empty() ? nullptr : LinkActivator(InNewWindowLink(element));
+    if (activate) {
         image->SetClickable(true);
-        image->onClick = [activate = opts.onLinkActivated, linkHref]() { activate(linkHref); };
+        image->onClick = [activate, linkHref]() { activate(linkHref); };
         if (opts.onLinkHovered) {
             image->onHoverEnter = [hover = opts.onLinkHovered, linkHref]() { hover(linkHref); };
             image->onHoverLeave = [hover = opts.onLinkHovered]() { hover(std::string()); };

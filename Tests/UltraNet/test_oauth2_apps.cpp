@@ -167,3 +167,44 @@ TEST(oauth2_apps_load_file_tolerates_a_missing_file) {
     UltraNet_OAuth2ClearApps();
     fs::remove_all(dir);
 }
+
+TEST(oauth2_apps_sign_in_service_through_the_tiers) {
+    UltraNet_OAuth2ClearApps();
+    SetEnv("ULTRANET_OAUTH_SERVICE_URL", "");
+    // The built-in address: the ULTRANET_OAUTH_SERVICE_URL CMake option, the
+    // public service in this build. Replaceable for the process.
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceUrl(), std::string("https://oauth-callback.ultraos.eu"));
+    UltraNet_OAuth2SetBuiltInSignInService("https://built.example/");
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceUrl(), std::string("https://built.example"));
+
+    // The INI file's [service] section, beside the providers' sections.
+    REQUIRE_EQ(UltraNet_OAuth2ParseAppsIni("[Service]\nurl = https://ini.example/\n"
+                                           "[svcprov]\nclient_id = c\n"), 1);
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceUrl(), std::string("https://ini.example"));
+    REQUIRE(UltraNet_OAuth2HasApp("svcprov"));
+
+    // The environment outranks the file, under every registered prefix ...
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceEnvName("ULTRANET_OAUTH_"),
+               std::string("ULTRANET_OAUTH_SERVICE_URL"));
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceEnvName("ULTRAMAIL_"),
+               std::string("ULTRAMAIL_OAUTH_SERVICE_URL"));
+    SetEnv("ULTRANET_OAUTH_SERVICE_URL", "https://env.example");
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceUrl(), std::string("https://env.example"));
+    // ... and Set() outranks both; "off" at any tier turns the service off.
+    UltraNet_OAuth2SetSignInService("https://set.example");
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceUrl(), std::string("https://set.example"));
+    UltraNet_OAuth2SetSignInService("off");
+    REQUIRE(UltraNet_OAuth2SignInServiceUrl().empty());
+    UltraNet_OAuth2SetSignInService("");
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceUrl(), std::string("https://env.example"));
+    SetEnv("ULTRANET_OAUTH_SERVICE_URL", "none");
+    REQUIRE(UltraNet_OAuth2SignInServiceUrl().empty());
+
+    // Clear() drops the session's tiers; the built-in one stays.
+    SetEnv("ULTRANET_OAUTH_SERVICE_URL", "");
+    UltraNet_OAuth2ClearApps();
+    REQUIRE_EQ(UltraNet_OAuth2SignInServiceUrl(), std::string("https://built.example"));
+    UltraNet_OAuth2SetBuiltInSignInService("");
+    REQUIRE(UltraNet_OAuth2SignInServiceUrl().empty());
+    UltraNet_OAuth2SetBuiltInSignInService("https://oauth-callback.ultraos.eu");
+}

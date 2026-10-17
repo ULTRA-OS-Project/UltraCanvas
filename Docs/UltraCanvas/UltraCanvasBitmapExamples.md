@@ -1,5 +1,48 @@
 # UltraCanvasImageElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Definition](#class-definition)
+- [Enumerations and Structures](#enumerations-and-structures)
+  - [ImageFitMode](#imagefitmode)
+  - [ImagePosition](#imageposition)
+- [Constructors](#constructors)
+- [Image Loading Methods](#image-loading-methods)
+  - [LoadFromFile](#loadfromfile)
+  - [LoadFromImage](#loadfromimage)
+  - [GetLastError](#getlasterror)
+- [Display Properties](#display-properties)
+  - [Fit, Position and Repeat](#fit-position-and-repeat)
+  - [Visual Effects](#visual-effects)
+- [Image Information](#image-information)
+- [Animation](#animation)
+- [Interaction Features](#interaction-features)
+  - [Click Support](#click-support)
+  - [Drag Support](#drag-support)
+- [Event Callbacks](#event-callbacks)
+- [Factory Functions](#factory-functions)
+  - [CreateImageElement](#createimageelement)
+  - [CreateImageFromFile](#createimagefromfile)
+  - [CreateImageFromMemory](#createimagefrommemory)
+  - [CreateScaledImage](#createscaledimage)
+  - [CreateClickableImage](#createclickableimage)
+- [Rendering Process](#rendering-process)
+- [Event Handling](#event-handling)
+- [Usage Examples](#usage-examples)
+  - [Basic Image Display](#basic-image-display)
+  - [Interactive Image](#interactive-image)
+  - [Draggable Image](#draggable-image)
+  - [Image Gallery with Loading Feedback](#image-gallery-with-loading-feedback)
+  - [Transformed Image](#transformed-image)
+  - [Positioned and Tiled Images](#positioned-and-tiled-images)
+- [Performance Considerations](#performance-considerations)
+- [Error Handling](#error-handling)
+- [Platform Notes](#platform-notes)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasImageElement** is a versatile image display component in the UltraCanvas framework that provides comprehensive image loading, caching, transformation, and interaction capabilities. It supports multiple image formats and offers various scaling modes for flexible image presentation.

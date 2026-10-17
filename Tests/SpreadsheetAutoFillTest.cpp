@@ -6,7 +6,10 @@
 // continues number series, counts on a text ending in a number, shifts the
 // relative references of copied formulas and repeats anything else. This
 // test pins that down on the real SpreadsheetSheet with no UI stack, together
-// with ShiftFormulaReferences, which does the formula part.
+// with ShiftFormulaReferences, which does the formula part, the Copy mode a
+// Ctrl-drag / Ctrl+D / Ctrl+R uses, the row a double-click on the handle
+// fills down to (GetAutoFillDownEnd), and FormulaAcceptsReferenceAt, which
+// decides whether a click on a cell types its address into a formula.
 #include "UltraCanvasSpreadsheetSheet.h"
 
 #include <iostream>
@@ -111,6 +114,67 @@ static void TestFormattingComes() {
     CHECK_EQ(sheet.GetCell(3, 0)->GetStyle().font.bold, true);
 }
 
+static void TestCopyMode() {
+    SpreadsheetSheet sheet("Fill");
+    sheet.GetCell(0, 0)->SetNumber(1);
+    sheet.GetCell(1, 0)->SetNumber(2);
+    sheet.GetCell(0, 1)->SetText("Item 1");
+    sheet.GetCell(0, 2)->SetFormula("=A1*2");
+    // A1:A2 repeats 1, 2 instead of continuing the series.
+    sheet.AutoFill(CellRange(0, 0, 1, 0), CellRange(0, 0, 4, 0), AutoFillMode::Copy);
+    CHECK_EQ(sheet.GetCell(2, 0)->GetNumber(), 1.0);
+    CHECK_EQ(sheet.GetCell(3, 0)->GetNumber(), 2.0);
+    CHECK_EQ(sheet.GetCell(4, 0)->GetNumber(), 1.0);
+    // "Item 1" stays "Item 1"; a formula still shifts its references.
+    sheet.AutoFill(CellRange(0, 1, 0, 2), CellRange(0, 1, 2, 2), AutoFillMode::Copy);
+    CHECK_EQ(sheet.GetCell(2, 1)->GetText(), std::string("Item 1"));
+    CHECK_EQ(sheet.GetCell(2, 2)->GetFormulaText(), std::string("=A3*2"));
+}
+
+static void TestAutoFillDownEnd() {
+    SpreadsheetSheet sheet("Fill");
+    // Data in A1:A6, a formula in B1 to be filled down beside it.
+    for (int r = 0; r < 6; ++r) sheet.GetCell(r, 0)->SetNumber(r + 1);
+    sheet.GetCell(0, 1)->SetFormula("=A1*2");
+    CHECK_EQ(sheet.GetAutoFillDownEnd(CellRange(0, 1, 0, 1)), 5);
+    // With nothing on the left, the column on the right counts.
+    sheet.GetCell(0, 3)->SetFormula("=E1");
+    for (int r = 0; r < 3; ++r) sheet.GetCell(r, 4)->SetNumber(r);
+    CHECK_EQ(sheet.GetAutoFillDownEnd(CellRange(0, 3, 0, 3)), 2);
+    // No neighbour with data below the source: nothing to fill.
+    sheet.GetCell(0, 7)->SetNumber(1);
+    CHECK_EQ(sheet.GetAutoFillDownEnd(CellRange(0, 7, 0, 7)), -1);
+    // A gap ends the block.
+    sheet.GetCell(7, 0)->SetNumber(9);
+    CHECK_EQ(sheet.GetAutoFillDownEnd(CellRange(0, 1, 0, 1)), 5);
+}
+
+static void TestFormulaAcceptsReference() {
+    auto at = [](const std::string& text) {   // caret at the end
+        return FormulaAcceptsReferenceAt(text, text.size(), text.size());
+    };
+    CHECK_EQ(at("="), true);
+    CHECK_EQ(at("=SUM("), true);
+    CHECK_EQ(at("=SUM(A1,"), true);
+    CHECK_EQ(at("=SUM(A1;"), true);
+    CHECK_EQ(at("=SUM(A1:"), true);
+    CHECK_EQ(at("=A1+"), true);
+    CHECK_EQ(at("=A1 * "), true);
+    CHECK_EQ(at("=COUNT( "), true);
+    CHECK_EQ(at("=A1"), false);            // right after a reference
+    CHECK_EQ(at("=SUM(A1)"), false);
+    CHECK_EQ(at("=SUM"), false);
+    CHECK_EQ(at("=\"text "), false);      // inside quotes
+    CHECK_EQ(at("Total"), false);          // not a formula
+    CHECK_EQ(at(""), false);
+    // In the middle: "=SUM(|)" yes, "=(|B2)" no.
+    CHECK_EQ(FormulaAcceptsReferenceAt("=SUM()", 5, 5), true);
+    CHECK_EQ(FormulaAcceptsReferenceAt("=(B2)", 2, 2), false);
+    // A selected reference after an operator is replaced: "=A1+[B2]".
+    CHECK_EQ(FormulaAcceptsReferenceAt("=A1+B2", 4, 6), true);
+    CHECK_EQ(FormulaAcceptsReferenceAt("=A1+B2", 5, 6), false);
+}
+
 int main() {
     TestShiftFormulaReferences();
     TestNumberSeriesDown();
@@ -118,6 +182,9 @@ int main() {
     TestSingleValues();
     TestPatternAndFormulas();
     TestFormattingComes();
+    TestCopyMode();
+    TestAutoFillDownEnd();
+    TestFormulaAcceptsReference();
 
     if (failures == 0) {
         std::cout << "SpreadsheetAutoFillTest: all checks passed\n";

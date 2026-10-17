@@ -17,6 +17,13 @@ parser - was never in the build and was removed in 2026-10; the demo page
 that carried its name had been showing SVG files through
 `UltraCanvasImageElement` all along.)
 
+## Contents
+
+- [Showing an SVG](#showing-an-svg)
+- [Rasterizing an SVG](#rasterizing-an-svg)
+- [Reading and writing SVG (`UltraCanvasVectorConverter.h`)](#reading-and-writing-svg-ultracanvasvectorconverterh)
+- [See Also](#see-also)
+
 ## Showing an SVG
 
 ```cpp

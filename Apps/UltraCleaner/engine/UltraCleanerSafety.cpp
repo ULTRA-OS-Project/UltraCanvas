@@ -122,25 +122,30 @@ bool IsProtectedPath(const std::string& path) {
 
 void PathGuard::AllowRoot(const std::string& root) {
     if (root.empty()) return;
+    const std::string normalized = NormalizeForCompare(root);
+    if (std::find(roots_.begin(), roots_.end(), normalized) != roots_.end()) return;
     std::error_code ec;
-    std::string normalized = NormalizeForCompare(root);
+    std::string resolved = normalized;
     if (fs::exists(PathFromUtf8(root), ec) && !ec) {
-        normalized = ResolveSymlinks(root);
+        resolved = ResolveSymlinks(root);
     }
-    if (std::find(roots_.begin(), roots_.end(), normalized) == roots_.end()) {
-        roots_.push_back(normalized);
-    }
+    roots_.push_back(normalized);
+    resolvedRoots_.push_back(resolved);
 }
 
 void PathGuard::Reset() {
     roots_.clear();
+    resolvedRoots_.clear();
 }
 
 bool PathGuard::IsInsideAllowedRoot(const std::string& path) const {
     const std::string candidate = NormalizeForCompare(path);
-    for (const auto& root : roots_) {
-        // Strictly inside: a root is a container, never a target.
-        if (candidate != root && IsPathInside(candidate, root)) return true;
+    for (size_t i = 0; i < roots_.size(); ++i) {
+        // Strictly inside: a root is a container, never a target. Either
+        // spelling of the root will do (see AllowRoot).
+        for (const std::string* root : { &roots_[i], &resolvedRoots_[i] }) {
+            if (candidate != *root && IsPathInside(candidate, *root)) return true;
+        }
     }
     return false;
 }
@@ -174,7 +179,9 @@ SafetyCheck PathGuard::Check(const std::string& path) const {
     if (!parent.empty()) {
         const std::string resolvedParent = ResolveSymlinks(PathToUtf8(parent));
         bool parentInside = false;
-        for (const auto& root : roots_) {
+        // Against the resolved roots only: the resolved parent has no links
+        // left in it, so it can only be compared with a root that has none.
+        for (const auto& root : resolvedRoots_) {
             if (resolvedParent == root || IsPathInside(resolvedParent, root)) {
                 parentInside = true;
                 break;

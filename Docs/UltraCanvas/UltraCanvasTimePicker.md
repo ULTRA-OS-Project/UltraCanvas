@@ -1,5 +1,18 @@
 # UltraCanvas Time Picker Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [The `UCTime` value type](#the-uctime-value-type)
+  - [Format tokens (`UCTime::Format`)](#format-tokens-uctimeformat)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [The clock-face dial (`TimePickerPopupStyle::Clock`)](#the-clock-face-dial-timepickerpopupstyleclock)
+- [Keyboard & Mouse](#keyboard--mouse)
+- [Notes](#notes)
+
 ## Overview
 
 **UltraCanvasTimePicker** is the time-of-day sibling of `UltraCanvasDatePicker`.

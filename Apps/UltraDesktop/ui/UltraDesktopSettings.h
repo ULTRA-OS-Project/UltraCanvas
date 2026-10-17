@@ -59,7 +59,9 @@ struct DesktopSettings {
     CategoryBoardSettings categoryBoard;
 
     // "<config dir>/ultraos/desktop.json": $XDG_CONFIG_HOME, else ~/.config
-    // (%APPDATA% on Windows). "" when there is no home to keep it in.
+    // (%APPDATA% on Windows, ~/Library/Application Support on macOS - the
+    // framework's UltraCanvasDesktopSettingsFolder). "" when there is no home
+    // to keep it in.
     static std::string DefaultPath();
 
     // Missing file = defaults, and true; a file that cannot be parsed keeps

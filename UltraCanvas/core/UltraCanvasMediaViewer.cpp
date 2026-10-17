@@ -1,8 +1,10 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
+//                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -52,6 +54,7 @@
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
+#include "UltraCanvasUCDContainer.h"   // a *.ucd's header and thumbnail
 #include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "UltraCanvasVectorPreview.h"   // the readers a registered plugin lends core
 #include "UltraCanvasVectorElement.h"   // the view a drawing is shown in
@@ -227,70 +230,27 @@ static bool ReadTextFile(const std::string& path, std::string& out,
     return true;
 }
 
-// ----- UCD v2 CONTAINER HEADER -----
-// Fixed 28-byte header of an UltraCanvas Document container, per
-// Docs/UltraCanvas/UCD-FileFormat-v2.md. The header (and the raw HEIC/PNG
-// preview thumbnail that follows it) is never compressed or encrypted, so a
-// viewer can identify the file and show a preview without the UCD v2 engine.
-struct UCDHeader {
-    bool        valid = false;      // signature matched (0x89 'U' 'C' … \r\n 0x1A)
-    std::string descriptor;         // "UCDoc", "UCForm", "UCVector", …
-    int         versionMajor = 0;
-    int         versionMinor = 0;
-    uint8_t     bodyEncoding = 0;   // 0 binary, 1 XML text, 2 JSON text
-    uint8_t     compression = 0;    // 0 none, 1 deflate, 2 gzip, 3 LZMA
-    uint8_t     encryption = 0;     // 0 none, 1 AES-256-GCM, 2 ChaCha20, 3 SuperVault
-    uint8_t     flags = 0;          // bit0 thumbnail, bit1 PNG (else HEIC),
-                                    // bit2 encrypted, bit3 private
-    uint32_t    thumbnailLength = 0;
-    uint32_t    extensionLength = 0;
-
-    bool HasThumbnail() const { return (flags & 0x01) && thumbnailLength > 0; }
-    bool ThumbnailIsPNG() const { return (flags & 0x02) != 0; }
-    bool IsEncrypted() const { return (flags & 0x04) != 0 || encryption != 0; }
-    bool IsPrivate() const { return (flags & 0x08) != 0; }
+// ----- UCD v2 CONTAINER -----
+// The fixed header of an UltraCanvas Document container and the raw HEIC/PNG
+// preview thumbnail after it (Docs/UltraCanvas/UCD-FileFormat-v2.md), read
+// by the container engine without touching the body: neither is ever
+// compressed or encrypted, so a viewer can identify the file and show a
+// preview of any content type.
+struct UCDPreview {
+    bool                 valid = false;   // a UCD v2 header was read
+    std::string          problem;         // why not, or why the thumbnail is missing
+    UCD::Header          header;
+    std::vector<uint8_t> thumbnail;       // raw HEIC / PNG; empty without one
 };
 
-static uint32_t ReadLE32(const unsigned char* p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-}
-
-static bool ReadUCDHeader(const std::string& path, UCDHeader& out) {
-    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!f) return false;
-    unsigned char h[28];
-    if (!f.read(reinterpret_cast<char*>(h), sizeof(h))) return false;
-    if (h[0] != 0x89 || h[1] != 'U' || h[2] != 'C' ||
-        h[9] != 0x0D || h[10] != 0x0A || h[11] != 0x1A) return false;
-    out.valid = true;
-    out.descriptor.assign(reinterpret_cast<const char*>(h + 1), 8);
-    if (auto z = out.descriptor.find('\0'); z != std::string::npos)
-        out.descriptor.resize(z);
-    out.versionMajor    = h[12];
-    out.versionMinor    = h[13];
-    out.bodyEncoding    = h[14];
-    out.compression     = h[15];
-    out.encryption      = h[16];
-    out.flags           = h[17];
-    out.thumbnailLength = ReadLE32(h + 20);
-    out.extensionLength = ReadLE32(h + 24);
-    return true;
-}
-
-// Extract the raw (HEIC/PNG) preview thumbnail stored directly after the fixed
-// header + header extension. Length-capped so a corrupt header can't allocate
-// wild amounts of memory.
-static bool ReadUCDThumbnail(const std::string& path, const UCDHeader& hdr,
-                             std::vector<uint8_t>& out) {
-    constexpr uint32_t kMaxThumbBytes = 64u * 1024u * 1024u;
-    if (!hdr.valid || !hdr.HasThumbnail() || hdr.IsPrivate() ||
-        hdr.thumbnailLength > kMaxThumbBytes) return false;
-    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!f) return false;
-    f.seekg(28 + (std::streamoff)hdr.extensionLength);
-    out.resize(hdr.thumbnailLength);
-    return f.read(reinterpret_cast<char*>(out.data()), out.size()) ? true : false;
+static UCDPreview ReadUCDPreview(const std::string& path) {
+    UCDPreview p;
+    const bool whole = UCD::ReadHeaderAndThumbnail(path, p.header, p.thumbnail, p.problem);
+    // The header parsed even when the thumbnail could not be read.
+    p.valid = whole || !p.header.descriptor.empty();
+    // A private document shows no preview, even one stored against the rule.
+    if (p.header.IsPrivate()) p.thumbnail.clear();
+    return p;
 }
 
 // Friendly name of the primary content type a UCD descriptor announces.
@@ -299,7 +259,7 @@ static std::string UCDDescriptorName(const std::string& descriptor) {
     if (descriptor == "UCForm")   return "saveable / fillable form";
     if (descriptor == "UCVector") return "vector graphics";
     if (descriptor == "UCWindow") return "window / UI description";
-    if (descriptor == "UCBitmap") return "bitmap graphics";
+    if (descriptor == "UCBitmap") return "bitmap graphics, layered";
     if (descriptor == "UCVideo")  return "video";
     if (descriptor == "UCAudio")  return "audio";
     if (descriptor == "UC3D")     return "3D scene / model";
@@ -309,7 +269,8 @@ static std::string UCDDescriptorName(const std::string& descriptor) {
 // Human-readable summary of a *.ucd file for the details popup (and the text
 // view when the container carries no preview thumbnail).
 static std::string BuildUCDDetailsText(const std::string& path,
-                                       const UCDHeader& hdr, bool thumbShown) {
+                                       const UCDPreview& ucd, bool thumbShown) {
+    const UCD::Header& hdr = ucd.header;
     std::ostringstream os;
     os << "UltraCanvas Document (UCD)\n\n";
     os << "File: " << BaseName(path) << "\n";
@@ -317,37 +278,40 @@ static std::string BuildUCDDetailsText(const std::string& path,
     std::error_code ec;
     auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "Size: " << HumanSize(sz) << "\n";
-    if (!hdr.valid) {
-        os << "\nNot a UCD v2 container (no valid signature).\n"
-              "It may be a UCD v1 XML/JSON document or a different file.\n";
+    if (!ucd.valid) {
+        os << "\nNot a UCD v2 container: " << ucd.problem << ".\n";
         return os.str();
     }
-    os << "Container: UCD v" << hdr.versionMajor << "." << hdr.versionMinor
+    os << "Container: UCD v" << static_cast<int>(hdr.versionMajor) << "."
+       << static_cast<int>(hdr.versionMinor)
        << " (" << hdr.descriptor << " \xE2\x80\x94 "
        << UCDDescriptorName(hdr.descriptor) << ")\n";
     os << "Body encoding: "
        << (hdr.bodyEncoding == 0 ? "binary" :
            hdr.bodyEncoding == 1 ? "XML text (debug)" :
            hdr.bodyEncoding == 2 ? "JSON text (debug)" : "unknown") << "\n";
+    const uint8_t compression = static_cast<uint8_t>(hdr.defaultCompression);
     os << "Compression: "
-       << (hdr.compression == 0 ? "none" :
-           hdr.compression == 1 ? "deflate" :
-           hdr.compression == 2 ? "gzip" :
-           hdr.compression == 3 ? "LZMA" : "unknown") << "\n";
+       << (compression == 0 ? "none" :
+           compression == 1 ? "deflate" :
+           compression == 2 ? "gzip" :
+           compression == 3 ? "LZMA" : "unknown") << "\n";
+    // The cipher is always XChaCha20-Poly1305; byte 16 says where its key
+    // comes from (spec 2.3).
     os << "Encryption: "
-       << (hdr.encryption == 0 ? "none" :
-           hdr.encryption == 1 ? "AES-256-GCM" :
-           hdr.encryption == 2 ? "ChaCha20-Poly1305" :
-           hdr.encryption == 3 ? "SuperVault remote authorization" : "unknown")
+       << (!hdr.IsEncrypted() ? "none" :
+           hdr.keySource == 1 ? "XChaCha20-Poly1305, key from a password (Argon2id)" :
+           hdr.keySource == 2 ? "XChaCha20-Poly1305, key from SuperVault remote authorization" :
+                                "XChaCha20-Poly1305")
        << (hdr.IsPrivate() ? " (private)" : "") << "\n";
     if (hdr.HasThumbnail()) {
-        os << "Thumbnail: " << (hdr.ThumbnailIsPNG() ? "PNG" : "HEIC") << ", "
+        os << "Thumbnail: " << (hdr.ThumbnailIsPng() ? "PNG" : "HEIC") << ", "
            << HumanSize(hdr.thumbnailLength)
            << (thumbShown ? " (shown)" : " (could not be decoded)") << "\n";
     } else {
         os << "Thumbnail: none\n";
     }
-    os << "\nPreview only \xE2\x80\x94 full rendering arrives with the UCD v2 engine.\n";
+    os << "\nPreview only \xE2\x80\x94 the viewer shows the thumbnail the document carries.\n";
     return os.str();
 }
 
@@ -2236,20 +2200,16 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         handled = true;
     }
     if (!handled && kind == MediaKind::UCDoc) {
-        // UltraCanvas Document container. Full rendering arrives with the UCD
-        // v2 engine; until then show the embedded preview thumbnail — stored
-        // raw right after the fixed header exactly so viewers can preview
-        // without parsing the body — or, without one, a header summary in the
-        // text view. The details popup gets the container information either way.
-        UCDHeader hdr;
+        // UltraCanvas Document container: the embedded preview thumbnail -
+        // stored raw right after the fixed header exactly so viewers can
+        // preview without parsing the body - or, without one, a header
+        // summary in the text view. The details popup gets the container
+        // information either way.
+        const UCDPreview ucd = ReadUCDPreview(path);
         std::shared_ptr<UCImage> thumb;
-        if (ReadUCDHeader(path, hdr)) {
-            std::vector<uint8_t> raw;
-            if (ReadUCDThumbnail(path, hdr, raw))
-                thumb = UCImage::LoadFromMemory(raw);
-        }
+        if (!ucd.thumbnail.empty()) thumb = UCImage::LoadFromMemory(ucd.thumbnail);
         bool thumbShown = thumb && thumb->IsValid();
-        ucdDetails = BuildUCDDetailsText(path, hdr, thumbShown);
+        ucdDetails = BuildUCDDetailsText(path, ucd, thumbShown);
         if (thumbShown) {
             ShowView(MediaKind::Image);
             surface->ShowImage(thumb, transition, transitionDurationMs, animated,

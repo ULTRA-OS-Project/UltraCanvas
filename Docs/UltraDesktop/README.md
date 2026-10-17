@@ -12,6 +12,9 @@ which is where every question about windows, desktops, devices and installed
 applications is answered, so the desktop itself never touches the window
 system.
 
+- User manual: [`Manual.md`](Manual.md) — the desktop task by task, using it
+  as the Windows desktop and getting the Windows desktop back, and
+  troubleshooting. This README is the reference.
 - Source: [`Apps/UltraDesktop`](../../Apps/UltraDesktop/README.md)
 - Version: its own, from the first line of [`CHANGELOG.md`](CHANGELOG.md).
   `cmake/UltraCanvasVersion.cmake` reads it into `ULTRADESKTOP_VERSION`,
@@ -193,10 +196,20 @@ UltraDesktop --version | --help
 The headless modes print what the module sees, which makes it checkable over
 ssh (`--windows` needs a display; `--apps` and `--devices` do not).
 
+On Windows `UltraDesktop.exe` is a GUI program, so no console window flashes
+up when the sign-in, the Start menu or UOS-Settings starts it. Beside it,
+`UltraDesktop.com` is its console companion. Typed at a prompt without an
+extension, `UltraDesktop --windows` runs the companion: it starts the `.exe`,
+waits for it and returns its exit code, so the listings print and the prompt
+waits as for any console program. Typed as `UltraDesktop.exe --windows`, the
+prompt does not wait.
+
 ## Settings file
 
 `~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set;
-`%APPDATA%\ultraos\desktop.json` on Windows):
+`%APPDATA%\ultraos\desktop.json` on Windows;
+`~/Library/Application Support/ultraos/desktop.json` on macOS, where a file
+earlier versions kept under `~/.config` is moved on the first start):
 
 ```json
 {
@@ -240,7 +253,8 @@ stays empty and the Task Manager says so.
 
 UltraDesktop runs on Windows too, from the same suite folder as the other
 applications, and can take the place of the Windows desktop for one account
-— with the way back always one click away.
+— beside Explorer, or instead of it — with the way back always one click
+away.
 
 ### Trying it
 
@@ -250,43 +264,87 @@ on running underneath with its own taskbar along the bottom, over the foot of
 the right bar. *Close UltraDesktop* on the settings button's right-click menu
 ends the trial.
 
-### In place of the Windows desktop
+### Beside Explorer
 
 Any one of these switches over, for this account only, without administrator
 rights:
 
-- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop in place of the
-  Windows desktop*;
-- the settings button's right-click menu: *Use as the Windows desktop*;
+- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop beside Explorer*;
+- the settings button's right-click menu: *Use as the Windows desktop (beside
+  Explorer)*;
 - `UltraDesktop --use-as-desktop` (what the installer's finish page runs).
 
 From then on the sign-in starts UltraDesktop (an entry *UltraCanvas Desktop*
 in Task Manager's startup apps) and Explorer's taskbar hides itself; it slides
 in when the pointer touches the bottom edge. Explorer keeps running, so its
-notification area, its notifications and the programs that rely on it work as
-before.
+notification area, its notifications, its Start menu and the programs that
+rely on it work as before. This is the gentle way, and takes effect at once.
+
+### Instead of Explorer
+
+- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop instead of
+  Explorer*;
+- the settings button's right-click menu: *Use instead of Explorer (from the
+  next sign-in)*;
+- `UltraDesktop --use-instead-of-explorer`.
+
+From the next sign-in UltraDesktop is the whole desktop and Explorer does not
+start. UltraDesktop then also
+
+- shows the programs' **tray icons** (OneDrive, a VPN client, a chat program)
+  on the info panel, above its services: a click opens the program, a right
+  click its menu, and their balloons appear as notifications;
+- offers **Sign out, Restart and Shut down** on the settings button's
+  right-click menu, which the Start menu would otherwise;
+- opens its **Applications** window when the Win key is pressed and let go
+  on its own, where the Start menu would open (Win with another key is that
+  combination, not a tap);
+- puts the **wallpaper on every other monitor**, which would otherwise stay
+  black — a monitor plugged in or taken away is followed within a few
+  seconds, and so is one whose wallpaper was closed (Alt+F4).
+
+The sign-in actually starts *UltraCanvasShellGuard*, which starts
+UltraDesktop — and keeps the screen from ever staying empty:
+
+- it starts UltraDesktop again when it crashes; after the third crash within a
+  minute, or when UltraDesktop cannot start at all, it starts Explorer for
+  that session and says why (UltraDesktop is tried again at the next sign-in);
+- it starts the programs that start with Windows, as Explorer would — the
+  ones switched off in Task Manager stay off;
+- it writes what it did to `%LOCALAPPDATA%\UltraCanvas\ShellGuard.log`.
+
+Without Explorer there is nothing for the parts of Windows that Explorer
+hosts: the Start menu, the quick settings (Wi-Fi, volume), the notification
+centre and Explorer's own keyboard shortcuts (Win+E, Win+R, Win+X). File
+Explorer windows still open — UltraDesktop opens *This PC* for the Start
+menu's *File Explorer*, which would otherwise start a second desktop.
 
 ### Back to the Windows desktop
 
-- UOS-Settings → Desktop: turn the switch off;
+- UOS-Settings → Desktop → At sign-in: *The Windows desktop*;
 - the settings button's right-click menu: *Switch back to the Windows
   desktop*;
 - `UltraDesktop --restore-desktop` — also from Task Manager when nothing else
-  is at hand: Ctrl+Shift+Esc, *Run new task*;
+  is at hand: Ctrl+Shift+Esc, *Run new task*, `UltraDesktop --restore-desktop`
+  (the installer registers the name, so no path is needed);
 - uninstalling the suite does the same.
 
-Each of them removes the start at sign-in and gives the taskbar back the
-state it had before the switch — auto-hide or not, as you had it — and a
-desktop the sign-in started closes within a second.
+Each of them removes the start at sign-in, beside or instead, and gives the
+taskbar back the state it had before the switch — auto-hide or not, as you had
+it. A desktop the sign-in started closes within a second; instead of Explorer,
+Explorer then starts in its place at once, and should UltraDesktop not respond
+any more, the guard ends it after five seconds and starts Explorer all the
+same.
 
 ### What works, and what differs from Linux
 
 | | On Windows |
 |---|---|
 | Running applications | every window Explorer's taskbar would show, with its program's icon; Microsoft Store apps by the program inside their frame |
-| Applications window | the Start menu's programs, named as the Start menu names them; Microsoft Store apps are not listed yet |
-| Virtual desktops | the organiser follows Windows' desktops and switches between them; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
-| Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead |
+| Applications window | the Start menu's programs, named as the Start menu names them, and the Microsoft Store apps (Calculator, Photos, Settings …) with their tile icons; instead of Explorer the Win key opens it |
+| Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
+| Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
+| Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
 | RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
-| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth |
-| Notifications | other programs' notifications are drawn by Windows, as before |
+| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
+| Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |

@@ -6,6 +6,12 @@
 // (b) safe behaviour on malformed input - a failed import must leave the
 // caller's model untouched rather than half-destroying it.
 //
+// The exports write numbers dot-decimal whatever locale the host runs in:
+// under a comma-decimal one - the C library's and the C++ global locale both
+// - FreeMind, OPML and SVG come out byte for byte as under "C". Skipped where
+// no such locale is installed.
+//
+// Version: 1.1.0 - exports are the same under a comma-decimal locale
 // Version: 1.0.0
 // Last Modified: 2026-07-30
 // Author: UltraCanvas Framework
@@ -13,7 +19,9 @@
 #include "Plugins/Diagrams/UltraCanvasMindMapIO.h"
 
 #include <algorithm>
+#include <clocale>
 #include <cstdio>
+#include <locale>
 #include <string>
 #include <vector>
 
@@ -553,6 +561,48 @@ static void TestCrossFormatFidelity() {
     }
 }
 
+// A comma-decimal desktop must not change what is written: a stream follows
+// the C++ global locale, so a host that sets it (std::locale::global) would
+// turn an SVG's `x="10.5"` into `x="10,5"` unless the writer pins its own.
+static void TestExportsIgnoreLocale() {
+    std::printf("\n[exports under a comma-decimal locale]\n");
+    MindMapModel model = SampleModel();
+    MindMapLayoutResult layout;
+    UltraCanvasMindMapLayout::ComputeLayout(model, MindMapLayoutOptions(), nullptr, nullptr, layout);
+    const std::string svg = IO::ToSvg(model, layout);
+    const std::string freeMind = IO::ToFreeMind(model);
+    const std::string opml = IO::ToOpml(model);
+
+    const char* original = std::setlocale(LC_ALL, nullptr);
+    const std::string saved = original ? original : "C";
+    const std::locale savedGlobal;
+    const char* comma = nullptr;
+    for (const char* candidate : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "de_DE"}) {
+        if (!std::setlocale(LC_ALL, candidate)) continue;
+        try {
+            std::locale::global(std::locale(candidate));
+            comma = candidate;
+            break;
+        } catch (const std::exception&) {
+        }
+    }
+    if (!comma) {
+        std::setlocale(LC_ALL, saved.c_str());
+        std::printf("  skip: no comma-decimal locale installed\n");
+        return;
+    }
+    const std::string svgComma = IO::ToSvg(model, layout);
+    const std::string freeMindComma = IO::ToFreeMind(model);
+    const std::string opmlComma = IO::ToOpml(model);
+    std::locale::global(savedGlobal);
+    std::setlocale(LC_ALL, saved.c_str());
+
+    CHECK(svg.find('.') != std::string::npos, "the SVG has fractional numbers to get wrong");
+    CHECK(svgComma == svg, "the SVG is the same under a comma-decimal locale");
+    CHECK(freeMindComma == freeMind, "the FreeMind map is the same under a comma-decimal locale");
+    CHECK(opmlComma == opml, "the OPML is the same under a comma-decimal locale");
+}
+
 int main() {
     std::printf("UltraCanvasMindMapIO interchange tests\n");
     std::printf("======================================\n");
@@ -566,6 +616,7 @@ int main() {
     TestSvgExport();
     TestFormatDetection();
     TestCrossFormatFidelity();
+    TestExportsIgnoreLocale();
 
     std::printf("\n======================================\n");
     if (g_failures == 0) {

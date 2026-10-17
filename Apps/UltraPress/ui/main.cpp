@@ -1,6 +1,6 @@
 // Apps/UltraPress/ui/main.cpp
 // ultrapress: the one UltraPress program - the commands and the window.
-// A command word first (new, check, page, publish, import, help) runs that
+// A command word first (new, check, page, publish, import, hosts, media, help) runs that
 // command without a window (cli/UltraPressCli.h); a site folder opens it in
 // the editor - the pages and the current page's blocks on the left, the
 // page rendered on real elements in the middle, the selected block's
@@ -10,12 +10,15 @@
 //   ultrapress <site-dir>            open a site folder in the editor
 //   ultrapress <site-dir> --check    render every page without a window and
 //                                    print the element counts and warnings
-//   ultrapress <command> ...         new, check, page, publish, import, help
+//   ultrapress <command> ...         new, check, page, publish, import, hosts, media, help
 //   ultrapress --version
 //
 // There were two programs, ultrapress and UltraPress, until the macOS build
 // showed that two names differing only in case are one name on a
 // case-insensitive filesystem. One program, like ultrafibu.
+// Version: 0.8.0 - the look read from the settings folder before the window opens
+// Version: 0.6.0 - media
+// Version: 0.5.0 - hosts
 // Version: 0.4.1 - one program: the commands and the window
 // Version: 0.3.0 - editing: blocks added, moved, removed and their properties changed; Save
 // Version: 0.2.0
@@ -25,12 +28,14 @@
 #include "UltraPressCli.h"
 #include "UltraPressModel.h"
 #include "UltraPressRender.h"
+#include "UltraPressTheme.h"
 #include "UltraPressWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
@@ -48,14 +53,12 @@ using namespace UltraCanvas;
 
 namespace {
 
-const Color kPaper(255, 255, 255, 255);
-
 int Usage() {
     std::fprintf(stderr,
                  "UltraPress %s\n"
                  "  ultrapress <site-dir>           open a site folder in the editor\n"
                  "  ultrapress <site-dir> --check   render every page without a window, print what was built\n"
-                 "  ultrapress <command> ...        new, check, page, publish, import; `ultrapress help` lists them\n"
+                 "  ultrapress <command> ...        new, check, page, publish, import, hosts, media; `ultrapress help` lists them\n"
                  "  ultrapress --version\n",
                  ULTRAPRESS_VERSION);
     return 2;
@@ -64,7 +67,7 @@ int Usage() {
 // Whether the first argument is a command word rather than a site folder.
 // A folder that happens to be called `check` is opened as `./check`.
 bool IsCommand(const std::string& word) {
-    static const char* const kCommands[] = {"new", "check", "page", "publish", "import",
+    static const char* const kCommands[] = {"new", "check", "page", "publish", "import", "hosts", "media",
                                             "help", "--help", "-h"};
     for (const char* command : kCommands) {
         if (word == command) return true;
@@ -120,17 +123,23 @@ int main(int argc, char* argv[]) {
     static UltraCanvasApplication app;
     if (!app.Initialize(argv[0])) return 1;
 
+    // The look the user chose last, before the window is built, so that
+    // every element that follows the theme is born in it.
+    const bool dark = UltraPress::LoadLook(UltraPress::LookSettingsDirectory());
+    UltraCanvasTheme::SetCurrent(UltraPress::ThemeFor(dark));
+
     WindowConfig cfg;
     cfg.title = viewer.site.name + " - UltraPress " ULTRAPRESS_VERSION;
     cfg.width = 1500;
     cfg.height = 920;
-    cfg.backgroundColor = kPaper;
+    cfg.backgroundColor = UltraCanvasTheme::Current().roles.ground;
     auto window = CreateWindow(cfg);
     if (!window) return 1;
 
     // Static lifetime: under Emscripten Run() never returns and unwinds
     // main()'s frame while the loop keeps ticking.
     static UltraPress::EditorWindow editor(std::move(viewer.site), siteDir);
+    editor.SetDark(dark, false);
     editor.Build(window);
 #if defined(__EMSCRIPTEN__)
     window->Maximize();

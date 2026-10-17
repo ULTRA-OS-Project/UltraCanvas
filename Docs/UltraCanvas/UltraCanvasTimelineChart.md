@@ -26,6 +26,24 @@ graph — it is the stakeholder view, not the working schedule.
 **Last Modified:** 2026-07-31
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Class hierarchy](#class-hierarchy)
+- [Quick start](#quick-start)
+- [Dates](#dates)
+- [Data model](#data-model)
+  - [Building data](#building-data)
+- [Lane packing](#lane-packing)
+- [Lane modes: packed or swimlanes](#lane-modes-packed-or-swimlanes)
+- [Axis, scale and view](#axis-scale-and-view)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Geometry queries](#geometry-queries)
+- [Using TimeAxis on its own](#using-timeaxis-on-its-own)
+- [Sample data](#sample-data)
+- [Not yet implemented](#not-yet-implemented)
+
 ## Class hierarchy
 
 ```

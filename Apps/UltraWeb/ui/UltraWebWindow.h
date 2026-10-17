@@ -3,6 +3,7 @@
 // forward, the active tab's page or app (UltraWebTab: a web page in an
 // UltraCanvasWebView, or the area a WebAssembly app builds its UI into), the
 // downloads panel and a status bar.
+// Version: 0.8.0 - target="_blank" links open in a new tab
 // Version: 0.7.0 - tabs
 // Version: 0.6.0 - a downloads list: a panel above the status bar
 // Version: 0.5.0 - downloads: a link to no page is saved through the save dialog

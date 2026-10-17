@@ -1,5 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixModel.h
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.4.0 - competitive assessment: competitors and their per-need ratings
+// Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
 // Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
@@ -36,6 +38,8 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+    class JSONValue;   // DataFormats/UltraCanvasJSON.h - only the JSON functions need it
 
 // =============================================================================
 // SHAPE
@@ -249,6 +253,33 @@ namespace UltraCanvas {
     };
 
 // =============================================================================
+// COMPETITIVE ASSESSMENT
+// =============================================================================
+
+    // A product the House of Quality's customers compare - your own as well
+    // as the competition's. Each is drawn in the competitive-assessment block
+    // as one marker per need, joined row to row.
+    struct MatrixCompetitor {
+        std::string     id;
+        std::string     name;
+        Color           color = Color(60, 66, 76, 255);
+        MatrixMarkShape mark  = MatrixMarkShape::Disc;
+
+        MatrixCompetitor() = default;
+        MatrixCompetitor(const std::string& competitorId, const std::string& competitorName,
+                         const Color& c, MatrixMarkShape m = MatrixMarkShape::Disc)
+                : id(competitorId), name(competitorName), color(c), mark(m) {}
+    };
+
+    // How customers rate one competitor on one need, from 1 to the model's
+    // ratingMax (5 by convention). Keyed by ids, like the JSON cells.
+    struct MatrixRating {
+        std::string itemId;         // an item of the rows of panel 0 - the needs
+        std::string competitorId;
+        double      value = 0.0;
+    };
+
+// =============================================================================
 // VALIDATION
 // =============================================================================
 
@@ -270,6 +301,26 @@ namespace UltraCanvas {
         std::vector<MatrixPanel>   panels;
         std::vector<MatrixCell>    cells;
         std::vector<MatrixHeaderField> headerFields;   // empty = no header band
+
+        // The House of Quality's competitive assessment. Empty = no block.
+        std::vector<MatrixCompetitor> competitors;
+        std::vector<MatrixRating>     ratings;
+        double                        ratingMax = 5.0;
+
+        // ---- Competitive assessment ----
+        MatrixCompetitor& AddCompetitor(const std::string& id, const std::string& name,
+                                        const Color& color,
+                                        MatrixMarkShape mark = MatrixMarkShape::Disc);
+        int IndexOfCompetitor(const std::string& id) const;
+
+        // Rate a competitor on a need - an item of panel 0's row set. Replaces
+        // an earlier rating. False for an unknown need or competitor, or a
+        // value outside 1..ratingMax.
+        bool SetRating(const std::string& itemId, const std::string& competitorId, double value);
+        // The rating, or false when there is none.
+        bool RatingOf(const std::string& itemId, const std::string& competitorId,
+                      double& value) const;
+        void ClearRatings();
 
         // ---- Sets ----
         MatrixItemSet*       FindSet(const std::string& setId);
@@ -331,8 +382,9 @@ namespace UltraCanvas {
 
         // ---- Validation ----
         // Checks set count against the shape, panel set references, cell
-        // indices and level ids, and that an X or Y panel crosses two sets the
-        // shape can actually place side by side. Cheap enough to call before
+        // indices and level ids, that an X or Y panel crosses two sets the
+        // shape can actually place side by side, and that every rating names a
+        // known need and competitor and lies in 1..ratingMax. Cheap enough to call before
         // every render.
         MatrixValidation Validate() const;
 
@@ -371,6 +423,31 @@ namespace UltraCanvas {
                            const std::string& rowTitle = "Rows",
                            const std::string& colTitle = "Columns",
                            std::string* error = nullptr);
+
+    // The whole model as JSON - every set, panel, scale, cell and header field,
+    // where the CSV forms carry one panel's marks. Cells are keyed by item id,
+    // not index, so a file survives its items being reordered:
+    //
+    //   { "format": "ultracanvas-matrix", "version": 1, "title": ..., "shape": "House",
+    //     "header": [ {"label", "value"} ],
+    //     "sets":   [ {"id", "title", "accent": [r,g,b,a], "items": [ {"id", "label",
+    //                 "importance", "note", "improvement", "target", "accent"} ]} ],
+    //     "panels": [ {"rows", "columns", "symmetric", "scale": {"title", "levels":
+    //                 [ {"id", "label", "glyph", "shape", "color", "weight", "size"} ]}} ],
+    //     "cells":  [ {"panel", "row", "column", "level", "note"} ] }
+    //
+    // Members that hold their default are left out.
+    JSONValue MatrixModelToJson(const MatrixModel& model);
+    std::string ExportMatrixJson(const MatrixModel& model, bool pretty = true);
+
+    // Read that form back. The result must pass Validate(): on an unknown
+    // format or a newer version, a cell naming an item or level that does not
+    // exist, or a model the shape cannot draw, it returns false, puts the
+    // reason in `error` when given, and leaves `out` untouched.
+    bool MatrixModelFromJson(const JSONValue& json, MatrixModel& out,
+                             std::string* error = nullptr);
+    bool ImportMatrixJson(const std::string& text, MatrixModel& out,
+                          std::string* error = nullptr);
 
 // =============================================================================
 // SAMPLES

@@ -45,6 +45,14 @@ before adding cross-module code.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
   index / full concatenation of the docs corpus for LLM consumption.
   Regenerate with `python3 scripts/generate_llms_txt.py` after editing docs.
+- Every document the demo app opens (the `Docs/....md` paths in
+  `Apps/DemoApp/*.cpp`) starts with a generated `## Contents` inventory
+  linking each `##` / `###` section. After adding, renaming or removing a
+  section, run `python3 scripts/generate_doc_toc.py` (before
+  `generate_llms_txt.py`); CI runs it with `--check`, which also fails when a
+  demo page names a `Docs/....md` that does not exist. Never edit the list by
+  hand, and never put prose inside it - it is rewritten up to the next
+  heading.
 
 ## Core conventions
 
@@ -342,7 +350,11 @@ every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
 fraction of a second; it never blocks the session, and when an install fails
-it says so in one line in the session's context. The services CI starts for
+it says so in one line in the session's context. It also generates the
+comma-decimal locale `de_DE.UTF-8`, as CI's Linux rows do: the tests that hold
+file formats to dot-decimal numbers (`HTMLReaderTest`, `ModelLocaleDecimalTest`,
+`DiagramJsonLocaleTest` and the rest) skip without one, and the image has none.
+The services CI starts for
 its live tests (PostgreSQL, Avahi, the IPP printer) are not set up; those
 tests skip. A test that fails here but passes in CI because a library is
 missing is fixed by adding the package to that list, not by treating the

@@ -12,11 +12,13 @@ same default.
 
 > **Status (2026-09, v0.2):** engine and dialogs implemented for
 > **Nextcloud / ownCloud** (WebDAV + OCS share links), **generic WebDAV**
-> (browse and upload; links only through a public web-folder URL),
+> (browse, upload, delete and rename; links only through a public
+> web-folder URL),
 > **Dropbox**, **OneDrive** and **Google Drive** (OAuth2 + PKCE through the
 > system browser, tokens refreshed automatically), **FTP / FTPS / SFTP**
-> (browse, upload, download, and - alone among the providers - delete and
-> rename, so a file manager can carry a server as a drive; no share links)
+> (browse, upload, download, delete and rename, so a file manager can carry
+> a server as a drive; SFTP with a password or a private key; no share
+> links)
 > and an **in-memory demo provider**. iCloud Drive cannot mint links from an app at all. Providers
 > can also ship as plug-in libraries. Sources under
 > `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud` (headless)
@@ -51,11 +53,11 @@ What already existed and stays where it is:
 | Provider | Upload | Link comes from | Auth | Link shape |
 |---|---|---|---|---|
 | Nextcloud / ownCloud | WebDAV PUT under `/remote.php/dav/files/<user>/` | OCS Share API (`shareType=3`), with password, expiry, label | app password (Basic) | `https://cloud.example.com/s/<token>` |
-| WebDAV server | WebDAV PUT | `publicBaseUrl` + path, when the DAV root is also served as a web folder | Basic | `https://files.example.org/pub/<path>` |
+| WebDAV server | WebDAV PUT; DELETE and MOVE, so it is a drive too | `publicBaseUrl` + path, when the DAV root is also served as a web folder | Basic | `https://files.example.org/pub/<path>` |
 | Dropbox | `files/upload` up to 150 MB, an upload session (`upload_session/start` → `append_v2` → `finish`) in 8 MiB chunks above | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
 | OneDrive | Graph `PUT …:/content` up to 4 MB, an upload session in 10 MiB chunks above | Graph `createLink` (anonymous view; password + expiry on personal accounts) | OAuth2 + PKCE, `offline_access` | `https://1drv.ms/…` |
 | Google Drive | multipart `files.create` (or a media update when the name exists) up to 5 MB, a resumable upload in 8 MiB chunks above | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
-| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
+| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); on `sftp://` a private key too (`Credentials::privateKeyFile`, the password as its passphrase); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
 | iCloud Drive | — | Finder / share sheet only | — | not possible from an app |
 | Demo (in memory) | in process | in process | — | `https://demo.ultra-os.local/s/<n>` |
 
@@ -91,20 +93,34 @@ which is how the tests drive every provider through fake servers.
 ### OAuth2 sign-in
 
 The hosted providers sign in through the system browser: `CloudService::
-SignInAccount` asks the provider for its OAuth2 config, UltraNet runs the
-PKCE authorization-code flow against a loopback redirect
-(`UltraNet_OAuth2AuthorizeInteractive`), the tokens land in the secret
-store, and the provider's account-info call fills the user name. An expired
+SignInAccount` asks the provider to sign in, the tokens land in the secret
+store, and the provider's account-info call fills the user name. By default
+the sign-in goes through the **OAuth2 sign-in service** UltraNet's registry
+names (`UltraNet_OAuth2SignInServiceUrl`, built in as ULTRA OS's
+`https://oauth-callback.ultraos.eu`; `Server/OAuthCallback` is the
+service): it holds the OAuth client registrations, so the application ships
+no client id or secret, and it is the https address the providers redirect
+to. The provider sends only the PKCE challenge and its scopes, collects the
+authorization code from the service and exchanges it - and later refreshes
+the token - through the service (`UltraNet_OAuth2AuthorizeViaService`,
+`UltraNet_OAuth2ServiceRefresh`). Google Drive signs in as the service's
+`google`, OneDrive as its `microsoft`, Dropbox as its `dropbox`
+(`OAuthProviderBase::SignInServiceProviderId`). A provider that has an
+**OAuth app registration of its own** (below) bypasses the service: UltraNet
+runs the PKCE authorization-code flow against a loopback redirect
+(`UltraNet_OAuth2AuthorizeInteractive`) and refreshes directly. An expired
 access token is renewed from the refresh token inside `CloudService::Resolve`
 before any call uses it, and the renewal is stored. A token the service
 rejects (HTTP 401) although it had not expired here - revoked early, a clock
 that is off, or one that ran out while a request waited on a service
 limiting requests - is renewed the same way and the call made once more.
 
-Each provider needs an **OAuth app registration** — a client id (and, for
-confidential clients, a secret) the ULTRA OS project or the app vendor
-registers with Dropbox, Microsoft and Google. It is configuration, never a
-literal in the code:
+An installation that would rather not go through the service - a private
+registration, a build without a service (`-DULTRANET_OAUTH_SERVICE_URL=""`),
+`ULTRACLOUD_OAUTH_SERVICE_URL=off` - gives a provider an **OAuth app
+registration** of its own — a client id (and, for confidential clients, a
+secret) registered with Dropbox, Microsoft or Google. It is configuration,
+never a literal in the code:
 
 ```cpp
 UltraCloud::OAuthApp app;
@@ -115,8 +131,14 @@ UltraCloud::SetOAuthApp("dropbox", app);
 
 or, without code, the environment: `ULTRACLOUD_DROPBOX_CLIENT_ID`,
 `ULTRACLOUD_ONEDRIVE_CLIENT_ID`, `ULTRACLOUD_GOOGLEDRIVE_CLIENT_ID` (plus
-`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). Until one is set the
-add-account dialog says so and the provider's `SignIn` returns `Unsupported`.
+`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). `UsesSignInService(id)`
+says whether a provider goes through the service, `CanSignIn(id)` whether it
+can be signed in to at all; when neither a service nor a registration is
+there the add-account dialog says so and the provider's `SignIn` returns
+`Unsupported`. The service's address is the registry's one setting
+(`ULTRACLOUD_OAUTH_SERVICE_URL` or `ULTRANET_OAUTH_SERVICE_URL` in the
+environment, an INI file's `[service] url`, the built-in default), shared
+with UltraMail.
 
 The registration lives in **UltraNet's OAuth2 app registry**
 (`<UltraNet/UltraNetOAuth2Apps.h>`), one per process and shared with
@@ -344,26 +366,33 @@ selected file. When no account exists yet it offers the add-account dialog,
 whose "Add account" button becomes "Sign in in browser" for the OAuth
 providers.
 
+Both dialogs do their work on threads of their own - the picker's listings,
+uploads and links, the add-account dialog's sign-in - and any of it can still
+be running after the dialog, or the window that opened it, has closed. Give
+them a `std::shared_ptr<CloudService>` made with the shared_ptr constructor
+and each thread holds the service, and through it the stores, until it ends;
+the `CloudService&` forms leave keeping the service alive to the caller.
+
 ## Public surface
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry, and the SFTP private key's path), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
-| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
-| `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
-| `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
+| `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory); `TransfersInProgress` - the uploads and downloads under way, for a host that asks before it quits |
+| `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

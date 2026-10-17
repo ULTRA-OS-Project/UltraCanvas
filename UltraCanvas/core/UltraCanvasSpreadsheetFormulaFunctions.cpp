@@ -26,6 +26,7 @@
 #include <functional>
 #include <map>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1443,6 +1444,106 @@ void FormulaFunctionLibrary::RegisterExcelFunctions() {
     RegisterDates(*this);
     RegisterLogicAndInformation(*this);
     RegisterFinance(*this);
+}
+
+
+// ============================================================================
+// ARGUMENT NAMES
+// ============================================================================
+
+// The argument names every built-in function shows in its signature and in
+// the parameter hint while a formula is typed - the names Excel uses. "?"
+// marks an optional argument; a function that takes more arguments than are
+// named here repeats the last (or last pair), shown as "...".
+void FormulaFunctionLibrary::ApplyArgumentNames() {
+    static const std::pair<const char*, const char*> kArguments[] = {
+        { "ABS", "number" }, { "ACOS", "number" }, { "AND", "logical1, logical2?" },
+        { "ASIN", "number" }, { "ATAN", "number" }, { "ATAN2", "x_num, y_num" },
+        { "AVERAGE", "number1, number2?" }, { "AVERAGEIF", "range, criteria, average_range?" },
+        { "AVERAGEIFS", "average_range, criteria_range1, criteria1" },
+        { "CEILING", "number, significance?" }, { "CHAR", "number" },
+        { "CHOOSE", "index_num, value1" }, { "CLEAN", "text" }, { "CODE", "text" },
+        { "COLUMNS", "array" }, { "COMBIN", "number, number_chosen" },
+        { "CONCAT", "text1, text2?" }, { "CONCATENATE", "text1, text2?" },
+        { "COS", "number" }, { "COSH", "number" }, { "COUNT", "value1, value2?" },
+        { "COUNTA", "value1, value2?" }, { "COUNTBLANK", "range" },
+        { "COUNTIF", "range, criteria" }, { "COUNTIFS", "criteria_range1, criteria1" },
+        { "DATE", "year, month, day" }, { "DATEDIF", "start_date, end_date, unit" },
+        { "DATEVALUE", "date_text" }, { "DAY", "serial_number" },
+        { "DAYS", "end_date, start_date" }, { "DEGREES", "angle" },
+        { "EDATE", "start_date, months" }, { "EOMONTH", "start_date, months" },
+        { "EVEN", "number" }, { "EXACT", "text1, text2" }, { "EXP", "number" },
+        { "FACT", "number" }, { "FALSE", "" }, { "FIND", "find_text, within_text, start_num?" },
+        { "FLOOR", "number, significance?" }, { "FV", "rate, nper, pmt, pv?, type?" },
+        { "GCD", "number1, number2?" },
+        { "HLOOKUP", "lookup_value, table_array, row_index_num, range_lookup?" },
+        { "HOUR", "serial_number" }, { "IF", "logical_test, value_if_true, value_if_false?" },
+        { "IFERROR", "value, value_if_error" }, { "IFNA", "value, value_if_na" },
+        { "IFS", "logical_test1, value_if_true1" }, { "INDEX", "array, row_num, column_num?" },
+        { "INT", "number" }, { "ISBLANK", "value" }, { "ISERR", "value" }, { "ISERROR", "value" },
+        { "ISEVEN", "number" }, { "ISLOGICAL", "value" }, { "ISNA", "value" },
+        { "ISNONTEXT", "value" }, { "ISNUMBER", "value" }, { "ISODD", "number" },
+        { "ISTEXT", "value" }, { "LARGE", "array, k" }, { "LCM", "number1, number2?" },
+        { "LEFT", "text, num_chars?" }, { "LEN", "text" }, { "LN", "number" },
+        { "LOG", "number, base?" }, { "LOG10", "number" },
+        { "LOOKUP", "lookup_value, lookup_vector, result_vector?" }, { "LOWER", "text" },
+        { "MATCH", "lookup_value, lookup_array, match_type?" }, { "MAX", "number1, number2?" },
+        { "MAXIFS", "max_range, criteria_range1, criteria1" }, { "MEDIAN", "number1, number2?" },
+        { "MID", "text, start_num, num_chars" }, { "MIN", "number1, number2?" },
+        { "MINIFS", "min_range, criteria_range1, criteria1" }, { "MINUTE", "serial_number" },
+        { "MOD", "number, divisor" }, { "MODE", "number1, number2?" },
+        { "MODE.SNGL", "number1, number2?" }, { "MONTH", "serial_number" },
+        { "MROUND", "number, multiple" }, { "N", "value" }, { "NA", "" }, { "NOT", "logical" },
+        { "NOW", "" }, { "NPV", "rate, value1" }, { "ODD", "number" },
+        { "OR", "logical1, logical2?" }, { "PERCENTILE", "array, k" }, { "PI", "" },
+        { "PMT", "rate, nper, pv, fv?, type?" }, { "POWER", "number, power" },
+        { "PRODUCT", "number1, number2?" }, { "PROPER", "text" },
+        { "PV", "rate, nper, pmt, fv?, type?" }, { "QUARTILE", "array, quart" },
+        { "QUOTIENT", "numerator, denominator" }, { "RADIANS", "angle" }, { "RAND", "" },
+        { "RANDBETWEEN", "bottom, top" }, { "RANK", "number, ref, order?" },
+        { "RANK.EQ", "number, ref, order?" },
+        { "REPLACE", "old_text, start_num, num_chars, new_text" },
+        { "REPT", "text, number_times" }, { "RIGHT", "text, num_chars?" },
+        { "ROUND", "number, num_digits" }, { "ROUNDDOWN", "number, num_digits" },
+        { "ROUNDUP", "number, num_digits" }, { "ROWS", "array" },
+        { "SEARCH", "find_text, within_text, start_num?" }, { "SECOND", "serial_number" },
+        { "SIGN", "number" }, { "SIN", "number" }, { "SINH", "number" }, { "SMALL", "array, k" },
+        { "SQRT", "number" }, { "STDEV", "number1, number2?" }, { "STDEV.P", "number1, number2?" },
+        { "STDEV.S", "number1, number2?" }, { "STDEVP", "number1, number2?" },
+        { "SUBSTITUTE", "text, old_text, new_text, instance_num?" },
+        { "SUBTOTAL", "function_num, ref1" }, { "SUM", "number1, number2?" },
+        { "SUMIF", "range, criteria, sum_range?" },
+        { "SUMIFS", "sum_range, criteria_range1, criteria1" },
+        { "SUMPRODUCT", "array1, array2?" }, { "SUMSQ", "number1, number2?" },
+        { "SWITCH", "expression, value1, result1" }, { "T", "value" }, { "TAN", "number" },
+        { "TANH", "number" }, { "TEXT", "value, format_text" },
+        { "TEXTJOIN", "delimiter, ignore_empty, text1" }, { "TIME", "hour, minute, second" },
+        { "TODAY", "" }, { "TRIM", "text" }, { "TRUE", "" }, { "TRUNC", "number, num_digits?" },
+        { "UPPER", "text" }, { "VALUE", "text" }, { "VAR", "number1, number2?" },
+        { "VAR.P", "number1, number2?" }, { "VAR.S", "number1, number2?" },
+        { "VARP", "number1, number2?" },
+        { "VLOOKUP", "lookup_value, table_array, col_index_num, range_lookup?" },
+        { "WEEKDAY", "serial_number, return_type?" },
+        { "XLOOKUP", "lookup_value, lookup_array, return_array, if_not_found?, match_mode?, search_mode?" },
+        { "XOR", "logical1, logical2?" }, { "YEAR", "serial_number" },
+    };
+    for (const auto& [name, spec] : kArguments) {
+        auto it = functions_.find(name);
+        if (it == functions_.end()) continue;
+        std::vector<FunctionArgDef> args;
+        std::stringstream in(spec);
+        std::string part;
+        while (std::getline(in, part, ',')) {
+            const size_t b = part.find_first_not_of(' ');
+            if (b == std::string::npos) continue;
+            part = part.substr(b);
+            FunctionArgDef arg;
+            arg.optional = !part.empty() && part.back() == '?';
+            arg.name = arg.optional ? part.substr(0, part.size() - 1) : part;
+            args.push_back(arg);
+        }
+        it->second.args = std::move(args);
+    }
 }
 
 } // namespace UltraCanvas

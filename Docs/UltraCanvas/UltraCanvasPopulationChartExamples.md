@@ -1,5 +1,36 @@
 # UltraCanvasPopulationChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Configuration Structs](#configuration-structs)
+  - [PopulationAgeGroup](#populationagegroup)
+  - [PopulationLegendItem](#populationlegenditem)
+  - [PopulationChartUtils::DemographicStats](#populationchartutilsdemographicstats)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+- [Public Methods](#public-methods)
+  - [Data Management](#data-management)
+  - [Chart Configuration](#chart-configuration)
+  - [Axis Configuration](#axis-configuration)
+  - [Color Configuration](#color-configuration)
+  - [Display Options](#display-options)
+  - [Legend](#legend)
+  - [Layout](#layout)
+  - [Interaction](#interaction)
+  - [Aggregate Data Access](#aggregate-data-access)
+  - [Rendering & Events (Overrides)](#rendering--events-overrides)
+- [Utility Functions](#utility-functions)
+- [Usage Examples](#usage-examples)
+  - [Example 1: Germany Population Pyramid (2024)](#example-1-germany-population-pyramid-2024)
+  - [Example 2: Russia Population Pyramid (2024)](#example-2-russia-population-pyramid-2024)
+  - [Putting it Together: Side-by-Side Comparison](#putting-it-together-side-by-side-comparison)
+- [Internal Rendering Pipeline](#internal-rendering-pipeline)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasPopulationChart` is a specialized demographic visualization component within the UltraCanvas framework. It renders **population pyramid** charts — back-to-back horizontal bar charts showing the age and gender distribution of a population. Each age group is drawn as two opposing bars (males to one side of a centre line, females to the other), with optional **surplus highlighting** that shades the imbalance between male and female counts.

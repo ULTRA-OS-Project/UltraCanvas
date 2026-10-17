@@ -24,13 +24,16 @@
 //                  means UltraCanvasFontFile can read the name records and
 //                  rasterize a specimen, not that the image pipeline decodes
 //                  it (CanImagePipelineLoad stays false for every font).
+//   LayeredImage — UCRasterDocument's own files: the UCD 2.1 layered image
+//                  (no libvips needed) and the UltraPaint project (libvips).
+// Version: 1.4.0 - LayeredImage: *.ucd (UCD 2.1 layered image) and *.ucraster
 // Version: 1.3.0 - a bitmap's canLoad asks whether it can decode (no HEIC
 //                  without libheif's HEVC decoder, no AVIF without its AV1 one)
 // Version: 1.2.0 - a bitmap's canSave asks whether it can encode (no AVIF /
 //                  HEIC without libheif's encoder); ICO and QOI name the
 //                  framework's own plugins
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
@@ -363,6 +366,20 @@ namespace {
                         "FreeType", "fixed strikes only - no outlines" });
     }
 
+    // ---- Layered images: UCRasterDocument's files, which keep each layer,
+    // its blend mode and opacity, and a text layer's words as text. ----
+    void AddLayeredImageFormats(std::vector<MediaFormatInfo>& out) {
+        out.push_back({ "ucd", {}, "UltraCanvas layered image",
+                        MediaFormatCategory::LayeredImage, true, true,
+                        "UltraCanvas (UCRasterDocument)",
+                        "UCD 2.1: layers, blend modes, text layers as text, a thumbnail" });
+#ifdef HAS_LIBVIPS
+        out.push_back({ "ucraster", {}, "UltraPaint project",
+                        MediaFormatCategory::LayeredImage, true, true,
+                        "UltraCanvas (UCRasterDocument)", "" });
+#endif
+    }
+
     void AddVideoFormats(std::vector<MediaFormatInfo>& out) {
         AddCodecFormats(out, MediaCodecKind::Video, MediaFormatCategory::Video);
     }
@@ -471,6 +488,7 @@ namespace {
         AddAudioFormats(out);
         AddVideoFormats(out);
         AddFontFormats(out);
+        AddLayeredImageFormats(out);
         AddRegisteredGraphicsPlugins(out);
         return out;
     }
@@ -549,6 +567,7 @@ namespace {
             case MediaFormatCategory::Audio:       return "Audio";
             case MediaFormatCategory::Video:       return "Video";
             case MediaFormatCategory::Font:        return "Fonts";
+            case MediaFormatCategory::LayeredImage: return "Layered images";
         }
         return "Unknown";
     }

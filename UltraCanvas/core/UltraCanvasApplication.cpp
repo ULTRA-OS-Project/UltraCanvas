@@ -1,5 +1,10 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.10.2 - ToFontconfigPath turns '\' into '/' only on Windows: elsewhere it is
+//                   part of a folder's name
+// Version: 1.10.1 - two -Wswitch / -Wtautological warnings in DispatchEvent fixed (the
+//                   key-state bound is checked on the key code as an int, against
+//                   KeyStateCount, as IsKeyPressed now does too)
 // Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
 // Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
@@ -15,10 +20,11 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <atomic>
 #include <iostream>
@@ -309,9 +315,14 @@ namespace UltraCanvas {
 
         // fontconfig understands forward slashes on every platform; keeping
         // backslashes out of the generated XML avoids any escaping question.
+        // Only on Windows, where '\' separates folders: elsewhere it is a
+        // character of a folder's name, and turned into '/' it would point
+        // fontconfig somewhere else.
         std::string ToFontconfigPath(const std::string& in) {
             std::string out = in;
+#if defined(_WIN32) || defined(_WIN64)
             std::replace(out.begin(), out.end(), '\\', '/');
+#endif
             while (out.size() > 1 && out.back() == '/') out.pop_back();
             return out;
         }
@@ -743,6 +754,47 @@ namespace UltraCanvas {
         pango_cairo_font_map_set_default(nullptr);
     }
 
+    std::vector<std::string> GetInstalledFontFamilies() {
+        std::vector<std::string> names;
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (!fontMap) return names;
+        PangoFontFamily** families = nullptr;
+        int familyCount = 0;
+        pango_font_map_list_families(fontMap, &families, &familyCount);
+        for (int i = 0; i < familyCount; ++i) {
+            const char* name = pango_font_family_get_name(families[i]);
+            if (!name || !*name) continue;
+            // A face made of bitmaps lists the sizes it has; a scalable one
+            // lists none.
+            PangoFontFace** faces = nullptr;
+            int faceCount = 0;
+            pango_font_family_list_faces(families[i], &faces, &faceCount);
+            bool scalable = faceCount == 0;
+            for (int f = 0; f < faceCount && !scalable; ++f) {
+                int* sizes = nullptr;
+                int sizeCount = 0;
+                pango_font_face_list_sizes(faces[f], &sizes, &sizeCount);
+                if (!sizes) scalable = true;
+                g_free(sizes);
+            }
+            g_free(faces);
+            if (scalable) names.emplace_back(name);
+        }
+        g_free(families);
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+            return s;
+        };
+        std::sort(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            const std::string la = lower(a), lb = lower(b);
+            return la != lb ? la < lb : a < b;
+        });
+        names.erase(std::unique(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            return lower(a) == lower(b);
+        }), names.end());
+        return names;
+    }
+
     bool UltraCanvasApplicationBase::RegisterFontFile(const std::string& fontFilePath) {
         if (fontFilePath.empty()) return false;
 
@@ -1133,10 +1185,12 @@ namespace UltraCanvas {
         for (auto* chain : PressChains()) {
             std::replace(chain->begin(), chain->end(), elem, static_cast<UltraCanvasUIElement*>(nullptr));
         }
-        auto win = elem->GetWindow();
-        if (win && win->_focusedElement == elem) {
-            win->_focusedElement = nullptr;
-        }
+        // Forget the element as any window's focus, not only the window it
+        // names now: an element whose window pointer was already cleared or
+        // moved could otherwise stay a window's focused element after it was
+        // freed, and the next focus change walked its freed parent chain
+        // (the Demo crashed in IsDescendantOf when leaving the Album page).
+        UltraCanvasWindowBase::ForgetFocusedElement(elem);
     }
 
     // ===== MODAL WINDOW MANAGEMENT =====
@@ -1285,7 +1339,7 @@ namespace UltraCanvas {
 
     std::vector<UCKeys> UltraCanvasApplicationBase::GetPressedKeys() const {
         std::vector<UCKeys> pressed;
-        for (int key = 0; key < 256; ++key) {
+        for (int key = 0; key < KeyStateCount; ++key) {
             if (keyStates[key]) {
                 pressed.push_back(static_cast<UCKeys>(key));
             }
@@ -1418,8 +1472,12 @@ namespace UltraCanvas {
             ctrlHeld = event.ctrl;
             altHeld = event.alt;
             metaHeld = event.meta;
-            if (event.virtualKey >= 0 && event.virtualKey < 256) {
-                keyStates[event.virtualKey] = (event.type == UCEventType::KeyDown);
+            // As an int: the platforms make a UCKeys out of any key code
+            // (static_cast<UCKeys>(vk)), so the value is not bounded by the
+            // enum's own range, which is what the compiler reasons from.
+            const int key = static_cast<int>(event.virtualKey);
+            if (key >= 0 && key < KeyStateCount) {
+                keyStates[key] = (event.type == UCEventType::KeyDown);
             }
         }
 
@@ -1501,6 +1559,9 @@ namespace UltraCanvas {
                     focusedWindow.reset();
                 }
                 return;
+            default:
+                // Everything else goes on to the window below.
+                break;
         }
         // Dispatch other events to focused element
         if (targetWindow) {

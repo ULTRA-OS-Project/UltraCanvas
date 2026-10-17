@@ -100,6 +100,9 @@ A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
 findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.7.0 - the shared precompiled header is reused by what it was
+#                 built from (the headers' content, the flags, clang), not by
+#                 mtimes, and --pch-key prints that, so CI can cache it
 # Version: 1.6.0 - a baseline entry no longer found fails --strict until the
 #                 file is rewritten (--all also for a doc that is gone); the
 #                 reported errors come from a -fno-spell-checking pass, so an
@@ -125,7 +128,7 @@ findings and rewrite it, never add to it to let a new one through.
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-14
+# Last Modified: 2026-10-15
 # Author: UltraCanvas Framework
 
 import argparse
@@ -228,37 +231,86 @@ def public_headers():
     return sorted(str(p.relative_to(INCLUDE)).replace(os.sep, "/") for p in INCLUDE.rglob("*.h"))
 
 
-def newest_header_mtime():
-    """The newest header the shared header may have pulled in. It lists
-    include/ only, but a public header includes further ones - UltraCanvasImage.h
-    takes libspecific/Cairo/ImageCairo.h - and clang refuses a precompiled
-    header older than any file it was built from ("has been modified since
-    the precompiled header"), which came out of run_clang as "a header
-    changed while the docs were being checked" until something under
-    include/ was touched. So every header under the include roots counts."""
-    roots = [d for d in INCLUDE_DIRS if d.exists()
-             and not any(o != d and d.is_relative_to(o) for o in INCLUDE_DIRS)]
-    return max((p.stat().st_mtime for r in roots for p in r.rglob("*.h")), default=0.0)
+def header_roots():
+    """The directories whose headers the shared header may pull in: the
+    include roots, each once (a root inside another is covered by it). It
+    lists include/ for the shared header, but a public header includes
+    further ones - UltraCanvasImage.h takes libspecific/Cairo/ImageCairo.h -
+    so every header under the roots counts."""
+    return [d for d in INCLUDE_DIRS if d.exists()
+            and not any(o != d and d.is_relative_to(o) for o in INCLUDE_DIRS)]
 
 
-def build_pch(work, name, flags, clang):
+def umbrella_text():
     headers = [h for h in public_headers() if h not in STANDALONE_EXCLUDED]
     text = "".join('#include "%s"\n' % (INCLUDE / h) for h in headers)
     text += "".join("#include <%s>\n" % h for h in SYSTEM_HEADERS)
-    text += "using namespace UltraCanvas;\n"
-    digest = hashlib.sha1(text.encode()).hexdigest()[:12]
+    return text + "using namespace UltraCanvas;\n"
+
+
+# The files under the include roots a header may include, for pch_key.
+HEADER_SUFFIXES = {".h", ".hpp", ".hh", ".hxx", ".inl", ".inc", ".ipp", ".tcc"}
+# The mtime the checker gives the shared header's own source file, so that
+# one restored from a cache is the file the precompiled header records.
+FIXED_MTIME = 946684800        # 2000-01-01T00:00:00Z
+
+
+def pch_key(flags, clang):
+    """What the shared precompiled header is built from, as one digest: its
+    text, the flags, the clang, and the content of every header under the
+    roots. The same key means the same header, wherever and whenever it was
+    built, so it is what a run reuses the header by, and what CI caches it
+    under (--pch-key).
+
+    Clang itself holds a precompiled header to the mtime and size of every
+    file it read, and refuses it ("has been modified") when one differs, so
+    a cached header serves a run only where those files carry the mtimes
+    they had when it was built: doc-examples.yml gives every tracked file
+    one fixed mtime before the check for that. Where it is refused all the
+    same, pch_usable sees to it that it is built again."""
+    h = hashlib.sha1()
+    h.update(umbrella_text().encode())
+    h.update("\0".join(flags).encode())
+    h.update(subprocess.run([clang, "--version"], capture_output=True, text=True).stdout.encode())
+    for root in header_roots():
+        for p in sorted(p for p in root.rglob("*") if p.suffix in HEADER_SUFFIXES and p.is_file()):
+            h.update(str(p.relative_to(ROOT)).encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def pch_usable(work, header, flags, clang):
+    """Whether a compile against the precompiled header goes through: the
+    key says what it was built from, this that clang here takes it. One
+    whose files have other mtimes now (a header touched since, a cached one
+    against a checkout the workflow did not give the fixed mtimes), or built
+    by another clang, or with system headers since updated, is refused with
+    "has been modified" and built again."""
+    probe = work / "probe.cpp"
+    probe.write_text("")
+    proc = subprocess.run([clang] + flags + ["-include-pch", str(header) + ".pch", "-fsyntax-only", str(probe)],
+                          capture_output=True, text=True)
+    return proc.returncode == 0
+
+
+def build_pch(work, name, flags, clang):
+    """The shared precompiled header, built unless the one in --work is of
+    the same key (see pch_key) and compiles here."""
     header = work / ("%s.h" % name)
     pch = work / ("%s.h.pch" % name)
     stamp = work / ("%s.stamp" % name)
-    newest = newest_header_mtime()
-    if pch.exists() and stamp.exists() and stamp.read_text() == digest and pch.stat().st_mtime > newest:
-        return header
-    header.write_text(text)
+    key = pch_key(flags, clang)
+    if pch.exists() and stamp.exists() and header.exists() and stamp.read_text() == key:
+        os.utime(header, (FIXED_MTIME, FIXED_MTIME))
+        if pch_usable(work, header, flags, clang):
+            return header
+    header.write_text(umbrella_text())
+    os.utime(header, (FIXED_MTIME, FIXED_MTIME))
     proc = subprocess.run([clang] + flags + ["-x", "c++-header", str(header), "-o", str(pch)],
                           capture_output=True, text=True)
     if proc.returncode != 0:
         sys.exit("cannot build the shared header %s:\n%s" % (name, proc.stderr[-4000:]))
-    stamp.write_text(digest)
+    stamp.write_text(key)
     return header
 
 
@@ -1710,7 +1762,13 @@ def main():
                         help="findings that predate the CI check")
     parser.add_argument("--update-baseline", action="store_true",
                         help="rewrite the baseline from the docs checked and exit")
+    parser.add_argument("--pch-key", action="store_true",
+                        help="print what the shared precompiled header is built from, as a digest, and exit "
+                             "(the CI cache key)")
     args = parser.parse_args()
+    if args.pch_key:
+        print(pch_key(base_flags(), args.clang))
+        return 0
     if args.docs:
         docs = args.docs
     elif args.all:

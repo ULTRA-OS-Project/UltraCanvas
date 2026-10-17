@@ -178,6 +178,12 @@ if(LIBARCHIVE_FOUND AND EXISTS "${VIRTUALFS_MINIZ_DIR}/miniz.c")
     enable_language(C)
     message(STATUS "Found miniz: ${VIRTUALFS_MINIZ_DIR} (ZIP delete fast path enabled)")
     list(APPEND VIRTUALFS_SOURCES "${VIRTUALFS_MINIZ_DIR}/miniz.c")
+    # glibc's 64-bit file calls for miniz, as UltraCanvas/CMakeLists.txt
+    # explains: without them it warns (#pragma message) on every Linux build.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set_property(SOURCE "${VIRTUALFS_MINIZ_DIR}/miniz.c"
+                     APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+    endif()
     list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_MINIZ)
     set(VIRTUALFS_MINIZ_FOUND TRUE)
 endif()

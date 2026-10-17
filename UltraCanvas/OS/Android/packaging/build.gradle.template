@@ -1,8 +1,9 @@
 // Template app/build.gradle for an UltraCanvas Android app.
 //
-// NEVER RUN: the cross-compiled dependency sysroot it points at does not exist
-// yet (see README.md in this directory). Treat this as a checklist of the
-// settings the backend needs, not as a working build file.
+// NEVER RUN. The cross-compiled dependency sysroot it points at builds for
+// arm64-v8a in CI (scripts/android-bootstrap-sysroot.sh, see README.md in this
+// directory), but no APK has been built with this file. Treat it as a
+// checklist of the settings the backend needs, not as a working build file.
 
 plugins {
     id 'com.android.application'
@@ -36,9 +37,14 @@ android {
                 abiFilters 'x86_64'
                 arguments '-DANDROID_PLATFORM=android-26',
                           '-DANDROID_STL=c++_shared',
-                          // Point pkg-config at the cross-compiled sysroot.
-                          // THIS IS THE PART THAT DOES NOT EXIST YET.
-                          "-DCMAKE_FIND_ROOT_PATH=${project.properties['ultracanvas.sysroot'] ?: ''}"
+                          // The cross-compiled sysroot, from
+                          // scripts/android-bootstrap-sysroot.sh for this ABI
+                          // (CI has built arm64-v8a only). Its libraries are
+                          // static, so pkg-config asks for static link lists.
+                          // PKG_CONFIG_LIBDIR must point at its pkgconfig
+                          // directories too (the script prints it).
+                          "-DCMAKE_FIND_ROOT_PATH=${project.properties['ultracanvas.sysroot'] ?: ''}",
+                          '-DPKG_CONFIG_ARGN=--static'
             }
         }
     }
@@ -46,9 +52,9 @@ android {
     externalNativeBuild {
         cmake {
             // The repository's root CMakeLists. Its `if(ANDROID)` block
-            // already defaults the desktop apps, plugins, libvips, audio,
-            // video, database and VirtualFS off, so only the core library and
-            // your app are built.
+            // already defaults the desktop apps, plugins, UltraNet, database
+            // and VirtualFS off, so only the core library (libvips included,
+            // as on every platform) and your app are built.
             path '../../../../../CMakeLists.txt'
             version '3.22.1+'
         }

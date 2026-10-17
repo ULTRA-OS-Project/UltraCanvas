@@ -3,6 +3,15 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.7 - GuardQuitDuringTransfers: the last window asks before it
+//                   ends a cloud upload or download
+// Version: 0.12.6 - the cloud stores and service are shared (shared_ptr), so
+//                   the cloud link picker's uploads and sign-ins can hold them
+// Version: 0.12.5 - after the computer was switched on (the last connection to
+//                   a mail server more than ten minutes old), alerts about
+//                   failed background checks wait (SwitchOnQuiet, Settings >
+//                   Mail > Connection); the last connection is remembered in
+//                   the data folder (RememberConnected)
 // Version: 0.12.4 - HandleAddFolder / HandleDeleteFolder (the folder tree's
 //                   menu), the tree's content (Settings > Display > Treeview),
 //                   LoadAccounts / HandleReorderAccounts (the account order the
@@ -29,7 +38,7 @@
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -302,6 +311,17 @@ private:
     // Forgets a compose window once it has closed (on the next UI turn, never
     // inside the window's own close callback).
     void RetireComposer(UltraCanvas::UltraCanvasWindow* window);
+    // The last window closing ends UltraMail, and with it an upload or a
+    // download the cloud link picker is running: the file does not arrive.
+    // Every window UltraMail opens gets this guard: a close that would end the
+    // application while the cloud service has a transfer under way
+    // (CloudService::TransfersInProgress) asks first - "An upload is still
+    // running — quit anyway?" - and only "Quit anyway" lets it through. A
+    // window that is not the last closes as it always did; the transfer
+    // carries on behind the ones still open.
+    void GuardQuitDuringTransfers(const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& window);
+    void AskQuitDuringTransfers(const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& window,
+                                const std::vector<UltraCloud::CloudService::Transfer>& transfers);
     // `draft` with the signature of the account it is sent from (its fromAddr)
     // put in - as account settings define it.
     Draft WithSignature(Draft draft, DraftPurpose purpose) const;
@@ -467,6 +487,23 @@ private:
     // from before the sleep and check every account shortly after, once the
     // network has had a moment to come back.
     void OnWokeFromSleep();
+    // At start and after a wake: when the last connection to a mail server
+    // is more than ten minutes old, the computer was most likely switched off,
+    // and alerts about failed background checks wait for the period chosen in
+    // Settings > Mail > Connection (SwitchOnQuiet). `when` names the moment in
+    // the timing trace.
+    void BeginSwitchOnQuiet(const std::string& when);
+    // A background check of the account failed: true when its alert is held
+    // back because that period is running (the account is checked again when
+    // it ends, and reported then if it still fails).
+    bool HoldForSwitchOn(const std::string& accountId);
+    // When the period ends, the accounts held back are checked once more, as
+    // a background sync.
+    void ScheduleSwitchOnRecheck();
+    void RecheckHeldAccounts();
+    // A mail server was reached: remember when, in the data folder too
+    // (kLastConnectedFileName), at most once every kLastConnectedWriteSec.
+    void RememberConnected();
     // Check every account now, as a background sync (no alerts for a network
     // that is not up yet - the offline grace applies).
     void SyncAllInBackground();
@@ -539,9 +576,14 @@ private:
     // "Attach cloud link". The secrets live in the mail vault (vault_) under
     // "cloud.<accountId>.*"; MigrateCloudSecrets() carries the obfuscated
     // cloud-vault/ files of earlier releases into it once it is unlocked.
-    UltraCloud::AccountStore cloudAccounts_;
-    std::unique_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
-    std::unique_ptr<UltraCloud::CloudService> cloud_;
+    // Shared rather than owned: the service keeps the two stores alive, and
+    // the cloud link picker's uploads, listings and add-account sign-ins hold
+    // the service until they end - which can be after the compose window, or
+    // the application, has closed.
+    std::shared_ptr<UltraCloud::AccountStore> cloudAccounts_ =
+            std::make_shared<UltraCloud::AccountStore>();
+    std::shared_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
+    std::shared_ptr<UltraCloud::CloudService> cloud_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
     // Non-empty when a store the app needs could not be opened; the matching
@@ -562,6 +604,18 @@ private:
     // How soon an unreachable account is tried again while its grace period
     // runs, so mail arrives soon after the network does.
     static constexpr int64_t kOfflineRetrySec = 60;
+    // After the computer was switched on, the alerts of failed background
+    // checks wait for Settings > Mail > Connection's period (see
+    // SwitchOnQuiet). Keyed on NowMonotonicSec().
+    SwitchOnQuiet switchOn_;
+    bool          switchOnRecheckPending_ = false;
+    // When a mail server was last reached (wall clock, epoch seconds; 0 =
+    // never on record), kept in <data>/last-connected for the next start,
+    // and when that file was last written.
+    std::string lastConnectedPath_;
+    int64_t     lastConnected_        = 0;
+    int64_t     lastConnectedWritten_ = 0;
+    static constexpr int64_t kLastConnectedWriteSec = 60;
     // The locked-vault warning, once per run of locked rounds.
     bool vaultLockReported_ = false;
     // The last sync failure per account ("Could not fetch mail for …: reason"),
@@ -620,6 +674,11 @@ private:
     bool         wakeCheckPending_ = false;   // a post-wake sync is scheduled
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    // The answer to GuardQuitDuringTransfers' question: "Quit anyway" lets the
+    // close it repeats go through. While the question is open, a second close
+    // does not ask it again.
+    bool quitConfirmed_ = false;
+    bool quitQuestionOpen_ = false;
     // The account view root; hidden while the start page is up (no account
     // configured) and shown once the first account exists.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> accountView_;

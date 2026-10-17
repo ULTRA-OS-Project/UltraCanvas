@@ -14,6 +14,7 @@
 // Connections are kept open between calls on one thread
 // (UltraNet_FtpCloseIdleConnections), and a server that refused MLSD is
 // listed with LIST from then on.
+// Version: 0.6.0 - SFTP with a private key: sshPrivateKeyFile, sshPublicKeyFile, sshKeyPassphrase
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
@@ -77,6 +78,15 @@ struct UltraNetFtpOptions {
     bool createMissingDirs = false;
     bool resumeTransfer = false;
     int64_t resumeOffset = 0;
+    // SFTP with a key instead of (or beside) a password: the private key
+    // file's path, UTF-8, as libcurl's CURLOPT_SSH_PRIVATE_KEYFILE; the
+    // public key file beside it when the library cannot derive it (empty
+    // tries "<private>.pub", then none); the key's passphrase when it has
+    // one. With a key set the sign-in offers the key first and the
+    // password, when there is one, after it. Ignored by ftp:// and ftps://.
+    std::string sshPrivateKeyFile;
+    std::string sshPublicKeyFile;
+    std::string sshKeyPassphrase;
     // The session log of this call. When empty, the calling thread's sink
     // (UltraNet_SetThreadFtpLog) gets it, if there is one.
     UltraNetFtpLogCallback onLog;

@@ -1,7 +1,8 @@
 // core/UltraCanvasUtils.h
 // Utils
+// Version: 1.0.1 - NormalizePath: a '\' at the end is a separator only on Windows
 // Version: 1.0.0
-// Last Modified: 2025-09-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -1007,8 +1008,14 @@ namespace UltraCanvas {
         std::string result = realpath(in.c_str(), real) ? std::string(real) : in;
 #endif
         // A folder given with a separator at its end keeps exactly one, so a
-        // file name appends to it as it is.
+        // file name appends to it as it is. '\' is a separator only on
+        // Windows: elsewhere it is a character of a name, and "a\" is a file
+        // whose name ends in it, not a folder ("a\/" would reach nothing).
+#if defined(_WIN32) || defined(_WIN64)
         const bool endsInSeparator = !in.empty() && (in.back() == '/' || in.back() == '\\');
+#else
+        const bool endsInSeparator = !in.empty() && in.back() == '/';
+#endif
         if (endsInSeparator && (result.empty() || result.back() != kSeparator)) {
             result.push_back(kSeparator);
         }

@@ -7,8 +7,9 @@
 // category belongs to. A format the file manager can open but cannot list is
 // a format whose thumbnail nobody can switch on - which is how audio files
 // were missing from both lists.
+// Version: 1.3.1 - layered images are filed as bitmaps
 // Version: 1.3.0
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -49,6 +50,7 @@ std::set<FilerPreviewType> KindsFor(MediaFormatCategory category) {
         case MediaFormatCategory::Audio:   return {FilerPreviewType::Audio};
         case MediaFormatCategory::Video:   return {FilerPreviewType::Videos};
         case MediaFormatCategory::Font:    return {FilerPreviewType::Fonts};
+        case MediaFormatCategory::LayeredImage: return {FilerPreviewType::Bitmaps};
     }
     return {};
 }
@@ -107,7 +109,8 @@ int main(int argc, char** argv) {
                                   MediaFormatCategory::Document,
                                   MediaFormatCategory::Spreadsheet,
                                   MediaFormatCategory::Audio,
-                                  MediaFormatCategory::Video}) {
+                                  MediaFormatCategory::Video,
+                                  MediaFormatCategory::LayeredImage}) {
         Check(!KindsFor(c).empty(),
               std::string(UltraCanvasSupportedFormats::GetCategoryName(c)) +
                       " maps to a preview kind");

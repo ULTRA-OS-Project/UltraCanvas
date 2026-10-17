@@ -1,5 +1,24 @@
 # UltraCanvas Text Rendering Settings Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Header Include](#header-include)
+- [API Reference](#api-reference)
+- [Antialias Modes](#antialias-modes)
+- [Hint Styles](#hint-styles)
+- [Hint Metrics](#hint-metrics)
+- [Events / Callbacks](#events--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Reading the current value into a dropdown](#reading-the-current-value-into-a-dropdown)
+  - [Wiring the antialias dropdown](#wiring-the-antialias-dropdown)
+  - [Hint style dropdown](#hint-style-dropdown)
+  - [Hint metrics dropdown](#hint-metrics-dropdown)
+  - [Building a preview that re-renders on change](#building-a-preview-that-re-renders-on-change)
+- [Best Practices](#best-practices)
+- [Thread Safety](#thread-safety)
+- [See Also](#see-also)
+
 ## Overview
 
 UltraCanvas exposes the Cairo/Pango text rendering pipeline through a small set of global, process-wide settings: **antialiasing mode**, **font hinting style**, and **hint metrics**. These three settings control how every glyph is rasterized — from "no antialiasing, no hinting" (pixel-blocky, fastest) to "subpixel antialiasing with full hinting" (sharpest body text on LCD displays).

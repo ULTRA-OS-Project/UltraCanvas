@@ -49,8 +49,9 @@ empty tab with the address bar ready for typing; a tab's **×**, or
 **Ctrl+Shift+Tab** go to the next and previous tab, **Ctrl+L** selects the
 address. Tabs can be dragged along the strip to reorder them. A tab shows
 its page's title (its address for an app); the window's title follows the
-active tab. An app in a background tab keeps running. Links that ask for a
-new window (`target="_blank"`) still open in the same tab.
+active tab. An app in a background tab keeps running. A link that asks for
+a new window - `target="_blank"`, a named target, or a page's
+`<base target="_blank">` - opens in a new tab, which becomes the active one.
 
 `--check` loads local addresses only (about:, paths, `file://`), starts the
 app with an invisible root, and exits 0 when it started — useful for an app's
@@ -376,9 +377,14 @@ UltraCanvas/{include,core}/WasmHost/   the WebAssembly runner (Masterfile_module
 - **WasmHost** wraps wasmtime 49.0.2 (its prebuilt C API, downloaded and
   hash-checked by `cmake/UltraCanvasWasmtime.cmake`, or
   `-DULTRACANVAS_WASMTIME_DIR=<unpacked c-api>` offline). On by default on
-  Linux; on macOS and Windows it is opt-in
-  (`-DULTRACANVAS_ENABLE_WASM_HOST=ON`) and not yet built in CI, and without an
-  engine UltraWeb starts and says it cannot run apps. The binary is about
+  Linux and on Windows (MSYS2 CLANG64 / CLANGARM64). wasmtime publishes no
+  library for that Windows ABI (`gnullvm`), so there the build compiles
+  its C API from wasmtime's source release with Cargo: that needs the
+  native Rust toolchain (`pacman -S mingw-w64-clang-x86_64-rust`, or
+  `-aarch64`) and takes a few minutes the first time. On macOS it is
+  opt-in (`-DULTRACANVAS_ENABLE_WASM_HOST=ON`) and not yet built in CI.
+  Without an engine UltraWeb starts and says it cannot run apps, and how
+  to get one. The binary is about
   38 MB, most of it the statically linked engine.
 - A guest runs on the UI thread. A failure after start is reported on a
   later turn, never from inside the element callback that ran the guest, and
@@ -405,6 +411,5 @@ clipboard, fetching beyond the app's origin without CORS, a larger store,
 and keeping a private-network address from a public app; CORS preflight
 requests; C++ element proxies generated from the framework headers; the
 macOS, Windows and packaging builds. For pages (Phase 2): bookmarks, a
-history, the downloads list and the open tabs kept across runs, and links
-with `target="_blank"` in a new tab;
+history, the downloads list and the open tabs kept across runs;
 then modern layout beyond flex and grid, the live DOM, and JavaScript.

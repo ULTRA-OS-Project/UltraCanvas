@@ -15,6 +15,21 @@ diagrams).
 
 ---
 
+## Contents
+
+- [1. Goals](#1-goals)
+- [2. Library survey](#2-library-survey)
+  - [Recommendation](#recommendation)
+- [3. Architecture](#3-architecture)
+- [4. Public API (C++)](#4-public-api-c)
+- [5. Rust shim (`vtracer-c`)](#5-rust-shim-vtracer-c)
+- [6. Build dependency on `cargo`](#6-build-dependency-on-cargo)
+- [7. UI integration (phase 2)](#7-ui-integration-phase-2)
+- [7.1 Demo screen](#71-demo-screen)
+- [8. Risks](#8-risks)
+- [9. Phased delivery](#9-phased-delivery)
+- [10. Recommendation](#10-recommendation)
+
 ## 1. Goals
 
 1. **Quality colour tracing** — output usable as design-grade SVG

@@ -11,6 +11,8 @@
 // --yes. One UltraCleaner window per user: a second start brings the running
 // one forward and quits (UltraCanvasSingleInstance.h); the headless modes do
 // not take part.
+// Version: 0.3.0 - --registry / --fix / --registry-restore: the Windows
+//                  registry cleaner, headless
 // Version: 0.2.0 - one UltraCleaner per user: a second start brings the first
 //                  one's window forward instead of opening another copy
 // Version: 0.1.0
@@ -19,6 +21,7 @@
 
 #include "UltraCleanerAlbumScanner.h"
 #include "UltraCleanerPaths.h"
+#include "UltraCleanerRegistry.h"
 #include "UltraCleanerRemover.h"
 #include "UltraCleanerRules.h"
 #include "UltraCleanerScanner.h"
@@ -81,6 +84,13 @@ void PrintUsage(const char* programName) {
         "                    unticked (trash, installers, large caches)\n"
         "  --rules           Print the rule table for this platform and exit\n"
         "\n"
+        "  --registry        List Windows registry entries that point at programs\n"
+        "                    and files that are gone, and exit (Windows only)\n"
+        "      --fix         …back them up to a .reg file, then remove the ticked\n"
+        "                    ones (also needs --yes; --all includes the unticked)\n"
+        "  --registry-restore <file.reg>\n"
+        "                    Put a registry backup back (reg.exe import)\n"
+        "\n"
         "  --album <folder>  Find duplicate and near-duplicate photographs\n"
         "      --level <n>   duplicates | moments (default) | scenes\n"
         "      --within <s>  only group shots taken within <s> seconds of each\n"
@@ -91,8 +101,9 @@ void PrintUsage(const char* programName) {
         "Examples:\n"
         "  %s --scan\n"
         "  %s --clean --trash\n"
-        "  %s --clean --delete --yes\n",
-        programName, programName, programName, programName);
+        "  %s --clean --delete --yes\n"
+        "  %s --registry --fix --yes\n",
+        programName, programName, programName, programName, programName);
 }
 
 void PrintRules() {
@@ -209,6 +220,73 @@ int RunAlbum(const std::string& folder, UltraCleaner::SimilarityLevel level,
     return EXIT_SUCCESS;
 }
 
+// The registry cleaner, headless: list, or back up and remove.
+int RunRegistry(bool fix, bool confirmed, bool includeAll) {
+    using namespace UltraCleaner;
+
+    auto store = CreateSystemRegistryStore();
+    auto probe = CreateSystemFileProbe();
+    if (!store || !probe) {
+        std::printf("The registry cleaner works on Windows only.\n");
+        return EXIT_FAILURE;
+    }
+
+    RegistryScanner scanner;
+    RegistryScanReport report = scanner.Scan(*store, *probe);
+    if (includeAll) {
+        for (auto& finding : report.findings) finding.selected = true;
+    }
+
+    std::printf("\n%zu registry entries examined, %zu point at something that "
+                "is gone", report.entriesExamined, report.findings.size());
+    if (report.entriesUnjudged > 0) {
+        std::printf(" (%zu more could not be judged and are left alone)",
+                    report.entriesUnjudged);
+    }
+    std::printf("\n");
+    for (const auto& kind : report.kinds) {
+        std::printf("\n%s (%zu)%s\n", RegistryIssueTitle(kind.kind), kind.count,
+                    kind.safeByDefault ? "" : "  (not ticked by default)");
+        for (const auto& finding : report.findings) {
+            if (finding.kind != kind.kind) continue;
+            std::printf("  [%s] %s\n        %s\n        missing: %s\n",
+                        finding.selected ? "x" : " ", finding.label.c_str(),
+                        finding.Location().c_str(), finding.target.c_str());
+        }
+    }
+    if (!fix) return EXIT_SUCCESS;
+
+    RegistryCleanOptions options;
+    options.simulate = !confirmed;
+    RegistryCleaner cleaner;
+    const RegistryCleanReport result = cleaner.Clean(*store, *probe, report, options);
+
+    if (result.simulated) {
+        std::printf("\nWould remove %zu entries. Add --yes to back them up and "
+                    "remove them.\n", result.removed);
+    } else {
+        std::printf("\nRemoved %zu entries.\n", result.removed);
+        if (!result.backupPath.empty()) {
+            std::printf("Backup: %s\n  (double-click it, or run "
+                        "UltraCleaner --registry-restore <file>, to undo)\n",
+                        result.backupPath.c_str());
+        }
+    }
+    if (result.skippedChanged > 0) {
+        std::printf("%zu entries changed since the scan and were left alone\n",
+                    result.skippedChanged);
+    }
+    if (result.refusedByGuard > 0) {
+        std::printf("%zu entries were refused by the safety check\n",
+                    result.refusedByGuard);
+    }
+    for (const auto& failure : result.failures) {
+        std::printf("  failed: %s\n    %s\n", failure.location.c_str(),
+                    failure.reason.c_str());
+    }
+    return result.failures.empty() ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int RunHeadless(bool clean, UltraCleaner::RemovalMode mode, bool includeAll) {
     using namespace UltraCleaner;
 
@@ -264,6 +342,8 @@ int main(int argc, char* argv[]) {
     bool openAlbumInWindow = false;
     UltraCleaner::SimilarityLevel level = UltraCleaner::SimilarityLevel::Moments;
     int64_t withinSeconds = 0;
+    bool registryScan = false;
+    bool registryFix = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -289,6 +369,22 @@ int main(int argc, char* argv[]) {
             confirmed = true;
         } else if (arg == "--all") {
             includeAll = true;
+        } else if (arg == "--registry") {
+            registryScan = true;
+        } else if (arg == "--fix") {
+            registryFix = true;
+        } else if (arg == "--registry-restore") {
+            if (i + 1 >= argc) {
+                std::printf("--registry-restore needs a .reg backup file\n");
+                return EXIT_FAILURE;
+            }
+            std::string error;
+            if (!UltraCleaner::RestoreRegistryBackup(argv[++i], &error)) {
+                std::printf("%s\n", error.c_str());
+                return EXIT_FAILURE;
+            }
+            std::printf("Restored %s\n", argv[i]);
+            return EXIT_SUCCESS;
         } else if (arg == "--album") {
             if (i + 1 >= argc) {
                 std::printf("--album needs a folder\n");
@@ -332,6 +428,12 @@ int main(int argc, char* argv[]) {
     if (!albumFolder.empty() && !openAlbumInWindow) {
         return RunAlbum(albumFolder, level, withinSeconds);
     }
+
+    if (registryFix && !registryScan) {
+        std::printf("--fix goes with --registry\n");
+        return EXIT_FAILURE;
+    }
+    if (registryScan) return RunRegistry(registryFix, confirmed, includeAll);
 
     if (headlessScan || headlessClean) {
         UltraCleaner::RemovalMode mode = UltraCleaner::RemovalMode::Simulate;

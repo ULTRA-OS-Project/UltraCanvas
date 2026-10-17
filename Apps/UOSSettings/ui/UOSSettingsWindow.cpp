@@ -1,9 +1,10 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -21,7 +22,6 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8
 #include "UltraCanvasSegmentedControl.h"
-#include "UltraCanvasSwitch.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
@@ -421,10 +421,17 @@ void UOSSettingsWindow::BuildDesktopPage() {
 
     // Only where there is a system desktop to take the place of (Windows).
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
-        systemDesktop_ = UltraCanvasSwitch::Create("uos-dt-replace", 0, 0,
-                                                   "UltraDesktop in place of the Windows desktop");
-        systemDesktop_->onStateChanged = [this](CheckedState, CheckedState now) {
-            if (!refreshing_) SetSystemDesktopReplaced(now == CheckedState::Checked);
+        systemDesktop_ = std::make_shared<UltraCanvasDropdown>("uos-dt-replace", 0, 0, 300, 28);
+        systemDesktop_->AddItem("The Windows desktop", "none");
+        systemDesktop_->AddItem("UltraDesktop beside Explorer", "beside");
+        if (UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead)) {
+            systemDesktop_->AddItem("UltraDesktop instead of Explorer", "instead");
+        }
+        systemDesktop_->onSelectionChanged = [this](int index, const DropdownItem&) {
+            if (refreshing_) return;
+            SetSystemDesktop(index == 2 ? DesktopReplacement::Instead
+                             : index == 1 ? DesktopReplacement::Beside
+                                          : DesktopReplacement::Off);
         };
         addRow("uos-dt-replace-row", "At sign-in", systemDesktop_);
     }
@@ -448,13 +455,20 @@ void UOSSettingsWindow::BuildDesktopPage() {
             "different number."};
     if (systemDesktop_) {
         noteTexts.push_back(
-            "At sign-in: UltraDesktop takes the place of the Windows desktop for "
-            "this account. It starts at sign-in and Explorer's taskbar hides "
-            "itself, while Explorer's tray and notifications keep working. Turn "
-            "the switch off, or choose \"Switch back to the Windows desktop\" on "
-            "the desktop's settings button, to have the Windows desktop back at "
-            "once. If the desktop ever does not come up: Ctrl+Shift+Esc, \"Run "
-            "new task\", UltraDesktop --restore-desktop.");
+            "At sign-in, for this account: beside Explorer, UltraDesktop starts "
+            "with the session and Explorer's taskbar hides itself, while "
+            "Explorer's tray, notifications and Start menu keep working - from "
+            "now on. Instead of Explorer, UltraDesktop is the whole desktop from "
+            "the next sign-in: it shows the programs' tray icons and offers "
+            "sign out, restart and shut down; Explorer does not start, and with "
+            "it go the parts of Windows it hosts (the Start menu, the quick "
+            "settings, the notification centre). Should UltraDesktop fail, "
+            "Explorer starts in its place for that session.");
+        noteTexts.push_back(
+            "\"The Windows desktop\", or \"Switch back to the Windows desktop\" on "
+            "the desktop's settings button, brings Explorer back at once. If the "
+            "desktop ever does not respond: Ctrl+Shift+Esc, \"Run new task\", "
+            "UltraDesktop --restore-desktop.");
     }
     auto notes = MakeNotes("uos-dt-note", noteTexts);
     page->AddChild(notes);
@@ -479,7 +493,12 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
     if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
-    if (systemDesktop_) systemDesktop_->SetChecked(UltraCanvasDesktopShell::IsSystemDesktopReplaced());
+    if (systemDesktop_) {
+        const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
+        systemDesktop_->SetSelectedIndex(mode == DesktopReplacement::Instead ? 2
+                                         : mode == DesktopReplacement::Beside ? 1 : 0,
+                                         false);
+    }
     refreshing_ = false;
     if (desktopStatus_) {
         desktopStatus_->SetText(read ? "Settings file: " + path
@@ -513,30 +532,42 @@ void UOSSettingsWindow::SaveDesktopPage() {
     if (desktopStatus_) desktopStatus_->SetText("Saved to " + path);
 }
 
-void UOSSettingsWindow::SetSystemDesktopReplaced(bool replaced) {
+void UOSSettingsWindow::SetSystemDesktop(DesktopReplacement how) {
     std::string error;
     std::string status;
-    if (replaced) {
-        const std::string program = UltraCanvasDesktopShell::FindProgram("UltraDesktop");
-        if (UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--session"}, &error)) {
+    const std::string program = UltraCanvasDesktopShell::FindProgram("UltraDesktop");
+    if (how == DesktopReplacement::Beside) {
+        if (UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--session"}, &error, how)) {
+            status = "UltraDesktop is the desktop now and at every sign-in; Explorer's taskbar hides itself.";
             // Now, not only from the next sign-in - unless it is open already.
             bool running = false;
             for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
                 if (w.appClass == "UltraDesktop") running = true;
             }
-            status = "UltraDesktop is the desktop now and at every sign-in; Explorer's taskbar hides itself.";
             if (!running && !UltraCanvasDesktopShell::LaunchProgram("UltraDesktop", {"--session"}, &error)) {
                 status = "UltraDesktop is the desktop from the next sign-in; it could not be started now: " + error;
             }
         }
+    } else if (how == DesktopReplacement::Instead) {
+        if (UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--shell"}, &error, how)) {
+            status = "From the next sign-in UltraDesktop is the desktop and Explorer does not start. Sign out "
+                     "and in again to switch now.";
+        }
     } else if (UltraCanvasDesktopShell::RestoreSystemDesktop(&error)) {
-        status = "The Windows desktop is back. A desktop started at sign-in closes within a second.";
+        status = UltraCanvasDesktopShell::IsSystemDesktopRunning()
+                     ? "The Windows desktop is back. A desktop started at sign-in closes within a second."
+                     : "The Windows desktop is back: UltraDesktop closes, and Explorer starts in its place.";
     }
     if (status.empty()) {
         status = "Not changed: " + error;
-        // The switch shows what is true, not what was asked for.
+        // The choice shows what is true, not what was asked for.
         refreshing_ = true;
-        if (systemDesktop_) systemDesktop_->SetChecked(UltraCanvasDesktopShell::IsSystemDesktopReplaced());
+        if (systemDesktop_) {
+            const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
+            systemDesktop_->SetSelectedIndex(mode == DesktopReplacement::Instead ? 2
+                                             : mode == DesktopReplacement::Beside ? 1 : 0,
+                                             false);
+        }
         refreshing_ = false;
     }
     if (desktopStatus_) desktopStatus_->SetText(status);

@@ -93,12 +93,15 @@ option(ULTRACANVAS_PLUGIN_MODELS "Build 3D model formats plugin (3DS, OBJ, PLY, 
 set(ULTRACANVAS_LATEX_ENGINE "native" CACHE STRING "Default LaTeX typesetter: native or microtex")
 set_property(CACHE ULTRACANVAS_LATEX_ENGINE PROPERTY STRINGS native microtex)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
-# libvips is ON by default (desktop builds keep the hard requirement), but can
-# be opted out for platforms where its dependency graph is impractical
-# (Android, WASM). Without it, raster image loading/saving and PixelFX compile
-# to their HAS_LIBVIPS-guarded fallbacks: PNG is read through cairo's own
-# reader, SVG through the Vector plugin, QOI is written but not read.
-option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
+# libvips is part of UltraCanvas on every platform: the desktops' packages,
+# Android's sysroot (OS/Android/packaging/vcpkg.json) and WebAssembly's
+# (OS/WASM/build-wasm-sysroot.sh) all have it, and there is no switch to build
+# without it. The one build that cannot have it is a single-threaded
+# WebAssembly program (ULTRACANVAS_WASM_THREADS=OFF below): libvips runs every
+# image on a worker thread. That build's raster pictures take the
+# HAS_LIBVIPS-guarded fallbacks: PNG through cairo's own reader, JPEG / BMP /
+# GIF through the bundled stb_image, SVG through the Vector plugin, QOI
+# written but not read.
 # WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
 # the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
 # single-threaded program that any static host can serve; it must link
@@ -223,12 +226,24 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     # (g_system_thread_new): error 'Not supported' during 'pthread_create'"
     # at the first icon. wasm-vips itself requires threads. So a
     # single-threaded program is a libvips-free one: PNG through cairo's
-    # reader, SVG through the Vector plugin, QOI written but not read.
-    if(NOT ULTRACANVAS_WASM_THREADS AND ULTRACANVAS_ENABLE_VIPS)
-        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, ULTRACANVAS_ENABLE_VIPS is OFF (PNG through cairo's reader, SVG through the Vector plugin)")
-        set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing" FORCE)
+    # reader, JPEG / BMP / GIF through stb_image, SVG through the Vector
+    # plugin, QOI written but not read (ULTRACANVAS_HAS_VIPS, below).
+    if(NOT ULTRACANVAS_WASM_THREADS)
+        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, so it is left out (PNG through cairo's reader, JPEG / BMP / GIF through stb_image, SVG through the Vector plugin)")
     endif()
 endif()
+
+# The switch that built without libvips is gone (see above). A build directory
+# that still carries it off says so instead of configuring a framework without
+# its image pipeline.
+if(DEFINED ULTRACANVAS_ENABLE_VIPS AND NOT ULTRACANVAS_ENABLE_VIPS AND NOT (EMSCRIPTEN AND NOT ULTRACANVAS_WASM_THREADS))
+    message(FATAL_ERROR "ULTRACANVAS_ENABLE_VIPS=OFF is gone: libvips is part of UltraCanvas on every "
+                        "platform. Drop the setting (cmake -U ULTRACANVAS_ENABLE_VIPS) and give the "
+                        "build libvips - Android: scripts/android-bootstrap-sysroot.sh; WebAssembly: "
+                        "UltraCanvas/OS/WASM/build-wasm-sysroot.sh. Only a single-threaded WebAssembly "
+                        "build (-DULTRACANVAS_WASM_THREADS=OFF) goes without it.")
+endif()
+unset(ULTRACANVAS_ENABLE_VIPS CACHE)
 
 
 # The core library links fmt::fmt, so it must resolve the dependency itself
@@ -297,21 +312,19 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
-# libvips - Image processing. Still REQUIRED when enabled, so a missing dev
-# package stays a loud configure error rather than a silently crippled build;
-# pass -DULTRACANVAS_ENABLE_VIPS=OFF to build without it.
-if(ULTRACANVAS_ENABLE_VIPS)
-    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
-endif()
-# Freeze the core-library decision now: plugin subdirectories (XAR, CDR, OCR,
+# libvips - image processing. REQUIRED wherever it can run, so a missing dev
+# package is a loud configure error rather than a silently crippled build; a
+# single-threaded WebAssembly program goes without it (see the WASM block).
+# The decision is frozen here: plugin subdirectories (XAR, CDR, OCR,
 # Vectorizer) run their own pkg_check_modules(LIBVIPS ...) later, and those
 # cached results leak back into this scope after add_subdirectory. Every
-# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) must use
-# this variable so a -DULTRACANVAS_ENABLE_VIPS=OFF core stays vips-free.
-if(ULTRACANVAS_ENABLE_VIPS AND LIBVIPS_FOUND)
-    set(ULTRACANVAS_HAS_VIPS TRUE)
-else()
+# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) uses this
+# variable, so the single-threaded WebAssembly core stays vips-free.
+if(EMSCRIPTEN AND NOT ULTRACANVAS_WASM_THREADS)
     set(ULTRACANVAS_HAS_VIPS FALSE)
+else()
+    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+    set(ULTRACANVAS_HAS_VIPS TRUE)
 endif()
 
 # librsvg - parse-once SVG documents (optional). With it, SVG files are parsed
@@ -421,15 +434,28 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # has neither the framework nor its header, and the backend compiles the
     # enumeration out (__has_include) and reports no candidates there.
     find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
-    find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     # IOKit + CoreFoundation back the hardware probe
     # (OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp): the registry walk for GPUs,
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
+    # macOS 10.14, so it is looked up only when that surface is wanted, and an
+    # SDK without it turns the surface off instead of failing the configure -
+    # as a missing GLEW does on Windows. It was REQUIRED unconditionally, so
+    # even -DULTRACANVAS_ENABLE_GL=OFF could not configure without it. CI's
+    # "Verify OpenGL backend enabled" step still fails when CGL goes missing.
     if(ULTRACANVAS_ENABLE_GL)
-        set(ULTRACANVAS_HAS_CGL TRUE)
+        find_library(OPENGL_FRAMEWORK OpenGL)
+        if(OPENGL_FRAMEWORK)
+            set(ULTRACANVAS_HAS_CGL TRUE)
+        else()
+            message(WARNING "  OpenGL.framework NOT FOUND in the macOS SDK - disabling "
+                            "OpenGL surface support")
+            # Force the cache so the parent scope (demo GL sources) sees it too.
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
     # EGL + GLES 3 headers/libraries ship in every NDK sysroot; the GLES
@@ -509,6 +535,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBrushEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPaintSurface.cpp
+        # Text layers: the words drawn into a layer through the WYSIWYG element
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorRaster.cpp
         # The vector drawing viewer (VectorStorage::VectorDocument on screen,
         # zoom / pan / bounding-box selection). The model it shows is in
@@ -978,8 +1006,13 @@ set(ULTRACANVAS_CORE_SOURCES
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
+        # The UCD v2 container (*.ucd): header, thumbnail, sections, INDX
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUCDContainer.cpp
         # OLE2 compound files (the legacy Office containers: .doc, .xls)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCompoundFile.cpp
+        # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
+        # UltraCrypt - linked below, after the module is defined
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.
@@ -1406,6 +1439,7 @@ endif()
 
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/StbRasterDecode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
         # UltraCanvasPdfSurface: PDF output through the render context.
@@ -1419,10 +1453,12 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
 )
 if(ULTRACANVAS_HAS_VIPS)
     # vips foreign loader and saver for QOI — consumes the codec symbols
-    # above — and the framework's own Windows icon (.ico) loader and saver.
+    # above — the framework's own Windows icon (.ico) loader and saver, and
+    # its GIF saver for a libvips without one.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
 endif()
 if(LIBRSVG_FOUND)
@@ -1620,6 +1656,16 @@ target_include_directories(uc-yyjson PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson>)
 
 # ===== BUILD CORE LIBRARY =====
+# glibc declares the 64-bit file calls miniz prefers (fopen64, ftello64,
+# stat64 ...) only under _LARGEFILE64_SOURCE. Without it miniz takes its
+# generic stdio branch and says so with a #pragma message in every Linux
+# build. The definition is set on the file here (and where VirtualFS and the
+# tests compile it), never in the vendored source.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
+                 APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+endif()
+
 # VirtualFS compiles the same vendored miniz.c (its ZIP delete fast path) that
 # the spreadsheet, ZIP package and git code here use. A shared core absorbs
 # the VirtualFS archive whole ("MODULE HOMES" below), so that copy is the
@@ -2214,6 +2260,31 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     )
 endif()
 
+# ===== THE SHELL GUARD (Windows) =====
+# UltraCanvasShellGuard.exe: what an account's sign-in starts when an
+# UltraCanvas desktop runs instead of Explorer (UltraCanvasDesktopShell,
+# DesktopReplacement::Instead). It starts the desktop, restarts it after a
+# crash and brings Explorer back when the desktop cannot run, so it must
+# start when the desktop's own DLLs cannot: it links nothing of the
+# framework and takes its C++ runtime in statically, leaving only Windows'
+# own DLLs. Built beside the applications (the build root), where
+# ReplaceSystemDesktop looks for it and package-win.sh picks it up.
+if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    add_executable(UltraCanvasShellGuard WIN32
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/ShellGuard/UltraCanvasShellGuard.cpp)
+    # Header-only helpers alone (UltraCanvasDataFolder.h, UltraCanvasPathUtf8.h).
+    target_include_directories(UltraCanvasShellGuard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_features(UltraCanvasShellGuard PRIVATE cxx_std_20)
+    target_compile_definitions(UltraCanvasShellGuard PRIVATE UNICODE _UNICODE)
+    target_link_libraries(UltraCanvasShellGuard PRIVATE shell32 ole32 uuid advapi32 user32)
+    if(MINGW)
+        target_link_options(UltraCanvasShellGuard PRIVATE -static)
+    elseif(MSVC)
+        set_property(TARGET UltraCanvasShellGuard PROPERTY
+                     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+endif()
+
 # Same problem on Windows: vcpkg installs its import libraries under
 # vcpkg_installed/<triplet>/lib, which is not a default linker search directory. The pkg-config
 # dependencies (cairo/pango/glib/fontconfig/harfbuzz/freetype/tinyxml2/vips) are re-exported as
@@ -2221,7 +2292,7 @@ endif()
 # final .exe) exactly like on macOS above — otherwise lld-link reports "could not open 'cairo.lib'".
 # And under Emscripten: the wasm sysroot's lib/ is no default search directory of wasm-ld either.
 # With libvips on, LIBVIPS_LIBRARY_DIRS (PUBLIC, above) happened to carry it for every library;
-# a -DULTRACANVAS_ENABLE_VIPS=OFF build then failed to find pango, cairo, glib and the rest
+# the single-threaded WebAssembly build (no libvips) then failed to find pango, cairo, glib and the rest
 # (wasm-build.yml's no-vips variant, 2026-10-13).
 # (Build-interface only under Emscripten: _uc_public_link_directories above.)
 if(WIN32 OR EMSCRIPTEN)
@@ -2486,7 +2557,8 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # link it without pulling in the widget layer.
 # The archive is uc-crypt; UltraCrypt is its home (see "MODULE HOMES").
 add_library(uc-crypt STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp)
 set_target_properties(uc-crypt PROPERTIES OUTPUT_NAME "UltraCrypt")
 target_include_directories(uc-crypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -2502,6 +2574,13 @@ if(SODIUM_FOUND)
     target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
 _ultracanvas_module_home(UltraCrypt uc-crypt)
+# The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
+# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
+# Absorbed whole into a shared core by the _ultracanvas_absorb_modules call
+# below; a static core links the home, which is the archive, PUBLIC.
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraCrypt)
+endif()
 
 # Credential & secret storage (UltraAI/Docs/UltraVault.md). Memory and
 # encrypted-file backends on UltraCrypt; UI-free, so headless consumers
@@ -2574,10 +2653,12 @@ _ultracanvas_module_home(NetworkMonitor uc-networkmonitor)
 # wasmtime header reaches its users. Without an engine - the option off, or
 # a platform with no prebuilt library - the library still builds and every
 # call reports that there is no engine, so its users link everywhere.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MINGW)
+    # Windows (MSYS2 CLANG64 / CLANGARM64): wasmtime's C API is built from
+    # its source release with the native Rust toolchain.
     set(_uc_wasm_host_default ON)
 else()
-    # Not yet built in CI on macOS or Windows; see UltraCanvasWasmtime.cmake.
+    # Not yet built in CI on macOS; see UltraCanvasWasmtime.cmake.
     set(_uc_wasm_host_default OFF)
 endif()
 option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})
@@ -2704,6 +2785,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetMime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Apps.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Service.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
@@ -2829,6 +2911,24 @@ if(ULTRACANVAS_ENABLE_NET)
             resolv)
     endif()
     target_compile_definitions(uc-net PUBLIC ULTRACANVAS_HAS_NET=1)
+    # The OAuth2 sign-in service built into this UltraNet (Server/OAuthCallback
+    # is the service): the web service that holds the OAuth client
+    # registrations and receives the providers' redirects, so UltraMail and
+    # UltraCloud ship no client id or secret, only this address. The
+    # lowest-priority source - UltraNet_OAuth2SetSignInService(),
+    # ULTRANET_OAUTH_SERVICE_URL / ULTRAMAIL_OAUTH_SERVICE_URL in the
+    # environment and an oauth.ini's [service] url override it at run time
+    # (UltraNet/UltraNetOAuth2Apps.h). Empty = no built-in service; a
+    # gitignored cmake/oauth.local.cmake may set it for a private build.
+    set(ULTRANET_OAUTH_SERVICE_URL "https://oauth-callback.ultraos.eu"
+        CACHE STRING "The OAuth2 sign-in service built into UltraNet (empty = none)")
+    target_compile_definitions(uc-net PRIVATE
+        "ULTRANET_OAUTH_SERVICE_URL=\"${ULTRANET_OAUTH_SERVICE_URL}\"")
+    if(ULTRANET_OAUTH_SERVICE_URL)
+        message(STATUS "  [✓] UltraNet OAuth2 sign-in service - ${ULTRANET_OAUTH_SERVICE_URL}")
+    else()
+        message(STATUS "  [−] UltraNet OAuth2 sign-in service - NONE (run-time configuration only)")
+    endif()
     _ultracanvas_module_home(UltraNet uc-net)
 
     # The core carries UltraNet so that components like FileLoader can call
@@ -3635,9 +3735,9 @@ elseif(NOT ULTRACANVAS_PLUGIN_PDF)
 endif()
 
 # OCR Plugin. It hands libvips images to tesseract (its CMakeLists.txt
-# requires vips), so a core built with ULTRACANVAS_ENABLE_VIPS=OFF skips it.
+# requires vips), so the libvips-free single-threaded WebAssembly core skips it.
 if(ULTRACANVAS_PLUGIN_OCR AND NOT ULTRACANVAS_HAS_VIPS)
-    message(STATUS "  [✗] OCR Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+    message(STATUS "  [✗] OCR Plugin - DISABLED (needs libvips, which a single-threaded WebAssembly build has not got)")
 elseif(ULTRACANVAS_PLUGIN_OCR)
     pkg_check_modules(TESSERACT tesseract)
     pkg_check_modules(LEPTONICA lept)
@@ -3661,10 +3761,10 @@ endif()
 
 # Vectorizer Plugin (raster → SVG via VTracer through a Rust shim). It loads
 # the raster it traces through PixelFX, which a core built with
-# ULTRACANVAS_ENABLE_VIPS=OFF has not got (the link then fails on
+# the single-threaded WebAssembly build has not got (the link then fails on
 # PixelFX::PFXImage::FromFile), so such a core skips it.
 if(ULTRACANVAS_PLUGIN_VECTORIZER AND NOT ULTRACANVAS_HAS_VIPS)
-    message(STATUS "  [✗] Vectorizer Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+    message(STATUS "  [✗] Vectorizer Plugin - DISABLED (needs libvips, which a single-threaded WebAssembly build has not got)")
 elseif(ULTRACANVAS_PLUGIN_VECTORIZER)
     find_program(CARGO_EXECUTABLE cargo)
     if(CARGO_EXECUTABLE)
@@ -4099,7 +4199,7 @@ endif()
 if(ULTRACANVAS_HAS_VIPS)
     message(STATUS "  libvips: ${LIBVIPS_vips_VERSION}")
 else()
-    message(STATUS "  libvips: DISABLED (raster image formats limited to built-in codecs)")
+    message(STATUS "  libvips: none - a single-threaded WebAssembly build (PNG through cairo, JPEG / BMP / GIF through stb_image)")
 endif()
 if(LIBRSVG_FOUND)
     message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents)")

@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.4 - the SDK step names the download page and the Unpack button
 // Version: 0.1.3 - the steps, not the pages, in the plan's wording
 // Version: 0.1.2 - the plan and the report name the chosen assistant
 // Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
@@ -117,10 +118,9 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.kind = StepKind::Download;
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
-                               ": " + SdkReleaseAssetUrl(target, version, arch) +
-                               " - the Framework step's Download and unpack button fetches it; "
-                               "while that release is still building, the archive of the same name "
-                               "is a workflow artifact at " + SdkDownloadPage();
+                               ": download " + SdkArchiveName(target, version, arch) + " from " +
+                               SdkDownloadPage() + " (also on " + SdkReleasePage(version) +
+                               "), then the Framework step's Unpack button unpacks it";
         plan.steps.push_back(download);
     }
     if (choices.cloneFramework || !choices.useSdk) {

@@ -1,8 +1,10 @@
 // VideoFX/core/VideoFXBackend.cpp
 // Errors, backend setup, version shims, codec selection and the module-level
 // VideoFX_* functions.
+// Version: 0.15.1 - FindEncoderByName
+// Version: 0.14.1 - FeedBufferSource
 // Version: 0.12.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -266,12 +268,24 @@ const enum AVSampleFormat* SupportedSampleFormats(const AVCodec* codec) { return
 const int* SupportedSampleRates(const AVCodec* codec)                   { return codec->supported_samplerates; }
 #endif
 
+// ===== BUFFER SOURCE =====
+
+int FeedBufferSource(AVFilterContext* source, AVFrame* frame, int flags) {
+    const int err = av_buffersrc_add_frame_flags(source, frame, flags);
+    return err == AVERROR_EOF ? 0 : err;
+}
+
 // ===== ENCODER SELECTION =====
+
+const AVCodec* FindEncoderByName(const char* name) {
+    const AVCodec* c = avcodec_find_encoder_by_name(name);
+    return c && !(c->capabilities & AV_CODEC_CAP_EXPERIMENTAL) ? c : nullptr;
+}
 
 namespace {
     const AVCodec* FirstEncoder(std::initializer_list<const char*> names) {
         for (const char* n : names) {
-            if (const AVCodec* c = avcodec_find_encoder_by_name(n)) return c;
+            if (const AVCodec* c = FindEncoderByName(n)) return c;
         }
         return nullptr;
     }
@@ -475,7 +489,7 @@ const AVCodec* FindVideoEncoder(VideoFXVideoCodec codec, VideoFXAcceleration acc
     auto first = [&](auto&& wanted) -> const AVCodec* {
         for (const EncoderCandidate& e : candidates) {
             if (!wanted(e.kind)) continue;
-            const AVCodec* c = avcodec_find_encoder_by_name(e.name);
+            const AVCodec* c = FindEncoderByName(e.name);
             if (c && EncoderWorks(c)) return c;
         }
         return nullptr;
@@ -540,8 +554,8 @@ std::vector<VideoFXEncoderInfo> VideoFX_ListVideoEncoders(VideoFXVideoCodec code
     for (VideoFXVideoCodec c : all) {
         if (codec != VideoFXVideoCodec::Auto && codec != c) continue;
         for (const Internal::EncoderCandidate& e : Internal::VideoEncoderCandidates(c)) {
-            const AVCodec* enc = avcodec_find_encoder_by_name(e.name);
-            if (!enc) continue;                         // not in this FFmpeg build
+            const AVCodec* enc = Internal::FindEncoderByName(e.name);
+            if (!enc) continue;                         // not in this FFmpeg build, or experimental
             VideoFXEncoderInfo info;
             info.name = e.name;
             info.codec = c;

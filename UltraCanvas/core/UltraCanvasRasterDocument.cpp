@@ -8,24 +8,43 @@
 // place — they replace it with a new object — so unchanged layers are shared
 // between the snapshots and cost nothing. Attribute edits (name, opacity,
 // visibility, blend, lock) record just the attribute set.
+//
+// Text layers: a pixel edit takes the text off the layer in place and keeps
+// it in its undo entry (RasterUndoEntry::textBefore), the same way it keeps
+// the pixels; structural operations carry the text with the layer objects
+// they share or replace.
+// Version: 1.4.0 - *.ucd: the UCD 2.1 layered image (SaveUCD / LoadUCD) - layers, blend
+//                 modes and text layers as text frames, with a PNG thumbnail
+// Version: 1.3.0 - text layers (RasterizeLayer, ReplaceLayer, in-place edit,
+//                 the text kept in .ucraster projects)
 // Version: 1.2.0 - SaveToFile without options writes with the user's save
 //                 settings for the format (UltraCanvasFileLoader), once set
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasRichDocument.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasZipPackage.h"
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasFileLoader.h"   // the user's save settings per format
+#include "UltraCanvasUCDContainer.h"
+
+#include "miniz.h"   // the *.ucd thumbnail's PNG
 
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -37,6 +56,48 @@ namespace {
         std::string e = path.substr(dot + 1);
         std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c) { return std::tolower(c); });
         return e;
+    }
+
+    // A text layer's words go into a project as an OpenDocument text: the
+    // framework's word-processing format, which keeps every run's font,
+    // size and colour, the paragraphs' alignment and spacing, lists, tables
+    // and pictures - and opens in any word processor. Its reader and writer
+    // work on files, so the bytes pass through a temporary one (an internal
+    // file of the program's, never one the user chose).
+    std::filesystem::path TemporaryOdtPath() {
+        static std::atomic<unsigned> counter{0};
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        return std::filesystem::temp_directory_path() /
+               PathFromUtf8("ucraster-text-" + std::to_string(stamp) + "-" +
+                            std::to_string(counter.fetch_add(1)) + ".odt");
+    }
+
+    bool RichDocumentToOdt(const UCRichDocument& document, std::vector<uint8_t>& bytes, std::string& error) {
+        std::error_code ec;
+        const std::filesystem::path file = TemporaryOdtPath();
+        bool ok = UCWordDocumentIO::SaveOdt(PathToUtf8(file), document, error);
+        if (ok) {
+            std::ifstream in(file, std::ios::binary);
+            bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+            ok = !bytes.empty();
+            if (!ok) error = "Could not read the text back";
+        }
+        std::filesystem::remove(file, ec);
+        return ok;
+    }
+
+    bool RichDocumentFromOdt(const std::vector<uint8_t>& bytes, UCRichDocument& document, std::string& error) {
+        std::error_code ec;
+        const std::filesystem::path file = TemporaryOdtPath();
+        bool ok;
+        {
+            std::ofstream out(file, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            ok = static_cast<bool>(out);
+        }
+        ok = ok && UCWordDocumentIO::LoadOdt(PathToUtf8(file), document, error);
+        std::filesystem::remove(file, ec);
+        return ok;
     }
 
     Rect2Di UnionRect(const Rect2Di& a, const Rect2Di& b) {
@@ -207,16 +268,17 @@ int UCRasterDocument::AddLayer(const std::string& name, const RasterPixel& fill)
     return AddLayer(std::make_shared<UCRasterLayer>(width, height, fill, n), -1);
 }
 
-int UCRasterDocument::AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex) {
+int UCRasterDocument::AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex, const std::string& label) {
     if (!layer) return -1;
     if (layer->GetWidth() != width || layer->GetHeight() != height) {
         auto fitted = std::make_shared<UCRasterLayer>(width, height, layer->name);
         fitted->visible = layer->visible; fitted->opacity = layer->opacity;
         fitted->blendMode = layer->blendMode; fitted->locked = layer->locked;
+        fitted->text = layer->text;
         fitted->CopyFrom(*layer, 0, 0);
         layer = fitted;
     }
-    BeginStructuralUndo("Add Layer");
+    BeginStructuralUndo(label);
     int idx = atIndex < 0 ? activeLayer + 1 : atIndex;
     idx = std::clamp(idx, 0, static_cast<int>(layers.size()));
     layers.insert(layers.begin() + idx, layer);
@@ -269,6 +331,7 @@ bool UCRasterDocument::MergeLayerDown(int index) {
     auto lower = layers[static_cast<size_t>(index - 1)];
     BeginStructuralUndo("Merge Down");
     auto merged = lower->Clone();
+    merged->text.reset();   // its pixels are no longer what its text draws
     if (upper->visible) merged->BlendFrom(*upper, 0, 0, upper->opacity, upper->blendMode);
     layers[static_cast<size_t>(index - 1)] = merged;
     layers.erase(layers.begin() + index);
@@ -291,12 +354,47 @@ bool UCRasterDocument::FlattenImage() {
     return true;
 }
 
-void UCRasterDocument::ReplaceLayer(int index, std::shared_ptr<UCRasterLayer> replacement, const std::string& label) {
-    if (index < 0 || index >= static_cast<int>(layers.size()) || !replacement) return;
+bool UCRasterDocument::ReplaceLayer(int index, std::shared_ptr<UCRasterLayer> replacement, const std::string& label) {
+    if (index < 0 || index >= static_cast<int>(layers.size()) || !replacement) return false;
+    if (replacement->GetWidth() != width || replacement->GetHeight() != height) return false;
     BeginStructuralUndo(label);
     layers[static_cast<size_t>(index)] = std::move(replacement);
     InvalidateComposite();
     EndStructuralUndo();
+    return true;
+}
+
+bool UCRasterDocument::RasterizeLayer(int index) {
+    auto l = GetLayer(index);
+    if (!l || !l->IsTextLayer()) return false;
+    auto copy = l->Clone();
+    copy->text.reset();
+    return ReplaceLayer(index, copy, "Rasterize Layer");
+}
+
+void UCRasterDocument::SetInPlaceEditLayer(const std::shared_ptr<UCRasterLayer>& layer) {
+    const auto previous = inPlaceEditLayer.lock();
+    if (previous == layer) return;
+    inPlaceEditLayer = layer;
+    // Only the pixels the two layers cover change in the composite: a text
+    // layer's box, or what a bitmap layer paints.
+    Rect2Di changed;
+    for (const auto& l : { previous, layer }) {
+        if (!l) continue;
+        Rect2Di covered;
+        if (l->text) {
+            const Rect2Dd box = l->text->GetBox();
+            const int x0 = static_cast<int>(std::floor(box.x)), y0 = static_cast<int>(std::floor(box.y));
+            covered = Rect2Di(x0, y0, static_cast<int>(std::ceil(box.x + box.width)) - x0,
+                              static_cast<int>(std::ceil(box.y + box.height)) - y0);
+        } else {
+            covered = l->GetOpaqueBounds();
+        }
+        changed = UnionRect(changed, covered);
+    }
+    if (changed.width <= 0 || changed.height <= 0) return;
+    InvalidateComposite(changed);
+    EmitPixels(changed);
 }
 
 // Attribute edits replace the layer object with a copy carrying the new
@@ -489,6 +587,9 @@ void UCRasterDocument::BeginEdit(const std::string& label, int layerIndex, const
     pendingEdit.rect = layer->ClipRect(rect);
     if (pendingEdit.rect.width <= 0 || pendingEdit.rect.height <= 0) return;
     pendingEdit.before = SnapshotRect(*layer, pendingEdit.rect);
+    // The pixels are about to stop being what the text draws.
+    pendingEdit.textBefore = layer->text;
+    layer->text.reset();
     editing = true;
 }
 
@@ -498,11 +599,16 @@ void UCRasterDocument::EndEdit() {
     auto layer = GetLayer(pendingEdit.layerIndex);
     if (!layer) return;
     pendingEdit.after = SnapshotRect(*layer, pendingEdit.rect);
-    if (pendingEdit.after == pendingEdit.before) return;   // nothing changed
+    if (pendingEdit.after == pendingEdit.before) {   // nothing changed
+        if (pendingEdit.textBefore) layer->text = pendingEdit.textBefore;
+        return;
+    }
     const Rect2Di r = pendingEdit.rect;
+    const bool rasterized = pendingEdit.textBefore != nullptr;
     PushUndo(std::move(pendingEdit));
     SetModified(true);
     NotifyChanged(r);
+    if (rasterized) EmitStructure();
     EmitState();
 }
 
@@ -518,10 +624,14 @@ void UCRasterDocument::RecordEdit(const std::string& label, int layerIndex, cons
     e.before = SnapshotRect(before, e.rect);
     e.after = SnapshotRect(*layer, e.rect);
     if (e.before == e.after) return;
+    e.textBefore = layer->text;
+    layer->text.reset();
     const Rect2Di r = e.rect;
+    const bool rasterized = e.textBefore != nullptr;
     PushUndo(std::move(e));
     SetModified(true);
     NotifyChanged(r);
+    if (rasterized) EmitStructure();
     EmitState();
 }
 
@@ -531,6 +641,7 @@ void UCRasterDocument::CancelEdit() {
     auto layer = GetLayer(pendingEdit.layerIndex);
     if (layer) {
         RestoreRect(*layer, pendingEdit.rect, pendingEdit.before);
+        if (pendingEdit.textBefore) layer->text = pendingEdit.textBefore;
         NotifyChanged(pendingEdit.rect);
     }
 }
@@ -545,6 +656,10 @@ void UCRasterDocument::ApplyPixels(const RasterUndoEntry& e, bool toAfter) {
     if (!layer) return;
     RestoreRect(*layer, e.rect, toAfter ? e.after : e.before);
     NotifyChanged(e.rect);
+    if (e.textBefore) {
+        layer->text = toAfter ? nullptr : e.textBefore;
+        EmitStructure();
+    }
 }
 
 void UCRasterDocument::ApplyProcessedLayer(const std::string& label, int layerIndex, const UCRasterLayer& processed) {
@@ -615,6 +730,7 @@ namespace {
         const Rect2Di b = sel.IsActive() ? sel.GetBounds() : src.GetRect();
         origin = Point2Di(b.x, b.y);
         auto out = src.CropCopy(b);
+        out->text.reset();   // a piece of the picture, not the words
         if (sel.IsActive()) {
             for (int y = 0; y < out->GetHeight(); ++y) {
                 uint8_t* row = out->Row(y);
@@ -768,11 +884,12 @@ std::shared_ptr<UCPixmap> UCRasterDocument::GetCompositePixmap() {
     if (rects.empty()) return composite;
     uint32_t* px = composite->GetPixelData();
     const int stride = composite->GetRawWidth();
+    const auto inPlace = inPlaceEditLayer.lock();
     for (const Rect2Di& r : rects) {
         for (int y = r.y; y < r.y + r.height; ++y)
             std::memset(px + static_cast<size_t>(y) * stride + r.x, 0, static_cast<size_t>(r.width) * 4);
         for (const auto& l : layers) {
-            if (!l || !l->visible || l->opacity <= 0.0f) continue;
+            if (!l || !l->visible || l->opacity <= 0.0f || l == inPlace) continue;
             l->CompositeOnto(px, width, height, stride, r, l->opacity, l->blendMode);
         }
     }
@@ -794,10 +911,16 @@ std::shared_ptr<UCRasterLayer> UCRasterDocument::Flatten() const {
 // ===========================================================================
 
 bool UCRasterDocument::IsProjectFile(const std::string& path) {
-    return LowerExt(path) == "ucraster";
+    const std::string ext = LowerExt(path);
+    return ext == "ucraster" || ext == "ucd";
+}
+
+bool UCRasterDocument::IsUCDFile(const std::string& path) {
+    return LowerExt(path) == "ucd";
 }
 
 bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error) {
+    if (IsUCDFile(path)) return LoadUCD(path, error);
     if (IsProjectFile(path)) return LoadProject(path, error);
 #ifdef HAS_LIBVIPS
     try {
@@ -844,6 +967,7 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
 
 bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
                                   const UCImageSave::ImageExportOptions* options) {
+    if (IsUCDFile(path)) return SaveUCD(path, error);
     if (IsProjectFile(path)) return SaveProject(path, error);
     // The extension picks the format, so a name without one (saved under
     // "All files") has none to pick; libvips would only say it is "not a
@@ -922,6 +1046,32 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
         jl.Set("opacity", static_cast<double>(l->opacity));
         jl.Set("blend", static_cast<int>(l->blendMode));
         jl.Set("file", "layers/" + std::to_string(i) + ".png");
+        if (l->text && l->text->document) {
+            // The words stay words: the box and the default font here, the
+            // rich text beside the PNG as an OpenDocument text.
+            const RasterTextContent& t = *l->text;
+            const std::string textFile = "layers/" + std::to_string(i) + ".odt";
+            JSONValue jt = JSONValue::MakeObject();
+            jt.Set("x", t.x);
+            jt.Set("y", t.y);
+            jt.Set("width", t.width);
+            jt.Set("height", t.height);
+            jt.Set("font", t.fontFamily);
+            jt.Set("sizePx", static_cast<double>(t.fontSizePx));
+            JSONValue colour = JSONValue::MakeArray();
+            for (int c : { t.colour.r, t.colour.g, t.colour.b, t.colour.a }) colour.Append(c);
+            jt.Set("colour", colour);
+            jt.Set("file", textFile);
+            jl.Set("text", jt);
+            std::vector<uint8_t> odt;
+            std::string odtError;
+            if (!RichDocumentToOdt(*t.document, odt, odtError) ||
+                !zip.AddEntry(textFile, odt.data(), odt.size(), false)) {
+                error = "Could not write the text of layer " + l->name +
+                        (odtError.empty() ? std::string() : ": " + odtError);
+                return false;
+            }
+        }
         arr.Append(jl);
         try {
             std::vector<uint8_t> png = PixelFX::FileIO::SaveToBuffer(l->ToPixelFX(), ".png");
@@ -980,6 +1130,32 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
         layer->opacity = static_cast<float>(jl.Get("opacity").GetNumber(1.0));
         layer->blendMode = static_cast<RasterBlendMode>(std::clamp<int64_t>(jl.Get("blend").GetInteger(0), 0,
                                                         static_cast<int64_t>(RasterBlendMode::HardLight)));
+        // A text layer: its pixels are the PNG, its words come back from the
+        // OpenDocument text. A project whose text cannot be read still opens,
+        // the layer as the bitmap it shows.
+        const JSONValue& jt = jl.Get("text");
+        std::vector<uint8_t> odt;
+        auto words = std::make_shared<UCRichDocument>();
+        std::string odtError;
+        if (jt.IsObject() && zip.ReadEntry(jt.Get("file").GetString(), odt) &&
+            RichDocumentFromOdt(odt, *words, odtError)) {
+            auto content = std::make_shared<RasterTextContent>();
+            content->document = words;
+            content->x = jt.Get("x").GetNumber(0.0);
+            content->y = jt.Get("y").GetNumber(0.0);
+            content->width = std::max(1.0, jt.Get("width").GetNumber(static_cast<double>(w)));
+            content->height = std::max(0.0, jt.Get("height").GetNumber(0.0));
+            content->fontFamily = jt.Get("font").GetString("Sans");
+            content->fontSizePx = static_cast<float>(std::max(1.0, jt.Get("sizePx").GetNumber(32.0)));
+            const JSONValue& colour = jt.Get("colour");
+            if (colour.IsArray() && colour.GetSize() == 4) {
+                auto channel = [&](size_t c) {
+                    return static_cast<uint8_t>(std::clamp<int64_t>(colour.At(c).GetInteger(0), 0, 255));
+                };
+                content->colour = RasterPixel(channel(0), channel(1), channel(2), channel(3));
+            }
+            layer->text = content;
+        }
         loaded.push_back(layer);
     }
     if (loaded.empty()) { error = "Project has no layers"; return false; }
@@ -1000,6 +1176,347 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
     error = "Project loading needs libvips (HAS_LIBVIPS)";
     return false;
 #endif
+}
+
+// ===========================================================================
+// LAYERED UCD (*.ucd: UCD 2.1, descriptor UCBitmap - spec section 4.7)
+// ===========================================================================
+
+namespace {
+    constexpr uint32_t kNoSection = 0xFFFFFFFFu;
+    constexpr int kThumbnailEdge = 256;
+    // UCRW stores its size as uint16.
+    constexpr int kMaxUCDSide = 65535;
+
+    // The composite at most kThumbnailEdge px on its longer side, as a PNG:
+    // what a filer shows without decoding a layer. Each thumbnail pixel is
+    // the average of the pixels it covers, weighted by their alpha, so a
+    // transparent edge does not darken the colours beside it.
+    std::vector<uint8_t> ThumbnailPng(const UCRasterLayer& flat) {
+        const int w = flat.GetWidth(), h = flat.GetHeight();
+        if (w <= 0 || h <= 0) return {};
+        const double scale = std::min(1.0, static_cast<double>(kThumbnailEdge) / std::max(w, h));
+        const int tw = std::max(1, static_cast<int>(std::lround(w * scale)));
+        const int th = std::max(1, static_cast<int>(std::lround(h * scale)));
+        std::vector<uint8_t> rgba(static_cast<size_t>(tw) * th * 4);
+        for (int ty = 0; ty < th; ++ty) {
+            const int y0 = static_cast<int>(static_cast<int64_t>(ty) * h / th);
+            const int y1 = std::max(y0 + 1, static_cast<int>(static_cast<int64_t>(ty + 1) * h / th));
+            for (int tx = 0; tx < tw; ++tx) {
+                const int x0 = static_cast<int>(static_cast<int64_t>(tx) * w / tw);
+                const int x1 = std::max(x0 + 1, static_cast<int>(static_cast<int64_t>(tx + 1) * w / tw));
+                uint64_t r = 0, g = 0, b = 0, a = 0, count = 0;
+                for (int y = y0; y < y1; ++y) {
+                    const uint8_t* row = flat.Row(y);
+                    for (int x = x0; x < x1; ++x) {
+                        const uint8_t* p = row + static_cast<size_t>(x) * 4;
+                        r += static_cast<uint64_t>(p[0]) * p[3];
+                        g += static_cast<uint64_t>(p[1]) * p[3];
+                        b += static_cast<uint64_t>(p[2]) * p[3];
+                        a += p[3];
+                        ++count;
+                    }
+                }
+                uint8_t* d = rgba.data() + (static_cast<size_t>(ty) * tw + tx) * 4;
+                if (a > 0) {
+                    d[0] = static_cast<uint8_t>((r + a / 2) / a);
+                    d[1] = static_cast<uint8_t>((g + a / 2) / a);
+                    d[2] = static_cast<uint8_t>((b + a / 2) / a);
+                }
+                d[3] = static_cast<uint8_t>((a + count / 2) / count);
+            }
+        }
+        size_t length = 0;
+        void* png = tdefl_write_image_to_png_file_in_memory_ex(rgba.data(), tw, th, 4, &length, MZ_DEFAULT_LEVEL, MZ_FALSE);
+        if (!png) return {};
+        std::vector<uint8_t> out(static_cast<uint8_t*>(png), static_cast<uint8_t*>(png) + length);
+        mz_free(png);
+        return out;
+    }
+
+    // A layer's pixels as a BMAP payload: 'UCRW', RGBA8, straight alpha.
+    std::vector<uint8_t> BitmapPayload(const UCRasterLayer& layer) {
+        std::vector<uint8_t> out;
+        out.reserve(UCD::kPreambleSize + 8 + layer.DataSize());
+        UCD::AppendPreamble(out, "UCRW", 1);
+        UCD::ByteWriter w(out);
+        w.U16(static_cast<uint16_t>(layer.GetWidth()));
+        w.U16(static_cast<uint16_t>(layer.GetHeight()));
+        w.U8(0);                       // RGBA8
+        w.Zeros(3);
+        w.Bytes(layer.Data(), layer.DataSize());
+        return out;
+    }
+
+    // A BMAP payload as a layer of the bitmap's own size: UCRW in any of its
+    // pixel formats, or an embedded image file through PixelFX.
+    std::shared_ptr<UCRasterLayer> BitmapFromPayload(const std::vector<uint8_t>& payload, std::string& error) {
+        std::string fourcc;
+        uint8_t version = 0;
+        if (!UCD::ReadPreamble(payload, fourcc, version)) { error = "a bitmap section is empty"; return nullptr; }
+        if (fourcc == "UCRW") {
+            UCD::ByteReader r(payload.data() + UCD::kPreambleSize, payload.size() - UCD::kPreambleSize);
+            uint16_t w = 0, h = 0;
+            uint8_t format = 0;
+            if (!r.U16(w) || !r.U16(h) || !r.U8(format) || !r.Skip(3) || w == 0 || h == 0) {
+                error = "a bitmap section is damaged";
+                return nullptr;
+            }
+            static const size_t kBytesPerPixel[] = { 4, 3, 1, 8 };
+            if (format > 3) { error = "a bitmap uses a pixel format this program does not read"; return nullptr; }
+            const size_t pixels = static_cast<size_t>(w) * h;
+            if (r.Remaining() != pixels * kBytesPerPixel[format]) { error = "a bitmap section is damaged"; return nullptr; }
+            auto layer = std::make_shared<UCRasterLayer>(w, h);
+            const uint8_t* src = r.Here();
+            uint8_t* dst = layer->Data();
+            for (size_t i = 0; i < pixels; ++i, dst += 4) {
+                switch (format) {
+                    case 0: std::memcpy(dst, src + i * 4, 4); break;
+                    case 1: std::memcpy(dst, src + i * 3, 3); dst[3] = 255; break;
+                    case 2: dst[0] = dst[1] = dst[2] = src[i]; dst[3] = 255; break;
+                    case 3:   // RGBA16, little-endian: the high byte of each sample
+                        for (int c = 0; c < 4; ++c) dst[c] = src[i * 8 + static_cast<size_t>(c) * 2 + 1];
+                        break;
+                }
+            }
+            return layer;
+        }
+#ifdef HAS_LIBVIPS
+        // An embedded image file ('PNG ', 'JPEG', 'WEBP' ...).
+        try {
+            std::vector<uint8_t> file(payload.begin() + UCD::kPreambleSize, payload.end());
+            auto layer = std::make_shared<UCRasterLayer>();
+            if (layer->FromPixelFX(PixelFX::FileIO::LoadFromMemory(file, ""))) return layer;
+        } catch (const std::exception&) {}
+        error = "a bitmap (" + fourcc + ") could not be decoded";
+#else
+        error = "a bitmap (" + fourcc + ") needs an image decoder this build does not have";
+#endif
+        return nullptr;
+    }
+
+    // A text layer's words as a VECT payload: 'UCTF', the box, the defaults
+    // and the rich text as an OpenDocument text.
+    std::vector<uint8_t> TextFramePayload(const RasterTextContent& t, const std::vector<uint8_t>& odt) {
+        std::vector<uint8_t> out;
+        UCD::AppendPreamble(out, "UCTF", 1);
+        UCD::ByteWriter w(out);
+        w.F64(t.x);
+        w.F64(t.y);
+        w.F64(t.width);
+        w.F64(t.height);
+        w.U8(t.colour.r); w.U8(t.colour.g); w.U8(t.colour.b); w.U8(t.colour.a);
+        w.F32(t.fontSizePx);
+        w.String16(t.fontFamily);
+        w.FourCC("ODT ");
+        w.U32(static_cast<uint32_t>(odt.size()));
+        w.Bytes(odt.data(), odt.size());
+        return out;
+    }
+
+    // Null when the frame is not one this reads - the layer then stays the
+    // bitmap it shows (spec 4.7.3).
+    std::shared_ptr<RasterTextContent> TextFrameFromPayload(const std::vector<uint8_t>& payload) {
+        std::string fourcc;
+        uint8_t version = 0;
+        if (!UCD::ReadPreamble(payload, fourcc, version) || fourcc != "UCTF" || version != 1) return nullptr;
+        UCD::ByteReader r(payload.data() + UCD::kPreambleSize, payload.size() - UCD::kPreambleSize);
+        auto content = std::make_shared<RasterTextContent>();
+        uint8_t rgba[4] = {};
+        std::string font, encoding;
+        uint32_t length = 0;
+        if (!r.F64(content->x) || !r.F64(content->y) || !r.F64(content->width) || !r.F64(content->height) ||
+            !r.Bytes(rgba, 4) || !r.F32(content->fontSizePx) || !r.String16(font) ||
+            !r.FourCC(encoding) || !r.U32(length) || length > r.Remaining() || encoding != "ODT ") {
+            return nullptr;
+        }
+        const auto finite = [](double v) { return std::isfinite(v); };
+        if (!finite(content->x) || !finite(content->y) || !finite(content->width) || !finite(content->height) ||
+            !std::isfinite(content->fontSizePx)) {
+            return nullptr;
+        }
+        std::vector<uint8_t> odt(r.Here(), r.Here() + length);
+        auto words = std::make_shared<UCRichDocument>();
+        std::string odtError;
+        if (!RichDocumentFromOdt(odt, *words, odtError)) return nullptr;
+        content->document = words;
+        content->width = std::max(1.0, content->width);
+        content->height = std::max(0.0, content->height);
+        content->fontFamily = font.empty() ? std::string("Sans") : font;
+        content->fontSizePx = std::max(1.0f, content->fontSizePx);
+        content->colour = RasterPixel(rgba[0], rgba[1], rgba[2], rgba[3]);
+        return content;
+    }
+}
+
+bool UCRasterDocument::SaveUCD(const std::string& path, std::string& error) {
+    if (width > kMaxUCDSide || height > kMaxUCDSide) {
+        error = "An UltraCanvas document holds images up to 65535 pixels on a side";
+        return false;
+    }
+    // Every text layer's words first: a text that cannot be written fails
+    // the save before anything is.
+    std::vector<std::vector<uint8_t>> frames(layers.size());
+    for (size_t i = 0; i < layers.size(); ++i) {
+        const auto& l = layers[i];
+        if (!l->text || !l->text->document) continue;
+        std::vector<uint8_t> odt;
+        std::string odtError;
+        if (!RichDocumentToOdt(*l->text->document, odt, odtError)) {
+            error = "Could not write the text of layer " + l->name +
+                    (odtError.empty() ? std::string() : ": " + odtError);
+            return false;
+        }
+        frames[i] = TextFramePayload(*l->text, odt);
+    }
+
+    // The stack: every layer bottom first, naming its BMAP (one per layer,
+    // in order) and its text frame (numbered among the text layers).
+    std::vector<uint8_t> stack;
+    UCD::ByteWriter s(stack);
+    s.U8(1);
+    s.Zeros(3);
+    s.U32(static_cast<uint32_t>(width));
+    s.U32(static_cast<uint32_t>(height));
+    s.I32(activeLayer);
+    s.U32(static_cast<uint32_t>(layers.size()));
+    uint32_t nextFrame = 0;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        const auto& l = layers[i];
+        std::vector<uint8_t> record;
+        UCD::ByteWriter r(record);
+        r.U8(static_cast<uint8_t>((l->visible ? 0x01 : 0) | (l->locked ? 0x02 : 0)));
+        r.U8(static_cast<uint8_t>(l->blendMode));
+        r.U16(0);
+        r.F32(l->opacity);
+        r.I32(0);
+        r.I32(0);
+        r.U32(static_cast<uint32_t>(i));
+        r.U32(frames[i].empty() ? kNoSection : nextFrame++);
+        r.String16(l->name);
+        s.U32(static_cast<uint32_t>(record.size()));
+        s.Bytes(record.data(), record.size());
+    }
+
+    UCD::Writer writer("UCBitmap");
+    if (auto flat = Flatten()) writer.SetThumbnailPng(ThumbnailPng(*flat));
+    writer.AddSection("LAYR", std::move(stack));
+    for (size_t i = 0; i < layers.size(); ++i) {
+        writer.AddSection("BMAP", BitmapPayload(*layers[i]));
+        // The OpenDocument text inside is a ZIP already.
+        if (!frames[i].empty()) writer.AddSection("VECT", std::move(frames[i]), UCD::Compression::Uncompressed);
+    }
+    if (!writer.WriteToFile(path, error)) return false;
+    filePath = path;
+    SetModified(false);
+    return true;
+}
+
+bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error) {
+    UCD::Reader reader;
+    if (!reader.Open(path, error)) return false;
+    if (reader.GetHeader().IsEncrypted()) {
+        error = "This UltraCanvas document is password-protected, which this program cannot open yet";
+        return false;
+    }
+    const auto bitmaps = reader.FindSections("BMAP");
+    const auto frames = reader.FindSections("VECT");
+    const auto stacks = reader.FindSections("LAYR");
+    if (bitmaps.empty()) {
+        error = "This UltraCanvas document (" + reader.GetHeader().descriptor + ") holds no image";
+        return false;
+    }
+    auto decodeBitmap = [&](uint32_t index) -> std::shared_ptr<UCRasterLayer> {
+        if (index >= bitmaps.size()) { error = "The document is damaged: a layer names a missing bitmap"; return nullptr; }
+        std::vector<uint8_t> payload;
+        if (!reader.Decode(*bitmaps[index], payload, error)) return nullptr;
+        std::string why;
+        auto layer = BitmapFromPayload(payload, why);
+        if (!layer) error = "The document is damaged: " + why;
+        return layer;
+    };
+
+    int w = 0, h = 0, active = 0;
+    std::vector<std::shared_ptr<UCRasterLayer>> loaded;
+    if (stacks.empty()) {
+        // A single image (a UCBitmap without a layer stack): its first BMAP.
+        auto layer = decodeBitmap(0);
+        if (!layer) return false;
+        layer->name = "Background";
+        w = layer->GetWidth();
+        h = layer->GetHeight();
+        loaded.push_back(layer);
+    } else {
+        std::vector<uint8_t> stack;
+        if (!reader.Decode(*stacks.front(), stack, error)) return false;
+        UCD::ByteReader r(stack);
+        uint8_t version = 0;
+        uint32_t cw = 0, ch = 0, count = 0;
+        int32_t activeIndex = 0;
+        if (!r.U8(version) || !r.Skip(3) || !r.U32(cw) || !r.U32(ch) || !r.I32(activeIndex) || !r.U32(count) ||
+            version < 1 || cw == 0 || ch == 0 || cw > static_cast<uint32_t>(kMaxUCDSide) ||
+            ch > static_cast<uint32_t>(kMaxUCDSide) || count == 0) {
+            error = "The document's layer stack is damaged or of a later kind";
+            return false;
+        }
+        w = static_cast<int>(cw);
+        h = static_cast<int>(ch);
+        active = activeIndex;
+        for (uint32_t i = 0; i < count; ++i) {
+            uint32_t length = 0;
+            if (!r.U32(length) || length > r.Remaining()) {
+                error = "The document's layer stack is damaged";
+                return false;
+            }
+            UCD::ByteReader rec(r.Here(), length);
+            r.Skip(length);
+            uint8_t flags = 0, blend = 0;
+            uint16_t reserved = 0;
+            float opacity = 1.0f;
+            int32_t x = 0, y = 0;
+            uint32_t bitmap = kNoSection, frame = kNoSection;
+            std::string name;
+            if (!rec.U8(flags) || !rec.U8(blend) || !rec.U16(reserved) || !rec.F32(opacity) || !rec.I32(x) ||
+                !rec.I32(y) || !rec.U32(bitmap) || !rec.U32(frame) || !rec.String16(name)) {
+                error = "The document's layer stack is damaged";
+                return false;
+            }
+            auto layer = std::make_shared<UCRasterLayer>(w, h, name);
+            if (bitmap != kNoSection) {
+                auto pixels = decodeBitmap(bitmap);
+                if (!pixels) return false;
+                layer->CopyFrom(*pixels, x, y);
+            }
+            layer->visible = (flags & 0x01) != 0;
+            layer->locked = (flags & 0x02) != 0;
+            layer->opacity = std::isfinite(opacity) ? std::clamp(opacity, 0.0f, 1.0f) : 1.0f;
+            // A blend mode this does not know composites as Normal (spec 4.7.2).
+            layer->blendMode = blend <= static_cast<uint8_t>(RasterBlendMode::HardLight)
+                                   ? static_cast<RasterBlendMode>(blend) : RasterBlendMode::Normal;
+            // The words, when this can read them; else the layer stays the
+            // bitmap it shows.
+            std::vector<uint8_t> payload;
+            std::string ignored;
+            if (frame != kNoSection && frame < frames.size() && reader.Decode(*frames[frame], payload, ignored)) {
+                if (auto content = TextFrameFromPayload(payload)) layer->text = content;
+            }
+            loaded.push_back(layer);
+        }
+    }
+
+    width = w;
+    height = h;
+    layers.swap(loaded);
+    activeLayer = std::clamp(active, 0, static_cast<int>(layers.size()) - 1);
+    selection.Resize(width, height);
+    ResetComposite();
+    filePath = path;
+    modified = false;
+    ClearHistory();
+    EmitStructure();
+    EmitSelection();
+    EmitState();
+    return true;
 }
 
 } // namespace UltraCanvas

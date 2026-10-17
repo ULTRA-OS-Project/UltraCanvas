@@ -2,6 +2,48 @@
 
 <!-- doc-check: int MyTextMetrics(const std::string& text, const CellFont& font); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors and Factory](#constructors-and-factory)
+  - [Cell Access (workbook-level convenience)](#cell-access-workbook-level-convenience)
+  - [Sheet Management](#sheet-management)
+  - [Selection and Navigation](#selection-and-navigation)
+  - [Formatting (applies to current selection)](#formatting-applies-to-current-selection)
+  - [Rows, Columns, Merge, and Freeze](#rows-columns-merge-and-freeze)
+  - [Clipboard, Undo/Redo, Formula Engine](#clipboard-undoredo-formula-engine)
+  - [Sorting](#sorting)
+  - [Auto-Fill](#auto-fill)
+  - [File Operations](#file-operations)
+  - [View Settings](#view-settings)
+  - [Callbacks](#callbacks)
+  - [SpreadsheetCell](#spreadsheetcell)
+  - [NumberFormat factories (`UltraCanvasSpreadsheetTypes.h`)](#numberformat-factories-ultracanvasspreadsheettypesh)
+  - [Addresses and Ranges](#addresses-and-ranges)
+- [Examples](#examples)
+  - [1. Create a Spreadsheet Element](#1-create-a-spreadsheet-element)
+  - [2. Seed Sample Data with Formatting](#2-seed-sample-data-with-formatting)
+  - [3. Formulas and Recalculation](#3-formulas-and-recalculation)
+  - [4. Open a Spreadsheet File (.ods / .csv)](#4-open-a-spreadsheet-file-ods--csv)
+  - [5. Import CSV with Explicit Options](#5-import-csv-with-explicit-options)
+  - [6. Save: ODS Directly, CSV via Export Dialog](#6-save-ods-directly-csv-via-export-dialog)
+  - [7. Working with Multiple Sheets](#7-working-with-multiple-sheets)
+  - [8. Reading Cell Values Back](#8-reading-cell-values-back)
+- [Formula language and functions](#formula-language-and-functions)
+- [Column widths](#column-widths)
+- [Cell formatting menu](#cell-formatting-menu)
+- [Function menu](#function-menu)
+- [Sorting from the context menu](#sorting-from-the-context-menu)
+- [Fill handle](#fill-handle)
+- [Pointing at cells in a formula](#pointing-at-cells-in-a-formula)
+- [Sheet tab menu](#sheet-tab-menu)
+- [Sorting a selection from the header](#sorting-a-selection-from-the-header)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, plus import of legacy Excel 97-2003 and 5.0/95 workbooks (`.xls`, see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)). Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
@@ -15,15 +57,17 @@
 ## Features
 
 - **Editable Grid**: Click-to-edit cells with an in-cell editor and a formula bar
-- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs
+- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs; the tab strip's "+" button adds a sheet, its ◀ ▶ buttons scroll through tabs that do not fit, and a right-click on a tab opens a menu to insert, duplicate, rename, move and delete sheets (see [Sheet tab menu](#sheet-tab-menu))
+- **Pointing in Formulas**: While a formula is typed, clicking a cell types its address at the caret and dragging types a range — `=SUM(` then a drag over `C2:C8` (see [Pointing at cells in a formula](#pointing-at-cells-in-a-formula))
 - **Typed Cells**: Text, Number, Boolean, Date/Time, Currency, Percentage, Error, and Formula values
 - **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection, and some 150 Excel-compatible functions — `VLOOKUP`, `INDEX` and `MATCH`, `SUMIF` and `SUMIFS`, `COUNTIF` and `COUNTIFS`, `SUMPRODUCT`, text, date, statistical and financial functions (see [Formula language and functions](#formula-language-and-functions))
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
-- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
+- **Function Menu**: an **fx** button at the end of the formula bar lists every formula function by category and A to Z, and inserts the one picked (see [Function menu](#function-menu))
+- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, sorting, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
-- **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
+- **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references; Ctrl-drag copies instead, a double-click fills down beside the neighbouring data, Ctrl+D / Ctrl+R fill down / right (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
@@ -92,10 +136,27 @@ SpreadsheetSheet* GetSheetByName(const std::string& name);
 SpreadsheetSheet* AddSheet(const std::string& name = "");
 SpreadsheetSheet* InsertSheet(int index, const std::string& name = "");
 void  RemoveSheet(int index);
-void  RenameSheet(int index, const std::string& newName);
+// Renames, and rewrites the formulas on every sheet that name the old one.
+// False (nothing changes) for a name ValidateSheetName rejects.
+bool  RenameSheet(int index, const std::string& newName);
+std::string ValidateSheetName(int index, const std::string& name) const;   // "" = fine
 void  MoveSheet(int fromIndex, int toIndex);
 SpreadsheetSheet* CopySheet(int index, const std::string& newName = "");
 std::vector<std::string> GetSheetNames() const;
+
+// The sheet tab menu (see "Sheet tab menu")
+void  ShowSheetTabMenuAt(int sheetIndex, int windowX, int windowY);
+bool  IsSheetTabMenuEnabled() const;
+void  SetSheetTabMenuEnabled(bool enabled);
+void  PromptRenameSheet(int index);    // name dialog, re-asks on a bad name
+void  RequestRemoveSheet(int index);   // asks first when the sheet has cells
+
+// Sheet level (UltraCanvasSpreadsheetSheet.h)
+std::string CheckSheetName(const std::string& name);   // why not, or ""
+std::string RenameSheetInFormula(const std::string& formula,
+                                 const std::string& oldName, const std::string& newName);
+std::string RemoveSheetFromFormula(const std::string& formula,
+                                   const std::string& sheetName);   // its references -> #REF!
 ```
 
 ### Selection and Navigation
@@ -212,27 +273,37 @@ void SetSortFormulaWarningEnabled(bool enabled);
 ```cpp
 // Fill the selection's extension, as the fill handle does. False when the
 // destination does not grow the selection along one axis, or hits merged cells.
-bool AutoFillSelection(const CellRange& destination);
+// AutoFillMode::Copy repeats the selection as it is, as a Ctrl-drag does.
+bool AutoFillSelection(const CellRange& destination,
+                       AutoFillMode mode = AutoFillMode::Series);
+bool AutoFillSelectionToDataEnd();   // double-click on the fill handle
+bool FillSelectionDown();            // Ctrl+D
+bool FillSelectionRight();           // Ctrl+R
 
 // Sheet level (UltraCanvasSpreadsheetSheet.h)
-void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination);
+void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination,
+                                AutoFillMode mode = AutoFillMode::Series);
+int  SpreadsheetSheet::GetAutoFillDownEnd(const CellRange& source) const;   // -1 = none
 std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int colDelta);
 ```
 
 ### File Operations
 
 ```cpp
-// Format chosen automatically from the file extension.
-bool LoadFromFile(const std::string& filePath);
+// Format chosen automatically from the file extension. `password` opens a
+// password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
+// formats ignore it.
+bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
 bool SaveToFile(const std::string& filePath);
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
-bool LoadXLSX(const std::string& filePath);
+bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
 bool SaveXLSX(const std::string& filePath);
-// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx, HTML table, Excel 2003
-// XML file or delimited text saved under the name. Read only.
-bool LoadXLS(const std::string& filePath);
+// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx (password-protected or
+// not), HTML table, Excel 2003 XML file or delimited text saved under the
+// name. Read only.
+bool LoadXLS(const std::string& filePath, const std::string& password = std::string());
 
 // CSV/TSV: single-argument form auto-detects encoding/separators.
 bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
@@ -271,6 +342,7 @@ std::function<void(const std::string&)> onFormulaError;
 std::function<void()>         onStructureChange;
 std::function<void(const std::string&)> onStatusChange;
 std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;  // header sort: (range, column, order)
+std::function<void(int, int, int)> onSheetTabContextMenu;  // (sheet index or -1, windowX, windowY)
 ```
 
 ### SpreadsheetCell
@@ -437,7 +509,7 @@ sheet->Recalculate();
 
 ### 4. Open a Spreadsheet File (.ods / .csv)
 
-Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback.
+Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback. A password-protected `.xlsx` needs its password: `UltraCanvasFileLoader::RequestDocumentPassword` asks for it (and calls straight back for any other file), then pass it as `LoadFromFile(path, password)` - the demo's Open button does this, see [UltraCanvasOfficeEncryption.md](UltraCanvasOfficeEncryption.md).
 
 ```cpp
 auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,
@@ -701,8 +773,9 @@ sheet->SetColumnWidth(0, 120, /*explicitWidth*/ true);
 
 `UltraCanvasSpreadsheetFormatMenu.h` builds the standard formatting menu for the
 current selection: alignment (horizontal, vertical, wrap), number-format presets,
-font style and size, text and background colour, column/row sizing, and
-merge/unmerge. Each number preset shows a live sample rendered through the same
+font style and size, text and background colour, sorting the selected rows
+(see [Sorting from the context menu](#sorting-from-the-context-menu)),
+column/row sizing, and merge/unmerge. Each number preset shows a live sample rendered through the same
 formatter the cells use, so the menu shows exactly what the cell will show.
 
 The grid opens it on a right-click, with no application code at all — the click
@@ -738,6 +811,61 @@ so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
 
+## Function menu
+
+The **fx** button at the right end of the formula bar opens a menu of every
+function the formula engine knows - a submenu per category (Date and time,
+Financial, Information, Logical, Lookup, Math, Statistical, Text) and one with
+all of them A to Z. Each entry shows the call with its argument names -
+`ROUND(number, num_digits)`, `IF(logical_test, value_if_true, [value_if_false])`,
+`SUM(number1, [number2], ...)` (square brackets: optional; `...`: more of the
+same) - and the function's description.
+Picking one inserts the call:
+
+| When | The formula bar gets |
+|---|---|
+| editing a formula | `NAME()` at the caret |
+| on a formula cell, not editing | the formula wrapped: `=A1/B1` becomes `=ROUND(A1/B1)` |
+| on any other cell | `=NAME()` |
+
+The caret is left inside the call - between the parentheses, or before the
+closing one of a wrapped formula - ready for the arguments.
+
+While a formula is typed - in the formula bar or in the cell - a hint under
+the editor shows the signature of the function call the caret is in, with
+the argument being typed in **bold**, and the description below it. It
+follows the caret: into a nested call, and on to the next argument after each
+`,` (or `;`); text in quotes and array constants `{...}` are skipped.
+
+The argument names are the ones Excel uses. From code:
+`GetFunctionLibrary().GetSignature("ROUND")` gives the signature,
+`GetSignatureArguments()` the arguments one by one, and
+`FindFormulaCallAtCaret(formula, caret, name, argument)` the call and argument
+at a position in a formula. Functions an
+application registers on the engine appear too; the menu is rebuilt each time
+it opens. From code: `InsertFunction("ROUND")` does what a pick does,
+`BuildSpreadsheetFunctionMenuItems()` returns the items for a menu of your
+own, and `SetFunctionMenuEnabled(false)` removes the button.
+
+## Sorting from the context menu
+
+The right-click menu has a **Sort** submenu that sorts the selected block the
+way the header sort buttons do (see
+[Sorting a selection from the header](#sorting-a-selection-from-the-header)):
+only the selected rows move, each keeping its cells together.
+
+- **Ascending by column X** / **Descending by column X** - by the column of
+  the active cell (the cell that was right-clicked).
+- **Ascending by** / **Descending by** - a submenu listing every column of the
+  selection, to sort by another one.
+
+It is offered for the same selections as the header buttons - one block of
+two or more rows, not whole columns or rows, not over merged cells - and
+otherwise shows one disabled hint. A block that holds formulas asks first, as
+the buttons do. From code: `RequestSortSelectionByColumn(column, order)` sorts
+with that warning, `SortSelectionByColumn` without it, and
+`IsSelectionSortable()` says whether the selection can be sorted.
+
 ## Fill handle
 
 The small square at the bottom-right corner of the selection is the fill
@@ -756,11 +884,116 @@ release the new cells are filled from the selection, repeating its pattern:
 Formatting comes along with each value. The filled range is selected
 afterwards, the fill is one undo step (Ctrl+Z), and every formula is
 recalculated, so totals that read the filled cells update. A drag that would
-cover merged cells does nothing.
+cover merged cells does nothing. Dragged past the edge of the grid, the grid
+scrolls a row or column with each pointer move, so the fill can reach cells
+that were off screen.
+
+More ways to fill:
+
+| Gesture | What it does |
+|---|---|
+| **Ctrl** held when the handle is released | copies the selection as it is: `1, 2` repeats as `1, 2, 1, 2`, `Item 1` stays `Item 1`; formulas still shift their references |
+| **double-click** on the handle | fills the selection down as far as the data in the column beside it goes (the left one, or the right one when the left is empty) — select the `=B2*C2` in D2 and double-click to give every row of the table its own |
+| **Ctrl+D** | fill down: copies the selection's top row over the rest of it; with a one-row selection, copies the row above into it |
+| **Ctrl+R** | fill right: the same with the left column; with a one-column selection, copies the column to the left |
+
+Each is one undo step. From code: `AutoFillSelection(destination,
+AutoFillMode::Copy)`, `AutoFillSelectionToDataEnd()`, `FillSelectionDown()`
+and `FillSelectionRight()`; `SpreadsheetSheet::GetAutoFillDownEnd` gives the
+row a double-click fills down to.
 
 From code, select the source and call `AutoFillSelection(destination)`; the
 sheet-level `SpreadsheetSheet::AutoFill` does the same without selection or
 undo, and `ShiftFormulaReferences` shifts a formula's text on its own.
+
+## Pointing at cells in a formula
+
+While a cell (or the formula bar) is being edited and its text is a formula,
+the grid is a way to type references — as in Excel and LibreOffice Calc:
+
+1. Type `=SUM(` in C10.
+2. Drag over C2:C8. `C2:C8` appears at the caret as the drag goes, and the
+   range is outlined in colour on the grid.
+3. Type `)` and press Enter: `=SUM(C2:C8)`.
+
+A click types a single cell's address. The pointer is a crosshair over the
+cells whenever a click would do this, which is when the caret (or the
+selected text) follows the `=`, an opening parenthesis, a separator (`,`
+`;`), an operator (`+ - * / ^ & < > =`) or the `:` of a range — and is not
+inside "quotes". Anywhere else — `=A1|` — a click on a cell ends the edit
+and selects that cell, as before.
+
+The reference typed last stays live until the formula is changed another way
+(a key typed, the caret moved):
+
+| While it is live | Does |
+|---|---|
+| click another cell | replaces it — try a few cells before settling |
+| drag | makes it the range from where the press was |
+| **Shift**+click | grows it into the range to the clicked cell |
+| **Ctrl**+click | adds another reference after a `,`: `=SUM(C2,C5,C7` |
+
+Selected text in a formula is replaced by the pointed reference, so select
+`B2` in `=A1+B2` and click D4 to get `=A1+D4`. Every reference of the formula
+being typed is outlined in the grid, in the cell and in the formula bar alike.
+The second click of a double-click while pointing does not start editing the
+clicked cell. `CanPointReference()` says whether a click would point, for an
+application that wants to show it.
+
+## Sheet tab menu
+
+Right-click a sheet tab: the sheet opens, and its menu offers
+
+- **Insert sheet before** / **Insert sheet after** — a new, empty sheet
+  next to it, which opens;
+- **Duplicate sheet** — a copy of it, values, formulas and formatting,
+  named "Sales (2)", right after it;
+- **Rename sheet...** — a dialog with the name to edit (a double-click on
+  the tab does the same);
+- **Move left**, **Move right**, **Move to start**, **Move to end** — each
+  greyed out where the sheet already is;
+- **Delete sheet** — asks first when the sheet holds any cells, and is
+  greyed out for the only sheet.
+
+A right-click on the empty part of the strip offers **Insert sheet**, which
+adds one at the end.
+
+A sheet name is at most 31 characters, has none of `[ ] : * ? / \`, does not
+start or end with an apostrophe, and is not another sheet's name (ignoring
+case) — the rules `.xlsx` and `.ods` files share. A rejected name is
+explained and the dialog asked again. Renaming rewrites every formula, on any
+sheet, that names the sheet: `=Sales.C2` becomes `='Sales 2016'.C2`.
+Deleting a sheet turns every reference to it into `#REF!` in the formula
+itself, as Excel does: `=Gone.E5*2` becomes `=#REF!*2` and
+`=SUM(Gone.A1:B3)` becomes `=SUM(#REF!)`, so the cell shows `#REF!` and the
+formula says why.
+
+Undo keeps up with both. After a rename, the sheet's earlier steps still undo
+into it, and an undone formula names the sheet's new name. Deleting a sheet
+drops its steps from the undo and redo history: there is nothing left to
+restore them into. Neither ever writes into whichever sheet is open
+instead.
+
+From code: `RenameSheet` (returns false for a name `ValidateSheetName`
+rejects), `PromptRenameSheet`, `RequestRemoveSheet`, and
+`ShowSheetTabMenuAt(sheetIndex, windowX, windowY)`.
+`BuildSpreadsheetSheetTabMenuItems(sheet, index)` in
+`UltraCanvasSpreadsheetFormatMenu.h` gives the items for a menu of your own;
+set `onSheetTabContextMenu` to open your own instead, or
+`SetSheetTabMenuEnabled(false)` for none.
+
+```cpp
+// doc-check: example
+auto sheet = CreateSpreadsheetElement("Book", 0, 0, 800, 600);
+sheet->AddSheet("Sales");
+sheet->SetCellFormula(0, 0, "=Sales.A1*2");
+if (!sheet->RenameSheet(1, "Sales 2016")) {
+    std::string why = sheet->ValidateSheetName(1, "Sales 2016");
+}
+sheet->onSheetTabContextMenu = [](int sheetIndex, int windowX, int windowY) {
+    // open your own menu for sheetIndex (-1: beside the tabs)
+};
+```
 
 ## Sorting a selection from the header
 

@@ -35,6 +35,8 @@
 #   ARCH=<label>   the architecture label in the name (default as the suite
 #                  packagers derive it: x86_64 or arm64)
 #
+# Version: 1.2.0 - the Windows package takes the console companion
+#                  (UltraCanvasStart.com) along
 # Version: 1.1.0 - the Linux archive is xz
 # Author: UltraCanvas Framework / ULTRA OS
 set -euo pipefail
@@ -202,6 +204,9 @@ else
     SOURCE="$(cd "$SOURCE" && pwd)"
     mkdir -p "$PKG"
     cp "$SOURCE/$APP.exe" "$PKG/$APP.exe"
+    # Its console companion: `UltraCanvasStart --check` typed at a prompt runs
+    # the .com, which waits for the .exe (cmake/UltraCanvasWindowsGuiApp.cmake).
+    [ -f "$SOURCE/$APP.com" ] && cp "$SOURCE/$APP.com" "$PKG/$APP.com"
 
     # The import table, read statically as package-win.sh reads it: ldd
     # would load every module and runs into the codec deadlocks on ARM64.

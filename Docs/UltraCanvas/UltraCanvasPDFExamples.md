@@ -2,6 +2,36 @@
 
 <!-- doc-check: std::unique_ptr<IPDFDocument> doc; std::unique_ptr<IPDFDocument> other; -->
 
+## Contents
+
+- [Overview](#overview)
+  - [Choosing a widget](#choosing-a-widget)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Quick Start: a minimal viewer](#quick-start-a-minimal-viewer)
+- [Class Reference: `UltraCanvasPDFView`](#class-reference-ultracanvaspdfview)
+  - [Document](#document)
+  - [Navigation](#navigation)
+  - [Zoom](#zoom)
+  - [Search](#search)
+  - [Images](#images)
+  - [Text selection & export](#text-selection--export)
+  - [Layout & style](#layout--style)
+  - [Editing passthroughs](#editing-passthroughs)
+  - [Callbacks](#callbacks)
+  - [Built-in interaction](#built-in-interaction)
+- [Example: the full demo toolbar](#example-the-full-demo-toolbar)
+  - [Search with up/down navigation](#search-with-updown-navigation)
+- [Class Reference: `IPDFDocument` (headless engine)](#class-reference-ipdfdocument-headless-engine)
+  - [I/O & metadata](#io--metadata)
+  - [Rendering](#rendering)
+  - [Text & search](#text--search)
+  - [Images](#images-1)
+  - [Page operations](#page-operations)
+  - [Content editing & annotations](#content-editing--annotations)
+- [Implementation Notes](#implementation-notes)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasPDF** is the PDF subsystem: the `UltraCanvasPDFView` widget and the
