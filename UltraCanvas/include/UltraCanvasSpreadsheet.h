@@ -94,6 +94,10 @@ public:
     // your own menu; when it is unset the built-in cell-formatting menu opens
     // (see SetFormatMenuEnabled).
     std::function<void(int, int, int, int)> onCellContextMenu;
+    // Right-click on the sheet tab strip: (sheet index, or -1 off the tabs;
+    // windowX, windowY). Set this to put up your own menu; when it is unset
+    // the built-in sheet menu opens (see SetSheetTabMenuEnabled).
+    std::function<void(int, int, int)> onSheetTabContextMenu;
     // A header sort button reordered the selection: (range, column, order).
     std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;
     
@@ -113,6 +117,28 @@ private:
     // the formula bar depending on the mode, destroyed when the edit ends.
     std::shared_ptr<UltraCanvasTextInput> cellEditor;
     void BuildCellEditor(const std::string& initialText, bool selectAll);
+    // The editor's selection, as its onSelectionChanged last reported it
+    // (typing does not report, so it is checked against the text before use).
+    size_t editorSelStart_ = 0;
+    size_t editorSelEnd_ = 0;
+
+    // Point mode: while a formula is edited and its caret sits where a
+    // reference may go ("=SUM(|"), a click on a cell types the cell's address
+    // there instead of ending the edit, and a drag makes it a range. The
+    // reference typed last stays live - the next click replaces it, a drag or
+    // Shift+click grows it, Ctrl+click adds another after a separator - until
+    // the text or the caret is changed any other way.
+    bool pointingReference_ = false;   // a point-mode drag is in progress
+    CellAddress pointAnchor_;          // the cell the live reference starts at
+    size_t pointRefStart_ = 0;
+    size_t pointRefEnd_ = 0;
+    std::string pointRefText_;         // the editor's text right after pointing
+    bool IsPointedReferenceLive() const;
+    // The span of the editor's text a pointed reference would replace (the
+    // caret, the selection, or the live reference); false when none fits.
+    bool GetPointReferenceSpan(size_t& start, size_t& end) const;
+    void PointReference(const CellAddress& anchor, const CellAddress& to,
+                        size_t start, size_t end, const std::string& prefix = "");
     void DestroyCellEditor();
     void PositionCellEditor();
     Rect2Df EditorRect() const;   // cell rect or formula-bar text rect
@@ -160,6 +186,9 @@ private:
     // The built-in formatting context menu, created lazily on first use.
     std::shared_ptr<UltraCanvasMenu> formatMenu_;
     bool formatMenuEnabled_ = true;
+    // The sheet tab strip's menu (see ShowSheetTabMenuAt).
+    std::shared_ptr<UltraCanvasMenu> sheetTabMenu_;
+    bool sheetTabMenuEnabled_ = true;
     // The formula bar's function menu and its "fx" button.
     std::shared_ptr<UltraCanvasMenu> functionMenu_;
     bool functionMenuEnabled_ = true;
@@ -181,6 +210,10 @@ private:
     // pointer currently extends it to (drawn as a dashed outline).
     CellRange autoFillSource_;
     CellRange autoFillTarget_;
+    // Scrolls the grid a step when a drag (fill handle, selection, point
+    // mode) is past the edge of the cell area, so it can reach cells that are
+    // not on screen.
+    void AutoScrollForDrag(int x, int y);
     // Set by a file load: columns the document did not size are fitted to their
     // content on the next render, when a render context exists to measure text
     // with. Doing it at load time would have to guess the font metrics.
@@ -226,7 +259,13 @@ public:
     SpreadsheetSheet* InsertSheet(int index, const std::string& name = "");
     void RemoveSheet(int index);
     void RemoveSheetByName(const std::string& name);
-    void RenameSheet(int index, const std::string& newName);
+    // Renames the sheet and rewrites every formula, on every sheet, that
+    // refers to it by its old name (=Sales.A1 becomes ='Sales 2016'.A1).
+    // False, and nothing changes, when ValidateSheetName rejects the name.
+    bool RenameSheet(int index, const std::string& newName);
+    // Why `name` cannot be sheet `index`'s name - the CheckSheetName rules,
+    // or another sheet already called that, ignoring case - or "" when it can.
+    std::string ValidateSheetName(int index, const std::string& name) const;
     void MoveSheet(int fromIndex, int toIndex);
     SpreadsheetSheet* CopySheet(int index, const std::string& newName = "");
     std::vector<std::string> GetSheetNames() const;
@@ -281,6 +320,12 @@ public:
     void CancelEditing();
     bool IsEditing() const { return editMode_ == SpreadsheetEditMode::Editing || 
                                    editMode_ == SpreadsheetEditMode::InCellEditing; }
+    // Whether a click on a cell now would type its address into the formula
+    // being edited (point mode) rather than end the edit: a formula is edited
+    // and its caret (or selection) is where a reference may go - after the
+    // '=', an opening parenthesis, a separator or an operator - or on the
+    // reference the last click typed.
+    bool CanPointReference() const { size_t s, e; return GetPointReferenceSpan(s, e); }
     SpreadsheetEditMode GetEditMode() const { return editMode_; }
     std::string GetEditBuffer() const { return editBuffer_; }
     void SetEditBuffer(const std::string& text);
@@ -325,6 +370,23 @@ public:
     void ShowFormatMenuAt(int windowX, int windowY);
     bool IsFormatMenuEnabled() const { return formatMenuEnabled_; }
     void SetFormatMenuEnabled(bool enabled) { formatMenuEnabled_ = enabled; }
+
+    // ===== SHEET TAB MENU =====
+    // Right-click on a sheet tab opens a menu to insert a sheet before or
+    // after it, duplicate, rename, move it left, right, to the start or the
+    // end, and delete it (not the last one); a right-click beside the tabs
+    // offers inserting one. Double-clicking a tab renames it. Defined in
+    // UltraCanvasSpreadsheetFormatMenu.h/.cpp. On by default.
+    void ShowSheetTabMenuAt(int sheetIndex, int windowX, int windowY);
+    bool IsSheetTabMenuEnabled() const { return sheetTabMenuEnabled_; }
+    void SetSheetTabMenuEnabled(bool enabled) { sheetTabMenuEnabled_ = enabled; }
+    // Asks for the sheet's new name in a dialog (filled with the current
+    // one) and renames it; a name ValidateSheetName rejects is explained and
+    // asked for again.
+    void PromptRenameSheet(int index);
+    // Deletes the sheet - after an OK/Cancel question when it holds any
+    // cells. Never the last sheet.
+    void RequestRemoveSheet(int index);
 
     // ===== FUNCTION MENU =====
     // The "fx" button at the right end of the formula bar opens a menu of
@@ -435,8 +497,21 @@ public:
     // continue, "Item 1" counts on, formulas shift their relative references,
     // anything else repeats (see SpreadsheetSheet::AutoFill). One undo step;
     // the destination is selected afterwards. False when the destination is
-    // not such an extension or overlaps merged cells.
-    bool AutoFillSelection(const CellRange& destination);
+    // not such an extension or overlaps merged cells. AutoFillMode::Copy
+    // repeats the selection as it is (no series), as a drag with Ctrl does.
+    bool AutoFillSelection(const CellRange& destination,
+                           AutoFillMode mode = AutoFillMode::Series);
+    // Double-click on the fill handle: fills the selection down as far as the
+    // data in the column next to it goes (see
+    // SpreadsheetSheet::GetAutoFillDownEnd). False when there is none.
+    bool AutoFillSelectionToDataEnd();
+    // Ctrl+D / Ctrl+R: copies the selection's top row down over the rest of
+    // it (its left column right across it); a selection one row high (one
+    // column wide) copies the row above (the column to the left) into it.
+    // Formulas shift their relative references. One undo step; the
+    // selection stays. False when there is nothing to copy from.
+    bool FillSelectionDown();
+    bool FillSelectionRight();
 
     // Header sort buttons: while a block of two or more rows is selected, the
     // header of every column in it shows a small up/down button. Clicking it
@@ -600,6 +675,7 @@ private:
     // The fill-handle drag's destination for a pointer over (row, col): the
     // source extended along the axis the pointer has moved furthest out on.
     CellRange AutoFillTargetFor(int row, int col) const;
+    bool FillSelectionAlong(bool down);   // FillSelectionDown / FillSelectionRight
     
     void BeginUndoGroup(UndoActionType type, const std::string& description);
     void RecordCellChange(int row, int col);

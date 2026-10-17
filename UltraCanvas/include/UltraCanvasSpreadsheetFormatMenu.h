@@ -56,6 +56,13 @@ std::vector<MenuItemData> BuildSpreadsheetFormatMenuItems(UltraCanvasSpreadsheet
 // description and calls sheet->InsertFunction(name).
 std::vector<MenuItemData> BuildSpreadsheetFunctionMenuItems(UltraCanvasSpreadsheet* sheet);
 
+// The sheet tab strip's menu for sheet `sheetIndex`: Insert sheet before /
+// after, Duplicate sheet, Rename sheet..., Move left / right / to start / to
+// end (each disabled where the sheet already is) and Delete sheet (disabled
+// for the only sheet). With -1 - a right-click beside the tabs - only
+// "Insert sheet", which appends one.
+std::vector<MenuItemData> BuildSpreadsheetSheetTabMenuItems(UltraCanvasSpreadsheet* sheet, int sheetIndex);
+
 // Replace `menu`'s contents with the items above.
 void PopulateSpreadsheetFormatMenu(UltraCanvasMenu& menu, UltraCanvasSpreadsheet* sheet);
 

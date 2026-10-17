@@ -6,6 +6,7 @@
 
 #include "UltraCanvasSpreadsheetFormatMenu.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasModalDialog.h"
 #include <algorithm>
 #include <map>
 #include <cmath>
@@ -445,6 +446,67 @@ void UltraCanvasSpreadsheet::ShowFunctionMenuAt(int windowX, int windowY) {
     functionMenu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
 }
 
+std::vector<MenuItemData> BuildSpreadsheetSheetTabMenuItems(UltraCanvasSpreadsheet* sheet, int sheetIndex) {
+    std::vector<MenuItemData> items;
+    const int count = sheet->GetSheetCount();
+
+    // Inserts a sheet at `at` and opens it.
+    auto insertAt = [sheet](int at) {
+        return [sheet, at]() {
+            if (sheet->InsertSheet(at)) sheet->SetActiveSheet(at);
+        };
+    };
+    if (sheetIndex < 0 || sheetIndex >= count) {
+        items.push_back(MenuItemData::Action("Insert sheet", insertAt(count)));
+        return items;
+    }
+
+    items.push_back(MenuItemData::Action("Insert sheet before", insertAt(sheetIndex)));
+    items.push_back(MenuItemData::Action("Insert sheet after", insertAt(sheetIndex + 1)));
+    items.push_back(MenuItemData::Action("Duplicate sheet", [sheet, sheetIndex]() {
+        const std::string base = sheet->GetSheet(sheetIndex)->GetName();
+        // "Sales (2)", "Sales (3)" ... the first one free and valid.
+        std::string name;
+        for (int n = 2; n < 1000; ++n) {
+            name = base + " (" + std::to_string(n) + ")";
+            if (sheet->ValidateSheetName(-1, name).empty()) break;
+            name.clear();
+        }
+        if (sheet->CopySheet(sheetIndex, name)) sheet->SetActiveSheet(sheetIndex + 1);
+    }));
+    items.push_back(MenuItemData::Separator());
+    items.push_back(MenuItemData::Action("Rename sheet...", [sheet, sheetIndex]() {
+        sheet->PromptRenameSheet(sheetIndex);
+    }));
+    items.push_back(MenuItemData::Separator());
+
+    // Moving keeps the moved sheet open.
+    auto moveTo = [sheet, sheetIndex](int to) {
+        return [sheet, sheetIndex, to]() {
+            sheet->MoveSheet(sheetIndex, to);
+            sheet->SetActiveSheet(to);
+        };
+    };
+    MenuItemData left = MenuItemData::Action("Move left", moveTo(sheetIndex - 1));
+    MenuItemData right = MenuItemData::Action("Move right", moveTo(sheetIndex + 1));
+    MenuItemData start = MenuItemData::Action("Move to start", moveTo(0));
+    MenuItemData end = MenuItemData::Action("Move to end", moveTo(count - 1));
+    left.enabled = start.enabled = sheetIndex > 0;
+    right.enabled = end.enabled = sheetIndex < count - 1;
+    items.push_back(left);
+    items.push_back(right);
+    items.push_back(start);
+    items.push_back(end);
+    items.push_back(MenuItemData::Separator());
+
+    MenuItemData remove = MenuItemData::Action("Delete sheet", [sheet, sheetIndex]() {
+        sheet->RequestRemoveSheet(sheetIndex);
+    });
+    remove.enabled = count > 1;
+    items.push_back(remove);
+    return items;
+}
+
 void PopulateSpreadsheetFormatMenu(UltraCanvasMenu& menu, UltraCanvasSpreadsheet* sheet) {
     menu.Clear();
     for (const auto& item : BuildSpreadsheetFormatMenuItems(sheet)) {
@@ -479,6 +541,95 @@ void UltraCanvasSpreadsheet::ShowFormatMenuAt(int windowX, int windowY) {
     settings.closeByEscapeKey = true;
     settings.closeByClickOutside = true;
     formatMenu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
+}
+
+void UltraCanvasSpreadsheet::ShowSheetTabMenuAt(int sheetIndex, int windowX, int windowY) {
+    UltraCanvasWindowBase* window = GetWindow();
+    if (!window) return;
+    if (!sheetTabMenu_) {
+        sheetTabMenu_ = std::make_shared<UltraCanvasMenu>(GetIdentifier() + "_SheetTabMenu", 0, 0, 200, 0);
+        sheetTabMenu_->SetMenuType(MenuType::PopupMenu);
+    }
+    // Rebuilt each time: what can move or be deleted depends on the tab.
+    sheetTabMenu_->Clear();
+    for (const auto& item : BuildSpreadsheetSheetTabMenuItems(this, sheetIndex)) sheetTabMenu_->AddItem(item);
+
+    PopupElementSettings settings;
+    settings.closeByEscapeKey = true;
+    settings.closeByClickOutside = true;
+    sheetTabMenu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
+}
+
+void UltraCanvasSpreadsheet::PromptRenameSheet(int index) {
+    const SpreadsheetSheet* target = GetSheet(index);
+    if (!target) return;
+    if (IsEditing()) StopEditing(true);
+
+    // The dialog may outlive this element, so the callback holds it weakly,
+    // and finds the sheet again by name in case the tabs moved meanwhile.
+    std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+    const std::string oldName = target->GetName();
+    UltraCanvasDialogManager::ShowInputDialog("New name for sheet \"" + oldName + "\":", "Rename sheet",
+        oldName, InputType::Text,
+        [weakSelf, oldName](DialogResult result, const std::string& name) {
+            if (result != DialogResult::OK) return;
+            auto self = std::static_pointer_cast<UltraCanvasSpreadsheet>(weakSelf.lock());
+            if (!self) return;
+            int at = -1;
+            for (int i = 0; i < self->GetSheetCount(); ++i) {
+                if (self->GetSheet(i)->GetName() == oldName) { at = i; break; }
+            }
+            if (at < 0 || name == oldName) return;
+            const std::string problem = self->ValidateSheetName(at, name);
+            if (problem.empty()) {
+                self->RenameSheet(at, name);
+                return;
+            }
+            // Say why, then ask again.
+            std::weak_ptr<UltraCanvasUIElement> weakAgain = self->weak_from_this();
+            UltraCanvasDialogManager::ShowMessage(problem, "Rename sheet", DialogType::Warning,
+                DialogButtons::OK,
+                [weakAgain, oldName](DialogResult) {
+                    auto again = std::static_pointer_cast<UltraCanvasSpreadsheet>(weakAgain.lock());
+                    if (!again) return;
+                    for (int i = 0; i < again->GetSheetCount(); ++i) {
+                        if (again->GetSheet(i)->GetName() == oldName) { again->PromptRenameSheet(i); return; }
+                    }
+                },
+                self->GetWindow());
+        },
+        GetWindow());
+}
+
+void UltraCanvasSpreadsheet::RequestRemoveSheet(int index) {
+    const SpreadsheetSheet* target = GetSheet(index);
+    if (!target || GetSheetCount() <= 1) return;
+    if (IsEditing()) StopEditing(true);
+
+    const std::string name = target->GetName();
+    bool empty = true;
+    target->ForEachCell([&empty](int, int, const SpreadsheetCell& cell) {
+        if (!cell.IsEmpty()) empty = false;
+    });
+    if (empty) {
+        RemoveSheet(index);
+        return;
+    }
+
+    std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+    UltraCanvasDialogManager::ShowMessage(
+        "Delete sheet \"" + name + "\" and everything on it?\n\n"
+        "Formulas on other sheets that refer to it will show #REF!.",
+        "Delete sheet", DialogType::Warning, DialogButtons::OKCancel,
+        [weakSelf, name](DialogResult result) {
+            if (result != DialogResult::OK) return;
+            auto self = std::static_pointer_cast<UltraCanvasSpreadsheet>(weakSelf.lock());
+            if (!self || self->GetSheetCount() <= 1) return;
+            for (int i = 0; i < self->GetSheetCount(); ++i) {
+                if (self->GetSheet(i)->GetName() == name) { self->RemoveSheet(i); return; }
+            }
+        },
+        GetWindow());
 }
 
 } // namespace UltraCanvas
