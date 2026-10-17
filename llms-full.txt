@@ -62886,6 +62886,8 @@ void  RequestRemoveSheet(int index);   // asks first when the sheet has cells
 std::string CheckSheetName(const std::string& name);   // why not, or ""
 std::string RenameSheetInFormula(const std::string& formula,
                                  const std::string& oldName, const std::string& newName);
+std::string RemoveSheetFromFormula(const std::string& formula,
+                                   const std::string& sheetName);   // its references -> #REF!
 ```
 
 ### Selection and Navigation
@@ -63691,8 +63693,17 @@ A sheet name is at most 31 characters, has none of `[ ] : * ? / \`, does not
 start or end with an apostrophe, and is not another sheet's name (ignoring
 case) — the rules `.xlsx` and `.ods` files share. A rejected name is
 explained and the dialog asked again. Renaming rewrites every formula, on any
-sheet, that names the sheet: `=Sales.C2` becomes `='Sales 2016'.C2`. A
-formula naming a deleted sheet shows `#REF!`.
+sheet, that names the sheet: `=Sales.C2` becomes `='Sales 2016'.C2`.
+Deleting a sheet turns every reference to it into `#REF!` in the formula
+itself, as Excel does: `=Gone.E5*2` becomes `=#REF!*2` and
+`=SUM(Gone.A1:B3)` becomes `=SUM(#REF!)`, so the cell shows `#REF!` and the
+formula says why.
+
+Undo keeps up with both. After a rename, the sheet's earlier steps still undo
+into it, and an undone formula names the sheet's new name. Deleting a sheet
+drops its steps from the undo and redo history: there is nothing left to
+restore them into. Neither ever writes into whichever sheet is open
+instead.
 
 From code: `RenameSheet` (returns false for a name `ValidateSheetName`
 rejects), `PromptRenameSheet`, `RequestRemoveSheet`, and

@@ -691,6 +691,11 @@ private:
     void CancelUndoGroup();
     void PushUndo(const SpreadsheetUndoAction& action);
     void ApplyUndo(const SpreadsheetUndoAction& action);
+    // Keeps the undo and redo history in step with a renamed or deleted
+    // sheet: `keep` may edit each step and returns false to drop it.
+    void RewriteUndoHistory(const std::function<bool(SpreadsheetUndoAction&)>& keep);
+    static void RewriteSnapshotFormulas(SpreadsheetUndoAction& action,
+                                        const std::function<std::string(const std::string&)>& rewrite);
     
     void InitializeDefaultSheet();
     // Clear/select the target sheet for a CSV import (creating Sheet1 when the
