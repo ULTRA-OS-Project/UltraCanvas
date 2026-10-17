@@ -22,3 +22,7 @@
   and on a server without it drops a release that the next queued event
   presses again at the same moment. `KeyUp` now means the key was let go on
   every platform.
+  The desktop shell's global shortcuts (`UltraCanvasDesktopShell`, e.g.
+  Super+V for the clipboard history) do the same: they count when the key is
+  let go, so on a server without detectable auto-repeat a held shortcut
+  counted once per repeat; that release is now dropped there too.
