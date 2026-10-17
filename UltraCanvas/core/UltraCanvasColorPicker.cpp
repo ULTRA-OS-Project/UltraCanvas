@@ -1,5 +1,9 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
+//                  the HSV/HSL/RGB tabs collapse with the channel sliders;
+//                  SetAutoHeight: the widget's height follows its content;
+//                  onSlidersExpandedChanged reports the user opening or folding them
 // Version: 1.7.0 - ColorPickerStyle::Light()
 // Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
 // Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
@@ -7,7 +11,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -45,9 +49,10 @@ namespace UltraCanvas {
         constexpr ColorPickerWheelStyle SelectorStyles[] = {
             ColorPickerWheelStyle::Ring,
             ColorPickerWheelStyle::Bar,
-            ColorPickerWheelStyle::HueLightnessField
+            ColorPickerWheelStyle::HueLightnessField,
+            ColorPickerWheelStyle::HueLightnessSliders
         };
-        constexpr int SelectorStyleCount = 3;
+        constexpr int SelectorStyleCount = 4;
     }
 
     // ===================================================================
@@ -152,6 +157,7 @@ namespace UltraCanvas {
         if (modeSelector == s) return;
         modeSelector = s;
         layoutValid = false;
+        FitHeightToContent();
         SyncModelDropdown();
         RequestRedraw();
     }
@@ -227,6 +233,7 @@ namespace UltraCanvas {
         if (wheelStyle == s) return;
         wheelStyle = s;
         layoutValid = false;
+        FitHeightToContent();
         SyncStyleSelector();
         RequestRedraw();
     }
@@ -246,6 +253,7 @@ namespace UltraCanvas {
         styleSelector->AddItem("Colour circle", "ring", NormalizePath(icons + "ring.svg"));
         styleSelector->AddItem("Colour slider + square", "bar", NormalizePath(icons + "bar.svg"));
         styleSelector->AddItem("Colour rectangle", "field", NormalizePath(icons + "field.svg"));
+        styleSelector->AddItem("Colour + brightness sliders", "sliders", NormalizePath(icons + "sliders.svg"));
         styleSelector->SetTooltip("Colour picker design");
         styleSelector->SetAccessibleName("Colour picker design");
         // Raw `this`: the selector is our own child.
@@ -260,9 +268,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasColorPicker::StyleSelectorHiddenByDrag() const {
-        // Beside the circle the corner is free; on the rectangular designs the
-        // selector covers the corner of the area the drag is picking from.
-        if (wheelStyle == ColorPickerWheelStyle::Ring) return false;
+        // Only the rectangular designs have the selector over the corner of
+        // the area a drag picks from. The circle leaves the corner free, and
+        // the colour + brightness sliders end short of it.
+        if (wheelStyle != ColorPickerWheelStyle::Bar &&
+            wheelStyle != ColorPickerWheelStyle::HueLightnessField) return false;
         switch (dragTarget) {
             case DragTarget::HueBar:
             case DragTarget::SVSquare:
@@ -297,6 +307,7 @@ namespace UltraCanvas {
         if (svAreaShape == s) return;
         svAreaShape = s;
         layoutValid = false;
+        FitHeightToContent();
         RequestRedraw();
     }
 
@@ -311,6 +322,7 @@ namespace UltraCanvas {
         slidersCollapsible = collapsible;
         slidersExpanded = expanded;
         layoutValid = false;
+        FitHeightToContent();
         RequestRedraw();
     }
 
@@ -318,6 +330,27 @@ namespace UltraCanvas {
         if (slidersExpanded == expanded) return;
         slidersExpanded = expanded;
         layoutValid = false;
+        FitHeightToContent();
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetAutoHeight(bool on) {
+        if (autoHeight == on) return;
+        autoHeight = on;
+        FitHeightToContent();
+    }
+
+    void UltraCanvasColorPicker::FitHeightToContent() {
+        if (!autoHeight) return;
+        const float h = HeightForWidth(GetWidth(), false);
+        if (std::fabs(h - GetHeight()) <= 0.5f) return;
+        // In the layout too, as the tag field does: a picker in a flex column
+        // is given size.height by the next layout pass, which would put the
+        // height it was made with straight back.
+        size.height = CSSLayout::Dimension::Px(h);
+        SetHeight(h);
+        layoutValid = false;
+        InvalidateLayout();
         RequestRedraw();
     }
 
@@ -325,6 +358,7 @@ namespace UltraCanvas {
         if (showColorWheel == show) return;
         showColorWheel = show;
         layoutValid = false;
+        FitHeightToContent();
         SyncStyleSelector();
         RequestRedraw();
     }
@@ -333,6 +367,7 @@ namespace UltraCanvas {
         if (showAlpha == show) return;
         showAlpha = show;
         layoutValid = false;
+        FitHeightToContent();
         RequestRedraw();
     }
 
@@ -341,6 +376,7 @@ namespace UltraCanvas {
         if (style.uiScale == scale) return;
         style.uiScale = scale;
         layoutValid = false;
+        FitHeightToContent();
         RequestRedraw();
     }
 
@@ -377,8 +413,7 @@ namespace UltraCanvas {
         const float rowsH = SlidersVisible() ? nRows * (rh + gap) : 0.0f;
         const float headerH = slidersCollapsible ? (rh + gap) : 0.0f;
         const float previewRowH = 2.0f * rh + gap;       // swatches / hex block
-        const float tabsH = (modeSelector == ColorPickerModeSelector::TabBar)
-                            ? (tabH + gap) : 0.0f;
+        const float tabsH = TabsVisible() ? (tabH + gap) : 0.0f;
         return previewRowH + gap + tabsH + headerH + rowsH;
     }
 
@@ -391,6 +426,10 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasColorPicker::PreferredHeightForWidth(float width) const {
+        return HeightForWidth(width, true);
+    }
+
+    float UltraCanvasColorPicker::HeightForWidth(float width, bool reserveCollapsedSliders) const {
         const float pad = Scaled(style.padding);
         const float gap = Scaled(style.rowGap);
         const float innerW = std::max(40.0f, width - 2.0f * pad);
@@ -420,7 +459,7 @@ namespace UltraCanvas {
             }
         }
         float controlsH = ControlsHeight();
-        if (showColorWheel && wheelStyle == ColorPickerWheelStyle::Bar &&
+        if (reserveCollapsedSliders && showColorWheel && wheelStyle == ColorPickerWheelStyle::Bar &&
             svAreaShape == ColorPickerSVAreaShape::PixelExact &&
             slidersCollapsible && !slidersExpanded) {
             // Leave room for the sliders, so opening them takes the free space
@@ -449,6 +488,9 @@ namespace UltraCanvas {
         const int nRows = 3 + (showAlpha ? 1 : 0);
         const float previewRowH = 2.0f * rh + gap;       // swatches / hex block
         const float bottomH = ControlsHeight();
+        // The design selector's size (top-right corner, when shown).
+        const float selW = std::round(Scaled(44.0f));
+        const float selH = std::round(Scaled(24.0f));
 
         // --- Optional colour wheel occupies the space above the controls ---
         float cursorY = pad;
@@ -475,10 +517,13 @@ namespace UltraCanvas {
                 cursorY = hlFieldRect.y + hlFieldRect.height + pad;
             } else if (wheelStyle == ColorPickerWheelStyle::HueLightnessSliders) {
                 // Two bars at the top; they need no more height than their own,
-                // so the controls follow straight after them.
+                // so the controls follow straight after them. They end short
+                // of the design selector: over a bar it would hide a range of
+                // colours, not just a corner of an area.
                 float barH = Scaled(style.hueBarHeight);
-                hueBarRect = Rect2Df(x0, pad, innerW, barH);
-                lightBarRect = Rect2Df(x0, hueBarRect.y + barH + gap, innerW, barH);
+                float barW = showWheelStyleSelector ? std::max(40.0f, innerW - selW - gap) : innerW;
+                hueBarRect = Rect2Df(x0, pad, barW, barH);
+                lightBarRect = Rect2Df(x0, hueBarRect.y + barH + gap, barW, barH);
                 svRect = hlFieldRect = Rect2Df();
                 wheelRect = Rect2Df();
                 wheelCenter = Point2Df();
@@ -547,8 +592,17 @@ namespace UltraCanvas {
 
         cursorY += previewRowH + gap;
 
-        // --- Mode tabs (HSV / HSL / RGB) — TabBar selector only ---
-        if (modeSelector == ColorPickerModeSelector::TabBar) {
+        // --- Disclosure header: the colour definitions (the tabs and the
+        //     channel sliders) open and close under it ---
+        if (slidersCollapsible) {
+            slidersHeaderRect = Rect2Df(x0, cursorY, innerW, rh);
+            cursorY += rh + gap;
+        } else {
+            slidersHeaderRect = Rect2Df();
+        }
+
+        // --- Mode tabs (HSV / HSL / RGB) — TabBar selector, section shown ---
+        if (TabsVisible()) {
             tabRect = Rect2Df(x0, cursorY, innerW, tabH);
             const float tabW = innerW / 3.0f;
             for (int i = 0; i < 3; ++i) {
@@ -558,14 +612,6 @@ namespace UltraCanvas {
         } else {
             tabRect = Rect2Df();
             for (auto& r : tabRects) r = Rect2Df();
-        }
-
-        // --- Disclosure header for collapsible sliders ---
-        if (slidersCollapsible) {
-            slidersHeaderRect = Rect2Df(x0, cursorY, innerW, rh);
-            cursorY += rh + gap;
-        } else {
-            slidersHeaderRect = Rect2Df();
         }
 
         // --- Channel rows ---
@@ -598,8 +644,6 @@ namespace UltraCanvas {
         //     the circle that corner is free; on a rectangular design it
         //     covers the area's corner (and hides while a drag picks there).
         if (styleSelector) {
-            const float selW = std::round(Scaled(44.0f));
-            const float selH = std::round(Scaled(24.0f));
             DropdownStyle ds = ChildDropdownStyle(styleSelector->GetStyle());
             ds.paddingLeft = Scaled(6.0f);
             ds.iconSize = std::round(Scaled(18.0f));
@@ -1280,6 +1324,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasColorPicker::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        FitHeightToContent();                // a new width, with SetAutoHeight
         RecalculateLayout();
 
         // Background panel. When a swatch is hovered the whole surface is flooded
@@ -1316,7 +1361,7 @@ namespace UltraCanvas {
             SyncModelDropdown();
             if (modelDropdown && modelDropdown->IsVisible()) RenderChild(ctx, *modelDropdown);
         } else {
-            RenderTabs(ctx);
+            if (TabsVisible()) RenderTabs(ctx);
         }
         RenderHexField(ctx);
         if (slidersCollapsible) RenderSlidersHeader(ctx);
@@ -1468,7 +1513,7 @@ namespace UltraCanvas {
             BeginEdit(EditField::Hex, &p);
             return true;
         }
-        if (modeSelector == ColorPickerModeSelector::TabBar) {
+        if (TabsVisible()) {
             for (int i = 0; i < 3; ++i) {
                 if (tabRects[i].Contains(p)) {
                     SetModel((ColorPickerModel)i);
@@ -1478,6 +1523,7 @@ namespace UltraCanvas {
         }
         if (slidersCollapsible && slidersHeaderRect.Contains(p)) {
             SetSlidersExpanded(!slidersExpanded);
+            if (onSlidersExpandedChanged) onSlidersExpandedChanged(slidersExpanded);
             return true;
         }
 
@@ -1584,7 +1630,7 @@ namespace UltraCanvas {
 
         // Model choices on the tab bar. In Dropdown mode the dropdown shows
         // its own tooltip, and its open list one per entry.
-        if (modeSelector == ColorPickerModeSelector::TabBar) {
+        if (TabsVisible()) {
             for (int i = 0; i < 3; ++i) {
                 if (over(tabRects[i])) { text = ModelTooltip((ColorPickerModel)i); break; }
             }

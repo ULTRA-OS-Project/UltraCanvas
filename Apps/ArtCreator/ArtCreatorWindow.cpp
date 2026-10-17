@@ -2,6 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.8.2 - the colour picker offers its design list, folds its channels and is
+//                 as tall as its content (SetAutoHeight)
 // Version: 1.8.1 - the colour picker in the framework's light style (ColorPickerStyle::Light)
 // Version: 1.8.0 - icon mode: File > New Icon (16 to 256 px), an Icon panel with the
 //                 icon size, a pixel grid, pointer snapping that puts lines of odd
@@ -25,7 +27,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -688,13 +690,14 @@ void ArtCreatorWindow::BuildRightPanel() {
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(lineColour);
     colorPicker->SetShowAlpha(true);
-    // The hue ring is capped by whatever vertical space the controls leave it,
-    // so a picker sized by eye draws a wheel narrower than the panel. Ask for
-    // the height at which the ring fills the panel's width instead.
-    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
-    // the panel's next layout pass puts back the size the picker was created
-    // with. The declared height is also the picker's flex basis.
-    colorPicker->SetElementSize(Size2Df(kRightInner, colorPicker->PreferredHeightForWidth(kRightInner)));
+    // The design list top right (circle, square, rectangle, two sliders), and
+    // the HSV / HSL / RGB channels folded under their disclosure row.
+    colorPicker->SetShowWheelStyleSelector(true);
+    colorPicker->SetSlidersCollapsible(true, false);
+    // As tall as its content: the hue ring fills the panel's width, and what
+    // is below moves up and down as the channels fold or another design is
+    // chosen. The height is also the picker's flex basis.
+    colorPicker->SetAutoHeight(true);
     // Not stretched: the panel's content box is wider than what is visible
     // beside the scrollbar, and a stretched picker lays its hex field and
     // channel values out into the part that is covered.

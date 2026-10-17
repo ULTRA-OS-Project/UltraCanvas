@@ -8,6 +8,7 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
 // Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
 //                  the keyboard back to the text being typed
 // Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
@@ -90,6 +91,9 @@ private:
     void BuildToolbar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next editor opens it the way it was left.
+    void RememberColourPicker();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
