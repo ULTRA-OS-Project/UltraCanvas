@@ -2,7 +2,8 @@
 
 Removes the files macOS, Windows and Linux leave behind — temporary files,
 application and browser caches, logs, crash reports, thumbnail databases,
-package-manager downloads, developer build leftovers and the trash — and
+package-manager downloads, developer build leftovers and the trash — and, on
+Windows, registry entries that point at software that is gone — and
 shows exactly which paths it proposes to remove before it touches anything.
 
 Full documentation, including the complete rule table and the safety model:
@@ -18,6 +19,9 @@ Full documentation, including the complete rule table and the safety model:
 | `engine/UltraCleanerSafety.*` | The path guard: protected locations, root containment, symlink escapes |
 | `engine/UltraCleanerScanner.*` | Rule table → `ScanReport`, with progress and cancellation |
 | `engine/UltraCleanerRemover.*` | Simulate / move to trash / delete permanently |
+| `engine/UltraCleanerRegistry.*` | The Windows registry cleaner: checks, `.reg` backup, guarded removal (platform-neutral) |
+| `engine/UltraCleanerRegistryWindows.cpp` | The Win32 registry store and file probe behind it |
+| `ui/UltraCleanerRegistryView.*` | The Windows registry page (Windows only) |
 | `ui/UltraCleanerWindow.*` | The main window: toolbar, detail table, worker-thread plumbing |
 | `ui/UltraCleanerCategoryPanel.*` | The category rows (checkbox + size badge) |
 | `main.cpp` | GUI bootstrap, and the `--scan` / `--clean` / `--rules` command line |
