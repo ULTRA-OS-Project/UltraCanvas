@@ -1,9 +1,10 @@
 // core/UltraCanvasSpinner.cpp
 // Platform-independent spinner / spin-button component implementation.
+// Version: 1.4.0 - SetSnapToStep(false): a Decimal value keeps its own places off the step grid
 // Version: 1.3.0 - the value list opens anchored to the field: above it when there is
 //                  no room below, never over it
 // Version: 1.2.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpinner.h"
@@ -84,6 +85,10 @@ namespace UltraCanvas {
     double UltraCanvasSpinner::SnapToStep(double v) const {
         if (valueType == SpinnerValueType::List || valueType == SpinnerValueType::Integer) {
             return std::llround(v);
+        }
+        if (!snapToStep) {
+            const double scale = std::pow(10.0, decimals);
+            return std::round(v * scale) / scale;
         }
         if (step > 0.0) {
             double steps = std::round((v - minValue) / step);

@@ -120,6 +120,7 @@ void   SetPageStep(double s);           // PageUp / PageDown amount
 void   SetDecimals(int d);              // >0 switches to Decimal mode
 void   SetValueType(SpinnerValueType);
 void   SetWrap(bool);
+void   SetSnapToStep(bool);             // false: a Decimal value keeps its own places
 void   StepUp(double steps = 1.0);
 void   StepDown(double steps = 1.0);
 
@@ -173,6 +174,10 @@ std::function<void()> onEditingFinished;
 
 - In **List** mode `GetValue()` returns the selected index as a `double`; use
   `GetSelectedIndex()` / `GetSelectedText()` for convenience.
+- `SetValue` and a typed value are rounded onto the step grid
+  (`min + n * step`) unless `SetSnapToStep(false)`: then a Decimal spinner keeps
+  any value to its `decimals` places and the buttons step by `step` from it -
+  a measurement field that shows `8.61` and steps by `0.1`.
 - When `SetWrap(true)`, stepping past an end wraps to the opposite end; otherwise
   the value clamps and the corresponding button renders disabled.
 - Text editing is available for Integer and Decimal modes when `IsEditable()` is

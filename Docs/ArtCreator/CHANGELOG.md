@@ -1,3 +1,25 @@
+#### 2026-10-17 *0.8.0*
+- **A transform bar for the selection.** A bar under the toolbar shows and
+  sets the selected objects' position, size, scale, rotation and shear, as
+  Xara's selector bar does:
+  - a *reference point* picker on the left - nine points for the corners,
+    edge midpoints and centre of the selection - says which point stays put
+    when the selection is resized, rotated or sheared, and which point X and
+    Y give the place of;
+  - *X* / *Y* move that point to the position typed; *W* / *H* make the
+    selection that wide or high; the two *%* fields scale it by a
+    percentage and go back to 100;
+  - the *lock* button keeps the aspect ratio: with it down, changing the
+    width changes the height in proportion, and the other way round;
+  - *rotation* and *shear* show one object's own angles (counter-clockwise,
+    and how far its top leans to the right) and set them; with several
+    objects selected they show 0 and turn or shear by what is typed.
+
+  Lengths are in the page's unit (*File > Document Setup*), or in icon
+  pixels in icon mode, and follow a drag as it happens. Every change is one
+  step of undo. The reference point picker is a new framework element
+  (framework changelog: `reference-point-picker`).
+
 #### 2026-10-16 *0.7.2*
 - **The colour panel takes less room.** The picker in the right-hand panel
   folds its channels away: the HSV / HSL / RGB tabs and the channel sliders

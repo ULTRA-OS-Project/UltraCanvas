@@ -12,8 +12,9 @@
 //   * UpDownRight    - editable field with stacked up/down buttons on the right
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
 //
+// Version: 1.3.0 - SetSnapToStep: a Decimal value off the step grid
 // Version: 1.2.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -100,6 +101,7 @@ namespace UltraCanvas {
         double pageStep = 10.0;   // step for PageUp / PageDown
         int    decimals = 0;      // used when valueType == Decimal
         bool   wrap     = false;  // wrap around at the ends instead of clamping
+        bool   snapToStep = true; // round a set or typed value onto the step grid
 
         // ===== LIST MODE =====
         // In List mode `value` holds the (integer) index into listItems and the
@@ -185,6 +187,13 @@ namespace UltraCanvas {
 
         void SetWrap(bool enabled) { wrap = enabled; }
         bool IsWrap() const { return wrap; }
+
+        // Whether a value set or typed in is rounded onto the step grid
+        // (min + n * step). On by default. Off, a Decimal spinner keeps any
+        // value to its `decimals` places and the buttons still step by
+        // `step` from it: a measurement field showing 8.61 that steps by 0.1.
+        void SetSnapToStep(bool enabled) { snapToStep = enabled; }
+        bool IsSnapToStep() const { return snapToStep; }
 
         // Step the value up/down by one step (or a caller-supplied multiple).
         void StepUp(double steps = 1.0)   { StepBy(steps); }
