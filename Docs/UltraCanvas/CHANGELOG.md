@@ -1,3 +1,12 @@
+#### 2026-10-17 *0.9.331*
+- **DemoApp: the File Explorer TreeView looks like a file manager's
+  navigation pane.** The first tree on the TreeView page now shows *Pinned*
+  (Documents, Work, ULTRA OS, privat) and *Computer* with Home (Downloads,
+  Dokumente, Desktop, Bilder, Videos, Music), Cloud Storage (OneDrive,
+  Dropbox), Remote Drives (an FTP server) and drive C: with its folders. The
+  root is hidden (`SetRootVisible(false)`) so Pinned and Computer are the top
+  level, joined by root lines; Home starts selected.
+
 #### 2026-10-17 *0.9.330*
 - **Password-protected .xlsx and .docx files open.** A workbook or document
   saved with *Encrypt with Password* (ECMA-376 agile encryption, what Office
