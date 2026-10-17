@@ -64,32 +64,92 @@ namespace UltraCanvas {
         fileTree->SetRowHeight(22);
         fileTree->SetSelectionMode(TreeSelectionMode::Single);
 
-        // Setup file tree structure
-        TreeNodeData rootData("root", "My Computer");
-        rootData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/computer.png"), 16, 16);
-        TreeNode* root = fileTree->SetRootNode(rootData);
+        // Setup file tree structure: a navigation pane in the style of a desktop
+        // file manager - pinned folders, then the computer with the user's home,
+        // cloud storage, remote drives and the system drive. The root is hidden,
+        // so "Pinned" and "Computer" are the top level.
+        fileTree->SetRootNode(TreeNodeData("root", "Root"));
+        fileTree->SetRootVisible(false);
+        fileTree->SetShowRootLines(true);
 
-        TreeNodeData driveC("drive_c", "Local Disk (C:)");
-        driveC.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/drive.png"), 16, 16);
-        fileTree->AddNode("root", driveC);
+        auto icon = [](const std::string& name) {
+            return TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/" + name), 16, 16);
+        };
+        auto addNode = [&](const std::string& parentId, const std::string& id,
+                           const std::string& text, const std::string& iconName) {
+            TreeNodeData data(id, text);
+            data.leftIcon = icon(iconName);
+            return fileTree->AddNode(parentId, data);
+        };
+        // A folder; each name in `subfolders` becomes a child folder, so the
+        // row gets an expand button.
+        auto addFolder = [&](const std::string& parentId, const std::string& id,
+                             const std::string& text,
+                             std::initializer_list<const char*> subfolders = {}) {
+            TreeNode* node = addNode(parentId, id, text, "folder-brown.svg");
+            int i = 0;
+            for (const char* sub : subfolders)
+                addNode(id, id + "_" + std::to_string(i++), sub, "folder-brown.svg");
+            return node;
+        };
 
-        TreeNodeData documents("documents", "Documents");
-        documents.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder-brown.svg"), 16, 16);
-        fileTree->AddNode("drive_c", documents);
+        TreeNode* pinned = addNode("root", "pinned", "Pinned", "rating-heart-on.svg");
+        addFolder("pinned", "pin_documents", "Documents");
+        addFolder("pinned", "pin_work", "Work");
+        addFolder("pinned", "pin_ultraos", "ULTRA OS");
+        addFolder("pinned", "pin_privat", "privat");
 
-        TreeNodeData file1("file1", "Document.txt");
-        file1.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/text.png"), 16, 16);
-        fileTree->AddNode("documents", file1);
+        TreeNode* computer = addNode("root", "computer", "Computer", "computer.png");
 
-        TreeNodeData pictures("pictures", "Pictures");
-        pictures.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder-brown.svg"), 16, 16);
-        fileTree->AddNode("drive_c", pictures);
+        TreeNode* home = addNode("computer", "home", "Home", "home-user.svg");
+        addNode("home", "home_downloads", "Downloads", "folder-download.svg");
+        addNode("home", "home_documents", "Dokumente", "folder-documents.svg");
+        addNode("home", "home_desktop", "Desktop", "user-desktop.svg");
+        addNode("home", "home_pictures", "Bilder", "folder-images.svg");
+        addNode("home", "home_videos", "Videos", "folder-videos.svg");
+        addNode("home", "home_music", "Music", "folder-music.svg");
+
+        TreeNode* cloud = addNode("computer", "cloud", "Cloud Storage", "cloud.svg");
+        addNode("cloud", "onedrive", "OneDrive", "cloud.svg");
+        addFolder("onedrive", "onedrive_docs", "Documents");
+        addFolder("onedrive", "onedrive_pics", "Pictures");
+        addNode("cloud", "dropbox", "Dropbox", "cloud.svg");
+        addFolder("dropbox", "dropbox_shared", "Shared");
+        addFolder("dropbox", "dropbox_photos", "Photos");
+
+        TreeNode* remote = addNode("computer", "remote", "Remote Drives", "cloud.svg");
+        addNode("remote", "ftp_chutipa", "FTP: Chutipa  Cloud", "cloud.svg");
+        addFolder("ftp_chutipa", "ftp_public", "public_html");
+        addFolder("ftp_chutipa", "ftp_backup", "backup");
+
+        TreeNode* driveC = addNode("computer", "drive_c", "C:", "drive.png");
+        addFolder("drive_c", "c_adwcleaner", "AdwCleaner", {"Logs", "Quarantine"});
+        addFolder("drive_c", "c_avermedia", "AVerMedia");
+        addFolder("drive_c", "c_beckercad", "BeckerCAD14", {"Bin", "Samples"});
+        addFolder("drive_c", "c_drivers", "Drivers", {"Audio", "Chipset", "Network"});
+        addFolder("drive_c", "c_inetpub", "inetpub");
+        addFolder("drive_c", "c_mp3", "MP3");
+        addFolder("drive_c", "c_paragliding", "paragliding");
+        addFolder("drive_c", "c_perflogs", "PerfLogs");
+        addFolder("drive_c", "c_programfiles", "Program Files", {"Common Files", "Internet Explorer", "Windows Defender"});
+        addFolder("drive_c", "c_programfiles86", "Program Files (x86)", {"Common Files", "Microsoft"});
+        addFolder("drive_c", "c_projekte", "Projekte", {"UltraCanvas", "UltraOS"});
+        addFolder("drive_c", "c_qt", "Qt", {"Docs", "Tools"});
+        addFolder("drive_c", "c_riscos", "RISCOS", {"Apps", "Boot"});
+        addFolder("drive_c", "c_security", "Security camera suggies");
+        addFolder("drive_c", "c_users", "Users", {"Public", "Default"});
+        addFolder("drive_c", "c_windows", "Windows", {"Fonts", "System32", "Temp"});
 
         fileTree->onNodeSelected = [](TreeNode* node) {
             debugOutput << "Selected: " << node->data.text << std::endl;
         };
 
-        root->Expand();
+        pinned->Expand();
+        computer->Expand();
+        cloud->Expand();
+        remote->Expand();
+        driveC->Expand();
+        fileTree->SelectNode(home);
         fileBox->AddChild(fileTree);
 
         // Options for the File Explorer tree
