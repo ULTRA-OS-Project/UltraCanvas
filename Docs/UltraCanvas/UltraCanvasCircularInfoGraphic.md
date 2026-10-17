@@ -1,5 +1,22 @@
 # UltraCanvasCircularInfoGraphic Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Rings & Cells](#rings--cells)
+  - [Geometry](#geometry)
+  - [Appearance](#appearance)
+  - [Connections](#connections)
+  - [Data Import & Interaction](#data-import--interaction)
+- [Usage Example](#usage-example)
+- [Notes & Conventions](#notes--conventions)
+
 ## Overview
 
 The `UltraCanvasCircularInfoGraphic` is a multi-ring circular **infographic** component: concentric rings of individually styled cells, each carrying text, a background colour or image, and an optional value visualisation. Rings can add decorative bands, and cells can be linked with cross-ring connection lines. It targets presentation-grade graphics (org charts, ecosystems, category wheels) rather than plain value plotting — for "N percentages as N rings" use `UltraCanvasCircularProgressChart`, and see [`UltraCanvasCircularCharts.md`](UltraCanvasCircularCharts.md) for the full family map.

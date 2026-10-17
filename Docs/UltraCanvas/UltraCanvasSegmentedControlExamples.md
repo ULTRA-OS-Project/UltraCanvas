@@ -1,5 +1,37 @@
 # UltraCanvasSegmentedControl Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Functions](#factory-functions)
+  - [Segment Management](#segment-management)
+  - [Segment Properties](#segment-properties)
+  - [Selection — Single Mode](#selection-—-single-mode)
+  - [Selection — Multiple / Toggle Modes](#selection-—-multiple--toggle-modes)
+  - [Selection Mode](#selection-mode)
+  - [Styling](#styling)
+- [Enumerations](#enumerations)
+  - [SegmentWidthMode](#segmentwidthmode)
+  - [SegmentSelectionMode](#segmentselectionmode)
+- [SegmentedControlStyle Structure](#segmentedcontrolstyle-structure)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Usage Examples](#usage-examples)
+  - [Basic Bordered Style (Single Selection)](#basic-bordered-style-single-selection)
+  - [iOS-Style (Modern Preset)](#ios-style-modern-preset)
+  - [Flat Style (Spaced Segments)](#flat-style-spaced-segments)
+  - [Bar Style with Custom Colors](#bar-style-with-custom-colors)
+  - [Toggle Mode (Text Formatting Toolbar)](#toggle-mode-text-formatting-toolbar)
+  - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
+  - [Disabled Segments](#disabled-segments)
+  - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
+- [Keyboard Navigation](#keyboard-navigation)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.

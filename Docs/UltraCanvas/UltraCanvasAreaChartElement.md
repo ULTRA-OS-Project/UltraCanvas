@@ -1,5 +1,34 @@
 # UltraCanvasAreaChartElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Definition](#class-definition)
+  - [Header Information](#header-information)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Properties and Configuration Methods](#properties-and-configuration-methods)
+  - [Fill Style Configuration](#fill-style-configuration)
+  - [Line Style Configuration](#line-style-configuration)
+  - [Data Point Markers](#data-point-markers)
+  - [Smoothing](#smoothing)
+- [Core Methods](#core-methods)
+  - [RenderChart](#renderchart)
+  - [HandleChartMouseMove](#handlechartmousemove)
+- [Helper Steps](#helper-steps)
+- [Factory Function](#factory-function)
+- [Usage Example](#usage-example)
+- [Inherited Features from UltraCanvasChartElementBase](#inherited-features-from-ultracanvaschartelementbase)
+  - [Interactive Features](#interactive-features)
+  - [Visual Configuration](#visual-configuration)
+  - [Data Management](#data-management)
+- [Rendering Pipeline](#rendering-pipeline)
+- [Performance Considerations](#performance-considerations)
+- [Best Practices](#best-practices)
+- [Limitations](#limitations)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasAreaChartElement` is a sophisticated area chart visualization component in the UltraCanvas framework. It extends `UltraCanvasChartElementBase` to provide filled area charts with support for gradients, transparency, data point markers, smoothing, and interactive features like tooltips, zooming, and panning.

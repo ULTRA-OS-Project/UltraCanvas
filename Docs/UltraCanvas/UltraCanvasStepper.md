@@ -1,5 +1,17 @@
 # UltraCanvas Stepper Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Design choices (all configurable)](#design-choices-all-configurable)
+- [States](#states)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Custom (SVG) markers](#custom-svg-markers)
+- [Key API](#key-api)
+- [Keyboard](#keyboard)
+- [Notes](#notes)
+
 ## Overview
 
 **UltraCanvasStepper** is a progress / wizard control: a sequence of numbered or

@@ -12,6 +12,24 @@ local-first OCR implementation that complements both.
 
 ---
 
+## Contents
+
+- [1. Goals](#1-goals)
+- [2. Engine survey](#2-engine-survey)
+  - [Recommendation](#recommendation)
+- [3. Integration shape](#3-integration-shape)
+- [4. Proposed C++ API](#4-proposed-c-api)
+  - [Why these shapes](#why-these-shapes)
+- [5. Pre-processing (PixelFX)](#5-pre-processing-pixelfx)
+- [6. Bundled data](#6-bundled-data)
+- [7. UI integration](#7-ui-integration)
+- [8. Threading & cancellation](#8-threading--cancellation)
+- [9. Testing](#9-testing)
+- [9a. Troubleshooting](#9a-troubleshooting)
+- [10. Risks & open questions](#10-risks--open-questions)
+- [11. Phased delivery](#11-phased-delivery)
+- [12. Recommendation](#12-recommendation)
+
 ## 1. Goals
 
 1. **Local, offline, deterministic OCR** — no network round-trip

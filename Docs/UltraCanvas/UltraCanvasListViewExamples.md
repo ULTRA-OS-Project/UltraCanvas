@@ -1,5 +1,38 @@
 # UltraCanvasListView Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Model / Delegate / Selection wiring](#model--delegate--selection-wiring)
+  - [Styling](#styling)
+  - [Column widths](#column-widths)
+  - [Scrolling](#scrolling)
+  - [Tooltips](#tooltips)
+- [Model Reference](#model-reference)
+  - [Data roles](#data-roles)
+  - [IListModel interface](#ilistmodel-interface)
+  - [UltraCanvasSimpleListModel (single column)](#ultracanvassimplelistmodel-single-column)
+  - [UltraCanvasMultiColumnListModel](#ultracanvasmulticolumnlistmodel)
+- [Delegate Reference](#delegate-reference)
+  - [IItemDelegate](#iitemdelegate)
+  - [UltraCanvasDefaultListDelegate](#ultracanvasdefaultlistdelegate)
+- [Selection Reference](#selection-reference)
+- [Events / Callbacks](#events--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Simple single-selection list](#simple-single-selection-list)
+  - [Multi-column list with header](#multi-column-list-with-header)
+  - [Styled list with alternating rows and multi-select](#styled-list-with-alternating-rows-and-multi-select)
+  - [A list on a section card](#a-list-on-a-section-card)
+  - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
+  - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasListView** is a Model-View-Delegate list widget in the UltraCanvas framework. It cleanly separates data (the *model*), per-row drawing (the *delegate*), and selection state (the *selection*), allowing simple single-column lists, multi-column tables with headers, icon lists, and fully custom-painted rows to all share the same view class.

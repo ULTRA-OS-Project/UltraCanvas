@@ -1,3 +1,70 @@
+#### 2026-10-17 *0.9.324*
+- **The signing scripts no longer sign with the password published in the
+  repository's history** (`SignUltraDemo.ps1`, `SignUltraTexter.ps1`).
+  - Until now only `-Mode RotatePassword` refused it, as the new password.
+    `-Mode Sign` and `-Mode CreateAndSign` signed and exported under it
+    without a word, so a signing machine that was never rotated went on using
+    it.
+  - Every mode that uses the password now refuses it before `signtool` runs
+    or anything is exported. The message names the steps:
+    `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD` set to the old password,
+    `ULTRACANVAS_SIGN_PFX_PASSWORD` to a new one of 12 characters or more,
+    then `-Mode RotatePassword` once.
+  - `package-win.sh` stops at signing the same way; `--no-sign` still
+    packages. `-Mode Verify` needs no password and is unaffected.
+
+#### 2026-10-17 *0.9.323*
+- **Compositor diagram: Ungroup no longer deletes an ordinary node.**
+  `Ungroup(id)` did not check that `id` was a group, so on an ordinary node
+  with no children it took the "empty group" branch and removed the node -
+  which the demo's Ungroup button did to every such node in the selection.
+  It now does nothing for a node whose template is not `isGroup`
+  (UltraCanvasCompositorDiagram 0.4.1).
+- **Compositor diagram: `onNodeDoubleClick` fires.** It was declared and
+  never called; a left double-click on a node (not on a socket) now calls it.
+- **Compositor diagram: a saved graph loads back whole.** `ToJson` wrote no
+  `parentId` and no link label or colours, and `FromJson` read none, so a
+  saved subgraph came back with its children at the top level. Both now use
+  the per-node / per-link writers and parsers `Copy` / `Paste` use, which also
+  carry the link's line colour and label colours.
+  `Tests/DiagramJsonLocaleTest.cpp` saves a grouped graph and loads it back.
+- **Compositor demo: Save and Load buttons.** The page's header listed them
+  but the toolbar had none. Save writes the active tab's graph as JSON, Load
+  reads one into the active tab (dialogs and the read through
+  `UltraCanvasFileLoader`, UTF-8 paths); a double-click on a node names it in
+  the status line.
+- **Every demo-app document opens with an inventory.** The 125 markdown files
+  the demo's "Documentation" button opens each carry a `## Contents` list of
+  their `##` / `###` sections before the first section, every entry a link
+  that jumps to it. `scripts/generate_doc_toc.py` writes and refreshes the
+  lists (the documents are found from the `Docs/....md` paths in
+  `Apps/DemoApp/*.cpp`), and `llms-txt.yml` fails a pull request whose list
+  is stale (`--check`).
+- **Markdown section links jump in the text area without `{#id}`.** Only a
+  heading carrying an explicit `{#id}` could be the target of a
+  `[text](#id)` link, so the GitHub-style links the docs already used (54 in
+  the Filer widget's page alone) did nothing in the demo's documentation
+  window. Every heading now also answers to its GitHub anchor - lower-cased,
+  spaces to `-`, punctuation dropped, `-1`, `-2` for repeats
+  (`UltraCanvasTextArea::MarkdownHeadingSlug`); an explicit `{#id}` still
+  wins, and `#` lines inside code fences are no longer taken for headings.
+- PixelFX's README title was not a heading (`###PixelFX`).
+- **Every demo page's Documentation button opens a document.** Five paths in
+  `Apps/DemoApp` named files that did not exist, so the button opened
+  nothing:
+  - Chord Chart and Compositor Diagram had no document at all; they now have
+    `UltraCanvasChordChartExamples.md` and
+    `UltraCanvasCompositorDiagramExamples.md`.
+  - Circular info graphic pointed at `UltraCanvasCircularInfoGraphicExamples.md`;
+    its document is `UltraCanvasCircularInfoGraphic.md`.
+  - The Gource Tree snippet in `WindowsCDrive_TabAddition.cpp` (not built)
+    and the List View's sample file row named `Docs/UltraCanvasGourceTree.md`
+    and `Docs/CHANGELOG.md`; both now name the files that exist.
+- **CI refuses a demo page whose document is missing.**
+  `scripts/generate_doc_toc.py` reports every `Docs/....md` path in
+  `Apps/DemoApp/*.cpp` / `*.h` that does not exist, with its file and line,
+  and fails; `llms-txt.yml` runs it.
+
 #### 2026-10-16 *0.9.322*
 - **`UltraCanvasPaintSurface` reports a view move caused by the document.**
   A document change (a layer added, the canvas resized) clamps the view, and

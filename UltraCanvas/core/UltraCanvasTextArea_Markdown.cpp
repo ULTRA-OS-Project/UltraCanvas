@@ -1,9 +1,10 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.8.0 - GitHub-style heading anchors: [Section](#section) jumps without {#id}
 // Version: 2.7.1 - MarkdownHybridStyle::linkUnderline is honoured (links were always underlined)
 // Version: 2.7.0
-// Last Modified: 2026-06-18
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -11,6 +12,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include <cctype>
 #include "UltraCanvasTooltipManager.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include "UltraCanvasConfig.h"
@@ -475,17 +477,67 @@ namespace UltraCanvas {
         return base + path;
     }
 
+    // GitHub's heading anchor: the heading's text (link targets dropped,
+    // closing #s trimmed), lower-cased, spaces to '-', ASCII punctuation other
+    // than '-' and '_' removed, non-ASCII bytes kept. "## `SetText()` & more"
+    // becomes "settext--more", exactly as github.com renders the id.
+    std::string UltraCanvasTextArea::MarkdownHeadingSlug(const std::string& headingText) {
+        std::string text = headingText;
+        while (!text.empty() && (text.back() == '#' || text.back() == ' ')) text.pop_back();
+        std::string slug;
+        for (size_t p = 0; p < text.size(); p++) {
+            unsigned char c = (unsigned char)text[p];
+            if (c == ']' && p + 1 < text.size() && text[p + 1] == '(') {
+                auto close = text.find(')', p + 2);
+                if (close != std::string::npos) { p = close; continue; }
+            }
+            if (c >= 0x80) slug.push_back((char)c);
+            else if (std::isalnum(c)) slug.push_back((char)std::tolower(c));
+            else if (c == ' ') slug.push_back('-');
+            else if (c == '-' || c == '_') slug.push_back((char)c);
+        }
+        return slug;
+    }
+
     void UltraCanvasTextArea::RebuildMarkdownIndex() {
         markdownAbbreviations.clear();
         markdownFootnotes.clear();
         markdownAnchors.clear();
         markdownAnchorBacklinks.clear();
         std::unordered_map<std::string, std::vector<int>> anchorRefs;
+        // GitHub-style heading anchors, so a table of contents written for
+        // GitHub ([Section](#section)) also jumps here. Registered after the
+        // scan; an explicit {#id} wins over a generated one.
+        std::vector<std::pair<std::string, int>> headingSlugs;
+        std::unordered_map<std::string, int> slugCounts;
+        bool inFence = false;
+        std::string fenceMarker;
 
         for (int i = 0; i < (int)lines.size(); i++) {
             std::string line = GetLineContent(i);
             std::string trimmed = TrimWhitespace(line);
             if (trimmed.empty()) continue;
+
+            // Fenced code blocks: a `# comment` in a shell sample is not a heading.
+            if (trimmed.compare(0, 3, "```") == 0 || trimmed.compare(0, 3, "~~~") == 0) {
+                if (!inFence) { inFence = true; fenceMarker = trimmed.substr(0, 3); }
+                else if (trimmed.compare(0, 3, fenceMarker) == 0) inFence = false;
+                continue;
+            }
+            if (inFence) continue;
+
+            if (trimmed[0] == '#') {
+                int level = 0;
+                while (level < 6 && level < (int)trimmed.size() && trimmed[level] == '#') level++;
+                bool explicitId = trimmed.back() == '}' && trimmed.rfind("{#") != std::string::npos;
+                if (level < (int)trimmed.size() && trimmed[level] == ' ' && !explicitId) {
+                    std::string slug = MarkdownHeadingSlug(trimmed.substr(level + 1));
+                    int& seen = slugCounts[slug];
+                    if (seen > 0) slug += "-" + std::to_string(seen);
+                    seen++;
+                    if (!slug.empty()) headingSlugs.emplace_back(slug, i);
+                }
+            }
 
             // Abbreviation: *[TERM]: expansion
             if (trimmed.size() >= 5 && trimmed[0] == '*' && trimmed[1] == '[') {
@@ -543,6 +595,8 @@ namespace UltraCanvas {
                 p = urlEnd + 1;
             }
         }
+
+        for (const auto& [slug, line] : headingSlugs) markdownAnchors.emplace(slug, line);
 
         // Record backlinks only for anchors with exactly one referring line (unambiguous).
         for (const auto& [id, srcs] : anchorRefs) {

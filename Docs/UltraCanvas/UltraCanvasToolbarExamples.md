@@ -1,5 +1,40 @@
 # UltraCanvasToolbar Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Configuration](#configuration)
+  - [Item Management](#item-management)
+  - [Item Badges](#item-badges)
+  - [Convenience Methods](#convenience-methods)
+  - [Tool Groups](#tool-groups)
+  - [Auto-Hide](#auto-hide)
+  - [Drag and Drop](#drag-and-drop)
+- [Enumerations](#enumerations)
+  - [ToolbarOrientation](#toolbarorientation)
+  - [ToolbarPosition](#toolbarposition)
+  - [ToolbarStyle](#toolbarstyle)
+  - [ToolbarOverflowMode](#toolbaroverflowmode)
+  - [ToolbarIconSize](#toolbariconsize)
+- [ToolbarAppearance Structure](#toolbarappearance-structure)
+- [Items are widgets](#items-are-widgets)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Preset Factories](#preset-factories)
+- [Usage Examples](#usage-examples)
+  - [Standard Horizontal Toolbar (Builder)](#standard-horizontal-toolbar-builder)
+  - [Toolbar with Dropdowns and Toggles](#toolbar-with-dropdowns-and-toggles)
+  - [Flat Style Toolbar](#flat-style-toolbar)
+  - [Vertical Sidebar Toolbar](#vertical-sidebar-toolbar)
+  - [Ribbon-Style Toolbar (Grouped)](#ribbon-style-toolbar-grouped)
+  - [Badges and Reordering — a Taskbar](#badges-and-reordering-—-a-taskbar)
+- [Implementation Notes](#implementation-notes)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.

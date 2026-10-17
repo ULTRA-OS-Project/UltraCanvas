@@ -1,5 +1,18 @@
 # UltraCanvas Rating Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Symbol sources](#symbol-sources)
+  - [Built-in shapes](#built-in-shapes)
+  - [Custom vector (SVG) files](#custom-vector-svg-files)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Keyboard](#keyboard)
+- [Notes](#notes)
+
 ## Overview
 
 **UltraCanvasRating** is a row of symbols (stars by default) for entering or

@@ -1,10 +1,11 @@
 // Apps/UltraWeb/host/UltraWebPages.cpp
 // The page services and the app-or-page decision (UltraWebPages.h).
+// Version: 0.8.3 - ToPageUrl turns '\' into '/' only on Windows
 // Version: 0.5.0 - downloads: Content-Disposition and the size limit reported
 // Version: 0.4.1 - AcceptExtensions for file uploads
 // Version: 0.4.0 - forms: POST through UltraNet
 // Version: 0.3.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebPages.h"
@@ -234,7 +235,11 @@ std::string ToPageUrl(const std::string& address) {
     std::filesystem::path path = std::filesystem::absolute(PathFromUtf8(address), ec);
     if (ec) path = PathFromUtf8(address);
     std::string text = PathToUtf8(path.lexically_normal());
+#ifdef _WIN32
+    // '\' separates folders only on Windows. Elsewhere it is a character of
+    // a file's name and stays one, percent-encoded below.
     std::replace(text.begin(), text.end(), '\\', '/');
+#endif
     if (text.empty() || text[0] != '/') text = "/" + text;        // C:/x -> /C:/x
     std::string url = "file://";
     for (unsigned char c : text) {

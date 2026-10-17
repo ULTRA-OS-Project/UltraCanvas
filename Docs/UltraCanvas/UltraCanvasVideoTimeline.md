@@ -40,6 +40,19 @@ child elements of its own)
 **Last Modified:** 2026-10-14
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Status](#status)
+- [The model](#the-model)
+- [Public API surface](#public-api-surface)
+  - [Providers](#providers)
+  - [Changes](#changes)
+  - [Other callbacks](#other-callbacks)
+  - [The operations on their own](#the-operations-on-their-own)
+- [Keyboard and mouse](#keyboard-and-mouse)
+- [Style](#style)
+- [Notes](#notes)
+
 ## Status
 
 First phase. Built: the ruler with adaptive ticks, markers and the range;

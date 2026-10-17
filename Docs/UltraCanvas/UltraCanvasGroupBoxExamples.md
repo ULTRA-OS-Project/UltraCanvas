@@ -2,6 +2,24 @@
 
 <!-- doc-check: UltraCanvasRadioGroup foodGroup; -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factory Functions](#factory-functions)
+  - [Key Methods](#key-methods)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic framed group](#basic-framed-group)
+  - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
+  - [Switch-activated section with an info icon](#switch-activated-section-with-an-info-icon)
+  - [Collapsible card](#collapsible-card)
+  - [Sections of a window as cards](#sections-of-a-window-as-cards)
+- [Demo](#demo)
+
 ## Overview
 
 **UltraCanvasGroupBox** is a titled container (a "group box" or "fieldset") that

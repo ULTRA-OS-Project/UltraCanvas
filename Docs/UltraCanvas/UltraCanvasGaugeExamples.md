@@ -1,5 +1,46 @@
 # UltraCanvasGauge Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Factory Function](#factory-function)
+  - [Gauge Modes](#gauge-modes)
+  - [Supporting Enumerations](#supporting-enumerations)
+  - [Data Structures](#data-structures)
+  - [Mode & Value](#mode--value)
+  - [Title & Unit](#title--unit)
+  - [Visual Style](#visual-style)
+  - [Colours](#colours)
+  - [Round-Gauge (CircularRing) Styling](#round-gauge-circularring-styling)
+  - [Ranges, Thresholds & Pointers](#ranges-thresholds--pointers)
+  - [Sub-Dial](#sub-dial)
+  - [Display Options](#display-options)
+  - [Digital Display & Clock](#digital-display--clock)
+  - [Stopwatch Controls](#stopwatch-controls)
+  - [Callbacks](#callbacks)
+- [Examples](#examples)
+  - [1. Analog Speedometer](#1-analog-speedometer)
+  - [2. Semicircular Gauge with Coloured Ranges](#2-semicircular-gauge-with-coloured-ranges)
+  - [3. Compass with a Sub-Dial](#3-compass-with-a-sub-dial)
+  - [4. Analog Clock (live)](#4-analog-clock-live)
+  - [5. Stopwatch with Start/Stop/Reset](#5-stopwatch-with-startstopreset)
+  - [6. Linear Progress Bar](#6-linear-progress-bar)
+  - [7. Vertical LED VU Meter](#7-vertical-led-vu-meter)
+  - [8. Multi-Pointer Bar](#8-multi-pointer-bar)
+  - [9. Linear Scale with Thresholds (Radio Tuner)](#9-linear-scale-with-thresholds-radio-tuner)
+  - [10. Round Gauge (CircularRing)](#10-round-gauge-circularring)
+  - [11. Battery](#11-battery)
+  - [12. Thermometer](#12-thermometer)
+  - [13. Cylinder](#13-cylinder)
+  - [14. Digital LED Panel](#14-digital-led-panel)
+  - [15. Digital Clock](#15-digital-clock)
+  - [16. Driving a Gauge from a Slider](#16-driving-a-gauge-from-a-slider)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasGaugeDiagramElement** is a single, mode-driven element that renders a wide family of gauges, meters and dials from one API. A gauge is created once with a factory function and then switched between modes — analog speedometers and compasses, progress and LED bars, circular activity rings, batteries, thermometers, cylinders, analog/digital clocks and stopwatches — by calling `SetMode()` and a handful of configuration setters.

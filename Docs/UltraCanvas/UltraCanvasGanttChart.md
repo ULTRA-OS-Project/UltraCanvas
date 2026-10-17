@@ -10,6 +10,22 @@ palette system modeled on common real-world Gantt styles.
 - Date helpers (header-only): `include/Plugins/Charts/UltraCanvasCalendarDate.h`
 - Demo: `Apps/DemoApp/UltraCanvasGanttChartExamples.cpp`
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Dates](#dates)
+- [Data model](#data-model)
+  - [Tasks](#tasks)
+  - [Dependencies](#dependencies)
+  - [Critical path](#critical-path)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+  - [Table columns](#table-columns)
+  - [Time scale](#time-scale)
+- [Interaction](#interaction)
+- [Element API summary](#element-api-summary)
+- [Demo page](#demo-page)
+
 ## Quick start
 
 ```cpp
