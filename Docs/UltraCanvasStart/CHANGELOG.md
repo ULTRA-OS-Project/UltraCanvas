@@ -7,6 +7,16 @@
   `--assistant none` chooses it from the command line. The red comes from
   the segmented control's new per-segment text colour (framework changelog:
   `segmented-control-segment-text-color`).
+- **The SDK comes from the UltraOS download page.** Step 4's *Download page*
+  opens [ultraos.eu/download-file](https://ultraos.eu/download-file/) in the
+  browser, where the archive the step names is downloaded; *Unpack...* picks
+  the downloaded archive (through the file loader's dialog), unpacks it beside
+  itself and fills the SDK prefix in - from the folder named like the archive
+  first, then any SDK beside it, so the file need not keep its name. The
+  GitHub release stays linked as *Also on GitHub*; the Actions-page row is
+  gone. The application no longer downloads anything itself, so it no longer
+  links UltraNet (`StartSdk` 0.2.0: `DownloadSdk`, `SdkDownloadAvailable` and
+  `SdkReleaseAssetUrl` removed, `SdkUnpackedFolder` added).
 - **"AI assistant", not "assistant"**, in step 2's heading, its card title,
   its hint and its status line.
 

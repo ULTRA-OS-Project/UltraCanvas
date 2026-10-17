@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.2 - the SDK comes from the download page, not a direct link
 // Version: 0.2.1 - AiGuide for no AI assistant: the local IDE or compiler
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.2 - the guide names the steps, not the pages
@@ -26,14 +27,14 @@ std::string Code(const std::string& text) {
     return "`" + text + "`";
 }
 
-// The SDK step every platform shares: the archive by its real name, linked
-// to the release that carries it, and the way the application fetches it.
+// The SDK step every platform shares: the archive by its real name, the
+// download page that carries it, and the way the application unpacks it.
 std::string SdkLine(Platform platform, const std::string& version, const std::string& architecture,
                     const std::string& remark) {
     const std::string archive = SdkArchiveName(platform, version, architecture);
-    return "unpack the prebuilt SDK " + Link(archive, SdkReleaseAssetUrl(platform, version, architecture)) +
+    return "download the prebuilt SDK " + Code(archive) + " from " + Link("the download page", SdkDownloadPage()) +
            (remark.empty() ? "" : " (" + remark + ")") +
-           " - the Framework step's *Download and unpack...* fetches it - or";
+           " and let the Framework step's *Unpack...* unpack it - or";
 }
 
 } // namespace
