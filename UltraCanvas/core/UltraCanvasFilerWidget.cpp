@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.5 - a file or folder on a remote drive (isRemotePath) is never
+//                  handed to the background readers - thumbnails, text and folder
+//                  previews, media probes, folder stats, prefetch - so a closing
+//                  tab on an FTP folder no longer waits out a video grab
 // Version: 1.38.4 - layered images (LayeredImage: *.ucd, *.ucraster) are filed as images; a
 //                  bitmap the image pipeline does not decode thumbnails from the preview
 //                  it carries (a *.ucd's)
@@ -73,7 +77,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -3353,6 +3357,10 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::ShowingRemoteFolder() const {
         return !fileListMode && !currentPath.empty() &&
                isRemotePath && isRemotePath(currentPath);
+    }
+
+    bool UltraCanvasFilerWidget::IsRemoteEntryPath(const std::string& path) const {
+        return !path.empty() && isRemotePath && isRemotePath(path);
     }
 
     std::string UltraCanvasFilerWidget::UniqueRemoteChildName(
@@ -10854,6 +10862,11 @@ namespace UltraCanvas {
         // name different icons in it.
         // A bundle is a directory, and the one directory that has an icon of
         // its own to draw.
+        // A file on a remote drive is not on this disk: no decoder can open
+        // "ultracloud://...", and a video grab waits out its timeout before
+        // it gives up - on a background worker that a closing tab has to join.
+        // Only a local copy the host supplied is read.
+        if (IsRemoteEntryPath(e.path)) return e.thumbnailPath;
         if ((!e.isDirectory || e.isBundle) && e.thumbnailPath.empty() &&
             NativeFileIconAvailable(e.path))
             return e.path;
@@ -11359,6 +11372,7 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::AcquireTextPreview(const FilerEntry& e,
                                                     TextPreviewSnippet& out) {
         if (e.isDirectory || e.path.empty()) return false;
+        if (IsRemoteEntryPath(e.path)) return false;   // not on this disk
         std::lock_guard<std::mutex> lk(thumbMutex);
         auto it = textSlots.find(e.path);
         if (it != textSlots.end()) {
@@ -11412,6 +11426,7 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::AcquireFolderPeek(const FilerEntry& e,
                                                    std::vector<FilerEntry>& out) {
         if (!e.isDirectory || e.path.empty()) return false;
+        if (IsRemoteEntryPath(e.path)) return false;   // not on this disk
         std::lock_guard<std::mutex> lk(thumbMutex);
         auto it = peekSlots.find(e.path);
         if (it != peekSlots.end()) {
@@ -13554,6 +13569,8 @@ namespace UltraCanvas {
     // placeholder that is filled in by a posted redraw.
     UltraCanvasFilerWidget::FolderStats
     UltraCanvasFilerWidget::GetFolderStats(const std::string& path) {
+        // A remote folder has nothing on this disk to walk.
+        if (IsRemoteEntryPath(path)) return FolderStats{};
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = folderStatsCache.find(path);
         if (it != folderStatsCache.end()) return it->second;
@@ -13862,6 +13879,9 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::QueueFolderPrefetch() {
         if (!folderPrefetchEnabled) return;
+        // A remote drive's subfolders are fetched ahead by its host (the
+        // remoteListing hook), never by reading this disk.
+        if (ShowingRemoteFolder()) return;
         std::lock_guard<std::mutex> lk(prefetchMutex);
         if (prefetchShutdown) return;
         ++prefetchGeneration;      // drops whatever the last folder queued
@@ -14278,6 +14298,8 @@ namespace UltraCanvas {
         if (!isImage && e.category != FilerFileCategory::Audio &&
             e.category != FilerFileCategory::Video)
             return "";
+        // Probing reads the file, and a remote one is not on this disk.
+        if (IsRemoteEntryPath(e.path)) return "";
 
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = mediaInfoCache.find(e.path);
