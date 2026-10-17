@@ -2,8 +2,9 @@
 // GL-backed 3D contour surface (roadmap item T6). Compiles to nothing extra
 // without ULTRACANVAS_ENABLE_GL - the header then aliases the class onto the
 // software renderer.
-// Version: 1.1.0
-// Last Modified: 2026-08-20
+// Version: 1.2.0
+// Last Modified: 2026-10-15
+// V1.2.0: Android: OpenGL ES 3 headers and GLSL ES 3.00 shaders.
 // V1.1.0: legend: migrated to the shared ChartLegend ColorBar mode.
 // Author: UltraCanvas Framework
 
@@ -26,12 +27,26 @@
     #include <OpenGL/gl3ext.h>
 #elif defined(_WIN32)
     #include <GL/glew.h>
+#elif defined(__ANDROID__)
+    // OpenGL ES 3 (the EGL context GLContextManagerEGL_Android creates): every
+    // call below is in it.
+    #include <GLES3/gl3.h>
 #else
     #ifndef GL_GLEXT_PROTOTYPES
     #define GL_GLEXT_PROTOTYPES
     #endif
     #include <GL/gl.h>
     #include <GL/glext.h>
+#endif
+
+// The shaders' first lines: GLSL 3.30 on desktop OpenGL, GLSL ES 3.00 (with a
+// float precision, which ES fragment shaders must name) on OpenGL ES.
+#if defined(__ANDROID__)
+    #define UC_CONTOUR_GLSL_VERTEX   "#version 300 es\n"
+    #define UC_CONTOUR_GLSL_FRAGMENT "#version 300 es\nprecision highp float;\n"
+#else
+    #define UC_CONTOUR_GLSL_VERTEX   "#version 330 core\n"
+    #define UC_CONTOUR_GLSL_FRAGMENT "#version 330 core\n"
 #endif
 
 #ifndef M_PI
@@ -46,7 +61,7 @@ namespace UltraCanvas {
         constexpr int kFloatsPerVertex = 10;
 
         const char* kSurfaceVertexShader =
-                "#version 330 core\n"
+                UC_CONTOUR_GLSL_VERTEX
                 "layout(location = 0) in vec3 aPos;\n"
                 "layout(location = 1) in vec3 aNormal;\n"
                 "layout(location = 2) in vec4 aColor;\n"
@@ -60,7 +75,7 @@ namespace UltraCanvas {
                 "}\n";
 
         const char* kSurfaceFragmentShader =
-                "#version 330 core\n"
+                UC_CONTOUR_GLSL_FRAGMENT
                 "in vec3 vNormal;\n"
                 "in vec4 vColor;\n"
                 "uniform vec3 uLightDir;\n"

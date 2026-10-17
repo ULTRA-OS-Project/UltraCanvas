@@ -411,8 +411,8 @@ the name, a duration badge for video and audio, a *photo* badge for images.
 title styles (opening title, lower third, logo). *Effects* lists effect
 presets ("Warm film" = temperature, saturation and a vignette) and the
 transition types by family (presets **built** in app 0.4.0: nine colour
-looks and four blur and detail presets, a click on the selected clip;
-transitions stay on the cut). Everything in the bin is a drag source: media
+looks and four blur and detail presets, a click on the selected clip, and
+from 0.5.1 dragged onto a clip; transitions stay on the cut). Everything in the bin is a drag source: media
 to the main or overlay track, songs to the music lane, titles to the title
 lane, transitions to a cut, effects to a clip. Double-click opens the
 file in the viewer. A probe runs on import on a worker thread and the
@@ -1107,7 +1107,11 @@ that writing it showed:
   a window event filter turns the mouse moves into the timeline element's
   own `DragOver` / `Drop` events with the file as a dropped file, so the
   insertion marker, the nearest cut on the main track, the overlay lane
-  and the music all come from the drop path that already existed.
+  and the music all come from the drop path that already existed. An
+  effect preset (app 0.5.1) is dragged from its button the same way: the
+  button's press arms it, the pointer moving away starts it, `ClipAt`
+  finds the clip under the pointer and the element's `SetDropTargetClip`
+  (1.2.0) rings it; the drop applies the preset to that clip.
 - **The story wizard** (§5.9, §6.11): `UltraVideoStory` shows the three
   steps of §6.11 as a flat tabbed container in a modal, with the chosen
   files as a reorderable album. It departs from §6.11 in one way: *Make

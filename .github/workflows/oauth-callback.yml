@@ -1,0 +1,24 @@
+# The OAuth sign-in service (Server/OAuthCallback): its tests, on every change
+# to it. Pure Python, no system packages.
+name: OAuth sign-in service
+
+on:
+  push:
+    branches: [main]
+    paths: ['Server/OAuthCallback/**', '.github/workflows/oauth-callback.yml']
+  pull_request:
+    paths: ['Server/OAuthCallback/**', '.github/workflows/oauth-callback.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Server/OAuthCallback
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[test]'
+      - run: python -m pytest -q

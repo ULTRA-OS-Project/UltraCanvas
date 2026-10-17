@@ -5,7 +5,8 @@
 // Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
 //                  libheif's encoder)
 // Version: 1.6.0 - ...and so is one that arrives as bytes (LoadFromMemory)
-// Version: 1.7.0 - AdoptPngBytes: a build without libvips reads PNG through cairo
+// Version: 1.8.0 - AdoptRasterBytes: a build without libvips reads PNG through cairo
+//                  and JPEG, BMP, GIF through the bundled stb_image
 // Version: 1.5.0 - An SVG libvips cannot load is read through the vector preview seam
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
 // Last Modified: 2026-10-14
@@ -165,9 +166,10 @@ namespace VectorStorage { class VectorDocument; }
         std::shared_ptr<VectorStorage::VectorDocument> vectorDocument;
         bool AdoptVectorDocument(std::shared_ptr<VectorStorage::VectorDocument> document);
         bool LoadVectorDocument(const std::string& imagePath);
-        // Without libvips: the bytes in imgDataPtr taken as a PNG (size from
-        // the header, pixels decoded by cairo when a pixmap is asked for).
-        bool AdoptPngBytes();
+        // Without libvips: the bytes in imgDataPtr taken as a PNG (cairo's
+        // reader) or a JPEG, BMP or GIF (stb_image): size from the header,
+        // pixels decoded when a pixmap is asked for.
+        bool AdoptRasterBytes();
         bool LoadVectorDocumentFromMemory(const uint8_t* data, size_t size);   // bytes that read as SVG
         std::shared_ptr<UCPixmapCairo> CreatePixmapFromVectorDocument(int width, int height,
                                                                      ImageFitMode fitMode, float scale);

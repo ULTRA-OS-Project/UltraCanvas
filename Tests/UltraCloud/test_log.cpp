@@ -14,6 +14,7 @@
 #include <UltraCloud/UltraCloudDropbox.h>
 #include <UltraCloud/UltraCloudGoogleDrive.h>
 #include <UltraCloud/UltraCloudLog.h>
+#include <UltraCloud/UltraCloudMemory.h>
 #include <UltraCloud/UltraCloudNextcloud.h>
 #include <UltraCloud/UltraCloudOAuth.h>
 #include <UltraCloud/UltraCloudOneDrive.h>
@@ -560,6 +561,11 @@ struct CancelledSignIn {
 } // namespace
 
 TEST(log_a_sign_in_called_off_stores_no_account) {
+    // The memory provider is registered here, not left to another test file:
+    // the tests run in the order the linker laid their registrations out,
+    // which put this file last on Linux and first on Windows, where the
+    // sign-in found no provider and ended Unsupported instead of Cancelled.
+    if (!GetProvider("memory")) RegisterProvider(std::make_shared<MemoryProvider>());
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-log-cancel-store", ":memory:"));
     MemorySecretStore secrets;

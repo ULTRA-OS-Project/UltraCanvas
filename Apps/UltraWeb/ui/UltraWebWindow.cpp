@@ -1,5 +1,6 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
+// Version: 0.8.0 - target="_blank" links open in a new tab
 // Version: 0.7.0 - tabs: a tab strip above the toolbar, one page or app per tab
 // Version: 0.6.0 - a downloads list: a panel above the status bar
 // Version: 0.5.0 - downloads: a link to no page is saved through the save dialog
@@ -52,6 +53,19 @@ std::shared_ptr<UltraCanvasContainer> MakeBar(const std::string& id) {
     plain.autoShowScrollbars = false;
     bar->SetContainerStyle(plain);
     return bar;
+}
+
+// A toolbar button showing one of UltraWeb's icons (media/icons/ultraweb),
+// drawn in the button's text colour - grey while it is disabled.
+std::shared_ptr<UltraCanvasButton> MakeIconButton(const std::string& id, const std::string& icon) {
+    auto button = CreateButton(id, 0, 0, 34, 28, "");
+    ButtonStyle style = button->GetStyle();
+    style.useIconAsMask = true;
+    button->SetStyle(style);
+    button->SetIcon(GetResourcesDir() + "media/icons/ultraweb/" + icon);
+    button->SetIconSize(16, 16);
+    button->layoutItem.SetFlexShrink(0);
+    return button;
 }
 
 } // namespace
@@ -114,11 +128,13 @@ bool UltraWebWindow::Initialize() {
     page_->AddChild(tabStrip_);
 
     auto toolbar = MakeBar("uwToolbar");
-    backButton_ = CreateButton("uwBack", 0, 0, 34, 28, "\xE2\x86\x90");        // ←
+    // Back and forward are icons, not the arrow characters: Windows' UI
+    // font has no U+2190 / U+2192, and they showed as empty boxes there.
+    backButton_ = MakeIconButton("uwBack", "back.svg");
     backButton_->SetTooltip("Back");
     backButton_->SetOnClick([this]() { if (auto* tab = ActiveTab()) tab->GoBack(); });
     toolbar->AddChild(backButton_);
-    forwardButton_ = CreateButton("uwForward", 0, 0, 34, 28, "\xE2\x86\x92");  // →
+    forwardButton_ = MakeIconButton("uwForward", "forward.svg");
     forwardButton_->SetTooltip("Forward");
     forwardButton_->SetOnClick([this]() { if (auto* tab = ActiveTab()) tab->GoForward(); });
     toolbar->AddChild(forwardButton_);
@@ -199,6 +215,8 @@ UltraWebTab& UltraWebWindow::NewTab(const std::string& address) {
     host.post = PostToUi;
     host.onChanged = [this](UltraWebTab& tab) { TabChanged(tab); };
     host.onDownload = [this](UltraWebTab&, const HTML::LoadedPage& page) { SaveDownload(page); };
+    // target="_blank": a new tab, made the active one, as browsers do.
+    host.onOpenInNewTab = [this](UltraWebTab&, const std::string& url) { NewTab(url); };
     tabs_.push_back(std::make_unique<UltraWebTab>("uwTab" + std::to_string(++tabSerial_), std::move(host)));
     UltraWebTab& tab = *tabs_.back();
     const int index = tabStrip_->AddTab(tab.Title(), tab.Area());

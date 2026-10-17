@@ -12,10 +12,13 @@
 // --devices the device activity, --screenshot takes one.
 //
 // On Windows it can also take the place of the Windows desktop for this
-// user: --use-as-desktop makes the sign-in start it (with --session) and
-// hides Explorer's taskbar, --restore-desktop undoes that - the way back the
-// installer's uninstaller and a stuck user (Ctrl+Shift+Esc, Run new task)
-// take.
+// user: --use-as-desktop makes the sign-in start it (with --session) beside
+// Explorer, whose taskbar hides; --use-instead-of-explorer makes it the
+// session's shell from the next sign-in (with --shell, through
+// UltraCanvasShellGuard, which brings Explorer back should it fail);
+// --restore-desktop undoes either - the way back the installer's
+// uninstaller and a stuck user (Ctrl+Shift+Esc, Run new task) take.
+// Version: 0.2.0 - --use-instead-of-explorer, --shell
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -72,9 +75,15 @@ void PrintUsage(const char* programName) {
         "  --screenshot [file] Capture the screen to file (default: the Pictures folder)\n"
         "  --use-as-desktop    Windows: start UltraDesktop at sign-in in place of the\n"
         "                      Windows desktop (Explorer's taskbar hides), then open it\n"
+        "  --use-instead-of-explorer\n"
+        "                      Windows: from the next sign-in UltraDesktop is the\n"
+        "                      desktop and Explorer does not start (it comes back by\n"
+        "                      itself should UltraDesktop fail), then exit\n"
         "  --restore-desktop   Windows: back to the Windows desktop - no start at\n"
         "                      sign-in, the taskbar as it was - and exit\n"
         "  --session           Started by the sign-in: close when switched back\n"
+        "  --shell             Started as the session's shell: as --session, and host\n"
+        "                      the notification area's icons\n"
         "  -v, --version       Show version information\n"
         "  -h, --help          Show this message\n",
         programName);
@@ -143,6 +152,20 @@ int RestoreDesktop() {
     return EXIT_SUCCESS;
 }
 
+// From the next sign-in UltraDesktop is the session's shell; this session
+// keeps the desktop it has.
+int UseInsteadOfExplorer() {
+    std::string error;
+    if (!UltraCanvasDesktopShell::ReplaceSystemDesktop(UltraCanvasDesktopShell::FindProgram("UltraDesktop"),
+                                                       {"--shell"}, &error, DesktopReplacement::Instead)) {
+        std::printf("UltraDesktop cannot take the place of Explorer: %s\n", error.c_str());
+        return EXIT_FAILURE;
+    }
+    std::printf("From the next sign-in UltraDesktop is the desktop, and Explorer does not start.\n"
+                "Should UltraDesktop fail to start, Explorer starts in its place for that session.\n");
+    return EXIT_SUCCESS;
+}
+
 int Screenshot(const std::string& file) {
     const std::string path = file.empty() ? UltraCanvasDesktopShell::DefaultScreenshotPath() : file;
     std::string error;
@@ -161,6 +184,7 @@ int main(int argc, char* argv[]) {
     bool haveEdge = false;
     UltraDesktop::TaskbarEdge edge = UltraDesktop::TaskbarEdge::Left;
     bool sessionDesktop = false;
+    bool shellSession = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -190,8 +214,13 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             sessionDesktop = true;
+        } else if (arg == "--use-instead-of-explorer") {
+            return UseInsteadOfExplorer();
         } else if (arg == "--session") {
             sessionDesktop = true;
+        } else if (arg == "--shell") {
+            sessionDesktop = true;
+            shellSession = true;
         } else if (arg == "--edge") {
             if (i + 1 >= argc || !UltraDesktop::ParseTaskbarEdge(argv[i + 1], edge)) {
                 std::printf("--edge needs a value: left, top or bottom\n");
@@ -234,6 +263,7 @@ int main(int argc, char* argv[]) {
         // monitor and the device poll before the application goes.
         UltraDesktop::UltraDesktopWindow desktop;
         desktop.SetSessionDesktop(sessionDesktop);
+        desktop.SetShellSession(shellSession);
         if (!desktop.Initialize(settingsPath, haveEdge ? &edge : nullptr)) {
             debugOutput << "Failed to create the desktop window" << std::endl;
             exitCode = EXIT_FAILURE;

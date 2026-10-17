@@ -591,7 +591,7 @@ namespace {
         sampleDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         sourceRow->AddChild(sampleDropdown);
 
-        auto uploadBtn = std::make_shared<UltraCanvasButton>("PixelFXUpload", 0, 0, 130, 30, "Upload image…");
+        auto uploadBtn = std::make_shared<UltraCanvasButton>("PixelFXUpload", 0, 0, 130, 30, "Upload image");
         uploadBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         sourceRow->AddChild(uploadBtn);
 

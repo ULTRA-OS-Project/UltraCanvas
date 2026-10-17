@@ -2,13 +2,14 @@
 // UltraCanvasVideoTimeline in a real window: geometry, hit testing, and the
 // edits that real mouse and key events turn into reported changes - a trim
 // with ripple, a reorder on the magnetic track, a free-track move, a split
-// with the blade, a marker, a delete, a drop with its insertion point, the
+// with the blade, a marker, a delete, a drop with its insertion point, a
+// fade knob's drag (reported once, when let go, so it is one undo step), the
 // ruler and the wheel. The test plays the application: it applies each
 // change to its model and feeds it back. With ULTRACANVAS_SCREENSHOT_DIR set
 // it also writes the window as video-timeline.ppm. Needs a display; skips
 // itself without one (runs under Xvfb).
-// Version: 1.0.0
-// Last Modified: 2026-10-11
+// Version: 1.0.1
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "DisplayTestSupport.h"
 #include "UltraCanvasApplication.h"
@@ -269,6 +270,11 @@ int main() {
     TEST("the clip under the pointer is b", timeline->ClipAt(headerW + 80.0f * 4.0f, mainY, &trackId) == "b" && trackId == "V1");
     TEST("the music bar is found on A1", timeline->ClipAt(headerW + 100.0f, musicY, &trackId) == "song" && trackId == "A1");
     TEST("empty lane space is no clip", timeline->ClipAt(headerW + 80.0f * 6.0f, overlayY, &trackId).empty() && trackId == "V2");
+    timeline->SetDropTargetClip("b");
+    DisplayTest::Frame(window, {timeline});
+    TEST("a drop-target clip is kept until cleared", timeline->GetDropTargetClip() == "b");
+    timeline->SetDropTargetClip("");
+    TEST("and cleared with an empty id", timeline->GetDropTargetClip().empty());
 
     std::cerr << "\n--- Selection ---" << std::endl;
     timeline->OnEvent(MouseEvent(UCEventType::MouseDown, headerW + 80.0f * 4.0f, mainY));
@@ -309,9 +315,11 @@ int main() {
         timeline->OnEvent(MouseEvent(UCEventType::MouseMove, knobX + 40.0f, knobY));
         timeline->OnEvent(MouseEvent(UCEventType::MouseMove, knobX + 80.0f, knobY));
         DisplayTest::Frame(window, {timeline});
+        // the app turns each reported change into an undo step: a drag must report once, when let go
+        TEST("nothing is reported while the knob moves", changes.size() == seen);
         timeline->OnEvent(MouseEvent(UCEventType::MouseUp, knobX + 80.0f, knobY));
         const bool fade = changes.size() == seen + 1 && changes.back().kind == TimelineChangeKind::FadeSet;
-        TEST("dragging the knob reports a fade", fade && changes.back().trackId == "A1" && changes.back().after.size() == 1);
+        TEST("dragging the knob reports one fade, at the release", fade && changes.back().trackId == "A1" && changes.back().after.size() == 1);
         TEST("the fade in grew to two seconds", fade && Near(changes.back().after[0].fadeIn, 2.0, 0.05) && changes.back().after[0].id == "song");
         const TimelineClip* song = model.FindTrack("A1")->FindClip("song");
         TEST("and the model shows it", song && Near(song->fadeIn, 2.0, 0.05));
@@ -320,6 +328,7 @@ int main() {
         timeline->OnEvent(MouseEvent(UCEventType::MouseDown, endX, knobY));
         timeline->OnEvent(MouseEvent(UCEventType::MouseMove, endX - 40.0f, knobY));
         timeline->OnEvent(MouseEvent(UCEventType::MouseMove, endX - 80.0f, knobY));
+        TEST("nor while the other one does", changes.size() == seen + 1);
         timeline->OnEvent(MouseEvent(UCEventType::MouseUp, endX - 80.0f, knobY));
         const bool out = changes.size() == seen + 2 && changes.back().kind == TimelineChangeKind::FadeSet;
         TEST("the other knob sets the fade out", out && Near(changes.back().after[0].fadeOut, 1.0, 0.05));

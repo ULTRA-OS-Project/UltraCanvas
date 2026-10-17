@@ -8,6 +8,9 @@
 #include "UltraCleanerPaths.h"
 #include "UltraCleanerTypes.h"
 
+#include <filesystem>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+
 using namespace UltraCleaner;
 using ultracleaner_test::TempTree;
 
@@ -69,6 +72,18 @@ TEST(IsPathInsideRespectsBoundaries) {
     REQUIRE(IsPathInside("/anything", "/"));
 }
 
+TEST(BackslashSeparatesOnlyOnWindows) {
+#ifdef _WIN32
+    REQUIRE(IsPathInside("C:\\Users\\u\\x", "C:/Users/u"));
+    REQUIRE(NormalizeForCompare("C:\\Users\\U\\") == "c:/users/u");
+#else
+    // "/home/user/.cache\x" is a file in the home folder, not in the cache:
+    // '\' is a character of its name here
+    REQUIRE(IsPathInside("/home/user/.cache\\x", "/home/user/.cache") == false);
+    REQUIRE(NormalizeForCompare("/home/user/a\\") == "/home/user/a\\");
+#endif
+}
+
 TEST(WildcardExpansionListsMatchingDirectories) {
     TempTree tree;
     tree.Dir("profiles/Default/Cache");
@@ -78,6 +93,24 @@ TEST(WildcardExpansionListsMatchingDirectories) {
 
     auto matches = ExpandWildcardDirectories(tree.Path() + "/profiles/*/Cache");
     REQUIRE_EQ(matches.size(), static_cast<size_t>(2));
+}
+
+// A folder named outside the Windows code page - a Thai user name, an emoji -
+// is listed and named like any other. The parent of a wildcard used to reach
+// the filesystem as narrow text, which Windows reads in the ANSI code page,
+// so nothing under such a folder was found there. The folders are made with
+// PathFromUtf8 rather than TempTree's helpers, which take narrow text too.
+TEST(WildcardExpansionListsFoldersNamedOutsideTheCodePage) {
+    TempTree tree;
+    const std::string parent = tree.Path() + "/ผู้ใช้";
+    std::error_code ec;
+    std::filesystem::create_directories(
+        UltraCanvas::PathFromUtf8(parent + "/โปรไฟล์ 😀/Cache"), ec);
+    REQUIRE(!ec);
+
+    auto matches = ExpandWildcardDirectories(parent + "/*/Cache");
+    REQUIRE_EQ(matches.size(), static_cast<size_t>(1));
+    REQUIRE(matches[0] == parent + "/โปรไฟล์ 😀/Cache");
 }
 
 TEST(WildcardExpansionYieldsPlainPathUnchanged) {

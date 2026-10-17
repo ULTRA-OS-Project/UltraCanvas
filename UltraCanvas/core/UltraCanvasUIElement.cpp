@@ -324,7 +324,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {
-        if (win == nullptr && window) {
+        // Leaving a window (detached, or moved to another one) gives up its
+        // focus there, so that window never points at an element it no
+        // longer contains.
+        if (window && win != window) {
             SetFocus(false);
         }
         window = win;

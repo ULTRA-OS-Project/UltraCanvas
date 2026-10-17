@@ -9,6 +9,29 @@ higher tiers are smaller, rarer or more selective.
 - Base class: `UltraCanvasChartElementBase` (`include/Plugins/Charts/UltraCanvasChartElementBase.h`)
 - Demo: `Apps/DemoApp/UltraCanvasPyramidChartExamples.cpp` (Charts → Pyramid Diagram)
 
+## Contents
+
+  - [Which chart do you actually want?](#which-chart-do-you-actually-want)
+- [Quick start](#quick-start)
+- [Data](#data)
+  - [Which end is the apex?](#which-end-is-the-apex)
+  - [Derived metrics](#derived-metrics)
+- [Shape modes](#shape-modes)
+  - [The apex](#the-apex)
+  - [3D](#3d)
+- [Scale modes](#scale-modes)
+- [Colour](#colour)
+- [Labels](#labels)
+  - [Text inside a tier](#text-inside-a-tier)
+- [Callouts](#callouts)
+- [Badges](#badges)
+- [Stacked pyramids](#stacked-pyramids)
+- [Analysis overlays](#analysis-overlays)
+- [Interaction](#interaction)
+- [Animation](#animation)
+- [Choosing the settings](#choosing-the-settings)
+- [Demo tabs](#demo-tabs)
+
 ### Which chart do you actually want?
 
 Three elements in this repository get called "pyramid" and they are not

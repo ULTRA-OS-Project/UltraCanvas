@@ -1,5 +1,34 @@
 # UltraCanvasQRCode Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Enums](#enums)
+  - [Configuration Structures](#configuration-structures)
+  - [Content & Configuration](#content--configuration)
+  - [Styling](#styling)
+  - [Logo](#logo)
+  - [State & Inspection](#state--inspection)
+  - [Export](#export)
+  - [Free Functions — `QRCodeUtils`](#free-functions-—-qrcodeutils)
+- [Examples](#examples)
+  - [1. Basic QR Code from a URL](#1-basic-qr-code-from-a-url)
+  - [2. Choosing an Error-Correction Level](#2-choosing-an-error-correction-level)
+  - [3. Custom Colours, Size, and Module Style](#3-custom-colours-size-and-module-style)
+  - [4. A Foreground Gradient](#4-a-foreground-gradient)
+  - [5. Embedding a Centre Logo](#5-embedding-a-centre-logo)
+  - [6. Tuning the Style via `QRStyleConfig`](#6-tuning-the-style-via-qrstyleconfig)
+  - [7. Structured Content Helpers](#7-structured-content-helpers)
+  - [8. Exporting to Image and SVG](#8-exporting-to-image-and-svg)
+  - [9. Generating Without a Widget](#9-generating-without-a-widget)
+  - [10. Decoding an Image](#10-decoding-an-image)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasQRCode` is a 2D QR code widget that encodes a string into a QR matrix and renders it through the standard `IRenderContext`. It supports all four error-correction levels, version 1–40 matrices, fully customizable module/finder shapes, solid colours and gradients, an embedded centre logo with a quiet zone, and export to SVG or raster image formats. Generation is provided by free functions in the `QRCodeUtils` namespace, and (when a decoder backend such as libzbar is available) images can be scanned back into their data.
@@ -393,7 +422,7 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [qr](DialogResult result, const std:
 });
 ```
 
-Writing the raster file goes through libvips, so in a build without it (the no-vips wasm variant, for one) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
+Writing the raster file goes through libvips, so in the one build without it (a single-threaded WebAssembly program) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
 
 ### 9. Generating Without a Widget
 

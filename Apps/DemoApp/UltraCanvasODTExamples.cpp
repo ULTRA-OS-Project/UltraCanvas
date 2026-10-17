@@ -1,6 +1,6 @@
 // Apps/DemoApp/UltraCanvasODTExamples.cpp
 // Demonstrates word-processing document support (.odt / .docx / legacy .doc):
-// an "Open Document…" button that parses files through
+// an "Open Document" button that parses files through
 // UltraCanvasFileLoader::LoadTextDocument into a UCRichDocument, displayed by
 // the WYSIWYG UltraCanvasRichTextEdit in read-only mode - so fonts, sizes,
 // colours, alignment, list numbering and table layout show as the document
@@ -89,7 +89,7 @@ namespace UltraCanvas {
 
         // ===== TOOLBAR: Open button + status label =====
         auto openBtn = std::make_shared<UltraCanvasButton>("odtOpenBtn", 20, 50, 180, 30,
-                                                           "Open Document…");
+                                                           "Open Document");
         root->AddChild(openBtn);
 
         auto status = std::make_shared<UltraCanvasLabel>("odtStatus", 210, 56, kWidth - 230, 22);
@@ -120,7 +120,7 @@ namespace UltraCanvas {
             NormalizePath(GetResourcesDir() + "media/docs/document.odt");
         if (!ShowDocumentInView(samplePath, view, status)) {
             view->SetMarkdown("No sample document found.\n\nExpected: " + samplePath
-                              + "\n\nUse **Open Document…** to load an .odt, .docx or .doc file.");
+                              + "\n\nUse **Open Document** to load an .odt, .docx or .doc file.");
         }
 
         // ===== OPEN -> FileLoader::OpenTextDocument-style flow =====

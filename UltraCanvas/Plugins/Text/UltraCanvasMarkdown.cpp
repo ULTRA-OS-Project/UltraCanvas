@@ -1,7 +1,8 @@
 // Plugins/Text/Markdown.cpp
 // Markdown text display driver with full formatting and rendering support
+// Version: 1.1.2 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 1.1.1
-// Last Modified: 2026-07-20
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include "UltraCanvasUtils.h"
@@ -1075,6 +1076,9 @@ namespace UltraCanvas {
                     RequestRedraw();
                     return true;
                 }
+                break;
+
+            default:
                 break;
         }
 

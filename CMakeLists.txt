@@ -265,9 +265,9 @@ if(ANDROID)
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
-    # Image processing: libvips' ~10-library transitive stack is not in a
-    # minimal sysroot; the HAS_LIBVIPS fallbacks cover phase 1.
-    set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing")
+    # libvips is not in this list: it is part of UltraCanvas on Android as on
+    # every platform, built into the sysroot with the rest of the stack
+    # (UltraCanvas/OS/Android/packaging/vcpkg.json).
     # Runtime-dlopen'ed plugin DSOs don't load from outside the APK on Android
     # (investigation §4.3); MuPDF/tesseract/cargo builds are all post-phase-1.
     set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)")
@@ -470,6 +470,14 @@ endif()
 # polls the volume list instead - correct, just slower to notice.
 if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
+endif()
+
+# A build machine's private OAuth settings (the sign-in service UltraNet is
+# built with), kept out of the repository - see cmake/oauth.local.cmake.example.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
 endif()
 
 add_subdirectory(UltraCanvas)
@@ -768,7 +776,6 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasWYSIWYGExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
-            Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp
@@ -860,8 +867,8 @@ if(BUILD_DEMO_APP)
     )
 
     # These files depend on libvips (the performance page benchmarks its
-    # codecs through vips::VImage directly; without libvips the no-vips
-    # WebAssembly variant failed to compile it).
+    # codecs through vips::VImage directly), which the single-threaded
+    # WebAssembly build has not got.
     if(LIBVIPS_FOUND)
         list(APPEND DEMO_SOURCES
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
@@ -1162,6 +1169,17 @@ option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS"
 if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
+endif()
+
+# ===== VIDEOFX TESTS WITHOUT THE FULL SUITE =====
+# VideoFXTest and UltraVideoDocumentTest alone, for builds that leave
+# BUILD_TESTS off (the Windows CI rows): the engine on the FFmpeg the Windows
+# package ships, through the Windows file names, cache folder and fonts, and
+# UltraVideo's .ultravideo file written there.
+option(ULTRACANVAS_BUILD_VIDEOFX_TESTS "Build VideoFXTest and UltraVideoDocumentTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VIDEOFX_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VideoFXTests.cmake)
 endif()
 
 # ===== DESKTOP SHELL TEST WITHOUT THE FULL SUITE =====
@@ -1830,6 +1848,7 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
+        Apps/UltraAIApp/UltraAITranslatorDialog.cpp
     )
     # One copy per user (UltraCanvasSingleInstance.h).
     ultracanvas_single_instance(UltraAIApp)
@@ -2435,14 +2454,16 @@ endif()
 # --version still print. UltraMail calls it in its own CMakeLists.txt, as do
 # the standalone UltraTexter and AnchorPoint builds.
 #
-# Left as console programs, because their command-line modes print into the
-# prompt they were typed at, and a GUI-subsystem program cannot make that
-# prompt wait for it or see its exit code: DeviceExplorer (--list),
-# UltraCleaner (--scan), UltraNetMonitor (--list), UltraCanvasStart (--check),
-# UltraWeb (--check), UltraClaude (--print), UltraDesktop (--windows) and
-# UltraFIBU (its commands). Double-clicked, they close the console Windows
-# opened for them as their window comes up (ReleaseOwnConsole() in
-# OS/MSWindows/UltraCanvasWindowsDiagnostics.h). Debug builds keep the console.
+# The apps whose command-line modes print into the prompt they were typed at
+# - DeviceExplorer (--list), UltraCleaner (--scan), UltraNetMonitor (--list),
+# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print) and
+# UltraDesktop (--windows) - are GUI programs as well, each with a console
+# companion beside it (ultracanvas_windows_console_companion()): <App>.com,
+# which cmd and PowerShell run for the bare name, starts the .exe, waits for
+# it and returns its exit code. So the prompt waits as for a console program,
+# and the Start menu, Explorer and the sign-in start the .exe without a
+# console window. ultrafibu and ultrapress do the same in their own
+# CMakeLists.txt. Debug builds keep the console.
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
@@ -2453,6 +2474,14 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
         endif()
     endforeach()
     unset(_uc_gui_app)
+    foreach(_uc_console_app
+            DeviceExplorer UltraCleaner UltraNetMonitor UltraCanvasStart UltraWeb
+            UltraClaude UltraDesktop)
+        if(TARGET ${_uc_console_app})
+            ultracanvas_windows_console_companion(${_uc_console_app})
+        endif()
+    endforeach()
+    unset(_uc_console_app)
 endif()
 
 add_custom_target(copy_assets

@@ -1,5 +1,46 @@
 # UltraCanvasLineChartElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+  - [Visual Customization](#visual-customization)
+  - [Interactivity](#interactivity)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Public Methods](#public-methods)
+  - [Line Configuration](#line-configuration)
+  - [Data Point Configuration](#data-point-configuration)
+  - [Inherited Methods from Base Class](#inherited-methods-from-base-class)
+- [Usage Examples](#usage-examples)
+  - [Basic Line Chart Setup](#basic-line-chart-setup)
+  - [Advanced Configuration with Smoothing](#advanced-configuration-with-smoothing)
+  - [Dynamic Data Updates](#dynamic-data-updates)
+  - [Interactive Features Setup](#interactive-features-setup)
+- [Data Source Interface](#data-source-interface)
+  - [ChartDataPoint Structure](#chartdatapoint-structure)
+- [Rendering Pipeline](#rendering-pipeline)
+- [Mouse Interaction](#mouse-interaction)
+  - [Supported Events](#supported-events)
+  - [Tooltip Behavior](#tooltip-behavior)
+- [Performance Considerations](#performance-considerations)
+  - [Optimization Features](#optimization-features)
+  - [Best Practices](#best-practices)
+- [Factory Function](#factory-function)
+- [Integration with UltraCanvas](#integration-with-ultracanvas)
+  - [Container Hierarchy](#container-hierarchy)
+  - [Event Propagation](#event-propagation)
+- [Common Issues and Solutions](#common-issues-and-solutions)
+  - [Issue: Chart not displaying data](#issue-chart-not-displaying-data)
+  - [Issue: Tooltips not appearing](#issue-tooltips-not-appearing)
+  - [Issue: Smooth lines look incorrect](#issue-smooth-lines-look-incorrect)
+  - [Issue: Performance degradation with large datasets](#issue-performance-degradation-with-large-datasets)
+- [Related Classes](#related-classes)
+- [Version History](#version-history)
+
 ## Overview
 
 **UltraCanvasLineChartElement** is a sophisticated line chart component within the UltraCanvas framework, designed for rendering interactive line charts with advanced features including smoothing, animations, tooltips, and zoom/pan capabilities.

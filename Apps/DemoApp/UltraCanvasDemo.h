@@ -1,5 +1,9 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.8 - treeFilterInput: a filter field over the component tree,
+//                 with a "Reset" button inside it (OnTreeFilterChanged)
+// Version: 1.0.7 - CreateListViewDashboardExamples is gone: the domain dashboard
+//                 is the last section of CreateListViewExamples' page
 // Version: 1.0.6 - DemoIconPath, SetFlatButtonIcon: flat icons instead of glyphs
 // Version: 1.0.5 - Run(showInfoWindow): the About window can be left out at start
 // Version: 1.0.4 - CreateListViewDashboardExamples: the domain dashboard, ported to
@@ -7,7 +11,7 @@
 // Version: 1.0.3 - CreateDomainTableDemo is gone with UltraCanvasTableDemo.cpp, which
 //                 was in no build
 // Version: 1.0.2
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 //
 // One rule that every example file here follows, because the demo is the
@@ -186,6 +190,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasWindow> mainWindow;
         std::shared_ptr<InfoWindow> infoWindow;
         std::shared_ptr<UltraCanvasTreeView> categoryTreeView;
+        std::shared_ptr<UltraCanvasTextInput> treeFilterInput;   // filters categoryTreeView
         std::shared_ptr<UltraCanvasContainer> mainContainer;  // Main container for display area
         std::shared_ptr<DemoHeaderContainer> headerContainer;  // Header with title and buttons
         std::shared_ptr<UltraCanvasContainer> displayContainer;  // Content display area
@@ -230,6 +235,9 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLERS =====
         void OnTreeNodeSelected(TreeNode* node);
+        // The filter field's text changed: narrow the tree to it (empty: the
+        // whole tree again) and say in the status line how much it found.
+        void OnTreeFilterChanged(const std::string& text);
         void OnWindowResize(int newWidth, int newHeight);
 
         // ===== UTILITY METHODS =====
@@ -277,7 +285,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTableViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSpreadsheetExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateListViewDashboardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuConfigExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();

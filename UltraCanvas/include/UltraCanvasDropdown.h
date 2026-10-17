@@ -1,6 +1,11 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - type-ahead: letters typed in the open list go to the item starting with them
+// Last Modified: 2026-10-15 - takes the keyboard focus (Tab, a click); SetAcceptsFocus
+// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item
+// Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
+// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
 
@@ -17,6 +22,7 @@
 #include <functional>
 #include <memory>
 #include <algorithm>
+#include <chrono>
 #include <set>
 
 namespace UltraCanvas {
@@ -32,6 +38,9 @@ namespace UltraCanvas {
         std::string text;
         std::string value;
         std::string iconPath;
+        // Shown when the pointer rests on the item in the open list (the
+        // list's ToolTipRole); empty shows none.
+        std::string tooltip;
         bool enabled = true;
         bool separator = false;
         bool selected = false;  // for multi-selection support
@@ -91,6 +100,12 @@ namespace UltraCanvas {
         // Icon dimensions
         float iconSize = 16.0f;
         float iconPadding = 4.0f;
+
+        // The button shows the selected item's icon and text. Off, it shows
+        // the icon alone, centred beside the arrow - a compact picker whose
+        // list still names every item (and whose accessible value is still
+        // the selected item's text).
+        bool buttonShowsText = true;
 
         // Checkbox dimensions (for multi-select)
         float checkboxSize = 14.0f;
@@ -165,9 +180,18 @@ namespace UltraCanvas {
         bool dropdownOpen = false;
         bool buttonPressed = false;
 
+        // Type-ahead in the open list: what has been typed, and when the last
+        // letter came (a pause starts a new prefix).
+        std::string typeAheadPrefix;
+        std::chrono::steady_clock::time_point typeAheadTime;
+        bool HandleTypeAhead(const UCEvent& event);
+
         // Multi-selection support
         bool multiSelectEnabled = false;
         std::set<int> selectedIndices;
+
+        // Takes the keyboard focus (Tab, a click), as a button does.
+        bool canAcceptFocus = true;
 
         DropdownStyle style;
 
@@ -221,6 +245,14 @@ namespace UltraCanvas {
         std::vector<DropdownItem> GetSelectedItems() const;
         int GetSelectedCount() const { return static_cast<int>(selectedIndices.size()); }
 
+        // ===== KEYBOARD FOCUS =====
+        // A dropdown takes the focus like a button: Tab reaches it and a click
+        // gives it the focus. Focused, Down or Space opens it, and while it is
+        // open the keys move through the list and Return chooses. Off, it is
+        // left out of the Tab order and only the mouse opens it.
+        bool AcceptsFocus() const override { return canAcceptFocus; }
+        void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
+
         // ===== DROPDOWN STATE =====
         void OpenDropdown();
         void CloseDropdown();
@@ -249,6 +281,9 @@ namespace UltraCanvas {
     private:
         void CreatePopupListView();
         void WireListViewCallbacks();
+        // Choose a row of the list - a click, or Return on the highlight:
+        // select it and close (single), or toggle it (multi-selection).
+        void ChooseRow(int row);
         void ApplyStyleToListView();
         void CalculateAndSetPopupSize();
         Point2Df CalculatePopupPosition();

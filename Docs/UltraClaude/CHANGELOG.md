@@ -1,3 +1,11 @@
+#### 2026-10-15 *0.4.2*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraClaude.exe` is a GUI program now. Beside it,
+  `UltraClaude.com` is its console companion, which a prompt runs for the
+  bare name: `UltraClaude --print` starts the `.exe`, waits for it and
+  returns its exit code, as before. Typed as `UltraClaude.exe`, the prompt
+  no longer waits (framework changelog: `windows-console-companions`).
+
 #### 2026-10-12 *0.4.1*
 - **One UltraClaude at a time.** Starting UltraClaude while it is already
   running brings the open window forward (restored if minimised; an open

@@ -1,19 +1,18 @@
 {
   "$comment": [
     "Dependency manifest for cross-compiling UltraCanvas's rendering stack to",
-    "Android. Consumed by scripts/android-bootstrap-sysroot.sh.",
+    "Android. Consumed by scripts/android-bootstrap-sysroot.sh, which",
+    ".github/workflows/android-build.yml runs for arm64-android.",
     "",
-    "UNVERIFIED: no NDK exists in the environment this was written in, so this",
-    "manifest has never been resolved and no port here has been built for",
-    "arm64-android. It encodes which libraries the build actually needs (each",
-    "one is a pkg_check_modules call in UltraCanvas/CMakeLists.txt), not a",
-    "proven-working set. Expect to iterate: some ports may need patches or a",
-    "feature disabled for Android.",
-    "",
-    "Deliberately absent: libvips (~10 transitive libs; the build defaults it",
-    "off for Android), librsvg (Rust + gobject), GTK3/X11 (never referenced by",
-    "the Android platform arm), GStreamer (video is off; MediaCodec is the",
-    "right backend later). See AndroidPortInvestigation.md sections 4.1-4.2."
+    "Each entry is a pkg_check_modules call in UltraCanvas/CMakeLists.txt.",
+    "libvips is one of them: it is part of UltraCanvas on every platform, with",
+    "the codecs the desktop pipeline reads and writes (JPEG, PNG, WebP, TIFF),",
+    "EXIF and colour management, GIF (read: libvips' built-in decoder) and Netpbm;",
+    "GIF is written by the framework's own saver, ICO and QOI by the framework's",
+    "plug-ins. Deliberately absent: librsvg (Rust + gobject; SVG goes through",
+    "the core's vector renderer), GTK3/X11 (never referenced by the Android",
+    "platform arm), GStreamer (video uses the NDK's MediaCodec). See",
+    "AndroidPortInvestigation.md sections 4.1-4.2."
   ],
   "name": "ultracanvas-android",
   "version-string": "0.1.0",
@@ -26,7 +25,21 @@
     "harfbuzz",
     "glib",
     "tinyxml2",
-    "fmt"
+    "fmt",
+    {
+      "name": "libvips",
+      "features": [
+        "cplusplus",
+        "exif",
+        "jpeg",
+        "lcms",
+        "nsgif",
+        "png",
+        "ppm",
+        "tiff",
+        "webp"
+      ]
+    }
   ],
   "features": {
     "net": {
@@ -36,7 +49,10 @@
         "c-ares",
         {
           "name": "curl",
-          "features": [ "openssl", "websockets" ]
+          "features": [
+            "openssl",
+            "websockets"
+          ]
         }
       ]
     }

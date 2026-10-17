@@ -2,6 +2,53 @@
 
 <!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Class Architecture](#class-architecture)
+  - [Main Classes](#main-classes)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [TreeNodeIcon Structure](#treenodeicon-structure)
+  - [TreeNodeData Structure](#treenodedata-structure)
+  - [Columnar Layout: `UltraCanvasColumnsTreeView`](#columnar-layout-ultracanvascolumnstreeview)
+  - [Sorting Modes](#sorting-modes)
+- [API Reference](#api-reference)
+  - [Constructor](#constructor)
+  - [Tree Structure Management](#tree-structure-management)
+  - [Selection Management](#selection-management)
+  - [Expansion Management](#expansion-management)
+  - [Filtering](#filtering)
+  - [Visual Properties](#visual-properties)
+  - [Check Flags (Checkable Nodes)](#check-flags-checkable-nodes)
+  - [Scroll-to-Top and Scroll-to-Selection Buttons](#scroll-to-top-and-scroll-to-selection-buttons)
+  - [Measuring the Tree](#measuring-the-tree)
+  - [Color Properties](#color-properties)
+  - [Event Callbacks](#event-callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic Tree Creation](#basic-tree-creation)
+  - [File Explorer Example](#file-explorer-example)
+  - [Event Handling](#event-handling)
+  - [Using TreeViewBuilder](#using-treeviewbuilder)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Mouse Interaction](#mouse-interaction)
+  - [Click Behaviors](#click-behaviors)
+  - [Expand/Collapse Button](#expandcollapse-button)
+  - [Check Flag](#check-flag)
+  - [Scrolling](#scrolling)
+- [Rendering Details](#rendering-details)
+  - [Visual Elements](#visual-elements)
+  - [Performance Optimizations](#performance-optimizations)
+- [TreeNode Class Methods](#treenode-class-methods)
+- [Default Values](#default-values)
+- [Platform Integration](#platform-integration)
+- [Best Practices](#best-practices)
+- [Known Limitations](#known-limitations)
+- [Version History](#version-history)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
@@ -22,10 +69,11 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Connecting Lines**: Dotted or solid parent/child connectors, root level included
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
-- **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
+- **Scroll-to-Top / Scroll-to-Selection Buttons**: Floating "move to the top" and "go to the selected entry" affordances for long trees
 - **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
+- **Filtering**: Narrow the tree to the rows matching a text, expanded to them, and put it back afterwards
 - **Event System**: Comprehensive event callbacks for user interactions
 
 ## Class Architecture
@@ -408,6 +456,57 @@ tree->ExpandAll();
 tree->onNodeSelected = [](TreeNode* node) { ShowPage(node->data.nodeId); };
 ```
 
+### Filtering
+
+```cpp
+void SetFilterText(const std::string& text);
+void ClearFilter();                          // SetFilterText("")
+const std::string& GetFilterText() const;
+bool IsFiltered() const;
+int GetFilterMatchCount() const;             // rows whose own text matched
+```
+
+`SetFilterText` narrows the tree to the rows whose text contains `text` -
+ignoring case, in any script - and the rows above them, which it expands so
+every match is on screen. A row that matches keeps the rows below it: a
+matching heading stays as it was, and its entries are there when it is
+expanded. Every other row is hidden, not removed, and the tree scrolls to the
+top. The root is the tree's frame, not a row to match: its title never keeps
+the whole tree on show.
+
+An empty text ends the filter. Every row comes back, every node takes back
+the expanded state it had before the filter began, and the selected row -
+perhaps one picked while filtering - is scrolled into view, its parents
+opened. Setting the same text again applies it again, to rows added since.
+
+The filter hides rows with its own flag (`TreeNode::hiddenByFilter`), apart
+from `TreeNodeData::visible`: a row the application hid neither matches nor
+comes back when the filter ends. `TreeNode::IsShown()` is both together.
+Only the nodes in the tree are searched - a lazily-loaded node's children
+are found once they are loaded - and no expand callback fires for the rows
+the filter opens.
+
+A filter field over a tree is a text input with its clear button, here with
+the word "Reset" on it (see [UltraCanvasTextInput](UltraCanvasTextInputExamples.md#clear-button)):
+
+<!-- doc-check:
+std::shared_ptr<UltraCanvasTreeView> tree;
+std::shared_ptr<UltraCanvasLabel> status;
+-->
+```cpp
+auto filter = std::make_shared<UltraCanvasTextInput>("TreeFilter", 0, 0, 300, 30);
+filter->SetPlaceholder("Filter components");
+filter->SetShowClearButton(true);
+filter->SetClearButtonText("Reset");
+filter->onTextChanged = [tree, status](const std::string& text) {
+    tree->SetFilterText(text);
+    status->SetText(text.empty() ? std::string()
+                                 : std::to_string(tree->GetFilterMatchCount()) + " found");
+};
+```
+
+The DemoApp's component tree has this field over it (`Apps/DemoApp/UltraCanvasDemo.cpp`).
+
 ### Visual Properties
 
 #### Row Height
@@ -535,12 +634,14 @@ backupTree->onNodeCheckChanged = [backupTree](TreeNode*, TreeCheckState) {
 };
 ```
 
-### Scroll-to-Top Button
+### Scroll-to-Top and Scroll-to-Selection Buttons
 
-When a tree grows past its viewport, getting back to the root can take a lot of
-wheel turns. The tree therefore draws a small floating **"move to the top"**
-button over the bottom-right corner of its content area once the view has been
-scrolled down:
+When a tree grows past its viewport, getting back to the root - or back to the
+row you selected - can take a lot of wheel turns. The tree therefore draws two
+small floating buttons over the bottom-right corner of its content area: a
+**"move to the top"** button once the view has been scrolled down, and directly
+above it a **"go to the selected entry"** button (a dot with an arrow pointing
+at it) while the selected row is out of view.
 
 ```cpp
 void SetShowScrollToTopButton(bool show);
@@ -553,6 +654,14 @@ bool    IsScrollToTopButtonActive() const;   // on screen right now?
 Rect2Di GetScrollToTopButtonRect() const;   // element-local rect (empty when inactive)
 
 void ScrollToTop();                          // what the button does; callable directly
+
+void SetShowScrollToSelectionButton(bool show);
+bool GetShowScrollToSelectionButton() const;
+
+bool    IsScrollToSelectionButtonActive() const;   // on screen right now?
+Rect2Di GetScrollToSelectionButtonRect() const;   // element-local rect (empty when inactive)
+
+void ScrollToSelection();                    // what that button does; callable directly
 ```
 
 The other scrolling calls bring a node into view or move the view by pixels:
@@ -571,23 +680,35 @@ Behaviour:
   visible area, so a tree that overflows by a row or two never grows a button.
 - **Appears only once the user has scrolled down**: while the first row is on
   screen there is nothing to go back to, so the button stays hidden.
-- **Dodges the end of the list**: as the view approaches the bottom, the button
-  slides up so it never covers the last `TreeScrollToTopStyle::keepClearRows`
-  (3 by default) rows. Away from the bottom it rests in the corner.
+- **Always rests in the corner**, also at the end of the list.
 - **Never overlaps the vertical scrollbar** — it is placed to the left of it.
 - Clicking it jumps back to the first row, animated when the scrollbar has
   smooth scrolling enabled. The click is consumed by the button, so the row
   underneath is neither selected nor expanded.
 
-`UltraCanvasColumnsTreeView` inherits the button, and it is placed below the
-optional column header band.
+The scroll-to-selection button:
+
+- **Enabled by default.** `SetShowScrollToSelectionButton(false)` turns it off.
+- **Sits directly above the top button's corner slot** - in the same place
+  whether or not the top button is showing, so it never jumps under the
+  pointer.
+- **Appears only while the selected row is not fully on screen**: scrolled
+  away, or hidden under a collapsed parent. With no selection, or a selected
+  row hidden by a filter, it stays hidden.
+- Clicking it opens the collapsed parents of the first selected node and
+  brings its row to the middle of the view, animated when the scrollbar has
+  smooth scrolling enabled. The selection itself does not change, and the
+  click does not reach the row underneath.
+- It shares `TreeScrollToTopStyle` with the top button.
+
+`UltraCanvasColumnsTreeView` inherits both buttons, and they are placed below
+the optional column header band.
 
 ```cpp
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
-    int   margin          = 8;     // gap between the button and the content edges
-    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
-    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    int   margin          = 8;     // gap between a button and the content edges / the other button
+    int   minHiddenRows   = 3;     // top button: show only when MORE than this many rows are out of view
     float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
     Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);
     Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
@@ -596,20 +717,21 @@ struct TreeScrollToTopStyle {
 };
 ```
 
-Example — a larger, lighter button that keeps five rows clear:
+Example — larger, blue buttons that wait for five hidden rows:
 
 ```cpp
 auto tree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
 
 TreeScrollToTopStyle style;
 style.size            = 32;
-style.keepClearRows   = 5;
+style.minHiddenRows   = 5;
 style.background      = Color(0x20, 0x60, 0xC0, 0xC0);
 style.hoverBackground = Color(0x20, 0x60, 0xC0, 0xF0);
 tree->SetScrollToTopButtonStyle(style);
 
-// ...or switch the affordance off entirely:
+// ...or switch the affordances off entirely:
 // tree->SetShowScrollToTopButton(false);
+// tree->SetShowScrollToSelectionButton(false);
 ```
 
 ### Measuring the Tree
@@ -793,7 +915,8 @@ auto treeView = TreeViewBuilder("MyTree", 10, 10, 300, 400)
 ```
 
 The builder also offers `SetShowRootLines()`, `SetShowCheckboxes()`,
-`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()` and the callback setters
+`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()`,
+`SetShowScrollToSelectionButton()` and the callback setters
 `OnNodeSelected()`, `OnNodeDoubleClicked()`, `OnNodeExpanded()`,
 `OnNodeCollapsed()`, `OnNodeRightClicked()` and `OnNodeCheckChanged()`.
 
@@ -897,12 +1020,16 @@ public:
     TreeNode* parent;
     std::vector<std::unique_ptr<TreeNode>> children;
 
+    bool hiddenByFilter = false;        // set by UltraCanvasTreeView::SetFilterText
+    bool expandedBeforeFilter = false;  // the state the filter's end puts back
+
     // Child management
     TreeNode* AddChild(const TreeNodeData& childData);
     void RemoveChild(const std::string& nodeId);
     TreeNode* FindChild(const std::string& nodeId);
     TreeNode* FindDescendant(const std::string& nodeId);
     TreeNode* FirstChild();
+    TreeNode* FirstShownChild();        // the first child IsShown(): under a filter, maybe not the first
 
     // Sorting of the direct children (recursive=true: every level below too)
     void SortChildNodes(bool recursive = false, bool ascending = true);   // alphabetic
@@ -915,7 +1042,8 @@ public:
     void Toggle();
     bool HasChildren() const;
     bool IsExpanded() const;
-    bool IsVisible() const;
+    bool IsVisible() const;   // shown, and every parent shown and expanded
+    bool IsShown() const;     // data.visible and not hidden by a filter
 
     // Utility methods
     int GetVisibleChildCount() const;

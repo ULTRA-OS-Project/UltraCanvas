@@ -265,8 +265,15 @@ Rect2Df UltraCanvasRichTextEdit::ToElement(const Rect2Df& r) const {
                    r.width * zoom, r.height * zoom);
 }
 
+void UltraCanvasRichTextEdit::SetZoomRange(float minimum, float maximum) {
+    if (!(minimum > 0.0f) || !(maximum >= minimum)) return;
+    minZoom = minimum;
+    maxZoom = maximum;
+    SetZoom(zoom);
+}
+
 void UltraCanvasRichTextEdit::SetZoom(float factor) {
-    factor = std::clamp(factor, 0.25f, 5.0f);
+    factor = std::clamp(factor, minZoom, maxZoom);
     if (std::abs(factor - zoom) < 0.001f) return;
     // The scroll offset is in document pixels, so the view keeps its place.
     zoom = factor;
@@ -4120,6 +4127,7 @@ UC_RTE_FORMAT_ACTION(ClearFormatting(), editor.ClearFormatting())
 UC_RTE_FORMAT_ACTION(SetFontFamily(const std::string& family), editor.SetFontFamily(family))
 UC_RTE_FORMAT_ACTION(SetFontSize(float pt), editor.SetFontSize(pt))
 UC_RTE_FORMAT_ACTION(SetTextColor(const std::string& hexColor), editor.SetTextColor(hexColor))
+UC_RTE_FORMAT_ACTION(ApplyCharFormat(const RichCharFormatDelta& delta), editor.ApplyCharFormat(delta))
 UC_RTE_FORMAT_ACTION(SetLink(const std::string& target), editor.SetLink(target))
 UC_RTE_FORMAT_ACTION(SetHeadingLevel(int level), editor.SetHeadingLevel(level))
 UC_RTE_FORMAT_ACTION(SetAlignment(RichTextAlign align), editor.SetAlignment(align))

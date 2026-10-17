@@ -35,6 +35,8 @@ public:
     std::string DisplayName() const override { return "OneDrive"; }
     ProviderCapabilities Capabilities() const override;
     UltraNetOAuth2Config OAuthConfig(const OAuthApp& app) const override;
+    // At the sign-in service this is the identity provider's "microsoft".
+    std::string SignInServiceProviderId() const override { return "microsoft"; }
 
     Result Verify(const Account& account, const Credentials& credentials) override;
     Result AccountInfo(const Account& account, const Credentials& credentials,

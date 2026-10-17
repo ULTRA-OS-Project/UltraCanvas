@@ -48,6 +48,7 @@ below it cannot overwrite the entry's own name or command.
 | `startupWMClass` | `StartupWMClass=` — the `WM_CLASS` its windows carry, which ties a running window to its entry |
 | `terminal` / `noDisplay` / `hidden` | the flags, reported rather than acted on |
 | `shortcutPath` | not from a desktop entry: the Windows shortcut (`.lnk`) an entry was read from when `UltraCanvasDesktopShell::ListApplications` lists the Start menu; launching opens it as Explorer does. Empty for a desktop entry |
+| `appUserModelId` | not from a desktop entry: the AppUserModelID of a Microsoft Store (packaged) application `ListApplications` lists on Windows (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), which `LaunchApplication` starts as the Start menu does; `program` is empty for one. Empty for anything else |
 
 **Localization** follows the specification: `Name[de_DE]` beats `Name[de]`
 beats `Name`, whichever order the file lists them in, matched against

@@ -15,6 +15,22 @@ is drawn from the one above it. If your stages do not nest, reach for
 inverted pyramid, which looks like a funnel but still means "parts of a whole" —
 or for `UltraCanvasPopulationChart` or a plain bar chart.
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data](#data)
+  - [Derived metrics](#derived-metrics)
+- [Shape modes](#shape-modes)
+- [Scale modes](#scale-modes)
+- [Labels](#labels)
+- [Colour](#colour)
+- [Stacked funnels](#stacked-funnels)
+- [Analysis overlays](#analysis-overlays)
+- [Interaction](#interaction)
+- [Animation](#animation)
+- [Choosing the settings](#choosing-the-settings)
+- [Demo tabs](#demo-tabs)
+
 ## Quick start
 
 ```cpp

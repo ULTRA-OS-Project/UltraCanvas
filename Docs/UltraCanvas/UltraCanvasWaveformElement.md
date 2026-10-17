@@ -6,6 +6,15 @@ movable **playhead**. It is module-agnostic: it consumes a neutral
 `WaveformChannelData` struct and carries no dependency on the audio backend, so
 it can visualise any source of summarised sample data.
 
+## Contents
+
+- [Status](#status)
+- [Data model](#data-model)
+- [Public API surface](#public-api-surface)
+  - [AudioFX adapter](#audiofx-adapter)
+  - [From a media file, through VideoFX](#from-a-media-file-through-videofx)
+- [Wiring to the audio player](#wiring-to-the-audio-player)
+
 ## Status
 
 Fully implemented. Pure UI element (`UltraCanvasUIElement`), rendered through the

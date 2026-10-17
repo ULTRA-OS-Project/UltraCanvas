@@ -5,14 +5,17 @@
 # VideoFX is a shared library of its own (libVideoFX.so, libVideoFX.dylib,
 # VideoFX.dll / libVideoFX.dll) - not absorbed into the UltraCanvas core, so an
 # application that does no video never loads it or FFmpeg.
-# Version: 0.13.0
-# Last Modified: 2026-10-13
+# Version: 0.16.0 - the engine reports 0.16.0 (effects on image and video overlays)
+# Version: 0.15.1 - no experimental encoder is chosen, listed or reported (FindEncoderByName)
+# Version: 0.15.0 - the engine reports 0.15.0 (the Fill crop around a clip's faces)
+# Version: 0.14.1 - on Windows the DLL and videofx.exe go beside the applications
+# Last Modified: 2026-10-16
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.14.0
+    VERSION 0.16.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
@@ -130,14 +133,30 @@ target_include_directories(VideoFX
 # 0.5.0 and only a file a release changes moves to that release's number.
 target_compile_definitions(VideoFX PRIVATE VIDEOFX_VERSION_STRING="${PROJECT_VERSION}")
 set_target_properties(VideoFX PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Where the DLL, the videofx tool and the tests that load the DLL go. Windows
+# looks for a DLL in the folder of the executable that loads it, so on Windows
+# that is the folder the build puts the applications in
+# (CMAKE_RUNTIME_OUTPUT_DIRECTORY, the build root, beside UltraVideo.exe and
+# the core DLL). The DLL went to bin/ until 0.14.1, and UltraVideo.exe - in
+# the build tree, and in the package, which takes the build root's DLLs -
+# stopped at start with "libVideoFX.dll was not found". Elsewhere bin/: the
+# shared library itself goes to lib/ there (LIBRARY_OUTPUT_DIRECTORY), and an
+# executable "videofx" cannot sit in the build root beside the VideoFX/ folder
+# on a case-insensitive file system (macOS); "videofx.exe" can.
+if(WIN32 AND CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+    set(VIDEOFX_RUNTIME_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+else()
+    set(VIDEOFX_RUNTIME_DIR ${CMAKE_BINARY_DIR}/bin)
+endif()
+
 if(VIDEOFX_BUILD_SHARED)
     # 0.x: every minor version may change the ABI, so it is in the soname
-    # (libVideoFX.so.0.9). The DLL goes to bin/ beside videofx.exe and
-    # VideoFXTest.exe, where Windows looks for it.
+    # (libVideoFX.so.0.9).
     set_target_properties(VideoFX PROPERTIES
         VERSION ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
     )
     if(WIN32)
         # No __declspec(dllexport) in the sources, as in the core: export
@@ -155,10 +174,12 @@ if(VIDEOFX_FFMPEG_FOUND)
     target_compile_definitions(VideoFX PUBLIC VIDEOFX_HAS_FFMPEG=1)
 endif()
 
-# Exported so parents (tests, apps) can tell a working engine from the stub
+# Exported so parents (tests, apps) can tell a working engine from the stub,
+# and put an executable that loads the DLL where Windows finds it
 get_directory_property(VIDEOFX_HAS_PARENT PARENT_DIRECTORY)
 if(VIDEOFX_HAS_PARENT)
     set(VIDEOFX_FFMPEG_FOUND ${VIDEOFX_FFMPEG_FOUND} PARENT_SCOPE)
+    set(VIDEOFX_RUNTIME_DIR ${VIDEOFX_RUNTIME_DIR} PARENT_SCOPE)
 endif()
 
 # ============================================================================
@@ -168,12 +189,13 @@ endif()
 # (macOS, Windows) "videofx" and the library "VideoFX" would share one
 # CMakeFiles/<target>.dir, and the Makefile build stops with "No rule to make
 # target VideoFX/CMakeFiles/VideoFX.dir/depend". For the same reason the
-# executable goes to bin/ rather than next to the build tree's VideoFX/ folder.
+# executable goes to bin/ rather than next to the build tree's VideoFX/ folder,
+# except on Windows, where it goes beside the DLL (VIDEOFX_RUNTIME_DIR above).
 if(VIDEOFX_BUILD_TOOL)
     add_executable(videofx_cli tools/videofx_cli.cpp)
     set_target_properties(videofx_cli PROPERTIES
         OUTPUT_NAME videofx
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
     )
     target_link_libraries(videofx_cli PRIVATE VideoFX::VideoFX)
     if(WIN32)

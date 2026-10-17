@@ -1,5 +1,38 @@
 # UltraCanvasListView Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Model / Delegate / Selection wiring](#model--delegate--selection-wiring)
+  - [Styling](#styling)
+  - [Column widths](#column-widths)
+  - [Scrolling](#scrolling)
+  - [Tooltips](#tooltips)
+- [Model Reference](#model-reference)
+  - [Data roles](#data-roles)
+  - [IListModel interface](#ilistmodel-interface)
+  - [UltraCanvasSimpleListModel (single column)](#ultracanvassimplelistmodel-single-column)
+  - [UltraCanvasMultiColumnListModel](#ultracanvasmulticolumnlistmodel)
+- [Delegate Reference](#delegate-reference)
+  - [IItemDelegate](#iitemdelegate)
+  - [UltraCanvasDefaultListDelegate](#ultracanvasdefaultlistdelegate)
+- [Selection Reference](#selection-reference)
+- [Events / Callbacks](#events--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Simple single-selection list](#simple-single-selection-list)
+  - [Multi-column list with header](#multi-column-list-with-header)
+  - [Styled list with alternating rows and multi-select](#styled-list-with-alternating-rows-and-multi-select)
+  - [A list on a section card](#a-list-on-a-section-card)
+  - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
+  - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasListView** is a Model-View-Delegate list widget in the UltraCanvas framework. It cleanly separates data (the *model*), per-row drawing (the *delegate*), and selection state (the *selection*), allowing simple single-column lists, multi-column tables with headers, icon lists, and fully custom-painted rows to all share the same view class.
@@ -8,7 +41,7 @@
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -213,9 +246,13 @@ public:
 ```cpp
 void ScrollToRow(int row);
 void EnsureRowVisible(int row);
+void SetFocusedRow(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+`SetFocusedRow` is what the arrow keys do, from code: the keyboard's row and
+the selection go to `row`, which is scrolled into view, and Return then
+activates it (a dropdown's type-ahead moves its open list this way).
 Called before the view has been laid out (no height yet), `EnsureRowVisible`
 remembers the row and reveals it once the view has its size, so a list filled
 and selected while its window is still being built opens with that row in view.
@@ -469,6 +506,10 @@ std::function<void(int row)> onItemDoubleClicked;
 std::function<void(int row)> onItemActivated;
 std::function<void(const std::vector<int>&)> onSelectionChanged;
 std::function<void(int row)> onItemHovered;
+// A key pressed in the view, before the view's own handling (the arrows,
+// Return): true consumes it. A dropdown's open list routes typed letters to
+// the dropdown's type-ahead this way.
+std::function<bool(const UCEvent&)> onKeyDown;
 
 // Cell-level (multi-column aware). posInCell is relative to the cell's
 // top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
@@ -665,6 +706,27 @@ styledList->onSelectionChanged = [statusLabel, styledModel](const std::vector<in
 };
 ```
 
+### A list on a section card
+
+A list inside a `GroupBoxVisualStyle::SectionCard()` (see
+`UltraCanvasGroupBoxExamples.md`) takes the framework's list-row colours: a
+soft grey under the pointer, a light tint of the accent blue behind the
+selected row - the rows of UltraMail's message list and UltraPaint's layer
+list. On the light tint the selected row keeps its dark text.
+
+```cpp
+auto cardList = std::make_shared<UltraCanvasListView>("CardList", 0, 0, 260, 200);
+ListViewStyle cardStyle;
+cardStyle.backgroundColor          = Colors::SectionCardBackground;
+cardStyle.hoverBackgroundColor     = Colors::ListRowHover;
+cardStyle.selectionBackgroundColor = Colors::ListRowSelected;
+cardList->SetStyle(cardStyle);
+
+auto cardDelegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+cardDelegate->SetSelectedTextColor(Colors::TextDefault);
+cardList->SetDelegate(cardDelegate);
+```
+
 ### Icon list with a customized delegate
 
 ```cpp
@@ -697,14 +759,14 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 
 ### A custom delegate with clickable cells (the domain dashboard)
 
-The DemoApp's *Domain Dashboard* page
-(`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) is a table whose
+The last section of the DemoApp's *List View* page, *Custom Delegate: Domain
+Dashboard* (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`), is a table whose
 cells are more than text: a link, a status, an action, a sparkline, a figure, a
 plan and a row-menu button. A list view does not hold elements per row; one
 `IItemDelegate` paints every cell from the model, and the view's cell
 callbacks make parts of the cells clickable. That is what keeps it fast at any
-size: only the rows on screen are painted (the page's *Add 1,000 domains*
-button shows it).
+size: only the rows on screen are painted (the *Add 1,000 domains* button
+under the table shows it).
 
 The model keeps records and answers text and tooltips per column; the delegate
 reads the record directly for what is not text (the sparkline's history):
@@ -841,6 +903,13 @@ rebuilt or re-sorted the rows and selected the one the user was on, Down moves
 to the row below that one. `ResetSelection()` clears the focus as well, so the
 first Down after it selects the first row.
 
+A list view takes the keyboard focus (Tab, a click) by default. A list that is
+part of another element turns that off with `SetAcceptsFocus(false)`, so the
+focus stays with the element - the dropdown does this for its popup list, which
+would otherwise take the focus on a click and then close with it. The keys
+above still work such a list while the window hands them to it (an open popup
+gets them when nothing focused takes them).
+
 ## Best Practices
 
 1. **Keep the model alive for as long as the view uses it.** The view stores a raw pointer; if the model is destroyed first, the view will read freed memory.
@@ -851,7 +920,7 @@ first Down after it selects the first row.
 
 ## See Also
 
-- DemoApp → *Domain Dashboard* (`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) — the custom-delegate example above, complete
+- DemoApp → *List View*, section 5 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
 - [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display

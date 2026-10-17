@@ -9,3 +9,11 @@
   shared form. The `CloudService&` form stays, with the caller keeping the
   service alive as before. UltraMail moves to the shared form (UltraMail
   changelog).
+- **`CloudService::TransfersInProgress`** lists the uploads and downloads a
+  service is running, on any thread - each with its account, local file and
+  remote path. `Upload`, `Download` and `UploadAndShare` count from the
+  moment they start until they return. A host asks before it quits: a
+  transfer ends with the process and the file does not arrive. UltraMail uses
+  it to ask *An upload is still running — quit anyway?* when its last window
+  closes during one (UltraMail changelog). `UltraCloudTests`: an upload held
+  inside a fake server is listed, and the list empties when it returns.

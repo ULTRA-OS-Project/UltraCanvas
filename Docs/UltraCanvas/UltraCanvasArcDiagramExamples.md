@@ -1,5 +1,34 @@
 # UltraCanvasArcDiagram Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [ArcLegendEntry](#arclegendentry)
+  - [ArcNode](#arcnode)
+  - [ArcEdge](#arcedge)
+  - [ArcDiagramStyle (selected fields)](#arcdiagramstyle-selected-fields)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Node API](#node-api)
+  - [Edge API](#edge-api)
+  - [Style & Selection](#style--selection)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Character co-occurrence — degree-sized nodes, vertical labels, semicircles](#character-co-occurrence-—-degree-sized-nodes-vertical-labels-semicircles)
+  - [Canonical reference — axis arrow + color legend](#canonical-reference-—-axis-arrow--color-legend)
+  - [Directed flow — mid-arc arrowheads and self-loops](#directed-flow-—-mid-arc-arrowheads-and-self-loops)
+  - [Genomics — parallel bundles above and below](#genomics-—-parallel-bundles-above-and-below)
+  - [Reporting node and edge selection](#reporting-node-and-edge-selection)
+- [Render Order](#render-order)
+- [Encoding Cheat Sheet](#encoding-cheat-sheet)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasArcDiagram** lays nodes out on a single straight baseline (horizontal or vertical) and draws edges as cubic Bezier arcs curving above and/or below the baseline. Arc height encodes span; arc width and (optionally) opacity encode edge weight; node size can be fixed, scaled by value, or scaled by degree count. The component supports proportional, fixed, sqrt-scaled, and perfect-semicircle arc heights, parallel edge bundles, self-loops, mid-arc or end-of-arc arrowheads, vertical 90°-rotated labels, an axis arrow extending past the last node, and an optional color legend.

@@ -1121,6 +1121,100 @@ else()
     message(STATUS "  MouseClickBubblingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PICKER DRAG TEST =====
+# The SV marker is grabbed where it overhangs the area, a press on it keeps
+# the colour, and a drag (SV area or hue ring) keeps following the pointer -
+# and ends on its release - outside the picker. Opens a window, so it skips
+# itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerDragTest...")
+    add_executable(ColorPickerDragTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerDragTest.cpp
+    )
+    target_include_directories(ColorPickerDragTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerDragTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerDragTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerDragTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerDragTest COMMAND ColorPickerDragTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerDragTest")
+else()
+    message(STATUS "  ColorPickerDragTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== COLOUR PICKER DESIGN SELECTOR TEST =====
+# The optional dropdown in the picker's top-right corner: three designs with
+# icons that load, the selection following SetWheelStyle, a choice switching
+# the design and reported once, hidden during a drag on a rectangular
+# design's colour area and shown again on release, kept beside the circle.
+# Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerDesignSelectorTest...")
+    add_executable(ColorPickerDesignSelectorTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerDesignSelectorTest.cpp
+    )
+    target_include_directories(ColorPickerDesignSelectorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerDesignSelectorTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerDesignSelectorTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerDesignSelectorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerDesignSelectorTest COMMAND ColorPickerDesignSelectorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerDesignSelectorTest")
+else()
+    message(STATUS "  ColorPickerDesignSelectorTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== COLOUR PICKER MODEL DROPDOWN TEST =====
+# The HSV/HSL/RGB selector in Dropdown mode is a real UltraCanvasDropdown
+# child (it was painted by hand): its entries and their tooltips, its place
+# at the right of the preview row, a choice switching the model, and the tab
+# bar hiding it. Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerModelDropdownTest...")
+    add_executable(ColorPickerModelDropdownTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerModelDropdownTest.cpp
+    )
+    target_include_directories(ColorPickerModelDropdownTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerModelDropdownTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerModelDropdownTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerModelDropdownTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerModelDropdownTest COMMAND ColorPickerModelDropdownTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerModelDropdownTest")
+else()
+    message(STATUS "  ColorPickerModelDropdownTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DROPDOWN KEYBOARD TEST =====
+# Down / Up / Return choose an item of an open dropdown; Escape keeps the
+# choice. The dropdown takes the keyboard focus (Tab, a click, Down / Space to
+# open), keeps it while its list is open, and SetAcceptsFocus(false) leaves it
+# out of the Tab order.
+# Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DropdownKeyboardTest...")
+    add_executable(DropdownKeyboardTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DropdownKeyboardTest.cpp
+    )
+    target_include_directories(DropdownKeyboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DropdownKeyboardTest PRIVATE cxx_std_20)
+    target_link_libraries(DropdownKeyboardTest PRIVATE UltraCanvas)
+    set_target_properties(DropdownKeyboardTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DropdownKeyboardTest COMMAND DropdownKeyboardTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DropdownKeyboardTest")
+else()
+    message(STATUS "  DropdownKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILE DIALOG TEST =====
 # The name a Save hands back (the chosen type's extension, always run), and
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,
@@ -1374,6 +1468,12 @@ message(STATUS "  Building EBookArchiveTest...")
 
 # miniz is C; the top-level project only declares C++.
 enable_language(C)
+# glibc's 64-bit file calls for miniz, as UltraCanvas/CMakeLists.txt explains:
+# without them it warns (#pragma message) in every test that compiles it.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_property(SOURCE ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+                 APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+endif()
 
 add_executable(EBookArchiveTest
     ${CMAKE_CURRENT_SOURCE_DIR}/EBookArchiveTest.cpp
@@ -2067,6 +2167,7 @@ add_executable(Model3DSTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # FormatFloatClassic
 )
 target_include_directories(Model3DSTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -2285,6 +2386,7 @@ add_executable(ModelMS3DTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # FormatFloatClassic
 )
 target_include_directories(ModelMS3DTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -2962,12 +3064,17 @@ message(STATUS "    Test registered: SequenceModelTest")
 # sparse cell storage, the weighted row/column roll-ups, stable column ranking,
 # validation, the CSV codec in both directions and the shipped samples. UI-free.
 message(STATUS "  Building MatrixModelTest...")
+# The JSON interchange compiles the JSON wrapper and its vendored engine in
+# directly, as MindMapIOTest does, so the model still needs no UI stack.
 add_executable(MatrixModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/MatrixModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMatrixModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
 target_include_directories(MatrixModelTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
 )
 target_compile_features(MatrixModelTest PRIVATE cxx_std_20)
 # ImportMatrixTable and the importance column read numbers through the
@@ -3046,58 +3153,13 @@ add_test(NAME VirtualFSPathTest COMMAND VirtualFSPathTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VirtualFSPathTest")
 
-# ===== VIDEOFX TEST =====
-# Effect -> filter text translation always; with FFmpeg the engine end to end
-# on clips it generates itself (probe, frames, trim, speed, joins, GIF / WAV,
-# lossless cut, cancel, background job, UTF-8 names, error codes).
-if(TARGET VideoFX)
-    message(STATUS "  Building VideoFXTest...")
-    add_executable(VideoFXTest ${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTest.cpp)
-    target_include_directories(VideoFXTest PRIVATE
-        ${ULTRACANVAS_ROOT}/VideoFX/core          # VideoFXFilterBuilder.h (internal)
-        ${ULTRACANVAS_INCLUDE_DIR}                # UltraCanvasPathUtf8.h (header-only)
-    )
-    target_link_libraries(VideoFXTest PRIVATE VideoFX::VideoFX)
-    # A real face for the face detector's test (public domain, see its README)
-    target_compile_definitions(VideoFXTest PRIVATE
-        VIDEOFX_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/videofx")
-    set_target_properties(VideoFXTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME VideoFXTest COMMAND VideoFXTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: VideoFXTest")
-endif()
-
-# ===== ULTRAVIDEO DOCUMENT TEST =====
-# UltraVideo's document, mapping and history without a display: media the
-# engine probes, the timeline model derived from the document, every reported
-# change written back, undo, and the .ultravideo round trip. Skips itself
-# without the FFmpeg engine.
-if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
-    message(STATUS "  Building UltraVideoDocumentTest...")
-    add_executable(UltraVideoDocumentTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/UltraVideoDocumentTest.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoDocument.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoFormats.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoProxies.cpp
-    )
-    target_include_directories(UltraVideoDocumentTest PRIVATE
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo
-        ${ULTRACANVAS_INCLUDE_DIR}
-    )
-    target_link_libraries(UltraVideoDocumentTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
-    target_compile_definitions(UltraVideoDocumentTest PRIVATE UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
-    target_compile_features(UltraVideoDocumentTest PRIVATE cxx_std_20)
-    set_target_properties(UltraVideoDocumentTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME UltraVideoDocumentTest COMMAND UltraVideoDocumentTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: UltraVideoDocumentTest")
-endif()
+# ===== VIDEOFX AND ULTRAVIDEO DOCUMENT TESTS =====
+# VideoFXTest and UltraVideoDocumentTest are defined in VideoFXTests.cmake,
+# which the top level also includes on its own (ULTRACANVAS_BUILD_VIDEOFX_TESTS)
+# where BUILD_TESTS is off. The draft test below goes where they do
+# (VIDEOFX_RUNTIME_DIR: bin/, the build root on Windows), so Windows finds the
+# VideoFX DLL beside it.
+include(${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTests.cmake)
 
 # ===== ULTRAVIDEO DRAFT TEST =====
 # The draft the viewer plays with sound, without a display: rendered with
@@ -3122,10 +3184,10 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
     target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
     target_compile_features(UltraVideoDraftTest PRIVATE cxx_std_20)
     set_target_properties(UltraVideoDraftTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
     )
     add_test(NAME UltraVideoDraftTest COMMAND UltraVideoDraftTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+             WORKING_DIRECTORY ${VIDEOFX_RUNTIME_DIR})
     message(STATUS "    Test registered: UltraVideoDraftTest")
 endif()
 
@@ -3747,6 +3809,48 @@ set_target_properties(ButtonIconPixelTest PROPERTIES
 add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonIconPixelTest")
+
+message(STATUS "  Building ButtonGrowToFitTest...")
+add_executable(ButtonGrowToFitTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ButtonGrowToFitTest.cpp
+)
+target_include_directories(ButtonGrowToFitTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ButtonGrowToFitTest PRIVATE cxx_std_20)
+target_link_libraries(ButtonGrowToFitTest PRIVATE UltraCanvas)
+set_target_properties(ButtonGrowToFitTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ButtonGrowToFitTest COMMAND ButtonGrowToFitTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ButtonGrowToFitTest")
+
+message(STATUS "  Building SpreadsheetSortMenuTest...")
+add_executable(SpreadsheetSortMenuTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetSortMenuTest.cpp
+)
+target_include_directories(SpreadsheetSortMenuTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetSortMenuTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetSortMenuTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetSortMenuTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetSortMenuTest COMMAND SpreadsheetSortMenuTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetSortMenuTest")
+
+message(STATUS "  Building SpreadsheetFunctionMenuTest...")
+add_executable(SpreadsheetFunctionMenuTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetFunctionMenuTest.cpp
+)
+target_include_directories(SpreadsheetFunctionMenuTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetFunctionMenuTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetFunctionMenuTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetFunctionMenuTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetFunctionMenuTest COMMAND SpreadsheetFunctionMenuTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetFunctionMenuTest")
 
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
@@ -5504,6 +5608,50 @@ else()
     message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== DIAGRAM JSON UNDER A COMMA-DECIMAL LOCALE =====
+# The node and compositor diagrams' JSON is the same text under a
+# comma-decimal C++ global locale as under "C" (their streams are pinned to
+# the classic locale). Headless; skips where no such locale is installed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DiagramJsonLocaleTest...")
+    add_executable(DiagramJsonLocaleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DiagramJsonLocaleTest.cpp
+    )
+    target_include_directories(DiagramJsonLocaleTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DiagramJsonLocaleTest PRIVATE cxx_std_20)
+    target_link_libraries(DiagramJsonLocaleTest PRIVATE UltraCanvas)
+    set_target_properties(DiagramJsonLocaleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DiagramJsonLocaleTest COMMAND DiagramJsonLocaleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DiagramJsonLocaleTest")
+else()
+    message(STATUS "  DiagramJsonLocaleTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== UCD CONTAINER TEST =====
+# The UCD v2 container (UltraCanvasUCDContainer.h) against its spec: the
+# signature and header bytes, the thumbnail, INDX, zlib / gzip sections, the
+# header-default code, unknown sections, and what it refuses. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UCDContainerTest...")
+    add_executable(UCDContainerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UCDContainerTest.cpp
+    )
+    target_include_directories(UCDContainerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(UCDContainerTest PRIVATE cxx_std_20)
+    target_link_libraries(UCDContainerTest PRIVATE UltraCanvas)
+    set_target_properties(UCDContainerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UCDContainerTest COMMAND UCDContainerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UCDContainerTest")
+else()
+    message(STATUS "  UCDContainerTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ICO / QOI TEST =====
 # The framework's own libvips loaders and savers for Windows icons and QOI:
 # written without ImageMagick, read back pixel for pixel, bitmap icons made by
@@ -5524,6 +5672,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ImageIcoQoiTest")
 else()
     message(STATUS "  ImageIcoQoiTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE GIF SAVER TEST =====
+# The framework's GIF saver for libvips (VipsGifPlugin): registered, picked
+# for a .gif only where libvips has no gifsave, pixels and transparency read
+# back, its options, the buffer saver, and GIF saving through write_to_file,
+# PixelFX and FileLoader's list on every build. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageGifSaverTest...")
+    add_executable(ImageGifSaverTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageGifSaverTest.cpp
+    )
+    target_include_directories(ImageGifSaverTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageGifSaverTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageGifSaverTest PRIVATE UltraCanvas)
+    set_target_properties(ImageGifSaverTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageGifSaverTest COMMAND ImageGifSaverTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageGifSaverTest")
+else()
+    message(STATUS "  ImageGifSaverTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== FILELOADER DRAWING SAVE TEST =====
@@ -5622,4 +5793,46 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TreeViewKeyboardTest")
 else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TREE VIEW SCROLL BUTTONS TEST =====
+# The tree view's floating "move to the top" and "go to the selected entry"
+# buttons: when each shows, where it sits, and what a click on it does.
+# Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewScrollButtonsTest...")
+    add_executable(TreeViewScrollButtonsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewScrollButtonsTest.cpp
+    )
+    target_include_directories(TreeViewScrollButtonsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewScrollButtonsTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewScrollButtonsTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewScrollButtonsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewScrollButtonsTest COMMAND TreeViewScrollButtonsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewScrollButtonsTest")
+else()
+    message(STATUS "  TreeViewScrollButtonsTest skipped (UltraCanvas target not present)")
+endif()
+
+# UltraCanvasTreeView::SetFilterText: the rows matching a text, expanded to
+# them, and the tree put back when the filter ends. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewFilterTest...")
+    add_executable(TreeViewFilterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewFilterTest.cpp
+    )
+    target_include_directories(TreeViewFilterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewFilterTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewFilterTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewFilterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewFilterTest COMMAND TreeViewFilterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewFilterTest")
+else()
+    message(STATUS "  TreeViewFilterTest skipped (UltraCanvas target not present)")
 endif()

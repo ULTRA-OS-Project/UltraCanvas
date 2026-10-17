@@ -6,8 +6,9 @@
 // runtime probes (libvips saver/loader lookup, the graphics plugin registry,
 // the eBook engine registry), so the answer always reflects what THIS build
 // on THIS system can actually do — not what the framework aspires to support.
+// Version: 1.1.0 - LayeredImage: images that keep their layers and text (ucd, ucraster)
 // Version: 1.0.0
-// Last Modified: 2026-07-12
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +27,7 @@ namespace UltraCanvas {
         Audio,
         Video,
         Font,          // font definition files (ttf, otf, woff, ...)
+        LayeredImage,  // images that keep their layers and text layers (ucd, ucraster)
     };
 
     struct MediaFormatInfo {

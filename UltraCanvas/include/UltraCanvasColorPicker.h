@@ -10,8 +10,14 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.7.0 - ColorPickerStyle::Light() for a light window, Dark() for the default
+// Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
+// Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
+//                  (colour circle / colour slider + square / colour rectangle)
+// Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
+//                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -30,6 +36,8 @@
 
 namespace UltraCanvas {
     class UltraCanvasTextInput;
+    class UltraCanvasDropdown;
+    struct DropdownStyle;
 
 // ===== COLOUR MODEL USED BY THE CHANNEL EDITORS =====
     enum class ColorPickerModel {
@@ -110,6 +118,16 @@ namespace UltraCanvas {
         // Fonts
         std::string fontFamily = "Sans";
         float fontSize = 13.0f;
+
+        // The two looks. Dark is what a style left as constructed already
+        // is: the picker's own charcoal panel with a red accent. Light is for
+        // a light window: a white surface, grey hairline fields and outlines,
+        // near-black text and a blue accent. A picker on a tinted surface
+        // (a dialog's off-white) sets backgroundColor to that surface, so it
+        // does not stand out as a block. Both leave uiScale at 1: set it with
+        // SetUIScale after SetStyle.
+        static ColorPickerStyle Dark() { return ColorPickerStyle(); }
+        static ColorPickerStyle Light();
     };
 
 // ===== COLOUR SPACE CONVERSION HELPERS =====
@@ -255,6 +273,17 @@ namespace UltraCanvas {
         ColorPickerWheelStyle GetWheelStyle() const { return wheelStyle; }
         void SetWheelStyle(ColorPickerWheelStyle s);
 
+        // Optional design selector: a small dropdown in the top-right corner
+        // that lets the user switch between the three designs, each shown by
+        // its icon - colour circle (Ring), colour slider + square (Bar) and
+        // colour rectangle (HueLightnessField). Off by default. On the two
+        // rectangular designs it sits over the corner of the colour area, so
+        // it hides while a drag on the colour area or a colour bar runs and
+        // comes back on release; beside the circle it stays. With the
+        // HueLightnessSliders style no entry is selected.
+        bool GetShowWheelStyleSelector() const { return showWheelStyleSelector; }
+        void SetShowWheelStyleSelector(bool show);
+
         // Shape of the Bar style's saturation/value area: stretched over the
         // space above the controls (default), square, or square at
         // PixelExactSVSide pixels. A square area is centred, the hue
@@ -327,6 +356,10 @@ namespace UltraCanvas {
         std::function<void(const Color&)> onBackgroundChanged;
         std::function<void(const Color&)> onBackgroundChanging;
 
+        // The user chose a design in the design selector (not fired by
+        // SetWheelStyle). A host that remembers the choice saves it here.
+        std::function<void(ColorPickerWheelStyle)> onWheelStyleChanged;
+
         // Screen colour-picker ("eyedropper") request. Fired when the eyedropper
         // button next to the background swatch is clicked. When set, the host
         // takes over: it performs platform screen sampling and writes the pixel
@@ -372,6 +405,7 @@ namespace UltraCanvas {
         bool showValueSpinners = false;
         bool slidersCollapsible = false;
         bool slidersExpanded = true;
+        bool showWheelStyleSelector = false;
 
         // ----- Interaction state -----
         // No TextDrag member: selecting text by dragging is the editor
@@ -380,6 +414,10 @@ namespace UltraCanvas {
                                 HLField, LightnessBar,
                                 Channel0, Channel1, Channel2, Alpha };
         DragTarget dragTarget = DragTarget::NoneTarget;
+        // A press on the marker of the SV area or the hue x lightness field
+        // grabs it where it was hit: the drag moves it by the pointer's
+        // movement instead of first jumping its centre to the pointer.
+        Point2Df dragGrabOffset;
 
         // Right-button (Adjust) colour edits target the background instead of
         // the foreground. While such an edit is in progress the working HSV
@@ -401,7 +439,25 @@ namespace UltraCanvas {
         void DestroyFieldEditor();
         void PositionFieldEditor();
 
-        bool dropdownOpen = false;
+        // The HSV/HSL/RGB selector in Dropdown mode: a real dropdown child,
+        // built on first use, placed on modeButtonRect and drawn by this
+        // widget. Each entry's tooltip explains the model.
+        std::shared_ptr<UltraCanvasDropdown> modelDropdown;
+        void BuildModelDropdown();
+        // Select the current model and show it in Dropdown mode only.
+        void SyncModelDropdown();
+        // The child dropdowns wear the picker's colours, font and scale.
+        DropdownStyle ChildDropdownStyle(const DropdownStyle& base) const;
+
+        // The design selector (SetShowWheelStyleSelector): a real dropdown
+        // child, built on first use, placed and drawn by this widget.
+        std::shared_ptr<UltraCanvasDropdown> styleSelector;
+        void BuildStyleSelector();
+        // Restyle, place, select the current design and show or hide it.
+        void SyncStyleSelector();
+        // True while a drag on the colour area / bars of a rectangular design
+        // runs: the selector over the area's corner is hidden then.
+        bool StyleSelectorHiddenByDrag() const;
 
         // Built-in eyedropper: true while waiting for the sampling click. The
         // window event filter is installed once (lazily) and stays installed,
@@ -476,14 +532,12 @@ namespace UltraCanvas {
                                float t, const Color& handleColor);
         float GradientBarPosition(const Rect2Df& rect, const Point2Df& p) const;
         void RenderSwatches(IRenderContext* ctx);
-        void RenderModeButton(IRenderContext* ctx);
         void RenderScreenPickButton(IRenderContext* ctx);
         void RenderHexField(IRenderContext* ctx);
         void RenderTabs(IRenderContext* ctx);
         void RenderSlidersHeader(IRenderContext* ctx);
         void RenderChannelRow(IRenderContext* ctx, int row);
         void RenderAlphaRow(IRenderContext* ctx);
-        void RenderDropdownPopup(IRenderContext* ctx);
         void RenderSliderTrackAndHandle(IRenderContext* ctx, int row, float t,
                                         const std::shared_ptr<IPaintPattern>& gradient,
                                         bool checkerUnder);
@@ -497,8 +551,23 @@ namespace UltraCanvas {
         bool HandleMouseUp(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
 
+        // Sets the drag target and captures the mouse, so the drag keeps
+        // receiving moves and its release when the pointer leaves the picker.
+        void StartDrag(DragTarget target);
         void ApplyDrag(const Point2Df& p, bool finished);
         void UpdateHueFromPoint(const Point2Df& p);
+
+        // The selection marker of the SV area / hue x lightness field: its
+        // centre (in pointer coordinates, the point that maps back to the
+        // current colour) and its outer radius. The marker overhangs the area
+        // at the edges, so a press is taken within MarkerGrabMargin() of the
+        // area, and one on the marker grabs it (StartAreaDrag).
+        Point2Df SVMarkerPoint() const;
+        Point2Df HLMarkerPoint() const;
+        float MarkerRadius() const { return Scaled(7.5f); }
+        float MarkerGrabMargin() const { return MarkerRadius() + 1.0f; }
+        bool InAreaGrabZone(const Rect2Df& area, const Point2Df& p) const;
+        void StartAreaDrag(DragTarget target, const Point2Df& marker, const Point2Df& p);
 
         // ----- Background (Adjust) editing -----
         // Swap the working HSV state to the background colour for the duration
@@ -563,6 +632,9 @@ namespace UltraCanvas {
         Rect2Df EditTextRect(EditField field) const; // inner text area
         bool EditTextCentered(EditField field) const;
         void RenderFieldEditor(IRenderContext* ctx); // draws the editor child
+        // This widget paints its own content and never its children: draws
+        // one child (the editor, the design selector) at its bounds.
+        void RenderChild(IRenderContext* ctx, UltraCanvasUIElement& child);
 
         // ----- Notification -----
         void Changed(bool finished);

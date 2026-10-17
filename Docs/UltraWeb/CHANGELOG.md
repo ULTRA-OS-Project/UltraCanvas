@@ -1,3 +1,39 @@
+#### 2026-10-16 *0.8.3*
+- **A local file with a `\` in its name opens on Linux and macOS.** A path
+  typed in the address bar or given on the command line became a `file://`
+  URL with every `\` turned into `/`, so `notes\draft.html` was looked for as
+  `notes/draft.html` and did not open. There a `\` is part of the name and
+  goes into the URL as `%5C`; on Windows it still separates folders
+  (`ToPageUrl`).
+
+#### 2026-10-15 *0.8.2*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraWeb.exe` is a GUI program now. Beside it, `UltraWeb.com`
+  is its console companion, which a prompt runs for the bare name: `UltraWeb
+  --check` starts the `.exe`, waits for it and returns its exit code, as
+  before. Typed as `UltraWeb.exe`, the prompt no longer waits (framework
+  changelog: `windows-console-companions`).
+
+#### 2026-10-15 *0.8.1*
+- **Apps run on Windows.** UltraWeb built with MSYS2 (CLANG64 or
+  CLANGARM64) said "This UltraWeb cannot run apps": it had no WebAssembly
+  engine. The build now compiles wasmtime itself there; it needs
+  `mingw-w64-clang-x86_64-rust` and a few minutes the first time.
+- **Back and forward show arrows on Windows.** They were the characters
+  ← and →, which Windows' UI font does not have, so they showed as empty
+  boxes. They are now icons (`media/icons/ultraweb`), greyed out while
+  there is nowhere to go.
+
+#### 2026-10-14 *0.8.0*
+- **Links that ask for a new window open in a new tab.** This covers
+  `target="_blank"`, a target naming a window, and links without a target
+  on a page with `<base target="_blank">`. The new tab becomes the active
+  one, and the page the link was on stays in its own tab with its history.
+  `_self`, `_parent` and `_top` open in the same tab, and `mailto:` still
+  goes to the system's mail client.
+  - Built on the web view's new `onOpenInNewWindow` (framework); the tab
+    passes such links to the window (`UltraWebTab::Host::onOpenInNewTab`).
+
 #### 2026-10-14 *0.7.0*
 - **Tabs.** A tab strip above the toolbar. Each tab has its own page and
   back / forward history, or its own running app, and the toolbar, the

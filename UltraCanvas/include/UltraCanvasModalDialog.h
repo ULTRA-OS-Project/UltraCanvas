@@ -828,9 +828,21 @@ namespace UltraCanvas {
     // drop it on a folder of the listing or the tree and that folder is where
     // the file goes - and a Settings button for that type's save settings at
     // the end of the type row.
+    //
+    // It is laid out like the platforms' current dialogs (the Windows 11
+    // print dialog): a plain panel, each field's name written above it, the
+    // folder tree and the listing in rounded frames, and the Open / Save /
+    // Select Folder and Cancel buttons at the right of a footer band of their
+    // own. Its colours come from the theme (UltraCanvasTheme::Current(), or
+    // the one ApplyTheme gives).
     class UltraCanvasFileDialog : public UltraCanvasModalDialog {
     private:
         FileDialogConfig fileConfig;
+        // The rounded frames around the folder tree and the listing, and the
+        // names written above the fields: coloured by ApplyFileDialogLook.
+        std::vector<std::shared_ptr<UltraCanvasContainer>> paneFrames;
+        std::vector<std::shared_ptr<UltraCanvasLabel>> fieldLabels;
+        std::shared_ptr<UltraCanvasLabel> fileIconCaption;
         std::vector<std::string> selectedFiles;
         std::string currentDirectory;
 
@@ -945,11 +957,17 @@ namespace UltraCanvas {
         // Escape while the Save icon is being dragged ends the drag, not the
         // dialog.
         bool OnEvent(const UCEvent& event) override;
+        // The dialog's own look over the base dialog's: the footer band, the
+        // frames, the field names and the accented Open / Save button.
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
     protected:
         // The name field takes the focus (the listing for a folder picker),
         // so typing a name works at once.
         void FocusInitialElement() override;
+        // Colours the panel, the footer band and its divider, the frames, the
+        // field names, the fields and the buttons from `theme`.
+        void ApplyFileDialogLook(const UltraCanvasTheme& theme);
 
         // ===== CONSTRUCTION =====
         void BuildFileInterface();

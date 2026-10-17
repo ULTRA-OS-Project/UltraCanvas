@@ -25,13 +25,18 @@
 //      an empty composition or losing the focus ends it, composing over a
 //      selection replaces the selection, and read-only and password fields
 //      leave the composing to the input method's own window.
+//   9. TextInputType::Search was described as a "search field with clear
+//      button" but nothing read it: a Search field had no clear button. It
+//      shows one now, and leaving Search takes it away again - unless the
+//      caller turned it on. The button empties the field when clicked.
 // Each section below fails without its fix.
 //
 // Runs headless: the field is driven through its public API and key and focus
 // events, without a window; the composition is drawn into an offscreen context.
+// Version: 1.2.0 - TextInputType::Search shows the clear button
 // Version: 1.1.0 - input method composition
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 // Checked mode for this file's inline standard-library code: reading front() of
@@ -576,6 +581,49 @@ void TestComposition() {
 
 } // namespace
 
+// ===== 9. A Search field has the clear button =====
+void TestSearchClearButton() {
+    auto search = MakeField();
+    CHECK("a plain field has no clear button", !search->IsShowClearButton());
+    search->SetInputType(TextInputType::Search);
+    CHECK("SetInputType(Search) shows the clear button", search->IsShowClearButton());
+    search->SetInputType(TextInputType::Text);
+    CHECK("Search -> Text takes the button it showed away again", !search->IsShowClearButton());
+
+    auto own = MakeField();
+    own->SetShowClearButton(true);
+    own->SetInputType(TextInputType::Search);
+    own->SetInputType(TextInputType::Text);
+    CHECK("a clear button the caller turned on stays when the type moves on",
+          own->IsShowClearButton());
+
+    auto off = MakeField();
+    off->SetInputType(TextInputType::Search);
+    off->SetShowClearButton(false);
+    off->SetInputType(TextInputType::Search);
+    CHECK("the caller can still turn a Search field's button off, and Search again shows it",
+          off->IsShowClearButton());
+
+    // The button works: a click on it empties the field and says so.
+    auto field = MakeField();
+    field->SetInputType(TextInputType::Search);
+    field->SetText("query");
+    int cleared = 0;
+    std::string changedTo = "unset";
+    field->onCleared = [&cleared]() { ++cleared; };
+    field->onTextChanged = [&changedTo](const std::string& text) { changedTo = text; };
+    // The cross sits at the right end, inside the padding: well within the
+    // last 30 pixels of a field at least 100 wide, vertically centred.
+    UCEvent click;
+    click.type = UCEventType::MouseDown;
+    click.button = UCMouseButton::Left;
+    click.pointer = Point2Di(static_cast<int>(field->GetWidth()) - 8 - 7 - 2,
+                             static_cast<int>(field->GetHeight()) / 2);
+    field->OnEvent(click);
+    CHECK("a click on a Search field's clear button empties it",
+          field->GetText().empty() && cleared == 1 && changedTo.empty());
+}
+
 int main() {
     TestFormatterPlaceholder();
     TestCurrencyUnformat();
@@ -585,6 +633,7 @@ int main() {
     TestFloatGeometry();
     TestFollowUps();
     TestComposition();
+    TestSearchClearButton();
 
     std::cerr << "\nTextInputBehaviourTest: " << checkCount << " checks, " << failCount << " failures" << std::endl;
     return failCount == 0 ? 0 : 1;

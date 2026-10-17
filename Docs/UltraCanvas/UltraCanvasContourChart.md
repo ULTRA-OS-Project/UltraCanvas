@@ -15,6 +15,25 @@ function, or a raw point cloud it converts into a density field for you.
 value-range, log-scale, diverging and colour-bar option documented there applies
 here too — and "heatmap cells with isolines on top" is just another render mode.
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Render modes](#render-modes)
+- [Levels](#levels)
+- [Contours from a point cloud](#contours-from-a-point-cloud)
+- [Isoline styling and labels](#isoline-styling-and-labels)
+- [Legend and axes](#legend-and-axes)
+- [Dark themes](#dark-themes)
+- [Zoom, pan and the view window](#zoom-pan-and-the-view-window)
+- [Crosshair and click callback](#crosshair-and-click-callback)
+- [Exporting the contour geometry](#exporting-the-contour-geometry)
+- [Field preparation](#field-preparation)
+- [3D contour surface](#3d-contour-surface)
+  - [Why it is software-rendered](#why-it-is-software-rendered)
+  - [The OpenGL variant](#the-opengl-variant)
+- [Notes](#notes)
+- [Demo](#demo)
+
 ## Quick start
 
 ```cpp

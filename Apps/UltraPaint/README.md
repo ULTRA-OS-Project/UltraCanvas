@@ -72,7 +72,7 @@ in `UltraPaintWindow.cpp`; the fold-out is the framework's
 | Polyline | Y | Click to add corners; double-click or Enter ends it, a click on the first corner closes it (filled in the background colour with *Fill a closed shape*). Backspace takes the last corner back, Escape cancels, Shift constrains each segment to 45° |
 | Arrow | V | Drag from the tail to the tip: a filled head at the tip, or at both ends. *Head size* in pixels, never less than three times the line width |
 | Curve | J | Drag a straight line, then drag or click twice to bend it - the first bend pulls the whole curve, the second its far half. Enter keeps it as it is, Escape cancels |
-| Text | T | Click, type, choose font / size / bold |
+| Text | T | Type on the image: a click starts a text, a drag a box its lines wrap in, a click on a text edits it. Every installed font; size, bold, italic, underline, alignment; the foreground colour. Kept as a **text layer** until merged - see below |
 | Zoom | Z | Click in, Alt/right-click out |
 | Pan | H | Space+drag works with every tool |
 
@@ -102,7 +102,35 @@ For an opaque colour the two are the same. *Opacity* applies to both: at
 0.5, Replace takes the area half way to the colour. The colour's alpha is
 the *A* slider of the colour panel (the last two digits of *Hex*). A
 transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
-`.ucraster`); a JPEG has none.
+`.ucd`, `.ucraster`); a JPEG has none.
+
+### Text layers
+
+The Text tool types **on the canvas**: the words appear where they will be,
+in their font, size and colour, at the zoom of the view - the editor is the
+framework's WYSIWYG element (`UltraCanvasRichTextEdit`) laid over the image,
+and the text layer is drawn by that same element, so what is typed is
+exactly what the layer gets.
+
+| Do | How |
+|---|---|
+| Start a text | Click: the lines wrap at the image's right edge. Drag: a box, and the lines wrap at its width |
+| Format it | The tool options: *Font* (every font installed on the system - type the first letters in the open list to jump to one), *Size* in pixels, *Bold*, *Italic*, *Underline*, *Align* (left, centre, right); the colour is the foreground colour. With text selected they change the selection, otherwise what is typed next - so one text can mix fonts, sizes and colours. Ctrl+B / Ctrl+I / Ctrl+U work while typing |
+| Finish it | Escape, Ctrl+Enter, a click outside the text, another tool or any command. The text becomes a text layer, one undo step ("Text"); nothing typed adds nothing |
+| Edit it later | With the Text tool, click in its box (the Text tool shows every text's box dashed), or *Layer > Edit Text*. Emptying it removes the layer |
+| Change it whole | With the Text tool and a text layer active (not typing), the options and the foreground colour apply to all of it |
+| Move it | The Move tool moves a text layer as text (without a selection): it is drawn again where it lands |
+
+A text layer is marked with a "T" in the Layers panel and **stays editable
+until it is merged** - *Merge Down* and *Flatten* make it pixels, as do
+*Image > Scale / Flip / Rotate*; a canvas resize or a crop moves it along
+and keeps it text. Painting on it with a brush, a fill or a shape, or running
+a filter, an adjustment, *Fill* or *Delete* on it, asks first whether to
+**rasterize** it (*Layer > Rasterize Layer* does that directly); Undo makes it
+text again. The two layered formats keep text layers as text - a `.ucd`
+UltraCanvas layered image as a text frame, a `.ucraster` project as an
+OpenDocument text beside the layer's PNG - while every flat format (PNG,
+JPEG, ...) holds the text as the pixels it shows.
 
 ## Menus
 
@@ -126,8 +154,9 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),
   Flip, Rotate, Flatten.
-- **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down,
-  Properties (name, opacity, blend mode, visibility, lock). In the Layers
+- **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down, Edit Text
+  (the active text layer, on the canvas), Rasterize Layer (a text layer
+  becomes pixels), Properties (name, opacity, blend mode, visibility, lock). In the Layers
   panel a click selects a layer and a double-click on its name renames it in
   place (Enter or a click elsewhere keeps the name, Escape the old one; undo
   takes a rename back).
@@ -185,8 +214,19 @@ Opens and saves the formats the framework's FileLoader lists for this build
 PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL, TGA, QOI, ICO, camera RAW,
 … - whatever libvips and the framework's plugins read and write here), not
 a list of its own. *Save* / *Save As* write the flattened image in the
-format of the extension; *Export with Options* adds the per-format knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
-and one PNG per layer.
+format of the extension; *Export with Options* adds the per-format knobs.
+Layered work is kept in one of the two **layered images** FileLoader lists:
+
+- **`.ucd`, an UltraCanvas layered image** - the UCD 2.1 container
+  (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): every layer's pixels, name,
+  visibility, lock, opacity and blend mode, a text layer's words as a text
+  frame, and a thumbnail a file manager or UltraViewer shows without opening
+  the layers;
+- **`.ucraster`, an UltraPaint project** - a ZIP with `document.json` and one
+  PNG per layer, and for a text layer its words as an OpenDocument text
+  (`layers/<n>.odt`).
+
+Both open with their layers, and their text layers as text again.
 
 ### Dropping a file on the canvas
 
@@ -251,7 +291,7 @@ the desktop offer the drop at all is the shortcut in
 UltraPaint reads and whose `Exec=UltraPaint %F` is expanded with the dropped
 paths.
 
-`make install` puts it, the `.ucraster` MIME type and the application icon
+`make install` puts it, the `.ucraster` and `.ucd` MIME types and the application icon
 where the desktop looks:
 
 ```bash
@@ -270,6 +310,7 @@ binary.
 UltraPaint                 # blank canvas
 UltraPaint photo.jpg       # open an image
 UltraPaint work.ucraster   # open a layered project
+UltraPaint work.ucd        # open an UltraCanvas layered image
 UltraPaint logo.svg        # asks for the raster size, then opens it
 UltraPaint part.stl        # asks for the view and the size, then opens it
 UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
@@ -302,4 +343,4 @@ and brushes build without it.
 | `UltraPaintTools.{h,cpp}` | The tools and their option panels |
 | `UltraPaintFilters.{h,cpp}` | The PixelFX filter catalogue and the parameter dialog |
 | `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha, Import (drop / vector raster size) |
-| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the `.ucraster` MIME type |
+| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the MIME types of `.ucraster` and `.ucd` (an UltraCanvas document; a layered image recognised by its `UCBitmap` signature) |

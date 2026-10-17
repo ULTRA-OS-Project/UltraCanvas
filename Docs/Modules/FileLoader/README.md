@@ -1,5 +1,28 @@
 # FileLoader - Universal File Handling for Modern Applications
 
+## Contents
+
+- [Simplify File Management Across All Formats](#simplify-file-management-across-all-formats)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Generic File Loading](#generic-file-loading)
+  - [Typed Object Loaders](#typed-object-loaders)
+  - [Editable Vector Documents](#editable-vector-documents)
+  - [Save Settings](#save-settings)
+  - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [Transparent Decompression](#transparent-decompression)
+  - [Runtime Format Inventory](#runtime-format-inventory)
+  - [A Dialog's File Types](#a-dialogs-file-types)
+  - [Extensible Plugin Architecture](#extensible-plugin-architecture)
+- [Supported Formats](#supported-formats)
+- [Why FileLoader?](#why-fileloader)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+  - [For Users](#for-users)
+- [Perfect For](#perfect-for)
+- [Get Started](#get-started)
+- [The Bottom Line](#the-bottom-line)
+
 ## Simplify File Management Across All Formats
 
 **FileLoader** is a cross-platform file handling facade that reduces the
@@ -160,7 +183,9 @@ this build writes a bitmap type. A picture's Save offers
 `AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
 and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
 (see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
-by the framework's own libvips plugins. An AVIF or HEIC type is offered to
+by the framework's own libvips plugins, and GIF is written on every build:
+where libvips has no GIF writer of its own (cgif - not in the MSYS2 package or
+the macOS libraries), the framework's encoder takes the save. An AVIF or HEIC type is offered to
 save only where libheif can encode it, and to open only where it can decode
 it: libvips' HEIF loader takes both file endings wherever libheif is, but
 libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
@@ -284,6 +309,11 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
 **Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
+
+**Layered images** (`MediaFormatCategory::LayeredImage`): `.ucd`, the UCD 2.1
+layered image (load + save, no libvips needed), and `.ucraster`, the UltraPaint
+project (load + save, libvips) - files that keep an image's layers and its text
+layers as text, read and written by `UCRasterDocument`.
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*

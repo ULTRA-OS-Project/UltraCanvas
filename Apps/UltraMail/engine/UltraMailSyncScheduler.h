@@ -2,6 +2,8 @@
 // Decides which accounts are due for a background sync. Pure bookkeeping over
 // per-account intervals and last-sync timestamps; the app drives it from a UI
 // timer and runs the due accounts through the SyncService.
+// Version: 0.4.0 - SwitchOnQuiet holds back every failure alert for a while after the
+//                  computer was switched on; ReadLastConnected / WriteLastConnected
 // Version: 0.3.0 - WakeDetector notices the computer woke from sleep; OfflineGrace::Clear
 // Version: 0.2.0 - OfflineGrace holds back a not-yet-online failure
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,6 +11,7 @@
 
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -91,6 +94,76 @@ private:
     int64_t graceSec_;
     std::map<std::string, int64_t> since_;   // accountId -> first failure, steady seconds
 };
+
+// Tells a computer that was just switched on from one whose connection just
+// dropped, so that a mail check failing while the network is still coming up
+// raises no alert. UltraMail remembers when it last reached a mail server (the
+// last-connected file, kept across runs). When it starts, or the computer
+// wakes, and that was more than kSwitchedOffSec ago, the computer was most
+// likely switched off - or asleep - and its network may not be up yet. For
+// the quiet period that follows (Settings > Mail > Connection, two minutes by
+// default) a background check that fails is shown on the status line only,
+// whatever the reason; the accounts held back that way are checked once more
+// when the period ends, and what still fails then is reported.
+//
+// It covers every failure, not only "the server could not be reached", which
+// OfflineGrace holds back anyway: a network that is only half up also breaks
+// connections off in the TLS handshake or in the middle of a read, and a
+// clock not yet set right after boot can make a good certificate look expired.
+//
+// Pure bookkeeping, like OfflineGrace: the wall clock (epoch seconds) for the
+// last connection, which has to survive a restart, and a steady clock for the
+// period itself, which a clock correction right after boot must not stretch
+// or cut short.
+class SwitchOnQuiet {
+public:
+    static constexpr int64_t kSwitchedOffSec = 600;   // ten minutes without a connection
+
+    // Whether a last connection at `lastConnectedEpoch` (0 = none on record)
+    // means the computer was most likely off until `wallNowSec`: it was more
+    // than kSwitchedOffSec ago, there is none, or it lies in the future (the
+    // clock is wrong - as it can be right after boot).
+    static bool LooksSwitchedOff(int64_t lastConnectedEpoch, int64_t wallNowSec);
+
+    // At start and after a wake: when LooksSwitchedOff says so and `quietSec`
+    // is positive, the quiet period runs from `steadyNowSec` for `quietSec`.
+    // A period already running is never cut short. Returns whether one began.
+    bool Begin(int64_t lastConnectedEpoch, int64_t wallNowSec,
+               int64_t steadyNowSec, int64_t quietSec);
+
+    // True while the quiet period runs.
+    bool Quiet(int64_t steadyNowSec) const { return steadyNowSec < until_; }
+    // Seconds until it ends; 0 when none runs.
+    int64_t RemainingSec(int64_t steadyNowSec) const {
+        return Quiet(steadyNowSec) ? until_ - steadyNowSec : 0;
+    }
+    // End the period now (the setting was turned off). The accounts held back
+    // stay for TakeHeld.
+    void End() { until_ = 0; }
+
+    // A failed check of the account raised no alert: check it again when the
+    // period ends.
+    void Hold(const std::string& accountId) { held_.insert(accountId); }
+    bool Held(const std::string& accountId) const { return held_.count(accountId) != 0; }
+    // The account was reached: there is nothing to check again for it.
+    void Reached(const std::string& accountId) { held_.erase(accountId); }
+    // The accounts held back, handed over once.
+    std::vector<std::string> TakeHeld();
+
+private:
+    int64_t until_ = 0;   // steady seconds; 0 = no period
+    std::set<std::string> held_;
+};
+
+// The file in the data folder that keeps when UltraMail last reached a mail
+// server - wall-clock epoch seconds, one line - for SwitchOnQuiet at the next
+// start. An internal file, read and written directly.
+inline constexpr const char* kLastConnectedFileName = "last-connected";
+// 0 when the file is missing or holds no time. A write torn by the computer
+// going off reads the same, which counts as "switched off": the safe side.
+int64_t ReadLastConnected(const std::string& path);
+// False when the file could not be written.
+bool WriteLastConnected(const std::string& path, int64_t epoch);
 
 // Notices that the computer slept (or hibernated) and has just woken up, so
 // the app can check for mail at once instead of when its five-minute timer

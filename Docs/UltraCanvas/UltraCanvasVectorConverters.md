@@ -6,6 +6,18 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 
 **Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`), `UltraCanvasCADConverters.h` (`DXFConverter`, `DWGConverter`), `UltraCanvasVectorFormatsPlugin.h` (the graphics plugin exposing the matrix to `LoadGraphicsFile` / `SaveGraphicsFile`).
 
+## Contents
+
+- [The matrix](#the-matrix)
+- [The document model](#the-document-model)
+- [Usage](#usage)
+- [The DWG family](#the-dwg-family)
+- [Previews: what the media viewer and the Filer show](#previews-what-the-media-viewer-and-the-filer-show)
+- [Registration: automatic, once, for every application](#registration-automatic-once-for-every-application)
+- [The graphics plugin (load and save through the registry)](#the-graphics-plugin-load-and-save-through-the-registry)
+- [Tests](#tests)
+- [See Also](#see-also)
+
 ## The matrix
 
 | Format | Class | Read | Write | Fidelity notes |

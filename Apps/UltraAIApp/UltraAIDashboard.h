@@ -2,8 +2,8 @@
 // Top-level window for the UltraAI app: a grid of buttons, one per
 // capability. Clicking a button opens the matching modal service
 // dialog backed by the in-process mock adapter for that capability.
-// Version: 0.1.0
-// Last Modified: 2026-05-08
+// Version: 0.2.0
+// Last Modified: 2026-10-16
 // Author: UltraAI Module
 #pragma once
 
@@ -46,14 +46,15 @@ private:
     UltraCanvas::UltraCanvasApplication&        app_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
 
-    // Window geometry: 5 columns x 2 rows of 170x130 buttons,
-    // with 20px gaps and a 50px header. See .cpp for exact math.
-    static constexpr long kWindowWidth  = 990;
-    static constexpr long kWindowHeight = 460;
-    static constexpr long kButtonWidth  = 170;
-    static constexpr long kButtonHeight = 130;
+    // Window geometry: 5 columns x 2 rows of 176x184 tiles (a 128 px icon
+    // over the service name), with 20px gaps and a 60px header.
+    static constexpr long kButtonWidth  = 176;
+    static constexpr long kButtonHeight = 184;
     static constexpr long kGap          = 20;
     static constexpr long kHeaderHeight = 60;
+    static constexpr int  kIconSize     = 128;
+    static constexpr long kWindowWidth  = kGap + 5 * (kButtonWidth + kGap);
+    static constexpr long kWindowHeight = kHeaderHeight + 2 * (kButtonHeight + kGap);
 };
 
 } // namespace UltraAIApp

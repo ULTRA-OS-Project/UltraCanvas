@@ -1127,6 +1127,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleKeyDown(const UCEvent& event) {
+        if (onKeyDown && onKeyDown(event)) return true;
         if (!model || model->GetRowCount() == 0) return false;
 
         switch (event.virtualKey) {
@@ -1159,6 +1160,14 @@ namespace UltraCanvas {
         } else {
             focusedRow--;
         }
+        if (selection) selection->Select(focusedRow);
+        EnsureRowVisible(focusedRow);
+        RequestRedraw();
+    }
+
+    void UltraCanvasListView::SetFocusedRow(int row) {
+        if (!model || row < 0 || row >= model->GetRowCount()) return;
+        focusedRow = row;
         if (selection) selection->Select(focusedRow);
         EnsureRowVisible(focusedRow);
         RequestRedraw();

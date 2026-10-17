@@ -4,10 +4,16 @@
 // full-width bands whose centred column is Block-laid-out so wrapped text
 // measures, wrapping Flex rows for columns and buttons - with the texts,
 // colours and menus read from the site instead of tables in the source.
+// Version: 0.7.3 - a richtext block edited in place
+// Version: 0.7.2 - the FAQ's question edited in place on a second click
+// Version: 0.7.1 - a picture keeps its own shape (ImageDimensions), the given size is the frame it fits
+// Version: 0.7.0 - text bindings for editing in place
 // Version: 0.2.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressRender.h"
+
+#include "UltraPressMedia.h"
 
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasButton.h"
@@ -21,6 +27,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <algorithm>
 #include <sstream>
 
 using namespace UltraCanvas;
@@ -170,36 +177,54 @@ PageRenderer::Element PageRenderer::Text(const std::string& id, const std::strin
 }
 
 PageRenderer::Element PageRenderer::Paragraphs(const std::string& id, const std::string& longText, float size,
-                                               const Color& color, bool centered) const {
+                                               const Color& color, bool centered, RenderedPage& page,
+                                               const TextLocation& where) {
     auto column = CreateContainer(id);
     column->layout.SetDisplay(CSSLayout::DisplayType::Block);
     column->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
-    std::istringstream lines(longText);
-    std::string line, paragraph;
     int index = 0;
-    auto flush = [&]() {
-        const size_t start = paragraph.find_first_not_of(" \t\r\n");
-        if (start == std::string::npos) { paragraph.clear(); return; }
-        const size_t end = paragraph.find_last_not_of(" \t\r\n");
+    for (const std::string& paragraph : SplitParagraphs(longText)) {
         if (index) column->AddChild(Gap(10));
-        column->AddChild(Text(id + "P" + std::to_string(index++), paragraph.substr(start, end - start + 1), size, color, false, centered));
-        paragraph.clear();
-    };
-    while (std::getline(lines, line)) {
-        if (line.find_first_not_of(" \t\r") == std::string::npos) flush();
-        else {
-            if (!paragraph.empty()) paragraph += '\n';
-            paragraph += line;
-        }
+        TextLocation one = where;
+        one.paragraph = index;
+        column->AddChild(Bound(id + "P" + std::to_string(index), paragraph, size, color, false, centered, page, one, true));
+        ++index;
     }
-    flush();
     return column;
 }
 
-PageRenderer::Element PageRenderer::Kicker(const std::string& id, const std::string& text, bool centered) const {
+PageRenderer::Element PageRenderer::Bound(const std::string& id, const std::string& text, float size, const Color& color,
+                                          bool bold, bool centered, RenderedPage& page, const TextLocation& where,
+                                          bool multiline, const std::string& shown) {
+    auto label = std::static_pointer_cast<UltraCanvasLabel>(Text(id, shown.empty() ? text : shown, size, color, bold, centered));
+    if (!options.editable) return label;
+    auto slot = CreateContainer(id + "Slot");
+    slot->layout.SetDisplay(CSSLayout::DisplayType::Block);
+    slot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+    slot->AddChild(label);
+    TextBinding binding;
+    binding.blockPath = blockPath;
+    binding.where = where;
+    binding.text = text;
+    binding.multiline = multiline;
+    binding.size = size;
+    binding.slot = slot;
+    binding.element = label;
+    page.bindings.push_back(std::move(binding));
+    const int index = static_cast<int>(page.bindings.size()) - 1;
+    // The label holds the callback; it captures the editor's function and
+    // the index, never the renderer (gone after Render) nor the page.
+    label->onClick = [callback = options.onEditText, index]() {
+        if (callback) callback(index);
+    };
+    return slot;
+}
+
+PageRenderer::Element PageRenderer::Kicker(const std::string& id, const std::string& text, RenderedPage& page,
+                                           const TextLocation& where) {
     std::string upper = text;
     for (auto& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    return Text(id, upper, 13, palette.accent, true, centered);
+    return Bound(id, text, 13, palette.accent, true, true, page, where, false, upper);
 }
 
 std::shared_ptr<UltraCanvasButton> PageRenderer::Flat(const std::string& id, const std::string& text, float size,
@@ -261,6 +286,15 @@ PageRenderer::Element PageRenderer::Picture(const std::string& id, const std::st
     }
     std::error_code ec;
     if (!path.empty() && std::filesystem::exists(PathFromUtf8(file), ec)) {
+        // The picture's own shape, from its header: as wide as the frame
+        // allows and as tall as that makes it, instead of a fixed box with
+        // bands above and below a landscape or beside a portrait. A very
+        // tall picture is capped at the frame's width, so a portrait does
+        // not take the page over.
+        int pixelsW = 0, pixelsH = 0;
+        if (ImageDimensions(file, pixelsW, pixelsH)) {
+            h = std::min(w, w * static_cast<float>(pixelsH) / static_cast<float>(pixelsW));
+        }
         auto image = CreateImageFromFile(id, 0, 0, w, h, file);
         image->SetFitMode(ImageFitMode::Contain);
         image->SetBorderRadius(10);
@@ -332,15 +366,15 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
 
     if (type == "heading") {
         const int level = static_cast<int>(block.Number("level", 2));
-        return Text(id, block.Text("text"), level >= 4 ? 20.f : level == 3 ? 26.f : 34.f, palette.ink, true);
+        return Bound(id, block.Text("text"), level >= 4 ? 20.f : level == 3 ? 26.f : 34.f, palette.ink, true, false, page, {"text"}, false);
     }
     if (type == "text") {
         auto column = Column(id);
         if (!block.Text("heading").empty()) {
-            column->AddChild(Text(id + "Heading", block.Text("heading"), 30, palette.ink, true));
+            column->AddChild(Bound(id + "Heading", block.Text("heading"), 30, palette.ink, true, false, page, {"heading"}, false));
             column->AddChild(Gap(14));
         }
-        column->AddChild(Paragraphs(id + "Text", block.Text("text"), 16, palette.inkSoft));
+        column->AddChild(Paragraphs(id + "Text", block.Text("text"), 16, palette.inkSoft, false, page, {"text"}));
         return column;
     }
     if (type == "richtext" || type == "html") {
@@ -350,20 +384,47 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
         HTML::ElementBuilder builder;
         HTML::BuildResult built = builder.Build(block.Text("html"), buildOptions);
         for (const std::string& warning : built.warnings) page.warnings.push_back(type + ": " + warning);
-        if (!built.root) return Column(id);
-        built.root->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
-        return built.root;
+        Element content = built.root ? Element(built.root) : Element(Column(id));
+        content->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+        // In the editor a richtext block is a binding whose text is its
+        // HTML: a click on it opens the rich text editor in its slot. An
+        // `html` block is the owner's own markup and keeps the property pane.
+        if (!options.editable || type != "richtext") return content;
+        auto slot = CreateContainer(id + "Slot");
+        slot->layout.SetDisplay(CSSLayout::DisplayType::Block);
+        slot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+        slot->AddChild(content);
+        TextBinding binding;
+        binding.blockPath = blockPath;
+        binding.where = TextLocation{"html"};
+        binding.text = block.Text("html");
+        binding.multiline = true;
+        binding.rich = true;
+        binding.slot = slot;
+        binding.element = content;
+        page.bindings.push_back(std::move(binding));
+        const int index = static_cast<int>(page.bindings.size()) - 1;
+        // The built tree has no click of its own; a thin button under it is
+        // the handle, labelled for what it does.
+        auto handle = Flat(id + "Edit", "Edit text\xE2\x80\xA6", 13, palette.accent, palette.accentHover);
+        handle->SetPadding(0, 0);
+        handle->SetTextAlign(TextAlignment::Left);
+        handle->onClick = [callback = options.onEditText, index]() {
+            if (callback) callback(index);
+        };
+        slot->AddChild(handle);
+        return slot;
     }
     if (type == "hero") {
         auto column = Column(id);
         if (!block.Text("kicker").empty()) {
-            column->AddChild(Kicker(id + "Kicker", block.Text("kicker")));
+            column->AddChild(Kicker(id + "Kicker", block.Text("kicker"), page, {"kicker"}));
             column->AddChild(Gap(16));
         }
-        column->AddChild(Text(id + "Title", block.Text("title"), 40, ink, true, true));
+        column->AddChild(Bound(id + "Title", block.Text("title"), 40, ink, true, true, page, {"title"}, false));
         if (!block.Text("text").empty()) {
             column->AddChild(Gap(20));
-            auto lead = Paragraphs(id + "Lead", block.Text("text"), 19, inkSoft, true);
+            auto lead = Paragraphs(id + "Lead", block.Text("text"), 19, inkSoft, true, page, {"text"});
             lead->SetPadding(0, 90);
             lead->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
             column->AddChild(lead);
@@ -389,22 +450,25 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
         column->AddChild(row);
         if (!block.Text("caption").empty()) {
             column->AddChild(Gap(8));
-            column->AddChild(Text(id + "Caption", block.Text("caption"), 14, palette.inkSoft, false, true));
+            column->AddChild(Bound(id + "Caption", block.Text("caption"), 14, palette.inkSoft, false, true, page, {"caption"}, false));
         }
         return column;
     }
     if (type == "columns") {
         auto column = Column(id);
         if (!block.Text("heading").empty()) {
-            column->AddChild(Text(id + "Heading", block.Text("heading"), 30, palette.ink, true, true));
+            column->AddChild(Bound(id + "Heading", block.Text("heading"), 30, palette.ink, true, true, page, {"heading"}, false));
             column->AddChild(Gap(24));
         }
         auto row = Row(id + "Row", 24);
+        const std::string parentPath = blockPath;
         for (size_t i = 0; i < block.children.size(); ++i) {
             auto cell = Column(id + "Cell" + std::to_string(i), 260);
+            blockPath = parentPath + ".children[" + std::to_string(i) + "]";
             if (auto child = RenderBlock(block.children[i], page, id + "C" + std::to_string(i))) cell->AddChild(child);
             row->AddChild(cell);
         }
+        blockPath = parentPath;
         column->AddChild(row);
         return column;
     }
@@ -414,10 +478,10 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
             card->AddChild(Picture(id + "Picture", block.Text("picture"), block.Text("title"), 300, 170, page));
             card->AddChild(Gap(14));
         }
-        card->AddChild(Text(id + "Title", block.Text("title"), 20, palette.ink, true));
+        card->AddChild(Bound(id + "Title", block.Text("title"), 20, palette.ink, true, false, page, {"title"}, false));
         if (!block.Text("text").empty()) {
             card->AddChild(Gap(8));
-            card->AddChild(Paragraphs(id + "Text", block.Text("text"), 15, palette.inkSoft));
+            card->AddChild(Paragraphs(id + "Text", block.Text("text"), 15, palette.inkSoft, false, page, {"text"}));
         }
         const std::string href = LinkHref(site, block.props["link"]);
         if (!href.empty()) {
@@ -433,7 +497,7 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
     if (type == "features") {
         auto column = Column(id);
         if (!block.Text("heading").empty()) {
-            column->AddChild(Text(id + "Heading", block.Text("heading"), 30, palette.ink, true));
+            column->AddChild(Bound(id + "Heading", block.Text("heading"), 30, palette.ink, true, false, page, {"heading"}, false));
             column->AddChild(Gap(16));
         }
         int index = 0;
@@ -443,7 +507,8 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
             bullet->SetElementSize(CSSLayout::Dimension::Px(22), CSSLayout::Dimension::Auto());
             bullet->layoutItem.SetFlexShrink(0);
             row->AddChild(bullet);
-            auto text = Text(id + "Text" + std::to_string(index), item.GetString(), 16, palette.ink);
+            auto text = Bound(id + "Text" + std::to_string(index), item.GetString(), 16, palette.ink, false, false, page,
+                              TextLocation{"items", index, "", -1}, false);
             text->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
             text->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
             row->AddChild(text);
@@ -455,10 +520,10 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
     }
     if (type == "cta") {
         auto column = Column(id);
-        column->AddChild(Text(id + "Title", block.Text("title"), 32, ink, true, true));
+        column->AddChild(Bound(id + "Title", block.Text("title"), 32, ink, true, true, page, {"title"}, false));
         if (!block.Text("text").empty()) {
             column->AddChild(Gap(14));
-            column->AddChild(Paragraphs(id + "Text", block.Text("text"), 17, inkSoft, true));
+            column->AddChild(Paragraphs(id + "Text", block.Text("text"), 17, inkSoft, true, page, {"text"}));
         }
         if (block.Items("buttons").GetSize() > 0) {
             column->AddChild(Gap(26));
@@ -469,7 +534,7 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
     if (type == "faq") {
         auto column = Column(id);
         if (!block.Text("heading").empty()) {
-            column->AddChild(Text(id + "Heading", block.Text("heading"), 34, palette.ink, true, true));
+            column->AddChild(Bound(id + "Heading", block.Text("heading"), 34, palette.ink, true, true, page, {"heading"}, false));
             column->AddChild(Gap(28));
         }
         int index = 0;
@@ -489,14 +554,40 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
             question->SetFont(palette.font, 18, FontWeight::Bold);
             question->SetTextAlign(TextAlignment::Left);
             question->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(44));
-            entry->AddChild(question);
-            auto answer = Paragraphs(entryId + "Answer", item["a"].GetString(), 15, palette.inkSoft);
+            // In the editor the question is a binding too: its slot holds
+            // the button, and a second click on an open question edits it.
+            int questionBinding = -1;
+            if (options.editable) {
+                auto slot = CreateContainer(entryId + "QuestionSlot");
+                slot->layout.SetDisplay(CSSLayout::DisplayType::Block);
+                slot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+                slot->AddChild(question);
+                entry->AddChild(slot);
+                TextBinding binding;
+                binding.blockPath = blockPath;
+                binding.where = TextLocation{"items", index, "q", -1};
+                binding.text = q;
+                binding.size = 18;
+                binding.slot = slot;
+                binding.element = question;
+                page.bindings.push_back(std::move(binding));
+                questionBinding = static_cast<int>(page.bindings.size()) - 1;
+            } else {
+                entry->AddChild(question);
+            }
+            auto answer = Paragraphs(entryId + "Answer", item["a"].GetString(), 15, palette.inkSoft, false, page,
+                                     TextLocation{"items", index, "a", -1});
             answer->SetPadding(6, 10, 14, 10);
             answer->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
             answer->SetVisible(index == 0);
             entry->AddChild(answer);
-            // The question holds the callback, so it is captured raw.
-            question->onClick = [answer, question = question.get(), q]() {
+            // The question holds the callback, so it is captured raw. Open
+            // and editable, a click edits the question instead of closing it.
+            question->onClick = [answer, question = question.get(), q, questionBinding, callback = options.onEditText]() {
+                if (questionBinding >= 0 && answer->IsVisible() && callback) {
+                    callback(questionBinding);
+                    return;
+                }
                 const bool open = !answer->IsVisible();
                 answer->SetVisible(open);
                 question->SetText((open ? "-  " : "+  ") + q);
@@ -508,10 +599,11 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
     }
     if (type == "quote") {
         auto card = Card(id, 0, palette.paperSoft, false);
-        card->AddChild(Paragraphs(id + "Text", block.Text("text"), 22, palette.ink));
+        card->AddChild(Paragraphs(id + "Text", block.Text("text"), 22, palette.ink, false, page, {"text"}));
         if (!block.Text("cite").empty()) {
             card->AddChild(Gap(10));
-            card->AddChild(Text(id + "Cite", "\xE2\x80\x94 " + block.Text("cite"), 15, palette.inkSoft, true));
+            card->AddChild(Bound(id + "Cite", block.Text("cite"), 15, palette.inkSoft, true, false, page, {"cite"}, false,
+                                 "\xE2\x80\x94 " + block.Text("cite")));
         }
         return card;
     }
@@ -521,11 +613,11 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
     if (type == "form") {
         auto card = Card(id, 420, palette.paperSoft, false);
         if (!block.Text("heading").empty()) {
-            card->AddChild(Text(id + "Heading", block.Text("heading"), 26, palette.ink, true));
+            card->AddChild(Bound(id + "Heading", block.Text("heading"), 26, palette.ink, true, false, page, {"heading"}, false));
             card->AddChild(Gap(10));
         }
         if (!block.Text("text").empty()) {
-            card->AddChild(Paragraphs(id + "Text", block.Text("text"), 15, palette.inkSoft));
+            card->AddChild(Paragraphs(id + "Text", block.Text("text"), 15, palette.inkSoft, false, page, {"text"}));
             card->AddChild(Gap(14));
         }
         struct Field { std::string name; std::function<std::string()> value; };
@@ -578,11 +670,11 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
     if (type == "newsletter") {
         auto card = Card(id, 420, palette.paperSoft, false);
         if (!block.Text("heading").empty()) {
-            card->AddChild(Text(id + "Heading", block.Text("heading"), 26, palette.ink, true));
+            card->AddChild(Bound(id + "Heading", block.Text("heading"), 26, palette.ink, true, false, page, {"heading"}, false));
             card->AddChild(Gap(10));
         }
         if (!block.Text("text").empty()) {
-            card->AddChild(Paragraphs(id + "Text", block.Text("text"), 15, palette.inkSoft));
+            card->AddChild(Paragraphs(id + "Text", block.Text("text"), 15, palette.inkSoft, false, page, {"text"}));
             card->AddChild(Gap(14));
         }
         auto email = CreateTextInput(id + "Email", 0, 0, 0, 42);
@@ -602,7 +694,7 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
     if (type == "downloads") {
         auto column = Column(id);
         if (!block.Text("heading").empty()) {
-            column->AddChild(Text(id + "Heading", block.Text("heading"), 30, palette.ink, true));
+            column->AddChild(Bound(id + "Heading", block.Text("heading"), 30, palette.ink, true, false, page, {"heading"}, false));
             column->AddChild(Gap(16));
         }
         int index = 0;
@@ -624,7 +716,8 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
             if (!details.empty()) entry->AddChild(Text(itemId + "Details", details, 14, palette.inkSoft));
             if (!item["description"].GetString().empty()) {
                 entry->AddChild(Gap(6));
-                entry->AddChild(Text(itemId + "Description", item["description"].GetString(), 15, palette.ink));
+                entry->AddChild(Bound(itemId + "Description", item["description"].GetString(), 15, palette.ink, false, false, page,
+                                      TextLocation{"items", index - 1, "description", -1}, false));
             }
             column->AddChild(entry);
             column->AddChild(Gap(10));
@@ -666,6 +759,7 @@ RenderedPage PageRenderer::Render(const UltraPress::Page& page) {
     for (size_t i = 0; i < page.blocks.size(); ++i) {
         const Block& block = page.blocks[i];
         const std::string id = "B" + std::to_string(i);
+        blockPath = "blocks[" + std::to_string(i) + "]";
         const bool dark = block.type == "hero" || block.type == "cta";
         Color background = palette.paper;
         float padding = 56;
