@@ -29,6 +29,32 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
 
 ---
 
+## Contents
+
+- [Library links — websites & source code](#library-links-—-websites--source-code)
+- [UltraCanvas (core)](#ultracanvas-core)
+  - [Spell checking (all optional)](#spell-checking-all-optional)
+- [Optional plugins](#optional-plugins)
+  - [PDF plugin (optional)](#pdf-plugin-optional)
+  - [CDR plugin (optional)](#cdr-plugin-optional)
+- [Demo application](#demo-application)
+- [Additional ULTRA OS modules](#additional-ultra-os-modules)
+  - [AudioFX module](#audiofx-module)
+  - [FileLoader module](#fileloader-module)
+  - [IODeviceManager module](#iodevicemanager-module)
+  - [PixelFX module](#pixelfx-module)
+  - [Smart Home module](#smart-home-module)
+  - [Ultra AI module](#ultra-ai-module)
+  - [UltraCloud module](#ultracloud-module)
+  - [UltraCrypt module](#ultracrypt-module)
+  - [UltraDatabase module](#ultradatabase-module)
+  - [Ultra Net module](#ultra-net-module)
+  - [UltraVault module](#ultravault-module)
+  - [UltraWin module](#ultrawin-module)
+  - [VideoFX module](#videofx-module)
+  - [VirtualFS module](#virtualfs-module)
+  - [WasmHost module](#wasmhost-module)
+
 ## Library links — websites & source code
 
 Every third-party library used across the UltraCanvas core and the ULTRA OS

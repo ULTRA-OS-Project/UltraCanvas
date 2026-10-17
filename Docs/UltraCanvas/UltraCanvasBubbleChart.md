@@ -29,6 +29,22 @@ classic reference charts natively:
   including the nested-circles size legend (46.1 / 20.5 / 5.1) and the
   "Darkness relates to Food concerns" footnote.
 
+## Contents
+
+- [Creating a chart](#creating-a-chart)
+- [Data](#data)
+- [Size encoding](#size-encoding)
+- [Colour encoding](#colour-encoding)
+- [Style](#style)
+- [Labels](#labels)
+- [Size legend and annotations](#size-legend-and-annotations)
+- [Packed layout](#packed-layout)
+- [Hierarchical packing](#hierarchical-packing)
+- [Timeline bubbles](#timeline-bubbles)
+- [Interactivity](#interactivity)
+- [3D bubble chart (demo)](#3d-bubble-chart-demo)
+- [Feature research sources](#feature-research-sources)
+
 ## Creating a chart
 
 ```cpp

@@ -2,6 +2,19 @@
 
 <!-- doc-check: Color SampleScreenPixelUnderCursor(); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Definition](#class-definition)
+- [Basic Usage](#basic-usage)
+  - [Presentation variants](#presentation-variants)
+  - [Light and dark styles](#light-and-dark-styles)
+  - [Compact (sliders-only) variant](#compact-sliders-only-variant)
+- [Colour Space Helpers](#colour-space-helpers)
+- [Interaction Summary](#interaction-summary)
+- [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
+
 ## Overview
 
 The **UltraCanvasColorPicker** is a comprehensive, self-contained colour selection

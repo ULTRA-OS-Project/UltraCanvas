@@ -9,6 +9,18 @@ because the connector length *is* the difference.
 - Base class: `UltraCanvasChartElementBase` (`include/Plugins/Charts/UltraCanvasChartElementBase.h`)
 - Demo: `Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp` (Charts → Dumbbell Chart)
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data](#data)
+- [Layout](#layout)
+- [Axis range](#axis-range)
+- [Value labels](#value-labels)
+- [Sorting](#sorting)
+- [Interaction](#interaction)
+- [Configuration reference](#configuration-reference)
+- [Notes](#notes)
+
 ## Quick start
 
 ```cpp

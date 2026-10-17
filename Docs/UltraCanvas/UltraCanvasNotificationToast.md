@@ -40,6 +40,15 @@ rather than an Alert
 
 ---
 
+## Contents
+
+- [1. What a toast looks like](#1-what-a-toast-looks-like)
+- [2. Which notifications the host draws](#2-which-notifications-the-host-draws)
+- [3. What happens to a toast](#3-what-happens-to-a-toast)
+- [4. Using the host](#4-using-the-host)
+- [5. The window](#5-the-window)
+- [6. Notes](#6-notes)
+
 ## 1. What a toast looks like
 
 ```

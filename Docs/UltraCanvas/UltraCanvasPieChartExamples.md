@@ -1,5 +1,40 @@
 # UltraCanvasPieChartElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Enumerations](#enumerations)
+  - [LabelPosition](#labelposition)
+  - [LabelContent](#labelcontent)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Public Methods](#public-methods)
+  - [Palette & Borders](#palette--borders)
+  - [Donut / Ring](#donut--ring)
+  - [Explosion](#explosion)
+  - [Per-Slice Height (3D Extrusion)](#per-slice-height-3d-extrusion)
+  - [Labels](#labels)
+  - [Fills](#fills)
+  - [3D Mode](#3d-mode)
+  - [Tooltips](#tooltips)
+  - [Export](#export)
+- [Factory Function](#factory-function)
+- [Usage Examples](#usage-examples)
+  - [Sample Data Setup](#sample-data-setup)
+  - [Example 1: Market Share Pie Chart (Auto-Labeled)](#example-1-market-share-pie-chart-auto-labeled)
+  - [Example 2: Budget Allocation with Outside Labels and Leader Lines](#example-2-budget-allocation-with-outside-labels-and-leader-lines)
+  - [Example 3: 3D Donut with Highlighted Slice and Radial Gradients](#example-3-3d-donut-with-highlighted-slice-and-radial-gradients)
+  - [Example 4: Stylized Pie Chart with Bold Labels](#example-4-stylized-pie-chart-with-bold-labels)
+  - [Wiring Live Controls (Donut / 3D / Gradients / Explosion)](#wiring-live-controls-donut--3d--gradients--explosion)
+- [Data Source Interface](#data-source-interface)
+- [Slice Cache and Hit Testing](#slice-cache-and-hit-testing)
+- [Rendering Pipeline](#rendering-pipeline)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasPieChartElement` is a comprehensive pie / donut / 3D chart component within the UltraCanvas framework. It renders proportional categorical data with support for donut (ring) mode, slice explosion, radial gradients, full 3D extrusion with lighting, and an advanced labeling system (inside / outside / edge / leader-lined). Per-slice height extrusion allows individual slices to be visually raised in 3D mode to highlight key categories.

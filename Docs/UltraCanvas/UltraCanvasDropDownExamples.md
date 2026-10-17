@@ -2,6 +2,51 @@
 
 <!-- doc-check: void ApplyTheme(const std::string& name); -->
 
+## Contents
+
+- [Overview](#overview)
+- [File Structure](#file-structure)
+- [Key Features](#key-features)
+- [Class Structure](#class-structure)
+  - [Main Class: `UltraCanvasDropdown`](#main-class-ultracanvasdropdown)
+  - [Supporting Structures](#supporting-structures)
+- [Public API](#public-api)
+  - [Constructors](#constructors)
+  - [Item Management Methods](#item-management-methods)
+  - [Selection Management](#selection-management)
+  - [Multi-selection](#multi-selection)
+  - [Dropdown State Control](#dropdown-state-control)
+  - [Keyboard Focus](#keyboard-focus)
+  - [Styling](#styling)
+  - [Event Callbacks](#event-callbacks)
+- [Styles](#styles)
+- [Factory Functions](#factory-functions)
+  - [CreateDropdown](#createdropdown)
+- [Event Handling](#event-handling)
+  - [Mouse Events](#mouse-events)
+  - [Keyboard Events](#keyboard-events)
+  - [Focus Events](#focus-events)
+- [Implementation Details](#implementation-details)
+  - [Rendering Pipeline](#rendering-pipeline)
+  - [Scrolling System](#scrolling-system)
+  - [Position Calculation](#position-calculation)
+- [Usage Examples](#usage-examples)
+  - [Basic Dropdown](#basic-dropdown)
+  - [Dropdown with Separators](#dropdown-with-separators)
+  - [Dropdown with Custom Styling](#dropdown-with-custom-styling)
+  - [Dropdown with Event Handlers](#dropdown-with-event-handlers)
+  - [Dynamic Item Management](#dynamic-item-management)
+  - [Items with Icons and Multi-selection](#items-with-icons-and-multi-selection)
+  - [Icon-only Button](#icon-only-button)
+- [Performance Considerations](#performance-considerations)
+- [Integration Notes](#integration-notes)
+  - [Z-Order Management](#z-order-management)
+  - [Window Coordination](#window-coordination)
+- [Known Limitations](#known-limitations)
+- [Future Enhancements](#future-enhancements)
+- [Dependencies](#dependencies)
+- [Version History](#version-history)
+
 ## Overview
 
 The UltraCanvasDropDown is an interactive dropdown/combobox component that provides a user-friendly way to select from a list of options. It's part of the UltraCanvas Framework and offers styling, item icons, single or multiple selection, keyboard navigation, scrolling support, and event handling capabilities.

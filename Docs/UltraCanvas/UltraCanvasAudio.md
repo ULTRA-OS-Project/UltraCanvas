@@ -4,6 +4,23 @@
 
 Cross-platform audio **playback** and **recording** for UltraCanvas.
 
+## Contents
+
+- [Status](#status)
+- [Format support](#format-support)
+  - [AAC and M4A](#aac-and-m4a)
+- [Public API surface](#public-api-surface)
+  - [Resource](#resource)
+  - [Adding a codec](#adding-a-codec)
+  - [Playback (non-visual)](#playback-non-visual)
+  - [Recording (non-visual)](#recording-non-visual)
+  - [Devices & permission](#devices--permission)
+- [Visual elements](#visual-elements)
+  - [`UltraCanvasAudioPlayerElement`](#ultracanvasaudioplayerelement)
+  - [`UltraCanvasAudioRecorderElement`](#ultracanvasaudiorecorderelement)
+- [Build](#build)
+- [Architecture notes](#architecture-notes)
+
 ## Status
 
 Implemented. `ULTRACANVAS_ENABLE_AUDIO=ON` (the default) builds the

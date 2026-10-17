@@ -10,6 +10,19 @@ typed relationships whose line style and end decorations follow the UML rules.
 - Tests: `Tests/ClassLayoutTest.cpp` (target `ClassLayoutTest`)
 - Version: 1.0.1
 
+## Contents
+
+- [The three layers](#the-three-layers)
+- [Quick start](#quick-start)
+- [Relationships](#relationships)
+- [Themes and styling](#themes-and-styling)
+- [Rendering rules](#rendering-rules)
+- [Layout](#layout)
+- [Interaction](#interaction)
+- [Demo scenarios](#demo-scenarios)
+- [Known limitations](#known-limitations)
+- [See also](#see-also)
+
 ## The three layers
 
 | Layer | Owns | Needs a window? |

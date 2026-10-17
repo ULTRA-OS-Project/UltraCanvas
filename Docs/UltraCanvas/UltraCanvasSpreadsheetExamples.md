@@ -2,6 +2,46 @@
 
 <!-- doc-check: int MyTextMetrics(const std::string& text, const CellFont& font); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors and Factory](#constructors-and-factory)
+  - [Cell Access (workbook-level convenience)](#cell-access-workbook-level-convenience)
+  - [Sheet Management](#sheet-management)
+  - [Selection and Navigation](#selection-and-navigation)
+  - [Formatting (applies to current selection)](#formatting-applies-to-current-selection)
+  - [Rows, Columns, Merge, and Freeze](#rows-columns-merge-and-freeze)
+  - [Clipboard, Undo/Redo, Formula Engine](#clipboard-undoredo-formula-engine)
+  - [Sorting](#sorting)
+  - [Auto-Fill](#auto-fill)
+  - [File Operations](#file-operations)
+  - [View Settings](#view-settings)
+  - [Callbacks](#callbacks)
+  - [SpreadsheetCell](#spreadsheetcell)
+  - [NumberFormat factories (`UltraCanvasSpreadsheetTypes.h`)](#numberformat-factories-ultracanvasspreadsheettypesh)
+  - [Addresses and Ranges](#addresses-and-ranges)
+- [Examples](#examples)
+  - [1. Create a Spreadsheet Element](#1-create-a-spreadsheet-element)
+  - [2. Seed Sample Data with Formatting](#2-seed-sample-data-with-formatting)
+  - [3. Formulas and Recalculation](#3-formulas-and-recalculation)
+  - [4. Open a Spreadsheet File (.ods / .csv)](#4-open-a-spreadsheet-file-ods--csv)
+  - [5. Import CSV with Explicit Options](#5-import-csv-with-explicit-options)
+  - [6. Save: ODS Directly, CSV via Export Dialog](#6-save-ods-directly-csv-via-export-dialog)
+  - [7. Working with Multiple Sheets](#7-working-with-multiple-sheets)
+  - [8. Reading Cell Values Back](#8-reading-cell-values-back)
+- [Formula language and functions](#formula-language-and-functions)
+- [Column widths](#column-widths)
+- [Cell formatting menu](#cell-formatting-menu)
+- [Function menu](#function-menu)
+- [Sorting from the context menu](#sorting-from-the-context-menu)
+- [Fill handle](#fill-handle)
+- [Sorting a selection from the header](#sorting-a-selection-from-the-header)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, plus import of legacy Excel 97-2003 and 5.0/95 workbooks (`.xls`, see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)). Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.

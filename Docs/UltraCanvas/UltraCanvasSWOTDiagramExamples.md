@@ -4,6 +4,32 @@
 **Last Modified:** 2026-07-28
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Design Presets](#design-presets)
+- [Header Include](#header-include)
+- [Data Model](#data-model)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Design & Theme](#design--theme)
+  - [Quadrant Configuration](#quadrant-configuration)
+  - [Data Management](#data-management)
+  - [Visual Toggles](#visual-toggles)
+  - [Selection & Interaction](#selection--interaction)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Sample Data](#sample-data)
+- [Usage Examples](#usage-examples)
+  - [Basic SWOT Diagram (reference infographic style)](#basic-swot-diagram-reference-infographic-style)
+  - [Classic Matrix with Axis Captions](#classic-matrix-with-axis-captions)
+  - [Custom Titles, Colors and Center Text](#custom-titles-colors-and-center-text)
+  - [Selection Callbacks](#selection-callbacks)
+  - [Switching Designs at Runtime](#switching-designs-at-runtime)
+- [Demo Application](#demo-application)
+- [Notes & Best Practices](#notes--best-practices)
+
 ## Overview
 
 `UltraCanvasSWOTDiagram` renders the classic four-panel SWOT analysis

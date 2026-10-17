@@ -15,6 +15,15 @@ directions.
 (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`), which reads every `.stl` file in
 `media/3D/STL`.
 
+## Contents
+
+- [What is supported](#what-is-supported)
+- [Displaying a model](#displaying-a-model)
+- [Reading and writing meshes](#reading-and-writing-meshes)
+- [Through FileLoader](#through-fileloader)
+- [Build](#build)
+- [See also](#see-also)
+
 ## What is supported
 
 | Feature | Support |

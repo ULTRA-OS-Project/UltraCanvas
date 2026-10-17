@@ -1,5 +1,17 @@
 # UltraCanvas Pagination Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Modes (`PaginationMode`)](#modes-paginationmode)
+- [Quick Start](#quick-start)
+- [Windowing](#windowing)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Keyboard](#keyboard)
+- [Notes](#notes)
+
 ## Overview
 
 **UltraCanvasPagination** is a page-navigation strip for lists, tables and

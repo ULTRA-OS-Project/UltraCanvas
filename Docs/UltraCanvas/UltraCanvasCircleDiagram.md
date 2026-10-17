@@ -1,5 +1,23 @@
 # UltraCanvasCircleDiagram Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Presentation-only, by design](#presentation-only-by-design)
+- [Features](#features)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Design & palette](#design--palette)
+  - [Nodes & satellites](#nodes--satellites)
+  - [Hub](#hub)
+  - [Geometry](#geometry)
+  - [Appearance & interaction](#appearance--interaction)
+- [Usage Example](#usage-example)
+- [Node count and layout](#node-count-and-layout)
+- [Notes & Conventions](#notes--conventions)
+
 ## Overview
 
 The `UltraCanvasCircleDiagram` is the **circle diagram** infographic: a central

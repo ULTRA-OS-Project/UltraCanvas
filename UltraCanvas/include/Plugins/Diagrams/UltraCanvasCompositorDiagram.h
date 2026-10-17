@@ -4,8 +4,10 @@
 // widgets + optional preview), as opposed to UltraCanvasNodeDiagram's
 // opaque-shape model used for network/graph visualization.
 //
+// Version: 0.4.1 - Ungroup ignores a non-group node; onNodeDoubleClick fires;
+//                 a saved graph keeps parentId, link labels and link colours
 // Version: 0.4.0
-// Last Modified: 2026-05-22
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 //
 // CHANGELOG 0.4.0 (subgraphs / node groups - React Flow model):
@@ -800,7 +802,7 @@ public:
 
     // Convenience: remove the group node and promote its children to roots,
     // preserving their world positions. The links of the children survive
-    // unchanged.
+    // unchanged. Does nothing when groupId is not a group (isGroup) node.
     void Ungroup(const std::string& groupId);
 
     // Convenience: registers a built-in "group" template (isGroup=true,
