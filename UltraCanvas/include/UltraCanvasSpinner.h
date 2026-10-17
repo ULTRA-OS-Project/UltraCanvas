@@ -151,6 +151,7 @@ namespace UltraCanvas {
 
         // A run of steps: from the first step that changes the value until
         // the button or key is let go, the wheel rests or the focus leaves.
+        // Only the wheel needs the timer: it has no release.
         bool    stepRunOpen  = false;
         TimerId stepRunTimer = InvalidTimerId;
 

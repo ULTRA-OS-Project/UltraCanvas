@@ -732,10 +732,10 @@ namespace UltraCanvas {
 
     bool UltraCanvasSpinner::HandleKeyUp(const UCEvent& event) {
         if (!IsStepKey(event.virtualKey) || !stepRunOpen) return false;
-        // X11 without detectable auto-repeat sends a release before every
-        // repeat of a held key, followed at once by the next press; the
-        // short wait lets that press keep the run going.
-        EndStepRunAfter(120);
+        // A held key's repeats are presses only, on every platform (the
+        // Linux backend turns on X11's detectable auto-repeat), so its
+        // release is the end of the run.
+        EndStepRun();
         return true;
     }
 

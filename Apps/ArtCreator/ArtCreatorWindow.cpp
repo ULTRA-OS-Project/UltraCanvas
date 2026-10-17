@@ -698,7 +698,7 @@ void ArtCreatorWindow::BuildTransformBar() {
     auto angles = column("angles", 93);
     auto rotation = row(angles, "rot");
     icon(rotation, "rot", "rotate.svg");
-    rotationBox = field(rotation, "rot", 74, -360, 360, 1, 15, "Rotation, counter-clockwise, about the reference point",
+    rotationBox = field(rotation, "rot", 74, -3600, 3600, 1, 15, "Rotation, counter-clockwise, about the reference point",
                         [this](double v, bool merge) { ApplyRotation(v, merge); });
     rotationBox->SetSuffix("\xC2\xB0");
     auto shear = row(angles, "shear");
@@ -763,6 +763,9 @@ void ArtCreatorWindow::RefreshTransformBar() {
         // for centimetres and inches.
         s->SetStep(k >= 20.0 ? 0.1 : 1.0);
     }
+    const auto ids = selection->Ids();
+    const bool sameSelection = ids == transformBarIds;
+    transformBarIds = ids;
     if (any) {
         const Rect2Dd b = selection->Bounds();
         const Point2Dd p = TransformPivot();
@@ -772,6 +775,10 @@ void ArtCreatorWindow::RefreshTransformBar() {
         sizeHBox->SetValue(b.height / k);
         double rotation = 0, shear = 0;
         SelectionAngles(rotation, shear);
+        // The object's angle is only known to a turn: show the one nearest
+        // what the field holds, so stepping on from 165 gives 180, 195 ...
+        // rather than -165. A new selection starts from -180 to 180.
+        if (sameSelection) rotation += 360.0 * std::round((rotationBox->GetValue() - rotation) / 360.0);
         rotationBox->SetValue(rotation);
         shearBox->SetValue(shear);
     } else {
@@ -826,8 +833,9 @@ void ArtCreatorWindow::ApplyRotation(double degrees, bool merge) {
     if (selection->Empty()) return;
     double rotation = 0, shear = 0;
     SelectionAngles(rotation, shear);
-    const double turn = degrees - rotation;
-    if (std::fabs(turn) < 1e-9) return;
+    // The shortest turn there: 375 typed over 0 turns by 15.
+    const double turn = std::remainder(degrees - rotation, 360.0);
+    if (std::fabs(turn) < 1e-9) { RefreshTransformBar(); return; }
     const Point2Dd pivot = TransformPivot();
     auto ids = selection->Ids();
     history.Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); }, merge);

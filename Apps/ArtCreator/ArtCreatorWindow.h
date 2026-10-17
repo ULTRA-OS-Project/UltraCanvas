@@ -277,6 +277,9 @@ private:
     // wheel; and a run of such steps is open (one undo step so far).
     bool transformStepping = false;
     bool transformRunOpen = false;
+    // The selection the bar last showed: while it stays the same the
+    // rotation field counts on past 180 deg instead of jumping to -180.
+    std::vector<std::string> transformBarIds;
     bool lockAspectRatio = true;
     ArtCreatorPageResult lastPage;
     int iconSize = 0;

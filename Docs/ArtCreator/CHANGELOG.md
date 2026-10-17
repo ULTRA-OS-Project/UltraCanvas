@@ -13,7 +13,10 @@
     width changes the height in proportion, and the other way round;
   - *rotation* and *shear* show one object's own angles (counter-clockwise,
     and how far its top leans to the right) and set them; with several
-    objects selected they show 0 and turn or shear by what is typed.
+    objects selected they show 0 and turn or shear by what is typed. The
+    rotation counts on past 180 deg while the same objects stay selected -
+    holding the up arrow from 165 shows 180, 195, ... 345, not -165 - and a
+    typed angle turns the shortest way to it.
 
   Lengths are in the page's unit (*File > Document Setup*), or in icon
   pixels in icon mode, and follow a drag as it happens. Every change is one

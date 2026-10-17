@@ -13,6 +13,12 @@
   instead of once per step like `onValueChanged`. A held arrow key reached a
   caller as one change per repeat, so an editor that records undo per change
   made a held key dozens of undo steps; with this it can make them one.
-  `IsStepping()` says whether a run is open. On X11 a held key's repeats
-  each arrive as a release and a press; the run waits 120 ms after a release
-  for that press, so it is not split.
+  `IsStepping()` says whether a run is open.
+- **Linux: a held key is one press, its repeats and one release.** X11 sent
+  a held key's every repeat as a release and a press, so an element's key-up
+  handler ran once per repeat and could not tell the key was still down -
+  unlike Windows and macOS, where repeats are presses only. The Linux backend
+  now turns on X11's detectable auto-repeat (`XkbSetDetectableAutoRepeat`),
+  and on a server without it drops a release that the next queued event
+  presses again at the same moment. `KeyUp` now means the key was let go on
+  every platform.

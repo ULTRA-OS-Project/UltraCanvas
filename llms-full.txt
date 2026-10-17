@@ -62192,9 +62192,9 @@ bool IsStepping() const;                         // a run of steps is open
   arrow / Page / Home / End key released, the wheel at rest for half a second,
   or the focus or pointer gone - with the value the run ended on. A caller
   that records undo (ArtCreator's transform bar) applies each step at once and
-  merges the steps of one run into one undo step, closing it here. A held key
-  on X11 sends a release before each repeat; the run only ends when no press
-  follows within 120 ms, so the repeats stay one run.
+  merges the steps of one run into one undo step, closing it here. A held
+  key's repeats arrive as presses only on every platform, so its release ends
+  the run at once.
 - When `SetWrap(true)`, stepping past an end wraps to the opposite end; otherwise
   the value clamps and the corresponding button renders disabled.
 - Text editing is available for Integer and Decimal modes when `IsEditable()` is
