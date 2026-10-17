@@ -1,5 +1,28 @@
 # FileLoader - Universal File Handling for Modern Applications
 
+## Contents
+
+- [Simplify File Management Across All Formats](#simplify-file-management-across-all-formats)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Generic File Loading](#generic-file-loading)
+  - [Typed Object Loaders](#typed-object-loaders)
+  - [Editable Vector Documents](#editable-vector-documents)
+  - [Save Settings](#save-settings)
+  - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [Transparent Decompression](#transparent-decompression)
+  - [Runtime Format Inventory](#runtime-format-inventory)
+  - [A Dialog's File Types](#a-dialogs-file-types)
+  - [Extensible Plugin Architecture](#extensible-plugin-architecture)
+- [Supported Formats](#supported-formats)
+- [Why FileLoader?](#why-fileloader)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+  - [For Users](#for-users)
+- [Perfect For](#perfect-for)
+- [Get Started](#get-started)
+- [The Bottom Line](#the-bottom-line)
+
 ## Simplify File Management Across All Formats
 
 **FileLoader** is a cross-platform file handling facade that reduces the
@@ -66,11 +89,21 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT)
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT).
+// A password-protected .docx asks for its password before it loads.
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
 });
 ```
+
+A file saved with *Encrypt with Password* - an `.xlsx`, `.docx` or `.pptx` -
+needs its password before any loader can read it.
+`RequestDocumentPassword(path, parent, onResult)` asks for it in a password
+field, checks it, and asks again after a wrong one; it calls straight back
+with `(true, "")` for a file that has none. Pass what it hands back to the
+loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
+`LoadFromFile(path, password)`. See
+[UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
 ### Editable Vector Documents
 
@@ -286,6 +319,11 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
 **Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
+
+**Layered images** (`MediaFormatCategory::LayeredImage`): `.ucd`, the UCD 2.1
+layered image (load + save, no libvips needed), and `.ucraster`, the UltraPaint
+project (load + save, libvips) - files that keep an image's layers and its text
+layers as text, read and written by `UCRasterDocument`.
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*

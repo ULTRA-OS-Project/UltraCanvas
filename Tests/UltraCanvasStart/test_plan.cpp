@@ -1,8 +1,9 @@
 // Tests/UltraCanvasStart/test_plan.cpp
 // The plan, the SDK names and the report.
-// Version: 0.1.3 - an installed MSYS2 is updated first; RunStep streams its lines
-// Version: 0.1.2 - Windows without MSYS2: winget sets it up before pacman
-// Version: 0.1.1 - a check switched off is left out of the install
+// Version: 0.1.4 - an installed MSYS2 is updated first; RunStep streams its lines
+// Version: 0.1.3 - Windows without MSYS2: winget sets it up before pacman
+// Version: 0.1.2 - a check switched off is left out of the install
+// Version: 0.1.1 - the SDK download page and SdkUnpackedFolder
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -40,8 +41,12 @@ TEST(SdkArtifactName_matches_the_workflow) {
                std::string("UltraCanvas-SDK-Windows-0.9.147-x86_64.zip"));
     REQUIRE_EQ(SdkArchiveName(Platform::Linux, "0.9.147", "x86_64"),
                std::string("UltraCanvas-SDK-Linux-0.9.147-x86_64.tar.xz"));
-    REQUIRE(SdkReleaseAssetUrl(Platform::Linux, "1.0.0", "arm64").find(
-        "/releases/download/v1.0.0/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.xz") != std::string::npos);
+    REQUIRE_EQ(SdkDownloadPage(), std::string("https://ultraos.eu/download-file/"));
+    REQUIRE_EQ(SdkUnpackedFolder("/home/me/Downloads/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.xz"),
+               std::string("/home/me/Downloads/UltraCanvas-SDK-Linux-1.0.0-arm64"));
+    REQUIRE_EQ(SdkUnpackedFolder("C:/dl/UltraCanvas-SDK-Windows-1.0.0-x86_64.zip"),
+               std::string("C:/dl/UltraCanvas-SDK-Windows-1.0.0-x86_64"));
+    REQUIRE_EQ(SdkUnpackedFolder("sdk.tar.gz"), std::string("sdk"));
     REQUIRE_EQ(SdkReleasePage("0.9.211"),
                std::string("https://github.com/ULTRA-OS-Project/UltraCanvas/releases/tag/v0.9.211"));
     REQUIRE(!FrameworkVersion().empty());

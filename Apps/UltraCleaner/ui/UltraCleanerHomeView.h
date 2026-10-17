@@ -34,6 +34,8 @@ public:
 
     std::function<void()> onCleanSystemJunk;
     std::function<void()> onCleanPhotos;
+    // Offered on Windows only, where there is a registry to clean.
+    std::function<void()> onCleanRegistry;
 
 private:
     void RebuildDrives();

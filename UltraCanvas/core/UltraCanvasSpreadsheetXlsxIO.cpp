@@ -9,13 +9,14 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
-// Version: 1.0.1
-// Last Modified: 2026-10-09
+// Version: 1.1.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetXls.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasSpreadsheetExcelFormula.h"   // Excel's Sheet!A1 <-> 'Sheet'.A1
 
 #include "tinyxml2.h"
@@ -151,10 +152,26 @@ class XlsxLoader {
 public:
     explicit XlsxLoader(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
-    bool Load(const std::string& filePath, std::string& error) {
-        if (!zip_.Open(filePath)) {
-            error = "The file is not a valid Excel workbook (.xlsx): " + filePath;
-            return false;
+    bool Load(const std::string& filePath, const std::string& password, std::string& error) {
+        // A password-protected workbook is a compound file holding the
+        // package encrypted (UltraCanvasOfficeEncryption.h), not a ZIP.
+        std::vector<uint8_t> package;
+        switch (DecryptOfficePackageFile(filePath, password, package, error)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                if (!zip_.Open(filePath)) {
+                    error = "The file is not a valid Excel workbook (.xlsx): " + filePath;
+                    return false;
+                }
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!zip_.OpenFromMemory(std::move(package))) {
+                    error = "The decrypted workbook is not a valid Excel workbook (.xlsx): " + filePath;
+                    return false;
+                }
+                break;
+            default:
+                error += ": " + filePath;
+                return false;
         }
         std::string workbookXml;
         if (!zip_.ReadEntry("xl/workbook.xml", workbookXml)) {
@@ -1068,10 +1085,10 @@ private:
 
 // ===== SPREADSHEET ENTRY POINTS =====
 
-bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath, const std::string& password) {
     lastError_.clear();
     XlsxLoader loader(this);
-    if (!loader.Load(filePath, lastError_)) {
+    if (!loader.Load(filePath, password, lastError_)) {
         return false;
     }
     Recalculate();

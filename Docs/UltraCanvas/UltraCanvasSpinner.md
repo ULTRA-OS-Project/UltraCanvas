@@ -1,5 +1,20 @@
 # UltraCanvas Spinner / SpinBox Control Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Value Modes (`SpinnerValueType`)](#value-modes-spinnervaluetype)
+  - [Layouts (`SpinnerLayout`)](#layouts-spinnerlayout)
+  - [Button Glyphs (`SpinnerButtonGlyph`)](#button-glyphs-spinnerbuttonglyph)
+  - [Behaviour](#behaviour)
+- [Class Definition](#class-definition)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Keyboard Reference](#keyboard-reference)
+- [Notes](#notes)
+
 ## Overview
 
 The **UltraCanvasSpinner** is the UltraCanvas control for selecting a value with

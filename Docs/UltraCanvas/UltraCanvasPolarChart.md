@@ -1,5 +1,33 @@
 # UltraCanvasPolarChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Series management](#series-management)
+  - [Angular axis](#angular-axis)
+  - [Radial axis](#radial-axis)
+  - [Grid, background and bands](#grid-background-and-bands)
+  - [Series layout and styling](#series-layout-and-styling)
+  - [Legend and interaction](#legend-and-interaction)
+  - [Coordinate helpers](#coordinate-helpers)
+- [Factory Functions](#factory-functions)
+- [Usage Examples](#usage-examples)
+  - [Polar scatter with a numeric angle axis](#polar-scatter-with-a-numeric-angle-axis)
+  - [Stacked polar columns (Nightingale rose)](#stacked-polar-columns-nightingale-rose)
+  - [Tolerance bands behind a categorical line](#tolerance-bands-behind-a-categorical-line)
+  - [A 270° fan with a donut hole](#a-270°-fan-with-a-donut-hole)
+  - [Dual angle axis](#dual-angle-axis)
+- [Rendering Order](#rendering-order)
+- [Interaction Details](#interaction-details)
+- [Notes and Limitations](#notes-and-limitations)
+- [Demo](#demo)
+
 ## Overview
 
 The `UltraCanvasPolarChart` is the general-purpose polar coordinate chart of the UltraCanvas framework. Every observation is an (angle, radius) pair: the angular axis positions the point around the circle, the radial axis positions it away from the centre. One element covers the whole family of round plots that share that coordinate system — polar scatter, polar line and spline, polar area, and polar columns (the Nightingale rose / stacked polar column chart).

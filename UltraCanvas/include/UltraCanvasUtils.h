@@ -1,6 +1,7 @@
 // include/UltraCanvasUtils.h
 // Utils
 // Version: 1.2.0 - RunProcessCaptured takes an onOutput callback: the output as it comes
+// Version: 1.1.1 - NormalizePath: '\' is a separator only on Windows (comment)
 // Version: 1.1.0
 // Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
@@ -39,7 +40,8 @@ namespace UltraCanvas {
     std::string GetExecutableDir();
     // The path in the platform's form: on Windows with '\' for '/', elsewhere
     // resolved by realpath (a path that does not exist stays as given). A path
-    // that ends in a separator ends in exactly one, so a name appends to it.
+    // that ends in a separator ends in exactly one, so a name appends to it;
+    // '\' is a separator only on Windows - elsewhere it is part of a name.
     std::string NormalizePath(const std::string& in);
 
     // Is the file/folder hidden by the conventions of the platform it lives

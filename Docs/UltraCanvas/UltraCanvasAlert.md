@@ -1,5 +1,16 @@
 # UltraCanvas Alert Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Why it lives in the dialog system](#why-it-lives-in-the-dialog-system)
+- [Severities](#severities)
+- [Quick Start](#quick-start)
+- [Alerts without the severity icon](#alerts-without-the-severity-icon)
+- [Rich form](#rich-form)
+- [API](#api)
+- [Notes](#notes)
+
 ## Overview
 
 An **Alert** is a floating, always-on-top, **modal** message box that the user

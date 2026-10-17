@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.34 - quitting while a cloud upload or download runs asks first
+//                   ("An upload is still running — quit anyway?")
+// Version: 0.9.33 - the cloud stores and service are shared, and the compose
+//                   window gets the shared service for the cloud link picker
 // Version: 0.9.32 - after the computer was switched on (the last connection to a
 //                   mail server more than ten minutes old), the alerts of failed
 //                   background checks wait for Settings > Mail > Connection's
@@ -59,7 +63,7 @@
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 #include "UltraMailHeaderText.h"
@@ -269,6 +273,7 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     std::optional<Trace::Stage> step;
     step.emplace("Create the window", 0);
     window_ = CreateWindow(config);
+    GuardQuitDuringTransfers(window_);
     // The timing trace hears of every frame; the first few after the start
     // are reported in full, timed from the start of the process.
     if (Trace::Enabled()) {
@@ -344,9 +349,9 @@ void UltraMailApp::FinishStartup() {
     // Cloud storage accounts (UltraCloud) for "Attach cloud link".
     step.emplace("Cloud storage accounts (cloud.db)", 0);
     UltraCloud::RegisterBuiltInProviders();
-    cloudAccounts_.Open("ultramail-cloud", dataDir_ + "/cloud.db");
-    cloudSecrets_ = std::make_unique<UltraCloud::VaultSecretStore>();   // in vault_
-    cloud_ = std::make_unique<UltraCloud::CloudService>(cloudAccounts_, *cloudSecrets_);
+    cloudAccounts_->Open("ultramail-cloud", dataDir_ + "/cloud.db");
+    cloudSecrets_ = std::make_shared<UltraCloud::VaultSecretStore>();   // in vault_
+    cloud_ = std::make_shared<UltraCloud::CloudService>(cloudAccounts_, cloudSecrets_);
 
     // The UltraNet plug-in registry, so the SMTP / IMAP DSOs load. The
     // registry's default directory is relative to the working directory, which
@@ -1111,13 +1116,14 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     cfg.height = 560;   // two toolbar rows above the body
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
+    GuardQuitDuringTransfers(win);
 
     // Its own view: the buttons, the toolbar and Send act on this window's
     // message, whatever other compose windows are open.
     auto view = std::make_shared<ComposeView>();
     view->SetDraft(draft);
     view->SetParentWindow(win.get());
-    view->SetCloud(cloud_.get());
+    view->SetCloud(cloud_);
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
     // addresses written to most - by the mail in the Sent folders, recent
@@ -1176,6 +1182,111 @@ void UltraMailApp::RetireComposer(UltraCanvasWindow* window) {
     };
     if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(drop);
     else drop();
+}
+
+namespace {
+
+// Whether closing `closing` leaves UltraMail without a window, so that the
+// event loop - and the process - ends: every other window is already going,
+// or is a dialog over `closing`, which goes with it.
+bool ClosingEndsApplication(UltraCanvasWindowBase* closing) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return true;
+    for (const auto& other : app->GetWindows()) {
+        if (!other || other.get() == closing) continue;
+        const WindowState state = other->GetState();
+        if (state == WindowState::Closing || state == WindowState::Closed) continue;
+        bool overClosing = false;
+        for (UltraCanvasWindowBase* p = other->GetParentWindow(); p; p = p->GetParentWindow())
+            if (p == closing) { overClosing = true; break; }
+        if (!overClosing) return false;
+    }
+    return true;
+}
+
+} // namespace
+
+void UltraMailApp::GuardQuitDuringTransfers(const std::shared_ptr<UltraCanvasWindow>& window) {
+    if (!window) return;
+    std::weak_ptr<UltraCanvasWindow> weak = window;
+    window->onWindowClosing = [this, weak]() {
+        auto self = weak.lock();
+        if (!self || quitConfirmed_ || !cloud_) return true;
+        // Asked already, and not answered yet: the question stays the one on
+        // screen.
+        if (quitQuestionOpen_) return false;
+        if (!ClosingEndsApplication(self.get())) return true;
+        const std::vector<UltraCloud::CloudService::Transfer> transfers =
+                cloud_->TransfersInProgress();
+        if (transfers.empty()) return true;
+        AskQuitDuringTransfers(self, transfers);
+        return false;
+    };
+}
+
+void UltraMailApp::AskQuitDuringTransfers(
+        const std::shared_ptr<UltraCanvasWindow>& window,
+        const std::vector<UltraCloud::CloudService::Transfer>& transfers) {
+    using Transfer = UltraCloud::CloudService::Transfer;
+    std::size_t uploads = 0;
+    for (const Transfer& t : transfers) if (t.kind == Transfer::Kind::Upload) ++uploads;
+    const std::size_t downloads = transfers.size() - uploads;
+    std::string what;
+    if (transfers.size() == 1)
+        what = uploads ? "An upload is" : "A download is";
+    else if (downloads == 0)
+        what = std::to_string(uploads) + " uploads are";
+    else if (uploads == 0)
+        what = std::to_string(downloads) + " downloads are";
+    else
+        what = std::to_string(transfers.size()) + " transfers are";
+
+    // Which files, and where to or from: the file name and the account's name.
+    std::string details;
+    for (std::size_t i = 0; i < transfers.size() && i < 4; ++i) {
+        const Transfer& t = transfers[i];
+        std::string name = PathToUtf8(PathFromUtf8(t.localPath).filename());
+        if (name.empty()) name = t.remotePath;
+        UltraCloud::Account account;
+        const std::string place = cloud_->Accounts().Get(t.accountId, account)
+                                          ? account.displayName : t.accountId;
+        details += "\"" + name + "\" is still being " +
+                   (t.kind == Transfer::Kind::Upload ? "uploaded to " : "downloaded from ") +
+                   place + ".\n";
+    }
+    if (transfers.size() > 4)
+        details += "... and " + std::to_string(transfers.size() - 4) + " more.\n";
+    details += transfers.size() == 1
+                       ? "Quitting stops it, and the file does not arrive."
+                       : "Quitting stops them, and the files do not arrive.";
+
+    DialogConfig cfg;
+    cfg.title = "Quit UltraMail?";
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = what + " still running — quit anyway?";
+    cfg.details = details;
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 500;
+    cfg.height = 200;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: the window stays, and so does the transfer
+    // The safe answer is the one Return and Escape give: UltraMail stays.
+    dialog->AddCustomButton("Keep UltraMail open", DialogResult::Cancel,
+                            DialogButtonRole::Default);
+    dialog->AddCustomButton("Quit anyway", DialogResult::Yes, DialogButtonRole::Destructive);
+    std::weak_ptr<UltraCanvasWindow> weak = window;
+    dialog->onResult = [this, weak](DialogResult result) {
+        quitQuestionOpen_ = false;
+        if (result != DialogResult::Yes) return;
+        quitConfirmed_ = true;
+        // The close the question held back, once the dialog has finished
+        // closing - not from inside it.
+        auto close = [weak]() { if (auto w = weak.lock()) w->Close(); };
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(close);
+        else close();
+    };
+    quitQuestionOpen_ = true;
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
 }
 
 std::string UltraMailApp::FolderLabel(const std::string& accountId, const std::string& folder) const {
@@ -1748,6 +1859,7 @@ void UltraMailApp::OpenSourceViewer(const std::string& subject, const std::strin
     cfg.height = 640;
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
+    GuardQuitDuringTransfers(win);
 
     auto root = CreateContainer("mailSourceRoot", 0, 0,
                                 static_cast<float>(cfg.width), static_cast<float>(cfg.height));
@@ -2881,6 +2993,7 @@ void UltraMailApp::OpenContacts() {
     cfg.height = 520;
     cfg.backgroundColor = Theme::kPageBackground;
     auto win = CreateWindow(cfg);
+    GuardQuitDuringTransfers(win);
 
     contactsView_.SetStore(&contacts_);
     contactsView_.onChanged = [this]() { RefreshContactIndex(); Refresh(); };
@@ -2918,6 +3031,7 @@ void UltraMailApp::OpenOutbox() {
     cfg.height = 380;
     cfg.backgroundColor = Theme::kPageBackground;
     auto win = CreateWindow(cfg);
+    GuardQuitDuringTransfers(win);
     UltraCanvasWindow* raw = win.get();
 
     outboxView_.onSendNow = [this]() {
@@ -3073,7 +3187,7 @@ void UltraMailApp::EditFromOutbox(int64_t id) {
 void UltraMailApp::MigrateCloudSecrets() {
     if (!cloudSecrets_ || !vault_.IsUnlocked() || dataDir_.empty()) return;
     std::vector<UltraCloud::Account> known;
-    cloudAccounts_.List(known);
+    cloudAccounts_->List(known);
     UltraCloud::MigrateLegacyFileSecrets(dataDir_ + "/cloud-vault", known, *cloudSecrets_);
 }
 

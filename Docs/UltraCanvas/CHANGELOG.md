@@ -1,3 +1,315 @@
+#### 2026-10-17 *0.9.332*
+- **Spreadsheet: undo after a sheet is renamed or deleted wrote into the open
+  sheet.** An undo step finds its sheet by name, and when none had that name
+  it fell back to the active sheet - so after renaming "Sales", undoing an
+  edit made on it cleared the same cells on whatever sheet was open, and the
+  same after deleting a sheet. Renaming now carries the history along (the
+  steps name the new name, and formulas they put back refer to it); deleting
+  drops the sheet's steps; and undo never falls back to another sheet.
+- **Spreadsheet: deleting a sheet makes references to it `#REF!` in the
+  formula text,** as Excel does: `=Gone.E5*2` becomes `=#REF!*2`,
+  `=SUM(Gone.A1:B3)` becomes `=SUM(#REF!)`. They used to keep the deleted
+  sheet's name, and a sheet later added under that name would quietly have
+  been read in its place (`RemoveSheetFromFormula`).
+
+#### 2026-10-17 *0.9.331*
+- **DemoApp: the File Explorer TreeView looks like a file manager's
+  navigation pane.** The first tree on the TreeView page now shows *Pinned*
+  (Documents, Work, ULTRA OS, privat) and *Computer* with Home (Downloads,
+  Dokumente, Desktop, Bilder, Videos, Music), Cloud Storage (OneDrive,
+  Dropbox), Remote Drives (an FTP server) and drive C: with its folders. The
+  root is hidden (`SetRootVisible(false)`) so Pinned and Computer are the top
+  level, joined by root lines; Home starts selected.
+
+#### 2026-10-17 *0.9.330*
+- **Password-protected .xlsx and .docx files open.** A workbook or document
+  saved with *Encrypt with Password* (ECMA-376 agile encryption, what Office
+  2010 and later write) is a compound file, not a ZIP, and was refused as
+  password-protected (`.xlsx`) or as a `.doc` that could not be read (`.docx`).
+  `UltraCanvasOfficeEncryption.h` decrypts it with UltraCrypt: the SHA-512
+  password key (100 000 rounds), the password verifier, the dataIntegrity HMAC
+  over the whole encrypted package - checked before a byte is decrypted, so a
+  changed file is refused - and the package in 4096-byte segments, each with
+  its own IV.
+  - `UltraCanvasSpreadsheet::LoadFromFile`, `LoadXLSX` and `LoadXLS` (a
+    protected `.xlsx` under the `.xls` name), and `UCWordDocumentIO::Load` /
+    `LoadDocx`, take the password as a last, optional argument. Without it the
+    message says the file is password-protected; with a wrong one, that the
+    password is not correct.
+  - `UltraCanvasFileLoader::RequestDocumentPassword` asks for the password,
+    checks it (`CheckOfficePassword`, the verifier only) and asks again after
+    a wrong one; `OpenTextDocument` and the demo's spreadsheet Open button use
+    it. `LoadTextDocument` takes the password too.
+  - `UCZipPackageReader::OpenFromMemory` reads the decrypted package.
+  - Refused with the reason: Office 2007's standard encryption, SHA-1-keyed
+    agile files (Office 2010's default), certificate-only encryption, a file
+    without an integrity check.
+  - The core library now uses UltraCrypt: a shared core already absorbs it, a
+    static one links it `PUBLIC`.
+  - `Tests/OfficeEncryptionTest.cpp` reads a workbook and a document encrypted
+    by msoffcrypto-tool (`Tests/fixtures/make-office-encrypted-fixtures.py`).
+- **UltraCrypt 0.3.0: AES-CBC, for formats defined elsewhere.** Encrypted
+  Office files, PDF's AESV2/AESV3 and OpenSSL's `enc` output are AES in CBC
+  mode, and libsodium has no AES block cipher, so UltraCrypt now carries its
+  own: `UltraCrypt_AesCbcEncrypt` / `UltraCrypt_AesCbcDecrypt` with a 128-,
+  192- or 256-bit key, PKCS #7 or no padding, and a random IV generated when
+  none is given (`core/UltraCrypt/UltraCryptAes.cpp`).
+  - Constant-time: bitsliced, with the Boyar-Peralta S-box circuit, so no
+    table is indexed by a secret byte. Portable software, independent of
+    libsodium and of AES instructions.
+  - Refused padding is the new `UltraCryptResultCode::DecryptionFailed`, with
+    an empty output; the check does not branch on the plaintext.
+  - Interop only. CBC has no integrity, so UltraCanvas's own data stays on
+    XChaCha20-Poly1305, and a format that carries a MAC must have it checked
+    before decrypting (`Docs/Modules/UltraCrypt/README.md` §5.9).
+  - `UltraCryptTests` checks FIPS 197 App. C and SP 800-38A F.2 for all three
+    key sizes, PKCS #7 lengths 0-80, and refused padding.
+
+#### 2026-10-17 *0.9.329*
+- **Spreadsheet: clicking a cell while typing a formula types its address.**
+  Typing `=SUM(` and dragging over C2:C8 used to end the edit and select the
+  cells; it now types `C2:C8` at the caret and the edit goes on, as in Excel
+  and LibreOffice Calc. A click types one address, a drag a range, Shift+click
+  grows the reference just typed, Ctrl+click adds another after a `,`, and a
+  further click replaces it. It applies wherever a reference may go - after
+  `=`, `(`, a separator, an operator or a `:` - and the pointer turns into a
+  crosshair there; elsewhere a click ends the edit as before. The formula's
+  references are now outlined while editing in the formula bar too
+  (`CanPointReference`, `FormulaAcceptsReferenceAt`).
+- **Spreadsheet: more of the fill handle.** Ctrl held on release copies the
+  selection instead of continuing its series (`AutoFillMode::Copy`); a
+  double-click on the handle fills down as far as the neighbouring column's
+  data goes (`AutoFillSelectionToDataEnd`, `GetAutoFillDownEnd`); Ctrl+D and
+  Ctrl+R fill down and right (`FillSelectionDown`, `FillSelectionRight`). A
+  fill, selection or pointing drag past the grid's edge now scrolls it.
+- **Spreadsheet: a sheet tab menu.** Right-clicking a tab offers Insert sheet
+  before / after, Duplicate, Rename..., Move left / right / to start / to end
+  and Delete (asking first when the sheet has cells; never the last sheet); a
+  double-click on a tab renames it. `RenameSheet` now refuses names the file
+  formats do not allow or another sheet has (`ValidateSheetName`,
+  `CheckSheetName`) and rewrites every formula naming the sheet
+  (`RenameSheetInFormula`); removing a sheet recalculates, so formulas naming
+  it show `#REF!`. `onSheetTabContextMenu` and `SetSheetTabMenuEnabled` let an
+  application replace or turn off the menu.
+
+#### 2026-10-17 *0.9.328*
+- **The cloud link picker can hold a shared `CloudService` too.** Its
+  listings, uploads and share links run on detached threads, and its *Add
+  account…* opens the add-account dialog, whose browser sign-in can wait
+  minutes - but the picker only kept a raw `CloudService*`, so an upload
+  still running when the compose window or the application closed went on
+  using a freed service and freed stores. `ShowCloudLinkPicker` now has a
+  `std::shared_ptr<CloudService>` form: the picker's threads hold the service
+  until they end, and its *Add account…* uses the add-account dialog's
+  shared form. The `CloudService&` form stays, with the caller keeping the
+  service alive as before. UltraMail moves to the shared form (UltraMail
+  changelog).
+- **`CloudService::TransfersInProgress`** lists the uploads and downloads a
+  service is running, on any thread - each with its account, local file and
+  remote path. `Upload`, `Download` and `UploadAndShare` count from the
+  moment they start until they return. A host asks before it quits: a
+  transfer ends with the process and the file does not arrive. UltraMail uses
+  it to ask *An upload is still running — quit anyway?* when its last window
+  closes during one (UltraMail changelog). `UltraCloudTests`: an upload held
+  inside a fake server is listed, and the list empties when it returns.
+- **`UltraCanvasSegmentedControl::SetSegmentTextColor`: one segment in its own
+  colour.** A segment can carry a text colour of its own while it is not
+  selected (hover and the selection animation included); selected, it takes
+  `selectedTextColor` like the rest, and `Colors::Transparent` restores the
+  style's colours. UltraCanvasStart's *None* AI assistant is the first user.
+  Docs: `UltraCanvasSegmentedControlExamples.md` (*A Segment in Its Own
+  Colour*).
+
+#### 2026-10-17 *0.9.327*
+- **The folder display no longer hands files on a remote drive to its
+  background readers.** A remote listing (an FTP or cloud drive in UltraFiler)
+  went through the same readers as a local folder, so every `.mp4` on the drive
+  was given to the video thumbnailer as `ultracloud://...`, a path no decoder
+  can open; a grab that does not fail at once waits out its 8-second timeout.
+  Closing a tab destroys its `UltraCanvasFilerWidget` on the UI thread, which
+  joins those workers, so a reader busy with such a path held the window - a
+  suspect in UltraFiler stalling when one of two tabs on an FTP folder is
+  closed (each display retries every file). Thumbnails, text and folder
+  previews, media probes, folder statistics and folder prefetch now skip a path
+  the `isRemotePath` hook claims (`IsRemoteEntryPath`); a local thumbnail the
+  host supplies is still shown.
+
+#### 2026-10-17 *0.9.326*
+- **The colour picker folds its colour definitions away and can follow its
+  content's height** (picker 1.8.0).
+  - The design selector offers a fourth design, the **colour + brightness
+    sliders** (`HueLightnessSliders`), with its own icon
+    (`media/icons/colorpicker/sliders.svg`). The two sliders end short of the
+    selector, so all of the colour range stays left of it rather than under
+    it, and the selector stays put while they are dragged.
+  - A collapsible picker (`SetSlidersCollapsible`) hides the **HSV / HSL /
+    RGB tab bar** with the channel sliders behind the disclosure row, which
+    now comes first; the tabs used to stay out on their own when the sliders
+    folded away. `onSlidersExpandedChanged` reports the user opening or
+    folding the section, as `onWheelStyleChanged` reports a design chosen,
+    for a host that remembers it (UltraPaint does).
+  - `SetAutoHeight(true)` makes the widget take the height its content needs
+    and keep it as the content changes - the section opened or closed,
+    another design chosen, the alpha row, the UI scale - in the layout too,
+    so in a toolbox column what is below the picker moves up when it folds.
+    Before, the widget kept the size it was given and the colour + brightness
+    sliders left the freed space empty at its bottom. Off by default.
+  - The DemoApp shows the colour + brightness sliders in a toolbox column with
+    a palette under it. `ColorPickerAutoHeightTest` and
+    `ColorPickerDesignSelectorTest` cover it.
+- **A menu bar's first item keeps its label.** The menu measured its first
+  item before it set its own font, in whatever font the window's context was
+  last left in, and ellipsized the label into that width: in UltraPaint and
+  ArtCreator, once the colour picker had laid itself out in its smaller font
+  (choosing a design, opening its channels), *File* read "...". Every item is
+  measured in its own font now, so the bar's items keep their width and
+  place whatever was drawn or measured before them
+  (`UltraCanvasMenu::CalculateItemWidth`; `MenuAndTabBehaviourTest`).
+
+#### 2026-10-17 *0.9.325*
+- **A `\` in the bundled fonts' folder name no longer breaks the generated
+  fontconfig file on Linux and Android.** When no system `fonts.conf` is
+  found, `SetupBundledFontconfig` writes one naming the folder of the bundled
+  fonts. `ToFontconfigPath` turned every `\` in that path into `/` on every
+  system, so an application whose folder has a `\` in its name pointed
+  fontconfig at a folder that does not exist and found none of its bundled
+  fonts. The swap is now made only on Windows, where `\` separates folders.
+- **UltraWeb 0.8.3**: a local file with a `\` in its name opens on Linux and
+  macOS (`ToPageUrl`); `UltraWebTabTest` opens one.
+- **`NormalizePath` no longer puts a `/` after a file name ending in `\` on
+  Linux and macOS.** A trailing `\` counted as a folder's separator on every
+  system, so a file named `a\` came back as `a\/`, a path that reaches
+  nothing. Outside Windows a `\` is part of the name and the path comes back
+  as it is; on Windows it still ends a folder. `FilerNameEncodingTest`
+  checks both a file that exists and one that does not.
+
+#### 2026-10-17 *0.9.324*
+- **The signing scripts no longer sign with the password published in the
+  repository's history** (`SignUltraDemo.ps1`, `SignUltraTexter.ps1`).
+  - Until now only `-Mode RotatePassword` refused it, as the new password.
+    `-Mode Sign` and `-Mode CreateAndSign` signed and exported under it
+    without a word, so a signing machine that was never rotated went on using
+    it.
+  - Every mode that uses the password now refuses it before `signtool` runs
+    or anything is exported. The message names the steps:
+    `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD` set to the old password,
+    `ULTRACANVAS_SIGN_PFX_PASSWORD` to a new one of 12 characters or more,
+    then `-Mode RotatePassword` once.
+  - `package-win.sh` stops at signing the same way; `--no-sign` still
+    packages. `-Mode Verify` needs no password and is unaffected.
+
+#### 2026-10-17 *0.9.323*
+- **Compositor diagram: Ungroup no longer deletes an ordinary node.**
+  `Ungroup(id)` did not check that `id` was a group, so on an ordinary node
+  with no children it took the "empty group" branch and removed the node -
+  which the demo's Ungroup button did to every such node in the selection.
+  It now does nothing for a node whose template is not `isGroup`
+  (UltraCanvasCompositorDiagram 0.4.1).
+- **Compositor diagram: `onNodeDoubleClick` fires.** It was declared and
+  never called; a left double-click on a node (not on a socket) now calls it.
+- **Compositor diagram: a saved graph loads back whole.** `ToJson` wrote no
+  `parentId` and no link label or colours, and `FromJson` read none, so a
+  saved subgraph came back with its children at the top level. Both now use
+  the per-node / per-link writers and parsers `Copy` / `Paste` use, which also
+  carry the link's line colour and label colours.
+  `Tests/DiagramJsonLocaleTest.cpp` saves a grouped graph and loads it back.
+- **Compositor demo: Save and Load buttons.** The page's header listed them
+  but the toolbar had none. Save writes the active tab's graph as JSON, Load
+  reads one into the active tab (dialogs and the read through
+  `UltraCanvasFileLoader`, UTF-8 paths); a double-click on a node names it in
+  the status line.
+- **Every demo-app document opens with an inventory.** The 125 markdown files
+  the demo's "Documentation" button opens each carry a `## Contents` list of
+  their `##` / `###` sections before the first section, every entry a link
+  that jumps to it. `scripts/generate_doc_toc.py` writes and refreshes the
+  lists (the documents are found from the `Docs/....md` paths in
+  `Apps/DemoApp/*.cpp`), and `llms-txt.yml` fails a pull request whose list
+  is stale (`--check`).
+- **Markdown section links jump in the text area without `{#id}`.** Only a
+  heading carrying an explicit `{#id}` could be the target of a
+  `[text](#id)` link, so the GitHub-style links the docs already used (54 in
+  the Filer widget's page alone) did nothing in the demo's documentation
+  window. Every heading now also answers to its GitHub anchor - lower-cased,
+  spaces to `-`, punctuation dropped, `-1`, `-2` for repeats
+  (`UltraCanvasTextArea::MarkdownHeadingSlug`); an explicit `{#id}` still
+  wins, and `#` lines inside code fences are no longer taken for headings.
+- PixelFX's README title was not a heading (`###PixelFX`).
+- **Every demo page's Documentation button opens a document.** Five paths in
+  `Apps/DemoApp` named files that did not exist, so the button opened
+  nothing:
+  - Chord Chart and Compositor Diagram had no document at all; they now have
+    `UltraCanvasChordChartExamples.md` and
+    `UltraCanvasCompositorDiagramExamples.md`.
+  - Circular info graphic pointed at `UltraCanvasCircularInfoGraphicExamples.md`;
+    its document is `UltraCanvasCircularInfoGraphic.md`.
+  - The Gource Tree snippet in `WindowsCDrive_TabAddition.cpp` (not built)
+    and the List View's sample file row named `Docs/UltraCanvasGourceTree.md`
+    and `Docs/CHANGELOG.md`; both now name the files that exist.
+- **CI refuses a demo page whose document is missing.**
+  `scripts/generate_doc_toc.py` reports every `Docs/....md` path in
+  `Apps/DemoApp/*.cpp` / `*.h` that does not exist, with its file and line,
+  and fails; `llms-txt.yml` runs it.
+
+#### 2026-10-16 *0.9.322*
+- **`UltraCanvasPaintSurface` reports a view move caused by the document.**
+  A document change (a layer added, the canvas resized) clamps the view, and
+  since the view follows a resize, a change between a resize and the next
+  frame moved the view there and then - without `onViewChanged`, so overlays
+  placed in view coordinates (UltraPaint's editor over a text) stayed where
+  they were until the next redraw. The listener now reports any move it
+  makes; a change that moves nothing reports nothing.
+- **UCD v2: the container is implemented, and layered images are its first
+  content type.** `UltraCanvasUCDContainer.h` reads and writes the UltraCanvas
+  Document container (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): the signature
+  and fixed header, the raw thumbnail, length-prefixed sections, an `INDX`
+  written first, zlib sections written and zlib / gzip read (miniz, no
+  libvips), unknown sections listed rather than refused, every refusal named
+  (a v1 file, a later major version, a truncated file, a damaged stream, an
+  encrypted section). The spec gains revision **2.1**: layered images (section
+  4.7: the `LAYR` stack, one `BMAP` per layer, `UCTF` text frames that keep a
+  text layer's words as text), the `INDX` layout, and the deflate / gzip stream
+  formats pinned down; its SuperVault note no longer says AES.
+  `UCRasterDocument` saves and opens them (`SaveUCD` / `LoadUCD`, `*.ucd`
+  through `SaveToFile` / `LoadFromFile`; `IsProjectFile` covers both layered
+  formats). FileLoader's inventory has a **`MediaFormatCategory::LayeredImage`**
+  (`ucd`, and `ucraster` with libvips), filed by UltraFiler as images; a
+  `.ucd`'s thumbnail is an embedded preview (`ExtractEmbeddedPreviewBytes`), so
+  UltraFiler thumbnails it, and the media viewer reads UCD headers through the
+  container (its Details name the key source the spec defines, not an AES
+  cipher). Docs: `UltraCanvasUCDContainer.md`, `UltraCanvasPaintSurface.md`
+  (*Layered files*).
+
+#### 2026-10-16 *0.9.321*
+- **VideoFX 0.16.0: effects on image and video overlays.** A new field,
+  `VideoFXOverlay::effects`, gives an overlay's own picture a look. It works
+  on a logo or a picture-in-picture video, without touching the picture
+  under it.
+  - Colour and detail effects only: brightness, contrast, saturation,
+    gamma, exposure, hue, temperature, greyscale, sepia, invert, blur,
+    sharpen, denoise and vignette.
+  - They are applied in order, before the overlay is sized, in its own
+    pixels.
+  - The overlay's transparency is kept. Its alpha is split off before the
+    effects and merged back after them
+    (`Internal::BuildOverlayEffectGraph`).
+  - Refused with `InvalidArgument` when the export is planned:
+    - geometry, fades, LUTs and sound effects on an overlay;
+    - any effect on a text overlay.
+  - The export, the preview and project files (`overlays[].effects`) all
+    carry them.
+  - **Proxies keep the look of a blur.** `VideoFX_UseProxies` now scales a
+    `Blur`'s radius to the proxy's picture, as it already scaled a `Crop`'s
+    rectangle, for both segments and picture-in-picture videos. Before,
+    over a proxy half as tall, a blur looked twice as strong in the preview
+    as in the export.
+  - Tested in `VideoFXTest`:
+    - the filter text, and what is accepted and refused;
+    - a half-transparent picture turned grey with its transparent half
+      still showing what is under it, in the preview and the export;
+    - a sepia picture-in-picture video;
+    - a project round trip;
+    - blur radii scaled on proxies.
+
 #### 2026-10-16 *0.9.320*
 - **The Open and Save dialogs look like the platforms' current dialogs.**
   `UltraCanvasFileDialog` is laid out like the Windows 11 print dialog: a

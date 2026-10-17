@@ -6,8 +6,8 @@
 // flag — the ODF package readers in LibreOffice/OpenOffice reject archives
 // whose "mimetype" entry uses a data descriptor (general-purpose bit 3).
 // Both ends open their file through OpenFileUtf8, never miniz's own fopen.
-// Version: 1.0.1
-// Last Modified: 2026-10-06
+// Version: 1.1.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasZipPackage.h"
@@ -27,6 +27,8 @@ struct UCZipPackageReader::Impl {
     mz_zip_archive zip{};
     // Ours: miniz reads through a FILE* it is handed but never closes it.
     std::FILE* file = nullptr;
+    // OpenFromMemory's bytes: miniz reads them in place, so they live here.
+    std::vector<uint8_t> memory;
     bool open = false;
 };
 
@@ -63,6 +65,21 @@ bool UCZipPackageReader::Open(const std::string& filePath) {
     return true;
 }
 
+bool UCZipPackageReader::OpenFromMemory(std::vector<uint8_t> data) {
+    Close();
+    lastError_.clear();
+    std::memset(&impl_->zip, 0, sizeof(impl_->zip));
+    impl_->memory = std::move(data);
+    if (impl_->memory.empty() ||
+        !mz_zip_reader_init_mem(&impl_->zip, impl_->memory.data(), impl_->memory.size(), 0)) {
+        impl_->memory.clear();
+        lastError_ = "Not a valid ZIP archive";
+        return false;
+    }
+    impl_->open = true;
+    return true;
+}
+
 void UCZipPackageReader::Close() {
     if (!impl_) return;
     if (impl_->open) {
@@ -73,6 +90,8 @@ void UCZipPackageReader::Close() {
         std::fclose(impl_->file);
         impl_->file = nullptr;
     }
+    impl_->memory.clear();
+    impl_->memory.shrink_to_fit();
 }
 
 bool UCZipPackageReader::IsOpen() const {

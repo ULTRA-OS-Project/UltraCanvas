@@ -7,8 +7,12 @@
 // locale. Each diagram's JSON is written under "C" and under a comma-decimal
 // locale and must be the same text. Skipped where no such locale is installed.
 // Headless: the elements are built and serialised, never shown.
+// Also: a compositor graph saved with ToJson loads back with FromJson whole
+// (a child's parentId, a link's label and colours), and Ungroup leaves an
+// ordinary node alone.
+// Version: 1.1.0 - compositor save / load round trip; Ungroup of a non-group node
 // Version: 1.0.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
@@ -88,9 +92,66 @@ static void TestCompositorDiagram() {
     Check(inComma == inC, "the JSON is the same under a comma-decimal locale");
 }
 
+// Before 0.4.1 ToJson wrote no parentId and no link colours or label, so a
+// saved subgraph came back with its children at the top level.
+static void TestCompositorRoundTrip() {
+    std::printf("Compositor save / load\n");
+    auto make = []() {
+        auto d = std::make_shared<UltraCanvasCompositorDiagram>("compositor", 0, 0, 800, 600);
+        CompositorNodeTemplate box;
+        box.id = "box";
+        box.title = "Box";
+        CompositorSocketSpec in, out;
+        in.id = "in";   in.label = "In";   in.type = SocketDataType::Scalar;
+        out.id = "out"; out.label = "Out"; out.type = SocketDataType::Scalar;
+        box.inputs.push_back(in);
+        box.outputs.push_back(out);
+        d->RegisterTemplate(box);
+        d->RegisterDefaultGroupTemplate();
+        return d;
+    };
+    auto saved = make();
+    saved->AddNode("g", "group", 0, 0);
+    saved->AddNode("a", "box", 10, 10);
+    saved->AddNode("b", "box", 300, 10);
+    saved->SetNodeParent("a", "g");
+    CompositorLink link;
+    link.id = "l1";
+    link.sourceNodeId = "a";
+    link.sourceSocketId = "out";
+    link.targetNodeId = "b";
+    link.targetSocketId = "in";
+    link.label = "r = 0.8";
+    link.lineColorOverride = Color(10, 20, 30, 255);
+    link.labelBgColor = Color(1, 2, 3, 4);
+    link.labelTextColor = Color(5, 6, 7, 8);
+    saved->AddLink(link);
+
+    auto loaded = make();
+    Check(loaded->FromJson(saved->ToJson()), "FromJson accepts ToJson's output");
+    Check(loaded->GetNodeParent("a") == "g", "a child keeps its group (parentId)");
+    const CompositorLink* back = loaded->GetLink("l1");
+    Check(back != nullptr, "the link is loaded");
+    if (back) {
+        Check(back->label == "r = 0.8", "the link keeps its label");
+        Check(back->lineColorOverride == Color(10, 20, 30, 255), "the link keeps its line colour");
+        Check(back->labelBgColor == Color(1, 2, 3, 4) && back->labelTextColor == Color(5, 6, 7, 8),
+              "the link keeps its label colours");
+    }
+
+    // Ungroup on an ordinary childless node took the "empty group" branch
+    // and deleted the node.
+    loaded->Ungroup("b");
+    Check(loaded->GetNode("b") != nullptr, "Ungroup leaves an ordinary node alone");
+    loaded->Ungroup("g");
+    Check(loaded->GetNode("g") == nullptr && loaded->GetNodeParent("a").empty(),
+          "Ungroup of a group removes it and promotes its child");
+}
+
 int main() {
     TestNodeDiagram();
     TestCompositorDiagram();
+    TestCompositorRoundTrip();
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

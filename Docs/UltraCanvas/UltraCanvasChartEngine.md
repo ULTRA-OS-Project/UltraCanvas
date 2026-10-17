@@ -1,5 +1,24 @@
 # UltraCanvasChartEngine Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [The content contract](#the-content-contract)
+- [Axes](#axes)
+- [Projections](#projections)
+- [Highlights (slot 200 wash / slot 700 overlay)](#highlights-slot-200-wash--slot-700-overlay)
+- [Phase-1 services](#phase-1-services)
+- [Bar series geometry](#bar-series-geometry)
+  - [Bar connections](#bar-connections)
+- [Phase-3 services](#phase-3-services)
+- [Themes and palettes](#themes-and-palettes)
+- [Hit regions and tooltips](#hit-regions-and-tooltips)
+- [Animation](#animation)
+- [Image paint patterns](#image-paint-patterns)
+- [The dirty model](#the-dirty-model)
+- [Named properties](#named-properties)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 `UltraCanvasChartEngineElement` is the chart engine's render driver: a chart

@@ -2,6 +2,19 @@
 
 <!-- doc-check: std::vector<VectorEdit::ElementPtr> els; VectorEdit::ElementPtr el; Point2Dd pivot; std::shared_ptr<VectorStorage::VectorGroup> otherGroup; std::shared_ptr<VectorStorage::VectorPath> path; struct EditorTool { void OnPress(const VectorPointerEvent& e); void OnDrag(const VectorPointerEvent& e); void OnRelease(const VectorPointerEvent& e); bool OnKey(const UCEvent& k); void DrawOverlay(IRenderContext* ctx, const VectorViewTransform& v); }; std::shared_ptr<EditorTool> tool; -->
 
+## Contents
+
+- [Overview](#overview)
+- [The document and its Ids](#the-document-and-its-ids)
+- [Selection](#selection)
+- [History](#history)
+- [Hit testing](#hit-testing)
+- [Operations](#operations)
+  - [Pixel alignment](#pixel-alignment)
+- [The Bézier node model](#the-bézier-node-model)
+- [The canvas element](#the-canvas-element)
+- [Tests](#tests)
+
 ## Overview
 
 The **vector-editing layer** is what a vector drawing editor needs on top of

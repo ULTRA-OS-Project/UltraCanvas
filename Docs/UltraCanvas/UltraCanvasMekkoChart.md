@@ -23,6 +23,14 @@ share by sector Marimekko, a product vs. region sales mix with percent labels
 and a cumulative X axis, and a Bar-Mekko cloud-provider revenue example, plus
 interactive controls for mode, labels, sorting and random data.
 
+## Contents
+
+- [Creating a chart](#creating-a-chart)
+- [Data model](#data-model)
+- [Configuration](#configuration)
+- [Interaction](#interaction)
+- [Notes](#notes)
+
 ## Creating a chart
 
 ```cpp

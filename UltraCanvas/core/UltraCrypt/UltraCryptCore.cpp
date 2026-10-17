@@ -8,7 +8,7 @@
 // fallback, which returned success while passing plaintext through). Nothing
 // here ever reports success without doing the work.
 //
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraCanvasTextUtils.h"

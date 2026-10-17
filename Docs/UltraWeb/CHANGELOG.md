@@ -1,3 +1,11 @@
+#### 2026-10-16 *0.8.3*
+- **A local file with a `\` in its name opens on Linux and macOS.** A path
+  typed in the address bar or given on the command line became a `file://`
+  URL with every `\` turned into `/`, so `notes\draft.html` was looked for as
+  `notes/draft.html` and did not open. There a `\` is part of the name and
+  goes into the URL as `%5C`; on Windows it still separates folders
+  (`ToPageUrl`).
+
 #### 2026-10-15 *0.8.2*
 - **No console window on Windows when it is started from the Start menu or
   Explorer.** `UltraWeb.exe` is a GUI program now. Beside it, `UltraWeb.com`

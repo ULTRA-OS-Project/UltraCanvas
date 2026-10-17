@@ -178,6 +178,8 @@ UltraCleanerWindow::~UltraCleanerWindow() {
     // window goes away.
     scanner_.RequestCancel();
     remover_.RequestCancel();
+    registryScanner_.RequestCancel();
+    registryCleaner_.RequestCancel();
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
             app->StopTimer(uiTimer_);
@@ -215,6 +217,13 @@ bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
     tabs_->AddTab("Overview", BuildHomePage());
     tabs_->AddTab("System junk", BuildRulePage());
     tabs_->AddTab("Photo albums", BuildAlbumPage());
+    // Windows only: there is no registry anywhere else.
+    registryStore_ = CreateSystemRegistryStore();
+    registryProbe_ = CreateSystemFileProbe();
+    if (registryStore_ && registryProbe_) {
+        tabs_->AddTab("Windows registry", BuildRegistryPage());
+        registryTab_ = 3;
+    }
     // A cleaning page scans itself the first time it is opened — through the
     // tab strip, the overview's buttons or a folder on the command line —
     // so the user arrives at the list, not at a button that makes one.
@@ -257,6 +266,9 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildHomePage() {
     homeView_.onCleanPhotos = [this]() {
         if (tabs_) tabs_->SetActiveTab(kAlbumTab);
     };
+    homeView_.onCleanRegistry = [this]() {
+        if (tabs_ && registryTab_ >= 0) tabs_->SetActiveTab(registryTab_);
+    };
     return page;
 }
 
@@ -270,6 +282,20 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildAlbumPage() {
     albumView_.onClean        = [this]() { CleanAlbumSelection(); };
     albumView_.onLevelChanged = [this](SimilarityLevel level) { RegroupAlbum(level); };
     albumView_.onSelectionChanged = [this]() { RefreshAlbumSummary(); };
+    return page;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRegistryPage() {
+    auto page = registryView_.Build(kWindowWidth - 40, kWindowHeight - 170);
+    page->SetElementSize(CSSLayout::Dimension::Pct(100),
+                         CSSLayout::Dimension::Pct(100));
+    registryView_.onScan    = [this]() { StartRegistryScan(); };
+    registryView_.onStop    = [this]() {
+        registryScanner_.RequestCancel();
+        registryCleaner_.RequestCancel();
+    };
+    registryView_.onClean   = [this]() { CleanRegistry(); };
+    registryView_.onRestore = [this]() { ChooseRegistryBackupToRestore(); };
     return page;
 }
 
@@ -624,6 +650,9 @@ void UltraCleanerWindow::OnTabEntered(int index) {
     } else if (index == kAlbumTab && !albumView_.Folder().empty() &&
                albumView_.Folder() != albumScannedFolder_) {
         StartAlbumScan();
+    } else if (index == registryTab_ && registryTab_ >= 0 &&
+               !registryView_.Scanned()) {
+        StartRegistryScan();
     }
 }
 
@@ -647,7 +676,7 @@ void UltraCleanerWindow::StartScan() {
                 // Called once per item found: overwrite one slot instead of
                 // queueing a closure the UI would only throw away.
                 std::lock_guard<std::mutex> lock(progressMutex_);
-                pendingStatusIsAlbum_ = false;
+                pendingStatusTarget_ = StatusTarget::Junk;
                 pendingStatus_ = "Scanning " + progress.currentRuleTitle + " — " +
                                  std::to_string(progress.itemsFound) +
                                  " items, " + FormatByteSize(progress.bytesFound) +
@@ -750,7 +779,7 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
             report, options,
             [this](size_t done, size_t total, const std::string& path) {
                 std::lock_guard<std::mutex> lock(progressMutex_);
-                pendingStatusIsAlbum_ = false;
+                pendingStatusTarget_ = StatusTarget::Junk;
                 pendingStatus_ = "Cleaning " + std::to_string(done) + " of " +
                                  std::to_string(total) + " — " + path;
                 pendingStatusDirty_ = true;
@@ -852,7 +881,7 @@ void UltraCleanerWindow::StartAlbumScan() {
                                  " of " + std::to_string(progress.filesSeen) +
                                  " — " + progress.currentPath;
                 pendingStatusDirty_ = true;
-                pendingStatusIsAlbum_ = true;
+                pendingStatusTarget_ = StatusTarget::Album;
             });
         auto pictures = albumScanner_.Described();
 
@@ -967,6 +996,155 @@ void UltraCleanerWindow::CleanAlbumSelection() {
             }).detach();
         },
         window_.get());
+}
+
+// ===== REGISTRY =====
+
+void UltraCleanerWindow::StartRegistryScan() {
+    if (!registryStore_ || !registryProbe_) return;
+    if (working_.exchange(true)) return;
+
+    registryView_.SetBusy(true);
+    registryView_.SetStatus("Reading the registry…");
+    registryScanner_.ResetCancel();
+    std::thread([this]() {
+        RegistryScanReport report = registryScanner_.Scan(
+            *registryStore_, *registryProbe_,
+            [this](const RegistryScanProgress& progress) {
+                std::lock_guard<std::mutex> lock(progressMutex_);
+                pendingStatusTarget_ = StatusTarget::Registry;
+                pendingStatus_ = "Checking " + progress.currentCheck + " — " +
+                                 std::to_string(progress.entriesExamined) +
+                                 " entries, " + std::to_string(progress.findings) +
+                                 " found so far";
+                pendingStatusDirty_ = true;
+            });
+        RunOnUiThread([this, report = std::move(report)]() mutable {
+            working_ = false;
+            registryView_.SetBusy(false);
+            const bool cancelled = report.cancelled;
+            const size_t found = report.findings.size();
+            registryView_.SetReport(std::move(report));
+            registryView_.SetStatus(
+                std::string(cancelled ? "Scan stopped early. " : "Scan finished. ") +
+                std::to_string(found) +
+                (found == 1 ? " entry points" : " entries point") +
+                " at something that is gone. Double-click a row to keep or drop it.");
+        });
+    }).detach();
+}
+
+void UltraCleanerWindow::CleanRegistry() {
+    if (working_ || !registryStore_ || !registryProbe_) return;
+    const RegistryScanReport& report = registryView_.Report();
+    const size_t ticked = report.SelectedCount();
+    if (ticked == 0) {
+        UltraCanvasDialogManager::ShowInformation(
+            registryView_.Scanned() ? "Nothing is ticked."
+                                    : "Scan the registry first.",
+            "Nothing to clean", nullptr, window_.get());
+        return;
+    }
+
+    const std::string message =
+        "Remove " + std::to_string(ticked) +
+        (ticked == 1 ? " registry entry?" : " registry entries?") +
+        "\n\nEverything is first written to a backup (.reg) under "
+        "UltraCleaner\\RegistryBackups in your local app data. Opening that "
+        "file — or \"Restore a backup…\" here — puts it all back.\n\nEntries "
+        "under HKEY_LOCAL_MACHINE can only be removed when UltraCleaner runs "
+        "as administrator.";
+    UltraCanvasDialogManager::ShowConfirmation(
+        message, "Back up and clean",
+        [this](bool confirmed) {
+            if (!confirmed || working_.exchange(true)) return;
+            registryView_.SetBusy(true);
+            registryView_.SetStatus("Backing up and cleaning…");
+            registryCleaner_.ResetCancel();
+            RegistryCleanOptions options;
+            options.simulate = false;
+            std::thread([this, options, report = registryView_.Report()]() {
+                RegistryCleanReport result = registryCleaner_.Clean(
+                    *registryStore_, *registryProbe_, report, options,
+                    [this](size_t done, size_t total, const std::string& location) {
+                        std::lock_guard<std::mutex> lock(progressMutex_);
+                        pendingStatusTarget_ = StatusTarget::Registry;
+                        pendingStatus_ = "Removing " + std::to_string(done) + " of " +
+                                         std::to_string(total) + " — " + location;
+                        pendingStatusDirty_ = true;
+                    });
+                RunOnUiThread([this, result]() {
+                    working_ = false;
+                    registryView_.SetBusy(false);
+
+                    std::string summary;
+                    if (result.aborted) {
+                        summary = "Nothing was removed: the backup could not be "
+                                  "written.";
+                    } else {
+                        summary = std::to_string(result.removed) +
+                                  (result.removed == 1 ? " entry" : " entries") +
+                                  " removed.";
+                        if (!result.backupPath.empty()) {
+                            summary += "\n\nBackup: " + result.backupPath;
+                        }
+                    }
+                    if (result.skippedChanged > 0) {
+                        summary += "\n\n" + std::to_string(result.skippedChanged) +
+                                   " had changed since the scan (reinstalled, or "
+                                   "already gone) and were left alone.";
+                    }
+                    if (result.refusedByGuard > 0) {
+                        summary += "\n\n" + std::to_string(result.refusedByGuard) +
+                                   " were refused by the safety check.";
+                    }
+                    if (result.cancelled) summary += "\n\nStopped early.";
+
+                    // The same grouped report the file cleaner uses.
+                    RemovalReport shown;
+                    for (const auto& failure : result.failures) {
+                        shown.failures.push_back({ failure.location, failure.reason });
+                    }
+                    registryView_.SetStatus(summary.substr(0, summary.find('\n')));
+                    ShowCleanResult(summary, shown);
+                    if (result.removed > 0) StartRegistryScan();
+                });
+            }).detach();
+        },
+        window_.get());
+}
+
+void UltraCleanerWindow::ChooseRegistryBackupToRestore() {
+    if (working_) return;
+    FileDialogOptions options;
+    options.title = "Choose a registry backup to restore";
+    options.parentWindow = window_.get();
+    const std::string backups =
+        PathToUtf8(PathFromUtf8(DefaultRegistryBackupPath()).parent_path());
+    std::error_code ec;
+    if (std::filesystem::is_directory(PathFromUtf8(backups), ec)) {
+        options.initialDirectory = backups;
+    }
+    options.filters = { FileFilter("Registry backup", std::vector<std::string>{ "reg" }) };
+    UltraCanvasFileLoader::OpenFileDialog(
+        options, [this](DialogResult result, const std::string& file) {
+            if (result != DialogResult::OK || file.empty()) return;
+            UltraCanvasDialogManager::ShowConfirmation(
+                "Put every entry in\n" + file + "\nback into the registry?",
+                "Restore registry backup",
+                [this, file](bool confirmed) {
+                    if (!confirmed) return;
+                    std::string error;
+                    if (RestoreRegistryBackup(file, &error)) {
+                        registryView_.SetStatus("Restored " + file + ".");
+                        StartRegistryScan();
+                    } else {
+                        UltraCanvasDialogManager::ShowWarning(
+                            error, "Restore failed", nullptr, window_.get());
+                    }
+                },
+                window_.get());
+        });
 }
 
 void UltraCleanerWindow::ShowCleanResult(const std::string& summary,
@@ -1159,18 +1337,19 @@ void UltraCleanerWindow::DrainUiQueue() {
     {
         std::string status;
         bool dirty = false;
-        bool forAlbum = false;
+        StatusTarget target = StatusTarget::Junk;
         {
             std::lock_guard<std::mutex> lock(progressMutex_);
             dirty = pendingStatusDirty_;
             if (dirty) {
                 status.swap(pendingStatus_);
-                forAlbum = pendingStatusIsAlbum_;
+                target = pendingStatusTarget_;
                 pendingStatusDirty_ = false;
             }
         }
         if (dirty) {
-            if (forAlbum) albumView_.SetStatus(status);
+            if (target == StatusTarget::Album) albumView_.SetStatus(status);
+            else if (target == StatusTarget::Registry) registryView_.SetStatus(status);
             else SetStatus(status);
         }
     }

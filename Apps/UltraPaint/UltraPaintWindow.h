@@ -8,6 +8,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
+// Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
+//                  the keyboard back to the text being typed
 // Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
 //                  canvas at its zoom edits a text layer; Layer > Edit Text / Rasterize Layer
 // Version: 1.5.0 - the right panel's sections are group boxes (optionsPanel, layersPanel)
@@ -20,7 +23,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,6 +91,9 @@ private:
     void BuildToolbar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next editor opens it the way it was left.
+    void RememberColourPicker();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
@@ -231,6 +237,11 @@ private:
     // A Text tool option changed: applied to the editor's selection (or what
     // is typed next), else to the whole active text layer.
     void ApplyTextOption(const std::string& option);
+    // A Text option's control let go of the keyboard without a change (a
+    // list closed with Escape): after the event that closed it, the keys go
+    // back to the text being typed - if the control still has them; Tab or a
+    // click elsewhere put them where they were meant to go.
+    void ReturnKeyboardToText(UltraCanvasUIElement& control);
     // The topmost visible text layer whose box holds (x, y), or -1.
     int TextLayerAt(double x, double y) const;
     // Before painting on a text layer: asks whether to rasterize it.

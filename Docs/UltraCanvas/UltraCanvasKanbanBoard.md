@@ -12,6 +12,21 @@ real-world board styles.
 - Demo: `Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp`
 - Research & roadmap: [`UltraCanvasKanbanBoardProposal.md`](UltraCanvasKanbanBoardProposal.md)
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+  - [Columns](#columns)
+  - [Swimlanes](#swimlanes)
+  - [Cards](#cards)
+  - [History & flow metrics](#history--flow-metrics)
+- [Text definitions (Mermaid `kanban`)](#text-definitions-mermaid-kanban)
+- [JSON persistence](#json-persistence)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Factories](#factories)
+
 ## Quick start
 
 ```cpp

@@ -2,6 +2,44 @@
 
 <!-- doc-check: std::shared_ptr<FinancialChartDataVector> GenerateSampleStockData(const std::string& symbol, int days); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+  - [Display Modes](#display-modes)
+- [Class Hierarchy](#class-hierarchy)
+- [Data Structures](#data-structures)
+  - [FinancialChartDataPoint](#financialchartdatapoint)
+  - [FinancialChartDataVector](#financialchartdatavector)
+- [Constructor](#constructor)
+- [Configuration Methods](#configuration-methods)
+  - [Chart Style Configuration](#chart-style-configuration)
+  - [Volume Panel Configuration](#volume-panel-configuration)
+  - [Moving Average Configuration](#moving-average-configuration)
+  - [Data Management](#data-management)
+- [Enumerations](#enumerations)
+  - [CandleDisplayStyle](#candledisplaystyle)
+- [Factory Functions](#factory-functions)
+  - [CreateFinancialChartElement](#createfinancialchartelement)
+  - [CreateFinancialChartWithData](#createfinancialchartwithdata)
+- [Usage Examples](#usage-examples)
+  - [Basic Chart Creation](#basic-chart-creation)
+  - [Loading and Displaying Data](#loading-and-displaying-data)
+  - [Customizing Appearance](#customizing-appearance)
+  - [Interactive Features](#interactive-features)
+  - [Complete Example Application](#complete-example-application)
+- [Rendering Pipeline](#rendering-pipeline)
+  - [Key Rendering Methods](#key-rendering-methods)
+- [Event Handling](#event-handling)
+- [Performance Considerations](#performance-considerations)
+- [Dependencies](#dependencies)
+- [Platform Support](#platform-support)
+- [Best Practices](#best-practices)
+- [Limitations](#limitations)
+- [Future Enhancements](#future-enhancements)
+- [Version History](#version-history)
+
 ## Overview
 
 The `UltraCanvasFinancialChartElement` is a sophisticated financial charting component within the UltraCanvas framework designed for displaying stock market, cryptocurrency, and forex data. It provides professional-grade OHLC (Open, High, Low, Close) candlestick charts with integrated volume visualization, moving averages, and interactive features.

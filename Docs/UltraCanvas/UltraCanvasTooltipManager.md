@@ -4,6 +4,21 @@
 **Last Modified:** 2026-10-05  
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Basic Usage](#basic-usage)
+  - [Including the Header](#including-the-header)
+  - [Automatic tooltips](#automatic-tooltips)
+  - [Showing a tooltip manually](#showing-a-tooltip-manually)
+- [TooltipContent Reference](#tooltipcontent-reference)
+- [TooltipStyle Reference](#tooltipstyle-reference)
+  - [Presets](#presets)
+  - [Soft shadow](#soft-shadow)
+- [Manager API Reference](#manager-api-reference)
+- [Rendering Integration Notes](#rendering-integration-notes)
+- [Dependencies](#dependencies)
+
 ## Overview
 
 `UltraCanvasTooltipManager` is the framework-wide tooltip system. It shows a

@@ -4,6 +4,35 @@
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Node Management](#node-management)
+  - [Link Management](#link-management)
+  - [Data I/O](#data-io)
+  - [Layout Configuration](#layout-configuration)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Function](#factory-function)
+- [Data Structures](#data-structures)
+  - [SankeyNode](#sankeynode)
+  - [SankeyLink](#sankeylink)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Energy Flow Example](#energy-flow-example)
+  - [Hosting the Diagram in a Container](#hosting-the-diagram-in-a-container)
+  - [Live Configuration via Controls](#live-configuration-via-controls)
+  - [Financial Flow Example](#financial-flow-example)
+  - [Web Traffic Flow Example](#web-traffic-flow-example)
+  - [Manual Column Ordering and Custom Theme](#manual-column-ordering-and-custom-theme)
+  - [Custom Builder Tab (Add Link at Runtime)](#custom-builder-tab-add-link-at-runtime)
+  - [Performance Test (Random Diagram)](#performance-test-random-diagram)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasSankeyDiagram` is an interactive Sankey diagram element within the UltraCanvas framework for visualizing flow/value distributions between entities. Nodes are arranged into columns by depth, and weighted links are rendered as curved ribbons whose thickness encodes the flow value. The component supports drag-to-reposition, hover tooltips, theme presets, CSV loading, SVG export, and manual node ordering.

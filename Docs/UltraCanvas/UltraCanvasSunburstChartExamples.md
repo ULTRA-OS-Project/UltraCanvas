@@ -1,5 +1,31 @@
 # UltraCanvasSunburstChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+  - [SunburstNode](#sunburstnode)
+- [Enumerations](#enumerations)
+  - [SunburstLabelContent](#sunburstlabelcontent)
+  - [SunburstLabelOrientation](#sunburstlabelorientation)
+  - [SunburstShadeMode](#sunburstshademode)
+- [Public API](#public-api)
+  - [Data Management](#data-management)
+  - [Geometry](#geometry)
+  - [Colors & Borders](#colors--borders)
+  - [Center](#center)
+  - [Labels](#labels)
+  - [Interaction](#interaction)
+- [Usage Examples](#usage-examples)
+  - [Basic Three-Level Sunburst](#basic-three-level-sunburst)
+  - [Path-Based Construction](#path-based-construction)
+  - [Two-Level Grouped Factory](#two-level-grouped-factory)
+  - [Partial-Sweep Fan With Explicit Branch Colors](#partial-sweep-fan-with-explicit-branch-colors)
+- [Demo](#demo)
+
 ## Overview
 
 The `UltraCanvasSunburstChart` is a hierarchical radial partition ("sunburst") chart component within the UltraCanvas framework. It renders a tree of values as concentric rings: each ring corresponds to one level of the hierarchy and each segment's angular span is proportional to its aggregated value. It supports drill-down zooming, depth-based shading, partial (fan) sweeps, configurable geometry, auto-fitting radial/horizontal labels, and interactive tooltips with breadcrumb paths.

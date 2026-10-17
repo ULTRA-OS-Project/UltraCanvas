@@ -1,5 +1,26 @@
 # UltraCanvasRadialBarChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Data Management](#data-management)
+  - [Geometry](#geometry)
+  - [Value Scaling](#value-scaling)
+  - [Style](#style)
+  - [Guides, Center & Labels](#guides-center--labels)
+  - [Interaction](#interaction)
+- [Usage Examples](#usage-examples)
+  - [Multi-Sensor Dashboard](#multi-sensor-dashboard)
+  - [Radial Line (Spoke) Style](#radial-line-spoke-style)
+  - [Fan With Manual Range and Arrow Tips](#fan-with-manual-range-and-arrow-tips)
+- [Demo](#demo)
+
 ## Overview
 
 The `UltraCanvasRadialBarChart` is a radial "ray" chart component within the UltraCanvas framework. Values are drawn as rays radiating outward from a base ring, with ray length proportional to the value. Series (e.g. sensors, continents, teams) occupy contiguous angular sectors separated by configurable gaps — the classic multi-sensor / time-series radial dashboard. It complements `UltraCanvasSunburstChart`: a sunburst encodes values as **angular spans across hierarchy rings**, while the radial bar chart encodes them as **ray lengths**.

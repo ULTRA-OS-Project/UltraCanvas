@@ -224,15 +224,22 @@ namespace UltraCanvas {
                         status->RequestRedraw();
                         return;
                     }
-                    if (sheet->LoadFromFile(path)) {
-                        status->SetText("Loaded: " + path);
-                        hint->SetText(describeGrid(sheet.get()));
-                        hint->RequestRedraw();
-                    } else {
-                        status->SetText("Could not open file: " + sheet->GetLastError());
-                    }
-                    sheet->RequestRedraw();
-                    status->RequestRedraw();
+                    // A password-protected .xlsx asks for its password first;
+                    // any other file goes straight on.
+                    UltraCanvasFileLoader::RequestDocumentPassword(path, nullptr,
+                        [sheet, status, hint, describeGrid, path](bool proceed, const std::string& password) {
+                            if (!proceed) {
+                                status->SetText("Open cancelled.");
+                            } else if (sheet->LoadFromFile(path, password)) {
+                                status->SetText("Loaded: " + path);
+                                hint->SetText(describeGrid(sheet.get()));
+                                hint->RequestRedraw();
+                            } else {
+                                status->SetText("Could not open file: " + sheet->GetLastError());
+                            }
+                            sheet->RequestRedraw();
+                            status->RequestRedraw();
+                        });
                 });
         };
 

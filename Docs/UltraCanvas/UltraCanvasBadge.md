@@ -1,5 +1,15 @@
 # UltraCanvas Badge Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Shape: pill or rounded box](#shape-pill-or-rounded-box)
+- [Notes](#notes)
+
 ## Overview
 
 **UltraCanvasBadge** is a small count / status indicator. It works two ways:

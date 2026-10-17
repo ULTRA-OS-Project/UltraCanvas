@@ -3,6 +3,14 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.8.2 - the colour picker opens with the design and channels it was left with
+//                  (settings: picker.design, picker.channels)
+// Version: 1.8.1 - the colour picker offers its design list, folds its channels and is
+//                  as tall as its content (SetAutoHeight)
+// Version: 1.8.0 - Open / Save As offer FileLoader's layered images: *.ucd (UCD 2.1, layers
+//                  and text kept) beside *.ucraster, from the inventory, not a list of our own
+// Version: 1.7.1 - the Text tool's Font and Align lists closed with Escape give the keyboard
+//                  back to the text being typed (ReturnKeyboardToText)
 // Version: 1.7.0 - text typed on the canvas: an UltraCanvasRichTextEdit over the canvas
 //                  edits a text layer; Layer > Edit Text / Rasterize Layer; the layer list
 //                  marks text layers
@@ -31,7 +39,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -333,6 +341,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     toolContext.setStatus = [this](const std::string& s) { if (statusHint) statusHint->SetText(s); };
     toolContext.requestText = [this](double x, double y, double boxWidth) { BeginTextEdit(x, y, boxWidth); };
     toolContext.textOptionChanged = [this](const std::string& option) { ApplyTextOption(option); };
+    toolContext.textControlDone = [this](UltraCanvasUIElement& control) { ReturnKeyboardToText(control); };
     toolContext.askRasterize = [this](const std::string& action) { AskRasterize(action); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
 
@@ -743,13 +752,18 @@ void UltraPaintWindow::BuildRightPanel() {
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(background.ToColor());
     colorPicker->SetShowAlpha(true);
-    // The hue ring is capped by whatever vertical space the controls leave it,
-    // so a picker sized by eye draws a wheel narrower than the card. Ask for
-    // the height at which the ring fills the card's width instead.
-    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
-    // the card's next layout pass puts back the size the picker was created
-    // with. The declared height is also the picker's flex basis.
-    colorPicker->SetElementSize(Size2Df(cardInner, colorPicker->PreferredHeightForWidth(cardInner)));
+    // The design list top right (circle, square, rectangle, two sliders), and
+    // the HSV / HSL / RGB channels under their disclosure row - both as the
+    // user left them (folded the first time).
+    colorPicker->SetWheelStyle(settings.pickerDesign);
+    colorPicker->SetShowWheelStyleSelector(true);
+    colorPicker->SetSlidersCollapsible(true, settings.pickerChannelsOpen);
+    colorPicker->onWheelStyleChanged = [this](ColorPickerWheelStyle) { RememberColourPicker(); };
+    colorPicker->onSlidersExpandedChanged = [this](bool) { RememberColourPicker(); };
+    // As tall as its content: the hue ring fills the card's width, and the
+    // card and the cards below move up and down as the channels fold or
+    // another design is chosen. The height is also the picker's flex basis.
+    colorPicker->SetAutoHeight(true);
     // Not stretched: the picker lays its hex field and channel values out to
     // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -1428,6 +1442,19 @@ void UltraPaintWindow::BuildMagnifier() {
     ApplySettings();
 }
 
+void UltraPaintWindow::RememberColourPicker() {
+    settings.pickerDesign = colorPicker->GetWheelStyle();
+    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
+    // The other editors' copies too: whichever saves its settings next (its
+    // settings window) writes the picker as it was left last, not as it was
+    // when that editor opened. Their pickers stay as they are.
+    for (const auto& editor : OpenWindows()) {
+        editor->settings.pickerDesign = settings.pickerDesign;
+        editor->settings.pickerChannelsOpen = settings.pickerChannelsOpen;
+    }
+    settings.SavePicker();
+}
+
 void UltraPaintWindow::ApplySettings() {
     for (const auto& slot : toolSlots) slot->SetSlotShowsLastPicked(settings.paletteAdaptive);
     if (!magnifierFrame) return;
@@ -1866,6 +1893,24 @@ void UltraPaintWindow::CommitTextEdit() {
     }
 }
 
+void UltraPaintWindow::ReturnKeyboardToText(UltraCanvasUIElement& control) {
+    if (!textSession || !textEditor) return;
+    std::weak_ptr<UltraCanvasUIElement> watched = control.weak_from_this();
+    auto handBack = [this, watched]() {
+        auto still = watched.lock();
+        if (!still || !textSession || !textEditor || !window) return;
+        if (window->GetFocusedElement() == still.get()) textEditor->SetFocus(true);
+    };
+    // The list reports its closing from inside the event that closed it, and
+    // a Tab moves the focus on after that.
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { handBack(); return; }
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([alive, handBack]() {
+        if (!alive.expired()) handBack();
+    });
+}
+
 void UltraPaintWindow::ApplyTextOption(const std::string& option) {
     if (!document) return;
     RichCharFormatDelta delta;
@@ -2015,11 +2060,14 @@ void UltraPaintWindow::CmdNewWindow() {
 }
 
 // Everything this build will take in the Open / Import dialogs: the bitmap
-// formats, the editor's own projects, and whatever vector artwork it can
-// rasterize (which depends on libvips and on the registered plugins).
+// formats, the layered images (UltraCanvas documents, UltraPaint projects),
+// and whatever vector artwork it can rasterize (which depends on libvips and
+// on the registered plugins) - all from FileLoader's inventory.
 std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
     std::vector<std::string> exts = ReadableImageExtensions();
-    exts.push_back("ucraster");
+    for (const auto& l : UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::LayeredImage)) {
+        if (std::find(exts.begin(), exts.end(), l) == exts.end()) exts.push_back(l);
+    }
     for (const auto& v : GetVectorRasterExtensions()) {
         if (std::find(exts.begin(), exts.end(), v) == exts.end()) exts.push_back(v);
     }
@@ -2033,9 +2081,10 @@ void UltraPaintWindow::CmdOpen() {
     CommitTextEdit();
     FileDialogOptions opts;
     opts.SetTitle("Open image")
-        .AddFilter("Images, drawings and UltraPaint projects", OpenableExtensions())
-        .AddFilter("UltraPaint projects", std::vector<std::string>{ "ucraster" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+        .AddFilter("Images, drawings and layered images", OpenableExtensions());
+    UltraCanvasFileLoader::AddLoadTypes(opts, "Layered images (layers and text kept)",
+                                        { MediaFormatCategory::LayeredImage });
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
@@ -2049,7 +2098,7 @@ void UltraPaintWindow::CmdImport() {
     CommitTextEdit();
     FileDialogOptions opts;
     opts.SetTitle("Import image")
-        .AddFilter("Images, drawings and UltraPaint projects", OpenableExtensions())
+        .AddFilter("Images, drawings and layered images", OpenableExtensions())
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
@@ -2078,13 +2127,13 @@ void UltraPaintWindow::CmdSaveAs() {
     if (!document) return;
     FileDialogOptions opts;
     std::string def = document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath());
-    opts.SetTitle("Save image as");
-    // FileLoader's types - every bitmap type this build writes - and the
-    // editor's own project, which keeps the layers.
+    // The name first: the type it ends in is the one the dialog starts on.
+    opts.SetTitle("Save image as").SetDefaultFileName(def);
+    // FileLoader's types: every bitmap type this build writes, and the
+    // layered images, which keep the layers and the text as text.
     UltraCanvasFileLoader::AddImageSaveTypes(opts);
-    opts.AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
-        .SetDefaultFileName(def)
+    UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::LayeredImage);
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         // The picture's size, so the Settings of a bitmap type offer to write
         // it at another size.
         .SetImageSize(document->GetWidth(), document->GetHeight())

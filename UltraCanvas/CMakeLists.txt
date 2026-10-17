@@ -1006,8 +1006,13 @@ set(ULTRACANVAS_CORE_SOURCES
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
+        # The UCD v2 container (*.ucd): header, thumbnail, sections, INDX
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUCDContainer.cpp
         # OLE2 compound files (the legacy Office containers: .doc, .xls)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCompoundFile.cpp
+        # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
+        # UltraCrypt - linked below, after the module is defined
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.
@@ -2552,7 +2557,8 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # link it without pulling in the widget layer.
 # The archive is uc-crypt; UltraCrypt is its home (see "MODULE HOMES").
 add_library(uc-crypt STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp)
 set_target_properties(uc-crypt PROPERTIES OUTPUT_NAME "UltraCrypt")
 target_include_directories(uc-crypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -2568,6 +2574,13 @@ if(SODIUM_FOUND)
     target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
 _ultracanvas_module_home(UltraCrypt uc-crypt)
+# The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
+# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
+# Absorbed whole into a shared core by the _ultracanvas_absorb_modules call
+# below; a static core links the home, which is the archive, PUBLIC.
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraCrypt)
+endif()
 
 # Credential & secret storage (UltraAI/Docs/UltraVault.md). Memory and
 # encrypted-file backends on UltraCrypt; UI-free, so headless consumers

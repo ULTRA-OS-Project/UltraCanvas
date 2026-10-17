@@ -45,17 +45,22 @@
 //    that opened it picked the row it landed on and closed the menu, so
 //    ArtCreator's Arrange menu never stayed open. It stays under the bar and
 //    scrolls; a cascading submenu still moves up to fit, never past the top.
+//  - A menu bar's first item was measured before the menu set its font, in
+//    whatever font the window's context was left in: after a colour picker
+//    had laid itself out in its smaller font, "File" was drawn as "...".
+//    Every item is measured in its own font now.
 //
 // Runs headless: popups open in a window stand-in with no native side, and
 // the menu is drawn into an offscreen surface read back pixel by pixel. The
 // fade is read off a second stand-in whose "screen" is an offscreen surface,
 // so UpdateAndRender() composites onto it exactly as onto a real window.
+// Version: 1.6.0 - menu bar items measured in their own font
 // Version: 1.5.0 - a tall menu bar dropdown stays under its bar
 // Version: 1.4.0 - anchored menus and menubar drop-downs; symbolic icon tint
 // Version: 1.3.0 - popups blend over the window; the menu's rounded, shadowed panel
 // Version: 1.2.0 - the whole popup fades, composited by the window at its opacity
 // Version: 1.1.0 - activating an item with no application
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenu.h"
@@ -566,6 +571,67 @@ void TallDropdownChecks() {
     popup->CloseMenutree();
 }
 
+// A menu bar's items are as wide as their labels in the menu's font, whatever
+// font the window's context was last left in. The first item was measured
+// before the menu set its font, in the font of the text drawn or measured
+// last - a colour picker's smaller one - and its label was ellipsized into
+// that width: "File" read "...".
+void MenubarFontChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to draw a menu bar on", false);
+        return;
+    }
+    auto bar = MenuBuilder("font-bar", 0, 0, ScreenWindow::kWidth, 28)
+                       .SetType(MenuType::Menubar)
+                       .AddSubmenu("File", {MenuItemData::Action("Open", [] {})})
+                       .AddSubmenu("Edit", {MenuItemData::Action("Copy", [] {})})
+                       .Build();
+    win.AddChild(bar);
+    win.Frame();
+    IRenderContext* ctx = win.GetRenderContext();
+    const FontStyle menuFont = bar->GetStyle().font;
+    ctx->SetFontStyle(menuFont);
+    const int editX = bar->GetItemX(1);
+
+    FontStyle small = menuFont;
+    small.fontSize = 6.0;
+    ctx->SetFontStyle(small);
+    TEST("a smaller font left in the context does not move the second item",
+         bar->GetItemX(1) == editX);
+    FontStyle large = menuFont;
+    large.fontSize = 30.0;
+    ctx->SetFontStyle(large);
+    TEST("nor does a larger one", bar->GetItemX(1) == editX);
+
+    // The bar drawn straight into the window's context (the stand-in's
+    // content would cover it in a frame), with the context left in `left`
+    // beforehand; the pixels of the first item read back from what the
+    // context draws on.
+    auto drawBar = [&](const FontStyle& left) {
+        ctx->PushState();
+        ctx->SetFillPaint(Colors::White);
+        ctx->FillRectangle(Rect2Df(0, 0, ScreenWindow::kWidth, 28));
+        ctx->SetFontStyle(left);
+        bar->Render(ctx, Rect2Df(0, 0, ScreenWindow::kWidth, 28));
+        ctx->PopState();
+        cairo_surface_t* target = cairo_get_target(static_cast<cairo_t*>(ctx->GetNativeContext()));
+        cairo_surface_flush(target);
+        const unsigned char* data = cairo_image_surface_get_data(target);
+        const int stride = cairo_image_surface_get_stride(target);
+        std::vector<uint32_t> out;
+        for (int y = 0; y < 28; ++y)
+            for (int x = 0; x < editX; ++x)
+                out.push_back(*reinterpret_cast<const uint32_t*>(data + y * stride + x * 4));
+        return out;
+    };
+    const std::vector<uint32_t> drawn = drawBar(menuFont);
+    TEST("the first label is drawn",
+         std::any_of(drawn.begin(), drawn.end(), [](uint32_t px) { return (px & 0xFF) < 100; }));
+    TEST("and drawn whole after a smaller font, not ellipsized into that font's width",
+         drawBar(small) == drawn);
+}
+
 // A square icon of one colour - or of two, left and right halves - as an
 // image decoded from a PNG made in memory.
 std::shared_ptr<UCImage> SquareIcon(const Color& color, const Color& rightHalf) {
@@ -946,6 +1012,7 @@ int main() {
     AnchoredMenuChecks();
     IconTintChecks();
     TallDropdownChecks();
+    MenubarFontChecks();
     TabChecks(*win);
     TabReorderChecks(*win);
     TextAreaChecks();

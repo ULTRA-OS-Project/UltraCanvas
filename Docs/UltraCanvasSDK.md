@@ -27,7 +27,9 @@ as a `.tar.xz` on Linux, a `.tar.gz` on macOS and a `.zip` on Windows. The
 version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
-**Where to get one.** Each version of `main` has a GitHub release tagged
+**Where to get one.** The download page is
+[ultraos.eu/download-file](https://ultraos.eu/download-file/): pick the archive
+for your platform and architecture there. Each version of `main` also has a GitHub release tagged
 `v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
 it from the release build that `changelog-fold.yml` dispatches, with the
 version's changelog section as its notes), and the archives are its assets at
@@ -38,9 +40,10 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<ar
 https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/UltraCanvas-SDK-Windows-0.9.211-x86_64.zip
 ```
 
-That is what UltraCanvasStart's Framework step fetches with *Download and
-unpack...*, for the platform and architecture it runs on and the version it was
-built from. UltraCanvasStart itself is on the same release, on its own, as
+UltraCanvasStart's Framework step names the archive for the platform and
+architecture it runs on and the version it was built from, opens the download
+page in the browser with *Download page*, and unpacks the downloaded archive
+with *Unpack...*. UltraCanvasStart itself is on the same release, on its own, as
 `UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
 Windows, a signed and notarized `.dmg` on macOS): the application, the
 libraries it loads and nothing else, for a computer that has neither the

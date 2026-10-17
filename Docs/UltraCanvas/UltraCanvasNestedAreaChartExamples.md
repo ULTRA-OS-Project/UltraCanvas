@@ -1,5 +1,30 @@
 # UltraCanvasNestedAreaChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Hierarchy](#class-hierarchy)
+- [File Structure](#file-structure)
+- [Data Structures](#data-structures)
+  - [NestedAreaDataPoint Structure](#nestedareadatapoint-structure)
+  - [NestedAreaDataSource Class](#nestedareadatasource-class)
+  - [Enums](#enums)
+- [API Reference](#api-reference)
+  - [Construction](#construction)
+  - [Data Management](#data-management)
+  - [Configuration](#configuration)
+  - [Selection & Interaction](#selection--interaction)
+- [Usage Examples](#usage-examples)
+  - [Quick Start](#quick-start)
+  - [Rich Data Points](#rich-data-points)
+  - [Builder Pattern](#builder-pattern)
+  - [Interaction Callbacks](#interaction-callbacks)
+  - [Custom Colors](#custom-colors)
+- [How the Scaling Works](#how-the-scaling-works)
+- [Demo Application](#demo-application)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 The `UltraCanvasNestedAreaChart` is a chart component in the UltraCanvas framework for comparing the magnitude of a small set of values at a glance. Each value is drawn as a shape (square, circle, or rounded square) whose **area** is proportional to the value, and all shapes are layered on top of each other sharing a common anchor point. This makes relative size differences immediately visible — the classic "how big is X compared to Y" infographic.

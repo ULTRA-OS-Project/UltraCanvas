@@ -11,6 +11,7 @@ set(ULTRACLEANER_TEST_SOURCES
     test_rules.cpp
     test_scanner.cpp
     test_remover.cpp
+    test_registry.cpp
 )
 
 # The album tests link the album engine, which needs the UltraCanvas core for

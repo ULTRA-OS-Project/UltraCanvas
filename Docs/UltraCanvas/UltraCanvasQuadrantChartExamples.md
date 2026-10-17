@@ -4,6 +4,33 @@
 **Last Modified:** 2026-07-25
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Chart Type & Configuration](#chart-type--configuration)
+  - [Data Management](#data-management)
+  - [Visual Toggles](#visual-toggles)
+  - [Interaction Settings](#interaction-settings)
+  - [Selection Management](#selection-management)
+  - [Quadrant Utilities](#quadrant-utilities)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Sample Data Generators](#sample-data-generators)
+- [Usage Examples](#usage-examples)
+  - [Basic SWOT Analysis](#basic-swot-analysis)
+  - [BCG Matrix with Bubble Sizes](#bcg-matrix-with-bubble-sizes)
+  - [Fully Custom Quadrants](#fully-custom-quadrants)
+  - [Custom Data Range and Division Point](#custom-data-range-and-division-point)
+  - [Selection, Callbacks and Statistics](#selection-callbacks-and-statistics)
+  - [Switching Styles at Runtime](#switching-styles-at-runtime)
+- [Demo Application](#demo-application)
+- [Notes & Best Practices](#notes--best-practices)
+
 ## Overview
 
 `UltraCanvasQuadrantChart` renders interactive 2x2 strategic-analysis matrices. Data points are placed on a two-axis plane that is divided into four quadrants by a configurable center point. The element ships with presets for the most common business frameworks — **SWOT**, **BCG matrix**, **Ansoff growth matrix**, **Eisenhower decision matrix**, **Gartner-style magic quadrant**, **risk matrix** (probability vs impact) and **priority matrix** (impact vs effort) — plus a fully custom mode where every quadrant label, color and axis caption is user-defined.

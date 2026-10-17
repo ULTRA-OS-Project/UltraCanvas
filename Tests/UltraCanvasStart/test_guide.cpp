@@ -2,7 +2,9 @@
 // The Markdown the pages show: one action per numbered step, links that
 // open, the SDK named for real, and the plain-text reduction the report uses;
 // and the words of the Tools step's rows and of what Install will do.
-// Version: 0.2.1 - InstallPreview with switches off
+// Version: 0.2.3 - InstallPreview with switches off
+// Version: 0.2.2 - the SDK named with the download page, not a release asset link
+// Version: 0.2.1 - no AI assistant: its guide and --assistant none
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.1 - the assistant choice
 // Version: 0.1.0
@@ -33,9 +35,9 @@ std::vector<std::string> NumberedSteps(const std::string& markdown) {
 }
 } // namespace
 
-TEST(PlatformGuide_names_the_real_sdk_archive_and_its_release) {
+TEST(PlatformGuide_names_the_real_sdk_archive_and_its_download_page) {
     const std::string guide = PlatformGuide(Platform::Windows, "0.9.235", "x86_64");
-    REQUIRE(guide.find("[UltraCanvas-SDK-Windows-0.9.235-x86_64.zip](https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.235/UltraCanvas-SDK-Windows-0.9.235-x86_64.zip)") != std::string::npos);
+    REQUIRE(guide.find("`UltraCanvas-SDK-Windows-0.9.235-x86_64.zip` from [the download page](https://ultraos.eu/download-file/)") != std::string::npos);
     REQUIRE(guide.find("[https://www.msys2.org](https://www.msys2.org)") != std::string::npos);
     REQUIRE(guide.find("`pacman -Syu`") != std::string::npos);
     REQUIRE(PlatformGuide(Platform::Linux, "0.9.235", "arm64").find("UltraCanvas-SDK-Linux-0.9.235-arm64.tar.xz") != std::string::npos);
@@ -152,6 +154,12 @@ TEST(AiGuide_covers_every_assistant) {
     const std::string other = AiGuide(none, Platform::Linux, Assistant::Other);
     REQUIRE(other.find("llms-full.txt") != std::string::npos);
     REQUIRE(other.find("was not found") == std::string::npos);
+    // None: a local IDE or the compiler; nothing to install, no instruction file.
+    const std::string noAi = AiGuide(none, Platform::Linux, Assistant::NoAssistant);
+    REQUIRE(noAi.find("No AI assistant") != std::string::npos);
+    REQUIRE(noAi.find("`cmake --preset default`") != std::string::npos);
+    REQUIRE(noAi.find("was not found") == std::string::npos);
+    REQUIRE(noAi.find("CLAUDE.md") == std::string::npos);
     // Every install step is one action.
     for (auto assistant : { Assistant::ClaudeCode, Assistant::Codex, Assistant::Copilot, Assistant::Gemini }) {
         for (const auto& step : AssistantInstallInstructions(assistant, Platform::Linux)) {
@@ -169,6 +177,8 @@ TEST(Assistant_names_files_and_cli_words) {
     REQUIRE(AssistantFromName("copilot", a));
     REQUIRE(a == Assistant::Copilot);
     REQUIRE(!AssistantFromName("hal", a));
+    REQUIRE(AssistantFromName("none", a));
+    REQUIRE(a == Assistant::NoAssistant);
     REQUIRE_EQ(AssistantName(Assistant::Codex), std::string("Codex"));
 }
 

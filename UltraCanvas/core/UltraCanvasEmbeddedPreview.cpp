@@ -1,12 +1,14 @@
 // core/UltraCanvasEmbeddedPreview.cpp
 // Extracts the preview bitmap a vector document stores inside itself - see
 // UltraCanvasEmbeddedPreview.h for what this is for.
+// Version: 1.2.0 - UltraCanvas Documents (*.ucd): the thumbnail after the header
 // Version: 1.1.0
-// Last Modified: 2026-09-03
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasUtils.h"     // PathFromUtf8: paths are UTF-8 everywhere
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasUCDContainer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -32,6 +34,10 @@ namespace UltraCanvas {
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             return ext;
         }
+
+        // UltraCanvas Documents keep a PNG (or HEIC) thumbnail straight after
+        // their fixed header, uncompressed - for exactly this.
+        bool IsUCDExtension(const std::string& ext) { return ext == "ucd"; }
 
         bool IsXaraExtension(const std::string& ext) {
             return ext == "xar" || ext == "web" || ext == "wix";
@@ -283,7 +289,7 @@ namespace UltraCanvas {
     bool FormatCarriesEmbeddedPreview(const std::string& pathOrExtension) {
         const std::string ext = LowerExtensionOf(pathOrExtension);
         return IsXaraExtension(ext) || IsCorelDrawExtension(ext) ||
-               IsPostScriptExtension(ext);
+               IsPostScriptExtension(ext) || IsUCDExtension(ext);
     }
 
     std::vector<uint8_t> ExtractEmbeddedPreviewBytes(const std::string& filePath) {
@@ -293,6 +299,16 @@ namespace UltraCanvas {
             if (IsXaraExtension(ext)) return ExtractXaraPreview(filePath);
             if (IsCorelDrawExtension(ext)) return ExtractCorelDrawPreview(filePath);
             if (IsPostScriptExtension(ext)) return ExtractPostScriptPreview(filePath);
+            if (IsUCDExtension(ext)) {
+                UCD::Header header;
+                std::vector<uint8_t> thumbnail;
+                std::string error;
+                UCD::ReadHeaderAndThumbnail(filePath, header, thumbnail, error);
+                // A private document shows no preview, even one stored
+                // against the rule.
+                if (header.IsPrivate()) thumbnail.clear();
+                return thumbnail;
+            }
         } catch (...) {
             // A malformed document must cost that file its preview, nothing
             // more - the callers are background workers.

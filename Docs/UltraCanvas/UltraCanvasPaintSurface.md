@@ -17,7 +17,7 @@ them back. The first application built on it is **UltraPaint**
 |---|---|---|
 | `UCRasterLayer` | One straight-RGBA 8-bit pixel buffer with name / visibility / lock / opacity / blend mode; blend arithmetic; compositing onto a premultiplied pixmap; PixelFX round trip | `include/UltraCanvasRasterLayer.h`, `core/UltraCanvasRasterLayer.cpp` |
 | `UCRasterSelection` | Soft coverage mask (0..255 per pixel): rectangle, ellipse, polygon, arbitrary mask; replace / add / subtract / intersect; feather, grow, shrink, invert; marching-ants outline | `include/UltraCanvasRasterSelection.h`, `core/UltraCanvasRasterSelection.cpp` |
-| `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
+| `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered files: UCD layered images (`.ucd`) and `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
 | `RasterTextContent`, `RenderTextLayer` | Text layers: words kept as a rich document in a box on the canvas (`UCRasterLayer::text`), drawn into the layer through the WYSIWYG element that also edits them on the canvas, editable until the layer is merged or rasterized | `include/UltraCanvasRasterText.h`, `core/UltraCanvasRasterText.cpp` |
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
@@ -78,7 +78,36 @@ std::string err;
 doc->SaveToFile("out.png", err);               // flattened, format by extension, with the
                                                // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
+doc->SaveToFile("work.ucd", err);              // layers kept, as a UCD layered image
 ```
+
+### Layered files
+
+Two formats keep the layers - names, visibility, lock, opacity, blend mode -
+and a text layer's words as text; `SaveToFile` / `LoadFromFile` pick them by
+extension (`IsProjectFile` is true for both, `IsUCDFile` for the first):
+
+- **`.ucd`, a UCD layered image** (`SaveUCD` / `LoadUCD`): the UltraCanvas
+  Document container, revision 2.1, descriptor `UCBitmap`
+  (`Docs/UltraCanvas/UCD-FileFormat-v2.md`, section 4.7). A `LAYR` section
+  holds the stack; each layer's pixels are a raw RGBA `BMAP` (deflated); each
+  text layer's words are a `UCTF` text frame - the box, the default font, size
+  and colour, and the rich text as an OpenDocument text. A PNG thumbnail of
+  the composite (256 px on the longer side) sits right after the header, so a
+  file manager or viewer shows the picture without decoding a layer
+  (`ExtractEmbeddedPreviewBytes`, the media viewer). Needs no libvips. A
+  `UCBitmap` file without a stack opens as one layer; a text frame this cannot
+  read leaves its layer the bitmap it shows.
+- **`.ucraster`, an UltraPaint project** (`SaveProject` / `LoadProject`,
+  libvips): a ZIP of `document.json`, one PNG per layer and an OpenDocument
+  text per text layer.
+
+Both are in FileLoader's inventory as `MediaFormatCategory::LayeredImage`, so
+an editor's Open and Save As take them from there
+(`AddLoadTypes(..., {MediaFormatCategory::LayeredImage})`,
+`AddSaveTypes(opts, MediaFormatCategory::LayeredImage)`). The container
+itself - header, thumbnail, sections, compression - is
+`UltraCanvasUCDContainer.h` (`Docs/UltraCanvas/UltraCanvasUCDContainer.md`).
 
 ### Undo
 
@@ -348,7 +377,9 @@ over the canvas. The surface handles what every tool shares:
   happens in the frame that shows the new size - or at the next view call
   (`SetZoom`, `ScrollToImagePoint`, ...) if that comes first - and
   `onViewChanged` reports it, so overlays placed in view coordinates (an
-  editor over a text layer, the status bar's zoom) follow.
+  editor over a text layer, the status bar's zoom) follow. A document change
+  that comes first (a layer added, the canvas resized) brings the view to the
+  new size itself and reports it the same way.
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
@@ -418,7 +449,7 @@ libvips is part of UltraCanvas on every platform; the one build without it is
 a single-threaded WebAssembly program, where it cannot run. There the layer,
 selection, document, brush engine and surface compile without
 `HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
-`ApplyFilter` / `PreviewFilter`, file load / save and `.ucraster` projects;
+`ApplyFilter` / `PreviewFilter`, file load / save and layered files (`.ucd`, `.ucraster`);
 `ScaleImage` falls back to the layer's bilinear resample. Text layers are
 drawn without libvips (through the render context); only keeping them in a
 project needs it, as every project does.
@@ -438,7 +469,10 @@ round trip that draws again to the same pixels), the installed font list, the
 surface's view through a resize (an image smaller than the view centred
 again in the next frame, a larger one keeping its centre point, zooming about
 the pointer between a resize and the frame, and a loupe keeping its point), the
-PNG and `.ucraster` round trips, and saving back over the file a document was
+PNG, `.ucraster` and `.ucd` round trips (every layer attribute, the text
+layers' words, the thumbnail's size, a single-image `UCBitmap`, a text frame it
+cannot read, a later revision's extra layer field, a v1 file and a document
+with no image refused), and saving back over the file a document was
 opened from -- that the image survives the round trip, that the temporary
 file the save goes through leaves no trace, and that neither a save nor an export
 which fails inside the encoder leaves a mark on the file that was already

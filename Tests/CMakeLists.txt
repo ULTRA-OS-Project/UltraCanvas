@@ -1191,6 +1191,55 @@ else()
     message(STATUS "  ColorPickerModelDropdownTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PICKER AUTO HEIGHT TEST =====
+# The HSV/HSL/RGB tabs fold away with the channel sliders under the disclosure
+# row, and with SetAutoHeight the widget takes the height its content needs -
+# in a flex column what is below it moves as the section opens and closes or
+# another design is chosen. Opens a window, so it skips itself without a
+# DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerAutoHeightTest...")
+    add_executable(ColorPickerAutoHeightTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerAutoHeightTest.cpp
+    )
+    target_include_directories(ColorPickerAutoHeightTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerAutoHeightTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerAutoHeightTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerAutoHeightTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerAutoHeightTest COMMAND ColorPickerAutoHeightTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerAutoHeightTest")
+else()
+    message(STATUS "  ColorPickerAutoHeightTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ULTRAPAINT SETTINGS TEST =====
+# UltraPaint's settings file remembers the colour picker's design and its
+# open or folded channels; the picker's own save keeps the file's other keys.
+# The settings are header-only (Apps/UltraPaint/UltraPaintSettings.h). Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraPaintSettingsTest...")
+    add_executable(UltraPaintSettingsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraPaintSettingsTest.cpp
+    )
+    target_include_directories(UltraPaintSettingsTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraPaint
+    )
+    target_compile_features(UltraPaintSettingsTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraPaintSettingsTest PRIVATE UltraCanvas)
+    set_target_properties(UltraPaintSettingsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraPaintSettingsTest COMMAND UltraPaintSettingsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraPaintSettingsTest")
+else()
+    message(STATUS "  UltraPaintSettingsTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== DROPDOWN KEYBOARD TEST =====
 # Down / Up / Return choose an item of an open dropdown; Escape keeps the
 # choice. The dropdown takes the keyboard focus (Tab, a click, Down / Space to
@@ -1547,7 +1596,17 @@ if(PkgConfig_FOUND)
     pkg_check_modules(TINYXML2_TEST tinyxml2)
 endif()
 
-if(TINYXML2_TEST_FOUND)
+# The .docx reader opens password-protected documents through
+# UltraCanvasOfficeEncryption.cpp, which sits on UltraCrypt. These tests link
+# the uc-crypt archive rather than the UltraCrypt home: on a shared core the
+# home is libUltraCanvas, which carries its own copy of the Word readers these
+# tests compile from source.
+set(WORD_ENCRYPTION_SOURCES ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasOfficeEncryption.cpp)
+if(TINYXML2_TEST_FOUND AND NOT TARGET uc-crypt)
+    message(STATUS "  uc-crypt not built - WordFormatsTest and LaTeXDocumentTest disabled")
+endif()
+
+if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
     message(STATUS "  Building WordFormatsTest...")
 
     set(ULTRACANVAS_SRC_DIR "${ULTRACANVAS_ROOT}/UltraCanvas")
@@ -1563,6 +1622,7 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasCompoundFile.cpp
+        ${WORD_ENCRYPTION_SOURCES}
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         # UCWordDocumentIO dispatches .tex to the LaTeX document reader
@@ -1572,7 +1632,7 @@ if(TINYXML2_TEST_FOUND)
         # HTMLReaderTestCore brings the parser, the cascade and Trim().
         ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
-    target_link_libraries(WordFormatsTest PRIVATE HTMLReaderTestCore)
+    target_link_libraries(WordFormatsTest PRIVATE HTMLReaderTestCore uc-crypt)
     target_include_directories(WordFormatsTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         # the module's internal helpers (symbol-font mapping) are tested too
@@ -1674,7 +1734,7 @@ message(STATUS "    Test registered: HTMLRichImportTest")
 # math runs/blocks, diagnostics, Markdown/ODT round trips of the math model
 # parts, format detection, and the shipped media/LaTex corpus. Needs the Word
 # module sources (for UCWordDocumentIO) like WordFormatsTest, not the UI stack.
-if(TINYXML2_TEST_FOUND)
+if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
     message(STATUS "  Building LaTeXDocumentTest...")
     add_executable(LaTeXDocumentTest
         ${CMAKE_CURRENT_SOURCE_DIR}/LaTeXDocumentTest.cpp
@@ -1686,13 +1746,14 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasCompoundFile.cpp
+        ${WORD_ENCRYPTION_SOURCES}
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
         # UCRichDocument::FromHTML reads through the HTMLReader's importer.
         ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
-    target_link_libraries(LaTeXDocumentTest PRIVATE HTMLReaderTestCore)
+    target_link_libraries(LaTeXDocumentTest PRIVATE HTMLReaderTestCore uc-crypt)
     target_include_directories(LaTeXDocumentTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
@@ -1882,6 +1943,30 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: SpreadsheetAutoFillTest")
+
+# ===== SPREADSHEET SHEET NAME TEST =====
+# The sheet tab menu's Rename: which names a sheet may have (CheckSheetName)
+# and formulas following a renamed sheet (RenameSheetInFormula). No UI stack.
+message(STATUS "  Building SpreadsheetSheetNameTest...")
+add_executable(SpreadsheetSheetNameTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetSheetNameTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetSheetNameTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetSheetNameTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetSheetNameTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetSheetNameTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetSheetNameTest
+    COMMAND SpreadsheetSheetNameTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetSheetNameTest")
 
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
@@ -3852,6 +3937,24 @@ add_test(NAME SpreadsheetFunctionMenuTest COMMAND SpreadsheetFunctionMenuTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetFunctionMenuTest")
 
+# ===== SPREADSHEET POINT MODE TEST =====
+# The grid's editing gestures through its own event handling, no window:
+# clicking / dragging cells into a formula being typed, Ctrl+D / Ctrl+R,
+# the fill handle's copy mode, and renaming a sheet.
+message(STATUS "  Building SpreadsheetPointModeTest...")
+add_executable(SpreadsheetPointModeTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetPointModeTest.cpp
+)
+target_include_directories(SpreadsheetPointModeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetPointModeTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetPointModeTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetPointModeTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetPointModeTest COMMAND SpreadsheetPointModeTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetPointModeTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own
@@ -4217,6 +4320,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SpreadsheetXlsFileTest")
 else()
     message(STATUS "  SpreadsheetXlsFileTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== OFFICE ENCRYPTION TEST =====
+# Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
+# against fixtures msoffcrypto-tool encrypted - right, wrong and missing
+# passwords, a changed byte, unsupported headers - then LoadFromFile,
+# UCWordDocumentIO::Load and UltraCanvasFileLoader::LoadTextDocument on them.
+# Needs the full library (the spreadsheet element, the file loader).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OfficeEncryptionTest...")
+    add_executable(OfficeEncryptionTest ${CMAKE_CURRENT_SOURCE_DIR}/OfficeEncryptionTest.cpp)
+    target_include_directories(OfficeEncryptionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OfficeEncryptionTest PRIVATE cxx_std_20)
+    target_link_libraries(OfficeEncryptionTest PRIVATE UltraCanvas)
+    target_compile_definitions(OfficeEncryptionTest PRIVATE
+        OFFICETEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(OfficeEncryptionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OfficeEncryptionTest COMMAND OfficeEncryptionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OfficeEncryptionTest")
+else()
+    message(STATUS "  OfficeEncryptionTest skipped (UltraCanvas target not present)")
 endif()
 
 # open but cannot list is one whose thumbnail nobody can switch on.
@@ -5628,6 +5756,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DiagramJsonLocaleTest")
 else()
     message(STATUS "  DiagramJsonLocaleTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== UCD CONTAINER TEST =====
+# The UCD v2 container (UltraCanvasUCDContainer.h) against its spec: the
+# signature and header bytes, the thumbnail, INDX, zlib / gzip sections, the
+# header-default code, unknown sections, and what it refuses. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UCDContainerTest...")
+    add_executable(UCDContainerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UCDContainerTest.cpp
+    )
+    target_include_directories(UCDContainerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(UCDContainerTest PRIVATE cxx_std_20)
+    target_link_libraries(UCDContainerTest PRIVATE UltraCanvas)
+    set_target_properties(UCDContainerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UCDContainerTest COMMAND UCDContainerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UCDContainerTest")
+else()
+    message(STATUS "  UCDContainerTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== ICO / QOI TEST =====

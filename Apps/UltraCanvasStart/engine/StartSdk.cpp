@@ -1,15 +1,11 @@
 // Apps/UltraCanvasStart/engine/StartSdk.cpp
+// Version: 0.2.0 - SdkDownloadPage is the UltraOS download page; no download here
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartSdk.h"
 
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
-
-#if defined(ULTRACANVASSTART_HAS_NET)
-#include "UltraNet/UltraNetCore.h"
-#include "UltraNet/UltraNetHttp.h"
-#endif
 
 #include <filesystem>
 
@@ -46,54 +42,11 @@ std::string SdkArchiveName(Platform platform, const std::string& version,
 }
 
 std::string SdkDownloadPage() {
-    return std::string("https://github.com/") + kRepository + "/actions/workflows/build.yml?query=branch%3Amain";
+    return "https://ultraos.eu/download-file/";
 }
 
 std::string SdkReleasePage(const std::string& version) {
     return std::string("https://github.com/") + kRepository + "/releases/tag/v" + version;
-}
-
-std::string SdkReleaseAssetUrl(Platform platform, const std::string& version,
-                               const std::string& architecture) {
-    return std::string("https://github.com/") + kRepository + "/releases/download/v" +
-           version + "/" + SdkArchiveName(platform, version, architecture);
-}
-
-bool SdkDownloadAvailable() {
-#if defined(ULTRACANVASSTART_HAS_NET)
-    return true;
-#else
-    return false;
-#endif
-}
-
-bool DownloadSdk(const std::string& url, const std::string& localPath, std::string& error) {
-#if defined(ULTRACANVASSTART_HAS_NET)
-    if (!UltraNet_IsInitialized()) {
-        const UltraNetResult started = UltraNet_Initialize();
-        if (!started.success) {
-            error = "The network module could not start: " + started.message;
-            return false;
-        }
-    }
-    UltraNetHttpOptions options = UltraNetHttpOptions::Default();
-    options.followRedirects = true;
-    const UltraNetResult result = UltraNet_HttpDownloadFile(url, localPath, options);
-    if (result.success) return true;
-    error = result.message;
-    if (result.httpStatus == 404) {
-        error = "Nothing at " + url + " yet: the release of this version may still be building. "
-                "Try again later, or download the archive of the same name from " + SdkDownloadPage() +
-                " and unpack it by hand.";
-    }
-    return false;
-#else
-    (void)url;
-    (void)localPath;
-    error = "This build of UltraCanvasStart has no UltraNet; download the archive in a browser from " +
-            SdkDownloadPage();
-    return false;
-#endif
 }
 
 PlanStep UnpackStep(const std::string& archive, const std::string& destination) {
@@ -106,6 +59,17 @@ PlanStep UnpackStep(const std::string& archive, const std::string& destination) 
     // reads a .zip as well, and Windows ships it as tar.exe.
     step.argv = { "tar", "-xf", archive, "-C", destination };
     return step;
+}
+
+std::string SdkUnpackedFolder(const std::string& archive) {
+    for (const char* ext : { ".tar.xz", ".tar.gz", ".zip" }) {
+        const std::string suffix = ext;
+        if (archive.size() > suffix.size() &&
+            archive.compare(archive.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            return archive.substr(0, archive.size() - suffix.size());
+        }
+    }
+    return archive;
 }
 
 std::string FindSdkPrefix(const std::string& destination) {

@@ -9,11 +9,12 @@
 //
 // Distinct from UltraCanvasZoomPanImage (a read-only viewer of a UCImage)
 // and UltraCanvasMediaSurface (the media viewer's display): this one edits.
+// Version: 1.2.1 - a document change that moves the view reports it (onViewChanged)
 // Version: 1.2.0 - a resized view keeps the image point at its centre and re-centres an
 //                  image smaller than itself at once (FollowResize)
 // Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
 // Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -134,7 +135,8 @@ public:
     std::function<bool(const UCEvent&)> onToolKey;
     // Draw tool previews in VIEW coordinates after the image and selection.
     std::function<void(IRenderContext*, const PaintViewTransform&)> onDrawOverlay;
-    // Zoom / pan changed (status bar).
+    // The view moved: a zoom, a pan, a resize, or a document change that
+    // kept the canvas in view (the status bar, overlays in view coordinates).
     std::function<void()> onViewChanged;
     // Files dropped onto the surface.
     std::function<void(const std::vector<std::string>&)> onFilesDropped;
