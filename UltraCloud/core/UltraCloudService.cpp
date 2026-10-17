@@ -1,7 +1,7 @@
 // UltraCloud/core/UltraCloudService.cpp
-// Version: 0.5.0 - a rejected access token is renewed and the call made once
-//                  more; a cancelled sign-in stores nothing
-// Last Modified: 2026-10-14
+// Version: 0.6.0 - TransfersInProgress: uploads and downloads count while
+//                  they run
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudService.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -16,6 +16,33 @@ using UltraCanvas::PathFromUtf8;
 using UltraCanvas::PathToUtf8;
 
 namespace UltraCloud {
+
+class CloudService::TransferScope {
+public:
+    TransferScope(CloudService& service, Transfer transfer) : service_(service) {
+        std::lock_guard<std::mutex> lk(service_.transfersMutex_);
+        id_ = ++service_.nextTransferId_;
+        service_.transfers_[id_] = std::move(transfer);
+    }
+    ~TransferScope() {
+        std::lock_guard<std::mutex> lk(service_.transfersMutex_);
+        service_.transfers_.erase(id_);
+    }
+    TransferScope(const TransferScope&) = delete;
+    TransferScope& operator=(const TransferScope&) = delete;
+
+private:
+    CloudService& service_;
+    uint64_t id_ = 0;
+};
+
+std::vector<CloudService::Transfer> CloudService::TransfersInProgress() const {
+    std::lock_guard<std::mutex> lk(transfersMutex_);
+    std::vector<Transfer> out;
+    out.reserve(transfers_.size());
+    for (const auto& entry : transfers_) out.push_back(entry.second);
+    return out;
+}
 
 std::shared_ptr<ICloudProvider> CloudService::ProviderFor(const Account& account) const {
     return GetProvider(account.providerId);
@@ -181,6 +208,8 @@ Result CloudService::MakeDirectory(const std::string& accountId,
 
 Result CloudService::Upload(const std::string& accountId, const std::string& localPath,
                             const std::string& remotePath) {
+    TransferScope counted(*this, {Transfer::Kind::Upload, accountId, localPath,
+                                  NormalizePath(remotePath)});
     return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
         return p.Upload(a, c, localPath, NormalizePath(remotePath));
     });
@@ -195,6 +224,8 @@ Result CloudService::CreateShareLink(const std::string& accountId, const std::st
 
 Result CloudService::Download(const std::string& accountId, const std::string& remotePath,
                               const std::string& localPath) {
+    TransferScope counted(*this, {Transfer::Kind::Download, accountId, localPath,
+                                  NormalizePath(remotePath)});
     return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
         if (localPath.empty())
             return Result::Error(ResultCode::InvalidArgument, "no local file given");
@@ -214,6 +245,10 @@ Result CloudService::UploadAndShare(const std::string& accountId, const std::str
                                     const std::string& remoteFolder,
                                     const ShareLinkOptions& options, ShareLink& out,
                                     std::string* remotePathOut) {
+    // Counted as an upload into the folder from the start: making the folder
+    // and the link around it are part of the same wait.
+    TransferScope counted(*this, {Transfer::Kind::Upload, accountId, localPath,
+                                  remoteFolder.empty() ? std::string() : NormalizePath(remoteFolder)});
     // The three steps run again as a whole when the token is renewed part of
     // the way: the folder is "already there" then, and the upload replaces
     // what the first try left.

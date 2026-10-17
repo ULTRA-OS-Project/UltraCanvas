@@ -1,3 +1,23 @@
+#### 2026-10-17 *0.10.59*
+- **Closing a compose window during a cloud upload no longer risks a
+  crash.** *Attach cloud link* uploads a file, lists folders and makes the
+  link on threads of their own, and its *Add account…* waits for the browser
+  sign-in; each of them used the application's cloud service through a
+  plain pointer, so one still running when the window - or UltraMail - closed
+  could use it after it was freed. UltraMail now keeps its cloud accounts,
+  their secrets and the service in shared ownership, and hands the picker
+  the shared service, which every one of those threads holds until it ends
+  (`ShowCloudLinkPicker`'s new shared form, see the framework changelog).
+- **Quitting during a cloud upload asks first.** Closing UltraMail's last
+  window ended an upload *Attach cloud link* was still running - the file
+  never arrived, and nothing said so. That close now asks *An upload is
+  still running — quit anyway?*, naming the file and the cloud account it
+  goes to; *Keep UltraMail open* (the default, and what Return gives) leaves
+  everything as it was, *Quit anyway* closes. Closing a window that is not
+  the last asks nothing - the upload carries on behind the windows still
+  open. Downloads are asked about the same way. The framework side is
+  `CloudService::TransfersInProgress` (see the framework changelog).
+
 #### 2026-10-16 *0.10.58*
 - **An unreachable sign-in service is worded like every other failure.**
   When a browser sign-in could not reach the sign-in service, the alert
