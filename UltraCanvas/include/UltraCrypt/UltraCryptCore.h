@@ -149,8 +149,10 @@ enum class UltraCryptHashAlgorithm : uint8_t {
     // LEGACY. Provided for HMAC-SHA-1 only, which TOTP requires for issuer
     // compatibility and where SHA-1's collision weakness does not apply. As a
     // plain digest it is collision-broken: UltraCrypt_Hash refuses it unless
-    // UltraCryptHashOptions::allowLegacy is set, and nothing in UltraCanvas
-    // should set that.
+    // UltraCryptHashOptions::allowLegacy is set. One reader sets it, for
+    // interop: UltraCanvasOfficeEncryption, to read the Office 2010 files
+    // whose password key is SHA-1 - a key derivation, which collisions do not
+    // reach. Nothing UltraCanvas writes uses it.
     SHA1,
     SHA256,
     SHA512

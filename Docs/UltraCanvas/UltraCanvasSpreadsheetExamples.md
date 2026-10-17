@@ -294,12 +294,13 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 // password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
 // formats ignore it.
 bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-bool SaveToFile(const std::string& filePath);
+// With a password: a password-protected .xlsx; any other format with one is refused.
+bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
 bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
-bool SaveXLSX(const std::string& filePath);
+bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());
 // Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx (password-protected or
 // not), HTML table, Excel 2003 XML file or delimited text saved under the
 // name. Read only.

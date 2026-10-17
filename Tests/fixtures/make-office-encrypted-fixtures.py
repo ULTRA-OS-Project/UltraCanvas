@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Rebuilds the password-protected Office fixtures OfficeEncryptionTest reads.
 
-    python3 Tests/fixtures/make-office-encrypted-fixtures.py
+    python3 Tests/fixtures/make-office-encrypted-fixtures.py [fixture-name ...]
+
+With names, only those are rebuilt: every run draws new salts and keys, so a
+rebuilt fixture differs in every byte from the one checked in.
 
 Needs msoffcrypto-tool (pip install msoffcrypto-tool), an encryptor written
 independently of UltraCanvas, so the test does not only check the reader
@@ -17,6 +20,23 @@ count of 100000, and the dataIntegrity HMAC.
                                  segments, each with its own IV
     office-agile-encrypted.docx  a document: "Secret text", then "Paragraph 2"
                                  to "Paragraph 201" - stored uncompressed too
+    office-agile-sha1-encrypted.xlsx
+                                 the same workbook as Office 2010 encrypts by
+                                 default: SHA-1 and AES-128. msoffcrypto-tool
+                                 writes only SHA-512 / AES-256, so its cipher
+                                 parameters are switched for this one, and its
+                                 AES helper pads to the block (the 20-byte
+                                 SHA-1 HMAC key is not a whole block). The key
+                                 derivation, the verifier and the HMAC are
+                                 still its code, and its decryptor checks the
+                                 password and the content before the file is
+                                 written. Its integrity check cannot be used
+                                 here: it compares the whole decrypted HMAC
+                                 block, padding included, where
+                                 [MS-OFFCRYPTO] 2.3.4.14 compares hashSize
+                                 bytes, so it fails every SHA-1 file. The
+                                 script checks the HMAC itself instead
+                                 (check_hmac).
 
 Both packages are kept above 4096 bytes on purpose. A smaller EncryptedPackage
 stream goes into the compound file's mini stream, and msoffcrypto-tool 6.0.0
@@ -34,6 +54,8 @@ import sys
 import zipfile
 
 try:
+    import msoffcrypto
+    import msoffcrypto.method.ecma376_agile as agile
     from msoffcrypto.format.ooxml import OOXMLFile
 except ImportError:
     sys.exit("msoffcrypto-tool is not installed: pip install msoffcrypto-tool")
@@ -110,23 +132,71 @@ def package(parts, compression=zipfile.ZIP_DEFLATED):
     return buffer.getvalue()
 
 
-def encrypt(plain, name):
+def check_hmac(office_file):
+    """[MS-OFFCRYPTO] 2.3.4.14, comparing hashSize bytes."""
+    import hashlib
+    import hmac
+    info = office_file.info
+    algorithm = getattr(hashlib, info["keyDataHashAlgorithm"].lower())
+    size = algorithm().digest_size
+    ivs = [algorithm(info["keyDataSalt"] + block).digest()[:16]
+           for block in (agile.blkKey_dataIntegrity1, agile.blkKey_dataIntegrity2)]
+    key = agile._decrypt_aes_cbc(info["encryptedHmacKey"], office_file.secret_key, ivs[0])[:size]
+    value = agile._decrypt_aes_cbc(info["encryptedHmacValue"], office_file.secret_key, ivs[1])[:size]
+    with office_file.file.openstream("EncryptedPackage") as stream:
+        assert hmac.new(key, stream.read(), algorithm).digest() == value, "HMAC mismatch"
+
+
+WANTED = set(sys.argv[1:])
+
+
+def encrypt(plain, name, sha1=False):
+    if WANTED and name not in WANTED:
+        return
     out = io.BytesIO()
-    OOXMLFile(io.BytesIO(plain)).encrypt(PASSWORD, out)
+    if sha1:
+        params_init = agile.ECMA376AgileCipherParams.__init__
+        aes = agile._encrypt_aes_cbc
+
+        def office2010_params(self):
+            params_init(self)
+            self.hashName, self.hashSize, self.keyBits = "SHA1", 20, 128
+
+        def padded_aes(data, key, iv):
+            return aes(data + b"\0" * (-len(data) % 16), key, iv)
+
+        agile.ECMA376AgileCipherParams.__init__ = office2010_params
+        agile._encrypt_aes_cbc = padded_aes
+        try:
+            OOXMLFile(io.BytesIO(plain)).encrypt(PASSWORD, out)
+        finally:
+            agile.ECMA376AgileCipherParams.__init__ = params_init
+            agile._encrypt_aes_cbc = aes
+    else:
+        OOXMLFile(io.BytesIO(plain)).encrypt(PASSWORD, out)
+    check = msoffcrypto.OfficeFile(io.BytesIO(out.getvalue()))
+    check.load_key(password=PASSWORD)
+    decrypted = io.BytesIO()
+    check.decrypt(decrypted, verify_integrity=not sha1)
+    assert decrypted.getvalue() == plain, name + " does not decrypt back"
+    if sha1:
+        check_hmac(check)
     path = os.path.join(HERE, name)
     with open(path, "wb") as f:
         f.write(out.getvalue())
     print("wrote", path, len(out.getvalue()), "bytes")
 
 
-encrypt(package([
+WORKBOOK_PACKAGE = package([
     ("[Content_Types].xml", CONTENT_TYPES_XLSX),
     ("_rels/.rels", ROOT_RELS_XLSX),
     ("xl/workbook.xml", WORKBOOK),
     ("xl/_rels/workbook.xml.rels", WORKBOOK_RELS),
     ("xl/sharedStrings.xml", SHARED_STRINGS),
     ("xl/worksheets/sheet1.xml", SHEET),
-], zipfile.ZIP_STORED), "office-agile-encrypted.xlsx")
+], zipfile.ZIP_STORED)
+encrypt(WORKBOOK_PACKAGE, "office-agile-encrypted.xlsx")
+encrypt(WORKBOOK_PACKAGE, "office-agile-sha1-encrypted.xlsx", sha1=True)
 
 encrypt(package([
     ("[Content_Types].xml", CONTENT_TYPES_DOCX),

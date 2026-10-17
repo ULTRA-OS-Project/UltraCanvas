@@ -556,11 +556,14 @@ public:
     // not correct". UltraCanvasFileLoader::RequestDocumentPassword asks the
     // user for it. Other formats ignore it.
     bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-    bool SaveToFile(const std::string& filePath);
+    // `password` saves a password-protected .xlsx (agile encryption,
+    // AES-256 / SHA-512, what Excel 2013 and later write). Any other format
+    // with a password is refused rather than saved unprotected.
+    bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
     bool LoadODS(const std::string& filePath);
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
-    bool SaveXLSX(const std::string& filePath);
+    bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());
     // Legacy Excel workbooks (.xls): Excel 97-2003 and 5.0/95 binary files, and
     // what else Excel opens under the name - an .xlsx renamed, an HTML table, an
     // Excel 2003 XML workbook, delimited text. Read only: save as .xlsx or .ods.

@@ -11,10 +11,18 @@
 //   * UCWordDocumentIO::Load and UltraCanvasFileLoader::LoadTextDocument on
 //     the .docx;
 //   * that ordinary files are not affected, and RequestDocumentPassword
-//     calls straight back for one.
+//     calls straight back for one;
+//   * Office 2010's SHA-1 / AES-128 keying, in a workbook encrypted that way;
+//   * writing: UCCompoundFileWriter read back, EncryptOfficePackage round
+//     trips (a package in the mini stream, one past the header's 109 FAT
+//     sectors), fresh salts on every save, a changed byte caught, and the
+//     spreadsheet, UCWordDocumentIO and UltraCanvasFileLoader saving with a
+//     password and loading it back - and refusing a password for .ods / .odt.
 // The fixtures are in Tests/fixtures (make-office-encrypted-fixtures.py
-// rebuilds them and says what each holds).
-// Version: 1.0.0
+// rebuilds them and says what each holds). That msoffcrypto-tool decrypts
+// what EncryptOfficePackage writes was checked when the writer was made; the
+// test cannot run Python, so it checks the format against the reader here.
+// Version: 1.1.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
@@ -166,10 +174,10 @@ void TestDecryptor() {
                                encrypted, kPassword, package, error) ==
               OfficeDecryptStatus::WrongPassword,
           "a different spin count derives a different key");
-    Check(DecryptOfficePackage(withHeader("hashAlgorithm=\"SHA512\"", "hashAlgorithm=\"SHA1\""),
+    Check(DecryptOfficePackage(withHeader("hashAlgorithm=\"SHA512\"", "hashAlgorithm=\"SHA384\""),
                                encrypted, kPassword, package, error) ==
               OfficeDecryptStatus::Unsupported,
-          "SHA-1 key derivation is Unsupported");
+          "a hash UltraCrypt does not have (SHA-384) is Unsupported");
     Check(DecryptOfficePackage(withHeader("<dataIntegrity", "<dataIntegrityX"), encrypted, kPassword,
                                package, error) == OfficeDecryptStatus::Unsupported &&
               Contains(error, "integrity"),
@@ -259,12 +267,161 @@ void TestDocument() {
           "RequestDocumentPassword calls straight back for a file without a password");
 }
 
+// ===== OFFICE 2010: SHA-1 / AES-128 =====
+
+void TestSha1() {
+    std::cout << "\n=== Office 2010's SHA-1 keying ===\n";
+    const std::string xlsx = Fixture("office-agile-sha1-encrypted.xlsx");
+    std::vector<uint8_t> package;
+    std::string error;
+    Check(DecryptOfficePackageFile(xlsx, kPassword, package, error) == OfficeDecryptStatus::Decrypted,
+          "a SHA-1 / AES-128 workbook decrypts");
+    if (!error.empty()) std::cout << "         " << error << "\n";
+    Check(DecryptOfficePackageFile(xlsx, "wrong", package, error) == OfficeDecryptStatus::WrongPassword,
+          "a wrong password is still told apart");
+    std::vector<uint8_t> info, encrypted;
+    if (ReadStreams(xlsx, info, encrypted)) {
+        encrypted[encrypted.size() / 2] ^= 0x80;
+        Check(DecryptOfficePackage(info, encrypted, kPassword, package, error) ==
+                  OfficeDecryptStatus::Tampered,
+              "its 20-byte HMAC catches a changed byte");
+    }
+    UltraCanvasSpreadsheet book("Sha1", 0, 0, 400, 300);
+    Check(book.LoadFromFile(xlsx, kPassword) && NumberOf(book, 402, 0) == 2821.0,
+          "the spreadsheet opens it, A403 intact");
+}
+
+// ===== WRITING =====
+
+fs::path TempDir() {
+    const fs::path dir = fs::temp_directory_path() / "uc-office-encryption-write";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    return dir;
+}
+
+void TestCompoundFileWriter() {
+    std::cout << "\n=== UCCompoundFileWriter ===\n";
+    UCCompoundFileWriter writer;
+    std::vector<uint8_t> small(300), big(70000);
+    for (size_t i = 0; i < small.size(); ++i) small[i] = static_cast<uint8_t>(i * 7);
+    for (size_t i = 0; i < big.size(); ++i) big[i] = static_cast<uint8_t>(i * 13 + 1);
+    Check(writer.AddStream("Small", small) && writer.AddStream("Big", big) &&
+              writer.AddStream("Store/Inner/Deep", {1, 2, 3}) && writer.AddStream("Empty", {}),
+          "streams and nested storages are accepted");
+    Check(!writer.AddStream("Store", {1}), "a stream cannot take a storage's name");
+    Check(!writer.AddStream(std::string(32, 'x'), {1}), "a name over 31 characters is refused");
+    UCCompoundFileReader reader;
+    std::vector<uint8_t> back;
+    Check(reader.OpenFromMemory(writer.Build()), "the reader opens what it builds");
+    Check(reader.ReadStream("Small", back) && back == small, "a mini-stream stream reads back");
+    Check(reader.ReadStream("Big", back) && back == big, "a sector stream reads back");
+    Check(reader.HasStream("Empty"), "an empty stream is listed");
+    const std::vector<std::string> names = reader.StreamNames();
+    Check(names.size() == 3, "the root lists its three streams, not the storage's");
+}
+
+void TestEncryptor() {
+    std::cout << "\n=== EncryptOfficePackage ===\n";
+    std::string error;
+    for (size_t size : {size_t(200), size_t(21000), size_t(9u << 20)}) {
+        std::vector<uint8_t> package(size);
+        for (size_t i = 0; i < size; ++i) package[i] = static_cast<uint8_t>((i * 31) ^ (i >> 9));
+        std::vector<uint8_t> file, back;
+        const bool written = EncryptOfficePackage(package, kPassword, file, error);
+        UCCompoundFileReader cfb;
+        Check(written && cfb.OpenFromMemory(file) && IsEncryptedOfficePackage(cfb) &&
+                  DecryptOfficePackage(cfb, kPassword, back, error) == OfficeDecryptStatus::Decrypted &&
+                  back == package,
+              "a " + std::to_string(size) + "-byte package round-trips");
+    }
+    std::vector<uint8_t> package(5000, 0x5A), first, second, back;
+    EncryptOfficePackage(package, kPassword, first, error);
+    EncryptOfficePackage(package, kPassword, second, error);
+    Check(!first.empty() && first != second, "every encryption draws new salts and keys");
+    Check(!EncryptOfficePackage(package, "", first, error) && first.empty(),
+          "an empty password is refused");
+
+    std::vector<uint8_t> file;
+    EncryptOfficePackage(package, kPassword, file, error);
+    UCCompoundFileReader cfb;
+    std::vector<uint8_t> info, encrypted;
+    if (cfb.OpenFromMemory(file) && cfb.ReadStream("EncryptionInfo", info) &&
+        cfb.ReadStream("EncryptedPackage", encrypted)) {
+        Check(DecryptOfficePackage(info, encrypted, "wrong", back, error) ==
+                  OfficeDecryptStatus::WrongPassword,
+              "what it writes refuses a wrong password");
+        encrypted[100] ^= 1;
+        Check(DecryptOfficePackage(info, encrypted, kPassword, back, error) ==
+                  OfficeDecryptStatus::Tampered,
+              "and carries an HMAC that catches a changed byte");
+        const std::string xml(info.begin() + 8, info.end());
+        Check(Contains(xml, "hashAlgorithm=\"SHA512\"") && Contains(xml, "keyBits=\"256\"") &&
+                  Contains(xml, "spinCount=\"100000\""),
+              "it writes what Office 2013 writes: SHA-512, AES-256, 100000 rounds");
+    }
+}
+
+void TestSaving() {
+    std::cout << "\n=== Saving with a password ===\n";
+    const fs::path dir = TempDir();
+    const std::string xlsx = PathToUtf8(dir / "saved.xlsx");
+    {
+        UltraCanvasSpreadsheet book("Enc", 0, 0, 400, 300);
+        book.LoadFromFile(Fixture("office-agile-encrypted.xlsx"), kPassword);
+        Check(book.SaveToFile(xlsx, "new p\xC3\xA4ss"), "SaveToFile writes an .xlsx with a password");
+        if (!book.GetLastError().empty()) std::cout << "         " << book.GetLastError() << "\n";
+        Check(IsEncryptedOfficePackage(xlsx), "the file on disk is encrypted, not a ZIP");
+        Check(!book.SaveToFile(PathToUtf8(dir / "saved.ods"), "new p\xC3\xA4ss") &&
+                  Contains(book.GetLastError(), ".xlsx") && !fs::exists(dir / "saved.ods"),
+              "an .ods with a password is refused, and nothing is written");
+    }
+    {
+        UltraCanvasSpreadsheet book("Enc", 0, 0, 400, 300);
+        Check(!book.LoadFromFile(xlsx, kPassword), "the old password no longer opens it");
+        Check(book.LoadFromFile(xlsx, "new p\xC3\xA4ss") && TextOf(book, 1, 0) == "Widget" &&
+                  NumberOf(book, 402, 0) == 2821.0,
+              "the new one does, with the content intact");
+    }
+    {
+        UltraCanvasSpreadsheet book("Plain", 0, 0, 400, 300);
+        book.LoadFromFile(xlsx, "new p\xC3\xA4ss");
+        const std::string plain = PathToUtf8(dir / "plain.xlsx");
+        Check(book.SaveToFile(plain) && !IsEncryptedOfficePackage(plain),
+              "without a password it saves an ordinary .xlsx");
+    }
+
+    const std::string docx = PathToUtf8(dir / "saved.docx");
+    UCRichDocument doc;
+    std::string error;
+    UCWordDocumentIO::Load(Fixture("office-agile-encrypted.docx"), doc, error, kPassword);
+    Check(UCWordDocumentIO::Save(docx, doc, error, kPassword) && IsEncryptedOfficePackage(docx),
+          "UCWordDocumentIO::Save writes an encrypted .docx");
+    UCRichDocument back;
+    Check(UCWordDocumentIO::Load(docx, back, error, kPassword) &&
+              Contains(back.ToPlainText(), "Paragraph 201"),
+          "which loads back with its text");
+    Check(!UCWordDocumentIO::Save(PathToUtf8(dir / "saved.odt"), doc, error, kPassword) &&
+              Contains(error, ".docx"),
+          "an .odt with a password is refused");
+    const std::string viaLoader = PathToUtf8(dir / "loader.docx");
+    Check(UltraCanvasFileLoader::SaveTextDocument(doc, viaLoader, error, kPassword) &&
+              UltraCanvasFileLoader::LoadTextDocument(viaLoader, error, kPassword) != nullptr,
+          "UltraCanvasFileLoader::SaveTextDocument saves one LoadTextDocument opens");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 } // namespace
 
 int main() {
     TestDecryptor();
     TestSpreadsheet();
     TestDocument();
+    TestSha1();
+    TestCompoundFileWriter();
+    TestEncryptor();
+    TestSaving();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed" : "FAILURES: ")
               << (g_failures == 0 ? "" : std::to_string(g_failures)) << "\n";
     return g_failures == 0 ? 0 : 1;

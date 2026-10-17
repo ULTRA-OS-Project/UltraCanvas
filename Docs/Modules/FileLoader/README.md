@@ -102,7 +102,10 @@ needs its password before any loader can read it.
 field, checks it, and asks again after a wrong one; it calls straight back
 with `(true, "")` for a file that has none. Pass what it hands back to the
 loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
-`LoadFromFile(path, password)`. See
+`LoadFromFile(path, password)`. Saving works the same way:
+`RequestNewDocumentPassword(parent, onResult)` asks for a new password twice,
+and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
+`SaveToFile(path, password)` writes the file encrypted. See
 [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
 ### Editable Vector Documents

@@ -8,7 +8,7 @@
 // [Content_Types].xml probe, CFB magic, \documentclass head) so renamed
 // files are classified correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md
 // and Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md.
-// Version: 1.3.0
+// Version: 1.4.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -71,12 +71,15 @@ public:
                           std::string& outError);
 
     // Picks the writer from the target extension (.odt/.docx).
+    // `password` saves a password-protected .docx (agile encryption,
+    // AES-256 / SHA-512, what Word 2013 and later write); any other format
+    // with a password is refused rather than saved unprotected.
     static bool Save(const std::string& filePath, const UCRichDocument& document,
-                     std::string& outError);
+                     std::string& outError, const std::string& password = std::string());
     static bool SaveOdt(const std::string& filePath, const UCRichDocument& document,
                         std::string& outError);
     static bool SaveDocx(const std::string& filePath, const UCRichDocument& document,
-                         std::string& outError);
+                         std::string& outError, const std::string& password = std::string());
 
 private:
     // Load's format dispatch, before the shared post-processing.

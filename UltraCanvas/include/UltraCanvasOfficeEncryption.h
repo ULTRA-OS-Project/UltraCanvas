@@ -1,18 +1,18 @@
 // include/UltraCanvasOfficeEncryption.h
-// Opens password-protected Office Open XML files: an .xlsx, .docx or .pptx
-// saved with "Encrypt with Password" by Office 2010 or later (and by
+// Opens and writes password-protected Office Open XML files: an .xlsx, .docx
+// or .pptx saved with "Encrypt with Password" by Office 2010 or later (and by
 // LibreOffice and others that write the same thing).
 //
 // Such a file is not a ZIP package. It is an OLE2 compound file holding two
 // streams: "EncryptionInfo", which says how the key is derived, and
 // "EncryptedPackage", the original ZIP package encrypted. DecryptOfficePackage
 // turns the second back into the ZIP, which the .xlsx and .docx readers then
-// read as usual.
+// read as usual. EncryptOfficePackage does the reverse, for the writers.
 //
-// Supported: ECMA-376 agile encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15) with
-// AES-128/192/256 in CBC mode and SHA-256 or SHA-512 - what Office writes by
-// default since 2013. In order:
-//   1. the password key: SHA-512 (or SHA-256) of the salt and the UTF-16LE
+// Read: ECMA-376 agile encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15) with
+// AES-128/192/256 in CBC mode and SHA-512, SHA-256 or SHA-1 - what Office
+// writes by default since 2010 (SHA-1 then, SHA-512 since 2013). In order:
+//   1. the password key: the hash of the salt and the UTF-16LE
 //      password, rehashed spinCount times (100000 by default);
 //   2. the password verifier, which tells a wrong password from a right one;
 //   3. the intermediate key the password key unwraps;
@@ -22,15 +22,20 @@
 //   5. the package, in 4096-byte segments, each with its own IV (the hash of
 //      the salt and the segment's index).
 // Not supported, each refused as Unsupported with the reason: the older
-// "standard" encryption (Office 2007, AES-ECB), extensible encryption,
-// certificate-only key encryptors, and agile files keyed with SHA-1 (Office
-// 2010's default): UltraCrypt offers SHA-1 for HMAC only.
+// "standard" encryption (Office 2007, AES-ECB), extensible encryption, and
+// certificate-only key encryptors.
+//
+// Written: what Office 2013 and later write - AES-256-CBC, SHA-512, a spin
+// count of 100000, random 16-byte salts, a random intermediate and HMAC key,
+// the dataIntegrity HMAC, and the \x06DataSpaces storage Office looks for,
+// in a compound file built by UCCompoundFileWriter.
 //
 // Cryptography is UltraCrypt's (UltraCryptCore.h): its constant-time AES-CBC,
-// SHA-2 and HMAC. Without a crypto backend every decryption reports
-// NoCryptoBackend.
+// SHA-2, HMAC and CSPRNG. SHA-1 is asked for as a legacy digest only to read
+// Office 2010's files. Without a crypto backend every decryption reports
+// NoCryptoBackend and every encryption fails.
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -89,5 +94,16 @@ OfficeDecryptStatus DecryptOfficePackageFile(const std::string& filePath,
 // check needs the whole file and runs when it is opened).
 OfficeDecryptStatus CheckOfficePassword(const std::string& filePath, const std::string& password,
                                         std::string& error);
+
+// Encrypts a ZIP package (an .xlsx, .docx or .pptx as its writer produced it)
+// into a password-protected Office file. `password` is UTF-8 and must not be
+// empty. False with `error` set when there is no crypto backend or no
+// randomness; outFile is then empty.
+bool EncryptOfficePackage(const std::vector<uint8_t>& package, const std::string& password,
+                          std::vector<uint8_t>& outFile, std::string& error);
+// The same, writing the result to `filePath` (UTF-8). Nothing is written when
+// the encryption fails.
+bool EncryptOfficePackageToFile(const std::vector<uint8_t>& package, const std::string& password,
+                                const std::string& filePath, std::string& error);
 
 } // namespace UltraCanvas

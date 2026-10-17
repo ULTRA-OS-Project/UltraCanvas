@@ -1787,7 +1787,7 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std
     return false;
 }
 
-bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath, const std::string& password) {
     lastError_.clear();
 
     size_t dot = filePath.find_last_of('.');
@@ -1798,10 +1798,16 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
+    // Only an .xlsx can carry a password; saving another format without it
+    // would drop the protection without a word.
+    if (!password.empty() && ext != ".xlsx") {
+        lastError_ = "Only an Excel workbook (.xlsx) can be saved with a password: " + filePath;
+        return false;
+    }
     if (ext == ".ods") {
         return SaveODS(filePath);
     } else if (ext == ".xlsx") {
-        return SaveXLSX(filePath);
+        return SaveXLSX(filePath, password);
     } else if (ext == ".csv") {
         return SaveCSV(filePath);
     } else if (ext == ".tsv") {

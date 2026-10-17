@@ -5,12 +5,13 @@ package. It is an OLE2 [compound file](UltraCanvasCompoundFile.md) holding two
 streams: `EncryptionInfo`, which says how the key is derived, and
 `EncryptedPackage`, the original package encrypted. This module turns the
 second back into the ZIP, which the `.xlsx` and `.docx` readers then read as
-usual. The spreadsheet, the Word reader and `UltraCanvasFileLoader` use it;
-most code never calls it directly, but passes a password to them.
+usual, and the other way round for the writers. The spreadsheet, the Word
+reader and writer and `UltraCanvasFileLoader` use it; most code never calls it
+directly, but passes a password to them.
 
 Header: `UltraCanvasOfficeEncryption.h`. The cryptography is UltraCrypt's
-(`Docs/Modules/UltraCrypt/README.md`): its constant-time AES-CBC, SHA-2 and
-HMAC.
+(`Docs/Modules/UltraCrypt/README.md`): its constant-time AES-CBC, SHA-2, HMAC
+and random numbers, and SHA-1 to read Office 2010's files.
 
 ## Opening one
 
@@ -51,6 +52,42 @@ password-protected, never that it is damaged or of another format. A file
 named `.xls` that is a password-protected `.xlsx` opens through `LoadXLS` too,
 as Excel opens it.
 
+## Saving one
+
+The writers take the password the same way, and write the file encrypted -
+the unencrypted package never reaches the disk:
+
+<!-- doc-check: std::string path; std::string password; UltraCanvas::UltraCanvasWindowBase* window; UltraCanvas::UCRichDocument document; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasFileLoader.h"
+
+using namespace UltraCanvas;
+
+auto sheet = std::make_shared<UltraCanvasSpreadsheet>("Book", 0, 0, 800, 600);
+if (!sheet->SaveToFile(path, password)) ShowError(sheet->GetLastError());   // or SaveXLSX
+
+std::string error;
+if (!UltraCanvasFileLoader::SaveTextDocument(document, path, error, password)) ShowError(error);
+// (UCWordDocumentIO::Save / SaveDocx take it too.)
+
+// Ask for a new one: typed twice, asked again until the two match.
+UltraCanvasFileLoader::RequestNewDocumentPassword(window,
+    [sheet, path](bool proceed, const std::string& typed) {
+        if (proceed && !sheet->SaveToFile(path, typed)) ShowError(sheet->GetLastError());
+    });
+```
+
+Only `.xlsx` and `.docx` carry a password. `SaveToFile` and
+`UCWordDocumentIO::Save` refuse one for `.ods`, `.odt`, `.csv` or any other
+format, rather than save the file unprotected. Without a password the writers
+write an ordinary package, as before. The demo's spreadsheet page shows the
+round: a workbook opened with a password keeps it when saved again as `.xlsx`,
+and an unprotected one saved as `.xlsx` is offered one.
+
+`EncryptOfficePackage(zip, password, file, error)` encrypts a package already
+in memory; `EncryptOfficePackageToFile` writes the result.
+
 ## Decrypting directly
 
 <!-- doc-check: std::string path; std::string password; void ReadPackage(const std::vector<uint8_t>& zip); void ShowError(const std::string& message); -->
@@ -87,9 +124,11 @@ contents, or an open `UCCompoundFileReader`.
 
 ## What is supported
 
-ECMA-376 **agile** encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15), with
-AES-128, -192 or -256 in CBC mode and SHA-256 or SHA-512: what Office writes by
-default since 2013, and what LibreOffice and msoffcrypto-tool write. In order:
+**Read:** ECMA-376 **agile** encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15),
+with AES-128, -192 or -256 in CBC mode and SHA-512, SHA-256 or SHA-1: what
+Office writes by default since 2010 (SHA-1 and AES-128 in Office 2010, SHA-512
+and AES-256 since 2013), and what LibreOffice and msoffcrypto-tool write. In
+order:
 
 1. **The password key.** The hash of the password salt and the password in
    UTF-16LE, rehashed `spinCount` times (100 000 by default), each round
@@ -107,12 +146,20 @@ default since 2013, and what LibreOffice and msoffcrypto-tool write. In order:
 
 Refused as `Unsupported`, each with the reason: Office 2007's **standard**
 encryption (AES-ECB, version 3.2), extensible encryption, a key encryptor for a
-certificate rather than a password, and agile files keyed with **SHA-1**
-(Office 2010's default) — UltraCrypt offers SHA-1 for HMAC only. Saving such a
-file again from a current Office converts it to SHA-512.
+certificate rather than a password, and a hash UltraCrypt does not have
+(SHA-384).
 
-Writing encrypted files is not supported: a decrypted workbook or document
-saves as an ordinary one.
+SHA-1 is UltraCrypt's legacy digest, which `UltraCrypt_Hash` refuses unless
+asked. This module asks, and only for reading: Office 2010 keys its files with
+it, and SHA-1's collision weakness does not reach a password hash or a key
+derivation.
+
+**Written:** what Office 2013 and later write - AES-256-CBC, SHA-512, a spin
+count of 100 000, random 16-byte salts, a random intermediate key and HMAC key
+drawn from the CSPRNG for every save, the integrity HMAC, and the
+`\x06DataSpaces` storage ([MS-OFFCRYPTO] 2.1.5-2.1.8) Office looks for before
+it will call a file encrypted. The compound file around them is built by
+`UCCompoundFileWriter` ([UltraCanvasCompoundFile](UltraCanvasCompoundFile.md)).
 
 ## Implementation notes
 
@@ -124,6 +171,10 @@ saves as an ordinary one.
   when done with; the decrypted package is the document itself and is not.
 - Status messages never say which of the verifier values or HMAC fields was
   off — there is no oracle to consult.
+- The HMAC key and value are a whole number of AES blocks when encrypted
+  (SHA-1's 20 bytes are padded to 32) and compared over the hash's size, as
+  2.3.4.14 says. msoffcrypto-tool 6.0.0 compares the padded block, so it
+  rejects every SHA-1 file's integrity check, Office 2010's included.
 
 ## Test
 
@@ -134,6 +185,17 @@ msoffcrypto-tool, an implementation independent of this one
 is not ASCII, and the workbook spans five segments. It checks the right, a
 wrong and a missing password, a changed byte of the package and of its size
 field, a package cut short, standard encryption, a damaged header, an absurd
-spin count, SHA-1, a missing integrity check, `CheckOfficePassword`, and the
-spreadsheet, the Word reader and `UltraCanvasFileLoader::LoadTextDocument`
-opening the files.
+spin count, an unknown hash, a missing integrity check, `CheckOfficePassword`,
+and the spreadsheet, the Word reader and `UltraCanvasFileLoader::LoadTextDocument`
+opening the files. `office-agile-sha1-encrypted.xlsx` is the workbook keyed as
+Office 2010 keys it (SHA-1, AES-128).
+
+For writing it reads back what `UCCompoundFileWriter` builds (a mini-stream
+stream, a sector stream, nested storages), round-trips packages of 200 bytes,
+21 KB and 9 MB (past the header's 109 FAT sectors, so DIFAT sectors are
+written), checks that two saves differ, that a wrong password and a changed
+byte are caught, and saves and reopens through `SaveToFile`,
+`UCWordDocumentIO::Save` and `UltraCanvasFileLoader::SaveTextDocument`. When
+the writer was made, msoffcrypto-tool decrypted its output - integrity check
+included - for packages in the mini stream, in sectors and past the DIFAT
+limit, byte for byte.

@@ -9,7 +9,7 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
@@ -585,7 +585,7 @@ class XlsxSaver {
 public:
     explicit XlsxSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
-    bool Save(const std::string& filePath, std::string& error) {
+    bool Save(const std::string& filePath, const std::string& password, std::string& error) {
         // Sheets are generated first so the style/string tables are complete
         // before styles.xml and sharedStrings.xml are written.
         std::vector<std::string> sheetXmls;
@@ -598,7 +598,11 @@ public:
             return false;
         }
 
-        if (!zip_.Open(filePath)) {
+        // With a password the package is built in memory and encrypted into
+        // the file (UltraCanvasOfficeEncryption.h); nothing unencrypted is
+        // written to disk.
+        const bool encrypt = !password.empty();
+        if (encrypt ? !zip_.OpenInMemory() : !zip_.Open(filePath)) {
             error = "Cannot create file: " + filePath;
             return false;
         }
@@ -617,7 +621,7 @@ public:
             error = "Failed to write workbook package: " + zip_.GetLastError();
             return false;
         }
-        return true;
+        return !encrypt || EncryptOfficePackageToFile(zip_.TakeBytes(), password, filePath, error);
     }
 
 private:
@@ -1097,10 +1101,10 @@ bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath, const std::st
     return true;
 }
 
-bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath, const std::string& password) {
     lastError_.clear();
     XlsxSaver saver(this);
-    return saver.Save(filePath, lastError_);
+    return saver.Save(filePath, password, lastError_);
 }
 
 } // namespace UltraCanvas

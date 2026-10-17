@@ -6,7 +6,7 @@
 // flag — the ODF package readers in LibreOffice/OpenOffice reject archives
 // whose "mimetype" entry uses a data descriptor (general-purpose bit 3).
 // Both ends open their file through OpenFileUtf8, never miniz's own fopen.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
@@ -202,13 +202,21 @@ void CurrentDosDateTime(uint16_t& dosTime, uint16_t& dosDate) {
 
 struct UCZipPackageWriter::Impl {
     std::FILE* file = nullptr;
+    // OpenInMemory: the archive is built here instead of in a file.
+    bool toMemory = false;
+    std::vector<uint8_t> memory;
     std::vector<ZipEntryRecord> entries;
     uint64_t offset = 0;
     bool finalized = false;
 
+    bool IsOpen() const { return file || toMemory; }
+
     bool WriteBytes(const void* data, size_t size, std::string& lastError) {
         if (size == 0) return true;
-        if (std::fwrite(data, 1, size, file) != size) {
+        if (toMemory) {
+            const auto* bytes = static_cast<const uint8_t*>(data);
+            memory.insert(memory.end(), bytes, bytes + size);
+        } else if (std::fwrite(data, 1, size, file) != size) {
             lastError = "Write failed (disk full?)";
             return false;
         }
@@ -230,12 +238,31 @@ UCZipPackageWriter::~UCZipPackageWriter() {
     if (impl_) impl_->CloseFile();
 }
 
+bool UCZipPackageWriter::OpenInMemory() {
+    lastError_.clear();
+    impl_->CloseFile();
+    impl_->entries.clear();
+    impl_->offset = 0;
+    impl_->finalized = false;
+    impl_->memory.clear();
+    impl_->toMemory = true;
+    return true;
+}
+
+std::vector<uint8_t> UCZipPackageWriter::TakeBytes() {
+    if (!impl_->toMemory || !impl_->finalized) return {};
+    impl_->toMemory = false;
+    return std::move(impl_->memory);
+}
+
 bool UCZipPackageWriter::Open(const std::string& filePath) {
     lastError_.clear();
     impl_->CloseFile();
     impl_->entries.clear();
     impl_->offset = 0;
     impl_->finalized = false;
+    impl_->toMemory = false;
+    impl_->memory.clear();
     impl_->file = UltraCanvas::OpenFileUtf8(filePath, "wb");
     if (!impl_->file) {
         lastError_ = "Cannot create file: " + filePath;
@@ -247,7 +274,7 @@ bool UCZipPackageWriter::Open(const std::string& filePath) {
 bool UCZipPackageWriter::AddEntry(const std::string& entryName, const void* data, size_t size,
                                   bool compress) {
     lastError_.clear();
-    if (!impl_->file || impl_->finalized) {
+    if (!impl_->IsOpen() || impl_->finalized) {
         lastError_ = "ZIP package is not open for writing";
         return false;
     }
@@ -320,7 +347,7 @@ bool UCZipPackageWriter::AddEntry(const std::string& entryName, const std::strin
 
 bool UCZipPackageWriter::Finalize() {
     lastError_.clear();
-    if (!impl_->file || impl_->finalized) {
+    if (!impl_->IsOpen() || impl_->finalized) {
         lastError_ = "ZIP package is not open for writing";
         return false;
     }

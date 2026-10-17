@@ -1,6 +1,8 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
+//                  password-protected .docx
 // Version: 1.6.0 - RequestDocumentPassword; OpenTextDocument and LoadTextDocument open
 //                  password-protected .docx files
 // Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
@@ -698,8 +700,8 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFileLoader::SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
-                                                 std::string& outError) {
-        return UCWordDocumentIO::Save(filePath, document, outError);
+                                                 std::string& outError, const std::string& password) {
+        return UCWordDocumentIO::Save(filePath, document, outError, password);
     }
 
     void UltraCanvasFileLoader::AddTextDocumentSaveTypes(FileDialogOptions& opts) {
@@ -767,6 +769,44 @@ namespace UltraCanvas {
                 }, parent);
         }
     } // namespace
+
+    namespace {
+        // One round of RequestNewDocumentPassword: the password, then the
+        // same again; `notice` heads the first prompt after a failed round.
+        void AskNewDocumentPassword(UltraCanvasWindowBase* parent, const std::string& notice,
+                                    std::function<void(bool, const std::string&)> onResult) {
+            const std::string prompt = (notice.empty() ? std::string() : notice + "\n") +
+                                       "Password to protect the file with:";
+            UltraCanvasDialogManager::ShowInputDialog(prompt, "Save with Password", "", InputType::Password,
+                [parent, onResult](DialogResult result, const std::string& password) {
+                    if (result != DialogResult::OK) {
+                        onResult(false, "");
+                        return;
+                    }
+                    if (password.empty()) {
+                        AskNewDocumentPassword(parent, "The password cannot be empty.", onResult);
+                        return;
+                    }
+                    UltraCanvasDialogManager::ShowInputDialog("Type the password again:", "Save with Password", "",
+                        InputType::Password,
+                        [parent, onResult, password](DialogResult again, const std::string& repeated) {
+                            if (again != DialogResult::OK) {
+                                onResult(false, "");
+                            } else if (repeated != password) {
+                                AskNewDocumentPassword(parent, "The two passwords differ.", onResult);
+                            } else {
+                                onResult(true, password);
+                            }
+                        }, parent);
+                }, parent);
+        }
+    } // namespace
+
+    void UltraCanvasFileLoader::RequestNewDocumentPassword(
+            UltraCanvasWindowBase* parent,
+            std::function<void(bool proceed, const std::string& password)> onResult) {
+        if (onResult) AskNewDocumentPassword(parent, "", std::move(onResult));
+    }
 
     void UltraCanvasFileLoader::RequestDocumentPassword(
             const std::string& filePath, UltraCanvasWindowBase* parent,
