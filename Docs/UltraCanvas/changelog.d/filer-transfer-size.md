@@ -1,4 +1,4 @@
-- **UltraFiler: the move / copy question shows how much is going.** The
+- **UltraFiler: the move / copy and delete questions show how much is going.** The
   *Move files* / *Copy files* confirmation said **Size: 0 B** for every file:
   `UltraCanvasFilerWidget::EntriesForPaths()` built its entries from the file
   status alone and never read a size, so the delete confirmation's totals were
@@ -10,3 +10,9 @@
   folder rescan while the question is open queues the walk again. New
   `OperationDialogSpec::liveFacts` lets any operation dialog re-derive its
   facts as walks land.
+- **The delete confirmation counts folders the same way.** Its **Size:**
+  line used to add up only the files' own sizes ("… in the files") and was
+  missing for a single file or folder; it now uses the same background count
+  as the move / copy question (`UltraCanvasFilerWidget::CountedSizeFact()`).
+  Folders on a remote drive or inside an archive, which the walk cannot read,
+  keep the files-only total.

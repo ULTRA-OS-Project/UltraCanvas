@@ -3558,6 +3558,11 @@ namespace UltraCanvas {
         // Puts the current liveFacts into that dialog; asking again also
         // re-queues a walk a rescan dropped.
         void RefreshLiveDialogFacts();
+        // A **Size:** value for a move / copy / delete question: a file's
+        // own size, a folder's walked contents ("counting…" while the
+        // background walk runs), or a set's tally. Call it again as walks
+        // land (OperationDialogSpec::liveFacts) for the finished figure.
+        std::string CountedSizeFact(const std::vector<FilerEntry>& entries);
         // The entry list the operation dialogs share (the delete confirmation's
         // list, generalised): at most kOperationListRows rows, `visibleRows`
         // of them at a time, the rest behind a scrollbar.

@@ -5307,6 +5307,32 @@ namespace UltraCanvas {
         }
     }
 
+    std::string UltraCanvasFilerWidget::CountedSizeFact(
+            const std::vector<FilerEntry>& entries) {
+        FolderTally tally;
+        uint64_t walkedFiles = 0, walkedFolders = 0;
+        for (const FilerEntry& e : entries) {
+            if (!e.isDirectory) continue;
+            const FolderStats st = GetFolderStats(e.path);
+            tally.bytes += st.bytes;
+            tally.pending = tally.pending || !st.ready;
+            tally.capped = tally.capped || st.capped;
+            walkedFiles += st.files;
+            walkedFolders += st.folders;
+        }
+        if (entries.size() > 1) return DescribeEntries(entries, &tally);
+        if (entries.empty()) return {};
+        if (!entries.front().isDirectory) return FormatSize(entries.front().size);
+        if (tally.pending) return "counting…";
+        const std::string atLeast = tally.capped ? "≥ " : "";
+        std::string size = atLeast + FormatSize(tally.bytes) + " (" + atLeast
+                + std::to_string(walkedFiles) + (walkedFiles == 1 ? " file" : " files");
+        if (walkedFolders)
+            size += " in " + std::to_string(walkedFolders)
+                  + (walkedFolders == 1 ? " folder" : " folders");
+        return size + ")";
+    }
+
     void UltraCanvasFilerWidget::ConfirmTransfer(const std::vector<std::string>& sources,
                                                  const std::string& destDir,
                                                  bool copyRequested,
@@ -5343,34 +5369,7 @@ namespace UltraCanvas {
         const std::string placeFacts = spec.facts;
         auto sizeFacts = [this, placeFacts, entries]() {
             if (entries.empty()) return placeFacts;
-            FolderTally tally;
-            uint64_t walkedFiles = 0, walkedFolders = 0;
-            for (const FilerEntry& e : entries) {
-                if (!e.isDirectory) continue;
-                const FolderStats st = GetFolderStats(e.path);
-                tally.bytes += st.bytes;
-                tally.pending = tally.pending || !st.ready;
-                tally.capped = tally.capped || st.capped;
-                walkedFiles += st.files;
-                walkedFolders += st.folders;
-            }
-            std::string size;
-            if (entries.size() > 1) {
-                size = DescribeEntries(entries, &tally);
-            } else if (!entries.front().isDirectory) {
-                size = FormatSize(entries.front().size);
-            } else if (tally.pending) {
-                size = "counting…";
-            } else {
-                const std::string atLeast = tally.capped ? "≥ " : "";
-                size = atLeast + FormatSize(tally.bytes) + " (" + atLeast
-                     + std::to_string(walkedFiles) + (walkedFiles == 1 ? " file" : " files");
-                if (walkedFolders)
-                    size += " in " + std::to_string(walkedFolders)
-                          + (walkedFolders == 1 ? " folder" : " folders");
-                size += ")";
-            }
-            return placeFacts + "\n\n**Size:** " + size;
+            return placeFacts + "\n\n**Size:** " + CountedSizeFact(entries);
         };
         spec.facts = sizeFacts();
         spec.liveFacts = sizeFacts;
@@ -7428,10 +7427,8 @@ namespace UltraCanvas {
         std::vector<FilerEntry> listed;
         size_t listedTotal = 0;
         std::string listCaption;
-        std::string amount;
         if (victims.size() > 1) {
             listedTotal = victims.size();
-            amount = DescribeEntries(victims);
             listed.assign(victims.begin(), victims.begin() +
                           static_cast<std::ptrdiff_t>(std::min(victims.size(), kOperationListRows)));
         } else if (victims.front().isDirectory) {
@@ -7516,7 +7513,29 @@ namespace UltraCanvas {
         const std::string from = CommonParentFolder(paths);
         spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
                                                    : FactPath(from));
-        if (!amount.empty()) spec.facts += "\n\n**Size:** " + amount;
+        // How much goes, as the move / copy question counts it: the folders'
+        // contents from the background walk, the line filling in as walks
+        // land. Only a folder on this machine's file system can be walked -
+        // one on a remote drive or inside an archive would read as empty -
+        // so with any of those the files alone are added up, as before.
+        bool walkable = !ShowingRemoteFolder();
+        for (const FilerEntry& v : victims) {
+            if (!walkable) break;
+            std::error_code ec;
+            if (v.isDirectory && !fs::is_directory(PathFromUtf8(v.path), ec)) walkable = false;
+        }
+        if (walkable) {
+            const std::string placeFacts = spec.facts;
+            auto sizeFacts = [this, placeFacts, victims]() {
+                return placeFacts + "\n\n**Size:** " + CountedSizeFact(victims);
+            };
+            spec.facts = sizeFacts();
+            spec.liveFacts = sizeFacts;
+        } else if (victims.size() > 1) {
+            spec.facts += "\n\n**Size:** " + DescribeEntries(victims);
+        } else if (!victims.front().isDirectory) {
+            spec.facts += "\n\n**Size:** " + FormatSize(victims.front().size);
+        }
         spec.listed = std::move(listed);
         spec.listCaption = listCaption;
         spec.listVisibleRows = 10;
