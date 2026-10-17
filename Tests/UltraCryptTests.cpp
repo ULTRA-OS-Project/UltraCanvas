@@ -7,6 +7,8 @@
 //  - AEAD round-trip plus the four mandated negative cases (flipped ciphertext
 //    bit, flipped AAD bit, wrong nonce, truncated tag), each asserting
 //    AuthenticationFailed AND an empty output
+//  - AES-CBC against FIPS 197 App. C and SP 800-38A F.2, PKCS #7 lengths,
+//    and refused padding reported as DecryptionFailed with an empty output
 //  - KDF determinism, salt sensitivity and stored-parameter honesty
 //  - Ed25519 against the RFC 8032 §7.1 vectors, plus a flipped message bit, a
 //    flipped signature bit and a wrong key, each reported as SignatureInvalid
@@ -236,6 +238,190 @@ static void TestAead() {
     auto ksr = UltraCrypt_AeadSeal(shortKey, p, message.data(), message.size(), ct);
     Check(!ksr && ksr.code == UltraCryptResultCode::InvalidKeySize,
           "a 16-byte key is refused with InvalidKeySize");
+}
+
+// ===== AES-CBC — FIPS 197 App. C and SP 800-38A F.2 vectors =====
+static void TestAesCbc() {
+    std::printf("AES-CBC (FIPS 197, SP 800-38A vectors)\n");
+    const std::vector<uint8_t> zeroIv(16, 0);
+    std::vector<uint8_t> ct;
+
+    // FIPS 197 Appendix C: one block, so CBC with a zero IV is the bare cipher.
+    struct Fips { const char* key; const char* ct; };
+    const Fips fips[] = {
+        {"000102030405060708090a0b0c0d0e0f",
+         "69c4e0d86a7b0430d8cdb78070b4c55a"},
+        {"000102030405060708090a0b0c0d0e0f1011121314151617",
+         "dda97ca4864cdfe06eaf70a0ec0d7191"},
+        {"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+         "8ea2b7ca516745bfeafc49904b496089"},
+    };
+    std::vector<uint8_t> block;
+    UltraCrypt_FromHex("00112233445566778899aabbccddeeff", block);
+    for (const Fips& v : fips) {
+        const UltraCryptSecureBuffer key = BufferFromHex(v.key);
+        const std::string bits = std::to_string(key.GetSize() * 8);
+        UltraCryptCbcParams params;
+        params.iv = zeroIv;
+        params.padding = UltraCryptCbcPadding::None;
+        Check(static_cast<bool>(UltraCrypt_AesCbcEncrypt(key, params, block.data(),
+                                                         block.size(), ct)),
+              "AES-" + bits + " encrypts one block");
+        CheckHex(ct, v.ct, "FIPS 197 C AES-" + bits);
+        UltraCryptSecureBuffer back;
+        Check(UltraCrypt_AesCbcDecrypt(key, params, ct.data(), ct.size(), back) &&
+                  back.GetSize() == 16 &&
+                  std::memcmp(back.Data(), block.data(), 16) == 0,
+              "FIPS 197 C AES-" + bits + " decrypts back");
+    }
+
+    // SP 800-38A F.2.1-F.2.6: four chained blocks.
+    std::vector<uint8_t> plain, iv;
+    UltraCrypt_FromHex("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"
+                       "30c81c46a35ce411e5fbc1191a0a52eff69f2445df4f9b17ad2b417be66c3710",
+                       plain);
+    UltraCrypt_FromHex("000102030405060708090a0b0c0d0e0f", iv);
+    const Fips sp[] = {
+        {"2b7e151628aed2a6abf7158809cf4f3c",
+         "7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b2"
+         "73bed6b8e3c1743b7116e69e222295163ff1caa1681fac09120eca307586e1a7"},
+        {"8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b",
+         "4f021db243bc633d7178183a9fa071e8b4d9ada9ad7dedf4e5e738763f69145a"
+         "571b242012fb7ae07fa9baac3df102e008b0e27988598881d920a9e64f5615cd"},
+        {"603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4",
+         "f58c4c04d6e5f1ba779eabfb5f7bfbd69cfc4e967edb808d679f777bc6702c7d"
+         "39f23369a9d9bacfa530e26304231461b2eb05e2c39be9fcda6c19078c6a9d1b"},
+    };
+    for (const Fips& v : sp) {
+        const UltraCryptSecureBuffer key = BufferFromHex(v.key);
+        const std::string bits = std::to_string(key.GetSize() * 8);
+        UltraCryptCbcParams params;
+        params.iv = iv;
+        params.padding = UltraCryptCbcPadding::None;
+        Check(static_cast<bool>(UltraCrypt_AesCbcEncrypt(key, params, plain.data(),
+                                                         plain.size(), ct)),
+              "CBC-AES" + bits + " encrypts");
+        CheckHex(ct, v.ct, "SP 800-38A CBC-AES" + bits + ".Encrypt");
+        std::vector<uint8_t> expected;
+        UltraCrypt_FromHex(v.ct, expected);
+        UltraCryptSecureBuffer back;
+        Check(UltraCrypt_AesCbcDecrypt(key, params, expected.data(), expected.size(), back) &&
+                  back.GetSize() == plain.size() &&
+                  std::memcmp(back.Data(), plain.data(), plain.size()) == 0,
+              "SP 800-38A CBC-AES" + bits + ".Decrypt");
+    }
+
+    // PKCS #7: every length round-trips, and the output grows by 1-16 bytes.
+    const UltraCryptSecureBuffer key =
+        BufferFromHex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
+    bool lengthsOk = true, roundTripsOk = true;
+    for (size_t n = 0; n <= 80; ++n) {
+        std::vector<uint8_t> data(n);
+        for (size_t i = 0; i < n; ++i) data[i] = static_cast<uint8_t>(i * 7 + n);
+        UltraCryptCbcParams params;
+        params.iv = iv;
+        if (!UltraCrypt_AesCbcEncrypt(key, params, data.data(), n, ct)) { lengthsOk = false; continue; }
+        lengthsOk = lengthsOk && ct.size() == (n / 16 + 1) * 16;
+        UltraCryptSecureBuffer back;
+        roundTripsOk = roundTripsOk &&
+            UltraCrypt_AesCbcDecrypt(key, params, ct.data(), ct.size(), back) &&
+            back.GetSize() == n && (n == 0 || std::memcmp(back.Data(), data.data(), n) == 0);
+    }
+    Check(lengthsOk, "PKCS #7 pads 0-80 bytes to the next whole block, always adding one");
+    Check(roundTripsOk, "PKCS #7 round-trips 0-80 bytes");
+
+    // A whole block of padding: the 16-byte plaintext gives 32 bytes whose
+    // second block is the encryption of sixteen 0x10 bytes.
+    {
+        UltraCryptCbcParams params;
+        params.iv = iv;
+        Check(UltraCrypt_AesCbcEncrypt(key, params, plain.data(), 16, ct) && ct.size() == 32,
+              "a 16-byte plaintext gets a full block of padding");
+        CheckHex(std::vector<uint8_t>(ct.begin(), ct.begin() + 16),
+                 "f58c4c04d6e5f1ba779eabfb5f7bfbd6", "the first block is unchanged by padding");
+    }
+
+    // An empty IV is generated, written back, and differs between calls.
+    {
+        UltraCryptCbcParams first, second;
+        std::vector<uint8_t> ct2;
+        Check(UltraCrypt_AesCbcEncrypt(key, first, plain.data(), plain.size(), ct) &&
+                  UltraCrypt_AesCbcEncrypt(key, second, plain.data(), plain.size(), ct2),
+              "encryption with no IV succeeds");
+        Check(first.iv.size() == 16 && second.iv.size() == 16 && first.iv != second.iv,
+              "a missing IV is generated fresh and written back");
+        Check(ct != ct2, "two encryptions of one message under fresh IVs differ");
+    }
+
+    // Wrong padding: DecryptionFailed and nothing returned.
+    {
+        UltraCryptCbcParams params;
+        params.iv = iv;
+        UltraCrypt_AesCbcEncrypt(key, params, plain.data(), 20, ct);
+        UltraCryptSecureBuffer back(4);
+        const UltraCryptSecureBuffer wrongKey(32);
+        auto r = UltraCrypt_AesCbcDecrypt(wrongKey, params, ct.data(), ct.size(), back);
+        Check(!r && r.code == UltraCryptResultCode::DecryptionFailed,
+              "a wrong key shows as DecryptionFailed");
+        Check(back.IsEmpty(), "a failed decryption returns nothing");
+
+        // Padding of sixteen 0x10 bytes is valid; one 0x11 (17) is not, nor is 0x00.
+        std::vector<uint8_t> forged(16, 0x10);
+        UltraCryptCbcParams raw;
+        raw.iv = zeroIv;
+        raw.padding = UltraCryptCbcPadding::None;
+        std::vector<uint8_t> forgedCt;
+        UltraCrypt_AesCbcEncrypt(key, raw, forged.data(), 16, forgedCt);
+        UltraCryptCbcParams padded;
+        padded.iv = zeroIv;
+        Check(UltraCrypt_AesCbcDecrypt(key, padded, forgedCt.data(), 16, back) && back.IsEmpty(),
+              "a block of sixteen 0x10 bytes is all padding");
+        for (uint8_t badPad : {uint8_t(0x00), uint8_t(0x11), uint8_t(0xff)}) {
+            forged.assign(16, 0x10);
+            forged[15] = badPad;
+            UltraCrypt_AesCbcEncrypt(key, raw, forged.data(), 16, forgedCt);
+            r = UltraCrypt_AesCbcDecrypt(key, padded, forgedCt.data(), 16, back);
+            Check(!r && r.code == UltraCryptResultCode::DecryptionFailed && back.IsEmpty(),
+                  "a pad byte of " + std::to_string(badPad) + " is refused");
+        }
+        forged.assign(16, 0x04);
+        forged[12] = 0x05;   // the first of four pad bytes is off
+        UltraCrypt_AesCbcEncrypt(key, raw, forged.data(), 16, forgedCt);
+        r = UltraCrypt_AesCbcDecrypt(key, padded, forgedCt.data(), 16, back);
+        Check(!r && r.code == UltraCryptResultCode::DecryptionFailed,
+              "padding with one byte off is refused");
+    }
+
+    // Argument checks.
+    {
+        UltraCryptCbcParams params;
+        params.iv = iv;
+        UltraCryptSecureBuffer back;
+        const UltraCryptSecureBuffer shortKey(20);
+        Check(UltraCrypt_AesCbcEncrypt(shortKey, params, plain.data(), 16, ct).code ==
+                  UltraCryptResultCode::InvalidKeySize,
+              "a 20-byte key is InvalidKeySize");
+        params.iv.assign(12, 0);
+        Check(UltraCrypt_AesCbcEncrypt(key, params, plain.data(), 16, ct).code ==
+                  UltraCryptResultCode::InvalidNonceSize,
+              "a 12-byte IV is InvalidNonceSize");
+        Check(UltraCrypt_AesCbcDecrypt(key, params, plain.data(), 16, back).code ==
+                  UltraCryptResultCode::InvalidNonceSize,
+              "decryption checks the IV size too");
+        params.iv = iv;
+        Check(UltraCrypt_AesCbcDecrypt(key, params, plain.data(), 17, back).code ==
+                  UltraCryptResultCode::InvalidArgument,
+              "a ciphertext of 17 bytes is InvalidArgument");
+        Check(UltraCrypt_AesCbcDecrypt(key, params, nullptr, 0, back).code ==
+                  UltraCryptResultCode::InvalidArgument,
+              "an empty ciphertext cannot hold PKCS #7 padding");
+        params.padding = UltraCryptCbcPadding::None;
+        Check(UltraCrypt_AesCbcEncrypt(key, params, plain.data(), 15, ct).code ==
+                  UltraCryptResultCode::InvalidArgument,
+              "without padding a partial block is InvalidArgument");
+        Check(UltraCrypt_AesCbcEncrypt(key, params, nullptr, 0, ct) && ct.empty(),
+              "without padding an empty plaintext encrypts to nothing");
+    }
 }
 
 // ===== KDF =====
@@ -741,6 +927,7 @@ int main() {
     TestHkdf();
     TestEncodings();
     TestAead();
+    TestAesCbc();
     TestKdf();
     TestSignatures();
     TestSecureBuffer();
