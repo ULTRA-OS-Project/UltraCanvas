@@ -1,3 +1,20 @@
+#### 2026-10-17 *0.9.325*
+- **A `\` in the bundled fonts' folder name no longer breaks the generated
+  fontconfig file on Linux and Android.** When no system `fonts.conf` is
+  found, `SetupBundledFontconfig` writes one naming the folder of the bundled
+  fonts. `ToFontconfigPath` turned every `\` in that path into `/` on every
+  system, so an application whose folder has a `\` in its name pointed
+  fontconfig at a folder that does not exist and found none of its bundled
+  fonts. The swap is now made only on Windows, where `\` separates folders.
+- **UltraWeb 0.8.3**: a local file with a `\` in its name opens on Linux and
+  macOS (`ToPageUrl`); `UltraWebTabTest` opens one.
+- **`NormalizePath` no longer puts a `/` after a file name ending in `\` on
+  Linux and macOS.** A trailing `\` counted as a folder's separator on every
+  system, so a file named `a\` came back as `a\/`, a path that reaches
+  nothing. Outside Windows a `\` is part of the name and the path comes back
+  as it is; on Windows it still ends a folder. `FilerNameEncodingTest`
+  checks both a file that exists and one that does not.
+
 #### 2026-10-17 *0.9.324*
 - **The signing scripts no longer sign with the password published in the
   repository's history** (`SignUltraDemo.ps1`, `SignUltraTexter.ps1`).
