@@ -1,5 +1,6 @@
 // core/UltraCanvasSpinner.cpp
 // Platform-independent spinner / spin-button component implementation.
+// Version: 1.5.0 - onStepsFinished: once per run of steps (held button or key, wheel)
 // Version: 1.4.0 - SetSnapToStep(false): a Decimal value keeps its own places off the step grid
 // Version: 1.3.0 - the value list opens anchored to the field: above it when there is
 //                  no room below, never over it
@@ -20,6 +21,11 @@ namespace UltraCanvas {
                                            float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
+    }
+
+    UltraCanvasSpinner::~UltraCanvasSpinner() {
+        // The run timer captures `this`.
+        CancelStepRunTimer();
     }
 
 // ===================================================================
@@ -109,6 +115,7 @@ namespace UltraCanvas {
         value = clamped;
 
         if (changed) {
+            if (interactive) stepRunOpen = true;
             if (interactive && onValueChanging) onValueChanging(value);
             if (onValueChanged) onValueChanged(value);
             if (valueType == SpinnerValueType::List && onSelectionChanged) {
@@ -547,6 +554,7 @@ namespace UltraCanvas {
             case UCEventType::MouseMove:        return HandleMouseMove(event);
             case UCEventType::MouseWheel:       return HandleWheel(event);
             case UCEventType::KeyDown:          return HandleKeyDown(event);
+            case UCEventType::KeyUp:            return HandleKeyUp(event);
             case UCEventType::MouseDoubleClick:
                 // A rapid second click arrives as a double-click instead of a
                 // MouseDown; on the arrow buttons every click must step.
@@ -564,10 +572,12 @@ namespace UltraCanvas {
                 SetHovered(false);
                 hoveredPart = Part::NonePart;
                 pressedPart = Part::NonePart;
+                EndStepRun();
                 RequestRedraw();
                 return true;
             case UCEventType::FocusLost:
                 if (editing) CommitEditing();
+                EndStepRun();
                 return false;
             default:
                 break;
@@ -581,6 +591,8 @@ namespace UltraCanvas {
 
         SetFocus(true);
         pressedPart = part;
+        // The run lasts while the button is held: no timer ends it.
+        CancelStepRunTimer();
 
         if (part == Part::IncButton) {
             if (editing) CommitEditing();
@@ -605,6 +617,7 @@ namespace UltraCanvas {
     bool UltraCanvasSpinner::HandleMouseUp(const UCEvent& /*event*/) {
         if (pressedPart == Part::NonePart) return false;
         pressedPart = Part::NonePart;
+        EndStepRun();
         RequestRedraw();
         return true;
     }
@@ -628,11 +641,14 @@ namespace UltraCanvas {
         if (event.wheelDelta == 0) return false;
         if (editing) CommitEditing();
         StepBy(event.wheelDelta > 0 ? 1.0 : -1.0);
+        // A wheel has no release: the run ends when it rests.
+        EndStepRunAfter(500);
         return true;
     }
 
     bool UltraCanvasSpinner::HandleKeyDown(const UCEvent& event) {
         if (!IsFocused()) return false;
+        if (IsStepKey(event.virtualKey)) CancelStepRunTimer();
 
         switch (event.virtualKey) {
             case UCKeys::Up:
@@ -712,6 +728,53 @@ namespace UltraCanvas {
         editBuffer.push_back(c);
         RequestRedraw();
         return true;
+    }
+
+    bool UltraCanvasSpinner::HandleKeyUp(const UCEvent& event) {
+        if (!IsStepKey(event.virtualKey) || !stepRunOpen) return false;
+        // X11 without detectable auto-repeat sends a release before every
+        // repeat of a held key, followed at once by the next press; the
+        // short wait lets that press keep the run going.
+        EndStepRunAfter(120);
+        return true;
+    }
+
+// ===================================================================
+// STEP RUNS
+// ===================================================================
+
+    bool UltraCanvasSpinner::IsStepKey(UCKeys key) {
+        switch (key) {
+            case UCKeys::Up: case UCKeys::Down: case UCKeys::Left: case UCKeys::Right:
+            case UCKeys::PageUp: case UCKeys::PageDown: case UCKeys::Home: case UCKeys::End:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    void UltraCanvasSpinner::CancelStepRunTimer() {
+        if (stepRunTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(stepRunTimer);
+        stepRunTimer = InvalidTimerId;
+    }
+
+    void UltraCanvasSpinner::EndStepRun() {
+        CancelStepRunTimer();
+        if (!stepRunOpen) return;
+        stepRunOpen = false;
+        if (onStepsFinished) onStepsFinished(value);
+    }
+
+    void UltraCanvasSpinner::EndStepRunAfter(unsigned int ms) {
+        CancelStepRunTimer();
+        if (!stepRunOpen) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) { EndStepRun(); return; }
+        stepRunTimer = app->StartTimer(ms, false, [this](TimerId) {
+            stepRunTimer = InvalidTimerId;
+            EndStepRun();
+        });
     }
 
     bool UltraCanvasSpinner::SetFocus(bool focus) {

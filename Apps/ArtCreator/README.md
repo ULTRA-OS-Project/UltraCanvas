@@ -106,7 +106,8 @@ the selection and to every line drawn afterwards.
   the position is that of and stays put while it is resized, rotated or
   sheared; the lock button keeps the aspect ratio. One object shows its own
   angles; several show 0 and turn or shear by what is typed. Lengths are in
-  the page's unit, or icon pixels in icon mode.
+  the page's unit, or icon pixels in icon mode. A held arrow key or a turn
+  of the wheel is one undo step.
 - **Object**: No Fill, No Line, line widths in points (hairline to 8 pt)
   and in pixels (1 to 4 px: the icon's pixels in icon mode, 96 DPI pixels
   otherwise).

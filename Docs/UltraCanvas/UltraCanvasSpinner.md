@@ -156,6 +156,8 @@ std::function<void(double)> onValueChanged;
 std::function<void(double)> onValueChanging;
 std::function<void(int, const std::string&)> onSelectionChanged; // List mode
 std::function<void()> onEditingFinished;
+std::function<void(double)> onStepsFinished;   // once per run of steps
+bool IsStepping() const;                         // a run of steps is open
 ```
 
 ## Keyboard Reference
@@ -178,6 +180,14 @@ std::function<void()> onEditingFinished;
   (`min + n * step`) unless `SetSnapToStep(false)`: then a Decimal spinner keeps
   any value to its `decimals` places and the buttons step by `step` from it -
   a measurement field that shows `8.61` and steps by `0.1`.
+- `onValueChanging` and `onValueChanged` fire on every step. `onStepsFinished`
+  fires once when a *run* of steps ends - the arrow button released, the
+  arrow / Page / Home / End key released, the wheel at rest for half a second,
+  or the focus or pointer gone - with the value the run ended on. A caller
+  that records undo (ArtCreator's transform bar) applies each step at once and
+  merges the steps of one run into one undo step, closing it here. A held key
+  on X11 sends a release before each repeat; the run only ends when no press
+  follows within 120 ms, so the repeats stay one run.
 - When `SetWrap(true)`, stepping past an end wraps to the opposite end; otherwise
   the value clamps and the corresponding button renders disabled.
 - Text editing is available for Integer and Decimal modes when `IsEditable()` is

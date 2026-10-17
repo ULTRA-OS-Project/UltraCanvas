@@ -167,18 +167,19 @@ private:
     // toolbar. X / Y are the reference point's place on the page and every
     // change keeps that point where it is. One object shows its own rotation
     // and shear; several show 0 and turn by what is typed. Lengths are in
-    // the page's unit, or icon pixels in icon mode.
+    // the page's unit, or icon pixels in icon mode. `merge` folds the change
+    // into the undo step before it: the steps of one held arrow are one.
     void RefreshTransformBar();
     void TransformUnit(double& pointsPerUnit, std::string& symbol) const;
     Point2Dd TransformPivot() const;
     // The rotation (counter-clockwise) and shear (top to the right) of one
     // selected object in degrees; 0, 0 for several.
     void SelectionAngles(double& rotation, double& shear) const;
-    void ApplyPosition(bool horizontal, double value);
-    void ApplySize(bool horizontal, double value);
-    void ApplyScalePercent(bool horizontal, double percent);
-    void ApplyRotation(double degrees);
-    void ApplyShear(double degrees);
+    void ApplyPosition(bool horizontal, double value, bool merge = false);
+    void ApplySize(bool horizontal, double value, bool merge = false);
+    void ApplyScalePercent(bool horizontal, double percent, bool merge = false);
+    void ApplyRotation(double degrees, bool merge = false);
+    void ApplyShear(double degrees, bool merge = false);
 
     // ----- icon mode -----
     // An icon is drawn for the size it is shown at (16 to 256 px). Icon mode
@@ -272,6 +273,10 @@ private:
     Color lineColour = Color(30, 30, 40, 255);
     bool syncingColours = false;
     bool syncingTransform = false;
+    // The change being applied is a step of a spinner's arrows, keys or
+    // wheel; and a run of such steps is open (one undo step so far).
+    bool transformStepping = false;
+    bool transformRunOpen = false;
     bool lockAspectRatio = true;
     ArtCreatorPageResult lastPage;
     int iconSize = 0;

@@ -620,7 +620,7 @@ void ArtCreatorWindow::BuildTransformBar() {
     };
     auto field = [&](const std::shared_ptr<UltraCanvasContainer>& r, const std::string& id, float width,
                      double minimum, double maximum, int decimals, double step, const std::string& tooltip,
-                     std::function<void(double)> apply) {
+                     std::function<void(double, bool)> apply) {
         auto s = CreateSpinner("ac-tf-" + id, 0, 0, width, kTransformRowHeight);
         s->SetDecimals(decimals);
         s->SetSnapToStep(false);
@@ -631,7 +631,20 @@ void ArtCreatorWindow::BuildTransformBar() {
         s->GetStyle().fontStyle.fontSize = 11.0f;
         s->SetTooltip(tooltip);
         s->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        s->onValueChanged = [this, apply = std::move(apply)](double v) { if (!syncingTransform) apply(v); };
+        // Every step applies at once, so the drawing follows a held arrow;
+        // the steps of one run go into one undo step, which the run's end
+        // closes.
+        s->onValueChanging = [this](double) { if (!syncingTransform) transformStepping = true; };
+        s->onValueChanged = [this, apply = std::move(apply)](double v) {
+            if (syncingTransform) return;
+            const bool step = transformStepping;
+            transformStepping = false;
+            const size_t before = history.UndoCount();
+            apply(v, step && transformRunOpen);
+            // Open only once a step made an undo step to merge into.
+            if (step && history.UndoCount() > before) transformRunOpen = true;
+        };
+        s->onStepsFinished = [this](double) { transformRunOpen = false; };
         r->AddChild(s);
         return s;
     };
@@ -641,32 +654,32 @@ void ArtCreatorWindow::BuildTransformBar() {
     auto posX = row(position, "x");
     caption(posX, "x", "X");
     posXBox = field(posX, "x", 96, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
-                    [this](double v) { ApplyPosition(true, v); });
+                    [this](double v, bool merge) { ApplyPosition(true, v, merge); });
     auto posY = row(position, "y");
     caption(posY, "y", "Y");
     posYBox = field(posY, "y", 96, -kFar, kFar, 2, 1, "Vertical position of the reference point",
-                    [this](double v) { ApplyPosition(false, v); });
+                    [this](double v, bool merge) { ApplyPosition(false, v, merge); });
 
     auto size = column("size", 113);
     auto sizeW = row(size, "w");
     caption(sizeW, "w", "W");
     sizeWBox = field(sizeW, "w", 96, 0, kFar, 2, 1, "Width of the selection",
-                     [this](double v) { ApplySize(true, v); });
+                     [this](double v, bool merge) { ApplySize(true, v, merge); });
     auto sizeH = row(size, "h");
     caption(sizeH, "h", "H");
     sizeHBox = field(sizeH, "h", 96, 0, kFar, 2, 1, "Height of the selection",
-                     [this](double v) { ApplySize(false, v); });
+                     [this](double v, bool merge) { ApplySize(false, v, merge); });
 
     auto scale = column("scale", 91);
     auto scaleW = row(scale, "sw");
     caption(scaleW, "sw", "W");
     scaleWBox = field(scaleW, "sw", 74, 0.1, 100000, 1, 10, "Scale the width by a percentage",
-                      [this](double v) { ApplyScalePercent(true, v); });
+                      [this](double v, bool merge) { ApplyScalePercent(true, v, merge); });
     scaleWBox->SetSuffix(" %");
     auto scaleH = row(scale, "sh");
     caption(scaleH, "sh", "H");
     scaleHBox = field(scaleH, "sh", 74, 0.1, 100000, 1, 10, "Scale the height by a percentage",
-                      [this](double v) { ApplyScalePercent(false, v); });
+                      [this](double v, bool merge) { ApplyScalePercent(false, v, merge); });
     scaleHBox->SetSuffix(" %");
 
     ratioLockButton = std::make_shared<UltraCanvasButton>("ac-tf-lock", 0, 0, 28, 28, "");
@@ -686,12 +699,12 @@ void ArtCreatorWindow::BuildTransformBar() {
     auto rotation = row(angles, "rot");
     icon(rotation, "rot", "rotate.svg");
     rotationBox = field(rotation, "rot", 74, -360, 360, 1, 15, "Rotation, counter-clockwise, about the reference point",
-                        [this](double v) { ApplyRotation(v); });
+                        [this](double v, bool merge) { ApplyRotation(v, merge); });
     rotationBox->SetSuffix("\xC2\xB0");
     auto shear = row(angles, "shear");
     icon(shear, "shear", "shear.svg");
     shearBox = field(shear, "shear", 74, -89, 89, 1, 5, "Shear: how far the top leans to the right",
-                     [this](double v) { ApplyShear(v); });
+                     [this](double v, bool merge) { ApplyShear(v, merge); });
     shearBox->SetSuffix("\xC2\xB0");
 
     window->AddChild(transformBar);
@@ -770,7 +783,7 @@ void ArtCreatorWindow::RefreshTransformBar() {
     syncingTransform = false;
 }
 
-void ArtCreatorWindow::ApplyPosition(bool horizontal, double value) {
+void ArtCreatorWindow::ApplyPosition(bool horizontal, double value, bool merge) {
     if (selection->Empty()) return;
     double k = 1;
     std::string unit;
@@ -780,11 +793,11 @@ void ArtCreatorWindow::ApplyPosition(bool horizontal, double value) {
     const double dy = horizontal ? 0.0 : value * k - p.y;
     if (std::fabs(dx) < 1e-9 && std::fabs(dy) < 1e-9) return;
     auto ids = selection->Ids();
-    history.Record("Move", [&]() { TranslateElements(selection->Elements(), dx, dy); });
+    history.Record("Move", [&]() { TranslateElements(selection->Elements(), dx, dy); }, merge);
     Reselect(ids);
 }
 
-void ArtCreatorWindow::ApplySize(bool horizontal, double value) {
+void ArtCreatorWindow::ApplySize(bool horizontal, double value, bool merge) {
     if (selection->Empty()) return;
     double k = 1;
     std::string unit;
@@ -794,10 +807,10 @@ void ArtCreatorWindow::ApplySize(bool horizontal, double value) {
     // A line along one axis has no size across it to scale.
     if (current < 1e-9 || value <= 0) { RefreshTransformBar(); return; }
     const double factor = value * k / current;
-    ApplyScalePercent(horizontal, factor * 100.0);
+    ApplyScalePercent(horizontal, factor * 100.0, merge);
 }
 
-void ArtCreatorWindow::ApplyScalePercent(bool horizontal, double percent) {
+void ArtCreatorWindow::ApplyScalePercent(bool horizontal, double percent, bool merge) {
     if (selection->Empty() || percent <= 0) { RefreshTransformBar(); return; }
     const double factor = percent / 100.0;
     const double sx = horizontal || lockAspectRatio ? factor : 1.0;
@@ -805,11 +818,11 @@ void ArtCreatorWindow::ApplyScalePercent(bool horizontal, double percent) {
     if (std::fabs(sx - 1.0) < 1e-9 && std::fabs(sy - 1.0) < 1e-9) { RefreshTransformBar(); return; }
     const Point2Dd pivot = TransformPivot();
     auto ids = selection->Ids();
-    history.Record("Resize", [&]() { ScaleElements(selection->Elements(), sx, sy, pivot); });
+    history.Record("Resize", [&]() { ScaleElements(selection->Elements(), sx, sy, pivot); }, merge);
     Reselect(ids);
 }
 
-void ArtCreatorWindow::ApplyRotation(double degrees) {
+void ArtCreatorWindow::ApplyRotation(double degrees, bool merge) {
     if (selection->Empty()) return;
     double rotation = 0, shear = 0;
     SelectionAngles(rotation, shear);
@@ -817,11 +830,11 @@ void ArtCreatorWindow::ApplyRotation(double degrees) {
     if (std::fabs(turn) < 1e-9) return;
     const Point2Dd pivot = TransformPivot();
     auto ids = selection->Ids();
-    history.Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); });
+    history.Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); }, merge);
     Reselect(ids);
 }
 
-void ArtCreatorWindow::ApplyShear(double degrees) {
+void ArtCreatorWindow::ApplyShear(double degrees, bool merge) {
     if (selection->Empty()) return;
     double rotation = 0, shear = 0;
     SelectionAngles(rotation, shear);
@@ -836,7 +849,7 @@ void ArtCreatorWindow::ApplyShear(double degrees) {
                         Matrix3x3::SkewX(delta) * Matrix3x3::Rotate(-theta) *
                         Matrix3x3::Translate(-pivot.x, -pivot.y);
     auto ids = selection->Ids();
-    history.Record("Shear", [&]() { TransformElements(selection->Elements(), m); });
+    history.Record("Shear", [&]() { TransformElements(selection->Elements(), m); }, merge);
     Reselect(ids);
 }
 

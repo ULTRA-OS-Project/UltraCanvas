@@ -1,7 +1,8 @@
 // Tests/ReferencePointPickerTest.cpp
 // UltraCanvasReferencePointPicker (the nine points and where they lie in a
 // box, SetPoint and its callback) and UltraCanvasSpinner::SetSnapToStep
-// (a Decimal value kept off the step grid, stepping from it).
+// (a Decimal value kept off the step grid, stepping from it) and
+// onStepsFinished (once per run of steps, not per step).
 //
 // Usage: ReferencePointPickerTest
 // Exit code is the number of failed checks.
@@ -82,6 +83,35 @@ int main() {
         Check(Near(loose->GetValue(), 8.71, 1e-9), "the buttons step by the step from there");
         loose->SetValue(5000);
         Check(Near(loose->GetValue(), 1000, 1e-9), "the range still clamps");
+    }
+
+    // ===== Spinner: one run of steps, one onStepsFinished =====
+    {
+        auto s = CreateDecimalSpinner("run", 0, 0, 90, 22, -1000, 1000, 0, 1, 1);
+        int changed = 0, finished = 0;
+        double finishedAt = 0;
+        s->onValueChanged = [&](double) { ++changed; };
+        s->onStepsFinished = [&](double v) { ++finished; finishedAt = v; };
+        UCEvent down;
+        down.type = UCEventType::MouseDown;
+        down.pointer = Point2Di(84, 5);          // the up button, top right
+        UCEvent up = down;
+        up.type = UCEventType::MouseUp;
+        // A held button repeats as further presses before the release.
+        s->OnEvent(down);
+        s->OnEvent(down);
+        s->OnEvent(down);
+        Check(changed == 3 && Near(s->GetValue(), 3), "every step changes the value");
+        Check(finished == 0 && s->IsStepping(), "the run is open while the button is held");
+        s->OnEvent(up);
+        Check(finished == 1 && Near(finishedAt, 3), "releasing the button ends the run once, on its last value");
+        s->OnEvent(up);
+        Check(finished == 1 && !s->IsStepping(), "a second release reports nothing");
+        s->SetValue(10);
+        UCEvent leave;
+        leave.type = UCEventType::MouseLeave;
+        s->OnEvent(leave);
+        Check(finished == 1, "SetValue starts no run");
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

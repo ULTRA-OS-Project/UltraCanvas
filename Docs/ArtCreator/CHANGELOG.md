@@ -17,7 +17,9 @@
 
   Lengths are in the page's unit (*File > Document Setup*), or in icon
   pixels in icon mode, and follow a drag as it happens. Every change is one
-  step of undo. The reference point picker is a new framework element
+  step of undo - a held arrow key, the arrow buttons clicked or the wheel
+  turned in one go too: the drawing follows each step, and *Undo* takes the
+  whole run back (framework: `UltraCanvasSpinner::onStepsFinished`). The reference point picker is a new framework element
   (framework changelog: `reference-point-picker`).
 
 #### 2026-10-16 *0.7.2*
