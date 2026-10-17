@@ -1,7 +1,8 @@
 // UltraCloud/providers/UltraCloudFtp.cpp
+// Version: 0.5.0 - a transfer called off is Cancelled, not a server refusal
 // Version: 0.4.0 - SFTP with a private key (Credentials::privateKeyFile)
 // Version: 0.2.0 - a failure carries UltraNet's diagnostics
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudFtp.h>
 
@@ -108,6 +109,10 @@ Result ClassifyFtpOutcome(const UltraNetResult& net, const std::string& what) {
             return Result::Error(ResultCode::AuthFailed, message, net.httpStatus);
         case UltraNetResultCode::NotFound:
             return Result::Error(ResultCode::NotFound, message, net.httpStatus);
+        case UltraNetResultCode::Cancelled:
+            // The caller called it off (UltraNet_SetThreadFtpCancel): nobody
+            // refused anything.
+            return Result::Error(ResultCode::Cancelled, message, net.httpStatus);
         case UltraNetResultCode::InvalidUrl:
         case UltraNetResultCode::UnsupportedScheme:
             return Result::Error(ResultCode::InvalidArgument, message, net.httpStatus);

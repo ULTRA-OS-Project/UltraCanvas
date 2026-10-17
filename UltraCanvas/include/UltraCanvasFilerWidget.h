@@ -98,6 +98,8 @@
 // TextPreviewLines gives the lines a document's preview page shows.
 // GetBottomStripsHeight says how much of the bottom edge the info bar and
 // the hidden-items notice take, for a host floating something in the corner.
+// Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
+//                  end before it destroys the widget
 // Version: 1.39.2
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
@@ -616,6 +618,21 @@ namespace UltraCanvas {
             : UltraCanvasFilerWidget(identifier, -1, -1, -1, -1) {}
 
         ~UltraCanvasFilerWidget() override;
+
+        // ===== RETIRING =====
+        // The destructor waits for every background worker - thumbnails,
+        // previews, media probes, folder statistics, prefetch, the folder
+        // watch, a running file operation or archive job - and one busy with
+        // a slow file holds the thread that destroys the widget for as long.
+        // A host that drops a display while the UI runs (a closed tab) asks
+        // them to stop first, keeps the widget, and destroys it once
+        // BackgroundStopped() says they are all gone - the destructor's waits
+        // are then instant. A file operation or archive job still running is
+        // told to stop as its own Cancel would, and nothing reports back.
+        // Never blocks. The widget must not be shown or used afterwards.
+        void RequestBackgroundStop();
+        // True once every worker thread the widget started has returned.
+        bool BackgroundStopped() const;
 
         // ===== FOLDER =====
         void SetPath(const std::string& folderPath);   // scans + displays the folder
@@ -2267,6 +2284,12 @@ namespace UltraCanvas {
         std::condition_variable thumbCond;
         std::vector<std::thread> thumbWorkers;
         bool thumbShutdown = false;
+        // Every worker thread the widget starts goes through StartWorkerThread,
+        // which counts it here until its body returns: what BackgroundStopped
+        // reads. Shared with the threads, which may outlive a moved-from count.
+        std::shared_ptr<std::atomic<int>> liveWorkerThreads =
+                std::make_shared<std::atomic<int>>(0);
+        std::thread StartWorkerThread(std::function<void()> body);
         uint64_t thumbGeneration = 0;           // bumped to drop stale results
         size_t thumbBytes = 0;                  // content-preview bytes held
         size_t thumbNativeBytes = 0;            // application-icon bytes held
