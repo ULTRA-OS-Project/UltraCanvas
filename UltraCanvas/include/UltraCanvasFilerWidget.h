@@ -98,8 +98,8 @@
 // TextPreviewLines gives the lines a document's preview page shows.
 // GetBottomStripsHeight says how much of the bottom edge the info bar and
 // the hidden-items notice take, for a host floating something in the corner.
-// Version: 1.39.1
-// Last Modified: 2026-10-12
+// Version: 1.39.2
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -2619,6 +2619,10 @@ namespace UltraCanvas {
 
         // True while the listing on screen is a remote drive's.
         bool ShowingRemoteFolder() const;
+        // True for a path on a remote drive (the isRemotePath hook). The
+        // background readers - thumbnails, text and folder previews, media
+        // probes, folder stats - skip such a path: it is not on this disk.
+        bool IsRemoteEntryPath(const std::string& path) const;
         // A child name the listing on screen does not already carry ("New
         // folder", then "New folder (2)"...). The remote counterpart of
         // UniqueChildPath, which asks the local filesystem; here the listing
