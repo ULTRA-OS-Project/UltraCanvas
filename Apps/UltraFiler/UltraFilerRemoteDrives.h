@@ -53,12 +53,21 @@
 // downloads not finished yet are listed for the window's question before it
 // quits (PendingTransfers), and Stop() calls the running one off rather than
 // waiting for it.
-// Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off
+//
+// An upload to an FTP or SFTP drive that stops part way leaves what it sent
+// on the server, and FTP has no way to take that back. The drives keep a note
+// of it on disk (UnfinishedUploadsPath) and, before the next job on that
+// drive - in this run or a later one - remove the part, when the file there
+// is still no longer than what was sent and shorter than the whole file
+// (IsLeftByUnfinishedUpload). A file of any other size is someone else's and
+// is kept.
+// Version: 1.11.0 - removes the part an unfinished FTP upload left
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraFilerRemotePath.h"
+#include "UltraFilerRemoteCache.h"     // RemoteUnfinishedUpload
 #include "UltraFilerConnectionLog.h"
 
 #include "UltraCanvasFilerWidget.h"   // FilerEntry
@@ -412,6 +421,11 @@ public:
     // UltraFiler's config directory.
     static std::string DiskCachePath();
 
+    // Where the notes of FTP uploads that stopped part way are kept until
+    // their drive is used again: remote-unfinished-uploads in the same
+    // directory. Absent when there are none.
+    static std::string UnfinishedUploadsPath();
+
 private:
     // Stale: read from the disk cache at start-up, and shown as it is until
     // the server has been asked again. `revalidating` says that question has
@@ -462,6 +476,12 @@ private:
 
     void EnsureWorker();
     void WorkerMain();
+    // Where the steps of a job's connection go: its connection-log session
+    // and, for a job the user is waiting on, the status line through
+    // `current`. Called on the worker thread, inside the provider call.
+    std::function<void(const RemoteLogLine&)> MakeLineSink(
+            uint64_t logId, std::shared_ptr<RemoteActivity> current,
+            bool reportsActivity, bool http);
     // Starts the connection-log session of `job`, named the way the user
     // knows it (the drive, the operation, the folder or file).
     uint64_t BeginLogSession(const Job& job);
@@ -502,6 +522,32 @@ private:
     bool DrivePrefetchesLocked(const std::string& accountId,
                                bool* canModify = nullptr) const;
 
+    // The parts unfinished FTP uploads left on their servers. Load runs once,
+    // from the first Reload that knows the drives, and keeps only the notes
+    // of drives still configured at the same address; Save runs on the
+    // worker whenever the notes change.
+    void LoadUnfinishedUploadsLocked();
+    void SaveUnfinishedUploads();
+    // Drops the notes of the files `job` itself replaces, removes or moves -
+    // an upload to the same name, a delete or a rename of it or of a folder
+    // it is in: the user is dealing with that file. True if one went. Lock
+    // held.
+    bool SettleUnfinishedUploadsLocked(const Job& job);
+    // Whether `accountId` has a note not yet tried this run. Lock held.
+    bool HasUnfinishedUploadsLocked(const std::string& accountId) const;
+    // Notes the upload `job` that failed after sending `bytesSent` bytes, on
+    // a drive whose provider leaves the part behind. True if it was noted.
+    // Lock held.
+    bool NoteUnfinishedUploadLocked(const Job& job, uint64_t bytesSent,
+                                    uint64_t bytesTotal);
+    // Runs on the worker before a job on `accountId`: for each note, lists
+    // the folder, and removes the file when it is still the part
+    // (IsLeftByUnfinishedUpload), each as a session of the connection log.
+    // `queued` is what the status line says is waiting; `idleAfter` reports
+    // the drive idle at the end, for a job that reports nothing itself.
+    void CleanUpUnfinishedUploads(const std::string& accountId, std::size_t queued,
+                                  bool idleAfter);
+
     // The UltraCloud objects (account store, secret store, service) live
     // here rather than in this header: UltraFiler must build when the module
     // is not, and nothing that includes this file should need its headers.
@@ -534,6 +580,14 @@ private:
     uint64_t useCounter_ = 0;
     bool diskCacheLoaded_ = false;
     bool diskCacheSaved_ = false;
+    // The notes of FTP uploads that stopped part way, and the paths of those
+    // whose removal was tried this run and did not happen - the server could
+    // not be reached, or refused the delete. Those are tried again at the
+    // next start, not before every job. Changed by the worker only, after
+    // the first Reload has read the file.
+    std::vector<RemoteUnfinishedUpload> unfinishedUploads_;
+    std::unordered_set<std::string> unfinishedUploadsTried_;
+    bool unfinishedUploadsLoaded_ = false;
     // The job the worker is carrying out right now, for ListingStatus: its
     // path (empty between jobs) and when the worker took it off the queue.
     // Written by the worker under the lock.

@@ -7,9 +7,11 @@
 // The file is read at every start-up of a filer with an FTP drive, and it
 // holds names a server chose - so a name with a tab or a newline in it must
 // come back as itself, and a damaged file must cost the listing it damaged,
-// never the start-up.
-// Version: 1.0.0
-// Last Modified: 2026-09-27
+// never the start-up. The notes of FTP uploads that stopped part way are
+// checked here too: which part on a server is theirs to remove, and their
+// file.
+// Version: 1.1.0 - unfinished uploads
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteCache.h"
 
@@ -172,6 +174,71 @@ int main() {
         Check(RemotePreviewLocalName("tab\there.stl") == "tab_here.stl",
               "control characters are replaced");
         Check(kRemotePreviewMaxBytes == 64ull * 1024 * 1024, "the preview size limit");
+    }
+
+    std::printf("Unfinished uploads\n");
+    {
+        Check(RemoteProviderLeavesPartialUploads("ftp"), "an FTP upload leaves its part");
+        Check(!RemoteProviderLeavesPartialUploads("webdav") &&
+              !RemoteProviderLeavesPartialUploads("nextcloud") &&
+              !RemoteProviderLeavesPartialUploads("dropbox"),
+              "WebDAV and the cloud services do not");
+
+        RemoteUnfinishedUpload u;
+        u.path = MakeRemoteFilerPath("nas", "/up/big.bin");
+        u.server = "ftp://127.0.0.1:2121";
+        u.bytesSent = 20u * 1024 * 1024;
+        u.fileSize = 40u * 1024 * 1024;
+        u.stoppedAt = 1760000000;
+        Check(IsLeftByUnfinishedUpload(u, 0), "an empty file there is the part");
+        Check(IsLeftByUnfinishedUpload(u, u.bytesSent - 4096), "less than was sent is the part");
+        Check(IsLeftByUnfinishedUpload(u, u.bytesSent + 65536),
+              "a buffer more than the last report is the part");
+        Check(!IsLeftByUnfinishedUpload(u, u.fileSize), "the whole file is kept");
+        Check(!IsLeftByUnfinishedUpload(u, u.fileSize + 1), "a larger file is kept");
+        Check(!IsLeftByUnfinishedUpload(u, u.bytesSent + 2 * kRemoteUnfinishedUploadSlackBytes),
+              "a file longer than was ever sent is kept");
+
+        std::vector<RemoteUnfinishedUpload> list;
+        NoteRemoteUnfinishedUpload(list, u);
+        RemoteUnfinishedUpload again = u;
+        again.bytesSent = 5;
+        NoteRemoteUnfinishedUpload(list, again);
+        Check(list.size() == 1 && list[0].bytesSent == 5,
+              "a second stop of the same file replaces the first note");
+        RemoteUnfinishedUpload odd;
+        odd.path = MakeRemoteFilerPath("nas", "/up/tab\there\nnewline");
+        odd.server = "sftp://host\twith tab";
+        odd.bytesSent = 1;
+        odd.fileSize = 2;
+        odd.stoppedAt = 1760000100;
+        NoteRemoteUnfinishedUpload(list, odd);
+
+        const std::string text = SerializeUnfinishedUploads(list);
+        std::vector<RemoteUnfinishedUpload> back;
+        Check(ParseUnfinishedUploads(text, 1760000200, back) && back.size() == 2 &&
+              back[0].path == again.path && back[0].bytesSent == 5 &&
+              back[0].fileSize == again.fileSize && back[0].stoppedAt == again.stoppedAt &&
+              back[0].server == again.server &&
+              back[1].path == odd.path && back[1].server == odd.server,
+              "notes come back as they were written, tabs and newlines too");
+        Check(ParseUnfinishedUploads(text, 1760000000 + kRemoteUnfinishedUploadMaxAgeSeconds + 50,
+                                     back) && back.size() == 1 && back[0].path == odd.path,
+              "a note older than its limit is dropped");
+        Check(!ParseUnfinishedUploads("", 0, back) && back.empty(), "an empty file is not this file");
+        Check(!ParseUnfinishedUploads(std::string(kRemoteCacheHeader) + "\n", 0, back),
+              "the listings' file is not this file");
+        Check(ParseUnfinishedUploads(std::string(kRemoteUnfinishedUploadsHeader) + "\n", 0, back) &&
+              back.empty(), "a file of no notes is read");
+        Check(ParseUnfinishedUploads(std::string(kRemoteUnfinishedUploadsHeader) +
+                                     "\nU\t1\t2\tx\tftp://h\tultracloud://nas/a"
+                                     "\nU\t1\t2\t3\tftp://h\t/not/remote"
+                                     "\nU\t1\t2\t3\tftp://h\tultracloud://nas/"
+                                     "\nZ\t1\t2\t3\tftp://h\tultracloud://nas/z"
+                                     "\r\nU\t1\t2\t3\tftp://h\tultracloud://nas/b\r\n",
+                                     10, back) &&
+              back.size() == 1 && back[0].path == MakeRemoteFilerPath("nas", "/b"),
+              "damaged lines are dropped, the good one kept");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures,

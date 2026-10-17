@@ -303,6 +303,14 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     stops the running one where it is and drops the rest, and UltraFiler is
     gone within a second rather than staying in the background until the
     upload is done. A download stopped part way leaves no half a file.
+  - **An FTP upload stopped part way is cleaned up.** FTP has no way to take
+    back the part of an upload already sent, so UltraFiler notes an FTP,
+    FTPS or SFTP upload that stopped part way - quit during it, or cut off -
+    and deletes what it left on the server before the next request to that
+    drive, in this session or after a restart. Only a file still shorter
+    than the whole one and no longer than what was sent is deleted; anything
+    else at that name is kept. The connection log shows each cleanup as
+    *Remove unfinished upload*.
   - **A service that limits requests is waited out.** When a cloud service
     answers that it is limiting requests, the drive waits as long as it
     asks (1, 2, 4 s when it does not say) and asks again, up to three times;

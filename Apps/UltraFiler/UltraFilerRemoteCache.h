@@ -20,8 +20,12 @@
 // to start a record of its own. Anything that does not parse drops the
 // listing it belongs to, not the file: a cache is an optimisation, and a bad
 // line in it is a reason to ask the server again, never a reason to fail.
-// Version: 1.2.0 - kRemoteRateLimitMaxWaitSeconds
-// Last Modified: 2026-10-14
+//
+// Beside it, a second small file names the FTP uploads that stopped part way
+// (RemoteUnfinishedUpload), so the part they left on the server can be
+// removed the next time the drive is used.
+// Version: 1.3.0 - RemoteUnfinishedUpload and its file
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -327,6 +331,123 @@ inline bool ParseRemoteListings(const std::string& text,
     }
     flush();
     return true;
+}
+
+// ---- Uploads that stopped part way -----------------------------------------
+// An FTP or SFTP server writes an upload into the file as it arrives, and has
+// no way to take it back: an upload stopped part way - the window closed
+// under it, the connection broke - leaves the part already sent on the
+// server, under the file's own name, looking like a file. UltraFiler keeps a
+// note of each one and removes the part the next time the drive is used, as
+// long as what is there is still recognisably that part.
+
+// Whether an upload stopped part way on a drive of this provider leaves the
+// part it sent on the server. FTP, FTPS and SFTP do (the "ftp" provider);
+// WebDAV, Nextcloud and the cloud services keep an incomplete upload apart
+// from the file and drop it.
+inline bool RemoteProviderLeavesPartialUploads(const std::string& providerId) {
+    return providerId == "ftp";
+}
+
+struct RemoteUnfinishedUpload {
+    std::string path;          // the ultracloud:// path of the file on the server
+    std::string server;        // the drive's address when it was left
+    uint64_t bytesSent = 0;    // what had gone out when it stopped
+    uint64_t fileSize = 0;     // the whole local file
+    int64_t stoppedAt = 0;     // when it stopped, seconds since the epoch
+};
+
+// How long a note is kept for a drive that is not used again. Past that, the
+// file at that path is as likely to be something else by now.
+inline constexpr int64_t kRemoteUnfinishedUploadMaxAgeSeconds = 30ll * 24 * 3600;
+
+// What libcurl may have sent after its last progress report when a
+// connection broke: one round of its upload buffer, with room to spare. The
+// part on the server can be that much longer than bytesSent says.
+inline constexpr uint64_t kRemoteUnfinishedUploadSlackBytes = 1024 * 1024;
+
+// Whether a file of `sizeOnServer` bytes, found where the upload went, is
+// the part it left: shorter than the whole file, and no longer than what had
+// been sent. A file of any other size was put there since - finished by
+// another program, or another file of that name - and is not touched.
+inline bool IsLeftByUnfinishedUpload(const RemoteUnfinishedUpload& upload,
+                                     uint64_t sizeOnServer) {
+    return sizeOnServer < upload.fileSize &&
+           sizeOnServer <= upload.bytesSent + kRemoteUnfinishedUploadSlackBytes;
+}
+
+// Adds `upload` to `list`, in place of an earlier note for the same path:
+// one file has one part on the server, the latest upload's.
+inline void NoteRemoteUnfinishedUpload(std::vector<RemoteUnfinishedUpload>& list,
+                                       const RemoteUnfinishedUpload& upload) {
+    for (RemoteUnfinishedUpload& u : list) {
+        if (u.path != upload.path) continue;
+        u = upload;
+        return;
+    }
+    list.push_back(upload);
+}
+
+// The file, line based like the listings':
+//
+//     UltraFilerUnfinishedUploads 1
+//     U <tab> sent <tab> size <tab> stopped-at <tab> server <tab> path
+//
+inline constexpr const char* kRemoteUnfinishedUploadsHeader = "UltraFilerUnfinishedUploads 1";
+
+inline std::string SerializeUnfinishedUploads(
+        const std::vector<RemoteUnfinishedUpload>& uploads) {
+    std::string out = kRemoteUnfinishedUploadsHeader;
+    out.push_back('\n');
+    for (const RemoteUnfinishedUpload& u : uploads) {
+        if (!IsRemoteFilerPath(u.path)) continue;
+        out += "U\t" + std::to_string(u.bytesSent);
+        out += "\t" + std::to_string(u.fileSize);
+        out += "\t" + std::to_string(u.stoppedAt > 0 ? u.stoppedAt : 0);
+        out += "\t" + EscapeRemoteCacheField(u.server);
+        out += "\t" + EscapeRemoteCacheField(u.path);
+        out += "\n";
+    }
+    return out;
+}
+
+// Reads what SerializeUnfinishedUploads wrote. False only when the text is
+// not this file; a damaged line is dropped, and so is a note older than
+// kRemoteUnfinishedUploadMaxAgeSeconds at `now`. A note that cannot be read
+// costs a part left on a server, which is where things stood before.
+inline bool ParseUnfinishedUploads(const std::string& text, int64_t now,
+                                   std::vector<RemoteUnfinishedUpload>& out) {
+    out.clear();
+    std::size_t pos = 0;
+    bool first = true;
+    while (pos < text.size()) {
+        std::size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(pos, end - pos);
+        pos = end + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (first) {
+            if (line != kRemoteUnfinishedUploadsHeader) return false;
+            first = false;
+            continue;
+        }
+        const std::vector<std::string> f = SplitRemoteCacheLine(line);
+        RemoteUnfinishedUpload u;
+        uint64_t stoppedAt = 0;
+        if (f.size() != 6 || f[0] != "U" ||
+            !ParseRemoteCacheNumber(f[1], u.bytesSent) ||
+            !ParseRemoteCacheNumber(f[2], u.fileSize) ||
+            !ParseRemoteCacheNumber(f[3], stoppedAt) ||
+            stoppedAt > static_cast<uint64_t>(INT64_MAX) ||
+            !UnescapeRemoteCacheField(f[4], u.server) ||
+            !UnescapeRemoteCacheField(f[5], u.path) ||
+            !IsRemoteFilerPath(u.path) || RemoteFilerName(u.path).empty())
+            continue;
+        u.stoppedAt = static_cast<int64_t>(stoppedAt);
+        if (now - u.stoppedAt > kRemoteUnfinishedUploadMaxAgeSeconds) continue;
+        NoteRemoteUnfinishedUpload(out, u);
+    }
+    return !first;
 }
 
 } // namespace UltraCanvas

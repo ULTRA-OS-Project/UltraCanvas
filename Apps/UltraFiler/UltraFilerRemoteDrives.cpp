@@ -1,6 +1,6 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.9.0 - PendingTransfers; Stop() calls a running transfer off; a
-//                  failed download leaves no half-written file
+// Version: 1.10.0 - removes the part an unfinished FTP upload left on the
+//                   server, before the next job on that drive
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
@@ -281,8 +281,10 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
     std::lock_guard<std::mutex> lk(mutex_);
     drives_ = std::move(drives);
     // The first time the drives are known is the first time the listings
-    // kept from the last run can be matched to them.
+    // kept from the last run can be matched to them - and the notes of the
+    // uploads it left unfinished.
     LoadDiskCacheLocked();
+    LoadUnfinishedUploadsLocked();
     return true;
 #endif
 }
@@ -1121,6 +1123,328 @@ void UltraFilerRemoteDrives::SaveDiskCache() {
     if (ec) fs::remove(UltraCanvas::PathFromUtf8(temp), ec);
 }
 
+// ===== Uploads that stopped part way =====
+
+std::string UltraFilerRemoteDrives::UnfinishedUploadsPath() {
+    return UltraFilerSettings::GetConfigDirectory() + "/remote-unfinished-uploads";
+}
+
+void UltraFilerRemoteDrives::LoadUnfinishedUploadsLocked() {
+    if (unfinishedUploadsLoaded_) return;
+    unfinishedUploadsLoaded_ = true;
+
+    std::ifstream in(PathFromUtf8(UnfinishedUploadsPath()), std::ios::binary);
+    if (!in) return;   // none left last time
+    std::ostringstream text;
+    text << in.rdbuf();
+    std::vector<RemoteUnfinishedUpload> notes;
+    if (!ParseUnfinishedUploads(text.str(), static_cast<int64_t>(std::time(nullptr)), notes))
+        return;
+    for (RemoteUnfinishedUpload& u : notes) {
+        // A drive removed since, or pointed at another server: the part is
+        // not on any server this note could find it on again. The next save
+        // leaves the note out.
+        const std::string accountId = RemoteFilerAccountId(u.path);
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId != accountId) continue;
+            if (RemoteProviderLeavesPartialUploads(d.providerId) && d.serverUrl == u.server)
+                unfinishedUploads_.push_back(std::move(u));
+            break;
+        }
+    }
+}
+
+void UltraFilerRemoteDrives::SaveUnfinishedUploads() {
+    std::vector<RemoteUnfinishedUpload> notes;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        // Before the file was read, writing it would lose what it held.
+        if (!unfinishedUploadsLoaded_) return;
+        notes = unfinishedUploads_;
+    }
+    const std::string target = UnfinishedUploadsPath();
+    std::error_code ec;
+    if (notes.empty()) {
+        fs::remove(PathFromUtf8(target), ec);
+        return;
+    }
+    // Beside the target and renamed over it, as the listings are.
+    const std::string temp = target + ".tmp";
+    fs::create_directories(PathFromUtf8(target).parent_path(), ec);
+    {
+        std::ofstream out(PathFromUtf8(temp), std::ios::binary | std::ios::trunc);
+        if (!out) return;
+        out << SerializeUnfinishedUploads(notes);
+        if (!out) { out.close(); fs::remove(PathFromUtf8(temp), ec); return; }
+    }
+    fs::rename(PathFromUtf8(temp), PathFromUtf8(target), ec);
+    if (ec) fs::remove(PathFromUtf8(temp), ec);
+}
+
+bool UltraFilerRemoteDrives::SettleUnfinishedUploadsLocked(const Job& job) {
+    if (job.isListing || unfinishedUploads_.empty()) return false;
+    std::string target;
+    switch (job.operation) {
+        case RemoteOperation::Upload:
+            target = RemoteFilerChild(job.path,
+                                      PathToUtf8(PathFromUtf8(job.argument).filename()));
+            break;
+        case RemoteOperation::Delete:
+        case RemoteOperation::Rename:
+            target = job.path;
+            break;
+        default:
+            return false;   // a download or a new folder leaves the file as it is
+    }
+    if (target.empty()) return false;
+    const std::string inside = target + "/";
+    const std::size_t before = unfinishedUploads_.size();
+    unfinishedUploads_.erase(
+            std::remove_if(unfinishedUploads_.begin(), unfinishedUploads_.end(),
+                           [&](const RemoteUnfinishedUpload& u) {
+                               if (u.path != target &&
+                                   u.path.compare(0, inside.size(), inside) != 0)
+                                   return false;
+                               unfinishedUploadsTried_.erase(u.path);
+                               return true;
+                           }),
+            unfinishedUploads_.end());
+    return unfinishedUploads_.size() != before;
+}
+
+bool UltraFilerRemoteDrives::HasUnfinishedUploadsLocked(const std::string& accountId) const {
+    for (const RemoteUnfinishedUpload& u : unfinishedUploads_) {
+        if (RemoteFilerAccountId(u.path) == accountId && !unfinishedUploadsTried_.count(u.path))
+            return true;
+    }
+    return false;
+}
+
+bool UltraFilerRemoteDrives::NoteUnfinishedUploadLocked(const Job& job, uint64_t bytesSent,
+                                                        uint64_t bytesTotal) {
+    // Nothing sent, nothing left: the upload stopped before its first byte
+    // (the server could not be reached, the sign-in was refused).
+    if (bytesSent == 0) return false;
+    const std::string accountId = RemoteFilerAccountId(job.path);
+    const RemoteDrive* drive = nullptr;
+    for (const RemoteDrive& d : drives_) {
+        if (d.accountId == accountId) { drive = &d; break; }
+    }
+    if (!drive || !RemoteProviderLeavesPartialUploads(drive->providerId)) return false;
+
+    RemoteUnfinishedUpload u;
+    u.path = RemoteFilerChild(job.path, PathToUtf8(PathFromUtf8(job.argument).filename()));
+    if (u.path.empty()) return false;
+    u.server = drive->serverUrl;
+    u.bytesSent = bytesSent;
+    std::error_code ec;
+    const std::uintmax_t size = fs::file_size(PathFromUtf8(job.argument), ec);
+    u.fileSize = !ec ? static_cast<uint64_t>(size) : bytesTotal;
+    // Without the file's size nothing could tell the part from the file. A
+    // note whose every byte went out is still kept: the server may hold
+    // less than libcurl handed on, and what it holds complete is never
+    // removed (IsLeftByUnfinishedUpload).
+    if (u.fileSize == 0) return false;
+    u.stoppedAt = static_cast<int64_t>(std::time(nullptr));
+    NoteRemoteUnfinishedUpload(unfinishedUploads_, u);
+    unfinishedUploadsTried_.erase(u.path);
+    return true;
+}
+
+void UltraFilerRemoteDrives::CleanUpUnfinishedUploads(const std::string& accountId,
+                                                      std::size_t queued, bool idleAfter) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)accountId; (void)queued; (void)idleAfter;
+#else
+    RemoteDrive drive;
+    std::vector<RemoteUnfinishedUpload> notes;
+    bool dropped = false;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        bool haveDrive = false;
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId == accountId) { drive = d; haveDrive = true; break; }
+        }
+        for (auto it = unfinishedUploads_.begin(); it != unfinishedUploads_.end();) {
+            if (RemoteFilerAccountId(it->path) != accountId ||
+                unfinishedUploadsTried_.count(it->path)) {
+                ++it;
+                continue;
+            }
+            // Pointed at another server since: the part is not on this one.
+            if (!haveDrive || it->server != drive.serverUrl) {
+                it = unfinishedUploads_.erase(it);
+                dropped = true;
+                continue;
+            }
+            notes.push_back(*it);
+            ++it;
+        }
+    }
+
+    // How each note ends: gone (removed, or nothing of it left to remove),
+    // or kept for the next start (the server could not be asked).
+    auto settle = [this, &dropped](const std::string& path, bool keep) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        if (keep) {
+            unfinishedUploadsTried_.insert(path);
+            return;
+        }
+        dropped = true;
+        unfinishedUploads_.erase(
+                std::remove_if(unfinishedUploads_.begin(), unfinishedUploads_.end(),
+                               [&](const RemoteUnfinishedUpload& u) { return u.path == path; }),
+                unfinishedUploads_.end());
+    };
+
+    bool unreachable = false;
+    for (const RemoteUnfinishedUpload& note : notes) {
+        // The window closing, or the server not answering the last one: the
+        // rest wait for the next start.
+        if (stopping_.load() || unreachable) {
+            settle(note.path, /*keep=*/true);
+            continue;
+        }
+        const std::string folder = RemoteFilerParent(note.path);
+        const std::string name = RemoteFilerName(note.path);
+        std::string folderAccount, folderRemote, fileRemote;
+        SplitRemoteFilerPath(folder, folderAccount, folderRemote);
+        SplitRemoteFilerPath(note.path, folderAccount, fileRemote);
+
+        RemoteLogSession header;
+        header.drive = drive.displayName.empty() ? accountId : drive.displayName;
+        header.server = drive.serverUrl;
+        header.operation = "Remove unfinished upload";
+        header.target = fileRemote;
+        // Nobody asked for it, and a failure here is no error anybody saw:
+        // the job behind it says what is wrong with the connection.
+        header.background = true;
+        const uint64_t logId = log_.Begin(std::move(header));
+        NotifyLogChanged();
+        auto say = [this, logId](const std::string& text) {
+            RemoteLogLine line;
+            line.kind = RemoteLogLine::Kind::Step;
+            line.text = text;
+            line.timeMs = RemoteLogNowMs();
+            log_.Append(logId, std::move(line));
+            NotifyLogChanged();
+        };
+
+        // On the status line too: it changes what is on the drive.
+        RemoteActivity activity;
+        activity.kind = RemoteActivity::Kind::Deleting;
+        activity.what = name;
+        activity.queued = queued + 1;
+        ReportActivity(activity, /*force=*/true);
+        auto current = std::make_shared<RemoteActivity>(activity);
+        auto onLine = MakeLineSink(logId, current, /*reportsActivity=*/true, /*http=*/false);
+        UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
+                [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
+
+        say("An upload stopped here after " + std::to_string(note.bytesSent) + " of " +
+            std::to_string(note.fileSize) + " bytes; looking for the part it left");
+        // Network code: whatever it throws costs this note and no more.
+        auto call = [](auto&& fn) {
+            try { return fn(); }
+            catch (const std::exception& e) {
+                return UltraCloud::Result::Error(UltraCloud::ResultCode::Unknown, e.what());
+            } catch (...) {
+                return UltraCloud::Result::Error(UltraCloud::ResultCode::Unknown,
+                                                 "the provider failed");
+            }
+        };
+        std::vector<UltraCloud::Entry> entries;
+        UltraCloud::Result r = call([&]() {
+            return impl_->service->List(accountId, folderRemote, entries);
+        });
+        bool removed = false;
+        if (!r.IsOk()) {
+            unreachable = true;
+            settle(note.path, /*keep=*/true);
+            log_.Finish(logId, true,
+                        r.message.empty() ? "cannot list the folder"
+                                          : "cannot list the folder: " + r.message,
+                        DescribeResultCode(r.code), r.diagnostics);
+        } else {
+            const UltraCloud::Entry* there = nullptr;
+            for (const UltraCloud::Entry& e : entries) {
+                if (e.name == name) { there = &e; break; }
+            }
+            const uint64_t size = there && there->size > 0 ? static_cast<uint64_t>(there->size) : 0;
+            if (!there) {
+                say("No file of that name is there any more: nothing to remove");
+                settle(note.path, /*keep=*/false);
+                log_.Finish(logId, false, "", "", "");
+            } else if (there->isDirectory || !IsLeftByUnfinishedUpload(note, size)) {
+                say(there->isDirectory
+                        ? "A folder of that name is there now: it is kept"
+                        : "The file there is " + std::to_string(size) +
+                          " bytes - put there since the upload stopped, so it is kept");
+                settle(note.path, /*keep=*/false);
+                log_.Finish(logId, false, "", "", "");
+            } else {
+                say("The file there is " + std::to_string(size) +
+                    " bytes, the part the upload left: removing it");
+                r = call([&]() { return impl_->service->Delete(accountId, fileRemote, false); });
+                if (r.IsOk()) {
+                    removed = true;
+                    settle(note.path, /*keep=*/false);
+                    log_.Finish(logId, false, "", "", "");
+                } else {
+                    // Refused - a server that lets anyone upload but nobody
+                    // delete - or the connection went: asked again next start.
+                    settle(note.path, /*keep=*/true);
+                    log_.Finish(logId, true,
+                                r.message.empty() ? "cannot remove the part"
+                                                  : "cannot remove the part: " + r.message,
+                                DescribeResultCode(r.code), r.diagnostics);
+                }
+            }
+        }
+        UltraNet_SetThreadFtpLog(std::move(previousLog));
+        NotifyLogChanged();
+
+        if (!removed) continue;
+        // A folder the display shows from the cache loses the row now,
+        // without asking the server again.
+        bool cached = false;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            auto it = cache_.find(folder);
+            if (it != cache_.end()) {
+                std::vector<FilerEntry>& rows = it->second.entries;
+                rows.erase(std::remove_if(rows.begin(), rows.end(),
+                                          [&](const FilerEntry& f) { return f.path == note.path; }),
+                           rows.end());
+                cached = true;
+            }
+        }
+        if (!cached) continue;
+        if (UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent()) {
+            auto alive = alive_;
+            app->PostToUIThread([this, alive, folder]() {
+                if (!alive->load()) return;
+                if (onListingArrived) onListingArrived(folder);
+            });
+        }
+    }
+    if (dropped) SaveUnfinishedUploads();
+    {
+        // The job behind this says its own steps.
+        std::lock_guard<std::mutex> lk(mutex_);
+        activeJobStep_.clear();
+    }
+    if (idleAfter) {
+        std::size_t left = 0;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            left = queue_.size();
+        }
+        if (left == 0) ReportActivity(RemoteActivity{}, /*force=*/true);
+    }
+#endif
+}
+
 std::shared_ptr<UltraCloud::CloudService> UltraFilerRemoteDrives::Service() {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
     return nullptr;
@@ -1290,6 +1614,23 @@ void UltraFilerRemoteDrives::WorkerMain() {
             activeTransfer_.running = activeIsTransfer_;
         }
 
+        // What an FTP upload that stopped part way left on this drive goes
+        // first: before a listing that would show it as a file, and before a
+        // change that could trip over it. A job that itself replaces, removes
+        // or moves that file settles the note instead.
+        {
+            const std::string accountId = RemoteFilerAccountId(job.path);
+            bool settled = false, cleanUp = false;
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                settled = SettleUnfinishedUploadsLocked(job);
+                cleanUp = HasUnfinishedUploadsLocked(accountId);
+            }
+            if (settled) SaveUnfinishedUploads();
+            if (cleanUp && !stopping_.load())
+                CleanUpUnfinishedUploads(accountId, waiting, /*idleAfter=*/job.isPrefetch);
+        }
+
         // What this job is, said before it starts rather than after: the whole
         // point is to fill the wait, and a report that arrives with the answer
         // fills nothing.
@@ -1330,20 +1671,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // transfer. Both fire on this thread, inside the provider call, so
         // the copy needs no lock.
         auto current = std::make_shared<RemoteActivity>(activity);
-        const bool reportsActivity = !job.isPrefetch;
-        auto onLine = [this, logId, current, reportsActivity, http](const RemoteLogLine& line) {
-            log_.Append(logId, line);
-            NotifyLogChanged();
-            if (!reportsActivity) return;
-            // Every step, not one in eighty milliseconds: when a connection
-            // hangs, the step on screen has to be the one it hangs at.
-            current->step = StepText(line, http);
-            {
-                std::lock_guard<std::mutex> lk(mutex_);
-                activeJobStep_ = current->step;
-            }
-            ReportActivity(*current, /*force=*/true);
-        };
+        auto onLine = MakeLineSink(logId, current, !job.isPrefetch, http);
         UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
                 [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
@@ -1489,6 +1817,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // the cache still holds. Done even on failure: a half-applied change
         // is exactly when the cached listing is least trustworthy.
         std::string changedFolder;
+        bool notedUpload = false;
         if (!job.isListing) {
             if (job.operation == RemoteOperation::Download) {
                 // A download changes nothing on the drive - the folder that
@@ -1512,7 +1841,13 @@ void UltraFilerRemoteDrives::WorkerMain() {
             if (operationError.empty() && !lastOperationError_.empty())
                 operationError = lastOperationError_;
             lastOperationError_.clear();
+            // An FTP upload that stopped part way - the window closing calls
+            // it off, a connection breaks - left what it sent on the server.
+            if (job.operation == RemoteOperation::Upload && outcome.failed)
+                notedUpload = NoteUnfinishedUploadLocked(job, current->bytesDone,
+                                                         current->bytesTotal);
         }
+        if (notedUpload) SaveUnfinishedUploads();
 
         if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
 
@@ -1551,6 +1886,24 @@ void UltraFilerRemoteDrives::WorkerMain() {
             });
         }
     }
+}
+
+std::function<void(const RemoteLogLine&)> UltraFilerRemoteDrives::MakeLineSink(
+        uint64_t logId, std::shared_ptr<RemoteActivity> current,
+        bool reportsActivity, bool http) {
+    return [this, logId, current, reportsActivity, http](const RemoteLogLine& line) {
+        log_.Append(logId, line);
+        NotifyLogChanged();
+        if (!reportsActivity) return;
+        // Every step, not one in eighty milliseconds: when a connection
+        // hangs, the step on screen has to be the one it hangs at.
+        current->step = StepText(line, http);
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            activeJobStep_ = current->step;
+        }
+        ReportActivity(*current, /*force=*/true);
+    };
 }
 
 uint64_t UltraFilerRemoteDrives::BeginLogSession(const Job& job) {

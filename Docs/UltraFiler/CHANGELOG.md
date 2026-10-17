@@ -20,6 +20,23 @@
   file in the folder under its full name. It is removed when the download
   fails; the name was a free one when the download was queued, so nothing
   else is touched.
+- **An FTP upload stopped part way is cleaned up the next time the drive
+  is used.** An FTP, FTPS or SFTP server writes an upload into the file as
+  it arrives and has no way to take it back, so an upload stopped part
+  way (UltraFiler quit during it, or the connection broke) left the part
+  already sent on the server under the file's full name, looking like the
+  file. UltraFiler now notes each one (`remote-unfinished-uploads` in its
+  configuration folder) and, before the next request to that drive - in
+  the same session or after a restart - lists the folder and deletes the
+  file, as long as it is still shorter than the whole file and no longer
+  than what was sent. A file of any other size was put there since -
+  finished by another program, or another file of that name - and is kept.
+  Uploading, deleting or renaming that file yourself settles the note; a
+  server that refuses the delete, or cannot be reached, is asked again at
+  the next start, and a note is dropped after 30 days. Each cleanup is a
+  session of the connection log (*Remove unfinished upload*) saying what
+  it found and what it did. WebDAV, Nextcloud and the cloud services keep
+  an incomplete upload apart and discard it themselves.
 
 #### 2026-10-15 *1.74.1*
 - **The colour popup's picker is the framework's light picker.** Settings >
