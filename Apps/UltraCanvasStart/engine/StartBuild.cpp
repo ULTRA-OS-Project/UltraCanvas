@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartBuild.cpp
+// Version: 0.1.1 - cmake's output reaches onOutput as it comes
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartBuild.h"
@@ -78,7 +79,17 @@ BuildResult BuildProject(const std::string& folder, const SystemProfile& profile
         const std::string line = DisplayLine(argv) + "\n";
         result.output += line;
         if (onOutput) onOutput(line);
-        const auto output = UltraCanvas::RunProcessCaptured(argv, {}, environment);
+        // cmake's output as it comes, so a long build shows its progress.
+        bool endsInNewline = true;
+        UltraCanvas::ProcessOutputCallback chunk;
+        if (onOutput) {
+            chunk = [&onOutput, &endsInNewline](const char* data, size_t size, bool) {
+                if (size == 0) return;
+                onOutput(std::string(data, size));
+                endsInNewline = data[size - 1] == '\n';
+            };
+        }
+        const auto output = UltraCanvas::RunProcessCaptured(argv, {}, environment, chunk);
         result.started = output.started;
         result.exitCode = output.exitCode;
         if (!output.started) {
@@ -94,7 +105,7 @@ BuildResult BuildProject(const std::string& folder, const SystemProfile& profile
         }
         if (!text.empty() && text.back() != '\n') text += '\n';
         result.output += text;
-        if (onOutput) onOutput(text);
+        if (onOutput && !endsInNewline) onOutput("\n");
         if (!output.Succeeded()) return result;
         if (i == 0) result.configured = true; else result.built = true;
     }

@@ -12,6 +12,7 @@
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
 // badge for the key/value cards (step 1, step 4).
+// Version: 0.3.3 - MakeChoiceSwitch (a missing row's switch: install it or not)
 // Version: 0.3.2 - kAlertText: red, for the None among the AI assistants
 // Version: 0.3.1 - the console is dark again: a text area paints the element's
 //                  background, not its style's (MakeConsole, MakeMarkdownView)
@@ -521,6 +522,16 @@ MakeIndicatorSwitch(const std::string& id, bool on) {
     indicator->SetDisabled(true);
     indicator->layoutItem.SetFlexShrink(0);
     return indicator;
+}
+
+// The same switch, but the programmer flips it: on installs the row's package,
+// off leaves it out.
+inline std::shared_ptr<UltraCanvas::UltraCanvasSwitch>
+MakeChoiceSwitch(const std::string& id, bool on) {
+    auto choice = UltraCanvas::UltraCanvasSwitch::Create(id, 0, 0, "", on);
+    choice->SetTrackSize(28, 14);
+    choice->layoutItem.SetFlexShrink(0);
+    return choice;
 }
 
 } // namespace Theme
