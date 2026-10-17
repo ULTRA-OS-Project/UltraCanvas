@@ -28,6 +28,7 @@
   - [Toggle Mode (Text Formatting Toolbar)](#toggle-mode-text-formatting-toolbar)
   - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
   - [Disabled Segments](#disabled-segments)
+  - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
   - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
 - [Keyboard Navigation](#keyboard-navigation)
 - [See Also](#see-also)
@@ -101,6 +102,9 @@ void SetSegmentIcon(int index, const std::string& iconPath);
 void SetSegmentEnabled(int index, bool enabled);
 bool IsSegmentEnabled(int index) const;
 void SetSegmentWidth(int index, float width);    // Used with SegmentWidthMode::Custom
+// One segment's text colour while it is not selected; selected, it takes
+// selectedTextColor. Colors::Transparent restores the style's colours.
+void SetSegmentTextColor(int index, const Color& color);
 ```
 
 ### Selection — Single Mode
@@ -371,6 +375,21 @@ disabledControl->SetSegmentEnabled(1, false);
 disabledControl->SetSegmentEnabled(3, false);
 disabledControl->SetSelectedIndex(0);
 // Keyboard navigation automatically skips disabled segments.
+```
+
+### A Segment in Its Own Colour
+
+One option set apart from the rest - a choice that leaves something out, in
+red. The colour applies while the segment is not selected; selected, it reads
+`selectedTextColor` like every other segment.
+
+```cpp
+auto assistant = CreateSegmentedControl("assistant", 50, 700, 600, 32);
+assistant->AddSegment("None");
+assistant->AddSegment("Claude Code");
+assistant->AddSegment("Codex");
+assistant->SetSegmentTextColor(0, Color(200, 30, 30));
+assistant->SetSelectedIndex(1);
 ```
 
 ### Variable-Length Segments with a Custom Theme

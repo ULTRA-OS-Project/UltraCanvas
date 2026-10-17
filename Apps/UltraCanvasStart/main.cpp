@@ -10,6 +10,7 @@
 // or --plan it runs headless, which is what CI uses to smoke-test it, and
 // --create writes the project skeleton headless, which CI builds against
 // the SDK it just installed, so the skeleton is known to compile.
+// Version: 0.2.3 - --assistant none: no AI assistant, no instruction file
 // Version: 0.2.2 - --step reaches 6 (Build); --page build
 // Version: 0.2.1 - --create <folder> (--name, --sdk) writes the skeleton headless
 // Version: 0.2.0 - --step <n>; --page maps the old names to steps
@@ -76,7 +77,7 @@ void PrintUsage(const char* programName) {
         "  --page <name>     The page names before 0.3.0 (platform, system, choices,\n"
         "                    install, project, ai) and build, mapped to their step;\n"
         "                    guide and report open those dialogs\n"
-        "  --assistant <ai>  claude, codex, copilot, gemini or other: the assistant\n"
+        "  --assistant <ai>  none, claude, codex, copilot, gemini or other: the AI assistant\n"
         "                    the plan and the project are for (default claude)\n"
         "  --create <folder> Write the project skeleton into the folder (as the\n"
         "                    Project step does) and exit; no window\n"
@@ -171,9 +172,10 @@ int main(int argc, char* argv[]) {
             page = argv[++i];
         } else if (arg == "--assistant") {
             if (i + 1 >= argc || !UltraCanvasStart::AssistantFromName(argv[i + 1], choices.assistant)) {
-                std::printf("--assistant needs claude, codex, copilot, gemini or other\n");
+                std::printf("--assistant needs none, claude, codex, copilot, gemini or other\n");
                 return EXIT_FAILURE;
             }
+            if (choices.assistant == UltraCanvasStart::Assistant::NoAssistant) choices.useAi = false;
             ++i;
         } else if (arg == "--create") {
             if (i + 1 >= argc) {
@@ -218,6 +220,7 @@ int main(int argc, char* argv[]) {
     }
     if (create) {
         project.assistant = choices.assistant;
+        project.withAiNotes = choices.useAi;
         return RunCreate(project);
     }
 

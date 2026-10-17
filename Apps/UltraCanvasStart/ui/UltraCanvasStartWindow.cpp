@@ -1,4 +1,8 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.4.2 - the SDK from the UltraOS download page: Download page opens it in
+//                  the browser, Unpack... unpacks the archive the user fetched
+// Version: 0.4.1 - None (a local IDE or compiler) first among the AI assistants,
+//                  in red; it turns the instruction file and the cloud option off
 // Version: 0.4.0 - step 6, Build: the skeleton compiled from the window (StartBuild),
 //                  the first prompt and the report after it
 // Version: 0.3.1 - the Tools step: a row per check with a switch for whether
@@ -26,12 +30,14 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSwitch.h"
 
 #include <algorithm>
+#include <filesystem>
 
 using namespace UltraCanvas;
 
@@ -53,8 +59,9 @@ const DependencyGroup kGroups[] = {
 
 // The pickers' segments, in order.
 const Platform kPlatforms[] = { Platform::Linux, Platform::MacOS, Platform::Windows };
-const Assistant kAssistants[] = { Assistant::ClaudeCode, Assistant::Codex, Assistant::Copilot,
-                                  Assistant::Gemini, Assistant::Other };
+const Assistant kAssistants[] = { Assistant::NoAssistant, Assistant::ClaudeCode, Assistant::Codex,
+                                  Assistant::Copilot, Assistant::Gemini, Assistant::Other };
+constexpr int kAssistantCount = static_cast<int>(sizeof(kAssistants) / sizeof(kAssistants[0]));
 
 int PlatformIndex(Platform platform) {
     for (int i = 0; i < 3; ++i) if (kPlatforms[i] == platform) return i;
@@ -62,14 +69,14 @@ int PlatformIndex(Platform platform) {
 }
 
 int AssistantIndex(Assistant assistant) {
-    for (int i = 0; i < 5; ++i) if (kAssistants[i] == assistant) return i;
+    for (int i = 0; i < kAssistantCount; ++i) if (kAssistants[i] == assistant) return i;
     return 0;
 }
 
 // What each step decides, under its heading.
 const char* kStepHints[kStepCount] = {
     "What this computer has, and the way in for any platform. Nothing to decide here.",
-    "Which features the application needs, and which assistant you work with.",
+    "Which features the application needs, and which AI assistant you work with.",
     "Whether the tools and libraries are there; what is missing can be installed from here.",
     "Where find_package(UltraCanvas) will look: the prebuilt SDK, or a clone built from source.",
     "The application: its name and folder, then the files are written.",
@@ -269,7 +276,7 @@ std::shared_ptr<UltraCanvasStepper> UltraCanvasStartWindow::BuildStepper() {
                                  kWindowWidth - 2 * kSideMargin, kStepperHeight);
     stepper->SetSteps({
         { "Your computer", "what was found" },
-        { "Features",      "what for, which assistant" },
+        { "Features",      "what for, which AI assistant" },
         { "Tools",         "checks and install" },
         { "Framework",     "SDK or source" },
         { "Project",       "name, folder, create" },
@@ -452,18 +459,23 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFeaturesStep(
     }
     pane->AddChild(features);
 
-    auto assistant = Theme::MakeCard("ucsAssistantCard", "Which assistant do you work with?");
+    auto assistant = Theme::MakeCard("ucsAssistantCard", "Which AI assistant do you work with?");
     auto pickRow = Theme::MakeRow("ucsAssistantRow");
     std::vector<std::string> names;
-    for (auto a : kAssistants) names.push_back(a == Assistant::Other ? "Other" : AssistantName(a));
+    for (auto a : kAssistants) {
+        names.push_back(a == Assistant::NoAssistant ? "None" : a == Assistant::Other ? "Other" : AssistantName(a));
+    }
     assistantPicker_ = Theme::MakeSegmented("ucsAssistantPicker", names,
-                                            AssistantIndex(choices_.assistant), 540);
+                                            AssistantIndex(choices_.assistant), 648);
+    // None - a local IDE or the compiler, no assistant - stands out in red.
+    assistantPicker_->SetSegmentTextColor(AssistantIndex(Assistant::NoAssistant), Theme::kAlertText);
     assistantPicker_->onSegmentSelected = [this](int index) { SelectAssistant(kAssistants[index]); };
     pickRow->AddChild(assistantPicker_);
     assistant->AddChild(pickRow);
     aiBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseAi", 0, 0, 800, Theme::kRowHeight,
         "Write its instruction file into the project and prepare the first prompt",
-        choices_.useAi);
+        choices_.useAi && choices_.assistant != Assistant::NoAssistant);
+    aiBox_->SetDisabled(choices_.assistant == Assistant::NoAssistant);
     cloudBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsCloud", 0, 0, 800, Theme::kRowHeight,
         "...through GitHub only, with no compiler on this machine (Docs/GettingStarted-Cloud.md)",
         choices_.cloudOnly);
@@ -538,7 +550,6 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
     auto pane = NewPane("ucsFrameworkStep");
     const std::string version = FrameworkVersion();
     const std::string archive = SdkArchiveName(profile_.platform, version, profile_.architecture);
-    const std::string assetUrl = SdkReleaseAssetUrl(profile_.platform, version, profile_.architecture);
 
     auto card = Theme::MakeCard("ucsFrameworkCard", "How does the application get the framework?");
     auto wayRow = Theme::MakeRow("ucsWayRow");
@@ -560,20 +571,13 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
         card->AddChild(row);
     }
     {
-        auto row = Theme::MakeKeyRow("ucsFwRelease", "Download");
-        row->AddChild(Theme::MakeLink("ucsFwReleaseLink", assetUrl, assetUrl));
+        auto row = Theme::MakeKeyRow("ucsFwDownload", "Download page");
+        row->AddChild(Theme::MakeLink("ucsFwDownloadLink", SdkDownloadPage(), SdkDownloadPage()));
         card->AddChild(row);
     }
     {
-        auto row = Theme::MakeKeyRow("ucsFwReleasePage", "Release page");
+        auto row = Theme::MakeKeyRow("ucsFwReleasePage", "Also on GitHub");
         row->AddChild(Theme::MakeLink("ucsFwReleasePageLink", SdkReleasePage(version), SdkReleasePage(version)));
-        card->AddChild(row);
-    }
-    {
-        auto row = Theme::MakeKeyRow("ucsFwArtifacts", "Still building?");
-        row->AddChild(Theme::MakeLink("ucsFwArtifactsLink",
-                                      "the same archive is a workflow artifact on the Actions page",
-                                      SdkDownloadPage()));
         card->AddChild(row);
     }
     sdkRow_ = Theme::MakeRow("ucsSdkRow");
@@ -587,9 +591,12 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
     sdkPrefixInput_->layoutItem.SetFlexGrow(1);
     sdkPrefixInput_->onTextChanged = [this](const std::string&) { ReadChoicesFromPanes(); RefreshFrameworkStep(); };
     sdkRow_->AddChild(sdkPrefixInput_);
-    downloadButton_ = Theme::MakeButton("ucsDownloadSdk", "Download and unpack...", true, 150);
-    downloadButton_->onClick = [this]() { DownloadAndUnpackSdk(); };
+    downloadButton_ = Theme::MakeButton("ucsDownloadSdk", "Download page", true, 120);
+    downloadButton_->onClick = [this]() { OpenSdkDownloadPage(); };
     sdkRow_->AddChild(downloadButton_);
+    unpackButton_ = Theme::MakeButton("ucsUnpackSdk", "Unpack...", false, 90);
+    unpackButton_->onClick = [this]() { UnpackSdk(); };
+    sdkRow_->AddChild(unpackButton_);
     findButton_ = Theme::MakeButton("ucsFindSdk", "Find...", false, 80);
     findButton_->onClick = [this]() { FindSdk(); };
     sdkRow_->AddChild(findButton_);
@@ -788,9 +795,9 @@ void UltraCanvasStartWindow::OnEnterStep(int index) {
     if (index == static_cast<int>(Step::Build)) RefreshBuildStep();
     static const char* kStatus[kStepCount] = {
         "Step 1 of 6: this is what was found. Next goes on to the features.",
-        "Step 2 of 6: tick what the application needs and pick your assistant.",
+        "Step 2 of 6: tick what the application needs and pick your AI assistant, or None.",
         "Step 3 of 6: the checks run now; Install what is missing runs the package manager.",
-        "Step 4 of 6: fetch the SDK here, or choose to build the framework from source.",
+        "Step 4 of 6: download the SDK and unpack it here, or choose to build the framework from source.",
         "Step 5 of 6: name the application and create it.",
         "Step 6 of 6: build the project to prove the installation, then hand it to the assistant."
     };
@@ -822,8 +829,18 @@ void UltraCanvasStartWindow::SelectGuidePlatform(Platform platform) {
 }
 
 void UltraCanvasStartWindow::SelectAssistant(Assistant assistant) {
+    const bool wasNone = choices_.assistant == Assistant::NoAssistant;
+    const bool none = assistant == Assistant::NoAssistant;
     choices_.assistant = assistant;
     if (aiView_) aiView_->SetText(AiGuide(ai_, profile_.platform, assistant), false);
+    // Without an assistant there is no instruction file to write and no
+    // GitHub-only way of working: the box is unticked and off, and ticked
+    // again when an assistant is picked.
+    if (aiBox_) {
+        if (none != wasNone) aiBox_->SetChecked(!none);
+        aiBox_->SetDisabled(none);
+    }
+    ReadChoicesFromPanes();
     RefreshPlan();
 }
 
@@ -934,9 +951,8 @@ void UltraCanvasStartWindow::FindSdk() {
     if (prefix.empty()) {
         UltraCanvasDialogManager::ShowError(
             "No lib/cmake/UltraCanvas/UltraCanvasConfig.cmake under " + chosen +
-            ".\n\nUnpack " + SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture) +
-            " first - \"Download and unpack...\" fetches it from\n" +
-            SdkReleaseAssetUrl(profile_.platform, FrameworkVersion(), profile_.architecture),
+            ".\n\nDownload " + SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture) +
+            " from\n" + SdkDownloadPage() + "\nand unpack it with \"Unpack...\" first.",
             "Not an SDK folder", nullptr, window_.get());
         return;
     }
@@ -946,43 +962,49 @@ void UltraCanvasStartWindow::FindSdk() {
     RefreshPlan();
 }
 
-void UltraCanvasStartWindow::DownloadAndUnpackSdk() {
+void UltraCanvasStartWindow::OpenSdkDownloadPage() {
+    const std::string archiveName = SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture);
+    OpenURL(SdkDownloadPage());
+    SetStatus("Download " + archiveName + " in the browser, then Unpack... it.");
+}
+
+void UltraCanvasStartWindow::UnpackSdk() {
     if (working_) return;
-    const std::string version = FrameworkVersion();
-    const std::string url = SdkReleaseAssetUrl(profile_.platform, version, profile_.architecture);
-    const std::string archiveName = SdkArchiveName(profile_.platform, version, profile_.architecture);
-    if (!SdkDownloadAvailable()) {
-        // No network module in this build: hand the address over instead.
-        SetClipboardText(url);
-        UltraCanvasDialogManager::ShowInformation(
-            "This build of UltraCanvasStart cannot download. The address is on the clipboard:\n\n" + url +
-            "\n\nFetch it in a browser, unpack it, and use Find... to point at the folder.",
-            "Download the SDK", nullptr, window_.get());
-        return;
-    }
-    const std::string folder = UltraCanvasNativeDialogs::SelectFolder(
-        "Where should the SDK be unpacked?", profile_.homeDirectory, window_.get());
-    if (folder.empty()) return;
-    const std::string archive = folder + "/" + archiveName;
+    FileDialogOptions options;
+    options.title = "Which SDK archive did you download?";
+    options.initialDirectory = profile_.homeDirectory;
+    options.parentWindow = window_.get();
+    options.registerAsRecent = false;
+    options.AddFilter("SDK archives", std::vector<std::string>{ "zip", "xz", "gz" });
+    UltraCanvasFileLoader::OpenFileDialog(options, [this](DialogResult result, const std::string& archive) {
+        if (result != DialogResult::OK || archive.empty()) return;
+        StartUnpack(archive);
+    });
+}
+
+void UltraCanvasStartWindow::StartUnpack(const std::string& archive) {
+    if (working_) return;
+    // Beside the archive: unpacked, it is a folder named like it.
+    const std::string folder = PathToUtf8(PathFromUtf8(archive).parent_path());
+    const std::string archiveName = PathToUtf8(PathFromUtf8(archive).filename());
 
     if (worker_.joinable()) worker_.join();
     working_ = true;
     SetBusy(true);
-    SetStatus("Downloading " + archiveName + "...");
+    SetStatus("Unpacking " + archiveName + "...");
     const SystemProfile profile = profile_;
-    worker_ = std::thread([this, url, archive, folder, profile, archiveName]() {
+    worker_ = std::thread([this, archive, folder, profile]() {
         std::string error;
-        bool ok = DownloadSdk(url, archive, error);
-        if (ok) {
-            RunOnUiThread([this, archiveName]() { SetStatus("Unpacking " + archiveName + "..."); });
-            const RunResult unpack = RunStep(UnpackStep(archive, folder), profile);
-            ok = unpack.Succeeded();
-            if (!ok) error = unpack.started ? "tar could not unpack the archive:\n" + unpack.output
-                                           : unpack.error;
-        }
+        const RunResult unpack = RunStep(UnpackStep(archive, folder), profile);
+        bool ok = unpack.Succeeded();
+        if (!ok) error = unpack.started ? "tar could not unpack the archive:\n" + unpack.output
+                                       : unpack.error;
         std::string prefix;
         if (ok) {
-            prefix = FindSdkPrefix(folder);
+            // The folder named like the archive first: the download folder
+            // may hold other SDKs.
+            prefix = FindSdkPrefix(SdkUnpackedFolder(archive));
+            if (prefix.empty()) prefix = FindSdkPrefix(folder);
             if (prefix.empty()) {
                 ok = false;
                 error = "The archive was unpacked, but no lib/cmake/UltraCanvas/UltraCanvasConfig.cmake "
@@ -993,8 +1015,8 @@ void UltraCanvasStartWindow::DownloadAndUnpackSdk() {
             working_ = false;
             SetBusy(false);
             if (!ok) {
-                SetStatus("The SDK download did not finish.");
-                UltraCanvasDialogManager::ShowError(error, "Download the SDK", nullptr, window_.get());
+                SetStatus("The SDK was not unpacked.");
+                UltraCanvasDialogManager::ShowError(error, "Unpack the SDK", nullptr, window_.get());
                 return;
             }
             if (sdkPrefixInput_) sdkPrefixInput_->SetText(prefix);
@@ -1197,7 +1219,7 @@ void UltraCanvasStartWindow::ReadChoicesFromPanes() {
         choices_.useSdk = wayPicker_->GetSelectedIndex() == 0;
         choices_.cloneFramework = !choices_.useSdk;
     }
-    if (aiBox_)    choices_.useAi = aiBox_->IsChecked();
+    if (aiBox_)    choices_.useAi = aiBox_->IsChecked() && choices_.assistant != Assistant::NoAssistant;
     if (cloudBox_) choices_.cloudOnly = cloudBox_->IsChecked() && choices_.useAi;
     if (appNameInput_ && !appNameInput_->GetText().empty()) choices_.appName = appNameInput_->GetText();
     if (folderInput_) choices_.projectFolder = folderInput_->GetText();
@@ -1294,9 +1316,10 @@ void UltraCanvasStartWindow::RefreshFrameworkStep() {
             text += "The SDK is the framework already built: the headers, the libraries, the plug-ins and the "
                     "CMake package that `find_package(UltraCanvas)` reads "
                     "([Docs/UltraCanvasSDK.md](https://github.com/ULTRA-OS-Project/UltraCanvas/blob/main/Docs/UltraCanvasSDK.md)).\n\n";
-            text += "1. **Download and unpack...** fetches the archive above into a folder you pick and unpacks it there.\n";
-            text += "2. Or unpack it yourself and use **Find...** to point at the folder.\n";
-            text += "3. The prefix goes into the project's `CMakePresets.json` as `CMAKE_PREFIX_PATH`.\n";
+            text += "1. **Download page** opens " + SdkDownloadPage() + " in the browser: download the archive named above.\n";
+            text += "2. **Unpack...** unpacks the downloaded archive beside it and fills the prefix in.\n";
+            text += "3. Or unpack it yourself and use **Find...** to point at the folder.\n";
+            text += "4. The prefix goes into the project's `CMakePresets.json` as `CMAKE_PREFIX_PATH`.\n";
             if (!prefix.empty()) text += "\nThe prefix is `" + prefix + "`.\n";
             else text += "\nWithout a prefix the project is still written; set `CMAKE_PREFIX_PATH` in `CMakePresets.json` later.\n";
         } else {
@@ -1362,6 +1385,7 @@ void UltraCanvasStartWindow::SetBusy(bool busy) {
     // manager here can install; otherwise it stays off (CanInstall).
     if (installButton_) installButton_->SetDisabled(busy || !CanInstall());
     if (downloadButton_) downloadButton_->SetDisabled(busy);
+    if (unpackButton_) unpackButton_->SetDisabled(busy);
     if (findButton_) findButton_->SetDisabled(busy);
     if (createButton_) createButton_->SetDisabled(busy);
     if (buildButton_) buildButton_->SetDisabled(busy || !projectCreated_);

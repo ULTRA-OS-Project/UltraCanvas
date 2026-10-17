@@ -3,6 +3,7 @@
 // machine has, what the programmer chose, what the checks found and the plan
 // the two together produce. Plain data, no UI, shared by the GUI, the CLI
 // modes and the test suite.
+// Version: 0.1.2 - Assistant::NoAssistant ("None"): a local IDE or compiler, no AI
 // Version: 0.1.1 - Assistant: which AI the programmer works with
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -115,8 +116,11 @@ struct CheckResult {
 // any of them: Claude Code reads CLAUDE.md, Codex and Copilot read the
 // vendor-neutral AGENTS.md, Gemini CLI reads GEMINI.md, and anything else
 // (Cursor, Windsurf, a chat) takes AGENTS.md as pasted instructions and
-// llms-full.txt as the corpus (Docs/GettingStarted.md, step 3).
+// llms-full.txt as the corpus (Docs/GettingStarted.md, step 3). None is
+// the programmer without one, in a local IDE or with the compiler alone:
+// no instruction file, no first prompt (Choices::useAi is false).
 enum class Assistant {
+    NoAssistant,  // "None" in the picker: a local IDE or the compiler (X11 defines None)
     ClaudeCode,
     Codex,        // OpenAI Codex CLI
     Copilot,      // GitHub Copilot CLI / coding agent
@@ -128,7 +132,7 @@ std::string AssistantName(Assistant assistant);
 // The file the assistant reads from a project root: CLAUDE.md, AGENTS.md
 // or GEMINI.md.
 std::string AssistantInstructionFile(Assistant assistant);
-// "claude", "codex", "copilot", "gemini" or "other" (--assistant); false
+// "none", "claude", "codex", "copilot", "gemini" or "other" (--assistant); false
 // for anything else.
 bool AssistantFromName(const std::string& name, Assistant& out);
 
