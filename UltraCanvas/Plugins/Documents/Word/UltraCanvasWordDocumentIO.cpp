@@ -2,8 +2,8 @@
 // Format detection and load/save dispatch for word-processing documents.
 // The per-format readers/writers live in UltraCanvasOdtFormat.cpp,
 // UltraCanvasDocxFormat.cpp and Plugins/Documents/LaTeX/.
-// Version: 1.1.0
-// Last Modified: 2026-09-09
+// Version: 1.2.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -11,6 +11,7 @@
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOfficeEncryption.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -93,9 +94,9 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
 }
 
 bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocument,
-                            std::string& outError) {
+                            std::string& outError, const std::string& password) {
     outError.clear();
-    if (!LoadByFormat(filePath, outDocument, outError)) return false;
+    if (!LoadByFormat(filePath, outDocument, outError, password)) return false;
     // Every format can carry text in a Windows symbol font; the model holds
     // what it depicts instead, so it draws without that font installed.
     WordFormatInternal::MapSymbolFontRuns(outDocument);
@@ -106,13 +107,17 @@ bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocu
 }
 
 bool UCWordDocumentIO::LoadByFormat(const std::string& filePath, UCRichDocument& outDocument,
-                                    std::string& outError) {
+                                    std::string& outError, const std::string& password) {
     switch (DetectWordDocumentFormat(filePath)) {
         case WordDocumentFormat::Odt:
             return LoadOdt(filePath, outDocument, outError);
         case WordDocumentFormat::Docx:
             return LoadDocx(filePath, outDocument, outError);
         case WordDocumentFormat::LegacyDoc: {
+            // A password-protected .docx is a compound file as well.
+            if (IsEncryptedOfficePackage(filePath)) {
+                return LoadDocx(filePath, outDocument, outError, password);
+            }
             // Read-only: the binary format is never written (export goes
             // to .docx or .odt).
             std::string extractError;

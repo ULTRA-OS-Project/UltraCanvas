@@ -2192,8 +2192,10 @@ bool ReadBiff(UCCompoundFileReader& cfb, XlsWorkbook& out, std::string& error,
         if (cfb.ReadStream("Book", stream)) {
             streamBiff = 5;
         } else if (cfb.HasStream("EncryptedPackage")) {
+            // ECMA-376 encryption: the package inside is an .xlsx, which
+            // UltraCanvasSpreadsheet::LoadXLSX opens given the password.
             error = "The workbook is password-protected (an encrypted Excel 2007+ file); "
-                    "it cannot be read without the password";
+                    "open it as .xlsx with its password";
             return false;
         } else if (cfb.HasStream("WordDocument")) {
             error = "The file is a Word document, not an Excel workbook";
