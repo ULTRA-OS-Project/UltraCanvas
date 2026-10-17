@@ -263,7 +263,7 @@ static void TestAesCbc() {
         const std::string bits = std::to_string(key.GetSize() * 8);
         UltraCryptCbcParams params;
         params.iv = zeroIv;
-        params.padding = UltraCryptCbcPadding::None;
+        params.padding = UltraCryptCbcPadding::NoPadding;
         Check(static_cast<bool>(UltraCrypt_AesCbcEncrypt(key, params, block.data(),
                                                          block.size(), ct)),
               "AES-" + bits + " encrypts one block");
@@ -297,7 +297,7 @@ static void TestAesCbc() {
         const std::string bits = std::to_string(key.GetSize() * 8);
         UltraCryptCbcParams params;
         params.iv = iv;
-        params.padding = UltraCryptCbcPadding::None;
+        params.padding = UltraCryptCbcPadding::NoPadding;
         Check(static_cast<bool>(UltraCrypt_AesCbcEncrypt(key, params, plain.data(),
                                                          plain.size(), ct)),
               "CBC-AES" + bits + " encrypts");
@@ -369,7 +369,7 @@ static void TestAesCbc() {
         std::vector<uint8_t> forged(16, 0x10);
         UltraCryptCbcParams raw;
         raw.iv = zeroIv;
-        raw.padding = UltraCryptCbcPadding::None;
+        raw.padding = UltraCryptCbcPadding::NoPadding;
         std::vector<uint8_t> forgedCt;
         UltraCrypt_AesCbcEncrypt(key, raw, forged.data(), 16, forgedCt);
         UltraCryptCbcParams padded;
@@ -415,7 +415,7 @@ static void TestAesCbc() {
         Check(UltraCrypt_AesCbcDecrypt(key, params, nullptr, 0, back).code ==
                   UltraCryptResultCode::InvalidArgument,
               "an empty ciphertext cannot hold PKCS #7 padding");
-        params.padding = UltraCryptCbcPadding::None;
+        params.padding = UltraCryptCbcPadding::NoPadding;
         Check(UltraCrypt_AesCbcEncrypt(key, params, plain.data(), 15, ct).code ==
                   UltraCryptResultCode::InvalidArgument,
               "without padding a partial block is InvalidArgument");

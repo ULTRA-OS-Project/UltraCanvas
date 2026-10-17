@@ -229,7 +229,7 @@ bool DecryptValue(const UltraCryptSecureBuffer& key, const std::vector<uint8_t>&
                   UltraCryptSecureBuffer& out) {
     UltraCryptCbcParams cbc;
     cbc.iv = iv;
-    cbc.padding = UltraCryptCbcPadding::None;
+    cbc.padding = UltraCryptCbcPadding::NoPadding;
     if (ciphertext.empty() || !UltraCrypt_AesCbcDecrypt(key, cbc, ciphertext.data(),
                                                         ciphertext.size(), out))
         return false;
@@ -450,7 +450,7 @@ OfficeDecryptStatus Decrypt(const std::vector<uint8_t>& encryptionInfo,
         const uint8_t index[4] = {static_cast<uint8_t>(segment), static_cast<uint8_t>(segment >> 8),
                                   static_cast<uint8_t>(segment >> 16), static_cast<uint8_t>(segment >> 24)};
         UltraCryptCbcParams cbc;
-        cbc.padding = UltraCryptCbcPadding::None;
+        cbc.padding = UltraCryptCbcPadding::NoPadding;
         UltraCryptSecureBuffer plain;
         if (!DeriveIv(dataParams, index, 4, cbc.iv) ||
             !UltraCrypt_AesCbcDecrypt(intermediateKey, cbc, encryptedPackage.data() + 8 + offset,

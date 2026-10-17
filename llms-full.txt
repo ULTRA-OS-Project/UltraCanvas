@@ -84255,7 +84255,7 @@ that does not expose one), so UltraCrypt carries its own:
 ```cpp
 enum class UltraCryptCbcPadding : uint8_t {
     Pkcs7,   // PKCS #7 / RFC 5652: 1-16 bytes, each the pad length
-    None     // the plaintext is a whole number of blocks (the format pads)
+    NoPadding // the plaintext is a whole number of blocks (the format pads)
 };
 
 struct UltraCryptCbcParams {
@@ -84282,7 +84282,7 @@ The key is 16, 24 or 32 bytes (AES-128 / 192 / 256); anything else is
 `InvalidKeySize`, an IV that is not 16 bytes `InvalidNonceSize`, a ciphertext
 that is not whole blocks `InvalidArgument`. With `Pkcs7`, padding that does
 not check out is `DecryptionFailed` with an empty output; the check runs
-without a branch on the plaintext. `None` is for formats that pad their own
+without a branch on the plaintext. `NoPadding` is for formats that pad their own
 way — agile encryption pads each 4096-byte segment to the block and records
 the true length elsewhere.
 

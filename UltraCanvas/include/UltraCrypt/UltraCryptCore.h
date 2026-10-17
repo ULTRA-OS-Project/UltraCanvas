@@ -280,7 +280,8 @@ UltraCryptResult UltraCrypt_AeadOpen(const UltraCryptSecureBuffer& key,
 // plaintext without the key.
 enum class UltraCryptCbcPadding : uint8_t {
     Pkcs7,   // PKCS #7 / RFC 5652: 1-16 bytes, each the pad length
-    None     // the plaintext is a whole number of blocks (the format pads)
+    NoPadding // the plaintext is a whole number of blocks (the format pads)
+              // (not `None`: X11 #defines None, see the note at the top)
 };
 
 struct UltraCryptCbcParams {
@@ -296,7 +297,7 @@ struct UltraCryptCbcParams {
 size_t UltraCrypt_GetAesBlockSize();   // 16; also the IV size
 
 // Ciphertext is the plaintext rounded up to whole blocks: with Pkcs7 always
-// 1-16 bytes longer, with None the same length (and the plaintext must be a
+// 1-16 bytes longer, with NoPadding the same length (and the plaintext must be a
 // multiple of 16 bytes, else InvalidArgument).
 UltraCryptResult UltraCrypt_AesCbcEncrypt(const UltraCryptSecureBuffer& key,
                                           UltraCryptCbcParams& params,
