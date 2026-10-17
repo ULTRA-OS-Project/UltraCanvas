@@ -37,6 +37,15 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
+The colour picker has a list of designs in its corner - colour circle,
+slider and square, colour rectangle, or colour and brightness sliders - and
+folds its channels (the HSV / HSL / RGB tabs and sliders) away under
+*Channels*. It is as tall as what it shows, so the panels below move up and
+down with it, and it opens with the design and the channels it was left
+with: `picker.design` and `picker.channels` in
+`~/.config/UltraCanvas/ArtCreator/config.ini` (the platform's settings folder
+elsewhere).
+
 ## Tools
 
 The palette groups its 19 tools as UltraPaint's does: tools of a kind share

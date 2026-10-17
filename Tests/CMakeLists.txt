@@ -1240,6 +1240,32 @@ else()
     message(STATUS "  UltraPaintSettingsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ARTCREATOR SETTINGS TEST =====
+# ArtCreator's settings file remembers the colour picker's design and its
+# open or folded channels, under the framework's names for the designs
+# (ColorPickerWheelStyleName). The settings are header-only
+# (Apps/ArtCreator/ArtCreatorSettings.h). Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ArtCreatorSettingsTest...")
+    add_executable(ArtCreatorSettingsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ArtCreatorSettingsTest.cpp
+    )
+    target_include_directories(ArtCreatorSettingsTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/ArtCreator
+    )
+    target_compile_features(ArtCreatorSettingsTest PRIVATE cxx_std_20)
+    target_link_libraries(ArtCreatorSettingsTest PRIVATE UltraCanvas)
+    set_target_properties(ArtCreatorSettingsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ArtCreatorSettingsTest COMMAND ArtCreatorSettingsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ArtCreatorSettingsTest")
+else()
+    message(STATUS "  ArtCreatorSettingsTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== DROPDOWN KEYBOARD TEST =====
 # Down / Up / Return choose an item of an open dropdown; Escape keeps the
 # choice. The dropdown takes the keyboard focus (Tab, a click, Down / Space to
