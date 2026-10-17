@@ -3,6 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.6 - GuardQuitDuringTransfers: the last window asks before it
+//                   ends a cloud upload or download
 // Version: 0.12.5 - the cloud stores and service are shared (shared_ptr), so
 //                   the cloud link picker's uploads and sign-ins can hold them
 // Version: 0.12.4 - HandleAddFolder / HandleDeleteFolder (the folder tree's
@@ -31,7 +33,7 @@
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -304,6 +306,17 @@ private:
     // Forgets a compose window once it has closed (on the next UI turn, never
     // inside the window's own close callback).
     void RetireComposer(UltraCanvas::UltraCanvasWindow* window);
+    // The last window closing ends UltraMail, and with it an upload or a
+    // download the cloud link picker is running: the file does not arrive.
+    // Every window UltraMail opens gets this guard: a close that would end the
+    // application while the cloud service has a transfer under way
+    // (CloudService::TransfersInProgress) asks first - "An upload is still
+    // running — quit anyway?" - and only "Quit anyway" lets it through. A
+    // window that is not the last closes as it always did; the transfer
+    // carries on behind the ones still open.
+    void GuardQuitDuringTransfers(const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& window);
+    void AskQuitDuringTransfers(const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& window,
+                                const std::vector<UltraCloud::CloudService::Transfer>& transfers);
     // `draft` with the signature of the account it is sent from (its fromAddr)
     // put in - as account settings define it.
     Draft WithSignature(Draft draft, DraftPurpose purpose) const;
@@ -627,6 +640,11 @@ private:
     bool         wakeCheckPending_ = false;   // a post-wake sync is scheduled
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    // The answer to GuardQuitDuringTransfers' question: "Quit anyway" lets the
+    // close it repeats go through. While the question is open, a second close
+    // does not ask it again.
+    bool quitConfirmed_ = false;
+    bool quitQuestionOpen_ = false;
     // The account view root; hidden while the start page is up (no account
     // configured) and shown once the first account exists.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> accountView_;

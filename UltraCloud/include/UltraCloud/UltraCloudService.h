@@ -1,10 +1,8 @@
 // UltraCloud/include/UltraCloud/UltraCloudService.h
 // The app-facing facade: accounts + secrets + providers behind one object.
 // "Share this file through my default cloud account" is one call.
-// Version: 0.5.0 - a service can own its stores (the shared_ptr
-//                  constructor), so it can be shared with work that outlives
-//                  whoever made it
-// Last Modified: 2026-10-14
+// Version: 0.6.0 - TransfersInProgress: the uploads and downloads under way
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -12,8 +10,11 @@
 #include "UltraCloudProvider.h"
 #include "UltraCloudSecrets.h"
 
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -90,7 +91,25 @@ public:
                           const std::string& remoteFolder, const ShareLinkOptions& options,
                           ShareLink& out, std::string* remotePathOut = nullptr);
 
+    // ---- What is under way ---------------------------------------------------
+    // An upload or a download a call on this service is running right now, on
+    // any thread: Upload, Download and UploadAndShare each count from the moment
+    // they start until they return. A host asks before it quits - a transfer
+    // ends with the process, and the file does not arrive (UltraMail: "An
+    // upload is still running - quit anyway?").
+    struct Transfer {
+        enum class Kind { Upload, Download };
+        Kind kind = Kind::Upload;
+        std::string accountId;
+        std::string localPath;    // the file read (upload) or written (download)
+        std::string remotePath;   // where it goes, or comes from, on the account
+    };
+    // In the order they started. Any thread.
+    std::vector<Transfer> TransfersInProgress() const;
+
 private:
+    // Counts a transfer for as long as it lives (TransfersInProgress).
+    class TransferScope;
     // Account + credentials + provider for an id. An expired OAuth token is
     // refreshed here and the new one stored, so callers never see a stale one;
     // `renewed`, when given, says whether that happened.
@@ -117,6 +136,10 @@ private:
     std::shared_ptr<ISecretStore> ownedSecrets_;
     AccountStore& accounts_;
     ISecretStore& secrets_;
+
+    mutable std::mutex transfersMutex_;
+    std::map<uint64_t, Transfer> transfers_;   // by start order
+    uint64_t nextTransferId_ = 0;
 };
 
 } // namespace UltraCloud
