@@ -1,3 +1,11 @@
+#### 2026-10-17 *1.74.2*
+- **The preview pane shows PDFs in the PDF view, and unlocks protected
+  files.** A PDF in the preview pane had been a picture of its first page; it
+  is the PDF view again, pages and all, and PDFs on a remote drive are still
+  fetched to preview them. A password-protected PDF or UltraCanvas layered
+  image shows an **Unlock** button in the pane's info line that asks for the
+  password (framework changelog, pending entry `media-viewer-unlock`).
+
 #### 2026-10-15 *1.74.1*
 - **The colour popup's picker is the framework's light picker.** Settings >
   Display > Treeview opens the colour picker with the framework's

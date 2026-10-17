@@ -77,7 +77,7 @@ tool and a missing plugin should stop it running.
 | `MediaKind` | Formats | Display view |
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
-| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
+| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`); a password-protected one is unlocked first (*Password-protected files*). Classified before `Vector`: a libvips with a PDF loader would otherwise take a PDF for a drawing and show its first page flat. Without the plugin a PDF is an image the pipeline rasterizes |
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
@@ -120,11 +120,12 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
 | Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
 | Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
-| `*.ucd` preview thumbnail | yes | — | — | — |
+| `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
 | Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
 
-*Details* is always there. Separators follow the groups, so none is left
+*Details* is always there; *Unlock* (`tools.unlock`) only while the shown file
+is password-protected and not unlocked yet - see *Password-protected files*. Separators follow the groups, so none is left
 standing alone. Text, spreadsheet, font, 3D, video and audio views carry their
 own controls (the players' transport bar, the model's orbit and dolly), so the
 row is down to *Details* for them.
@@ -231,12 +232,12 @@ format deliberately makes available without parsing the body:
 - a **layered image** (`UCBitmap`) whole: its layers read through
   `UCRasterDocument::LoadUCD` and composited, at full size - the picture,
   not the 256 px thumbnail - and zoomable like a photo (it is still not an
-  image to turn or save from here);
+  image to turn or save from here); a password-protected one once it is
+  unlocked (*Password-protected files*);
 - otherwise the **embedded preview thumbnail** (raw HEIC/PNG stored
   directly after the fixed header) on the image surface, when present —
   respecting the `PRIVATE` flag, which suppresses the preview. A
-  password-protected layered image comes here: the viewer does not ask for
-  passwords;
+  password-protected layered image shows this until it is unlocked;
 - otherwise a **header summary** in the text view.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
@@ -248,6 +249,46 @@ document) gets a summary saying why. For a layered image it adds the size
 and the layer count, and a *Shown* row says what the pane shows - the image
 at full size, or the thumbnail and why not the image (password-protected,
 damaged).
+
+## Password-protected files
+
+A file the viewer can open with its password - a layered `*.ucd` image
+(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
+or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
+(nothing when the document is private), or a note saying the PDF is
+password-protected. An **Unlock** button comes up in the info bar (so a host
+that hides the top bars, such as UltraFiler's preview pane, still offers it)
+and as an icon in the second toolbar row; **Enter** does the same. Unlock
+asks for the password over the viewer's window - again, saying so, when it
+is not right - and then shows the file whole: the image at full size with
+its layers composited, the PDF in its view with every page.
+
+Nothing asks on its own: browsing a folder of protected files never pops up
+a prompt. The password is not kept, so browsing away and back locks the file
+again. The info bar says *password-protected*, and the Details panel adds an
+*Encryption* row and a *Shown* row that says what Unlock would show.
+
+```cpp
+if (viewer->IsLocked()) {
+    viewer->Unlock();                      // asks, in a dialog
+}
+// ... or, with a password the host already has:
+const std::string password = "tulip";
+std::string why;
+const MediaUnlockResult result = viewer->UnlockWithPassword(password, why);
+if (result == MediaUnlockResult::WrongPassword) { /* still locked; `why` says so */ }
+else if (result == MediaUnlockResult::Failed)   { /* right, but it would not open */ }
+// Unlocked: shown whole. NotLocked: there was nothing to unlock.
+```
+
+What a protected PDF needs from the engine is a reason: `IPDFDocument` and
+`UltraCanvasPDFView` report it with `GetLastOpenError()` - `NeedsPassword`
+for a document opened without one, `WrongPassword` for one opened with the
+wrong one, `Failed` for anything else - so the viewer offers Unlock rather
+than calling the file damaged. A host that hides both bars still has Enter,
+or calls `Unlock()` itself. Formats the framework can tell are encrypted but
+not decrypt - an encrypted Excel workbook - say so in their view instead
+(*"The workbook is password-protected"*), with no Unlock.
 
 ## Details panel
 

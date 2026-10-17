@@ -1,3 +1,18 @@
+#### 2026-10-17 *1.0.8*
+- **Password-protected files open with their password.** A protected PDF or
+  UltraCanvas layered image (`.ucd`) shows an **Unlock** button in the bar at
+  the bottom (and a lock in the toolbar; Enter does the same): it asks for the
+  password, again if it is not right, and then shows the file - the PDF with
+  all its pages, the image at full size. Until then a `.ucd` shows its
+  thumbnail and a PDF a note saying it is protected. Browsing a folder never
+  asks on its own (framework changelog, pending entry `media-viewer-unlock`).
+- **PDFs show every page again.** A PDF had been shown as a picture of its
+  first page; it opens in the PDF view again, with the page strip and page
+  zoom.
+- **A layered `.ucd` image shows whole.** Its layers are drawn at full size
+  instead of the small thumbnail stored in the file (pending entry
+  `media-viewer-layered-ucd`).
+
 #### 2026-10-14 *1.0.7*
 - **One UltraViewer at a time.** Opening a file while UltraViewer is already
   running opens it in the running copy (in the viewer, in place of what it
