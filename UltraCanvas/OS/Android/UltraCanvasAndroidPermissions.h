@@ -3,8 +3,8 @@
 // rotation, for the parts of the framework that need a device: the video
 // backend's camera capture today.
 //
-// Version: 1.0.0
-// Last Modified: 2026-10-14
+// Version: 1.1.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -36,9 +36,17 @@ namespace AndroidPermissions {
 
     // Clockwise rotation of the display from the device's natural
     // orientation, in degrees (0, 90, 180, 270): what a camera frame must be
-    // turned by, together with the sensor's own orientation. 0 when it cannot
-    // be read (plain NativeActivity). Glue thread only.
+    // turned by, together with the sensor's own orientation. Asks the display
+    // now (JNI) and updates the value CurrentDisplayRotationDegrees returns.
+    // 0 when it cannot be read. Glue thread only.
     int DisplayRotationDegrees();
+
+    // The display rotation as last seen, from any thread - what a camera
+    // frame arriving on the camera's own thread is turned by. Kept current
+    // by UltraCanvasActivity's display listener (every turn, including the
+    // 180-degree flips that raise no configuration change) and by the
+    // application re-reading it on each configuration change and resize.
+    int CurrentDisplayRotationDegrees();
 
 } // namespace AndroidPermissions
 } // namespace UltraCanvas

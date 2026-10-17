@@ -4,8 +4,8 @@
 // the camera through its input surface, an AAC encoder fed from an AAudio
 // input stream, and AMediaMuxer writing the MP4.
 //
-// Version: 1.0.0
-// Last Modified: 2026-10-14
+// Version: 1.1.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "VideoBackendAndroid.h"
@@ -198,12 +198,11 @@ public:
         }
         fpsRange = ChooseFpsRange(camera.fpsRanges, params.frameRate);
 
-        // Turn frames upright for the display as it is now: the sensor is
-        // mounted at its own angle, and a front camera turns the other way.
-        const int display = AndroidPermissions::DisplayRotationDegrees();
+        // Frames are turned upright frame by frame (FrameRotation), so the
+        // preview follows the device as it turns. Read the display once now
+        // so the first frame is right even before any listener reports.
         mirror = camera.facing == ACAMERA_LENS_FACING_FRONT;
-        rotation = mirror ? (camera.sensorOrientation + display) % 360
-                          : (camera.sensorOrientation - display + 360) % 360;
+        AndroidPermissions::DisplayRotationDegrees();
 
         if (AImageReader_new(mode.width, mode.height, AIMAGE_FORMAT_YUV_420_888, 4,
                              &previewReader) != AMEDIA_OK) {
@@ -261,8 +260,10 @@ public:
         muxer = AMediaMuxer_new(outputFd, AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4);
         if (!muxer) { Fail("Cannot create the MP4 writer"); ReleaseRecorder(); return false; }
         // The file plays upright without turning the pixels; a player that
-        // honours the hint shows a front camera unmirrored, as recorded.
-        AMediaMuxer_setOrientationHint(muxer, rotation);
+        // honours the hint shows a front camera unmirrored, as recorded. A
+        // file has one orientation, so it is the one the device held when
+        // recording started; the preview keeps following the device.
+        AMediaMuxer_setOrientationHint(muxer, FrameRotation());
 
         if (!CreateVideoEncoder(videoMime)) {
             Fail(std::string("No ") + videoMime + " encoder for " + std::to_string(mode.width) +
@@ -419,6 +420,15 @@ private:
         if (manager) { ACameraManager_delete(manager); manager = nullptr; }
     }
 
+    // How far a camera frame must turn clockwise to be upright on the display
+    // as it is right now: the sensor is mounted at its own angle, and a front
+    // camera turns the other way. Any thread.
+    int FrameRotation() const {
+        const int display = AndroidPermissions::CurrentDisplayRotationDegrees();
+        return mirror ? (camera.sensorOrientation + display) % 360
+                      : (camera.sensorOrientation - display + 360) % 360;
+    }
+
     // Camera YUV is full-range BT.601 (JFIF), whatever the resolution.
     static void OnPreviewImage(void* context, AImageReader* reader) {
         auto* self = static_cast<AndroidCaptureSession*>(context);
@@ -427,7 +437,7 @@ private:
         int64_t timestampNs = 0;
         AImage_getTimestamp(image, &timestampNs);
         const YuvColorInfo jfif{false, true};
-        UCVideoFramePtr frame = FrameFromYuvImage(image, self->rotation, self->mirror, jfif,
+        UCVideoFramePtr frame = FrameFromYuvImage(image, self->FrameRotation(), self->mirror, jfif,
                                                   static_cast<double>(timestampNs) / 1e9);
         AImage_delete(image);
         if (frame && self->onPreviewFrame) self->onPreviewFrame(std::move(frame));
@@ -713,7 +723,6 @@ private:
     CameraDescription camera;
     CameraMode mode;
     std::pair<int32_t, int32_t> fpsRange{0, 0};
-    int rotation = 0;
     bool mirror = false;
     bool opened = false;
 

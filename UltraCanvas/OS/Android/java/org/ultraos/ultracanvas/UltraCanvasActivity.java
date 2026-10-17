@@ -30,6 +30,9 @@ import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.hardware.display.DisplayManager;
+import android.os.Bundle;
+import android.view.Display;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -634,6 +637,58 @@ public class UltraCanvasActivity extends NativeActivity {
         }
     }
 
+    // ===== DISPLAY ROTATION =====
+
+    // Reports every turn of the display to the native side, which the camera
+    // preview reads from its own thread. A listener rather than
+    // onConfigurationChanged: a 180-degree flip (landscape to the other
+    // landscape) changes no configuration and would go unnoticed.
+    private DisplayManager.DisplayListener displayListener;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);   // loads the native library
+        reportDisplayRotation();
+        DisplayManager displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+        if (displays == null) return;
+        displayListener = new DisplayManager.DisplayListener() {
+            @Override
+            public void onDisplayAdded(int displayId) { }
+
+            @Override
+            public void onDisplayRemoved(int displayId) { }
+
+            @Override
+            public void onDisplayChanged(int displayId) {
+                if (displayId == Display.DEFAULT_DISPLAY) reportDisplayRotation();
+            }
+        };
+        displays.registerDisplayListener(displayListener, null);   // on this (UI) thread
+    }
+
+    /**
+     * Guarded: this is the first call into native code an activity makes, at
+     * launch, and an app must not die there if its library does not export
+     * the entry point - the native side then reads the rotation itself.
+     */
+    private void reportDisplayRotation() {
+        try {
+            nativeOnDisplayRotationChanged(getDisplayRotationDegrees());
+        } catch (UnsatisfiedLinkError e) {
+            // Native side unreachable: it falls back to querying on demand.
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (displayListener != null) {
+            DisplayManager displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+            if (displays != null) displays.unregisterDisplayListener(displayListener);
+            displayListener = null;
+        }
+        super.onDestroy();
+    }
+
     // ===== TEXT INPUT (soft keyboard + IME) =====
 
     private InputView inputView;
@@ -863,6 +918,7 @@ public class UltraCanvasActivity extends NativeActivity {
 
     // Implemented in UltraCanvasAndroidPermissions.cpp.
     private static native void nativeOnPermissionResult(int requestId, boolean granted);
+    private static native void nativeOnDisplayRotationChanged(int degrees);
 
     /**
      * The composition's caret as a UTF-8 byte offset into it - the unit the

@@ -32,7 +32,7 @@ Android).
 | `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog` (message and text-input), the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
 | `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, the text being composed, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. They arrive on the Java UI thread and are queued, in order, for the glue thread (`DrainImeQueue`). |
 | `UltraCanvasAndroidAssets.{h,cpp}` | Unpacks the APK's `assets/` tree into `$HOME/share` on the first launch after an install or update (stamped against the APK's mtime+size). Inside an APK nothing is on the filesystem, so without this every path-based `fopen` for a font, icon or media file fails. Uses Java `AssetManager.list()` to walk the tree — the NDK's `AAssetDir` cannot see subdirectories — and the native `AAssetManager` to read contents. |
-| `UltraCanvasAndroidPermissions.{h,cpp}` | Runtime permissions (`IsGranted`, `Request` with the answer posted to the UI thread) and the display rotation, over JNI. `Request` needs `UltraCanvasActivity`, whose `onRequestPermissionsResult` carries the answer back. Used by the video backend for CAMERA and RECORD_AUDIO. |
+| `UltraCanvasAndroidPermissions.{h,cpp}` | Runtime permissions (`IsGranted`, `Request` with the answer posted to the UI thread) and the display rotation, over JNI. The rotation is also kept as an atomic value any thread can read (`CurrentDisplayRotationDegrees`), updated by `UltraCanvasActivity`'s display listener and on each configuration change. `Request` needs `UltraCanvasActivity`, whose `onRequestPermissionsResult` carries the answer back. Used by the video backend for CAMERA and RECORD_AUDIO. |
 | `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the vcpkg manifest for the dependency sysroot. |
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` no-op. |
 | `GLContextManagerEGL_Android.cpp` | EGL + **OpenGL ES** context manager (ES 3 preferred, ES 2 fallback) behind the same `CreateGLContextManagerEGL()` factory symbol the dispatcher uses on Linux. Same offscreen model as the Linux EGL manager: 1×1 pbuffer made current, all real rendering into FBOs (`GLFramebuffer.cpp` compiles against `<GLES3/gl3.h>` on Android, and `ICompositeStrategy.cpp` reads back `GL_RGBA` + swizzles to Cairo's word order, since core GLES has no `GL_BGRA` readback). `GLSurfaceConfig`'s desktop fields (`glVersionMajor/Minor`, `coreProfile`) are ignored. Note: the FBO layer uses ES 3 sized formats (`GL_RGBA8`), so the ES 2 fallback context is best-effort only — every `minSdk 26` device ships ES 3.x. |
@@ -329,9 +329,11 @@ cross-compiled sysroot.
 - **Thumbnails.** `GrabThumbnail` runs the same video pipeline for one frame,
   synchronously, without an audio device.
 - **Camera.** Camera2 through the NDK. Cameras are listed with their YUV
-  output sizes, and the first back-facing one is the default. The preview is
-  turned upright for the display rotation at `Open()` and mirrored for a front
-  camera. Recording feeds the camera straight into an H.264 or H.265 encoder
+  output sizes, and the first back-facing one is the default. Every preview
+  frame is turned upright for the display as it is at that moment, so the
+  preview follows the device as it turns, and it is mirrored for a front
+  camera. The frames then swap width and height, so a consumer must not
+  assume one size for the whole session. Recording feeds the camera straight into an H.264 or H.265 encoder
   through its input surface, records the microphone through AAudio into AAC,
   and writes **MP4** with `AMediaMuxer`, with the orientation as a hint so the
   file plays upright. `Pause`/`Resume` cut the pause out of the file. Other
@@ -347,8 +349,14 @@ cross-compiled sysroot.
 
 Limits to know:
 
-- The preview rotation is fixed when the camera opens. Rotating the device
-  while it is open needs a `Close()`/`Open()`.
+- A recording keeps the orientation the device had when `Start()` ran: a file
+  has one orientation hint, so turning the device mid-recording turns the
+  picture in the file. The preview is unaffected and keeps following the
+  device.
+- The display rotation reaches the camera thread from `UltraCanvasActivity`'s
+  display listener, which also sees 180-degree flips. With a plain
+  `NativeActivity` it is re-read only on a configuration change or resize, and
+  a 180-degree flip raises neither, so that turn is missed until the next one.
 - Each recorded track starts at zero on its own clock. The camera's and the
   microphone's timestamps come from different clocks on many devices, so they
   cannot be compared directly. Sync is therefore as good as the two streams'
