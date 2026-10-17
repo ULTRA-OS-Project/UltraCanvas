@@ -62,7 +62,8 @@
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
 // Version: 1.33.0 - closing during an upload or a download asks first
-//                  ("An upload is still running — quit anyway?")
+//                  ("An upload is still running — quit anyway?"); for one to
+//                  an FTP drive it says what was sent is removed later
 // Version: 1.32.0 - the connection log button on every remote drive; add-drive
 //                  sign-ins in the connection log; "+ Drive > Connection log..."
 // Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
@@ -6580,6 +6581,15 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
              : waiting == 0  ? "Quitting stops it part way: the file does not arrive whole."
                              : "Quitting stops the one running part way, and drops the rest "
                                "before they start.";
+    // An upload to an FTP or SFTP drive leaves what it sent on the server,
+    // which UltraFiler removes the next time that drive is used; a file it
+    // was replacing is left as it was.
+    for (const RemoteTransfer& t : transfers) {
+        if (!t.running || !t.cleanedUpIfStopped) continue;
+        details += " What was sent is removed from " + t.drive +
+                   " the next time you use it.";
+        break;
+    }
 
     DialogConfig cfg;
     cfg.title = "Quit UltraFiler?";

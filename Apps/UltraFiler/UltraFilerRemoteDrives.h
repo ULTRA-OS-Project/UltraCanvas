@@ -54,14 +54,19 @@
 // quits (PendingTransfers), and Stop() calls the running one off rather than
 // waiting for it.
 //
-// An upload to an FTP or SFTP drive that stops part way leaves what it sent
-// on the server, and FTP has no way to take that back. The drives keep a note
-// of it on disk (UnfinishedUploadsPath) and, before the next job on that
-// drive - in this run or a later one - remove the part, when the file there
-// is still no longer than what was sent and shorter than the whole file
+// An upload to an FTP or SFTP drive goes to a hidden part name beside the
+// file and is renamed into place once complete (PutRemoteUploadInPlace), so
+// the file it replaces stays whole until then; an anonymous login, and a
+// server that refused to rename one into place, get the file straight under
+// its name instead. FTP has no way to take back what an upload stopped part
+// way sent, so the drives keep a note of it on disk (UploadStatePath) and,
+// before the next job on that drive - in this run or a later one - remove
+// the part, when what is there is still no more than was sent
 // (IsLeftByUnfinishedUpload). A file of any other size is someone else's and
-// is kept.
-// Version: 1.11.0 - removes the part an unfinished FTP upload left
+// is kept. A server that did not answer is asked again once a later request
+// to it gets through.
+// Version: 1.11.0 - uploads to FTP go via a part name; removes the part an
+//                   unfinished FTP upload left
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -104,6 +109,9 @@ struct RemoteDrive {
     // Whether opening a folder fetches its subfolders ahead and the listings
     // are kept between runs (RemoteProviderPrefetches: FTP only).
     bool prefetches = false;
+    // Whether an upload goes to a part name first and is renamed into place
+    // (RemoteUploadsViaPartName: FTP and SFTP, not an anonymous login).
+    bool uploadsViaPartName = false;
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -179,6 +187,9 @@ struct RemoteTransfer {
     bool running = false;   // false: queued, not started yet
     std::string name;       // the file's name
     std::string drive;      // the drive's name, as the folder tree shows it
+    // An upload to an FTP or SFTP drive: stopped part way, what it sent is
+    // removed the next time the drive is used.
+    bool cleanedUpIfStopped = false;
 };
 
 // The add-drive dialog's sign-ins still running, shared between the drives
@@ -422,9 +433,10 @@ public:
     static std::string DiskCachePath();
 
     // Where the notes of FTP uploads that stopped part way are kept until
-    // their drive is used again: remote-unfinished-uploads in the same
-    // directory. Absent when there are none.
-    static std::string UnfinishedUploadsPath();
+    // their drive is used again, with the drives whose server would not
+    // rename an upload into place: remote-upload-state in the same
+    // directory. Absent when there is nothing to keep.
+    static std::string UploadStatePath();
 
 private:
     // Stale: read from the disk cache at start-up, and shown as it is until
@@ -522,24 +534,35 @@ private:
     bool DrivePrefetchesLocked(const std::string& accountId,
                                bool* canModify = nullptr) const;
 
-    // The parts unfinished FTP uploads left on their servers. Load runs once,
-    // from the first Reload that knows the drives, and keeps only the notes
-    // of drives still configured at the same address; Save runs on the
-    // worker whenever the notes change.
-    void LoadUnfinishedUploadsLocked();
-    void SaveUnfinishedUploads();
-    // Drops the notes of the files `job` itself replaces, removes or moves -
-    // an upload to the same name, a delete or a rename of it or of a folder
-    // it is in: the user is dealing with that file. True if one went. Lock
-    // held.
+    // The parts unfinished FTP uploads left on their servers, and the drives
+    // that take uploads direct. Load runs once, from the first Reload that
+    // knows the drives, and keeps only what belongs to drives still
+    // configured at the same address; Save runs on the worker whenever
+    // either changes.
+    void LoadUploadStateLocked();
+    void SaveUploadState();
+    // Uploads one file into the drive's `folder` (a server path, "" at the
+    // root) under `name`: via its part name and renamed into place where the
+    // drive allows, straight to the name otherwise or when the server will
+    // not rename it - which is then remembered for the drive. Worker thread,
+    // inside the job.
+    UltraCloud::Result UploadToDrive(const std::string& accountId,
+                                     const std::string& localFile,
+                                     const std::string& folder,
+                                     const std::string& name);
+    // Drops the notes of the files `job` itself removes or moves - a delete
+    // or a rename of it or of a folder it is in: the user is dealing with
+    // that file. True if one went. Lock held.
     bool SettleUnfinishedUploadsLocked(const Job& job);
-    // Whether `accountId` has a note not yet tried this run. Lock held.
+    // Whether `accountId` has a note to try now. Lock held.
     bool HasUnfinishedUploadsLocked(const std::string& accountId) const;
-    // Notes the upload `job` that failed after sending `bytesSent` bytes, on
-    // a drive whose provider leaves the part behind. True if it was noted.
-    // Lock held.
-    bool NoteUnfinishedUploadLocked(const Job& job, uint64_t bytesSent,
-                                    uint64_t bytesTotal);
+    // A request to `accountId` got through: the notes whose server did not
+    // answer may be tried again. True if there are any. Lock held.
+    bool ReleaseWaitingCleanupsLocked(const std::string& accountId);
+    // Notes the upload `job` that failed, from what upload_ says it got as
+    // far as: a part name always, the file's own name once the server had
+    // opened it or bytes had gone out. True if it was noted. Lock held.
+    bool NoteUnfinishedUploadLocked(const Job& job);
     // Runs on the worker before a job on `accountId`: for each note, lists
     // the folder, and removes the file when it is still the part
     // (IsLeftByUnfinishedUpload), each as a session of the connection log.
@@ -580,14 +603,40 @@ private:
     uint64_t useCounter_ = 0;
     bool diskCacheLoaded_ = false;
     bool diskCacheSaved_ = false;
-    // The notes of FTP uploads that stopped part way, and the paths of those
-    // whose removal was tried this run and did not happen - the server could
-    // not be reached, or refused the delete. Those are tried again at the
-    // next start, not before every job. Changed by the worker only, after
-    // the first Reload has read the file.
+    // The notes of FTP uploads that stopped part way, and the drives whose
+    // server would not rename an upload into place. Changed by the worker
+    // only, after the first Reload has read the file.
     std::vector<RemoteUnfinishedUpload> unfinishedUploads_;
-    std::unordered_set<std::string> unfinishedUploadsTried_;
-    bool unfinishedUploadsLoaded_ = false;
+    std::vector<RemoteDirectUploadDrive> directUploads_;
+    bool uploadStateLoaded_ = false;
+    // The notes whose removal was tried this run and did not happen, by
+    // path. One whose server did not answer `waits` for a later request to
+    // that drive to get through, kRemoteCleanupTriesPerRun times; one the
+    // server refused, or past those tries, waits for the next start.
+    struct CleanupAttempt {
+        int failures = 0;
+        bool waits = false;
+        bool nextStart = false;
+    };
+    std::unordered_map<std::string, CleanupAttempt> cleanupAttempts_;
+    // How far the upload the worker is running has got, for the note an
+    // unfinished one leaves: the path it writes, whether that is the part
+    // name, the bytes gone out, and whether the server accepted the STOR
+    // that creates the file (watched in the FTP log). Reset for each try of
+    // an upload. Worker thread only.
+    struct UploadProgress {
+        std::string target;
+        bool partName = false;
+        uint64_t bytes = 0;
+        bool storSent = false;      // a STOR / APPE waits for its reply
+        bool opened = false;        // ... which said yes: the file exists
+        bool refused = false;       // ... which said no: nothing was written
+    };
+    UploadProgress upload_;
+    // The connection-log session of the job the worker is running, for the
+    // steps RunOperation adds of its own. Worker thread only.
+    uint64_t jobLogId_ = 0;
+    void SayInJobLog(const std::string& text);
     // The job the worker is carrying out right now, for ListingStatus: its
     // path (empty between jobs) and when the worker took it off the queue.
     // Written by the worker under the lock.

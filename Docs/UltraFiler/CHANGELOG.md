@@ -20,23 +20,45 @@
   file in the folder under its full name. It is removed when the download
   fails; the name was a free one when the download was queued, so nothing
   else is touched.
+- **An upload to an FTP or SFTP drive replaces a file only once it is
+  complete.** An FTP upload writes straight into the file it names, so one
+  that replaced a file destroyed the old version with its first byte, and
+  one stopped part way left the part looking like the file. Uploads now go
+  to a hidden part name beside the file (`.report.pdf.part`) and are renamed
+  to their own name once the last byte is in: until then the old file is
+  whole, and the folder never shows a half-sent one. A server that will not
+  rename onto a file that exists (SFTP, some Windows servers) has the old
+  file set aside as `.report.pdf.replaced` for the moment it takes, removed
+  once the new one is in place and put back if the rename fails. A server
+  that refuses the part name gets the file straight under its own name; one
+  that takes uploads but refuses renames gets that one sent again straight
+  to its name, and the drive's later uploads go there directly (remembered
+  for 30 days, then tried again). An anonymous FTP login goes straight to
+  the name from the start: an "incoming" folder takes uploads but seldom
+  renames or deletes them. Each step is in the connection log.
 - **An FTP upload stopped part way is cleaned up the next time the drive
-  is used.** An FTP, FTPS or SFTP server writes an upload into the file as
-  it arrives and has no way to take it back, so an upload stopped part
-  way (UltraFiler quit during it, or the connection broke) left the part
-  already sent on the server under the file's full name, looking like the
-  file. UltraFiler now notes each one (`remote-unfinished-uploads` in its
-  configuration folder) and, before the next request to that drive - in
-  the same session or after a restart - lists the folder and deletes the
-  file, as long as it is still shorter than the whole file and no longer
-  than what was sent. A file of any other size was put there since -
-  finished by another program, or another file of that name - and is kept.
-  Uploading, deleting or renaming that file yourself settles the note; a
-  server that refuses the delete, or cannot be reached, is asked again at
-  the next start, and a note is dropped after 30 days. Each cleanup is a
-  session of the connection log (*Remove unfinished upload*) saying what
-  it found and what it did. WebDAV, Nextcloud and the cloud services keep
-  an incomplete upload apart and discard it themselves.
+  is used.** FTP has no way to take back what an upload has sent, so an
+  upload stopped part way (UltraFiler quit during it, or the connection
+  broke) left the part on the server. UltraFiler now notes each one
+  (`remote-upload-state` in its configuration folder) and, before the next
+  request to that drive - in the same session or after a restart - deletes
+  it. A part name is always UltraFiler's own; at the file's own name the
+  note is made once the server had accepted the upload or bytes had gone
+  out, so the empty file a server creates for an upload stopped before its
+  first byte is removed too, and a file nothing was written to is never
+  touched. What is deleted is no larger than what was sent and, at the
+  file's own name, shorter than the whole file; a file of any other size
+  was put there since and is kept. A part the server's listing leaves out
+  (vsftpd hides names starting with a dot) is deleted by name. A server
+  that does not answer is asked again as soon as a later request to that
+  drive gets through (up to three times a session, then at the next
+  start); one that refuses the delete is asked at the next start. Deleting
+  or renaming that file yourself settles the note, and a note is dropped
+  after 30 days. Each cleanup is a session of the connection log (*Remove
+  unfinished upload*), and the quit question says so for an upload to such
+  a drive: *What was sent is removed from Studio FTP the next time you use
+  it.* WebDAV, Nextcloud and the cloud services keep an incomplete upload
+  apart and discard it themselves.
 
 #### 2026-10-15 *1.74.1*
 - **The colour popup's picker is the framework's light picker.** Settings >
