@@ -124,7 +124,7 @@ std::string InstallPreview(const Plan& plan) {
 }
 
 std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) {
-    if (assistant == Assistant::None) {
+    if (assistant == Assistant::NoAssistant) {
         return "### No AI assistant\n\n"
                "You write the code yourself, in a local IDE or an editor and the compiler. "
                "The project gets no assistant instruction file and there is no first prompt; "

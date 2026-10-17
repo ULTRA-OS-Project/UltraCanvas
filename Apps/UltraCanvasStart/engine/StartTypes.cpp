@@ -58,7 +58,7 @@ std::string AssistantName(Assistant assistant) {
         case Assistant::Codex:      return "Codex";
         case Assistant::Copilot:    return "Copilot";
         case Assistant::Gemini:     return "Gemini";
-        case Assistant::None:       return "no AI assistant";
+        case Assistant::NoAssistant:       return "no AI assistant";
         default:                    return "another assistant";
     }
 }
@@ -72,7 +72,7 @@ std::string AssistantInstructionFile(Assistant assistant) {
 }
 
 bool AssistantFromName(const std::string& name, Assistant& out) {
-    if (name == "none")    { out = Assistant::None;       return true; }
+    if (name == "none")    { out = Assistant::NoAssistant;       return true; }
     if (name == "claude")  { out = Assistant::ClaudeCode; return true; }
     if (name == "codex")   { out = Assistant::Codex;      return true; }
     if (name == "copilot") { out = Assistant::Copilot;    return true; }

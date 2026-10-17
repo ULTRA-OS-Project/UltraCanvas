@@ -3,7 +3,7 @@
 // machine has, what the programmer chose, what the checks found and the plan
 // the two together produce. Plain data, no UI, shared by the GUI, the CLI
 // modes and the test suite.
-// Version: 0.1.2 - Assistant::None: no AI assistant, a local IDE or compiler
+// Version: 0.1.2 - Assistant::NoAssistant ("None"): a local IDE or compiler, no AI
 // Version: 0.1.1 - Assistant: which AI the programmer works with
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -120,7 +120,7 @@ struct CheckResult {
 // the programmer without one, in a local IDE or with the compiler alone:
 // no instruction file, no first prompt (Choices::useAi is false).
 enum class Assistant {
-    None,         // a local IDE or the compiler, no AI assistant
+    NoAssistant,  // "None" in the picker: a local IDE or the compiler (X11 defines None)
     ClaudeCode,
     Codex,        // OpenAI Codex CLI
     Copilot,      // GitHub Copilot CLI / coding agent

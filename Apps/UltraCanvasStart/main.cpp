@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
                 std::printf("--assistant needs none, claude, codex, copilot, gemini or other\n");
                 return EXIT_FAILURE;
             }
-            if (choices.assistant == UltraCanvasStart::Assistant::None) choices.useAi = false;
+            if (choices.assistant == UltraCanvasStart::Assistant::NoAssistant) choices.useAi = false;
             ++i;
         } else if (arg == "--create") {
             if (i + 1 >= argc) {

@@ -55,7 +55,7 @@ const DependencyGroup kGroups[] = {
 
 // The pickers' segments, in order.
 const Platform kPlatforms[] = { Platform::Linux, Platform::MacOS, Platform::Windows };
-const Assistant kAssistants[] = { Assistant::None, Assistant::ClaudeCode, Assistant::Codex,
+const Assistant kAssistants[] = { Assistant::NoAssistant, Assistant::ClaudeCode, Assistant::Codex,
                                   Assistant::Copilot, Assistant::Gemini, Assistant::Other };
 constexpr int kAssistantCount = static_cast<int>(sizeof(kAssistants) / sizeof(kAssistants[0]));
 
@@ -459,19 +459,19 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFeaturesStep(
     auto pickRow = Theme::MakeRow("ucsAssistantRow");
     std::vector<std::string> names;
     for (auto a : kAssistants) {
-        names.push_back(a == Assistant::None ? "None" : a == Assistant::Other ? "Other" : AssistantName(a));
+        names.push_back(a == Assistant::NoAssistant ? "None" : a == Assistant::Other ? "Other" : AssistantName(a));
     }
     assistantPicker_ = Theme::MakeSegmented("ucsAssistantPicker", names,
                                             AssistantIndex(choices_.assistant), 648);
     // None - a local IDE or the compiler, no assistant - stands out in red.
-    assistantPicker_->SetSegmentTextColor(AssistantIndex(Assistant::None), Theme::kAlertText);
+    assistantPicker_->SetSegmentTextColor(AssistantIndex(Assistant::NoAssistant), Theme::kAlertText);
     assistantPicker_->onSegmentSelected = [this](int index) { SelectAssistant(kAssistants[index]); };
     pickRow->AddChild(assistantPicker_);
     assistant->AddChild(pickRow);
     aiBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseAi", 0, 0, 800, Theme::kRowHeight,
         "Write its instruction file into the project and prepare the first prompt",
-        choices_.useAi && choices_.assistant != Assistant::None);
-    aiBox_->SetDisabled(choices_.assistant == Assistant::None);
+        choices_.useAi && choices_.assistant != Assistant::NoAssistant);
+    aiBox_->SetDisabled(choices_.assistant == Assistant::NoAssistant);
     cloudBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsCloud", 0, 0, 800, Theme::kRowHeight,
         "...through GitHub only, with no compiler on this machine (Docs/GettingStarted-Cloud.md)",
         choices_.cloudOnly);
@@ -830,11 +830,17 @@ void UltraCanvasStartWindow::SelectGuidePlatform(Platform platform) {
 }
 
 void UltraCanvasStartWindow::SelectAssistant(Assistant assistant) {
+    const bool wasNone = choices_.assistant == Assistant::NoAssistant;
+    const bool none = assistant == Assistant::NoAssistant;
     choices_.assistant = assistant;
     if (aiView_) aiView_->SetText(AiGuide(ai_, profile_.platform, assistant), false);
     // Without an assistant there is no instruction file to write and no
-    // GitHub-only way of working.
-    if (aiBox_) aiBox_->SetDisabled(assistant == Assistant::None);
+    // GitHub-only way of working: the box is unticked and off, and ticked
+    // again when an assistant is picked.
+    if (aiBox_) {
+        if (none != wasNone) aiBox_->SetChecked(!none);
+        aiBox_->SetDisabled(none);
+    }
     ReadChoicesFromPanes();
     RefreshPlan();
 }
@@ -1209,7 +1215,7 @@ void UltraCanvasStartWindow::ReadChoicesFromPanes() {
         choices_.useSdk = wayPicker_->GetSelectedIndex() == 0;
         choices_.cloneFramework = !choices_.useSdk;
     }
-    if (aiBox_)    choices_.useAi = aiBox_->IsChecked() && choices_.assistant != Assistant::None;
+    if (aiBox_)    choices_.useAi = aiBox_->IsChecked() && choices_.assistant != Assistant::NoAssistant;
     if (cloudBox_) choices_.cloudOnly = cloudBox_->IsChecked() && choices_.useAi;
     if (appNameInput_ && !appNameInput_->GetText().empty()) choices_.appName = appNameInput_->GetText();
     if (folderInput_) choices_.projectFolder = folderInput_->GetText();

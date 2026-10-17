@@ -131,7 +131,7 @@ TEST(AiGuide_covers_every_assistant) {
     REQUIRE(other.find("llms-full.txt") != std::string::npos);
     REQUIRE(other.find("was not found") == std::string::npos);
     // None: a local IDE or the compiler; nothing to install, no instruction file.
-    const std::string noAi = AiGuide(none, Platform::Linux, Assistant::None);
+    const std::string noAi = AiGuide(none, Platform::Linux, Assistant::NoAssistant);
     REQUIRE(noAi.find("No AI assistant") != std::string::npos);
     REQUIRE(noAi.find("`cmake --preset default`") != std::string::npos);
     REQUIRE(noAi.find("was not found") == std::string::npos);
@@ -154,7 +154,7 @@ TEST(Assistant_names_files_and_cli_words) {
     REQUIRE(a == Assistant::Copilot);
     REQUIRE(!AssistantFromName("hal", a));
     REQUIRE(AssistantFromName("none", a));
-    REQUIRE(a == Assistant::None);
+    REQUIRE(a == Assistant::NoAssistant);
     REQUIRE_EQ(AssistantName(Assistant::Codex), std::string("Codex"));
 }
 
