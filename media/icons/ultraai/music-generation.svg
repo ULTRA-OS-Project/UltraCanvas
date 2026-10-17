@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraAI dashboard icon: music-generation. 128 x 128 tile, generated as a set. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8E5CF0"/>
+      <stop offset="1" stop-color="#3F6FE8"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="64" rx="28" fill="url(#gloss)"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="27.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+  <g transform="translate(0 3)">
+    <path d="M52 40 L102 26 V40 L52 54 Z" fill="#0B1020" fill-opacity="0.22"/>
+    <rect x="52" y="44" width="7" height="46" fill="#0B1020" fill-opacity="0.22"/>
+    <rect x="95" y="32" width="7" height="50" fill="#0B1020" fill-opacity="0.22"/>
+    <ellipse cx="44" cy="90" rx="14" ry="10" transform="rotate(-20 44 90)" fill="#0B1020" fill-opacity="0.22"/>
+    <ellipse cx="87" cy="82" rx="14" ry="10" transform="rotate(-20 87 82)" fill="#0B1020" fill-opacity="0.22"/>
+    <path d="M30 27 Q30 38 41 38 Q30 38 30 49 Q30 38 19 38 Q30 38 30 27 Z" fill="#0B1020" fill-opacity="0.22"/>
+    <path d="M30 55 Q30 60 35 60 Q30 60 30 65 Q30 60 25 60 Q30 60 30 55 Z" fill="#0B1020" fill-opacity="0.22"/>
+  </g>
+    <path d="M52 40 L102 26 V40 L52 54 Z" fill="#FFFFFF"/>
+    <rect x="52" y="44" width="7" height="46" fill="#FFFFFF"/>
+    <rect x="95" y="32" width="7" height="50" fill="#FFFFFF"/>
+    <ellipse cx="44" cy="90" rx="14" ry="10" transform="rotate(-20 44 90)" fill="#FFFFFF"/>
+    <ellipse cx="87" cy="82" rx="14" ry="10" transform="rotate(-20 87 82)" fill="#FFFFFF"/>
+    <path d="M30 27 Q30 38 41 38 Q30 38 30 49 Q30 38 19 38 Q30 38 30 27 Z" fill="#FFFFFF"/>
+    <path d="M30 55 Q30 60 35 60 Q30 60 30 65 Q30 60 25 60 Q30 60 30 55 Z" fill="#FFFFFF" fill-opacity="0.6"/>
+</svg>

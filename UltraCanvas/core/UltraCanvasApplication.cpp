@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.10.2 - ToFontconfigPath turns '\' into '/' only on Windows: elsewhere it is
+//                   part of a folder's name
 // Version: 1.10.1 - two -Wswitch / -Wtautological warnings in DispatchEvent fixed (the
 //                   key-state bound is checked on the key code as an int, against
 //                   KeyStateCount, as IsKeyPressed now does too)
@@ -18,7 +20,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -313,9 +315,14 @@ namespace UltraCanvas {
 
         // fontconfig understands forward slashes on every platform; keeping
         // backslashes out of the generated XML avoids any escaping question.
+        // Only on Windows, where '\' separates folders: elsewhere it is a
+        // character of a folder's name, and turned into '/' it would point
+        // fontconfig somewhere else.
         std::string ToFontconfigPath(const std::string& in) {
             std::string out = in;
+#if defined(_WIN32) || defined(_WIN64)
             std::replace(out.begin(), out.end(), '\\', '/');
+#endif
             while (out.size() > 1 && out.back() == '/') out.pop_back();
             return out;
         }

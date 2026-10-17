@@ -1,5 +1,43 @@
 # UltraCanvas Checkbox and Radio Button Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Which control to use](#which-control-to-use)
+- [Class Hierarchy](#class-hierarchy)
+- [Shared Toggle API](#shared-toggle-api)
+  - [CheckedState](#checkedstate)
+  - [State and label](#state-and-label)
+  - [Callbacks](#callbacks)
+  - [Shared visual fields](#shared-visual-fields)
+  - [Sizing and placement](#sizing-and-placement)
+- [UltraCanvasCheckbox](#ultracanvascheckbox)
+  - [Constructors and factory](#constructors-and-factory)
+  - [The three states](#the-three-states)
+  - [Appearance](#appearance)
+- [UltraCanvasRadio](#ultracanvasradio)
+  - [Constructors and factory](#constructors-and-factory-1)
+  - [Behaviour](#behaviour)
+  - [RadioVisualStyle](#radiovisualstyle)
+- [UltraCanvasRadioGroup](#ultracanvasradiogroup)
+  - [How the selection works](#how-the-selection-works)
+  - [onChecked belongs to the group](#onchecked-belongs-to-the-group)
+  - [Lifetime and ownership](#lifetime-and-ownership)
+- [Mouse and Keyboard](#mouse-and-keyboard)
+- [Usage Examples](#usage-examples)
+  - [Basic checkbox enabling a button](#basic-checkbox-enabling-a-button)
+  - ["Select all" with an indeterminate parent](#select-all-with-an-indeterminate-parent)
+  - [Tri-state cycling](#tri-state-cycling)
+  - [Custom styling](#custom-styling)
+  - [A radio group in a dialog class](#a-radio-group-in-a-dialog-class)
+  - [A radio group on a page built by a function](#a-radio-group-on-a-page-built-by-a-function)
+  - [Groups in a container](#groups-in-a-container)
+- [Rendering Details](#rendering-details)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+- [Version History](#version-history)
+
 ## Overview
 
 This page documents the framework's two choice controls and the helper that

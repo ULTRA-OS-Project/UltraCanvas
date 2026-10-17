@@ -1,5 +1,47 @@
 # UltraCanvasScatterPlotElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Declaration](#class-declaration)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Constructor](#constructor)
+  - [Parameters](#parameters)
+  - [Default Settings](#default-settings)
+- [Enumerations](#enumerations)
+  - [PointShape](#pointshape)
+  - [TrendLineStyle](#trendlinestyle)
+- [Configuration Methods](#configuration-methods)
+  - [Point Appearance](#point-appearance)
+  - [Correlation / Trend Line](#correlation--trend-line)
+  - [Per-Point Colors](#per-point-colors)
+  - [Data Management](#data-management)
+  - [Chart Properties](#chart-properties)
+  - [Interactive Features](#interactive-features)
+- [Factory Function](#factory-function)
+- [Rendering Implementation](#rendering-implementation)
+  - [RenderChart Method](#renderchart-method)
+  - [Point Shape Rendering](#point-shape-rendering)
+- [Mouse Interaction](#mouse-interaction)
+  - [HandleChartMouseMove](#handlechartmousemove)
+- [Usage Example](#usage-example)
+  - [Basic Setup](#basic-setup)
+  - [Dynamic Shape Cycling](#dynamic-shape-cycling)
+  - [Advanced Customization](#advanced-customization)
+- [Best Practices](#best-practices)
+  - [Performance Optimization](#performance-optimization)
+  - [Data Preparation](#data-preparation)
+  - [Empty Data and Undefined Fits](#empty-data-and-undefined-fits)
+- [Integration with Chart Framework](#integration-with-chart-framework)
+  - [Inherited Features](#inherited-features)
+  - [Coordinate System](#coordinate-system)
+  - [Event Handling](#event-handling)
+- [Typical Use Cases](#typical-use-cases)
+- [Limitations and Considerations](#limitations-and-considerations)
+- [Related Components](#related-components)
+- [Version History](#version-history)
+
 ## Overview
 
 The `UltraCanvasScatterPlotElement` is a specialized chart control in the UltraCanvas Framework designed for visualizing relationships between two continuous variables. It excels at displaying correlations, identifying clusters, and detecting outliers in datasets through customizable point-based data representation.

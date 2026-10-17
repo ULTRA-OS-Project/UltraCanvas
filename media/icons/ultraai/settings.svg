@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraAI dashboard icon: settings. 128 x 128 tile, generated as a set. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8C9BB2"/>
+      <stop offset="1" stop-color="#47546A"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="64" rx="28" fill="url(#gloss)"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="27.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+  <g transform="translate(0 3)">
+    <path d="M64.0 32.0 L72.2 22.8 L80.1 25.2 L81.8 37.4 L86.6 41.4 L98.9 40.7 L102.8 47.9 L95.4 57.8 L96.0 64.0 L105.2 72.2 L102.8 80.1 L90.6 81.8 L86.6 86.6 L87.3 98.9 L80.1 102.8 L70.2 95.4 L64.0 96.0 L55.8 105.2 L47.9 102.8 L46.2 90.6 L41.4 86.6 L29.1 87.3 L25.2 80.1 L32.6 70.2 L32.0 64.0 L22.8 55.8 L25.2 47.9 L37.4 46.2 L41.4 41.4 L40.7 29.1 L47.9 25.2 L57.8 32.6 Z M64 51 A13 13 0 1 0 64 77 A13 13 0 1 0 64 51 Z" fill-rule="evenodd" fill="#0B1020" fill-opacity="0.22"/>
+  </g>
+    <path d="M64.0 32.0 L72.2 22.8 L80.1 25.2 L81.8 37.4 L86.6 41.4 L98.9 40.7 L102.8 47.9 L95.4 57.8 L96.0 64.0 L105.2 72.2 L102.8 80.1 L90.6 81.8 L86.6 86.6 L87.3 98.9 L80.1 102.8 L70.2 95.4 L64.0 96.0 L55.8 105.2 L47.9 102.8 L46.2 90.6 L41.4 86.6 L29.1 87.3 L25.2 80.1 L32.6 70.2 L32.0 64.0 L22.8 55.8 L25.2 47.9 L37.4 46.2 L41.4 41.4 L40.7 29.1 L47.9 25.2 L57.8 32.6 Z M64 51 A13 13 0 1 0 64 77 A13 13 0 1 0 64 51 Z" fill-rule="evenodd" fill="#FFFFFF"/>
+</svg>

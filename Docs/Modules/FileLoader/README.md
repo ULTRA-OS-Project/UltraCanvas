@@ -1,5 +1,28 @@
 # FileLoader - Universal File Handling for Modern Applications
 
+## Contents
+
+- [Simplify File Management Across All Formats](#simplify-file-management-across-all-formats)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Generic File Loading](#generic-file-loading)
+  - [Typed Object Loaders](#typed-object-loaders)
+  - [Editable Vector Documents](#editable-vector-documents)
+  - [Save Settings](#save-settings)
+  - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [Transparent Decompression](#transparent-decompression)
+  - [Runtime Format Inventory](#runtime-format-inventory)
+  - [A Dialog's File Types](#a-dialogs-file-types)
+  - [Extensible Plugin Architecture](#extensible-plugin-architecture)
+- [Supported Formats](#supported-formats)
+- [Why FileLoader?](#why-fileloader)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+  - [For Users](#for-users)
+- [Perfect For](#perfect-for)
+- [Get Started](#get-started)
+- [The Bottom Line](#the-bottom-line)
+
 ## Simplify File Management Across All Formats
 
 **FileLoader** is a cross-platform file handling facade that reduces the

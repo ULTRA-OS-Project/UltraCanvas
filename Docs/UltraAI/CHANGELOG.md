@@ -1,3 +1,13 @@
+#### 2026-10-16 *0.1.15*
+- **The dashboard draws its own icons.** The ten service buttons and the
+  Settings button were labelled with emoji, which show as empty boxes where
+  the system font has no emoji glyphs. Each service is now a tile with a
+  128 x 128 icon over its name (and a tooltip saying what it does); Settings
+  carries a gear. The set lives in `media/icons/ultraai/`: one SVG per icon
+  (rounded gradient tile, white glyph), the 128 px PNG rendered from it that
+  the app loads, and `generate_icons.py`, which writes the SVGs. The window
+  grows to 1000 x 468 to fit the tiles.
+
 #### 2026-10-13 *0.1.14*
 - **The endpoint settings are found in a profile named in any script.**
   `endpoints.json`'s folder was built by hand from `HOME` and

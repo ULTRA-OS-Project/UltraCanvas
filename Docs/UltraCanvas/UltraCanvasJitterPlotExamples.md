@@ -1,5 +1,43 @@
 # UltraCanvasJitterPlotElement Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+  - [Fixed in 1.3.0](#fixed-in-130)
+- [Enumerations](#enumerations)
+- [Configuration Structs](#configuration-structs)
+  - [JitterCategoryData](#jittercategorydata)
+  - [BeeswarmPoint (Public Inner)](#beeswarmpoint-public-inner)
+- [Constructor](#constructor)
+- [Public Methods](#public-methods)
+  - [Jitter & Representation](#jitter--representation)
+  - [Point Appearance](#point-appearance)
+  - [Statistical Overlays](#statistical-overlays)
+  - [Axis & Layout](#axis--layout)
+  - [Grouping (Hue)](#grouping-hue)
+  - [Hybrid Overlay Settings](#hybrid-overlay-settings)
+  - [Beeswarm Configuration](#beeswarm-configuration)
+  - [Data Loading & Filtering](#data-loading--filtering)
+  - [Per-Point Size Encoding (1.3.0)](#per-point-size-encoding-130)
+  - [Per-Point Colour Encoding (1.3.0)](#per-point-colour-encoding-130)
+  - [Background / Grid / Axes](#background--grid--axes)
+  - [Overrides](#overrides)
+- [Factory Functions](#factory-functions)
+- [Usage Examples](#usage-examples)
+  - [Example 1: Brazil School Scores — Classic Gaussian Jitter](#example-1-brazil-school-scores-—-classic-gaussian-jitter)
+  - [Example 2: Brazil School Scores — Beeswarm Packing](#example-2-brazil-school-scores-—-beeswarm-packing)
+  - [Example 3: Continental Population (Simple Jitter)](#example-3-continental-population-simple-jitter)
+  - [Example 4: Market Capitalization — Logarithmic Y-Axis](#example-4-market-capitalization-—-logarithmic-y-axis)
+  - [Example 5: Hybrid Jitter + Box Plot Overlay (Interactive)](#example-5-hybrid-jitter--box-plot-overlay-interactive)
+  - [Example 6: Scientific Cross-Mean Markers (Publication Style)](#example-6-scientific-cross-mean-markers-publication-style)
+  - [Example 7: Raincloud Plot (Half-Violin + Jitter)](#example-7-raincloud-plot-half-violin--jitter)
+  - [Example 8: Bubble Beeswarm with a Diverging Colour Scale (1.3.0)](#example-8-bubble-beeswarm-with-a-diverging-colour-scale-130)
+- [Internal Pipeline](#internal-pipeline)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasJitterPlotElement` is a categorical distribution chart for the UltraCanvas framework. It renders **jitter (strip) plots** — every individual observation is drawn as a point, with horizontal offset (jitter) used to reveal the local density of each category. The element supports both random-jitter algorithms (uniform / Gaussian) and **beeswarm packing** (swarm / center / hex / square) for non-overlapping layouts, plus hybrid overlays that combine jitter with box plots, bar charts, violin plots, or raincloud plots.

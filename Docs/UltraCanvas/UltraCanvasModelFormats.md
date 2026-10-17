@@ -21,6 +21,17 @@ STL is documented separately in
 core library rather than in this plugin, because the Filer's thumbnails and the
 media viewer need one reader that is always present.
 
+## Contents
+
+- [Reading a file](#reading-a-file)
+- [What each format carries](#what-each-format-carries)
+- [Writing](#writing)
+  - [What each writer cannot carry](#what-each-writer-cannot-carry)
+- [Three things that surprise people](#three-things-that-surprise-people)
+- [Displaying a model](#displaying-a-model)
+- [Warnings](#warnings)
+- [See also](#see-also)
+
 ## Reading a file
 
 ```cpp

@@ -1,5 +1,47 @@
 # UltraCanvasDivergingBarChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Hierarchy](#class-hierarchy)
+- [File Structure](#file-structure)
+- [Data Structures](#data-structures)
+  - [DivergingChartStyle Enum](#divergingchartstyle-enum)
+  - [DivergingCategory Structure](#divergingcategory-structure)
+  - [DivergingChartPoint Structure](#divergingchartpoint-structure)
+  - [DivergingDataSource Class](#divergingdatasource-class)
+- [Constructor](#constructor)
+- [Public Methods](#public-methods)
+  - [Data Management](#data-management)
+  - [Configuration](#configuration)
+  - [Rendering](#rendering)
+  - [Interaction](#interaction)
+  - [Callbacks](#callbacks)
+- [Factory Functions](#factory-functions)
+  - [CreateDivergingBarChart](#createdivergingbarchart)
+  - [CreatePopulationPyramid](#createpopulationpyramid)
+  - [CreateLikertChart](#createlikertchart)
+- [Private Properties](#private-properties)
+  - [Visual Properties](#visual-properties)
+  - [Labels and Text](#labels-and-text)
+  - [Interaction State](#interaction-state)
+  - [Animation](#animation)
+  - [Cached Calculations](#cached-calculations)
+- [Usage Examples](#usage-examples)
+  - [Creating a Likert Scale Chart](#creating-a-likert-scale-chart)
+  - [Creating a Population Pyramid](#creating-a-population-pyramid)
+  - [Creating a Tornado Chart](#creating-a-tornado-chart)
+- [Rendering Styles](#rendering-styles)
+  - [Population Pyramid](#population-pyramid)
+  - [Likert Scale](#likert-scale)
+  - [Tornado Chart](#tornado-chart)
+  - [Opposing Bars](#opposing-bars)
+- [Best Practices](#best-practices)
+- [Performance Considerations](#performance-considerations)
+- [Dependencies](#dependencies)
+- [Notes](#notes)
+
 ## Overview
 
 The `UltraCanvasDivergingBarChart` is a specialized chart component in the UltraCanvas framework designed for displaying multi-valued categorical data that diverges from a central axis. This chart type is ideal for visualizing data with opposing or contrasting values, such as population pyramids, Likert scale survey responses, tornado charts, and other comparative visualizations.

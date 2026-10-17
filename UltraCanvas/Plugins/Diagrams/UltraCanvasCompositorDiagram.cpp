@@ -2,7 +2,9 @@
 // Compositor / shader-style node graph editor - implementation.
 // See header for the design rationale and API surface.
 //
-// Version: 0.1.0
+// Version: 0.4.1 - Ungroup ignores a non-group node (it deleted one with no
+//                 children); onNodeDoubleClick fires; ToJson / FromJson keep
+//                 parentId, link labels and link colours
 
 #include <stdexcept>  // For std::runtime_error used (uninclude'd) by ImageCairo.h
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
@@ -1930,6 +1932,15 @@ bool UltraCanvasCompositorDiagram::OnEvent(const UCEvent& event) {
         case UCEventType::MouseUp:    return HandleMouseUp(event);
         case UCEventType::MouseMove:  return HandleMouseMove(event);
         case UCEventType::MouseWheel: return HandleMouseWheel(event);
+        case UCEventType::MouseDoubleClick: {
+            Point2Di pos(event.pointer.x, event.pointer.y);
+            if (!Contains(pos) || event.button != UCMouseButton::Left) return false;
+            if (!FindSocketAt(pos).socketId.empty()) return false;
+            std::string nid = FindNodeAt(pos);
+            if (nid.empty() || !onNodeDoubleClick) return false;
+            onNodeDoubleClick(nid);
+            return true;
+        }
         case UCEventType::KeyDown:    return HandleKeyDown(event);
         default: break;
     }
@@ -2618,61 +2629,25 @@ std::string UltraCanvasCompositorDiagram::ToJson() const {
     }
     out << "\n  ],\n";
 
-    // Nodes
+    // Nodes and links go through the writers Copy uses, so a saved file
+    // keeps everything a clipboard copy does (parentId, link label, colours).
     out << "  \"nodes\": [\n";
     first = true;
     for (const auto& nid : nodeOrder) {
         auto it = nodes.find(nid);
         if (it == nodes.end()) continue;
-        const auto& n = it->second;
         if (!first) out << ",\n";
         first = false;
-        out << "    {\n";
-        out << "      \"id\": " << EscapeJsonString(n.id) << ",\n";
-        out << "      \"templateId\": " << EscapeJsonString(n.templateId) << ",\n";
-        out << "      \"titleOverride\": " << EscapeJsonString(n.titleOverride) << ",\n";
-        out << "      \"x\": " << n.x << ",\n";
-        out << "      \"y\": " << n.y << ",\n";
-        out << "      \"width\": " << n.width << ",\n";
-        out << "      \"collapsed\": " << (n.collapsed ? "true" : "false") << ",\n";
-        out << "      \"previewHandle\": " << EscapeJsonString(n.previewHandle) << ",\n";
-        out << "      \"params\": [";
-        bool firstP = true;
-        for (const auto& pv : n.paramValues) {
-            if (!firstP) out << ", ";
-            firstP = false;
-            const auto& v = pv.second;
-            out << "{ \"id\": " << EscapeJsonString(pv.first);
-            switch (v.kind) {
-                case ParamValueKind::Number:  out << ", \"number\": "  << v.number; break;
-                case ParamValueKind::Boolean: out << ", \"bool\": "    << (v.boolean ? "true" : "false"); break;
-                case ParamValueKind::Text:    out << ", \"text\": "    << EscapeJsonString(v.text); break;
-                case ParamValueKind::Color:   out << ", \"color\": "   << ColorToJsonString(v.color); break;
-                default: break;
-            }
-            if (v.dropdownIndex != 0) out << ", \"dropdown\": " << v.dropdownIndex;
-            out << " }";
-        }
-        out << "]\n";
-        out << "    }";
+        WriteNodeJson(out, it->second);
     }
     out << "\n  ],\n";
 
-    // Links
     out << "  \"links\": [\n";
     first = true;
     for (const auto& l : links) {
         if (!first) out << ",\n";
         first = false;
-        out << "    {\n";
-        out << "      \"id\": " << EscapeJsonString(l.id) << ",\n";
-        out << "      \"srcNode\": " << EscapeJsonString(l.sourceNodeId) << ",\n";
-        out << "      \"srcSocket\": " << EscapeJsonString(l.sourceSocketId) << ",\n";
-        out << "      \"dstNode\": " << EscapeJsonString(l.targetNodeId) << ",\n";
-        out << "      \"dstSocket\": " << EscapeJsonString(l.targetSocketId) << ",\n";
-        out << "      \"style\": \"" << LinkStyleToCompositorString(l.style) << "\",\n";
-        out << "      \"lineWidth\": " << l.lineWidth << "\n";
-        out << "    }";
+        WriteLinkJson(out, l);
     }
     out << "\n  ]\n";
     out << "}\n";
@@ -2699,47 +2674,14 @@ bool UltraCanvasCompositorDiagram::FromJson(const std::string& json) {
     // them before calling FromJson. Nodes referencing unknown template ids
     // will silently fail to instantiate.
 
-    // Nodes
+    // Nodes and links: the parsers Paste uses, the inverse of the writers.
     for (const auto& nobj : ExtractObjectArray(json, "nodes")) {
         CompositorNode node;
-        node.id = ExtractStringValue(nobj, "id");
-        node.templateId = ExtractStringValue(nobj, "templateId");
-        node.titleOverride = ExtractStringValue(nobj, "titleOverride");
-        node.x = ExtractNumberValue(nobj, "x");
-        node.y = ExtractNumberValue(nobj, "y");
-        node.width = ExtractNumberValue(nobj, "width");
-        node.collapsed = ExtractBoolValue(nobj, "collapsed");
-        node.previewHandle = ExtractStringValue(nobj, "previewHandle");
-        for (const auto& pobj : ExtractObjectArray(nobj, "params")) {
-            std::string pid = ExtractStringValue(pobj, "id");
-            if (pid.empty()) continue;
-            ParamValue v;
-            std::string numRaw = FindRawValue(pobj, "number");
-            if (!numRaw.empty()) { v.kind = ParamValueKind::Number; v.number = ExtractNumberValue(pobj, "number"); }
-            std::string boolRaw = FindRawValue(pobj, "bool");
-            if (!boolRaw.empty()) { v.kind = ParamValueKind::Boolean; v.boolean = ExtractBoolValue(pobj, "bool"); }
-            std::string textRaw = FindRawValue(pobj, "text");
-            if (!textRaw.empty()) { v.kind = ParamValueKind::Text; v.text = ExtractStringValue(pobj, "text"); }
-            std::string colRaw = FindRawValue(pobj, "color");
-            if (!colRaw.empty()) { v.kind = ParamValueKind::Color; v.color = ExtractColorValue(pobj, "color", Color()); }
-            std::string ddRaw = FindRawValue(pobj, "dropdown");
-            if (!ddRaw.empty()) v.dropdownIndex = static_cast<int>(ExtractNumberValue(pobj, "dropdown"));
-            node.paramValues[pid] = v;
-        }
-        AddNode(node);
+        if (ParseNodeFromObject(nobj, node)) AddNode(node);
     }
-
-    // Links
     for (const auto& lobj : ExtractObjectArray(json, "links")) {
         CompositorLink l;
-        l.id = ExtractStringValue(lobj, "id");
-        l.sourceNodeId   = ExtractStringValue(lobj, "srcNode");
-        l.sourceSocketId = ExtractStringValue(lobj, "srcSocket");
-        l.targetNodeId   = ExtractStringValue(lobj, "dstNode");
-        l.targetSocketId = ExtractStringValue(lobj, "dstSocket");
-        l.style = LinkStyleFromCompositorString(ExtractStringValue(lobj, "style"));
-        l.lineWidth = ExtractNumberValue(lobj, "lineWidth", 2.0);
-        AddLink(l);
+        if (ParseLinkFromObject(lobj, l)) AddLink(l);
     }
 
     historyRecording = prevRec;
@@ -2916,7 +2858,10 @@ void UltraCanvasCompositorDiagram::WriteLinkJson(std::ostream& out,
     out << "      \"dstSocket\": " << EscapeJsonString(l.targetSocketId) << ",\n";
     out << "      \"style\": \"" << LinkStyleToCompositorString(l.style) << "\",\n";
     out << "      \"lineWidth\": " << l.lineWidth << ",\n";
-    out << "      \"label\": " << EscapeJsonString(l.label) << "\n";
+    out << "      \"lineColor\": " << ColorToJsonString(l.lineColorOverride) << ",\n";
+    out << "      \"label\": " << EscapeJsonString(l.label) << ",\n";
+    out << "      \"labelBgColor\": " << ColorToJsonString(l.labelBgColor) << ",\n";
+    out << "      \"labelTextColor\": " << ColorToJsonString(l.labelTextColor) << "\n";
     out << "    }";
 }
 
@@ -2960,7 +2905,10 @@ bool UltraCanvasCompositorDiagram::ParseLinkFromObject(const std::string& obj,
     out.targetSocketId = ExtractStringValue(obj, "dstSocket");
     out.style = LinkStyleFromCompositorString(ExtractStringValue(obj, "style"));
     out.lineWidth = ExtractNumberValue(obj, "lineWidth", 2.0);
+    out.lineColorOverride = ExtractColorValue(obj, "lineColor", out.lineColorOverride);
     out.label = ExtractStringValue(obj, "label");
+    out.labelBgColor = ExtractColorValue(obj, "labelBgColor", out.labelBgColor);
+    out.labelTextColor = ExtractColorValue(obj, "labelTextColor", out.labelTextColor);
     return !out.sourceNodeId.empty() && !out.targetNodeId.empty();
 }
 
@@ -3489,6 +3437,10 @@ std::string UltraCanvasCompositorDiagram::Group(
 void UltraCanvasCompositorDiagram::Ungroup(const std::string& groupId) {
     auto* group = GetNode(groupId);
     if (!group) return;
+    // Only a group node ungroups: an ordinary node with no children would
+    // otherwise take the "empty group" branch below and be deleted.
+    const auto* groupTmpl = GetTemplate(group->templateId);
+    if (!groupTmpl || !groupTmpl->isGroup) return;
     auto children = GetChildrenOf(groupId);
     if (children.empty()) {
         // Just remove the empty group.

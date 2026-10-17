@@ -24,6 +24,23 @@ the presentation timeline rather than a date-accurate schedule.
 **Last Modified:** 2026-07-30
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Class hierarchy](#class-hierarchy)
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+  - [Managing items](#managing-items)
+- [Designs](#designs)
+- [Layout options](#layout-options)
+  - [Even vs. proportional placement](#even-vs-proportional-placement)
+- [Palettes and color](#palettes-and-color)
+- [Style](#style)
+- [Text handling](#text-handling)
+- [Interaction](#interaction)
+- [Geometry queries](#geometry-queries)
+- [Sample data](#sample-data)
+- [Not yet implemented](#not-yet-implemented)
+
 ## Class hierarchy
 
 ```

@@ -3,6 +3,30 @@
 **Version:** 1.2.1
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Construction](#construction)
+  - [Activity Management](#activity-management)
+  - [Dependency Management](#dependency-management)
+  - [Groups (team color-coding)](#groups-team-color-coding)
+  - [Schedule Analysis](#schedule-analysis)
+  - [Design Options](#design-options)
+  - [Flexible Node Templates](#flexible-node-templates)
+  - [Palette Options](#palette-options)
+  - [Layout & View](#layout--view)
+  - [Interaction & Callbacks](#interaction--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Minimal network with critical path](#minimal-network-with-critical-path)
+  - [Teams, three-point estimates and a probability read-out](#teams-three-point-estimates-and-a-probability-read-out)
+  - [Switching designs and palettes at runtime](#switching-designs-and-palettes-at-runtime)
+- [Demo](#demo)
+- [Notes & Limitations](#notes--limitations)
+
 ## Overview
 
 `UltraCanvasPertChart` is an interactive PERT (Program Evaluation and Review Technique) chart component for project scheduling. It manages `PertActivity` nodes connected by `PertDependency` arrows, runs the Critical Path Method (CPM) automatically — earliest/latest start and finish, slack and the critical path per activity — and computes classic PERT statistics from optional three-point estimates (expected duration, variance, probability of on-time completion). Activities lay themselves out in dependency layers from left to right, can be color-coded by team via groups with an on-canvas legend, and are rendered in one of four node designs with one of eight built-in color palettes (or a fully custom palette).

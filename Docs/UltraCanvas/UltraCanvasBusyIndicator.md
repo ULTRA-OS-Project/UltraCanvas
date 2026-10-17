@@ -1,5 +1,14 @@
 # UltraCanvas BusyIndicator Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Style](#style)
+- [DotRing fades](#dotring-fades)
+- [Threading](#threading)
+
 ## Overview
 
 **UltraCanvasBusyIndicator** is the animation that says *working on it*

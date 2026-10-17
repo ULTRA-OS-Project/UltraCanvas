@@ -1,5 +1,23 @@
 # UltraCanvasTickerBoard Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Data Model](#data-model)
+- [Basic Usage](#basic-usage)
+  - [A crawling message](#a-crawling-message)
+  - [Re-pricing while it rolls](#re-pricing-while-it-rolls)
+- [Motion](#motion)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Accessibility](#accessibility)
+- [Quote formatting](#quote-formatting)
+- [API Reference](#api-reference)
+- [Demo](#demo)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasTickerBoard` is the **ticker board**: a strip of items - a label,

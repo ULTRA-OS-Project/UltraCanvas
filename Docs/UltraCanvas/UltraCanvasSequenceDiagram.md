@@ -27,6 +27,24 @@ the message list.
 
 ---
 
+## Contents
+
+- [1. The model](#1-the-model)
+  - [Lifelines](#lifelines)
+  - [Message kinds](#message-kinds)
+  - [Activations are computed, not drawn by hand](#activations-are-computed-not-drawn-by-hand)
+  - [Message numbering](#message-numbering)
+  - [Combined fragments](#combined-fragments)
+  - [Notes](#notes)
+  - [Maintenance and validation](#maintenance-and-validation)
+- [2. Text export](#2-text-export)
+- [3. The element](#3-the-element)
+  - [Themes](#themes)
+  - [View and interaction](#view-and-interaction)
+  - [Layout behaviour worth knowing](#layout-behaviour-worth-knowing)
+- [4. Samples](#4-samples)
+- [See also](#see-also)
+
 ## 1. The model
 
 ```cpp

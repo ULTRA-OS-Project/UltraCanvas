@@ -6,6 +6,14 @@ through one API whatever platform the application runs on. The DemoApp shows
 them all live under *ULTRA OS modules → System dialogs*
 (`Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp`).
 
+## Contents
+
+- [Two implementations, one call](#two-implementations-one-call)
+- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs-—-ultracanvasfileloader)
+- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog-—-ultracanvasnativedialogs--iodevicemanager)
+- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs-—-ultracanvasdialogmanager)
+- [See also](#see-also)
+
 ## Two implementations, one call
 
 Every dialog below comes in two forms, and the application picks with one

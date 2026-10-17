@@ -10,6 +10,13 @@ Each tab has a signal picker (the bundled sample track plus three synthetic
 signals: chirp + tones, a 220 Hz tone with harmonics, and white noise), so the
 characteristic shapes of each plot can be compared across signal types.
 
+## Contents
+
+- [1. Spectrum plot (area chart)](#1-spectrum-plot-area-chart)
+- [2. Amplitude envelope (area chart)](#2-amplitude-envelope-area-chart)
+- [3. Correlogram (bar chart)](#3-correlogram-bar-chart)
+- [Related pages](#related-pages)
+
 ## 1. Spectrum plot (area chart)
 
 Frequency content of the whole signal:

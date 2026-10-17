@@ -1,5 +1,40 @@
 # UltraCanvasBlockDiagram Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [Nested Enumerations on UltraCanvasBlockDiagram](#nested-enumerations-on-ultracanvasblockdiagram)
+  - [BlockNode](#blocknode)
+  - [BlockConnection](#blockconnection)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Node Management](#node-management)
+  - [Connection Management](#connection-management)
+  - [View Control](#view-control)
+  - [Grid & Background](#grid--background)
+  - [3D Isometric Rendering](#3d-isometric-rendering)
+  - [Edit Mode](#edit-mode)
+  - [Selection & Operations](#selection--operations)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Creating the diagram canvas](#creating-the-diagram-canvas)
+  - [Adding shaped, colored nodes](#adding-shaped-colored-nodes)
+  - [Connecting nodes with orthogonal routing](#connecting-nodes-with-orthogonal-routing)
+  - [Dashed control-signal lines](#dashed-control-signal-lines)
+  - [Toolbar wired to edit mode and view](#toolbar-wired-to-edit-mode-and-view)
+  - [Resetting layout and view](#resetting-layout-and-view)
+  - [Toggling grid visibility from a checkbox](#toggling-grid-visibility-from-a-checkbox)
+- [Render Pipeline](#render-pipeline)
+- [Mouse & Edit Behaviour](#mouse--edit-behaviour)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasBlockDiagram** is an interactive block diagram component within the UltraCanvas framework, designed for building flowcharts, system diagrams, and technical schematics. Nodes can be drawn as a wide variety of shapes (rectangles, diamonds, hexagons, cylinders, actors, etc.) and connected by labeled, styled lines with optional arrowheads. The component supports an optional 3D isometric rendering mode for HVAC- and engineering-style visuals, an interactive editor mode (select / create-node / create-connection / pan), grid snapping, and pan/zoom.

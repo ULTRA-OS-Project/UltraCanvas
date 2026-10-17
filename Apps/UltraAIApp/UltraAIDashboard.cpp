@@ -1,6 +1,6 @@
 // Apps/UltraAIApp/UltraAIDashboard.cpp
-// Version: 0.1.2
-// Last Modified: 2026-09-24
+// Version: 0.2.0
+// Last Modified: 2026-10-16
 
 #include "UltraAIDashboard.h"
 #include "UltraAIDialogs.h"
@@ -9,8 +9,10 @@
 #include "UltraAISettingsWindow.h"
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasUtils.h"
 
 #include <functional>
 #include <string>
@@ -28,6 +30,16 @@
 namespace UltraAIApp {
 
 using namespace UltraCanvas;
+
+namespace {
+
+// The dashboard's icon set: 128 x 128 PNGs under media/icons/ultraai/ (the
+// SVG sources and their generator sit beside them).
+std::string IconPath(const std::string& name) {
+    return NormalizePath(GetResourcesDir() + "media/icons/ultraai/" + name + ".png");
+}
+
+} // namespace
 
 UltraAIDashboard::UltraAIDashboard(UltraCanvasApplication& app) : app_(app) {}
 
@@ -63,8 +75,11 @@ bool UltraAIDashboard::Create() {
 
     // Settings button (top-right of the header): opens the settings window.
     auto settingsBtn = std::make_shared<UltraCanvasButton>(
-        "dash-settings", kWindowWidth - 20 - 160, 14, 160, 32);
-    settingsBtn->SetText("⚙  Settings");
+        "dash-settings", kWindowWidth - 20 - 140, 14, 140, 34);
+    settingsBtn->SetText("Settings");
+    settingsBtn->SetIcon(IconPath("settings"));
+    settingsBtn->SetIconSize(24, 24);
+    settingsBtn->SetIconSpacing(8);
     settingsBtn->onClick = [this]() { OpenSettingsDialog(); };
     window_->AddChild(settingsBtn);
 
@@ -82,21 +97,33 @@ void UltraAIDashboard::OnWindowClosing() {
 
 void UltraAIDashboard::CreateButtons() {
     struct Entry {
+        const char* icon;      // file stem under media/icons/ultraai/
         const char* label;
+        const char* tooltip;
         std::function<void()> open;
     };
 
     std::vector<Entry> entries = {
-        { "💬  Chat (LLM)",       [this]() { OpenChatDialog(); } },
-        { "🧮  Embeddings",        [this]() { OpenEmbeddingsDialog(); } },
-        { "🎙  Speech → Text",     [this]() { OpenSpeechToTextDialog(); } },
-        { "🔊  Text → Speech",     [this]() { OpenTextToSpeechDialog(); } },
-        { "🌐  Translation",       [this]() { OpenTranslatorDialog(); } },
-        { "🖼  Image Generation",  [this]() { OpenImageGenDialog(); } },
-        { "👁  Vision Analysis",   [this]() { OpenVisionDialog(); } },
-        { "🎬  Video Generation",  [this]() { OpenVideoGenDialog(); } },
-        { "🎵  Music Generation",  [this]() { OpenMusicGenDialog(); } },
-        { "📝  Code Assist",       [this]() { OpenCodeAssistDialog(); } },
+        { "chat",             "Chat (LLM)",       "Talk to a language model",
+          [this]() { OpenChatDialog(); } },
+        { "embeddings",       "Embeddings",       "Turn text into vectors for search and similarity",
+          [this]() { OpenEmbeddingsDialog(); } },
+        { "speech-to-text",   "Speech → Text",    "Transcribe recorded speech",
+          [this]() { OpenSpeechToTextDialog(); } },
+        { "text-to-speech",   "Text → Speech",    "Read text aloud",
+          [this]() { OpenTextToSpeechDialog(); } },
+        { "translation",      "Translation",      "Translate text between languages",
+          [this]() { OpenTranslatorDialog(); } },
+        { "image-generation", "Image Generation", "Create an image from a description",
+          [this]() { OpenImageGenDialog(); } },
+        { "vision",           "Vision Analysis",  "Describe and analyse an image",
+          [this]() { OpenVisionDialog(); } },
+        { "video-generation", "Video Generation", "Create a video clip from a description",
+          [this]() { OpenVideoGenDialog(); } },
+        { "music-generation", "Music Generation", "Compose music from a description",
+          [this]() { OpenMusicGenDialog(); } },
+        { "code-assist",      "Code Assist",      "Write, explain and fix code",
+          [this]() { OpenCodeAssistDialog(); } },
     };
 
     const int cols = 5;
@@ -107,10 +134,21 @@ void UltraAIDashboard::CreateButtons() {
         long x = kGap + col * (kButtonWidth + kGap);
         long y = kHeaderHeight + row * (kButtonHeight + kGap);
 
+        // A tile: the 128 px icon on top, the service name below it.
         auto btn = std::make_shared<UltraCanvasButton>(
             "svc-" + std::to_string(i),
             x, y, kButtonWidth, kButtonHeight);
         btn->SetText(entries[i].label);
+        btn->SetIcon(IconPath(entries[i].icon));
+        btn->SetIconSize(kIconSize, kIconSize);
+        btn->SetIconPosition(ButtonIconPosition::Top);
+        btn->SetIconSpacing(8);
+        btn->SetPadding(12, 8, 8, 8);
+        ButtonStyle style = btn->GetStyle();
+        style.cornerRadius = 14;
+        style.fontSize = 13;
+        btn->SetStyle(style);
+        btn->SetTooltip(entries[i].tooltip);
         btn->onClick = entries[i].open;
         window_->AddChild(btn);
     }

@@ -4,6 +4,31 @@
 **Last Modified:** 2026-09-10
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Layouts](#layouts)
+- [Header Include](#header-include)
+- [Data Model](#data-model)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Party Management](#party-management)
+  - [Layout](#layout)
+  - [Appearance](#appearance)
+  - [Selection & Interaction](#selection--interaction)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Sample Data](#sample-data)
+- [Usage Examples](#usage-examples)
+  - [Basic Hemicycle](#basic-hemicycle)
+  - [Horseshoe and Circle](#horseshoe-and-circle)
+  - [Westminster Benches](#westminster-benches)
+  - [Coalition Builder](#coalition-builder)
+  - [Hover and Selection Callbacks](#hover-and-selection-callbacks)
+- [Demo Application](#demo-application)
+- [Notes & Best Practices](#notes--best-practices)
+
 ## Overview
 
 `UltraCanvasParliamentDiagram` renders the seat chart of a legislature: every

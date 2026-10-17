@@ -1,5 +1,6 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.13.0 - MarkdownHeadingSlug: GitHub-style heading anchors in markdown mode
 // Version: 3.12.0 - onFocusGained / onFocusLost, as the text input has them
 // Version: 3.11.0 - ApplyTheme: the light or dark preset, the surfaces and ink from the theme roles
 // Version: 3.10.0 - an input method's composition is drawn in the caret's line,
@@ -1021,6 +1022,8 @@ namespace UltraCanvas {
         // and markdownAnchorBacklinks. Run lazily when markdownIndexDirty is true — which
         // RebuildText() and SetText() both raise.
         void RebuildMarkdownIndex();
+        // GitHub-style anchor id of a heading's text (after the leading #s).
+        static std::string MarkdownHeadingSlug(const std::string& headingText);
         bool markdownIndexDirty = true;
 
         // Normalize per-column widths across every row of a contiguous table span. Each cell's

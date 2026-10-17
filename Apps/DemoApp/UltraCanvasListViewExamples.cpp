@@ -682,7 +682,7 @@ namespace UltraCanvas {
              "C++ translation unit, compiled by the build", "4,301 bytes", "12 Mar 2025, 13:20"},
             {{"logo.png", "PNG Image", "45.6 KB", "2025-01-20"}, "media/logo.png",
              "PNG bitmap image", "46,694 bytes", "20 Jan 2025, 16:58"},
-            {{"CHANGELOG.md", "Markdown", "12.3 KB", "2025-03-15"}, "Docs/CHANGELOG.md",
+            {{"CHANGELOG.md", "Markdown", "12.3 KB", "2025-03-15"}, "Docs/UltraCanvas/CHANGELOG.md",
              "Markdown document", "12,595 bytes", "15 Mar 2025, 09:41"},
         };
         for (const auto& row : fileRows) {

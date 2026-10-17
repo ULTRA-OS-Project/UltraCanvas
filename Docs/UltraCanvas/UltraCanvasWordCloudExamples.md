@@ -4,6 +4,29 @@
 **Last Modified:** 2026-07-22
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Quick Start](#quick-start)
+- [The Center Image](#the-center-image)
+- [Mask Images (shape from an image)](#mask-images-shape-from-an-image)
+- [Full Option Reference](#full-option-reference)
+  - [Words](#words)
+  - [Sizing](#sizing)
+  - [Fonts](#fonts)
+  - [Rotation](#rotation)
+  - [Colors](#colors)
+  - [Layout](#layout)
+  - [Interactivity](#interactivity)
+  - [Layout results](#layout-results)
+  - [Animation](#animation)
+- [Layout Algorithm](#layout-algorithm)
+- [Word Cloud Library Research](#word-cloud-library-research)
+- [Complete Example](#complete-example)
+- [Demo](#demo)
+
 ## Overview
 
 `UltraCanvasWordCloudElement` renders word clouds / word maps: a set of words sized by weight (frequency, importance, revenue…) and packed together without overlaps. The layout engine uses **greedy spiral placement over an occupancy grid** — the same family of algorithms used by wordcloud2.js, ECharts wordCloud and the Python `wordcloud` package. Its option set was designed as the superset of the options offered by the major word-cloud libraries (see the comparison at the end of this document), including:

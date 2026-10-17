@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraAI dashboard icon: vision. 128 x 128 tile, generated as a set. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2E9BF5"/>
+      <stop offset="1" stop-color="#1C2F7A"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="64" rx="28" fill="url(#gloss)"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="27.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+  <g transform="translate(0 3)">
+    <path d="M22 36 V24 H34 M94 24 H106 V36 M22 92 V104 H34 M94 104 H106 V92"
+          fill="none" stroke="#0B1020" stroke-opacity="0.22" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M26 64 Q64 28 102 64 Q64 100 26 64 Z" fill="#0B1020" fill-opacity="0.22"/>
+    <circle cx="64" cy="64" r="15" fill="none" stroke="none"/>
+    <circle cx="64" cy="64" r="6.5" fill="none" stroke="none"/>
+    <circle cx="69" cy="59" r="3.5" fill="none" stroke="none"/>
+  </g>
+    <path d="M22 36 V24 H34 M94 24 H106 V36 M22 92 V104 H34 M94 104 H106 V92"
+          fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M26 64 Q64 28 102 64 Q64 100 26 64 Z" fill="#FFFFFF"/>
+    <circle cx="64" cy="64" r="15" fill="#22479C"/>
+    <circle cx="64" cy="64" r="6.5" fill="#0D1A40"/>
+    <circle cx="69" cy="59" r="3.5" fill="#FFFFFF"/>
+</svg>

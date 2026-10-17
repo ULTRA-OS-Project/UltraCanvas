@@ -1,5 +1,25 @@
 # AudioFX - Professional Audio Processing for Modern Applications
 
+## Contents
+
+- [Complete Audio Processing in a Single Library](#complete-audio-processing-in-a-single-library)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Universal Audio Loading](#universal-audio-loading)
+  - [Professional Effects Processing](#professional-effects-processing)
+  - [Intelligent Audio Analysis](#intelligent-audio-analysis)
+  - [Noise Reduction & Cleanup](#noise-reduction--cleanup)
+  - [Effect Chains & Batch Processing](#effect-chains--batch-processing)
+- [Supported Operations](#supported-operations)
+- [Why AudioFX?](#why-audiofx)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+  - [For Users](#for-users)
+- [Perfect For](#perfect-for)
+- [Get Started](#get-started)
+- [Technical Specifications](#technical-specifications)
+- [The Bottom Line](#the-bottom-line)
+
 ## Complete Audio Processing in a Single Library
 
 **AudioFX** is a comprehensive, cross-platform audio processing library that brings professional-grade audio capabilities to any application. Whether you're building music software, podcasting tools, video editors, or game engines, AudioFX provides a unified API for loading, processing, analyzing, and exporting audio across all major formats.

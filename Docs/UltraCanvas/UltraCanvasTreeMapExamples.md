@@ -4,6 +4,34 @@
 **Last Modified:** 2026-08-31
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Mouse interaction](#mouse-interaction)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Data Management](#data-management)
+  - [Layout & Style Configuration](#layout--style-configuration)
+  - [Navigation](#navigation)
+  - [Selection & Search](#selection--search)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Function](#factory-function)
+- [Data Structures](#data-structures)
+  - [TreeMapNode](#treemapnode)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Basic Hierarchical Treemap](#basic-hierarchical-treemap)
+  - [Cycling Layout Algorithms](#cycling-layout-algorithms)
+  - [Cycling Visual Styles](#cycling-visual-styles)
+  - [Cycling Color Schemes](#cycling-color-schemes)
+  - [Toggling Labels and Values](#toggling-labels-and-values)
+  - [Reset to Default Configuration](#reset-to-default-configuration)
+- [Tiling Algorithms](#tiling-algorithms)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasTreeMapElement` is a hierarchical treemap component for visualizing nested datasets as nested rectangles whose areas are proportional to a numeric value. Each `TreeMapNode` carries a primary value (size) and a secondary value (for color shading), and the element supports several tiling algorithms, visual styles, color schemes, and interactive drill-down navigation through the hierarchy.

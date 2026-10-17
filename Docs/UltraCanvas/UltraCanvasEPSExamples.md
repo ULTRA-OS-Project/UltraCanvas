@@ -1,5 +1,18 @@
 # UltraCanvasEPS Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Known gaps (diagnosed, approximated)](#known-gaps-diagnosed-approximated)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [EPSDocument](#epsdocument)
+  - [UltraCanvasEPSElement](#ultracanvasepselement)
+  - [UltraCanvasEPSPlugin](#ultracanvasepsplugin)
+- [Writing EPS files (`UltraCanvasEPSConverter.h`)](#writing-eps-files-ultracanvasepsconverterh)
+- [Usage Example](#usage-example)
+
 ## Overview
 
 The `UltraCanvasEPSElement` is a UI element that loads and renders **Encapsulated PostScript** (`.eps`, `.epsf`, `.ps`) drawings inside an UltraCanvas window. It is part of the `UltraCanvasEPSPlugin`.
