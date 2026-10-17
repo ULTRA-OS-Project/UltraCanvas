@@ -1005,10 +1005,67 @@ std::string FormulaSheetName(const std::string& name) {
 
 } // namespace
 
-std::string RenameSheetInFormula(const std::string& formula, const std::string& oldName,
-                                 const std::string& newName) {
-    if (oldName.empty() || newName.empty()) return formula;
-    const std::string replacement = FormulaSheetName(newName);
+namespace {
+
+// Reads a sheet qualifier at formula[i] - 'Quoted name' or a bare name -
+// followed by '.' or '!'. On success `name` is the sheet's name and `sep` the
+// index of the separator. A bare name counts only before a cell address, so
+// "2016.5" is a number, not sheet 2016.
+bool ReadSheetQualifier(const std::string& formula, size_t i, std::string& name, size_t& sep) {
+    name.clear();
+    if (i >= formula.size()) return false;
+    size_t j = i;
+    if (formula[i] == '\'') {
+        ++j;
+        bool closed = false;
+        while (j < formula.size()) {
+            if (formula[j] == '\'') {
+                if (j + 1 < formula.size() && formula[j + 1] == '\'') { name += '\''; j += 2; continue; }
+                closed = true;
+                ++j;
+                break;
+            }
+            name += formula[j++];
+        }
+        if (!closed) return false;
+    } else {
+        if (!IsSheetNameChar(formula[i]) || (i > 0 && IsSheetNameChar(formula[i - 1]))) return false;
+        while (j < formula.size() && IsSheetNameChar(formula[j])) ++j;
+        name = formula.substr(i, j - i);
+        const bool addressFollows = j + 1 < formula.size() &&
+            (formula[j + 1] == '$' || std::isalpha(static_cast<unsigned char>(formula[j + 1])));
+        if (!addressFollows) return false;
+    }
+    if (j >= formula.size() || (formula[j] != '.' && formula[j] != '!')) return false;
+    sep = j;
+    return true;
+}
+
+// The end of the cell address (or A1:B3 range) that starts at formula[i];
+// the far end of a range may repeat the sheet (Sales.A1:Sales.B3).
+size_t ReferenceEnd(const std::string& formula, size_t i) {
+    auto addressEnd = [&](size_t k) {
+        while (k < formula.size() && (formula[k] == '$' || std::isalnum(static_cast<unsigned char>(formula[k])))) ++k;
+        return k;
+    };
+    size_t end = addressEnd(i);
+    if (end < formula.size() && formula[end] == ':') {
+        size_t k = end + 1;
+        std::string name;
+        size_t sep = 0;
+        if (ReadSheetQualifier(formula, k, name, sep)) k = sep + 1;
+        const size_t far = addressEnd(k);
+        if (far > k) end = far;
+    }
+    return end;
+}
+
+// Shared by RenameSheetInFormula and RemoveSheetFromFormula: walks the
+// formula outside "text", and for every reference qualified with sheet
+// `sheetName` writes rewrite(qualifierStart, separator, out) and continues
+// at the index it returns.
+template <typename Rewrite>
+std::string RewriteSheetReferences(const std::string& formula, const std::string& sheetName, Rewrite rewrite) {
     std::string out;
     out.reserve(formula.size());
     size_t i = 0;
@@ -1021,40 +1078,26 @@ std::string RenameSheetInFormula(const std::string& formula, const std::string& 
             i = close;
             continue;
         }
-        if (c == '\'') {   // 'Quoted name' - a reference when '.' or '!' follows
-            std::string name;
-            size_t j = i + 1;
-            bool closed = false;
-            while (j < formula.size()) {
-                if (formula[j] == '\'') {
-                    if (j + 1 < formula.size() && formula[j + 1] == '\'') { name += '\''; j += 2; continue; }
-                    closed = true;
-                    ++j;
-                    break;
-                }
-                name += formula[j++];
-            }
-            if (closed && j < formula.size() && (formula[j] == '.' || formula[j] == '!') &&
-                SameNameIgnoringCase(name, oldName)) {
-                out += replacement;
+        std::string name;
+        size_t sep = 0;
+        if (ReadSheetQualifier(formula, i, name, sep)) {
+            if (SameNameIgnoringCase(name, sheetName)) {
+                i = rewrite(i, sep, out);
             } else {
-                out.append(formula, i, j - i);
+                out.append(formula, i, sep - i);
+                i = sep;
             }
-            i = j;
             continue;
         }
-        if (IsSheetNameChar(c) && (i == 0 || !IsSheetNameChar(formula[i - 1]))) {
-            size_t j = i;
-            while (j < formula.size() && IsSheetNameChar(formula[j])) ++j;
-            // A bare name counts only before a cell address ("2016.5" is a number).
-            const bool addressFollows = j + 1 < formula.size() &&
-                (formula[j + 1] == '$' || std::isalpha(static_cast<unsigned char>(formula[j + 1])));
-            if (j < formula.size() && (formula[j] == '.' || formula[j] == '!') && addressFollows &&
-                SameNameIgnoringCase(formula.substr(i, j - i), oldName)) {
-                out += replacement;
+        if (c == '\'' || IsSheetNameChar(c)) {   // a name or word that is no reference
+            size_t j = i + 1;
+            if (c == '\'') {
+                while (j < formula.size() && formula[j] != '\'') ++j;
+                if (j < formula.size()) ++j;
             } else {
-                out.append(formula, i, j - i);
+                while (j < formula.size() && IsSheetNameChar(formula[j])) ++j;
             }
+            out.append(formula, i, j - i);
             i = j;
             continue;
         }
@@ -1062,6 +1105,26 @@ std::string RenameSheetInFormula(const std::string& formula, const std::string& 
         ++i;
     }
     return out;
+}
+
+} // namespace
+
+std::string RenameSheetInFormula(const std::string& formula, const std::string& oldName,
+                                 const std::string& newName) {
+    if (oldName.empty() || newName.empty()) return formula;
+    const std::string replacement = FormulaSheetName(newName);
+    return RewriteSheetReferences(formula, oldName, [&](size_t, size_t sep, std::string& out) {
+        out += replacement;
+        return sep;   // the separator and the address follow as they were
+    });
+}
+
+std::string RemoveSheetFromFormula(const std::string& formula, const std::string& sheetName) {
+    if (sheetName.empty()) return formula;
+    return RewriteSheetReferences(formula, sheetName, [&](size_t, size_t sep, std::string& out) {
+        out += "#REF!";
+        return ReferenceEnd(formula, sep + 1);
+    });
 }
 
 int SpreadsheetSheet::GetAutoFillDownEnd(const CellRange& source) const {

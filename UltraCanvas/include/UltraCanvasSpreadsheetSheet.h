@@ -89,6 +89,12 @@ std::string CheckSheetName(const std::string& name);
 std::string RenameSheetInFormula(const std::string& formula, const std::string& oldName,
                                  const std::string& newName);
 
+// The formula with every reference to the deleted sheet `sheetName` - a cell
+// (Sales.A1, Sales!$B$2) or a range (Sales.A1:B3, 'Q 1'.A1:'Q 1'.C9) - made
+// #REF!, as a spreadsheet does when a sheet is deleted: =Sales.A1*2 becomes
+// =#REF!*2. Case-insensitive; text in "quotes" and other sheets are left alone.
+std::string RemoveSheetFromFormula(const std::string& formula, const std::string& sheetName);
+
 // ============================================================================
 // SPREADSHEET SHEET CLASS
 // ============================================================================
