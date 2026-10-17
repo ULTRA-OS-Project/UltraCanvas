@@ -3,6 +3,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerHomeView.h"
 
+#include "UltraCleanerRegistry.h"
 #include "UltraCleanerTypes.h"
 
 #include "Plugins/Charts/UltraCanvasCircularProgressChart.h"
@@ -79,7 +80,7 @@ std::shared_ptr<UltraCanvasContainer> HomeView::Build(float width, float height)
     actionsHeading->SetFontSize(14);
     root_->AddChild(actionsHeading);
 
-    // Two ways in, described by what they do rather than by what they are.
+    // Two ways in (three on Windows), described by what they do rather than by what they are.
     auto actions = CreateContainer("ucHomeActions", 0, 0, width - 32, 96);
     actions->layout.SetFlexRow()
                    .SetFlexGap(14)
@@ -124,6 +125,12 @@ std::shared_ptr<UltraCanvasContainer> HomeView::Build(float width, float height)
                "Groups pictures that are the same, or shots of the same "
                "moment, and keeps one of each.",
                &onCleanPhotos);
+    if (RegistryCleaningAvailable()) {
+        makeAction("ucHomeRegistry", "Clean the registry",
+                   "Entries left behind by software that is gone. Each one is "
+                   "backed up before it is removed.",
+                   &onCleanRegistry);
+    }
 
     root_->AddChild(actions);
     actions->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
