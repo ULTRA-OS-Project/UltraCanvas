@@ -1751,7 +1751,7 @@ public:
 // ULTRACANVASSPREADSHEET FILE I/O METHODS
 // ============================================================================
 
-bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std::string& password) {
     lastError_.clear();
 
     // Report file-level problems (missing / locked / no permission) up front so
@@ -1773,9 +1773,9 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
     if (ext == ".ods") {
         return LoadODS(filePath);
     } else if (ext == ".xlsx") {
-        return LoadXLSX(filePath);
+        return LoadXLSX(filePath, password);
     } else if (ext == ".xls") {
-        return LoadXLS(filePath);
+        return LoadXLS(filePath, password);
     } else if (ext == ".csv") {
         return LoadCSV(filePath);
     } else if (ext == ".tsv") {

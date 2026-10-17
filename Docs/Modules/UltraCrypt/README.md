@@ -966,9 +966,11 @@ follow:
    and that recovers the plaintext without the key.
 
 *Serves:* reading (and, where a format must be written back, writing)
-password-protected files from other programs. No consumer is wired yet; the
-first expected is the encrypted `.xlsx` path in `UltraCanvasSpreadsheetXls`,
-which today refuses such a workbook.
+password-protected files from other programs. First consumer: the decryptor
+of password-protected `.xlsx` and `.docx` files
+(`UltraCanvas/core/UltraCanvasOfficeEncryption.cpp`, ECMA-376 agile
+encryption), which checks the files' `dataIntegrity` HMAC before it decrypts a
+byte — the rule above, applied. See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
 
 ## 6. Usage sketches
 

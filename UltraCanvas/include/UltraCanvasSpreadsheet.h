@@ -474,17 +474,23 @@ public:
     void SetAutoCalculate(bool enabled);
     
     // ===== FILE OPERATIONS =====
-    bool LoadFromFile(const std::string& filePath);
+    // `password` opens a password-protected .xlsx (also one named .xls): the
+    // ECMA-376 agile encryption Excel 2010 and later write, see
+    // UltraCanvasOfficeEncryption.h. Without it such a file fails with a
+    // message saying a password is needed; a wrong one, with "The password is
+    // not correct". UltraCanvasFileLoader::RequestDocumentPassword asks the
+    // user for it. Other formats ignore it.
+    bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
     bool SaveToFile(const std::string& filePath);
     bool LoadODS(const std::string& filePath);
     bool SaveODS(const std::string& filePath);
-    bool LoadXLSX(const std::string& filePath);
+    bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
     bool SaveXLSX(const std::string& filePath);
     // Legacy Excel workbooks (.xls): Excel 97-2003 and 5.0/95 binary files, and
     // what else Excel opens under the name - an .xlsx renamed, an HTML table, an
     // Excel 2003 XML workbook, delimited text. Read only: save as .xlsx or .ods.
     // See UltraCanvasSpreadsheetXls.h.
-    bool LoadXLS(const std::string& filePath);
+    bool LoadXLS(const std::string& filePath, const std::string& password = std::string());
     // Load a CSV/TSV file. The single-argument form auto-detects the encoding,
     // field separator and decimal separator (see CSVDetectOptions); use the
     // WithOptions form to apply settings chosen in the import dialog.

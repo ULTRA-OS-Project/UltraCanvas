@@ -1547,7 +1547,17 @@ if(PkgConfig_FOUND)
     pkg_check_modules(TINYXML2_TEST tinyxml2)
 endif()
 
-if(TINYXML2_TEST_FOUND)
+# The .docx reader opens password-protected documents through
+# UltraCanvasOfficeEncryption.cpp, which sits on UltraCrypt. These tests link
+# the uc-crypt archive rather than the UltraCrypt home: on a shared core the
+# home is libUltraCanvas, which carries its own copy of the Word readers these
+# tests compile from source.
+set(WORD_ENCRYPTION_SOURCES ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasOfficeEncryption.cpp)
+if(TINYXML2_TEST_FOUND AND NOT TARGET uc-crypt)
+    message(STATUS "  uc-crypt not built - WordFormatsTest and LaTeXDocumentTest disabled")
+endif()
+
+if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
     message(STATUS "  Building WordFormatsTest...")
 
     set(ULTRACANVAS_SRC_DIR "${ULTRACANVAS_ROOT}/UltraCanvas")
@@ -1563,6 +1573,7 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasCompoundFile.cpp
+        ${WORD_ENCRYPTION_SOURCES}
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         # UCWordDocumentIO dispatches .tex to the LaTeX document reader
@@ -1572,7 +1583,7 @@ if(TINYXML2_TEST_FOUND)
         # HTMLReaderTestCore brings the parser, the cascade and Trim().
         ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
-    target_link_libraries(WordFormatsTest PRIVATE HTMLReaderTestCore)
+    target_link_libraries(WordFormatsTest PRIVATE HTMLReaderTestCore uc-crypt)
     target_include_directories(WordFormatsTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         # the module's internal helpers (symbol-font mapping) are tested too
@@ -1674,7 +1685,7 @@ message(STATUS "    Test registered: HTMLRichImportTest")
 # math runs/blocks, diagnostics, Markdown/ODT round trips of the math model
 # parts, format detection, and the shipped media/LaTex corpus. Needs the Word
 # module sources (for UCWordDocumentIO) like WordFormatsTest, not the UI stack.
-if(TINYXML2_TEST_FOUND)
+if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
     message(STATUS "  Building LaTeXDocumentTest...")
     add_executable(LaTeXDocumentTest
         ${CMAKE_CURRENT_SOURCE_DIR}/LaTeXDocumentTest.cpp
@@ -1686,13 +1697,14 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasCompoundFile.cpp
+        ${WORD_ENCRYPTION_SOURCES}
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
         # UCRichDocument::FromHTML reads through the HTMLReader's importer.
         ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
-    target_link_libraries(LaTeXDocumentTest PRIVATE HTMLReaderTestCore)
+    target_link_libraries(LaTeXDocumentTest PRIVATE HTMLReaderTestCore uc-crypt)
     target_include_directories(LaTeXDocumentTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
@@ -4217,6 +4229,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SpreadsheetXlsFileTest")
 else()
     message(STATUS "  SpreadsheetXlsFileTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== OFFICE ENCRYPTION TEST =====
+# Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
+# against fixtures msoffcrypto-tool encrypted - right, wrong and missing
+# passwords, a changed byte, unsupported headers - then LoadFromFile,
+# UCWordDocumentIO::Load and UltraCanvasFileLoader::LoadTextDocument on them.
+# Needs the full library (the spreadsheet element, the file loader).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OfficeEncryptionTest...")
+    add_executable(OfficeEncryptionTest ${CMAKE_CURRENT_SOURCE_DIR}/OfficeEncryptionTest.cpp)
+    target_include_directories(OfficeEncryptionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OfficeEncryptionTest PRIVATE cxx_std_20)
+    target_link_libraries(OfficeEncryptionTest PRIVATE UltraCanvas)
+    target_compile_definitions(OfficeEncryptionTest PRIVATE
+        OFFICETEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(OfficeEncryptionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OfficeEncryptionTest COMMAND OfficeEncryptionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OfficeEncryptionTest")
+else()
+    message(STATUS "  OfficeEncryptionTest skipped (UltraCanvas target not present)")
 endif()
 
 # open but cannot list is one whose thumbnail nobody can switch on.

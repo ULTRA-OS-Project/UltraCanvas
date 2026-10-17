@@ -2,14 +2,15 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.1.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasTextUtils.h"
 
 #include "tinyxml2.h"
@@ -78,11 +79,28 @@ void ProtectWhitespaceRuns(std::string& xml) {
 
 class DocxReader {
 public:
-    bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error) {
+    bool Load(const std::string& filePath, const std::string& password, UCRichDocument& doc,
+              std::string& error) {
         doc_ = &doc;
-        if (!zip_.Open(filePath)) {
-            error = "The file is not a valid Word document (.docx): " + filePath;
-            return false;
+        // A password-protected document is a compound file holding the
+        // package encrypted (UltraCanvasOfficeEncryption.h), not a ZIP.
+        std::vector<uint8_t> package;
+        switch (DecryptOfficePackageFile(filePath, password, package, error)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                if (!zip_.Open(filePath)) {
+                    error = "The file is not a valid Word document (.docx): " + filePath;
+                    return false;
+                }
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!zip_.OpenFromMemory(std::move(package))) {
+                    error = "The decrypted document is not a valid Word document (.docx): " + filePath;
+                    return false;
+                }
+                break;
+            default:
+                error += ": " + filePath;
+                return false;
         }
         std::string documentXml;
         if (!zip_.ReadEntry("word/document.xml", documentXml)) {
@@ -3004,10 +3022,10 @@ private:
 } // namespace
 
 bool UCWordDocumentIO::LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
-                                std::string& outError) {
+                                std::string& outError, const std::string& password) {
     outDocument = UCRichDocument{};
     DocxReader reader;
-    if (!reader.Load(filePath, outDocument, outError)) return false;
+    if (!reader.Load(filePath, password, outDocument, outError)) return false;
     outDocument.ReadCheckboxPrefixes();
     return true;
 }

@@ -1,13 +1,15 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.6.0 - RequestDocumentPassword; OpenTextDocument and LoadTextDocument open
+//                  password-protected .docx files
 // Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
 //                  AddTextDocumentLoadTypes, SaveTextDocument, AddTextDocumentSaveTypes
 // Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -16,6 +18,7 @@
 #include "UltraCanvasAudio.h"
 #include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
 #include "UltraCanvasVectorRaster.h"    // RasterizeVectorDocument: a drawing saved as a bitmap
 #include "UltraCanvasRasterDocument.h"  // ... written through the image writer
@@ -641,14 +644,14 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UCRichDocument> UltraCanvasFileLoader::LoadTextDocument(
-            const std::string& filePath, std::string& outError) {
+            const std::string& filePath, std::string& outError, const std::string& password) {
         outError.clear();
 
         // Package formats (and renamed/legacy files) go by content signature.
         WordDocumentFormat format = DetectWordDocumentFormat(filePath);
         if (format != WordDocumentFormat::Unknown) {
             auto document = std::make_shared<UCRichDocument>();
-            if (!UCWordDocumentIO::Load(filePath, *document, outError)) {
+            if (!UCWordDocumentIO::Load(filePath, *document, outError, password)) {
                 return nullptr;
             }
             return document;
@@ -716,18 +719,67 @@ namespace UltraCanvas {
             effective.AddFilter("All files (*.*)", "*");
         }
 
-        OpenFileDialog(effective, [onResult](DialogResult r, const std::string& path) {
-            FileLoadResult loadResult;
-            loadResult.dialogResult = r;
-            std::shared_ptr<UCRichDocument> document;
-
-            if (r == DialogResult::OK && !path.empty()) {
-                document = LoadTextDocument(path, loadResult.loadError);
+        UltraCanvasWindowBase* parent = effective.parentWindow;
+        OpenFileDialog(effective, [onResult, parent](DialogResult r, const std::string& path) {
+            if (r != DialogResult::OK || path.empty()) {
+                FileLoadResult loadResult;
+                loadResult.dialogResult = r;
+                if (onResult) onResult(loadResult, nullptr);
+                return;
             }
-            if (onResult) {
-                onResult(loadResult, document);
-            }
+            RequestDocumentPassword(path, parent,
+                [onResult, path](bool proceed, const std::string& password) {
+                    FileLoadResult loadResult;
+                    loadResult.dialogResult = proceed ? DialogResult::OK : DialogResult::Cancel;
+                    std::shared_ptr<UCRichDocument> document;
+                    if (proceed) document = LoadTextDocument(path, loadResult.loadError, password);
+                    if (onResult) onResult(loadResult, document);
+                });
         });
+    }
+
+    namespace {
+        // One round of RequestDocumentPassword's prompt; `notice` (the last
+        // attempt's error) heads the prompt after a wrong password.
+        void AskDocumentPassword(const std::string& filePath, UltraCanvasWindowBase* parent,
+                                 const std::string& notice,
+                                 std::function<void(bool, const std::string&)> onResult) {
+            const std::string name = PathToUtf8(PathFromUtf8(filePath).filename());
+            const std::string prompt = (notice.empty() ? std::string() : notice + ".\n") +
+                                       "\"" + name + "\" is password-protected. Password:";
+            UltraCanvasDialogManager::ShowInputDialog(prompt, "Password", "", InputType::Password,
+                [filePath, parent, onResult](DialogResult result, const std::string& password) {
+                    if (result != DialogResult::OK) {
+                        onResult(false, "");
+                        return;
+                    }
+                    std::string error;
+                    switch (CheckOfficePassword(filePath, password, error)) {
+                        case OfficeDecryptStatus::WrongPassword:
+                        case OfficeDecryptStatus::PasswordRequired:
+                            AskDocumentPassword(filePath, parent, error, onResult);
+                            return;
+                        default:
+                            // Right, or a failure the loader reports in its own words.
+                            onResult(true, password);
+                            return;
+                    }
+                }, parent);
+        }
+    } // namespace
+
+    void UltraCanvasFileLoader::RequestDocumentPassword(
+            const std::string& filePath, UltraCanvasWindowBase* parent,
+            std::function<void(bool proceed, const std::string& password)> onResult) {
+        if (!onResult) return;
+        // With no password the check stops at the header: PasswordRequired
+        // for a file it can open, without deriving any key.
+        std::string error;
+        if (CheckOfficePassword(filePath, "", error) == OfficeDecryptStatus::PasswordRequired) {
+            AskDocumentPassword(filePath, parent, "", std::move(onResult));
+        } else {
+            onResult(true, "");
+        }
     }
 
 #if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)

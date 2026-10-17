@@ -263,17 +263,20 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 ### File Operations
 
 ```cpp
-// Format chosen automatically from the file extension.
-bool LoadFromFile(const std::string& filePath);
+// Format chosen automatically from the file extension. `password` opens a
+// password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
+// formats ignore it.
+bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
 bool SaveToFile(const std::string& filePath);
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
-bool LoadXLSX(const std::string& filePath);
+bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
 bool SaveXLSX(const std::string& filePath);
-// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx, HTML table, Excel 2003
-// XML file or delimited text saved under the name. Read only.
-bool LoadXLS(const std::string& filePath);
+// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx (password-protected or
+// not), HTML table, Excel 2003 XML file or delimited text saved under the
+// name. Read only.
+bool LoadXLS(const std::string& filePath, const std::string& password = std::string());
 
 // CSV/TSV: single-argument form auto-detects encoding/separators.
 bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
@@ -478,7 +481,7 @@ sheet->Recalculate();
 
 ### 4. Open a Spreadsheet File (.ods / .csv)
 
-Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback.
+Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback. A password-protected `.xlsx` needs its password: `UltraCanvasFileLoader::RequestDocumentPassword` asks for it (and calls straight back for any other file), then pass it as `LoadFromFile(path, password)` - the demo's Open button does this, see [UltraCanvasOfficeEncryption.md](UltraCanvasOfficeEncryption.md).
 
 ```cpp
 auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,

@@ -653,8 +653,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
-  `.doc` importer and the `.xls` reader.
+  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
+  password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
+  AES-CBC, SHA-256/512), decrypted back into their ZIP package with UltraCrypt.
+  In `core/UltraCanvasOfficeEncryption.cpp`; the integrity HMAC is checked
+  before anything is decrypted. `DecryptOfficePackage` / `DecryptOfficePackageFile`
+  (`OfficeDecryptStatus`: Decrypted, NotEncrypted, PasswordRequired,
+  WrongPassword, Tampered, Unsupported, Damaged, NoCryptoBackend),
+  `CheckOfficePassword` (the verifier only), `IsEncryptedOfficePackage`. Used by
+  `UltraCanvasSpreadsheet::LoadXLSX` / `LoadXLS` / `LoadFromFile`,
+  `UCWordDocumentIO::Load` / `LoadDocx` (each with an optional password) and
+  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it.
+  See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML

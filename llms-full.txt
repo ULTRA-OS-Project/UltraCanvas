@@ -832,8 +832,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
-  `.doc` importer and the `.xls` reader.
+  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
+  password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
+  AES-CBC, SHA-256/512), decrypted back into their ZIP package with UltraCrypt.
+  In `core/UltraCanvasOfficeEncryption.cpp`; the integrity HMAC is checked
+  before anything is decrypted. `DecryptOfficePackage` / `DecryptOfficePackageFile`
+  (`OfficeDecryptStatus`: Decrypted, NotEncrypted, PasswordRequired,
+  WrongPassword, Tampered, Unsupported, Damaged, NoCryptoBackend),
+  `CheckOfficePassword` (the verifier only), `IsEncryptedOfficePackage`. Used by
+  `UltraCanvasSpreadsheet::LoadXLSX` / `LoadXLS` / `LoadFromFile`,
+  `UCWordDocumentIO::Load` / `LoadDocx` (each with an optional password) and
+  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it.
+  See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -20389,8 +20402,10 @@ stream of that name anywhere is taken instead.
 
 ## Where it is used
 
-The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`)
-and the [`.xls` reader](UltraCanvasSpreadsheetXls.md).
+The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`),
+the [`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
+[password-protected `.xlsx` and `.docx` files](UltraCanvasOfficeEncryption.md),
+which reads their `EncryptionInfo` and `EncryptedPackage` streams.
 
 ## Test
 
@@ -48009,6 +48024,150 @@ screens.
   this element replaced it.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasOfficeEncryption.md
+==============================================================================
+
+# UltraCanvasOfficeEncryption — password-protected .xlsx and .docx
+
+An `.xlsx`, `.docx` or `.pptx` saved with *Encrypt with Password* is not a ZIP
+package. It is an OLE2 [compound file](UltraCanvasCompoundFile.md) holding two
+streams: `EncryptionInfo`, which says how the key is derived, and
+`EncryptedPackage`, the original package encrypted. This module turns the
+second back into the ZIP, which the `.xlsx` and `.docx` readers then read as
+usual. The spreadsheet, the Word reader and `UltraCanvasFileLoader` use it;
+most code never calls it directly, but passes a password to them.
+
+Header: `UltraCanvasOfficeEncryption.h`. The cryptography is UltraCrypt's
+(`Docs/Modules/UltraCrypt/README.md`): its constant-time AES-CBC, SHA-2 and
+HMAC.
+
+## Opening one
+
+A spreadsheet or a document takes the password as one more argument:
+
+<!-- doc-check: std::string path; std::string password; UltraCanvas::UltraCanvasWindowBase* window; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasFileLoader.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+
+using namespace UltraCanvas;
+
+auto sheet = std::make_shared<UltraCanvasSpreadsheet>("Book", 0, 0, 800, 600);
+if (!sheet->LoadFromFile(path, password)) {   // also LoadXLSX, LoadXLS
+    ShowError(sheet->GetLastError());          // "The password is not correct: ..."
+}
+
+UCRichDocument document;
+std::string error;
+if (!UCWordDocumentIO::Load(path, document, error, password)) ShowError(error);
+
+// Or ask the user: RequestDocumentPassword prompts (a password field), checks
+// the password, and asks again after a wrong one. A file without a password
+// calls back at once with (true, "").
+UltraCanvasFileLoader::RequestDocumentPassword(path, window,
+    [sheet, path](bool proceed, const std::string& typed) {
+        if (proceed && !sheet->LoadFromFile(path, typed)) ShowError(sheet->GetLastError());
+    });
+```
+
+`UltraCanvasFileLoader::OpenTextDocument` does the asking itself: a
+password-protected `.docx` chosen in its dialog prompts before it loads, and
+cancelling the prompt reports `Cancel`, like the dialog.
+
+Without a password, every loader fails with a message saying the file is
+password-protected, never that it is damaged or of another format. A file
+named `.xls` that is a password-protected `.xlsx` opens through `LoadXLS` too,
+as Excel opens it.
+
+## Decrypting directly
+
+<!-- doc-check: std::string path; std::string password; void ReadPackage(const std::vector<uint8_t>& zip); void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasOfficeEncryption.h"
+
+using namespace UltraCanvas;
+
+std::vector<uint8_t> zip;
+std::string error;
+switch (DecryptOfficePackageFile(path, password, zip, error)) {
+    case OfficeDecryptStatus::Decrypted:    ReadPackage(zip); break;   // UCZipPackageReader::OpenFromMemory
+    case OfficeDecryptStatus::NotEncrypted: break;                     // an ordinary file: read it as it is
+    default:                                ShowError(error); break;
+}
+```
+
+| Status | Meaning |
+|---|---|
+| `Decrypted` | `outPackage` holds the ZIP package |
+| `NotEncrypted` | not an encrypted Office package (an ordinary ZIP, an `.xls`, ...) |
+| `PasswordRequired` | encrypted, and the password was empty |
+| `WrongPassword` | the password verifier does not match |
+| `Tampered` | the password is right but the integrity HMAC does not match: the file was changed after it was saved |
+| `Unsupported` | an encryption this reader does not implement (below) |
+| `Damaged` | the streams are truncated or malformed |
+| `NoCryptoBackend` | UltraCrypt was built without libsodium |
+
+`CheckOfficePassword(path, password, error)` runs only the key derivation and
+the password verifier — what a prompt needs to ask again after a wrong
+password, without decrypting the file. `IsEncryptedOfficePackage(path)` tells
+whether a file is one at all. `DecryptOfficePackage` takes the two streams'
+contents, or an open `UCCompoundFileReader`.
+
+## What is supported
+
+ECMA-376 **agile** encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15), with
+AES-128, -192 or -256 in CBC mode and SHA-256 or SHA-512: what Office writes by
+default since 2013, and what LibreOffice and msoffcrypto-tool write. In order:
+
+1. **The password key.** The hash of the password salt and the password in
+   UTF-16LE, rehashed `spinCount` times (100 000 by default), each round
+   hashing the round number and the previous hash. A spin count above
+   [MS-OFFCRYPTO]'s 10 000 000 is refused before any hashing.
+2. **The password verifier.** Two values decrypted with keys derived from the
+   password key: the hash of the first must equal the second, which tells a
+   wrong password from a right one.
+3. **The intermediate key**, which the password key unwraps.
+4. **The integrity HMAC**, over the whole `EncryptedPackage` stream, checked
+   **before anything is decrypted**: a changed file is refused as `Tampered`,
+   never decrypted into something else. A file without one is not opened.
+5. **The package**, in 4096-byte segments, each decrypted with its own IV: the
+   hash of the key data's salt and the segment's index.
+
+Refused as `Unsupported`, each with the reason: Office 2007's **standard**
+encryption (AES-ECB, version 3.2), extensible encryption, a key encryptor for a
+certificate rather than a password, and agile files keyed with **SHA-1**
+(Office 2010's default) — UltraCrypt offers SHA-1 for HMAC only. Saving such a
+file again from a current Office converts it to SHA-512.
+
+Writing encrypted files is not supported: a decrypted workbook or document
+saves as an ordinary one.
+
+## Implementation notes
+
+- Element names are matched without their namespace prefix (`p:encryptedKey`):
+  writers choose their own prefixes.
+- A derived key or IV longer than needed is cut to size, a shorter one padded
+  with `0x36`, as [MS-OFFCRYPTO] 2.3.4.11 specifies.
+- The password and every key travel in `UltraCryptSecureBuffer`s and are wiped
+  when done with; the decrypted package is the document itself and is not.
+- Status messages never say which of the verifier values or HMAC fields was
+  off — there is no oracle to consult.
+
+## Test
+
+`Tests/OfficeEncryptionTest.cpp` reads a workbook and a document encrypted by
+msoffcrypto-tool, an implementation independent of this one
+(`Tests/fixtures/office-agile-encrypted.{xlsx,docx}`;
+`Tests/fixtures/make-office-encrypted-fixtures.py` rebuilds them). The password
+is not ASCII, and the workbook spans five segments. It checks the right, a
+wrong and a missing password, a changed byte of the package and of its size
+field, a package cut short, standard encryption, a damaged header, an absurd
+spin count, SHA-1, a missing integrity check, `CheckOfficePassword`, and the
+spreadsheet, the Word reader and `UltraCanvasFileLoader::LoadTextDocument`
+opening the files.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
 ==============================================================================
 
@@ -62786,17 +62945,20 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 ### File Operations
 
 ```cpp
-// Format chosen automatically from the file extension.
-bool LoadFromFile(const std::string& filePath);
+// Format chosen automatically from the file extension. `password` opens a
+// password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
+// formats ignore it.
+bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
 bool SaveToFile(const std::string& filePath);
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
-bool LoadXLSX(const std::string& filePath);
+bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
 bool SaveXLSX(const std::string& filePath);
-// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx, HTML table, Excel 2003
-// XML file or delimited text saved under the name. Read only.
-bool LoadXLS(const std::string& filePath);
+// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx (password-protected or
+// not), HTML table, Excel 2003 XML file or delimited text saved under the
+// name. Read only.
+bool LoadXLS(const std::string& filePath, const std::string& password = std::string());
 
 // CSV/TSV: single-argument form auto-detects encoding/separators.
 bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
@@ -63001,7 +63163,7 @@ sheet->Recalculate();
 
 ### 4. Open a Spreadsheet File (.ods / .csv)
 
-Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback.
+Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback. A password-protected `.xlsx` needs its password: `UltraCanvasFileLoader::RequestDocumentPassword` asks for it (and calls straight back for any other file), then pass it as `LoadFromFile(path, password)` - the demo's Open button does this, see [UltraCanvasOfficeEncryption.md](UltraCanvasOfficeEncryption.md).
 
 ```cpp
 auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,
@@ -63508,6 +63670,7 @@ one:
 |---|---|
 | an OLE2 compound file | the BIFF8 / BIFF5 reader |
 | a ZIP package (an `.xlsx` renamed) | `LoadXLSX` |
+| a password-protected `.xlsx` (a compound file with `EncryptedPackage`) | `LoadXLSX`, given the password ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)) |
 | an HTML page with a table | the HTML reader below |
 | `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">` | the Excel 2003 XML reader |
 | text (UTF-8, a code page, or UTF-16 with a BOM) | `LoadCSV`, which detects the separator |
@@ -63596,9 +63759,12 @@ Dates are serial numbers, as in the file: with `date1904` the serial counts from
 ## What is not read
 
 Charts, drawings, comments, conditional formats, data validation, pivot
-tables and macros. **Encrypted** workbooks (a `FILEPASS` record, or an
-encrypted Excel 2007+ package) are refused with a message that says they are
-password-protected. Excel 2.x–4.0 worksheets (BIFF2-4, no compound file) are
+tables and macros. **Encrypted** `.xls` workbooks (a `FILEPASS` record) are
+refused with a message that says they are password-protected. An encrypted
+Excel 2007+ package under the `.xls` name opens in the spreadsheet given its
+password (`LoadXLS(path, password)`, see
+[UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)); the model
+reader, `ReadXlsWorkbook`, refuses it and says to open it as `.xlsx`. Excel 2.x–4.0 worksheets (BIFF2-4, no compound file) are
 not read. BIFF5 strings are decoded from their code page: Windows-1250, 1251
 and 1252 are known; any other is read as Latin-1. In a BIFF5 workbook,
 references to other sheets keep their cached values without a formula.
@@ -78272,11 +78438,21 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT)
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT).
+// A password-protected .docx asks for its password before it loads.
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
 });
 ```
+
+A file saved with *Encrypt with Password* - an `.xlsx`, `.docx` or `.pptx` -
+needs its password before any loader can read it.
+`RequestDocumentPassword(path, parent, onResult)` asks for it in a password
+field, checks it, and asks again after a wrong one; it calls straight back
+with `(true, "")` for a file that has none. Pass what it hands back to the
+loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
+`LoadFromFile(path, password)`. See
+[UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
 ### Editable Vector Documents
 
@@ -78593,7 +78769,9 @@ framework was compiled and which plugins the application registers.
 
 Legend: ✅ supported · — not supported · † depends on the installed libvips
 build · ‡ requires the matching plugin to be compiled and registered ·
-§ depends on the platform backend and installed codecs.
+§ depends on the platform backend and installed codecs · ¶ also when saved
+with *Encrypt with Password* (agile encryption, Office 2010 and later), given
+the password - see `UltraCanvasFileLoader::RequestDocumentPassword`.
 
 ### Bitmaps — libvips †
 
@@ -78667,7 +78845,7 @@ minimal OBJ reader for its GL viewer only.
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
-| Word (OOXML) | `.docx` | ✅ | ✅ | built-in (miniz + tinyxml2) |
+| Word (OOXML) | `.docx` | ✅ | ✅ | built-in (miniz + tinyxml2) ¶ |
 | OpenDocument Text | `.odt` | ✅ | ✅ | built-in (miniz + tinyxml2) |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
@@ -78685,7 +78863,7 @@ engines linked into the binary are reported. RTF is **not** supported.
 | Format | Extension(s) | Load | Save |
 |--------|--------------|:----:|:----:|
 | OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
-| Excel workbook (OOXML) | `.xlsx` | ✅ | ✅ |
+| Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ |
 | Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |
@@ -84123,9 +84301,11 @@ follow:
    and that recovers the plaintext without the key.
 
 *Serves:* reading (and, where a format must be written back, writing)
-password-protected files from other programs. No consumer is wired yet; the
-first expected is the encrypted `.xlsx` path in `UltraCanvasSpreadsheetXls`,
-which today refuses such a workbook.
+password-protected files from other programs. First consumer: the decryptor
+of password-protected `.xlsx` and `.docx` files
+(`UltraCanvas/core/UltraCanvasOfficeEncryption.cpp`, ECMA-376 agile
+encryption), which checks the files' `dataIntegrity` HMAC before it decrypts a
+byte — the rule above, applied. See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
 
 ## 6. Usage sketches
 

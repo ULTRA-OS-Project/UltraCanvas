@@ -45,6 +45,7 @@ one:
 |---|---|
 | an OLE2 compound file | the BIFF8 / BIFF5 reader |
 | a ZIP package (an `.xlsx` renamed) | `LoadXLSX` |
+| a password-protected `.xlsx` (a compound file with `EncryptedPackage`) | `LoadXLSX`, given the password ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)) |
 | an HTML page with a table | the HTML reader below |
 | `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">` | the Excel 2003 XML reader |
 | text (UTF-8, a code page, or UTF-16 with a BOM) | `LoadCSV`, which detects the separator |
@@ -133,9 +134,12 @@ Dates are serial numbers, as in the file: with `date1904` the serial counts from
 ## What is not read
 
 Charts, drawings, comments, conditional formats, data validation, pivot
-tables and macros. **Encrypted** workbooks (a `FILEPASS` record, or an
-encrypted Excel 2007+ package) are refused with a message that says they are
-password-protected. Excel 2.x–4.0 worksheets (BIFF2-4, no compound file) are
+tables and macros. **Encrypted** `.xls` workbooks (a `FILEPASS` record) are
+refused with a message that says they are password-protected. An encrypted
+Excel 2007+ package under the `.xls` name opens in the spreadsheet given its
+password (`LoadXLS(path, password)`, see
+[UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)); the model
+reader, `ReadXlsWorkbook`, refuses it and says to open it as `.xlsx`. Excel 2.x–4.0 worksheets (BIFF2-4, no compound file) are
 not read. BIFF5 strings are decoded from their code page: Windows-1250, 1251
 and 1252 are known; any other is read as Latin-1. In a BIFF5 workbook,
 references to other sheets keep their cached values without a formula.

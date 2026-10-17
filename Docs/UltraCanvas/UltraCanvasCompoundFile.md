@@ -50,8 +50,10 @@ stream of that name anywhere is taken instead.
 
 ## Where it is used
 
-The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`)
-and the [`.xls` reader](UltraCanvasSpreadsheetXls.md).
+The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`),
+the [`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
+[password-protected `.xlsx` and `.docx` files](UltraCanvasOfficeEncryption.md),
+which reads their `EncryptionInfo` and `EncryptedPackage` streams.
 
 ## Test
 
