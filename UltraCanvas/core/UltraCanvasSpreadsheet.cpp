@@ -656,7 +656,8 @@ void UltraCanvasSpreadsheet::RenderFormulaRangeHighlights(IRenderContext* ctx) {
     if (!sheet) return;
 
     // Collect the cells and ranges referenced by the formula we want to trace:
-    // either the formula currently being typed in-cell, or, when not editing,
+    // either the formula currently being typed (in the cell or the formula
+    // bar, so each reference pointed with the mouse shows), or, when not editing,
     // the committed formula sitting in the active cell. This lets the user see
     // exactly which cells a calculation such as =SUM(E2:E6) covers.
     std::vector<CellRange> ranges;
@@ -668,8 +669,7 @@ void UltraCanvasSpreadsheet::RenderFormulaRangeHighlights(IRenderContext* ctx) {
         for (const auto& c : formula->GetDependencies()) cells.push_back(c);
     };
 
-    if (editMode_ == SpreadsheetEditMode::InCellEditing &&
-        !editBuffer_.empty() && editBuffer_[0] == '=') {
+    if (IsEditing() && !editBuffer_.empty() && editBuffer_[0] == '=') {
         auto live = std::make_shared<SpreadsheetFormula>(editBuffer_, editingCell_);
         live->Parse();
         collect(live);
@@ -1163,6 +1163,19 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
     // right-click on a multi-cell range formats the whole range), and never
     // starts a drag-selection.
     if (event.button == UCMouseButton::Right) {
+        if (hit.area == HitArea::SheetTab && !hit.addSheetButton && hit.tabScroll == 0) {
+            // A tab opens (and its menu acts on it); beside the tabs, -1.
+            if (IsEditing()) StopEditing(true);
+            const bool onTab = hit.tabIndex >= 0 && hit.tabIndex < static_cast<int>(sheets_.size());
+            if (onTab && hit.tabIndex != activeSheetIndex_) SetActiveSheet(hit.tabIndex);
+            const int index = onTab ? hit.tabIndex : -1;
+            if (onSheetTabContextMenu) {
+                onSheetTabContextMenu(index, event.pointerWindow.x, event.pointerWindow.y);
+            } else if (sheetTabMenuEnabled_) {
+                ShowSheetTabMenuAt(index, event.pointerWindow.x, event.pointerWindow.y);
+            }
+            return;
+        }
         if (hit.area == HitArea::ColumnSortButton) hit.area = HitArea::ColumnHeader;
         if (hit.area == HitArea::Cell || hit.area == HitArea::ColumnHeader ||
             hit.area == HitArea::RowHeader) {
@@ -1186,11 +1199,29 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
 
     switch (hit.area) {
         case HitArea::Cell: {
+            CellAddress clickedCell(hit.row, hit.col);
             if (IsEditing()) {
+                // Point mode: a formula waiting for a reference gets the
+                // clicked cell's address typed in at its caret, and the edit
+                // goes on. Shift+click grows the reference the last click
+                // typed into a range; Ctrl+click adds another one after it.
+                size_t start = 0, end = 0;
+                if (GetPointReferenceSpan(start, end)) {
+                    const bool live = IsPointedReferenceLive();
+                    if (event.shift && live) {
+                        PointReference(pointAnchor_, clickedCell, start, end);
+                    } else if (event.ctrl && live) {
+                        PointReference(clickedCell, clickedCell, pointRefEnd_, pointRefEnd_, ",");
+                    } else {
+                        PointReference(clickedCell, clickedCell, start, end);
+                    }
+                    pointingReference_ = true;   // a drag now makes it a range
+                    if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+                    break;
+                }
                 StopEditing(true);
             }
             
-            CellAddress clickedCell(hit.row, hit.col);
             mouseDownCell_ = clickedCell;
             
             if (event.shift) {
@@ -1327,9 +1358,14 @@ void UltraCanvasSpreadsheet::HandleMouseUp(const UCEvent& event) {
         resizingRow_ = -1;
     }
 
+    pointingReference_ = false;
+
     if (editMode_ == SpreadsheetEditMode::AutoFilling) {
         editMode_ = SpreadsheetEditMode::Normal;
-        if (!(autoFillTarget_ == autoFillSource_)) AutoFillSelection(autoFillTarget_);
+        // Ctrl held on release copies the selection as it is, no series.
+        if (!(autoFillTarget_ == autoFillSource_)) {
+            AutoFillSelection(autoFillTarget_, event.ctrl ? AutoFillMode::Copy : AutoFillMode::Series);
+        }
         autoFillTarget_ = autoFillSource_;
         Invalidate();
     }
@@ -1365,7 +1401,23 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
     }
 
     if (mouseDown_) {
-        if (editMode_ == SpreadsheetEditMode::Selecting) {
+        if (pointingReference_) {
+            // A point-mode drag: the reference typed at the press becomes the
+            // range from there to the cell under the pointer.
+            if (!IsEditing() || !IsPointedReferenceLive()) {
+                pointingReference_ = false;
+                return;
+            }
+            AutoScrollForDrag(event.pointer.x, event.pointer.y);
+            CellAddress over = ScreenToCell(event.pointer.x, event.pointer.y);
+            const CellRange current = CellRange(pointAnchor_, over);
+            const std::string wanted = current.IsSingleCell() ? current.start.ToString() : current.ToString();
+            if (pointRefText_.compare(pointRefStart_, pointRefEnd_ - pointRefStart_, wanted) != 0) {
+                PointReference(pointAnchor_, over, pointRefStart_, pointRefEnd_);
+            }
+        }
+        else if (editMode_ == SpreadsheetEditMode::Selecting) {
+            AutoScrollForDrag(event.pointer.x, event.pointer.y);
             HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
             if (hit.area == HitArea::Cell) {
                 CellAddress current(hit.row, hit.col);
@@ -1376,6 +1428,7 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
             }
         }
         else if (editMode_ == SpreadsheetEditMode::AutoFilling) {
+            AutoScrollForDrag(event.pointer.x, event.pointer.y);
             // ScreenToCell also answers for a pointer beyond the last visible
             // cell, so the drag keeps tracking outside the grid.
             CellAddress over = ScreenToCell(event.pointer.x, event.pointer.y);
@@ -1414,14 +1467,31 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
             break;
         case HitArea::ColumnSortButton: SetMouseCursor(UCMouseCursor::Hand); break;
         case HitArea::AutoFillHandle: SetMouseCursor(UCMouseCursor::Cross);  break;
+        case HitArea::Cell:
+            // A click would type this cell into the formula being edited.
+            SetMouseCursor(IsEditing() && CanPointReference() ? UCMouseCursor::Cross
+                                                              : UCMouseCursor::Default);
+            break;
         default:                     SetMouseCursor(UCMouseCursor::Default); break;
     }
 }
 
 void UltraCanvasSpreadsheet::HandleMouseDoubleClick(const UCEvent& event) {
     HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
+
+    // Still editing after the first click means it pointed a reference into
+    // the formula: the second one must not start editing the clicked cell.
+    if (hit.area == HitArea::Cell && IsEditing()) return;
     
-    if (hit.area == HitArea::Cell) {
+    if (hit.area == HitArea::AutoFillHandle) {
+        // Fills down as far as the data next to the selection goes.
+        AutoFillSelectionToDataEnd();
+    }
+    else if (hit.area == HitArea::SheetTab && !hit.addSheetButton && hit.tabScroll == 0 &&
+             hit.tabIndex >= 0 && hit.tabIndex < static_cast<int>(sheets_.size())) {
+        PromptRenameSheet(hit.tabIndex);
+    }
+    else if (hit.area == HitArea::Cell) {
         StartInCellEditing();
         if (onCellDoubleClick) onCellDoubleClick(hit.row, hit.col);
     }
@@ -1550,6 +1620,12 @@ void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
                 break;
             case UCKeys::A:
                 SelectAll();
+                break;
+            case UCKeys::D:
+                FillSelectionDown();
+                break;
+            case UCKeys::R:
+                FillSelectionRight();
                 break;
             case UCKeys::B:
                 SetSelectionBold(!GetActiveCellFont().bold);
@@ -1989,7 +2065,11 @@ void UltraCanvasSpreadsheet::BuildCellEditor(const std::string& initialText,
         Invalidate();
     };
     // A caret moved by the keys or the mouse moves the function hint along.
-    cellEditor->onSelectionChanged = [this](size_t, size_t) { Invalidate(); };
+    cellEditor->onSelectionChanged = [this](size_t start, size_t end) {
+        editorSelStart_ = start;
+        editorSelEnd_ = end;
+        Invalidate();
+    };
     cellEditor->onEnterPressed = [this](const std::string&) {
         StopEditing(true);
         MoveActiveCell(1, 0);
@@ -2015,6 +2095,8 @@ void UltraCanvasSpreadsheet::DestroyCellEditor() {
     editor->onSelectionChanged = nullptr;
     editor->onEnterPressed = nullptr;
     editor->onEscapePressed = nullptr;
+    pointingReference_ = false;
+    pointRefText_.clear();
     RemoveChild(editor);
     if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
         app->PostToUIThread([editor]() {});
@@ -2037,6 +2119,73 @@ void UltraCanvasSpreadsheet::StartEditingAt(int row, int col) {
 
     if (onFormulaBarChange) onFormulaBarChange();
     Invalidate();
+}
+
+bool UltraCanvasSpreadsheet::IsPointedReferenceLive() const {
+    // Live while nothing but pointing has touched the text or the caret.
+    return cellEditor && !pointRefText_.empty() && !cellEditor->HasSelection() &&
+           cellEditor->GetCaretPosition() == pointRefEnd_ &&
+           cellEditor->GetText() == pointRefText_;
+}
+
+bool UltraCanvasSpreadsheet::GetPointReferenceSpan(size_t& start, size_t& end) const {
+    if (!cellEditor || !IsEditing()) return false;
+    if (IsPointedReferenceLive()) {
+        start = pointRefStart_;
+        end = pointRefEnd_;
+        return true;
+    }
+    const std::string text = cellEditor->GetText();
+    start = end = std::min(cellEditor->GetCaretPosition(), text.size());
+    // A selection is replaced, as typing would replace it - when the span the
+    // editor last reported is still what it has selected.
+    if (cellEditor->HasSelection() && editorSelStart_ < editorSelEnd_ && editorSelEnd_ <= text.size() &&
+        text.compare(editorSelStart_, editorSelEnd_ - editorSelStart_, cellEditor->GetSelectedText()) == 0) {
+        start = editorSelStart_;
+        end = editorSelEnd_;
+    }
+    return FormulaAcceptsReferenceAt(text, start, end);
+}
+
+void UltraCanvasSpreadsheet::PointReference(const CellAddress& anchor, const CellAddress& to,
+                                            size_t start, size_t end, const std::string& prefix) {
+    if (!cellEditor) return;
+    // Addresses on the edited sheet, so without a sheet name.
+    const CellRange range(CellAddress(anchor.row, anchor.col), CellAddress(to.row, to.col));
+    const std::string reference = range.IsSingleCell() ? range.start.ToString() : range.ToString();
+
+    std::string text = cellEditor->GetText();
+    start = std::min(start, text.size());
+    end = std::min(std::max(end, start), text.size());
+    text.replace(start, end - start, prefix + reference);
+    pointAnchor_ = CellAddress(anchor.row, anchor.col);
+    pointRefStart_ = start + prefix.size();
+    pointRefEnd_ = pointRefStart_ + reference.size();
+    pointRefText_ = text;
+
+    cellEditor->SetText(text);
+    cellEditor->SetSelection(pointRefEnd_, pointRefEnd_);
+    cellEditor->SetFocus(true);   // the press focused the grid; typing goes on in the formula
+    editBuffer_ = text;
+    if (onFormulaBarChange) onFormulaBarChange();
+    if (onStatusChange) onStatusChange("Point: " + reference);
+    Invalidate();
+}
+
+void UltraCanvasSpreadsheet::AutoScrollForDrag(int x, int y) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    const Rect2Df area = CellAreaRect();
+    int row = sheet->GetScrollRow();
+    int col = sheet->GetScrollColumn();
+    if (y >= area.y + area.height)  row = std::min(row + 1, SpreadsheetLimits::MaxRows - 1);
+    else if (y < area.y && row > 0) --row;
+    if (x >= area.x + area.width)   col = std::min(col + 1, SpreadsheetLimits::MaxColumns - 1);
+    else if (x < area.x && col > 0) --col;
+    if (row != sheet->GetScrollRow() || col != sheet->GetScrollColumn()) {
+        sheet->SetScrollPosition(row, col);
+        Invalidate();
+    }
 }
 
 void UltraCanvasSpreadsheet::InsertFunction(const std::string& name) {

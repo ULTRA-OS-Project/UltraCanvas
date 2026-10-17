@@ -1932,6 +1932,30 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetAutoFillTest")
 
+# ===== SPREADSHEET SHEET NAME TEST =====
+# The sheet tab menu's Rename: which names a sheet may have (CheckSheetName)
+# and formulas following a renamed sheet (RenameSheetInFormula). No UI stack.
+message(STATUS "  Building SpreadsheetSheetNameTest...")
+add_executable(SpreadsheetSheetNameTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetSheetNameTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetSheetNameTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetSheetNameTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetSheetNameTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetSheetNameTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetSheetNameTest
+    COMMAND SpreadsheetSheetNameTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetSheetNameTest")
+
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
 # row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole
@@ -3900,6 +3924,24 @@ set_target_properties(SpreadsheetFunctionMenuTest PROPERTIES
 add_test(NAME SpreadsheetFunctionMenuTest COMMAND SpreadsheetFunctionMenuTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetFunctionMenuTest")
+
+# ===== SPREADSHEET POINT MODE TEST =====
+# The grid's editing gestures through its own event handling, no window:
+# clicking / dragging cells into a formula being typed, Ctrl+D / Ctrl+R,
+# the fill handle's copy mode, and renaming a sheet.
+message(STATUS "  Building SpreadsheetPointModeTest...")
+add_executable(SpreadsheetPointModeTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetPointModeTest.cpp
+)
+target_include_directories(SpreadsheetPointModeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetPointModeTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetPointModeTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetPointModeTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetPointModeTest COMMAND SpreadsheetPointModeTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetPointModeTest")
 
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in

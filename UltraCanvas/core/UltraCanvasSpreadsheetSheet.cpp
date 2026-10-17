@@ -926,7 +926,162 @@ bool SplitTrailingNumber(const std::string& text, std::string& prefix, long long
 
 } // namespace
 
-void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination) {
+bool FormulaAcceptsReferenceAt(const std::string& text, size_t start, size_t end) {
+    if (text.empty() || text[0] != '=') return false;
+    if (start < 1 || start > end || end > text.size()) return false;
+
+    // Not inside a "text literal".
+    size_t quotes = 0;
+    for (size_t i = 0; i < start; ++i) {
+        if (text[i] == '"') ++quotes;
+    }
+    if (quotes % 2 != 0) return false;
+
+    // Before it: the '=', an opening parenthesis, a separator or an operator.
+    size_t before = start;
+    while (before > 0 && text[before - 1] == ' ') --before;
+    if (before == 0) return false;
+    static const std::string kOpeners = "=(,;+-*/^&<>:";
+    if (kOpeners.find(text[before - 1]) == std::string::npos) return false;
+
+    // After it: nothing that would run on into the address ("=(|B2)").
+    if (end < text.size()) {
+        const unsigned char next = static_cast<unsigned char>(text[end]);
+        if (std::isalnum(next) || next == '$' || next == '_' || next == '.' ||
+            next == '!' || next == '(' || next == '"') {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string CheckSheetName(const std::string& name) {
+    if (name.empty()) return "A sheet name cannot be empty.";
+    // Characters, not bytes: count UTF-8 lead bytes.
+    size_t length = 0;
+    for (unsigned char c : name) {
+        if ((c & 0xC0) != 0x80) ++length;
+    }
+    if (length > 31) return "A sheet name can be at most 31 characters long.";
+    if (name.find_first_of("[]:*?/\\") != std::string::npos) {
+        return "A sheet name cannot contain any of [ ] : * ? / \\";
+    }
+    if (name.front() == '\'' || name.back() == '\'') {
+        return "A sheet name cannot start or end with an apostrophe.";
+    }
+    return "";
+}
+
+namespace {
+
+bool SameNameIgnoringCase(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsSheetNameChar(char c) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    return std::isalnum(u) || c == '_' || u >= 0x80;
+}
+
+// How a formula writes the sheet `name`: bare when it is a plain word,
+// otherwise in apostrophes with any apostrophe in it doubled.
+std::string FormulaSheetName(const std::string& name) {
+    bool plain = !name.empty() && !std::isdigit(static_cast<unsigned char>(name[0]));
+    for (char c : name) plain = plain && IsSheetNameChar(c);
+    if (plain) return name;
+    std::string quoted = "'";
+    for (char c : name) {
+        quoted += c;
+        if (c == '\'') quoted += '\'';
+    }
+    return quoted + "\'";
+}
+
+} // namespace
+
+std::string RenameSheetInFormula(const std::string& formula, const std::string& oldName,
+                                 const std::string& newName) {
+    if (oldName.empty() || newName.empty()) return formula;
+    const std::string replacement = FormulaSheetName(newName);
+    std::string out;
+    out.reserve(formula.size());
+    size_t i = 0;
+    while (i < formula.size()) {
+        const char c = formula[i];
+        if (c == '"') {   // a text literal is copied as it is
+            size_t close = formula.find('"', i + 1);
+            close = close == std::string::npos ? formula.size() : close + 1;
+            out.append(formula, i, close - i);
+            i = close;
+            continue;
+        }
+        if (c == '\'') {   // 'Quoted name' - a reference when '.' or '!' follows
+            std::string name;
+            size_t j = i + 1;
+            bool closed = false;
+            while (j < formula.size()) {
+                if (formula[j] == '\'') {
+                    if (j + 1 < formula.size() && formula[j + 1] == '\'') { name += '\''; j += 2; continue; }
+                    closed = true;
+                    ++j;
+                    break;
+                }
+                name += formula[j++];
+            }
+            if (closed && j < formula.size() && (formula[j] == '.' || formula[j] == '!') &&
+                SameNameIgnoringCase(name, oldName)) {
+                out += replacement;
+            } else {
+                out.append(formula, i, j - i);
+            }
+            i = j;
+            continue;
+        }
+        if (IsSheetNameChar(c) && (i == 0 || !IsSheetNameChar(formula[i - 1]))) {
+            size_t j = i;
+            while (j < formula.size() && IsSheetNameChar(formula[j])) ++j;
+            // A bare name counts only before a cell address ("2016.5" is a number).
+            const bool addressFollows = j + 1 < formula.size() &&
+                (formula[j + 1] == '$' || std::isalpha(static_cast<unsigned char>(formula[j + 1])));
+            if (j < formula.size() && (formula[j] == '.' || formula[j] == '!') && addressFollows &&
+                SameNameIgnoringCase(formula.substr(i, j - i), oldName)) {
+                out += replacement;
+            } else {
+                out.append(formula, i, j - i);
+            }
+            i = j;
+            continue;
+        }
+        out += c;
+        ++i;
+    }
+    return out;
+}
+
+int SpreadsheetSheet::GetAutoFillDownEnd(const CellRange& source) const {
+    auto filled = [&](int row, int col) {
+        if (col < 0 || col >= SpreadsheetLimits::MaxColumns || row >= SpreadsheetLimits::MaxRows) return false;
+        const SpreadsheetCell* cell = GetCellIfExists(row, col);
+        return cell && !cell->IsEmpty();
+    };
+    const int below = source.end.row + 1;
+    for (int col : { source.start.col - 1, source.end.col + 1 }) {
+        if (!filled(below, col)) continue;
+        int last = below;
+        while (filled(last + 1, col)) ++last;
+        return last;
+    }
+    return -1;
+}
+
+void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination,
+                                AutoFillMode mode) {
     const int srcRows = source.RowCount();
     const int srcCols = source.ColCount();
     if (srcRows <= 0 || srcCols <= 0) return;
@@ -945,7 +1100,7 @@ void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destin
         };
 
         // A line of two or more plain numbers continues as a linear series.
-        bool series = length >= 2;
+        bool series = length >= 2 && mode == AutoFillMode::Series;
         for (int k = 0; k < length && series; ++k) {
             const SpreadsheetCell* cell = sourceAt(k);
             series = cell && !cell->HasFormula() && cell->IsNumeric();
@@ -960,7 +1115,7 @@ void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destin
         std::string textPrefix;
         long long textNumber = 0;
         bool counting = false;
-        if (length == 1) {
+        if (length == 1 && mode == AutoFillMode::Series) {
             const SpreadsheetCell* cell = sourceAt(0);
             counting = cell && !cell->HasFormula() && cell->GetValueType() == CellValueType::Text &&
                        SplitTrailingNumber(cell->GetText(), textPrefix, textNumber);
