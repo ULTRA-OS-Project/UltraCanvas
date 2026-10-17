@@ -1,3 +1,47 @@
+#### 2026-10-17 *0.9.330*
+- **Password-protected .xlsx and .docx files open.** A workbook or document
+  saved with *Encrypt with Password* (ECMA-376 agile encryption, what Office
+  2010 and later write) is a compound file, not a ZIP, and was refused as
+  password-protected (`.xlsx`) or as a `.doc` that could not be read (`.docx`).
+  `UltraCanvasOfficeEncryption.h` decrypts it with UltraCrypt: the SHA-512
+  password key (100 000 rounds), the password verifier, the dataIntegrity HMAC
+  over the whole encrypted package - checked before a byte is decrypted, so a
+  changed file is refused - and the package in 4096-byte segments, each with
+  its own IV.
+  - `UltraCanvasSpreadsheet::LoadFromFile`, `LoadXLSX` and `LoadXLS` (a
+    protected `.xlsx` under the `.xls` name), and `UCWordDocumentIO::Load` /
+    `LoadDocx`, take the password as a last, optional argument. Without it the
+    message says the file is password-protected; with a wrong one, that the
+    password is not correct.
+  - `UltraCanvasFileLoader::RequestDocumentPassword` asks for the password,
+    checks it (`CheckOfficePassword`, the verifier only) and asks again after
+    a wrong one; `OpenTextDocument` and the demo's spreadsheet Open button use
+    it. `LoadTextDocument` takes the password too.
+  - `UCZipPackageReader::OpenFromMemory` reads the decrypted package.
+  - Refused with the reason: Office 2007's standard encryption, SHA-1-keyed
+    agile files (Office 2010's default), certificate-only encryption, a file
+    without an integrity check.
+  - The core library now uses UltraCrypt: a shared core already absorbs it, a
+    static one links it `PUBLIC`.
+  - `Tests/OfficeEncryptionTest.cpp` reads a workbook and a document encrypted
+    by msoffcrypto-tool (`Tests/fixtures/make-office-encrypted-fixtures.py`).
+- **UltraCrypt 0.3.0: AES-CBC, for formats defined elsewhere.** Encrypted
+  Office files, PDF's AESV2/AESV3 and OpenSSL's `enc` output are AES in CBC
+  mode, and libsodium has no AES block cipher, so UltraCrypt now carries its
+  own: `UltraCrypt_AesCbcEncrypt` / `UltraCrypt_AesCbcDecrypt` with a 128-,
+  192- or 256-bit key, PKCS #7 or no padding, and a random IV generated when
+  none is given (`core/UltraCrypt/UltraCryptAes.cpp`).
+  - Constant-time: bitsliced, with the Boyar-Peralta S-box circuit, so no
+    table is indexed by a secret byte. Portable software, independent of
+    libsodium and of AES instructions.
+  - Refused padding is the new `UltraCryptResultCode::DecryptionFailed`, with
+    an empty output; the check does not branch on the plaintext.
+  - Interop only. CBC has no integrity, so UltraCanvas's own data stays on
+    XChaCha20-Poly1305, and a format that carries a MAC must have it checked
+    before decrypting (`Docs/Modules/UltraCrypt/README.md` §5.9).
+  - `UltraCryptTests` checks FIPS 197 App. C and SP 800-38A F.2 for all three
+    key sizes, PKCS #7 lengths 0-80, and refused padding.
+
 #### 2026-10-17 *0.9.329*
 - **Spreadsheet: clicking a cell while typing a formula types its address.**
   Typing `=SUM(` and dragging over C2:C8 used to end the edit and select the
