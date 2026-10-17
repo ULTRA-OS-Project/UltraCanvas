@@ -110,6 +110,23 @@ degrades when it is absent — dialogs return "cancelled", and the soft keyboard
 is raised against the decor view without an IME session — so an app that needs
 neither native dialogs nor composed text input can ship with no Java at all.
 
+**Calls from Java back into C++** (a dialog's answer, typed text, a permission
+answer, a display turn) are `native` methods resolved by name, and that works
+only because `UltraCanvasActivity.onCreate` loads the app's library through
+`System.loadLibrary` before `NativeActivity` does. `NativeActivity` opens the
+library with a plain `OpenNativeLibrary` (`dlopen`), and ART looks `native`
+methods up only in libraries loaded through `System.loadLibrary` /
+`System.load`. Without that call every one of them would throw
+`UnsatisfiedLinkError` on the UI thread, which crashes the app on the first
+keystroke. Both loads go through the same class-loader linker namespace, so
+the library is one copy, not two. Two checks keep this honest:
+
+- `scripts/android-java-check.sh` (CI) fails when a `native` method has no C++
+  definition. It generates the exact JNI names with `javac -h` and looks each
+  up in `OS/Android/*.cpp`.
+- On a device, `android_main` asks the activity whether the bridge works and
+  logs the answer (see *Diagnostics*).
+
 Message dialogs (`ShowInfo` / `ShowWarning` / `ShowError` / `ShowQuestion` /
 `ShowMessage` / `Confirm` / `ConfirmYesNo`), input dialogs (`InputText` /
 `InputPassword` / `GetInput` / `GetPassword`) and **opening** files
@@ -384,6 +401,19 @@ sites in core — is captured by the stdio pump instead, under the tag
 ```sh
 adb logcat -s UltraCanvas:V UltraCanvas-stdio:V
 ```
+
+The first line from a launch with `UltraCanvasActivity` says whether Java can
+call into the library, logged at INFO/ERROR whatever the build type:
+
+```
+I UltraCanvas: Java->native bridge OK
+E UltraCanvas: Java->native bridge BROKEN: ...
+```
+
+BROKEN means dialogs, the keyboard and permission requests will crash. The
+usual cause is an `android.app.lib_name` that names a library other than the
+one holding the backend. A plain `NativeActivity` logs neither line: it has
+no Java half to check.
 
 An APK inherits no environment, so `ULTRACANVAS_DEBUG_LOG` cannot be set on a
 device. The Android knob is the system property:
