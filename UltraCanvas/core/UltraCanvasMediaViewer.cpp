@@ -1,13 +1,18 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.11.0 - password-protected files: a layered *.ucd image or a PDF that needs
+//                   its password shows an Unlock button (info bar and toolbar, Enter)
+//                   that asks for it - again when it is not right - and then shows it
+//                   whole; a PDF that fails to open no longer leaves the last one shown;
+//                   a PDF opens in the PDF view again, not as a vector drawing (ClassifyFile)
 // Version: 1.10.0 - a layered *.ucd image (UCBitmap) is shown whole: its layers composited at
 //                   full size (UCRasterDocument::LoadUCD), not the 256 px thumbnail; a
 //                   password-protected one shows its thumbnail and the details say why
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-17
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -250,6 +255,8 @@ struct UCDPreview {
     std::shared_ptr<UCImage> picture;     // its layers composited; null when not shown
     int                  layers = 0;
     std::string          pictureProblem;  // why it is not shown, when it is a UCBitmap
+    bool                 lockedByPassword = false;   // it opens with its password: Unlock
+    bool                 wrongPassword = false;      // the password given is not right
 };
 
 static UCDPreview ReadUCDPreview(const std::string& path) {
@@ -263,19 +270,25 @@ static UCDPreview ReadUCDPreview(const std::string& path) {
 }
 
 // A layered image is more than its thumbnail: the picture it holds, its
-// layers composited at full size, is what the viewer shows. Not for a
-// password-protected one - a viewer does not ask for passwords - nor for any
-// other content type; `pictureProblem` says why for the details.
-static void ReadUCDPicture(const std::string& path, UCDPreview& p) {
+// layers composited at full size, is what the viewer shows. A
+// password-protected one only with its `password` (Unlock asks for it) - it
+// is marked lockedByPassword until then; no other content type.
+// `pictureProblem` says why it is not shown, for the details.
+static void ReadUCDPicture(const std::string& path, UCDPreview& p,
+                           const std::string& password = std::string()) {
     if (!p.valid || p.header.descriptor != "UCBitmap") return;
-    if (p.header.IsEncrypted()) {
-        p.pictureProblem = "password-protected";
+    if (p.header.IsEncrypted() && password.empty()) {
+        // A password opens key source 1; SuperVault (2) is not this program's.
+        p.lockedByPassword = p.header.keySource == 1;
+        p.pictureProblem = p.lockedByPassword ? "password-protected" : "protected by SuperVault";
         return;
     }
     UCRasterDocument doc;
     std::string error;
-    if (!doc.LoadUCD(path, error)) {
+    if (!doc.LoadUCD(path, error, password)) {
         p.pictureProblem = error;
+        p.wrongPassword = error == UCD::kWrongPassword;
+        p.lockedByPassword = p.wrongPassword;
         return;
     }
     auto flat = doc.Flatten();
@@ -366,7 +379,13 @@ static std::string BuildUCDDetailsText(const std::string& path,
     }
     // What the pane shows, as a row of its own (a line with a colon is one).
     if (ucd.picture) {
-        os << "Shown: the image at full size, its layers composited\n";
+        os << "Shown: the image at full size, its layers composited"
+           << (hdr.IsEncrypted() ? " (unlocked with its password)" : "") << "\n";
+    } else if (ucd.lockedByPassword) {
+        os << "Shown: "
+           << (thumbShown ? "the thumbnail - Unlock (in the bar below, or Enter) shows the image itself"
+                          : "nothing until it is unlocked - Unlock (in the bar below, or Enter) shows the image")
+           << "\n";
     } else if (!ucd.pictureProblem.empty()) {
         os << "Shown: "
            << (thumbShown ? "the thumbnail - the image itself is not (" + ucd.pictureProblem + ")"
@@ -1241,6 +1260,9 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     IconOnly(toolbar2->AddButton("mv_save", "", ViewerIconPath("save.svg"),
                                  [this] { ShowSaveDialog(); }),
              "Save as\xE2\x80\xA6");
+    IconOnly(toolbar2->AddButton("mv_unlock", "", ViewerIconPath("unlock.svg"),
+                                 [this] { Unlock(); }),
+             "Unlock: show this password-protected file (Enter)");
     IconOnly(toolbar2->AddButton("mv_info", "", ViewerIconPath("file-info.svg"),
                                  [this] { ToggleDetails(); }),
              "Details");
@@ -1501,6 +1523,21 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     infoLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     bottomBar->AddChild(infoLabel);
 
+    // Up only while the shown file is password-protected and not unlocked:
+    // in the info bar, so a host that hides the top bars (a preview pane)
+    // still offers it.
+    unlockButton = std::make_shared<UltraCanvasButton>("MV_Unlock", 0, 0, 78, 20, "Unlock");
+    unlockButton->SetIcon(ViewerIconPath("unlock.svg"));
+    unlockButton->SetIconSize(14, 14);
+    unlockButton->SetIconPosition(ButtonIconPosition::Left);
+    unlockButton->SetUseIconAsMask(true);
+    unlockButton->SetFontSize(11);
+    unlockButton->SetTooltip("Unlock: show this password-protected file (Enter)");
+    unlockButton->onClick = [this] { Unlock(); };
+    unlockButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    unlockButton->SetVisible(false);
+    bottomBar->AddChild(unlockButton);
+
     auto detailsBtn = std::make_shared<UltraCanvasButton>("MV_Details", 0, 0, 28, 20, "");
     detailsBtn->SetIcon(ViewerIconPath("file-info.svg"));
     detailsBtn->SetIconSize(14, 14);
@@ -1706,10 +1743,14 @@ bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsUCDFile(path))         return MediaKind::UCDoc;
+    // Before the vector check: a libvips with a PDF loader counts a PDF as a
+    // drawing it can rasterize, which showed its first page as a flat
+    // picture - no pages, no page inventory, no password - where the PDF view
+    // (built in) shows the document.
+    if (IsDocumentFile(path))    return MediaKind::Document;
     // Before the text check: an EPS is PostScript source, and its own drawing
     // is the more useful answer to "what is in this file".
     if (IsVectorDocumentFile(path)) return MediaKind::Vector;
-    if (IsDocumentFile(path))    return MediaKind::Document;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
     if (IsEBookFile(path))       return MediaKind::Book;
@@ -1836,6 +1877,7 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     DropPluginView();
     if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
     ucdDetails.clear();
+    locked = MediaLock::NotLocked;
     // A stopped clip is still an OPEN clip: the decoder keeps the file until
     // it is unloaded, and on Windows that handle is what makes the file
     // impossible to rename, replace or delete - the very operations a file
@@ -2158,6 +2200,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     (void)kind;
     bool handled = false;
     ucdDetails.clear();   // only set while a *.ucd container is showing
+    locked = MediaLock::NotLocked;
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
     if (kind == MediaKind::Document && pdfView) {
@@ -2166,8 +2209,17 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         ShowView(MediaKind::Document);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
-        if (!pv->LoadFromPath(path) && infoLabel)
-            infoLabel->SetText("Failed to open document: " + BaseName(path));
+        if (!pv->LoadFromPath(path)) {
+            // A failed load leaves the last document in the view: not on show
+            // under this file's name.
+            pv->SetDocument(nullptr);
+            if (pv->GetLastOpenError() == PDFOpenError::NeedsPassword) {
+                locked = MediaLock::PDF;
+                ShowLockedPDFNote(path);
+            } else if (infoLabel) {
+                infoLabel->SetText("Failed to open document: " + BaseName(path));
+            }
+        }
         handled = true;
     }
 #endif
@@ -2271,6 +2323,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         // container information either way.
         UCDPreview ucd = ReadUCDPreview(path);
         ReadUCDPicture(path, ucd);
+        if (ucd.lockedByPassword) locked = MediaLock::UCDImage;
         std::shared_ptr<UCImage> thumb = ucd.picture;
         if (!thumb && !ucd.thumbnail.empty()) thumb = UCImage::LoadFromMemory(ucd.thumbnail);
         const bool thumbShown = !ucd.picture && thumb && thumb->IsValid();
@@ -2498,6 +2551,7 @@ void UltraCanvasMediaViewer::UpdateToolAvailability() {
             // carry their own controls (or need none from this row).
             break;
     }
+    t.unlock = IsLocked();
     tools = t;
     // (The surface already holds the right adjustments: every load that puts
     // a picture on it passes SurfaceAdjustmentsFor() along.)
@@ -2514,6 +2568,7 @@ void UltraCanvasMediaViewer::ApplyToolAvailability() {
         show("mv_adjust", tools.colour);
         show("mv_curves", tools.colour);
         show("mv_save",   tools.save);
+        show("mv_unlock", tools.unlock);
         // A separator only between two groups that are both up. Details
         // (always shown) ends the row, so the last one needs only a group
         // before it.
@@ -2521,7 +2576,118 @@ void UltraCanvasMediaViewer::ApplyToolAvailability() {
         show("mv_sep4", tools.zoom || tools.transform);
     }
     if (adjustPanel) adjustPanel->SetVisible(adjustPanelOpen && tools.colour && topBarsVisible);
+    if (unlockButton) unlockButton->SetVisible(tools.unlock);
     RequestRedraw();
+}
+
+// ===== PASSWORD-PROTECTED FILES =====
+
+void UltraCanvasMediaViewer::ShowLockedPDFNote(const std::string& path) {
+    if (!textView) {
+        if (infoLabel) infoLabel->SetText(BaseName(path) + " is password-protected");
+        return;
+    }
+    ShowView(MediaKind::Text);
+    auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
+    ta->SetEditingMode(TextAreaEditingMode::PlainText);
+    ta->SetHighlightSyntax(false);
+    ta->SetDisplayOnly(true);
+    ta->SetText(BaseName(path) + " is password-protected.\n\n"
+                "Its pages open with its password: Unlock, in the bar below (or Enter), asks for it.\n");
+}
+
+void UltraCanvasMediaViewer::Unlock() {
+    AskForPassword(std::string());
+}
+
+void UltraCanvasMediaViewer::AskForPassword(const std::string& note) {
+    // One question at a time: a second click on Unlock while it is up asks nothing.
+    if (!IsLocked() || askingForPassword) return;
+    const std::string path = GetCurrentPath();
+    const std::string prompt = (note.empty() ? std::string() : note + "\n") +
+                               "Password for " + BaseName(path) + ":";
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    askingForPassword = true;
+    UltraCanvasDialogManager::ShowInputDialog(prompt, "Unlock " + BaseName(path), std::string(),
+        InputType::Password,
+        [this, self, path](DialogResult r, const std::string& password) {
+            if (self.expired()) return;
+            askingForPassword = false;
+            if (r != DialogResult::OK) return;
+            // Browsed on while the question was up: the answer was for another file.
+            if (GetCurrentPath() != path || !IsLocked()) return;
+            std::string error;
+            const MediaUnlockResult result = UnlockWithPassword(password, error);
+            if (result == MediaUnlockResult::WrongPassword) {
+                // Asked again on the next turn of the loop, once the dialog
+                // that answered has closed.
+                auto* app = UltraCanvasApplicationBase::GetCurrent();
+                if (!app) return;
+                app->PostToUIThread([this, self, path, error]() {
+                    if (!self.expired() && GetCurrentPath() == path) AskForPassword(error);
+                });
+            } else if (result == MediaUnlockResult::Failed) {
+                UltraCanvasDialogManager::ShowError("Could not open " + BaseName(path) + "\n" + error,
+                                                    "Unlock", nullptr, GetWindow());
+            }
+        }, GetWindow());
+}
+
+MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& password,
+                                                             std::string& error) {
+    const std::string path = GetCurrentPath();
+    if (!IsLocked() || path.empty()) {
+        error = "The file is not locked";
+        return MediaUnlockResult::NotLocked;
+    }
+    if (password.empty()) {
+        error = "Type the password.";
+        return MediaUnlockResult::WrongPassword;
+    }
+
+    if (locked == MediaLock::UCDImage) {
+        UCDPreview ucd = ReadUCDPreview(path);
+        ReadUCDPicture(path, ucd, password);
+        if (ucd.wrongPassword) {
+            error = "That password is not right.";
+            return MediaUnlockResult::WrongPassword;
+        }
+        if (!ucd.picture) {
+            error = ucd.pictureProblem.empty() ? "it holds no picture" : ucd.pictureProblem;
+            return MediaUnlockResult::Failed;
+        }
+        locked = MediaLock::NotLocked;
+        ucdDetails = BuildUCDDetailsText(path, ucd, false);
+        ShowView(MediaKind::Image);
+        surface->ShowImage(ucd.picture, MediaTransition::NoTransition, 0, false,
+                           SurfaceAdjustmentsFor(path));
+    }
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    else if (locked == MediaLock::PDF && pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        if (!pv->LoadFromPath(path, password)) {
+            if (pv->GetLastOpenError() == PDFOpenError::WrongPassword) {
+                error = "That password is not right.";
+                return MediaUnlockResult::WrongPassword;
+            }
+            error = "the document would not open";
+            return MediaUnlockResult::Failed;
+        }
+        locked = MediaLock::NotLocked;
+        if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
+        ShowView(MediaKind::Document);
+    }
+#endif
+    else {
+        error = "this build cannot open it";
+        return MediaUnlockResult::Failed;
+    }
+
+    UpdateToolAvailability();
+    UpdateInfoBar();
+    if (IsDetailsVisible()) UpdateDetailedInfo();
+    RequestRedraw();
+    return MediaUnlockResult::Unlocked;
 }
 
 void UltraCanvasMediaViewer::ResetAdjustments() {
@@ -2749,6 +2915,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         // summary) — label it as a UCD regardless of which view carries it.
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   UC DOCUMENT";
+        if (locked != MediaLock::NotLocked) os << "   \xC2\xB7   password-protected";
         std::error_code ec;
         auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
@@ -2758,6 +2925,16 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     }
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
+    if (locked == MediaLock::PDF) {
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   PDF   \xC2\xB7   password-protected";
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
     if (activeKind == MediaKind::Document && pdfView) {
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         std::ostringstream os;
@@ -2915,6 +3092,20 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     }
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
+    if (locked == MediaLock::PDF) {
+        std::ostringstream dos;
+        dos << "Document information\n\n";
+        dos << "File: " << BaseName(path) << "\n";
+        dos << "Path: " << path << "\n";
+        std::error_code dec;
+        auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
+        if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
+        dos << "Type: PDF document\n";
+        dos << "Encryption: password-protected\n";
+        dos << "Shown: nothing until it is unlocked - Unlock (in the bar below, or Enter) opens it\n";
+        ShowDetailsText(dos.str());
+        return;
+    }
     if (activeKind == MediaKind::Document && pdfView) {
         // Document metadata comes from the PDF element, never from libvips.
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
@@ -3428,6 +3619,12 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
             return true;
         default:
             break;
+    }
+
+    // A locked file: Enter does what the Unlock button does.
+    if (IsLocked() && event.virtualKey == UCKeys::Return && !event.ctrl && !event.alt) {
+        Unlock();
+        return true;
     }
 
     // The text view is display-only, so scrolling it is the widget's job.

@@ -5574,7 +5574,8 @@ if(TARGET UltraCanvas)
     target_include_directories(MediaViewerToolsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(MediaViewerToolsTest PRIVATE cxx_std_20)
     target_compile_definitions(MediaViewerToolsTest PRIVATE
-        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media"
+        UC_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(MediaViewerToolsTest PRIVATE UltraCanvas)
     set_target_properties(MediaViewerToolsTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

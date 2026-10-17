@@ -1431,6 +1431,7 @@ bool UltraFilerWindow::IsRemotePreviewKind(const std::string& path) {
     switch (UltraCanvasMediaViewer::ClassifyFile(path)) {
         case MediaKind::Image:    // bitmaps, and SVG through the image pipeline
         case MediaKind::Vector:   // DXF, CorelDRAW, EPS, ...
+        case MediaKind::Document: // PDF, now shown in the PDF view rather than as a drawing
         case MediaKind::Model:    // STL, OBJ, ...
             return true;
         default:

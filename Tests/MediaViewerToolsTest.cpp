@@ -10,13 +10,17 @@
 // A layered UltraCanvas document (*.ucd, UCBitmap) is shown whole - its
 // layers composited at full size, not the 256 px thumbnail it carries - and
 // zooms like a picture; a password-protected one shows only its thumbnail,
-// and a private one nothing at all.
+// and a private one nothing at all, until it is unlocked. So does a
+// password-protected PDF (Tests/fixtures/pdf-aes256-locked.pdf): the Unlock
+// button is offered, a wrong password leaves it locked, the right one shows
+// it, and browsing away and back locks it again.
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.2.0 - Unlock: a protected *.ucd and a protected PDF
 // Version: 1.1.0 - layered *.ucd images: full size; protected: the thumbnail
 // Version: 1.0.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -77,6 +81,8 @@ void CheckToolbarMatches(UltraCanvasMediaViewer& viewer, const std::string& labe
     Check(Shown(viewer, "mv_adjust") == t.colour && Shown(viewer, "mv_curves") == t.colour,
           label + ": adjustments and Curves follow the tool set");
     Check(Shown(viewer, "mv_save") == t.save, label + ": Save as follows the tool set");
+    Check(Shown(viewer, "mv_unlock") == t.unlock && Shown(viewer, "MV_Unlock") == t.unlock,
+          label + ": Unlock (toolbar and info bar) follows the tool set");
     Check(Shown(viewer, "mv_info"), label + ": Details is always offered");
     Check(SeparatorShown(viewer, "mv_sep3") == (t.zoom && t.transform) &&
           SeparatorShown(viewer, "mv_sep4") == (t.zoom || t.transform),
@@ -198,16 +204,77 @@ int main() {
         Expect(*viewer, plain, true, false, false, false);
 
         if (UCD::EncryptionAvailable()) {
-            viewer->SetFiles({ PathToUtf8(locked) });
+            viewer->SetFiles({ PathToUtf8(locked), PathToUtf8(plain) });
             shown = viewer->GetSurface()->GetImage();
             Check(shown && shown->IsValid() && shown->GetWidth() == 256 && shown->GetHeight() == 192,
                   "locked.ucd: password-protected, so its 256 px thumbnail shows");
+            Check(viewer->IsLocked() && viewer->GetAvailableTools().unlock,
+                  "locked.ucd: locked, and Unlock is offered");
+            CheckToolbarMatches(*viewer, "locked.ucd");
+
+            std::string why;
+            Check(viewer->UnlockWithPassword("passwort", why) == MediaUnlockResult::WrongPassword &&
+                  viewer->IsLocked(), "locked.ucd: a wrong password leaves it locked (" + why + ")");
+            Check(viewer->UnlockWithPassword("", why) == MediaUnlockResult::WrongPassword,
+                  "locked.ucd: no password is not its password");
+            Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked && !viewer->IsLocked(),
+                  "locked.ucd: the right password unlocks it");
+            shown = viewer->GetSurface()->GetImage();
+            Check(shown && shown->IsValid() && shown->GetWidth() == 400 && shown->GetHeight() == 300,
+                  "locked.ucd: unlocked, it shows at its full 400 x 300");
+            {
+                const MediaViewerTools t = viewer->GetAvailableTools();
+                Check(t.zoom && !t.unlock, "locked.ucd: unlocked, it zooms and Unlock goes away");
+            }
+            CheckToolbarMatches(*viewer, "locked.ucd unlocked");
+            Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::NotLocked,
+                  "locked.ucd: there is nothing left to unlock");
+            viewer->Next();
+            viewer->Previous();
+            Check(viewer->IsLocked(), "locked.ucd: browsed away and back, it is locked again");
+
             viewer->SetFiles({ PathToUtf8(hidden) });
             shown = viewer->GetSurface()->GetImage();
             Check(!shown, "hidden.ucd: private as well - no picture at all");
+            Check(viewer->IsLocked(), "hidden.ucd: locked, Unlock offered");
             Expect(*viewer, hidden, false, false, false, false);
+            Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked,
+                  "hidden.ucd: the right password unlocks it");
+            shown = viewer->GetSurface()->GetImage();
+            Check(shown && shown->IsValid() && shown->GetWidth() == 400,
+                  "hidden.ucd: unlocked, the image shows");
         } else {
             std::cout << "  (no libsodium in this build: the protected cases are skipped)\n";
+        }
+    }
+
+    // ----- A password-protected PDF -----
+    std::cout << "\nA password-protected PDF\n";
+    {
+        const fs::path lockedPdf = PathFromUtf8(UC_FIXTURE_DIR) / "pdf-aes256-locked.pdf";
+        viewer->SetFiles({ PathToUtf8(lockedPdf), PathToUtf8(media / "sample.pdf") });
+        if (!viewer->IsLocked() && !viewer->GetAvailableTools().zoom) {
+            std::cout << "  (no PDF engine in this build: the PDF cases are skipped)\n";
+        } else {
+            Check(viewer->IsLocked(), "pdf-aes256-locked.pdf: locked, not reported as damaged");
+            Expect(*viewer, lockedPdf, false, false, false, false);   // (shows it alone)
+            viewer->SetFiles({ PathToUtf8(lockedPdf), PathToUtf8(media / "sample.pdf") });
+            Check(viewer->GetAvailableTools().unlock, "pdf-aes256-locked.pdf: Unlock is offered");
+            std::string why;
+            Check(viewer->UnlockWithPassword("tulpi", why) == MediaUnlockResult::WrongPassword &&
+                  viewer->IsLocked(), "pdf-aes256-locked.pdf: a wrong password leaves it locked");
+            Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked &&
+                  !viewer->IsLocked(), "pdf-aes256-locked.pdf: the right password opens it");
+            {
+                const MediaViewerTools t = viewer->GetAvailableTools();
+                Check(t.zoom && !t.unlock, "pdf-aes256-locked.pdf: open, its pages zoom; Unlock goes away");
+            }
+            CheckToolbarMatches(*viewer, "pdf-aes256-locked.pdf unlocked");
+            viewer->Next();   // sample.pdf: not protected
+            Check(!viewer->IsLocked() && viewer->GetAvailableTools().zoom,
+                  "sample.pdf: not protected, opens as before");
+            viewer->Previous();
+            Check(viewer->IsLocked(), "pdf-aes256-locked.pdf: browsed away and back, locked again");
         }
     }
 

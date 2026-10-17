@@ -21,10 +21,13 @@
 // by whichever Vector plugin the application registered - see
 // UltraCanvasVectorPreview.h), and audio / video through the
 // framework's UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement.
-// UltraCanvas Document containers (*.ucd) are recognised too: the viewer
-// shows the container's embedded preview thumbnail (readable without parsing
-// the body — the format is designed for that, UltraCanvasUCDContainer.h)
-// plus the header details; files without a thumbnail get a header summary. The
+// UltraCanvas Document containers (*.ucd) are recognised too: a layered image
+// shows whole, its layers composited at full size; other content types show
+// the container's embedded preview thumbnail (readable without parsing the
+// body — the format is designed for that, UltraCanvasUCDContainer.h) plus the
+// header details; files without a thumbnail get a header summary. A
+// password-protected layered image or PDF shows an Unlock button that asks for
+// its password (IsLocked / Unlock / UnlockWithPassword). The
 // right view is chosen automatically from the file kind, and the toolbar
 // offers only the tools that kind takes (GetAvailableTools): colour
 // adjustments and Curves for bitmaps, rotate / mirror / save for anything on
@@ -74,8 +77,10 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.13.0 - password-protected files: IsLocked / Unlock / UnlockWithPassword,
+//                   MediaViewerTools::unlock, MediaUnlockResult
 // Version: 1.12.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -188,6 +193,16 @@ struct MediaViewerTools {
     bool transform = false;   // rotate left / right, mirror horizontally / vertically
     bool colour    = false;   // adjustments panel and Curves (with its histogram)
     bool save      = false;   // Save as... (bakes the edits into a bitmap file)
+    bool unlock    = false;   // Unlock... (a password-protected file not unlocked yet)
+};
+
+// What UltraCanvasMediaViewer::UnlockWithPassword made of a password.
+enum class MediaUnlockResult {
+    Unlocked,        // the file is shown whole
+    WrongPassword,   // not its password (or none was typed): still locked
+    Failed,          // the password was right, or could not be checked, but
+                     // the file would not open (damaged, no libsodium ...)
+    NotLocked        // the shown file is not a locked one
 };
 
 // ===== CENTRAL DISPLAY SURFACE =====
@@ -528,6 +543,22 @@ public:
     // does not take them: a drawing or a document preview shows unaltered.
     MediaViewerTools GetAvailableTools() const { return tools; }
 
+    // ===== PASSWORD-PROTECTED FILES =====
+    // A password-protected file the viewer can open with its password - a
+    // layered *.ucd image (UCD 2.2) or a PDF - first shows what it can
+    // without it: the *.ucd's thumbnail (nothing when it is private), a note
+    // for the PDF. An Unlock button comes up in the info bar and the second
+    // toolbar row (Enter does the same), and the Details say why. Nothing
+    // asks on its own: browsing a folder never pops up a password prompt.
+    // The password is not kept - browsing away and back locks the file again.
+    bool IsLocked() const { return locked != MediaLock::NotLocked; }
+    // Asks for the password in a dialog over the viewer's window - again
+    // when it is not right - and shows the file whole once it is.
+    void Unlock();
+    // Tries `password` on the shown file without asking: what Unlock does
+    // with the answer. `error` says why when it is not Unlocked.
+    MediaUnlockResult UnlockWithPassword(const std::string& password, std::string& error);
+
     // ===== KEYBOARD =====
     // Give the widget the window keyboard focus, so the browsing keys work
     // without clicking into it first.
@@ -598,6 +629,10 @@ private:
     // bitmap, none for anything else.
     MediaAdjustments SurfaceAdjustmentsFor(const std::string& path) const;
     void UpdateInfoBar();
+    // Unlock's question; `note` heads it when it is asked again.
+    void AskForPassword(const std::string& note);
+    // What a locked PDF shows: a note in the text view.
+    void ShowLockedPDFNote(const std::string& path);
     void UpdateDetailedInfo();
     // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
     // "## " / "### " headings) converted to Markdown tables.
@@ -717,6 +752,13 @@ private:
     // Details text for the current UCD container (empty when the current file
     // is not a *.ucd). Feeds the Details panel instead of the image/text details.
     std::string ucdDetails;
+
+    // The shown file is password-protected and not unlocked: which kind,
+    // so Unlock knows how to open it (see IsLocked()).
+    enum class MediaLock { NotLocked, UCDImage, PDF };
+    MediaLock locked = MediaLock::NotLocked;
+    bool askingForPassword = false;   // Unlock's question is up
+    std::shared_ptr<UltraCanvasButton> unlockButton;   // in the info bar
 
     MediaAdjustments adjustments;
     // The tools the shown file takes (see GetAvailableTools()).
