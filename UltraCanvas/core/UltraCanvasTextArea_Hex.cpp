@@ -308,7 +308,6 @@ namespace UltraCanvas {
         if (bufSize == 0) return;
 
         Color rowBandColor = {1, 228, 3, 20};
-        Color highlightColor = {255, 255, 0, 100};
 
         int endRow = std::min(hexTotalRows, hexFirstVisibleRow + hexMaxVisibleRows + 1);
 
@@ -328,8 +327,8 @@ namespace UltraCanvas {
             }
         }
 
-        // Pass 2: yellow highlights on matched bytes in hex and ASCII panels
-        ctx->SetFillPaint(highlightColor);
+        // Pass 2: the text views' search colour on matched bytes in hex and ASCII panels
+        ctx->SetFillPaint(style.searchHighlightColor);
         for (const auto& [matchStart, matchEnd] : searchHighlights) {
             int clampedStart = std::max(0, matchStart);
             int clampedEnd   = std::min(matchEnd, bufSize);

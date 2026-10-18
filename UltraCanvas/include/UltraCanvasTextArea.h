@@ -1,5 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
+//                 (searchHighlightColor, HighlightMatches(text, caseSensitive))
 // Version: 3.13.0 - MarkdownHeadingSlug: GitHub-style heading anchors in markdown mode
 // Version: 3.12.0 - onFocusGained / onFocusLost, as the text input has them
 // Version: 3.11.0 - ApplyTheme: the light or dark preset, the surfaces and ink from the theme roles
@@ -9,7 +11,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-18
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -22,6 +24,7 @@
 #include "UltraCanvasSpellChecker.h"
 #include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasSyntaxLineState.h"
+#include "UltraCanvasTimer.h"
 #include <algorithm>
 #include <string>
 #include <string_view>
@@ -958,6 +961,10 @@ namespace UltraCanvas {
         // (the widget itself no longer draws the cursor).
         void UpdateCaret(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
+        // Ticks on the vertical track for every search match and the current
+        // match, so matches outside the view can be seen.
+        void DrawScrollbarSearchMarks(IRenderContext* context, int trackX, int trackY,
+                                      int trackWidth, int trackHeight);
         // Fills a scrollbar track or thumb, rounded per style.scrollbarCornerRadius.
         void FillScrollbarRect(IRenderContext* context, const Rect2Dd& r);
         int ScrollbarWidth() const { return std::max(1, style.scrollbarWidth); }
@@ -1266,6 +1273,13 @@ namespace UltraCanvas {
         bool searchHighlightCaseSensitive = false;
         void RecomputeSearchHighlights();
         void BuildSearchHighlightSegments();
+        // A document this big re-finds its marks once typing pauses, not on
+        // every keystroke: each search is a full pass over the text.
+        static constexpr size_t searchHighlightDeferBytes = 256 * 1024;
+        static constexpr unsigned int searchHighlightDeferMs = 200;
+        TimerId searchHighlightTimer = InvalidTimerId;
+        void ScheduleSearchHighlightRecompute();
+        void CancelSearchHighlightRecompute();
 
         // Undo/Redo stacks. Positions are stored as LineColumnIndex (authoritative since Step 8b).
         struct TextState {

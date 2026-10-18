@@ -1,5 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.10.0 - search matches marked in the line layouts and on the scrollbar,
+//                 re-found after edits (deferred in large documents)
 // Version: 3.9.1 - onFocusGained / onFocusLost fired after the area's own focus handling
 // Version: 3.9.0 - ApplyTheme
 // Version: 3.8.0 - an input method's composition is laid out in the caret's line
@@ -77,6 +79,7 @@ namespace UltraCanvas {
 // Destructor
     UltraCanvasTextArea::~UltraCanvasTextArea() {
         UltraCanvasCaret::GetInstance().Hide(this);
+        CancelSearchHighlightRecompute();
         // Clear the liveness flag first, so a notifier already running on the
         // worker thread drops its repaint instead of touching a dying element,
         // then drop the queued job and any undelivered result: the service keys
@@ -1342,6 +1345,8 @@ namespace UltraCanvas {
 
             context->SetFillPaint(style.scrollbarColor);
             FillScrollbarRect(context, Rect2Dd(scrollbarX + in, thumbY + in, sbw - 2 * in, thumbHeight - 2 * in));
+
+            DrawScrollbarSearchMarks(context, scrollbarX, bounds.y, sbw, scrollbarHeight);
         }
 
         if (IsNeedHorizontalScrollbar()) {
@@ -1367,6 +1372,67 @@ namespace UltraCanvas {
 
             context->SetFillPaint(style.scrollbarColor);
             FillScrollbarRect(context, Rect2Dd(thumbX + in, scrollbarY + in, thumbWidth - 2 * in, sbw - 2 * in));
+        }
+    }
+
+    void UltraCanvasTextArea::DrawScrollbarSearchMarks(IRenderContext* context, int trackX, int trackY,
+                                                       int trackWidth, int trackHeight) {
+        if (searchHighlights.empty() || trackHeight <= 0) return;
+        const bool hex = editingMode == TextAreaEditingMode::Hex;
+        const int markHeight = 2;
+        const int inset = std::max(1, trackWidth / 4);
+        const double contentHeight = hex ? std::max(1, hexTotalRows)
+                                         : std::max(1.0f, GetContentHeight());
+
+        // Where a document position sits along the track: hex by row, text by
+        // the top of its line, so wrapped lines take the room they take on screen.
+        auto trackOffset = [&](int lineOrRow) -> int {
+            double top;
+            if (hex) {
+                top = lineOrRow;
+            } else if (lineOrRow >= 0 && lineOrRow < static_cast<int>(lineLayouts.size()) &&
+                       lineLayouts[lineOrRow]) {
+                top = lineLayouts[lineOrRow]->bounds.y;
+            } else {
+                top = lineOrRow * std::max(1.0f, computedLineHeight);
+            }
+            return trackY + static_cast<int>(top / contentHeight * (trackHeight - markHeight));
+        };
+        auto drawMark = [&](int y) {
+            context->FillRectangle(Rect2Dd(trackX + inset, y, trackWidth - 2 * inset, markHeight));
+        };
+
+        // Matches come in document order, so a tick on the same pixel row as
+        // the last one adds nothing and is skipped.
+        context->SetFillPaint(style.searchHighlightColor.WithAlpha(255));
+        int lastY = -1;
+        if (hex) {
+            const int bytesPerRow = std::max(1, hexBytesPerRow);
+            for (const auto& [matchStart, matchEnd] : searchHighlights) {
+                int y = trackOffset(matchStart / bytesPerRow);
+                if (y != lastY) drawMark(y);
+                lastY = y;
+            }
+        } else {
+            for (const auto& seg : searchHighlightSegments) {
+                int y = trackOffset(seg.lineIndex);
+                if (y != lastY) drawMark(y);
+                lastY = y;
+            }
+        }
+
+        // The current match (the selection) in the selection colour, on top.
+        int currentLineOrRow = -1;
+        if (hex) {
+            if (hexSelectionStart >= 0 && hexSelectionEnd > hexSelectionStart) {
+                currentLineOrRow = hexSelectionStart / std::max(1, hexBytesPerRow);
+            }
+        } else if (HasSelection()) {
+            currentLineOrRow = std::min(selectionStart.lineIndex, selectionEnd.lineIndex);
+        }
+        if (currentLineOrRow >= 0) {
+            context->SetFillPaint(style.selectionColor.WithAlpha(255));
+            drawMark(trackOffset(currentLineOrRow));
         }
     }
 
@@ -2437,7 +2503,10 @@ namespace UltraCanvas {
         textContent.reserve(total);
         for (const auto& l : lines) textContent.append(l);
         // Match positions shift with the edit; find them again in the new text.
-        if (!searchHighlightText.empty()) RecomputeSearchHighlights();
+        if (!searchHighlightText.empty()) {
+            if (textContent.size() > searchHighlightDeferBytes) ScheduleSearchHighlightRecompute();
+            else RecomputeSearchHighlights();
+        }
         isNeedRebuildLineLayouts = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
@@ -3030,7 +3099,30 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTextArea::ScheduleSearchHighlightRecompute() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) {
+            RecomputeSearchHighlights();
+            return;
+        }
+        // Each keystroke pushes the search back; the marks stay where they
+        // were until typing pauses.
+        CancelSearchHighlightRecompute();
+        searchHighlightTimer = app->StartTimer(searchHighlightDeferMs, false, [this](TimerId) {
+            searchHighlightTimer = InvalidTimerId;
+            RecomputeSearchHighlights();
+            RequestRedraw();
+        });
+    }
+
+    void UltraCanvasTextArea::CancelSearchHighlightRecompute() {
+        if (searchHighlightTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(searchHighlightTimer);
+        searchHighlightTimer = InvalidTimerId;
+    }
+
     void UltraCanvasTextArea::RecomputeSearchHighlights() {
+        CancelSearchHighlightRecompute();
         std::vector<SearchHighlightSegment> oldSegments = std::move(searchHighlightSegments);
         searchHighlightSegments.clear();
         searchHighlights.clear();
