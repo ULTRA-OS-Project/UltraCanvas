@@ -448,9 +448,9 @@ namespace UltraCanvas {
     };
 
     // Display-math block: `$$` on a line of its own opens it, the next such line closes it.
-    // The opening fence and the source lines collapse to zero height in rendered form (the
-    // current line still shows its raw text while editing); the closing fence renders the
-    // whole formula, centred, from the source gathered off the collapsed lines above it.
+    // The opening fence and the source lines collapse to zero height in rendered form (with
+    // the caret anywhere in the block, all its lines show raw - see rawBlockLines); the closing
+    // fence renders the whole formula, centred, from the source gathered off the collapsed lines.
     struct MathBlockLayout : LineLayoutBase {
         std::string source;             // a collapsed source line's text
         std::shared_ptr<UltraCanvasInlineMath> math;   // set on the closing fence only
@@ -986,6 +986,8 @@ namespace UltraCanvas {
 
         // parse the line text and create/update line layout
         void UpdateLineLayouts(IRenderContext* ctx);
+        // Fills rawBlockLines when the caret sits in a MarkdownHybrid display-math block.
+        void UpdateRawMathBlockLines(IRenderContext* ctx);
 
         // parse the line text and create line layout
         std::unique_ptr<LineLayoutBase> MakeLineLayout(IRenderContext* ctx, int lineIndex);
@@ -1121,6 +1123,12 @@ namespace UltraCanvas {
         // MarkdownHybrid current line. When the cursor enters a line, this line gets text
         // and used in rendering and measuring
         std::unique_ptr<LineLayoutBase> currentLine;
+        // MarkdownHybrid display-math block holding the caret: every other line of it
+        // (fences and LaTeX source) is shown raw too, since in rendered form those lines
+        // collapse to zero height. rawBlockLines[k] stands in for line rawBlockStart + k;
+        // the caret's own slot is null (currentLine covers it).
+        std::vector<std::unique_ptr<LineLayoutBase>> rawBlockLines;
+        int rawBlockStart = -1;
 
         // Input method composition: the text being composed and its caret (a
         // byte offset into it). Shown in currentLine at the caret, never in

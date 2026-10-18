@@ -260,6 +260,8 @@ namespace UltraCanvas {
         // Full text replacement: invalidate the layout cache + MD index.
         SetCursorPosition({0, 0});
         currentLine.reset();
+        rawBlockLines.clear();
+        rawBlockStart = -1;
         selectionStart = LineColumnIndex::INVALID;
         selectionEnd   = LineColumnIndex::INVALID;
         isNeedRebuildLineLayouts = true;
@@ -1480,6 +1482,8 @@ namespace UltraCanvas {
                 // (or discard the stash if the line was modified). On focus regain, the swap
                 // re-runs via ReconcileLayoutState.
                 currentLine.reset();
+                rawBlockLines.clear();
+                rawBlockStart = -1;
                 RequestRedraw();
                 if (onFocusLost) onFocusLost();
                 return true;
@@ -3427,6 +3431,10 @@ namespace UltraCanvas {
         if (currentLine && cursorPosition.lineIndex == idx) {
             return currentLine.get();
         }
+        if (rawBlockStart >= 0 && idx >= rawBlockStart &&
+            idx - rawBlockStart < (int)rawBlockLines.size() && rawBlockLines[idx - rawBlockStart]) {
+            return rawBlockLines[idx - rawBlockStart].get();
+        }
         // Layouts are built through the render context, and an element that is
         // not in a window yet has none (a ScrollTo() or a cursor query straight
         // after SetText() on a detached text area). Nothing is laid out then;
@@ -3519,6 +3527,7 @@ namespace UltraCanvas {
         } else {
             currentLine.reset();
         }
+        UpdateRawMathBlockLines(ctx);
 
         if (groupStart >= 0) tableSpans.push_back({groupStart, (int)lines.size() - 1});
 
@@ -3534,12 +3543,52 @@ namespace UltraCanvas {
             if (!lineLayouts[i]) continue;
 
             lineLayouts[i]->bounds.y = prevLineBottomPos;
+            LineLayoutBase* actual = lineLayouts[i].get();
             if (currentLine && cursorPosition.lineIndex == i) {
-                currentLine->bounds.y = prevLineBottomPos;
-                prevLineBottomPos += currentLine->bounds.height;
-            } else {
-                prevLineBottomPos += lineLayouts[i]->bounds.height;
+                actual = currentLine.get();
+            } else if (rawBlockStart >= 0 && i >= rawBlockStart &&
+                       i - rawBlockStart < (int)rawBlockLines.size() && rawBlockLines[i - rawBlockStart]) {
+                actual = rawBlockLines[i - rawBlockStart].get();
             }
+            actual->bounds.y = prevLineBottomPos;
+            prevLineBottomPos += actual->bounds.height;
+        }
+    }
+
+    void UltraCanvasTextArea::UpdateRawMathBlockLines(IRenderContext* ctx) {
+        rawBlockLines.clear();
+        rawBlockStart = -1;
+        const int cur = cursorPosition.lineIndex;
+        if (!currentLine || editingMode != TextAreaEditingMode::MarkdownHybrid ||
+            cur < 0 || cur >= (int)lineLayouts.size()) return;
+
+        // Opening fence and source lines are MathBlockCollapsed, the closing fence MathBlock.
+        auto mathType = [&](int k) -> int {   // 0 none, 1 collapsed, 2 closing fence
+            auto* m = (k >= 0 && k < (int)lineLayouts.size())
+                      ? dynamic_cast<MathBlockLayout*>(lineLayouts[k].get()) : nullptr;
+            if (!m) return 0;
+            return m->layoutType == LineLayoutType::MathBlock ? 2 : 1;
+        };
+        if (mathType(cur) == 0) return;
+
+        // A block never starts with its closing fence, so walking up over collapsed lines
+        // stops at the previous block's closing fence or at a non-math line.
+        int first = cur;
+        while (mathType(first - 1) == 1) first--;
+        int last = cur;
+        if (mathType(cur) == 1) {
+            while (mathType(last + 1) == 1) last++;
+            if (mathType(last + 1) == 2) last++;
+        }
+        if (first == last) return;
+
+        rawBlockStart = first;
+        rawBlockLines.resize(last - first + 1);
+        for (int k = first; k <= last; k++) {
+            if (k == cur) continue;
+            auto ll = MakePlainLineLayout(ctx, k, /*withComposition=*/false);
+            ll->logicalLineNumber = lineLayouts[k]->logicalLineNumber;
+            rawBlockLines[k - first] = std::move(ll);
         }
     }
 

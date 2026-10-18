@@ -43,6 +43,7 @@ struct TextAreaProbe : UltraCanvasTextArea {
     TextAreaProbe(float w, float h) : UltraCanvasTextArea("probe", 0, 0, w, h) {}
     using UltraCanvasTextArea::ParseInlineMarkdownRuns;
     using UltraCanvasTextArea::InlineRun;
+    using UltraCanvasTextArea::GetActualLineLayout;
     void Attach(std::unique_ptr<IRenderContext> ctx) { renderContext = std::move(ctx); }
 };
 
@@ -167,6 +168,31 @@ void TestRendering() {
     const long left = DarkPixels(surface2, 0, 0, W / 6, H);
     const long middle = DarkPixels(surface2, W / 3, 0, 2 * W / 3, H);
     Check(middle > left, "...centred in the text area");
+
+    // The caret anywhere in a $$ block shows the whole block as raw source: the
+    // fences and the LaTeX lines collapse in rendered form, so showing only the
+    // caret's line would hide the formula being edited.
+    auto lineHeight = [&](int i) {
+        auto* ll = area2->GetActualLineLayout(i);
+        return ll ? ll->bounds.height : -1.f;
+    };
+    auto lineTop = [&](int i) {
+        auto* ll = area2->GetActualLineLayout(i);
+        return ll ? ll->bounds.y : -1.f;
+    };
+    for (int caret : {3, 4, 5}) {
+        area2->SetCursorPosition({caret, 0});
+        area2->Render(rc2, Rect2Df(0, 0, static_cast<float>(W), static_cast<float>(H)));
+        Check(lineHeight(3) > 0 && lineHeight(4) > 0 && lineHeight(5) > 0,
+              "caret on line " + std::to_string(caret) + ": every line of the $$ block is shown raw");
+        // Line tops are whole pixels while heights are not, hence the 1px slack.
+        Check(lineTop(4) >= lineTop(3) + lineHeight(3) - 1 && lineTop(5) >= lineTop(4) + lineHeight(4) - 1,
+              "...stacked one under the other");
+    }
+    area2->SetCursorPosition({1, 0});
+    area2->Render(rc2, Rect2Df(0, 0, static_cast<float>(W), static_cast<float>(H)));
+    Check(lineHeight(3) == 0 && lineHeight(4) == 0 && lineHeight(5) > 0,
+          "caret outside the block: it collapses back to the rendered formula");
 }
 
 } // namespace
