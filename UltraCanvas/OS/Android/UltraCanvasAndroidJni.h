@@ -52,6 +52,13 @@ namespace AndroidJni {
     jstring ToJString(JNIEnv* env, const std::string& utf8);
     jstring ToJString(JNIEnv* env, const char* utf8);
 
+    // Startup self-check, glue thread: ask UltraCanvasActivity whether its
+    // `native` methods resolve, and log the answer (an error if not). Without
+    // it a broken bridge shows up as a crash on the first keystroke, dialog
+    // answer or permission answer. A plain NativeActivity has no Java half
+    // to check and logs nothing.
+    void CheckJavaToNativeBridge();
+
     // Split a newline-separated list, dropping empty entries. The Java side
     // returns path lists this way (the SAF picker, the clipboard's URI items)
     // because one String crosses JNI far more cheaply than a String[].

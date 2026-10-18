@@ -29,7 +29,11 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
+import android.hardware.display.DisplayManager;
+import android.os.Bundle;
+import android.view.Display;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -634,6 +638,108 @@ public class UltraCanvasActivity extends NativeActivity {
         }
     }
 
+    // ===== DISPLAY ROTATION =====
+
+    // Reports every turn of the display to the native side, which the camera
+    // preview reads from its own thread. A listener rather than
+    // onConfigurationChanged: a 180-degree flip (landscape to the other
+    // landscape) changes no configuration and would go unnoticed.
+    private DisplayManager.DisplayListener displayListener;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        loadLibraryForJni();
+        super.onCreate(savedInstanceState);   // starts android_main
+        reportDisplayRotation();
+        DisplayManager displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+        if (displays == null) return;
+        displayListener = new DisplayManager.DisplayListener() {
+            @Override
+            public void onDisplayAdded(int displayId) { }
+
+            @Override
+            public void onDisplayRemoved(int displayId) { }
+
+            @Override
+            public void onDisplayChanged(int displayId) {
+                if (displayId == Display.DEFAULT_DISPLAY) reportDisplayRotation();
+            }
+        };
+        displays.registerDisplayListener(displayListener, null);   // on this (UI) thread
+    }
+
+    // ===== JNI: MAKING THE native METHODS RESOLVABLE =====
+
+    /**
+     * Load the app's library through System.loadLibrary - the library
+     * NativeActivity is about to load itself, found the same way
+     * (android.app.lib_name, default "main").
+     *
+     * Without this every `native` method in this class throws
+     * UnsatisfiedLinkError: NativeActivity opens its library with a plain
+     * OpenNativeLibrary (dlopen) call, and ART looks native methods up only
+     * in libraries loaded through System.loadLibrary / System.load. The
+     * library is not loaded twice: both go through this class loader's
+     * linker namespace, which hands back the handle it already has.
+     */
+    private void loadLibraryForJni() {
+        String libName = "main";   // NativeActivity's own default
+        try {
+            ActivityInfo info = getPackageManager().getActivityInfo(
+                    getIntent().getComponent(), PackageManager.GET_META_DATA);
+            if (info.metaData != null) {
+                String name = info.metaData.getString(META_DATA_LIB_NAME);
+                if (name != null) libName = name;
+            }
+        } catch (PackageManager.NameNotFoundException e) {
+            // NativeActivity fails on this with its own message; let it.
+        }
+        try {
+            System.loadLibrary(libName);
+        } catch (UnsatisfiedLinkError e) {
+            android.util.Log.e("UltraCanvas", "System.loadLibrary(\"" + libName
+                    + "\") failed - dialogs, the keyboard and permissions will not reach"
+                    + " native code", e);
+        }
+    }
+
+    /**
+     * The startup self-check (UltraCanvasAndroidJni.cpp,
+     * CheckJavaToNativeBridge): can this class call into native code? Called
+     * by the native side, which logs the answer, so a broken bridge is one
+     * logcat line instead of a crash on the first keystroke.
+     */
+    public boolean checkNativeBridge() {
+        try {
+            return nativeBridgeEcho(0x5543) == 0x5543;
+        } catch (UnsatisfiedLinkError e) {
+            return false;
+        }
+    }
+
+    /**
+     * Guarded: this is the first call into native code an activity makes, at
+     * launch, and an app must not die there if its library does not export
+     * the entry point - the native side then reads the rotation itself.
+     */
+    private void reportDisplayRotation() {
+        try {
+            nativeOnDisplayRotationChanged(getDisplayRotationDegrees());
+        } catch (UnsatisfiedLinkError e) {
+            // Native side unreachable: it falls back to querying on demand.
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (displayListener != null) {
+            DisplayManager displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+            if (displays != null) displays.unregisterDisplayListener(displayListener);
+            displayListener = null;
+        }
+        super.onDestroy();
+    }
+
     // ===== TEXT INPUT (soft keyboard + IME) =====
 
     private InputView inputView;
@@ -856,13 +962,18 @@ public class UltraCanvasActivity extends NativeActivity {
 
     /**
      * Delivers a dialog outcome to the waiting native thread. Implemented in
-     * UltraCanvasAndroidDialogBridge.cpp; resolved by name against the native
-     * library NativeActivity already loaded for us.
+     * UltraCanvasAndroidDialogBridge.cpp; resolved by name, which works
+     * because onCreate loaded the library through System.loadLibrary
+     * (loadLibraryForJni).
      */
     private static native void nativeOnDialogResult(int requestId, int result, String value);
 
     // Implemented in UltraCanvasAndroidPermissions.cpp.
     private static native void nativeOnPermissionResult(int requestId, boolean granted);
+    private static native void nativeOnDisplayRotationChanged(int degrees);
+
+    // Implemented in UltraCanvasAndroidJni.cpp: returns its argument.
+    private static native int nativeBridgeEcho(int value);
 
     /**
      * The composition's caret as a UTF-8 byte offset into it - the unit the
