@@ -1,3 +1,72 @@
+#### 2026-10-18 *0.9.337*
+- **An FTP call can be called off** (UltraNet FTP 0.7.0).
+  `UltraNetFtpOptions::isCancelled`, or `UltraNet_SetThreadFtpCancel` for a
+  caller behind a layer that builds the options (UltraCloud), is asked while
+  the call runs - as bytes move, and about once a second while none do - and
+  ends it as `UltraNetResultCode::Cancelled` ("called off"). Until now a
+  download ran to its last byte whoever was waiting for it. UltraCloud's FTP
+  provider reports such a call as `ResultCode::Cancelled` rather than as a
+  server refusal. Two loopback tests in `test_ftp_log.cpp` call off a stalled
+  listing, through the options and through the thread.
+- **A folder display can be retired without waiting for its workers**
+  (`UltraCanvasFilerWidget::RequestBackgroundStop` / `BackgroundStopped`).
+  The destructor joins every worker the widget started, so destroying a
+  display whose worker was busy with a slow file held the UI thread for as
+  long. A host now tells the workers to stop, keeps the widget, and destroys
+  it once `BackgroundStopped()` says every worker thread has returned; every
+  thread the widget starts is counted for it. `FilerRetireTest` checks it, on
+  Windows too.
+
+#### 2026-10-18 *0.9.336*
+- **UltraFiler: the move / copy and delete questions show how much is going.** The
+  *Move files* / *Copy files* confirmation said **Size: 0 B** for every file:
+  `UltraCanvasFilerWidget::EntriesForPaths()` built its entries from the file
+  status alone and never read a size, so the delete confirmation's totals were
+  short by the same amount. It now reads each file's size. A folder is counted
+  too, on the background worker the info bar's folder sizes use: the dialog
+  opens at once with **Size:** *counting…* and the line fills in when the walk
+  lands - "4.5 MB (120 files in 8 folders)" for one folder, "1 folder and 2
+  files (4.6 MB)" for a set, "≥" when the walk stopped at its safety cap. A
+  folder rescan while the question is open queues the walk again. New
+  `OperationDialogSpec::liveFacts` lets any operation dialog re-derive its
+  facts as walks land.
+- **The delete confirmation counts folders the same way.** Its **Size:**
+  line used to add up only the files' own sizes ("… in the files") and was
+  missing for a single file or folder; it now uses the same background count
+  as the move / copy question (`UltraCanvasFilerWidget::CountedSizeFact()`).
+  Folders on a remote drive or inside an archive, which the walk cannot read,
+  keep the files-only total.
+
+#### 2026-10-18 *0.9.335*
+- **The colour picker's designs have names for a settings file.**
+  `ColorPickerWheelStyleName` gives each design the name a host keeps it
+  under - `circle`, `square`, `rectangle`, `sliders` - and
+  `ColorPickerWheelStyleFromName` reads one back, refusing a name that is
+  none of them and leaving the design as it was. UltraPaint's settings used
+  a table of their own for this; they and ArtCreator's new settings file now
+  share these (`ArtCreatorSettingsTest`).
+
+#### 2026-10-18 *0.9.334*
+- **Spreadsheet: deleting a sheet can be undone.** `RemoveSheet` (and the
+  sheet tab menu's Delete) is now one undo step: Ctrl+Z puts the sheet back at
+  its place with its cells, its own undo history, and the formulas the delete
+  had turned to `#REF!` naming it again; Ctrl+Y deletes it again. A sheet that
+  comes back to find its name taken returns as "Name (2)". Undo steps now find
+  their sheet by a fixed id (`SpreadsheetSheet::GetId`) instead of its name,
+  so a deleted sheet's history waits for it instead of being thrown away, and
+  can never reach a different sheet that took the name.
+
+#### 2026-10-18 *0.9.333*
+- **`RunProcessCaptured` can hand over the output as it comes.** A fourth,
+  optional argument, `onOutput(data, size, fromStandardError)`, receives each
+  chunk as it is read from the child's pipes, while the output is still
+  collected into the result as before; existing callers are unchanged. The
+  calls come from the calling thread (POSIX) or the reader threads
+  (Windows), serialised so that two never run at once. UltraCanvasStart uses
+  it to show the MSYS2 set-up, the package install and the build while they
+  run. `ProcessRunnerTest` checks that the first chunk arrives before the
+  child ends and that the chunks add up to what is collected.
+
 #### 2026-10-17 *0.9.332*
 - **Spreadsheet: undo after a sheet is renamed or deleted wrote into the open
   sheet.** An undo step finds its sheet by name, and when none had that name

@@ -405,6 +405,17 @@ sink for its thread instead: `UltraNet_SetThreadFtpLog(fn)` returns the
 previous sink to put back afterwards, and only calls without an `onLog` of
 their own go to it.
 
+A call can be called off. `UltraNetFtpOptions::isCancelled` is asked while
+the call runs - as bytes move, and about once a second while none do, so a
+stalled transfer is called off as promptly as a busy one; once it answers
+true the call ends as `UltraNetResultCode::Cancelled` with the message
+*called off*, and a listing is not tried again in another format. It runs on
+the calling thread inside libcurl and must answer at once (an atomic flag). As
+with the log, a caller behind a layer that builds the options sets one for
+its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
+UltraFiler's drive worker uses it to stop a preview download the user is no
+longer waiting for.
+
 What a failure says, whether or not anyone reads the log:
 
 - `message` is libcurl's specific reason (its error buffer, not just the error

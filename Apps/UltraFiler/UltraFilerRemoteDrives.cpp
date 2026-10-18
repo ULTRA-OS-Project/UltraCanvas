@@ -1,7 +1,9 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.9.0 - PendingTransfers; Stop() calls a running transfer off; a
-//                  failed download leaves no half-written file; an upload
-//                  under a name of its own; CachedListing, Revalidate
+// Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off; a
+//                   failed download leaves no half-written file; an upload
+//                   under a name of its own; CachedListing, Revalidate
+// Version: 1.9.0 - a running preview copy can be called off (CancelActivePreviewLocked)
+// Version: 1.8.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
@@ -355,6 +357,7 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
                     job.isListing = true;
                     job.path = path;
                     queue_.push_back(std::move(job));
+                    CancelActivePreviewLocked(PreviewYield);   // the user's request first
                     EnsureWorker();
                     lk.unlock();
                     cond_.notify_one();
@@ -382,6 +385,7 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
     job.isListing = true;
     job.path = path;
     queue_.push_back(std::move(job));
+    CancelActivePreviewLocked(PreviewYield);   // the user's request first
     EnsureWorker();
     lk.unlock();
     cond_.notify_one();
@@ -584,6 +588,7 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
         job.argument = argument;
         job.isDirectory = isDirectory;
         queue_.push_back(std::move(job));
+        CancelActivePreviewLocked(PreviewYield);   // the user's request first
         EnsureWorker();
     }
     cond_.notify_one();
@@ -659,6 +664,7 @@ bool UltraFilerRemoteDrives::Upload(const std::string& remoteFolder,
         job.remoteName = remoteName;
         job.isDirectory = false;
         queue_.push_back(std::move(job));
+        CancelActivePreviewLocked(PreviewYield);   // the user's request first
         EnsureWorker();
     }
     cond_.notify_one();
@@ -751,6 +757,7 @@ bool UltraFilerRemoteDrives::Download(const std::string& remoteFile,
         job.argument = savedAs;
         job.isDirectory = false;
         queue_.push_back(std::move(job));
+        CancelActivePreviewLocked(PreviewYield);   // the user's request first
         EnsureWorker();
     }
     cond_.notify_one();
@@ -865,8 +872,9 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
         }
 
         // The selection has moved on: a preview download that has not
-        // started is for a file nobody is looking at any more. One that has
-        // started is left to finish - it is the nearest thing to done.
+        // started is for a file nobody is looking at any more, and so is one
+        // that has - it is called off rather than left to hold up the drive
+        // for a file that will not be shown.
         for (auto q = queue_.begin(); q != queue_.end();) {
             if (q->isPreview && q->path != entry.path) {
                 previews_.erase(q->path);
@@ -875,6 +883,8 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
                 ++q;
             }
         }
+        if (activePreviewCancel_ && activePreviewPath_ != entry.path)
+            CancelActivePreviewLocked(PreviewSuperseded);
 
         Job job;
         job.isListing = false;
@@ -1217,6 +1227,16 @@ std::vector<RemoteTransfer> UltraFilerRemoteDrives::PendingTransfers() const {
     return out;
 }
 
+void UltraFilerRemoteDrives::CancelActivePreviewLocked(PreviewCancel why) {
+    if (!activePreviewCancel_) return;
+    // The strongest reason wins: a copy that yielded to a listing and is then
+    // no longer wanted at all is dropped, not fetched again.
+    int current = activePreviewCancel_->load();
+    while (current < why &&
+           !activePreviewCancel_->compare_exchange_weak(current, why)) {
+    }
+}
+
 void UltraFilerRemoteDrives::Stop() {
     // First, without the lock: the worker's abort check reads it on every
     // progress callback of the transfer it is in the middle of, which ends
@@ -1225,6 +1245,8 @@ void UltraFilerRemoteDrives::Stop() {
     {
         std::lock_guard<std::mutex> lk(mutex_);
         shutdown_ = true;
+        // A preview copy is nothing to wait for: the window is going.
+        CancelActivePreviewLocked(PreviewShutdown);
         queue_.clear();
         prefetchQueue_.clear();
         prefetchQueued_.clear();
@@ -1304,6 +1326,8 @@ void UltraFilerRemoteDrives::WorkerMain() {
     for (;;) {
         Job job;
         std::size_t waiting = 0;
+        // Set for a preview copy only: what calls its download off.
+        std::shared_ptr<std::atomic<int>> previewCancel;
         {
             std::unique_lock<std::mutex> lk(mutex_);
             auto ready = [this]() {
@@ -1345,6 +1369,11 @@ void UltraFilerRemoteDrives::WorkerMain() {
             activeJobSince_ = std::chrono::steady_clock::now();
             activeIsTransfer_ = DescribeTransferLocked(job, activeTransfer_);
             activeTransfer_.running = activeIsTransfer_;
+            if (job.isPreview) {
+                activePreviewPath_ = job.path;
+                activePreviewCancel_ = std::make_shared<std::atomic<int>>(PreviewKeep);
+                previewCancel = activePreviewCancel_;
+            }
         }
 
         // What this job is, said before it starts rather than after: the whole
@@ -1403,6 +1432,13 @@ void UltraFilerRemoteDrives::WorkerMain() {
         };
         UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
                 [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
+        // Asked by the FTP transfer as its bytes move. Only a preview copy
+        // has one: everything else is something the user asked for.
+        std::function<bool()> previousCancel = UltraNet_SetThreadFtpCancel(
+                previewCancel ? std::function<bool()>([previewCancel]() {
+                                    return previewCancel->load() != PreviewKeep;
+                                })
+                              : std::function<bool()>());
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
         UltraCloud::LogCallback previousCloudLog = UltraCloud::SetThreadLog(
                 [onLine](const UltraCloud::LogLine& in) { onLine(ToRemoteLogLine(in)); });
@@ -1483,6 +1519,25 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
         }
         UltraNet_SetThreadFtpLog(std::move(previousLog));
+        UltraNet_SetThreadFtpCancel(std::move(previousCancel));
+        // Why the preview copy was called off, if it was and the download did
+        // not finish anyway. Not a failure: the log shows it as called off and
+        // the window hears nothing, so it raises no alarm.
+        int calledOff = PreviewKeep;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            if (previewCancel && outcome.failed) calledOff = previewCancel->load();
+            activePreviewPath_.clear();
+            activePreviewCancel_.reset();
+        }
+        if (calledOff != PreviewKeep) {
+            outcome.failed = false;
+            outcome.message = calledOff == PreviewYield
+                    ? "called off for a request of yours; fetched again after it"
+                    : "called off";
+            outcome.category.clear();
+            outcome.diagnostics.clear();
+        }
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
         UltraCloud::SetThreadLog(std::move(previousCloudLog));
         UltraCloud::SetThreadRateLimitPolicy(std::move(previousRateLimit));
@@ -1499,6 +1554,33 @@ void UltraFilerRemoteDrives::WorkerMain() {
             activeIsTransfer_ = false;
         }
 
+        // A preview copy called off: half a file is thrown away, and the
+        // window is told nothing - it either still waits for the copy, which
+        // is fetched again behind the request it gave way to, or no longer
+        // wants it.
+        if (job.isPreview && calledOff != PreviewKeep) {
+            std::error_code ec;
+            fs::remove(UltraCanvas::PathFromUtf8(job.argument), ec);   // half a file
+            if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
+            std::size_t left = 0;
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                lastOperationError_.clear();
+                if (calledOff == PreviewYield && !shutdown_) {
+                    // Behind what the user asked for, still pending: the pane
+                    // is still waiting for it, and onPreviewCopyReady fires
+                    // once it is in. Fetched from the start again - the
+                    // provider has no way to resume a download.
+                    queue_.push_back(job);
+                } else {
+                    // Asked for again if the selection comes back to it.
+                    previews_.erase(job.path);
+                }
+                left = queue_.size();
+            }
+            if (left == 0) ReportActivity(RemoteActivity{}, /*force=*/true);
+            continue;
+        }
         // A preview copy changed nothing anybody is looking at: it is renamed
         // into place if it arrived whole, and the window is told either way.
         if (job.isPreview) {

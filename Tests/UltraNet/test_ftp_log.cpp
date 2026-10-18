@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -845,5 +846,67 @@ TEST(ftp_log_the_thread_sink_hears_calls_without_an_onlog) {
                    return l.kind == UltraNetFtpLogKind::Error;
                }), static_cast<std::ptrdiff_t>(1));
     REQUIRE(other.lines.empty());
+}
+
+// A call can be called off while it waits on the server: the isCancelled the
+// options carry is asked about once a second even while no byte moves, so a
+// stalled data connection ends as Cancelled long before the inactivity limit.
+// UltraFiler's drive worker relies on it to stop a preview download the user
+// no longer waits for.
+TEST(ftp_log_a_stalled_call_is_called_off_by_its_options) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.stallData = true;
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    UltraNetFtpOptions opt = TestOptions(c, 20000);
+    const auto started = std::chrono::steady_clock::now();
+    opt.isCancelled = [started]() {
+        return std::chrono::steady_clock::now() - started > std::chrono::milliseconds(300);
+    };
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult r = UltraNet_FtpListDirectory(server.Url(), entries, opt);
+    const auto took = std::chrono::steady_clock::now() - started;
+    server.Stop();
+
+    REQUIRE(!r.success);
+    REQUIRE(r.code == UltraNetResultCode::Cancelled);
+    REQUIRE_EQ(r.message, std::string("called off"));
+    REQUIRE(took < std::chrono::seconds(5));
+    // Called off is final: not asked again in another listing format.
+    REQUIRE_EQ(server.Count("LIST"), 0);
+}
+
+// The same through the calling thread's question, for a caller whose options
+// are built by a layer in between (UltraCloud); and once it is cleared, the
+// next call runs to its end.
+TEST(ftp_log_the_thread_cancel_calls_off_calls_without_their_own) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.stallData = true;
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    std::atomic<bool> stop{true};
+    std::function<bool()> previous =
+            UltraNet_SetThreadFtpCancel([&stop]() { return stop.load(); });
+    std::vector<UltraNetFtpEntry> entries;
+    const auto started = std::chrono::steady_clock::now();
+    const UltraNetResult r =
+            UltraNet_FtpListDirectory(server.Url(), entries, TestOptions(c, 20000));
+    const auto took = std::chrono::steady_clock::now() - started;
+    UltraNet_SetThreadFtpCancel(std::move(previous));
+
+    // Cleared: a stalled call now waits for the inactivity limit as before.
+    Collected after;
+    const UltraNetResult timedOut =
+            UltraNet_FtpListDirectory(server.Url(), entries, TestOptions(after, 1000));
+    server.Stop();
+
+    REQUIRE(r.code == UltraNetResultCode::Cancelled);
+    REQUIRE(took < std::chrono::seconds(5));
+    REQUIRE(!timedOut.success);
+    REQUIRE(timedOut.code != UltraNetResultCode::Cancelled);
 }
 #endif // !_WIN32

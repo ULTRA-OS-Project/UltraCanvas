@@ -15,8 +15,9 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
-// Version: 0.6.1 - an upload or download ends when its thread's abort check
-//                  says so (UltraNet_SetThreadAbortCheck)
+// Version: 0.7.1 - an upload or download also ends when its thread's abort
+//                  check says so (UltraNet_SetThreadAbortCheck)
+// Version: 0.7.0 - a call can be called off (isCancelled, UltraNet_SetThreadFtpCancel)
 // Version: 0.6.0 - SFTP with a private key
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
 // Last Modified: 2026-10-17
@@ -52,6 +53,17 @@ constexpr const char* kComponent = "UltraNet FTP 0.5.0";
 // The log sink of calls made on this thread without an onLog of their own
 // (UltraNet_SetThreadFtpLog).
 thread_local UltraNetFtpLogCallback t_threadLog;
+
+// The "call it off" question of calls made on this thread without an
+// isCancelled of their own (UltraNet_SetThreadFtpCancel), and the one the call
+// running now asks - set by ApplyCommonOptions, read by the progress callback.
+// Per thread, because a call runs start to end on the thread that made it.
+thread_local std::function<bool()> t_threadCancel;
+thread_local std::function<bool()> t_callCancel;
+// Whether the call running now reports its bytes (ApplyProgressCallback): the
+// file transfers do, a listing or a DELE that only installed the callback to
+// be called off does not.
+thread_local bool t_callReports = false;
 
 // ===== Connections kept open between calls =====
 // libcurl keeps a finished transfer's connection in a pool for the next
@@ -214,6 +226,9 @@ Transcript MakeTranscript(const UltraNetFtpOptions& opt, const std::string& url)
     return Transcript(opt.onLog ? opt.onLog : t_threadLog, IsSftpUrl(url));
 }
 
+int ReportTransferProgress(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
+                           curl_off_t ultotal, curl_off_t ulnow);
+
 void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
     if (!opt.credentials.username.empty()) {
         curl_easy_setopt(h, CURLOPT_USERNAME, opt.credentials.username.c_str());
@@ -263,6 +278,17 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 #endif
     }
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    // A call that can be called off asks through the progress callback, which
+    // libcurl runs while bytes move and about once a second while they do
+    // not - so a transfer that has stalled is called off as promptly as one
+    // in full flow.
+    t_callCancel = opt.isCancelled ? opt.isCancelled : t_threadCancel;
+    t_callReports = false;
+    if (t_callCancel) {
+        curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
+        curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
+        curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
+    }
     // The connection the last call on this thread left open, if it fits.
     if (CURLSH* share = t_connections.Share())
         curl_easy_setopt(h, CURLOPT_SHARE, share);
@@ -281,6 +307,12 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 // this takes.
 int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dlnow,
                            curl_off_t ultotal, curl_off_t ulnow) {
+    // Called off - by this call's own question, or by the thread's owner
+    // wanting the thread back (UltraNet_SetThreadAbortCheck): libcurl ends the
+    // call with CURLE_ABORTED_BY_CALLBACK, which the result reports as
+    // Cancelled.
+    if ((t_callCancel && t_callCancel()) || UltraNet_ThreadAbortRequested()) return 1;
+    if (!t_callReports) return 0;
     const UltraNetTransferCallbacks cb = UltraNet_GetTransferCallbacks();
     if (cb.onDownloadProgress && dlnow > 0) {
         cb.onDownloadProgress(static_cast<int64_t>(dlnow),
@@ -290,14 +322,13 @@ int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dl
         cb.onUploadProgress(static_cast<int64_t>(ulnow),
                             static_cast<int64_t>(ultotal));
     }
-    // Non-zero aborts the transfer: the calling thread's owner wants it back
-    // (UltraNet_SetThreadAbortCheck), and it ends as Cancelled.
-    return UltraNet_ThreadAbortRequested() ? 1 : 0;
+    return 0;   // non-zero aborts the transfer
 }
 
 // Turns the progress callback on for one handle. Only the two file transfers
 // use it: a listing or a DELE moves too little for anyone to watch.
 void ApplyProgressCallback(CURL* h) {
+    t_callReports = true;
     curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
     curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
     curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
@@ -382,8 +413,10 @@ UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions
     }
     r.code    = MapFtpError(rc);
     r.success = false;
-    r.message = ultranet_internal::ftplog::FailureMessage(
-            detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
+    r.message = rc == CURLE_ABORTED_BY_CALLBACK
+            ? std::string("called off")   // the caller's isCancelled said so
+            : ultranet_internal::ftplog::FailureMessage(
+                      detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
     r.diagnostics = diagnostics;
     if (log.LastReplyCode() > 0) r.diagnostics += "Last server reply: " + log.LastReply() + "\n";
     return r;
@@ -439,6 +472,12 @@ bool WorthAnotherListing(CURLcode rc) {
 UltraNetFtpLogCallback UltraNet_SetThreadFtpLog(UltraNetFtpLogCallback sink) {
     UltraNetFtpLogCallback previous = std::move(t_threadLog);
     t_threadLog = std::move(sink);
+    return previous;
+}
+
+std::function<bool()> UltraNet_SetThreadFtpCancel(std::function<bool()> isCancelled) {
+    std::function<bool()> previous = std::move(t_threadCancel);
+    t_threadCancel = std::move(isCancelled);
     return previous;
 }
 

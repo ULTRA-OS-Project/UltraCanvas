@@ -52,7 +52,8 @@
 // and asked again (kRemoteRateLimitMaxWaitSeconds). The uploads and
 // downloads not finished yet are listed for the window's question before it
 // quits (PendingTransfers), and Stop() calls the running one off rather than
-// waiting for it.
+// waiting for it. A preview copy being downloaded gives way to any request
+// of the user's and is fetched again after it.
 //
 // On an FTP or SFTP drive an upload goes to a hidden part name and is
 // renamed into place once complete, and what one that did not finish left
@@ -61,9 +62,14 @@
 // rest. An upload can be given a name of its own (Upload's `remoteName`),
 // which is how the window's "Keep both" puts one beside a file of the same
 // name, and CachedListing answers what the window needs to ask about one.
-// Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off;
+// Version: 1.11.0 - PendingTransfers; Stop() calls a running transfer off;
 //                   an upload under a name of its own; CachedListing,
 //                   Revalidate
+// Version: 1.10.0 - a preview copy being downloaded is called off when the
+//                  user asks the drive for anything else (and fetched again
+//                  after it), when the selection moves on, and when the
+//                  window closes
+// Version: 1.9.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -586,6 +592,23 @@ private:
     // `job` as PendingTransfers lists it; false for a job that is not an
     // upload or a download the user asked for. Called with the lock held.
     bool DescribeTransferLocked(const Job& job, RemoteTransfer& out) const;
+    // A preview copy being downloaded can be called off (UltraNet's
+    // UltraNet_SetThreadFtpCancel, asked as its bytes move): the path it is
+    // for and the flag the worker's transfer asks, both set by the worker
+    // under the lock for the length of the job (no flag between jobs). The
+    // flag says why, which decides what becomes of the copy.
+    enum PreviewCancel : int {
+        PreviewKeep = 0,       // go on
+        PreviewYield = 1,      // the user asked for something else: run that
+                               // first, then fetch the copy again
+        PreviewSuperseded = 2, // the selection moved on: drop it
+        PreviewShutdown = 3    // the window is closing
+    };
+    std::string activePreviewPath_;
+    std::shared_ptr<std::atomic<int>> activePreviewCancel_;
+    // Calls the running preview copy off for `why`, unless an earlier reason
+    // already did. Under the lock.
+    void CancelActivePreviewLocked(PreviewCancel why);
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;

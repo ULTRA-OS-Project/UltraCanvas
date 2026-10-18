@@ -10,6 +10,8 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.8.1 - ColorPickerWheelStyleName / ColorPickerWheelStyleFromName: the designs
+//                  by the names a settings file keeps them under
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
 //                  the HSV/HSL/RGB tabs collapse with the channel sliders;
 //                  SetAutoHeight: the widget's height follows its content;
@@ -21,7 +23,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,6 +78,33 @@ namespace UltraCanvas {
         // white through the pure colour to black. Full saturation, as above.
         HueLightnessSliders
     };
+
+    // The designs by the names a settings file keeps them under - "circle",
+    // "square", "rectangle", "sliders" - for a host that remembers the
+    // user's choice (onWheelStyleChanged) between starts.
+    inline const char* ColorPickerWheelStyleName(ColorPickerWheelStyle style) {
+        switch (style) {
+            case ColorPickerWheelStyle::Ring:                return "circle";
+            case ColorPickerWheelStyle::Bar:                 return "square";
+            case ColorPickerWheelStyle::HueLightnessField:   return "rectangle";
+            case ColorPickerWheelStyle::HueLightnessSliders: return "sliders";
+        }
+        return "circle";
+    }
+
+    // The design a name stands for; false, and `style` left as it was, for a
+    // name that is none of them.
+    inline bool ColorPickerWheelStyleFromName(const std::string& name, ColorPickerWheelStyle& style) {
+        for (ColorPickerWheelStyle s : {ColorPickerWheelStyle::Ring, ColorPickerWheelStyle::Bar,
+                                        ColorPickerWheelStyle::HueLightnessField,
+                                        ColorPickerWheelStyle::HueLightnessSliders}) {
+            if (name == ColorPickerWheelStyleName(s)) {
+                style = s;
+                return true;
+            }
+        }
+        return false;
+    }
 
 // ===== SATURATION / VALUE AREA SHAPE (Bar wheel style) =====
 // The Ring style's SV area is always the square inscribed in the ring; the Bar
