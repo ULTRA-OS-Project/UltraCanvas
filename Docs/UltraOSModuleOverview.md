@@ -451,7 +451,8 @@ Drive, OneDrive and Dropbox for UltraCloud.
 ## Applications built on the modules
 
 These are not libraries, but they show the modules in use. Each one
-versions itself with its own changelog in `Docs/<App>/`.
+versions itself with its own changelog in `Docs/<App>/`. Each application is described in
+more detail in [UltraOSApplicationOverview.md](UltraOSApplicationOverview.md).
 
 | Application | What it is | Main modules |
 |---|---|---|
