@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The navigation row's Home button: a house in the 2 px line style of the
+     arrow buttons beside it (the coloured home-user.svg is the folder icon). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M3 11L12 3L21 11M5.5 9V20H10V14H14V20H18.5V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

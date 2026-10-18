@@ -1,4 +1,8 @@
 #### 2026-10-18 *1.76.0*
+- **Home button.** The navigation row has a Home button (a house) between
+  Refresh and the split-view button. It opens the home folder of the host
+  system - `HOME` on Linux and macOS, `USERPROFILE` on Windows - in the active
+  folder display, from the History, Favorites and Computer views too.
 - **A copy or move says what it did on the status line.** When a copy or move
   ends - a paste, a drop onto a folder, Move to / Copy to - the status line
   says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
