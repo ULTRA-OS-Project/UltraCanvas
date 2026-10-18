@@ -1,3 +1,16 @@
+#### 2026-10-18 *1.76.0*
+- **A copy or move says what it did on the status line.** When a copy or move
+  ends - a paste, a drop onto a folder, Move to / Copy to - the status line
+  says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
+  "alt"`, `2 folders moved to "Archive"`, or `Copy cancelled - 2 of 5 items
+  copied to "alt"` after a Cancel in the progress window. Before, a short
+  operation finished without a word: its refresh put the folder's item count
+  straight back on the line. Opening another folder ends the note early.
+  The progress window over a long copy or move is unchanged: it opens once the
+  operation has run for the time set in *Settings > Handling > File
+  operations* (2 seconds by default), the same window as Compress and Extract
+  (framework changelog, pending entry `filer-transfer-finished`).
+
 #### 2026-10-17 *1.75.0*
 - **Closing a tab no longer waits for its folder display's workers.** A closed
   tab's display is told to stop its workers and destroyed once they have all

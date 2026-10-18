@@ -5931,6 +5931,7 @@ namespace UltraCanvas {
         pendingPaste->itemKinds.assign(pendingPaste->sources.size(),
                                        PendingPaste::ItemKind::Entry);
         pendingPaste->cut = cut;
+        pendingPaste->requested = pendingPaste->sources.size();
         pendingPaste->onDone = std::move(onDone);
         // The host's standing answers, where it gave any: they stand in for
         // the first dialog of each kind, the way an "Apply to all" does.
@@ -6001,6 +6002,10 @@ namespace UltraCanvas {
                 // The merged folder's entries are through. A move leaves the
                 // folder itself behind; it goes once nothing is left in it
                 // (an entry that was skipped keeps it, and its place).
+                // A folder the user chose (not one nested in another merge)
+                // has arrived once its entries are through.
+                if (folder == pp->folder)
+                    NoteArrived(*pp, PathToUtf8(from.filename()), /*isDir=*/true);
                 if (pp->cut && fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) && fs::is_empty(UltraCanvas::PathFromUtf8(from), ec)) {
                     fs::remove(UltraCanvas::PathFromUtf8(from), ec);
                     if (!ec) {
@@ -6091,7 +6096,11 @@ namespace UltraCanvas {
                 if (PasteOneEntry(*pp, src, folder, action,
                                   kind == ItemKind::MergedEntry, credit, why)) {
                     credit.Finish();          // this entry's slice, in full
-                    if (action != PasteConflictAction::Skip) ++pp->pasted;
+                    if (action != PasteConflictAction::Skip) {
+                        ++pp->pasted;
+                        if (kind == ItemKind::Entry)
+                            NoteArrived(*pp, PathToUtf8(from.filename()), isDir);
+                    }
                     break;
                 }
                 credit.Rollback();            // an attempt that failed counts
@@ -6141,6 +6150,16 @@ namespace UltraCanvas {
         const bool walkedToEnd = pendingPaste->stop == FileOpStop::Done;
         const size_t pasted = pendingPaste->pasted;
         const std::string destination = pendingPaste->folder;
+        FilerTransferResult result;
+        result.moved = cut;
+        result.cancelled = pendingPaste->stop == FileOpStop::Cancelled;
+        result.files = pendingPaste->arrivedFiles;
+        result.folders = pendingPaste->arrivedFolders;
+        result.items = result.files + result.folders;
+        result.firstName = pendingPaste->firstArrived;
+        result.skipped = pendingPaste->skipped.size();
+        result.destination = destination;
+        result.message = DescribeTransfer(result, pendingPaste->requested);
         std::vector<std::string> vacated = std::move(pendingPaste->vacatedFolders);
         std::vector<SkippedItem> skipped = std::move(pendingPaste->skipped);
         std::function<void(bool)> onDone = std::move(pendingPaste->onDone);
@@ -6157,6 +6176,7 @@ namespace UltraCanvas {
         std::unordered_set<std::string> reported{destination};
         for (const std::string& folder : vacated)
             if (reported.insert(folder).second) NotifyFolderModified(folder);
+        if (onTransferFinished && !result.message.empty()) onTransferFinished(result);
 
         // The summary: what was skipped and why, once the queue ran to its
         // end. A Stop or a Cancel already said what happened, and a paste
@@ -6173,6 +6193,42 @@ namespace UltraCanvas {
                     cut ? "Move skipped items again" : "Copy skipped items again",
                     [this, skipped, cut]() { RetrySkippedPaste(skipped, cut); });
         }
+    }
+
+    void UltraCanvasFilerWidget::NoteArrived(PendingPaste& pp, const std::string& name,
+                                             bool isDir) {
+        if (isDir) ++pp.arrivedFolders;
+        else ++pp.arrivedFiles;
+        if (pp.firstArrived.empty()) pp.firstArrived = name;
+    }
+
+    std::string UltraCanvasFilerWidget::DescribeTransfer(const FilerTransferResult& r,
+                                                         size_t requested) {
+        if (r.items == 0 && !r.cancelled && r.skipped == 0) return {};   // nothing asked to move
+        std::string where = PathToUtf8(PathFromUtf8(r.destination).filename());
+        if (where.empty()) where = r.destination;                      // a drive root
+        where = "\"" + RepairLegacyEncodedName(where) + "\"";
+        const std::string done = r.moved ? "moved" : "copied";
+        auto count = [](size_t n, const char* one, const char* many) {
+            return std::to_string(n) + " " + (n == 1 ? one : many);
+        };
+        std::string what;
+        if (r.items == 1)
+            what = "\"" + RepairLegacyEncodedName(r.firstName) + "\"";
+        else if (r.folders == 0)
+            what = count(r.items, "file", "files");
+        else if (r.files == 0)
+            what = count(r.items, "folder", "folders");
+        else
+            what = count(r.items, "item", "items");
+        if (r.cancelled)
+            return std::string(r.moved ? "Move" : "Copy") + " cancelled - "
+                 + std::to_string(r.items) + " of " + count(requested, "item", "items")
+                 + " " + done + " to " + where;
+        if (r.skipped)
+            return std::to_string(r.items) + " of " + count(r.items + r.skipped, "item", "items")
+                 + " " + done + " to " + where + " (" + std::to_string(r.skipped) + " skipped)";
+        return what + " " + done + " to " + where;
     }
 
     void UltraCanvasFilerWidget::RetrySkippedPaste(const std::vector<SkippedItem>& items,

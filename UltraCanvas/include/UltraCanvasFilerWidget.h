@@ -497,6 +497,27 @@ namespace UltraCanvas {
                                     // empty = an empty file is created
     };
 
+    // ===== A FINISHED COPY / MOVE =====
+    // What a paste, a drop or a Move to / Copy to amounted to, handed to
+    // UltraCanvasFilerWidget::onTransferFinished once the operation is over
+    // (its windows closed, the folders refreshed). The counts are of the
+    // entries the user chose - a folder is one item however much it holds.
+    struct FilerTransferResult {
+        bool moved = false;          // a move; false = a copy
+        bool cancelled = false;      // stopped from the progress window
+        size_t items = 0;            // entries that arrived
+        size_t files = 0;            // ... of them files
+        size_t folders = 0;          // ... of them folders
+        size_t skipped = 0;          // entries that did not (see the summary)
+        std::string firstName;       // the entry's name when items == 1
+        std::string destination;     // the folder they went into
+        // The same as one sentence for a status line: "\"report.pdf\" moved
+        // to \"alt\"", "3 files copied to \"alt\"", "Copy cancelled - 2 of 5
+        // items copied to \"alt\"". Empty when nothing was asked to go anywhere
+        // (a cut pasted back into its own folder).
+        std::string message;
+    };
+
     // ===== "OPEN WITH >" APPLICATION =====
     struct FilerOpenWithApp {
         std::string label;
@@ -1595,6 +1616,11 @@ namespace UltraCanvas {
         // it. A file-list display (ShowFileList) only reports changes whose
         // folder is known, since its entries span many folders.
         std::function<void(const std::string& folderPath)> onFolderModified;
+        // A copy or move has ended - walked to its end, or cancelled part-way
+        // - with what arrived where (see FilerTransferResult). For a
+        // confirmation on the host's status line; the widget shows nothing
+        // of its own beyond the summary window for skipped entries.
+        std::function<void(const FilerTransferResult&)> onTransferFinished;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
         // After a column splitter drag (or a programmatic width change) — the
@@ -3462,6 +3488,12 @@ namespace UltraCanvas {
             // conflict answered with Skip), and how many were.
             std::vector<SkippedItem> skipped;
             size_t pasted = 0;
+            // The chosen entries that arrived - the top of the queue, not the
+            // entries a merge spliced in - for onTransferFinished.
+            size_t arrivedFiles = 0;
+            size_t arrivedFolders = 0;
+            std::string firstArrived;
+            size_t requested = 0;     // entries the paste was asked to take
             // The folders a move actually emptied - the parent of every
             // source that was renamed away. The caller of a paste knows the
             // destination and nothing else, so these are reported to
@@ -3493,6 +3525,11 @@ namespace UltraCanvas {
         // dialog that resumes the paste.
         void ContinuePendingPaste();
         void FinishPendingPaste();
+        // Worker-side: counts a chosen entry that arrived (onTransferFinished).
+        static void NoteArrived(PendingPaste& pp, const std::string& name, bool isDir);
+        // FilerTransferResult::message for a finished paste of `requested` entries.
+        static std::string DescribeTransfer(const FilerTransferResult& result,
+                                            size_t requested);
         // The worker's walk through the queue: copies / moves entries until
         // one needs an answer, then records it in `pp->stop` and returns.
         // Runs off the UI thread and touches nothing but the queue, the

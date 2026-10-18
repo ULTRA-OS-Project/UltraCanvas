@@ -97,6 +97,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Keyboard](#keyboard)
 - [Directory scanning](#directory-scanning)
 - [Folder modifications](#folder-modifications)
+  - [Finished copies and moves](#finished-copies-and-moves)
 - [File list (search results)](#file-list-search-results)
   - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
 - [Name filter (filter-as-you-type)](#name-filter-filter-as-you-type)
@@ -2696,6 +2697,29 @@ filer->onFolderModified = [this](const std::string& folder) {
 };
 ```
 
+### Finished copies and moves
+
+`onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
+has ended - walked to its end or cancelled from the progress window - after its
+windows are closed and the folders refreshed. `FilerTransferResult` counts the
+entries the user chose (a folder is one item however much it holds): `items`,
+`files`, `folders`, `skipped`, `firstName` when one entry went, `destination`,
+`moved` and `cancelled`, plus `message`, the same as one sentence for a status
+line - `"report.pdf" moved to "alt"`, `3 files copied to "alt"`,
+`Copy cancelled - 2 of 5 items copied to "alt"`. A cut pasted back into its own
+folder reports nothing. Skipped entries still get the summary window as well.
+
+The progress window over a copy or move opens once the operation has run for
+`SetProgressWindowDelay()` milliseconds (2000 by default); one that finishes
+sooner shows only the busy pointer, so the status line is where it is
+confirmed.
+
+```cpp
+filer->onTransferFinished = [this](const FilerTransferResult& r) {
+    statusBar->ShowFor(r.message, std::chrono::seconds(6));
+};
+```
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -2851,6 +2875,7 @@ reports what the system hides, not what the host asked for.
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
+| `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
