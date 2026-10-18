@@ -1086,11 +1086,13 @@ private:
 // ===== SPREADSHEET ENTRY POINTS =====
 
 bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath, const std::string& password) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     XlsxLoader loader(this);
     if (!loader.Load(filePath, password, lastError_)) {
         return false;
     }
+    ClearUndoHistory();   // the loaded document starts a fresh history
     Recalculate();
     RequestAutoFitForUnsizedColumns();
     Invalidate();

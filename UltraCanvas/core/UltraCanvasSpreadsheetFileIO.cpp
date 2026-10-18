@@ -1820,10 +1820,12 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
 }
 
 bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     ODSLoader loader(this);
     bool result = loader.Load(filePath);
     if (result) {
+        ClearUndoHistory();   // the loaded document starts a fresh history
         Recalculate();
         // Columns the document did not size get fitted to their content on the
         // next render, once text can be measured with real font metrics.
@@ -1869,6 +1871,7 @@ SpreadsheetSheet* UltraCanvasSpreadsheet::PrepareCSVSheet(int sheetIndex) {
 }
 
 bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
     if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
@@ -1878,6 +1881,7 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
     bool result = CSVLoader::Load(filePath, sheet, CSVImportOptions{}, /*detect*/true, &lastError_);
     if (result) {
         SetActiveSheet(0);
+        ClearUndoHistory();   // the loaded document starts a fresh history
         Recalculate();
         // A CSV carries no column widths at all, so every column is fitted.
         RequestAutoFitForUnsizedColumns();
@@ -1889,6 +1893,7 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
 bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
                                                 const CSVImportOptions& options,
                                                 int sheetIndex) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
     if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
@@ -1896,6 +1901,7 @@ bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
     bool result = CSVLoader::Load(filePath, sheet, options, /*detect*/false, &lastError_);
     if (result) {
         SetActiveSheet(0);
+        ClearUndoHistory();   // the loaded document starts a fresh history
         Recalculate();
         // A CSV carries no column widths at all, so every column is fitted.
         RequestAutoFitForUnsizedColumns();
