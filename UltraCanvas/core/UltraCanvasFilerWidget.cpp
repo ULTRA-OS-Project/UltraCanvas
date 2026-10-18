@@ -3584,6 +3584,9 @@ namespace UltraCanvas {
             lockHolderQueue.clear();
             lockHoldersAsked.clear();
         }
+        // An open question still counting a folder lost its walk with the
+        // stats above: queue it again.
+        RefreshLiveDialogFacts();
         DropThumbnailCache();
 
         std::error_code ec;
@@ -5278,13 +5281,21 @@ namespace UltraCanvas {
             return common;
         }
 
-        // "1 folder and 2 files (2.6 MB)" - what a set of entries amounts to.
-        // Only the files' own sizes are added up; what the folders hold is
-        // not walked, which for a drop of a whole tree would take longer than
-        // the question deserves.
-        std::string DescribeEntries(const std::vector<FilerEntry>& entries) {
-            size_t folders = 0, files = 0;
+        // What one folder's walk has found so far, as a Size fact value.
+        struct FolderTally {
             uint64_t bytes = 0;
+            bool pending = false;   // a walk still running
+            bool capped = false;    // a walk stopped at the entry cap
+        };
+
+        // "1 folder and 2 files (2.6 MB)" - what a set of entries amounts to.
+        // With `folderTally` the folders' contents are included once their
+        // background walks are in ("counting…" until then); without it only
+        // the files' own sizes are added up.
+        std::string DescribeEntries(const std::vector<FilerEntry>& entries,
+                                    const FolderTally* folderTally = nullptr) {
+            size_t folders = 0, files = 0;
+            uint64_t bytes = folderTally ? folderTally->bytes : 0;
             for (const FilerEntry& e : entries) {
                 if (e.isDirectory) ++folders;
                 else { ++files; bytes += e.size; }
@@ -5293,7 +5304,14 @@ namespace UltraCanvas {
             if (folders) text += std::to_string(folders) + (folders == 1 ? " folder" : " folders");
             if (folders && files) text += " and ";
             if (files) text += std::to_string(files) + (files == 1 ? " file" : " files");
-            if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+            if (!folderTally) {
+                if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+            } else if (folderTally->pending) {
+                text += " (" + (bytes ? FormatSize(bytes) + " so far, " : std::string())
+                      + "counting…)";
+            } else {
+                text += " (" + std::string(folderTally->capped ? "≥ " : "") + FormatSize(bytes) + ")";
+            }
             return text;
         }
 
@@ -5302,6 +5320,32 @@ namespace UltraCanvas {
         std::string FactPath(const std::string& path) {
             return "`" + path + "`";
         }
+    }
+
+    std::string UltraCanvasFilerWidget::CountedSizeFact(
+            const std::vector<FilerEntry>& entries) {
+        FolderTally tally;
+        uint64_t walkedFiles = 0, walkedFolders = 0;
+        for (const FilerEntry& e : entries) {
+            if (!e.isDirectory) continue;
+            const FolderStats st = GetFolderStats(e.path);
+            tally.bytes += st.bytes;
+            tally.pending = tally.pending || !st.ready;
+            tally.capped = tally.capped || st.capped;
+            walkedFiles += st.files;
+            walkedFolders += st.folders;
+        }
+        if (entries.size() > 1) return DescribeEntries(entries, &tally);
+        if (entries.empty()) return {};
+        if (!entries.front().isDirectory) return FormatSize(entries.front().size);
+        if (tally.pending) return "counting…";
+        const std::string atLeast = tally.capped ? "≥ " : "";
+        std::string size = atLeast + FormatSize(tally.bytes) + " (" + atLeast
+                + std::to_string(walkedFiles) + (walkedFiles == 1 ? " file" : " files");
+        if (walkedFolders)
+            size += " in " + std::to_string(walkedFolders)
+                  + (walkedFolders == 1 ? " folder" : " folders");
+        return size + ")";
     }
 
     void UltraCanvasFilerWidget::ConfirmTransfer(const std::vector<std::string>& sources,
@@ -5334,15 +5378,16 @@ namespace UltraCanvas {
         spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
                                                    : FactPath(from))
                    + "\n\n**Into:** " + FactPath(destDir);
-        // How much is going: the set's tally, or a single file's own size. A
-        // single folder is not walked for it - the line says so instead of
-        // going missing.
-        if (entries.size() > 1)
-            spec.facts += "\n\n**Size:** " + DescribeEntries(entries);
-        else if (entries.size() == 1)
-            spec.facts += "\n\n**Size:** " + (entries.front().isDirectory
-                    ? std::string("folder (size not counted)")
-                    : FormatSize(entries.front().size));
+        // How much is going: the set's tally, or a single entry's own size.
+        // What a folder holds comes from the background walk the info bar
+        // uses; the dialog opens at once and the line fills in as walks land.
+        const std::string placeFacts = spec.facts;
+        auto sizeFacts = [this, placeFacts, entries]() {
+            if (entries.empty()) return placeFacts;
+            return placeFacts + "\n\n**Size:** " + CountedSizeFact(entries);
+        };
+        spec.facts = sizeFacts();
+        spec.liveFacts = sizeFacts;
         if (entries.size() > 1) {
             spec.listed.assign(entries.begin(), entries.begin() +
                     static_cast<std::ptrdiff_t>(std::min(entries.size(), kOperationListRows)));
@@ -5724,7 +5769,17 @@ namespace UltraCanvas {
                     ? DialogResult::Cancel : DialogResult::Yes;
             dialog->AddCustomButton(b.label, result, b.role, [chosen, i]() { *chosen = i; });
         }
-        dialog->onResult = [chosen, applyToAll, onAnswer, onDismiss](DialogResult) {
+        if (spec.liveFacts) {
+            liveFactsDialog = dialog;
+            liveFactsSource = spec.liveFacts;
+        }
+        auto alive = thumbAlive;
+        dialog->onResult = [this, alive, chosen, applyToAll, onAnswer, onDismiss](DialogResult) {
+            // The answer is in: later walks have nothing left to update.
+            if (alive->load()) {
+                liveFactsDialog.reset();
+                liveFactsSource = nullptr;
+            }
             if (chosen->has_value()) {
                 if (onAnswer) onAnswer(**chosen, *applyToAll);
             } else if (onDismiss) {
@@ -5733,6 +5788,17 @@ namespace UltraCanvas {
         };
         UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
         return true;
+    }
+
+    void UltraCanvasFilerWidget::RefreshLiveDialogFacts() {
+        if (!liveFactsSource) return;
+        auto dialog = liveFactsDialog.lock();
+        if (!dialog) {
+            liveFactsSource = nullptr;
+            return;
+        }
+        const std::string facts = liveFactsSource();
+        if (facts != dialog->GetDetails()) dialog->SetDetails(facts);
     }
 
     void UltraCanvasFilerWidget::PasteFilesInto(std::string folder,
@@ -7376,10 +7442,8 @@ namespace UltraCanvas {
         std::vector<FilerEntry> listed;
         size_t listedTotal = 0;
         std::string listCaption;
-        std::string amount;
         if (victims.size() > 1) {
             listedTotal = victims.size();
-            amount = DescribeEntries(victims);
             listed.assign(victims.begin(), victims.begin() +
                           static_cast<std::ptrdiff_t>(std::min(victims.size(), kOperationListRows)));
         } else if (victims.front().isDirectory) {
@@ -7464,7 +7528,29 @@ namespace UltraCanvas {
         const std::string from = CommonParentFolder(paths);
         spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
                                                    : FactPath(from));
-        if (!amount.empty()) spec.facts += "\n\n**Size:** " + amount;
+        // How much goes, as the move / copy question counts it: the folders'
+        // contents from the background walk, the line filling in as walks
+        // land. Only a folder on this machine's file system can be walked -
+        // one on a remote drive or inside an archive would read as empty -
+        // so with any of those the files alone are added up, as before.
+        bool walkable = !ShowingRemoteFolder();
+        for (const FilerEntry& v : victims) {
+            if (!walkable) break;
+            std::error_code ec;
+            if (v.isDirectory && !fs::is_directory(PathFromUtf8(v.path), ec)) walkable = false;
+        }
+        if (walkable) {
+            const std::string placeFacts = spec.facts;
+            auto sizeFacts = [this, placeFacts, victims]() {
+                return placeFacts + "\n\n**Size:** " + CountedSizeFact(victims);
+            };
+            spec.facts = sizeFacts();
+            spec.liveFacts = sizeFacts;
+        } else if (victims.size() > 1) {
+            spec.facts += "\n\n**Size:** " + DescribeEntries(victims);
+        } else if (!victims.front().isDirectory) {
+            spec.facts += "\n\n**Size:** " + FormatSize(victims.front().size);
+        }
         spec.listed = std::move(listed);
         spec.listCaption = listCaption;
         spec.listVisibleRows = 10;
@@ -13838,6 +13924,8 @@ namespace UltraCanvas {
         app->PostToUIThread([this, alive]() {
             if (!alive->load()) return;   // widget destroyed meanwhile
             statsRedrawPosted.store(false);
+            // A move / copy question counting a folder shows the new total.
+            RefreshLiveDialogFacts();
             // New directory weights change the size-weighted geometries.
             if (viewType == FilerViewType::BarSize ||
                 viewType == FilerViewType::TreeMap) {
