@@ -1,3 +1,55 @@
+#### 2026-10-18 *0.9.339*
+- **Office 2007's and 2010's password-protected files open, and .xlsx /
+  .docx save with a password.**
+  - Reading: agile-encrypted files keyed with SHA-1 (Office 2010's default,
+    with AES-128) were refused; they now open like the SHA-512 ones. SHA-1 is
+    asked of UltraCrypt as a legacy digest for this read only.
+  - Reading Office 2007's "standard" encryption too (a binary header, a
+    SHA-1 key of 50 000 rounds, AES-128/192/256 in ECB mode, built from
+    UltraCrypt's CBC with a zero IV). The format has no integrity check, so
+    such files open without one, as in every Office reader; RC4 standard
+    encryption is still refused, by name.
+  - Writing: `UltraCanvasSpreadsheet::SaveToFile` / `SaveXLSX`,
+    `UCWordDocumentIO::Save` / `SaveDocx` and
+    `UltraCanvasFileLoader::SaveTextDocument` take an optional password and
+    write the file encrypted as Office 2013 and later do - AES-256-CBC,
+    SHA-512, 100 000 rounds, fresh random salts and keys every save, the
+    integrity HMAC and the DataSpaces storage. The unencrypted package never
+    reaches the disk. A password for any other format (.ods, .odt, .csv) is
+    refused rather than dropped.
+  - `EncryptOfficePackage` / `EncryptOfficePackageToFile` do it for any
+    package; `UCCompoundFileWriter` (new) builds the compound file, and
+    `UCZipPackageWriter::OpenInMemory` / `TakeBytes` the package in memory.
+  - `UltraCanvasFileLoader::RequestNewDocumentPassword` asks for a new
+    password twice. The demo's spreadsheet page keeps a workbook's password
+    when it is saved again as .xlsx and offers one to an unprotected workbook.
+  - msoffcrypto-tool decrypts what is written, integrity check included;
+    `OfficeEncryptionTest` covers the round trips, an Office 2010-style SHA-1
+    fixture and an Office 2007 standard-encrypted one.
+- **PowerPoint decks (.pptx) open - as text, and password-protected ones
+  too.** `UltraCanvasPresentationPptx.h` (new) reads a deck (`.pptx`,
+  `.pptm`, `.ppsx`, `.potx`) into a UI-free model: slides in order with their
+  titles, the paragraphs of every placeholder and text box with outline levels,
+  bullets and numbering, tables, pictures' descriptions and parts, speaker
+  notes and hidden slides; slide furniture (date, footer, slide number) is left
+  out. A protected deck decrypts through the same code as a protected `.xlsx` /
+  `.docx`.
+  - `PptxPresentationToRichDocument` makes an outline of it, and
+    `UltraCanvasFileLoader::LoadTextDocument` / `OpenTextDocument` open a deck
+    that way (asking for a protected one's password); the format inventory
+    lists PowerPoint as readable, so the Open dialog offers it.
+  - Not read: the layout as drawn, charts, SmartArt, embedded objects. No
+    writer.
+  - `OfficeEncryptionTest` reads a deck python-pptx wrote from its default
+    template, plain and encrypted.
+  - UltraFiler's preview page shows a deck's slide text (each slide's number
+    and title, then its bullets, tables and notes), on the tile and in the
+    detail pane; the Filer names the type "PowerPoint". Before, a deck had no
+    entry in the Filer's type table, and once PowerPoint was in the format
+    inventory its page would have shown the head of the ZIP. A
+    password-protected `.docx` or `.pptx` now keeps its type glyph instead of
+    an empty page.
+
 #### 2026-10-18 *0.9.338*
 - **New element: `UltraCanvasReferencePointPicker`.** A 3 x 3 grid of the
   corners, edge midpoints and centre of a box, for a transform bar to say
