@@ -14,3 +14,10 @@
     writer.
   - `OfficeEncryptionTest` reads a deck python-pptx wrote from its default
     template, plain and encrypted.
+  - UltraFiler's preview page shows a deck's slide text (each slide's number
+    and title, then its bullets, tables and notes), on the tile and in the
+    detail pane; the Filer names the type "PowerPoint". Before, a deck had no
+    entry in the Filer's type table, and once PowerPoint was in the format
+    inventory its page would have shown the head of the ZIP. A
+    password-protected `.docx` or `.pptx` now keeps its type glyph instead of
+    an empty page.

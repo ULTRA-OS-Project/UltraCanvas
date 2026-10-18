@@ -17,7 +17,8 @@
 //   * the PowerPoint reader on a deck python-pptx wrote, plain and encrypted:
 //     slide order and size, titles, bullets and levels, numbering, a text
 //     box, a table, a picture, notes, a hidden slide, the outline, and
-//     LoadTextDocument opening it;
+//     LoadTextDocument opening it, and UltraFiler's preview page showing its
+//     slide text (a protected deck or .docx keeping its type glyph);
 //   * writing: UCCompoundFileWriter read back, EncryptOfficePackage round
 //     trips (a package in the mini stream, one past the header's 109 FAT
 //     sectors), fresh salts on every save, a changed byte caught, and the
@@ -27,12 +28,13 @@
 // rebuilds them and says what each holds). That msoffcrypto-tool decrypts
 // what EncryptOfficePackage writes was checked when the writer was made; the
 // test cannot run Python, so it checks the format against the reader here.
-// Version: 1.3.0
+// Version: 1.4.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCompoundFile.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPresentationPptx.h"
@@ -40,6 +42,7 @@
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -446,6 +449,24 @@ void TestPresentation() {
     auto plainLoaded = UltraCanvasFileLoader::LoadTextDocument(plain, error);
     Check(plainLoaded && Contains(plainLoaded->ToPlainText(), "2. Agenda"),
           "and the plain one, as an outline");
+
+    // UltraFiler's preview page.
+    std::vector<std::string> lines;
+    bool tabular = true;
+    auto hasLine = [&](const std::string& wanted) {
+        return std::find(lines.begin(), lines.end(), wanted) != lines.end();
+    };
+    Check(UltraCanvasFilerWidget::TextPreviewLines(plain, lines, tabular) && !tabular &&
+              !lines.empty() && lines.front() == "1. Quarterly Review" && hasLine("Revenue up") &&
+              hasLine("2. Agenda"),
+          "the preview page shows the deck's slides, titles first");
+    Check(!UltraCanvasFilerWidget::TextPreviewLines(encrypted, lines, tabular),
+          "a protected deck has no preview page: it keeps its type glyph");
+    Check(!UltraCanvasFilerWidget::TextPreviewLines(Fixture("office-agile-encrypted.docx"), lines, tabular),
+          "nor has a protected .docx");
+    Check(UltraCanvasFilerWidget::TextPreviewLines(Fixture("word97-formatting.docx"), lines, tabular) &&
+              !lines.empty(),
+          "an ordinary .docx still previews");
 }
 
 // ===== WRITING =====

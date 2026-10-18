@@ -95,11 +95,12 @@
 // GetThumbnailCacheStats also counts the thumbnails still waiting, being
 // made and given up on. A thumbnail job running past 20 s gets another
 // worker started beside it, so one stuck file cannot stop every thumbnail.
-// TextPreviewLines gives the lines a document's preview page shows.
+// TextPreviewLines gives the lines a document's preview page shows - a
+// PowerPoint deck's slide text too.
 // GetBottomStripsHeight says how much of the bottom edge the info bar and
 // the hidden-items notice take, for a host floating something in the corner.
-// Version: 1.39.2
-// Last Modified: 2026-10-17
+// Version: 1.39.3
+// Last Modified: 2026-10-18
 // Author: UltraCanvas Framework
 #pragma once
 

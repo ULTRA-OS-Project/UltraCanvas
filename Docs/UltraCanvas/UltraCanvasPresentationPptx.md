@@ -37,6 +37,11 @@ paragraphs, a subtitle in italics, each table as a table (the first row as
 its header), a line `[Picture: <description>]` for each picture, and the
 speaker notes as a block quote opening "Notes:"; a rule between slides.
 
+UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
+the same outline: the first page of a deck's slide text on its tile and in
+the detail pane. A protected deck keeps its type glyph, since the preview has
+no password to ask for.
+
 ## Reading the model
 
 <!-- doc-check: std::string path; std::string password; void ShowError(const std::string& message); -->
@@ -106,4 +111,6 @@ pair, a text box at its place, speaker notes, a table, a picture's
 description and part, a hidden slide, sixty bullets, no slide-number text,
 and the outline. `office-agile-encrypted.pptx` is the same deck encrypted;
 it is refused without the password, read with it, and opened by
-`UltraCanvasFileLoader::LoadTextDocument`.
+`UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
+preview page: the plain deck's slides, titles first, and no page for the
+protected deck or a protected `.docx`.
