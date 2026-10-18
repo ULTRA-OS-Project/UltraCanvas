@@ -18495,7 +18495,10 @@ natively with the framework's `IRenderContext` primitives.
   the colour bar runs** and comes back on release; beside the circle the
   corner is free and it stays, and the two sliders end short of it, so all of
   the colour range stays left of it. `onWheelStyleChanged` reports the user's
-  choice (not `SetWheelStyle`), for a host that remembers it. The icons are
+  choice (not `SetWheelStyle`), for a host that remembers it;
+  `ColorPickerWheelStyleName` and `ColorPickerWheelStyleFromName` give each
+  design the name a settings file keeps it under - `circle`, `square`,
+  `rectangle`, `sliders` - and back. The icons are
   `media/icons/colorpicker/{ring,bar,field,sliders}.svg`.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
   maximised rectangle (Bar). The first pixel column/row is 0 and the last is
@@ -18690,12 +18693,16 @@ picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessSliders);
 picker->SetElementSize(UltraCanvas::Size2Df(290, picker->PreferredHeightForWidth(290)));
 
-// Let the user choose the design (circle, slider + square, rectangle) from
-// a dropdown in the top-right corner, and remember the choice:
+// Let the user choose the design (circle, slider + square, rectangle, two
+// sliders) from a dropdown in the top-right corner, and remember the choice
+// under its name ("circle", "square", "rectangle", "sliders"):
 picker->SetShowWheelStyleSelector(true);
 picker->onWheelStyleChanged = [](UltraCanvas::ColorPickerWheelStyle design) {
-    printf("Design: %d\n", static_cast<int>(design));   // e.g. save it in the settings
+    printf("picker.design = %s\n", UltraCanvas::ColorPickerWheelStyleName(design));   // e.g. into the settings
 };
+// ... and on the next start, the name read back from the settings:
+UltraCanvas::ColorPickerWheelStyle saved = UltraCanvas::ColorPickerWheelStyle::Ring;
+if (UltraCanvas::ColorPickerWheelStyleFromName("sliders", saved)) picker->SetWheelStyle(saved);
 
 // < and > stepper arrows inside the numeric value fields:
 picker->SetShowValueSpinners(true);
