@@ -104,6 +104,8 @@ UltraCanvas/
 [`Docs/UltraCanvasComparison.md`](Docs/UltraCanvasComparison.md) lists every
 feature of the framework and compares it with Qt, GTK, wxWidgets, Dear ImGui,
 Flutter and Electron (feature table, pros and cons, when to choose which).
+[`Docs/UltraOSModuleOverview.md`](Docs/UltraOSModuleOverview.md) summarises
+every module and library of the project - purpose, capabilities and status.
 
 ----------
 
