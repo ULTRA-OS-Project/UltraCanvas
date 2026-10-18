@@ -1,8 +1,9 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
-// Version: 0.3.1 - a failed transfer carries its diagnostics (UltraNetCurlError.h)
-// Last Modified: 2026-10-14
+// Version: 0.3.2 - a synchronous transfer ends when its thread's abort check
+//                  says so (UltraNet_SetThreadAbortCheck)
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNetHttpEasy.h"
@@ -420,7 +421,9 @@ namespace {
             cb.onTransferStats(static_cast<int64_t>(now),
                                static_cast<int64_t>(total), 0.0);
         }
-        return 0;
+        // The calling thread's owner wants it back (UltraNet_SetThreadAbortCheck):
+        // non-zero ends the transfer as CURLE_ABORTED_BY_CALLBACK - Cancelled.
+        return UltraNet_ThreadAbortRequested() ? 1 : 0;
     }
 }
 

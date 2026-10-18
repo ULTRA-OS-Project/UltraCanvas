@@ -80,6 +80,9 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.29.0 - AllowCloseDuringTransfers: closing during an upload or a
+//                  download asks first; an upload onto a name that is taken
+//                  asks Keep both / Replace / Skip (PlanRemoteUploads)
 // Version: 1.28.0 - a closed tab's folder display is destroyed once its workers
 //                  have stopped (RetireDisplay), not while the tab closes
 // Version: 1.27.1 - the connection log button on every remote drive
@@ -138,6 +141,9 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+// One drop's name conflicts on a drive, asked about in turn (UltraFilerWindow.cpp).
+struct RemoteUploadConflicts;
 
 class UltraFilerWindow {
 public:
@@ -447,6 +453,14 @@ private:
     // Opens the connection log window, or brings it to the front with the
     // log as it is now.
     void OpenConnectionLog();
+    // The window's onWindowClosing. Closing it ends UltraFiler - and with it
+    // the uploads and downloads still running or waiting on a remote drive,
+    // which UltraFilerRemoteDrives::Stop() calls off. So a close that would
+    // end the application while there are any (PendingTransfers) asks first
+    // - "An upload is still running — quit anyway?" - and holds the window
+    // open until "Quit anyway" is chosen. True lets the close go ahead.
+    bool AllowCloseDuringTransfers();
+    void AskQuitDuringTransfers(const std::vector<RemoteTransfer>& transfers);
     // Hands the open log window the log as it is now; called a moment after
     // a change, so a burst of steps is one refresh.
     void ScheduleConnectionLogRefresh();
@@ -792,9 +806,31 @@ private:
     // reason for what was left out comes back in `firstRefusal`. Used by a
     // drop on a remote row of the tree and by a drop onto a remote folder in
     // a display (the widget's remoteUpload hook).
+    //
+    // A file whose name is already taken in the folder is not replaced
+    // without a word: it is asked about the way a paste is (PlanRemoteUploads).
+    // The folder is listed afresh first - a file of that name may have
+    // appeared since it was last opened - and the files wait for the answer
+    // (uploadsAwaitingListing); they count as queued meanwhile.
     int UploadToRemoteFolder(const std::string& folder,
                              const std::vector<std::string>& files,
                              std::string& firstRefusal);
+    // The uploads of `files` into `folder` once `there`, its listing, is
+    // known. A file whose name is taken there is settled by Settings >
+    // Handling's standing answer (settings.conflictPolicy) - or, when that is
+    // Ask, asked about: Keep both (uploaded beside it as "name (2)"), Replace,
+    // Skip or Stop, with "Apply to all" for the rest. The others are queued
+    // at once. Returns how many were queued or are being asked about.
+    int PlanRemoteUploads(const std::string& folder, const std::vector<std::string>& files,
+                          const std::vector<FilerEntry>& there, std::string& firstRefusal);
+    // Asks about the next taken name of `run`, queueing what each answer says.
+    void AskRemoteUploadConflict(const std::shared_ptr<RemoteUploadConflicts>& run);
+    // Queues (local file, name on the drive - empty for its own) pairs and
+    // puts on the status bar how many are on their way where, and why any
+    // were left out.
+    int QueueRemoteUploads(const std::string& folder,
+                           const std::vector<std::pair<std::string, std::string>>& items,
+                           std::string& firstRefusal);
     // The mirror of it: queues the download of the remote `files` into the
     // local folder `folder`, one request per file, and puts what happened on
     // the status bar. Returns the number queued, with the first reason for
@@ -1084,6 +1120,19 @@ private:
     // How many failed connections the log window has shown: the button
     // counts the ones beyond this.
     std::size_t connectionLogSeenErrors = 0;
+    // The answer to AllowCloseDuringTransfers' question: "Quit anyway" lets
+    // the close it repeats go through. While the question is open, a second
+    // close does not ask it again.
+    bool quitConfirmed = false;
+    bool quitQuestionOpen = false;
+    // Uploads waiting for their folder's listing, so that the names taken
+    // there are known before anything is replaced (UploadToRemoteFolder).
+    // Taken up again by onListingArrived for that folder.
+    struct UploadsAwaitingListing {
+        std::string folder;
+        std::vector<std::string> files;
+    };
+    std::vector<UploadsAwaitingListing> uploadsAwaitingListing;
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;

@@ -8,8 +8,8 @@
 // folder look like two folders to a cache keyed by path, and a parent that
 // climbs past a drive's root walks out of the drive into a string nothing can
 // resolve.
-// Version: 1.1.0
-// Last Modified: 2026-09-23
+// Version: 1.2.0 - Keep both on a drive (UniqueRemoteFilerName)
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #include "UltraFilerRemotePath.h"
 
@@ -212,6 +212,24 @@ int main() {
         Check(!IsHiddenRemoteFilerName("report.2026.txt"),
               "a dot inside a name does not hide it");
         Check(!IsHiddenRemoteFilerName(""), "and there is no empty name to hide");
+    }
+
+    // ===== KEEP BOTH ON A DRIVE =====
+    {
+        const std::vector<std::string> names = {"report.pdf", "report (2).pdf", "notes",
+                                                ".bashrc", "archive.tar.gz"};
+        auto taken = [&names](const std::string& n) {
+            for (const std::string& x : names) if (x == n) return true;
+            return false;
+        };
+        CheckEq(UniqueRemoteFilerName("photo.jpg", taken), "photo.jpg", "a free name is kept");
+        CheckEq(UniqueRemoteFilerName("report.pdf", taken), "report (3).pdf",
+                "a taken name walks on past the ones taken too");
+        CheckEq(UniqueRemoteFilerName("notes", taken), "notes (2)", "a name without an extension");
+        CheckEq(UniqueRemoteFilerName(".bashrc", taken), ".bashrc (2)",
+                "a dot name has no extension to keep");
+        CheckEq(UniqueRemoteFilerName("archive.tar.gz", taken), "archive.tar (2).gz",
+                "the extension is the last one, as on the disk");
     }
 
     // ===== THE TIME A LISTING REPORTS =====
