@@ -51,6 +51,10 @@ if(ULTRAAI_HAS_ULTRANET)
     target_sources(UltraAI_AdapterShared PRIVATE src/UltraNetTransport.cpp)
     target_link_libraries(UltraAI_AdapterShared PUBLIC UltraNet)
     target_compile_definitions(UltraAI_AdapterShared PUBLIC ULTRAAI_HAS_ULTRANET=1)
+    # Debug builds dump every HTTP request/response (URL, body, status) from
+    # UltraNetTransport::Request to stderr; zero-cost in Release.
+    target_compile_definitions(UltraAI_AdapterShared PRIVATE
+        $<$<CONFIG:Debug>:ULTRAAI_DEBUG=1>)
     message(STATUS "UltraAI: adapter-shared library includes UltraNetTransport.")
 endif()
 

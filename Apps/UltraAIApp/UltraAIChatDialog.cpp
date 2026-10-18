@@ -120,6 +120,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     transcript_->SetCaretVisible(false);   // read-only transcript: no blinking caret, still selectable
     transcript_->SetWordWrap(true);
     transcript_->SetText(kGreeting);
+    transcript_->SetBorders(1.0f, Color(200, 200, 200, 255));
     transcript_->layoutItem.SetFlexGrow(1);
     AddChild(transcript_);
 
@@ -135,6 +136,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     input_->SetWordWrap(true);
     input_->SetPlaceholder("Type a message...  (Enter sends, Shift+Enter for a new line)");
     input_->size.height = Dimension::Px(90);
+    input_->SetBorders(1.0f, Color(200, 200, 200, 255));
     input_->layoutItem.SetFlexShrink(0);
     // Enter sends, Shift+Enter starts a new line - the text area hands the key
     // to onBeforeKeyDown before it would insert the line break.

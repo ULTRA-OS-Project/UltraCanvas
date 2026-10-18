@@ -102,6 +102,9 @@ void UltraAITranslatorDialog::CreateTranslatorDialog() {
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
     input_->SetWordWrap(true);
     input_->SetPlaceholder("ich bin der schnelle fuchs");
+    // Thin border so the area reads as a distinct box, matching the grey
+    // border on the single-line Target/Source fields below.
+    input_->SetBorders(1.0f, Color(200, 200, 200, 255));
     input_->layoutItem.SetFlexGrow(1);
     AddChild(input_);
 
@@ -166,6 +169,7 @@ void UltraAITranslatorDialog::CreateTranslatorDialog() {
     result_->SetReadOnly(true);
     result_->SetCaretVisible(false);   // read-only result: no blinking caret
     result_->SetWordWrap(true);
+    result_->SetBorders(1.0f, Color(200, 200, 200, 255));   // match the input box
     result_->layoutItem.SetFlexGrow(1);
     AddChild(result_);
 
@@ -293,11 +297,7 @@ void UltraAITranslatorDialog::OnRun() {
             auto resp = tr->Translate(req);
             std::ostringstream os;
             for (const auto& r : resp.results) {
-                const std::string source = r.detectedSourceLanguage.empty()
-                    ? (req.sourceLanguage.empty() ? "?" : req.sourceLanguage)
-                    : r.detectedSourceLanguage;
-                os << source << " → " << req.targetLanguage << "\n"
-                   << r.text << "\n\n";
+                os << r.text << "\n\n";
             }
             if (!resp.error.IsOk()) {
                 const std::string msg = resp.error.message.empty()
