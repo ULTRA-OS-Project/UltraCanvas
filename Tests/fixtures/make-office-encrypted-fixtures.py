@@ -37,6 +37,18 @@ count of 100000, and the dataIntegrity HMAC.
                                  bytes, so it fails every SHA-1 file. The
                                  script checks the HMAC itself instead
                                  (check_hmac).
+    office-standard-encrypted.xlsx
+                                 the same workbook in Office 2007's
+                                 "standard" encryption: a binary header,
+                                 AES-128 in ECB mode, a SHA-1 key of 50000
+                                 rounds, no integrity check. msoffcrypto-tool
+                                 only reads this one, so the script writes
+                                 the header from [MS-OFFCRYPTO] 2.3.4.5-2.3.4.6
+                                 (encrypt_standard), takes the key from
+                                 msoffcrypto's makekey_from_password, encrypts
+                                 with the cryptography package's AES-ECB,
+                                 wraps it in msoffcrypto's container writer,
+                                 and checks it with msoffcrypto's decryptor.
 
 Both packages are kept above 4096 bytes on purpose. A smaller EncryptedPackage
 stream goes into the compound file's mini stream, and msoffcrypto-tool 6.0.0
@@ -150,6 +162,47 @@ def check_hmac(office_file):
 WANTED = set(sys.argv[1:])
 
 
+def encrypt_standard(plain, name):
+    """Office 2007's standard encryption, AES-128 ([MS-OFFCRYPTO] 2.3.4.5)."""
+    if WANTED and name not in WANTED:
+        return
+    import struct
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from msoffcrypto.method.container.ecma376_encrypted import ECMA376Encrypted
+    from msoffcrypto.method.ecma376_standard import ECMA376Standard
+
+    salt, verifier = os.urandom(16), os.urandom(16)
+    key = ECMA376Standard.makekey_from_password(PASSWORD, 0x660E, 0x8004, 0x18, 128, 16, salt)
+
+    def ecb(data):
+        encryptor = Cipher(algorithms.AES(key), modes.ECB()).encryptor()
+        return encryptor.update(data) + encryptor.finalize()
+
+    import hashlib
+    csp = "Microsoft Enhanced RSA and AES Cryptographic Provider\0".encode("utf-16le")
+    # EncryptionHeader: Flags (fCryptoAPI | fAES), SizeExtra, AlgID (AES-128),
+    # AlgIDHash (SHA-1), KeySize, ProviderType (PROV_RSA_AES), 2 reserved, CSP.
+    header = struct.pack("<8I", 0x24, 0, 0x660E, 0x8004, 128, 0x18, 0, 0) + csp
+    verifier_hash = hashlib.sha1(verifier).digest() + b"\0" * 12
+    info = (struct.pack("<HHI", 4, 2, 0x24) + struct.pack("<I", len(header)) + header
+            + struct.pack("<I", 16) + salt + ecb(verifier)
+            + struct.pack("<I", 20) + ecb(verifier_hash))
+    padded = plain + b"\0" * (-len(plain) % 16)
+    package = struct.pack("<Q", len(plain)) + ecb(padded)
+    out = io.BytesIO()
+    ECMA376Encrypted(package, info).write_to(out)
+
+    check = msoffcrypto.OfficeFile(io.BytesIO(out.getvalue()))
+    check.load_key(password=PASSWORD)
+    decrypted = io.BytesIO()
+    check.decrypt(decrypted)
+    assert decrypted.getvalue() == plain, name + " does not decrypt back"
+    path = os.path.join(HERE, name)
+    with open(path, "wb") as f:
+        f.write(out.getvalue())
+    print("wrote", path, len(out.getvalue()), "bytes")
+
+
 def encrypt(plain, name, sha1=False):
     if WANTED and name not in WANTED:
         return
@@ -197,6 +250,7 @@ WORKBOOK_PACKAGE = package([
 ], zipfile.ZIP_STORED)
 encrypt(WORKBOOK_PACKAGE, "office-agile-encrypted.xlsx")
 encrypt(WORKBOOK_PACKAGE, "office-agile-sha1-encrypted.xlsx", sha1=True)
+encrypt_standard(WORKBOOK_PACKAGE, "office-standard-encrypted.xlsx")
 
 encrypt(package([
     ("[Content_Types].xml", CONTENT_TYPES_DOCX),

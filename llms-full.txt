@@ -840,7 +840,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
-  AES-CBC, SHA-512/256 and Office 2010's SHA-1), decrypted back into their ZIP
+  AES-CBC, SHA-512/256 and Office 2010's SHA-1; Office 2007's standard
+  encryption, AES-ECB with no integrity check), decrypted back into their ZIP
   package with UltraCrypt, and written: `EncryptOfficePackage` /
   `EncryptOfficePackageToFile` (AES-256, SHA-512, the DataSpaces storage, in a
   compound file `UCCompoundFileWriter` builds).
@@ -48244,10 +48245,26 @@ order:
 5. **The package**, in 4096-byte segments, each decrypted with its own IV: the
    hash of the key data's salt and the segment's index.
 
-Refused as `Unsupported`, each with the reason: Office 2007's **standard**
-encryption (AES-ECB, version 3.2), extensible encryption, a key encryptor for a
-certificate rather than a password, and a hash UltraCrypt does not have
-(SHA-384).
+**Also read:** Office 2007's **standard** encryption ([MS-OFFCRYPTO]
+2.3.4.5-2.3.4.9, versions 2.2 / 3.2 / 4.2 with the CryptoAPI and AES flags): a
+binary header instead of XML, the password key as SHA-1 over the salt and
+password rehashed 50 000 times and then derived as 2.3.4.7 says, the same kind
+of password verifier, and the package in AES-128, -192 or -256 **ECB** mode in
+one piece. UltraCrypt has no ECB; it is CBC with a zero IV, each block then
+XORed with the ciphertext block before it.
+
+The standard format carries **no integrity check**. A wrong password is still
+told apart by its verifier, but a changed file decrypts into changed content
+rather than being refused as `Tampered` - the ZIP reader's CRCs catch most of
+that, not all. Such files are opened anyway, as Office and every other reader
+opens them: refusing them would refuse every Office 2007 file. (An agile file
+that lacks its HMAC is still refused - Office always writes one there, so a
+missing one means it was removed.)
+
+Refused as `Unsupported`, each with the reason: RC4 standard encryption (the
+CryptoAPI flag without AES), extensible encryption (version 4.3), a key
+encryptor for a certificate rather than a password, and a hash UltraCrypt does
+not have (SHA-384).
 
 SHA-1 is UltraCrypt's legacy digest, which `UltraCrypt_Hash` refuses unless
 asked. This module asks, and only for reading: Office 2010 keys its files with
@@ -48284,11 +48301,14 @@ msoffcrypto-tool, an implementation independent of this one
 `Tests/fixtures/make-office-encrypted-fixtures.py` rebuilds them). The password
 is not ASCII, and the workbook spans five segments. It checks the right, a
 wrong and a missing password, a changed byte of the package and of its size
-field, a package cut short, standard encryption, a damaged header, an absurd
+field, a package cut short, extensible encryption, a damaged header, an absurd
 spin count, an unknown hash, a missing integrity check, `CheckOfficePassword`,
 and the spreadsheet, the Word reader and `UltraCanvasFileLoader::LoadTextDocument`
 opening the files. `office-agile-sha1-encrypted.xlsx` is the workbook keyed as
-Office 2010 keys it (SHA-1, AES-128).
+Office 2010 keys it (SHA-1, AES-128), and `office-standard-encrypted.xlsx` the
+workbook in Office 2007's standard encryption (AES-128-ECB); for the latter it
+also checks RC4 and a cipher other than AES refused, and a truncated header
+and package.
 
 For writing it reads back what `UCCompoundFileWriter` builds (a mini-stream
 stream, a sector stream, nested storages), round-trips packages of 200 bytes,

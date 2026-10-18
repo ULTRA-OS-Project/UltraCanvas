@@ -661,7 +661,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
-  AES-CBC, SHA-512/256 and Office 2010's SHA-1), decrypted back into their ZIP
+  AES-CBC, SHA-512/256 and Office 2010's SHA-1; Office 2007's standard
+  encryption, AES-ECB with no integrity check), decrypted back into their ZIP
   package with UltraCrypt, and written: `EncryptOfficePackage` /
   `EncryptOfficePackageToFile` (AES-256, SHA-512, the DataSpaces storage, in a
   compound file `UCCompoundFileWriter` builds).

@@ -21,9 +21,15 @@
 //      decrypted into something else;
 //   5. the package, in 4096-byte segments, each with its own IV (the hash of
 //      the salt and the segment's index).
-// Not supported, each refused as Unsupported with the reason: the older
-// "standard" encryption (Office 2007, AES-ECB), extensible encryption, and
-// certificate-only key encryptors.
+// Also read: Office 2007's "standard" encryption ([MS-OFFCRYPTO] 2.3.4.5-
+// 2.3.4.9) - a binary header, a SHA-1 password key of 50000 rounds, the
+// verifier, and AES-128/192/256 in ECB mode over the whole package. The format
+// has no integrity check, so a changed standard-encrypted file decrypts into
+// changed content (which the ZIP reader's CRCs usually catch); such files are
+// opened anyway, as every Office reader does - refusing them would refuse
+// every Office 2007 file.
+// Not supported, each refused as Unsupported with the reason: RC4 standard
+// encryption, extensible encryption, and certificate-only key encryptors.
 //
 // Written: what Office 2013 and later write - AES-256-CBC, SHA-512, a spin
 // count of 100000, random 16-byte salts, a random intermediate and HMAC key,
@@ -35,7 +41,7 @@
 // Office 2010's files. Without a crypto backend every decryption reports
 // NoCryptoBackend and every encryption fails.
 //
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once

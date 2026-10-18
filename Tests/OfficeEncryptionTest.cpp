@@ -13,6 +13,7 @@
 //   * that ordinary files are not affected, and RequestDocumentPassword
 //     calls straight back for one;
 //   * Office 2010's SHA-1 / AES-128 keying, in a workbook encrypted that way;
+//   * Office 2007's standard encryption (AES-128-ECB, SHA-1, no HMAC);
 //   * writing: UCCompoundFileWriter read back, EncryptOfficePackage round
 //     trips (a package in the mini stream, one past the header's 109 FAT
 //     sectors), fresh salts on every save, a changed byte caught, and the
@@ -22,7 +23,7 @@
 // rebuilds them and says what each holds). That msoffcrypto-tool decrypts
 // what EncryptOfficePackage writes was checked when the writer was made; the
 // test cannot run Python, so it checks the format against the reader here.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
@@ -144,14 +145,14 @@ void TestDecryptor() {
               "a package cut short by a block is Tampered");
     }
 
-    // The header: Office 2007's standard encryption, damage, an absurd cost.
+    // The header: another version, damage, an absurd cost.
     {
-        std::vector<uint8_t> standard = info;
-        standard[0] = 3; standard[2] = 2;   // version 3.2
-        Check(DecryptOfficePackage(standard, encrypted, kPassword, package, error) ==
+        std::vector<uint8_t> extensible = info;
+        extensible[2] = 3;   // version 4.3
+        Check(DecryptOfficePackage(extensible, encrypted, kPassword, package, error) ==
                       OfficeDecryptStatus::Unsupported &&
-                  Contains(error, "Office 2007"),
-              "standard encryption (3.2) is Unsupported, naming Office 2007");
+                  Contains(error, "extensible"),
+              "extensible encryption (4.3) is Unsupported, by name");
     }
     {
         std::vector<uint8_t> shortInfo(info.begin(), info.begin() + 4);
@@ -291,6 +292,58 @@ void TestSha1() {
           "the spreadsheet opens it, A403 intact");
 }
 
+// ===== OFFICE 2007: STANDARD ENCRYPTION =====
+
+void TestStandard() {
+    std::cout << "\n=== Office 2007's standard encryption ===\n";
+    const std::string xlsx = Fixture("office-standard-encrypted.xlsx");
+    std::vector<uint8_t> package;
+    std::string error;
+    Check(IsEncryptedOfficePackage(xlsx), "a standard-encrypted workbook is recognised");
+    Check(DecryptOfficePackageFile(xlsx, kPassword, package, error) == OfficeDecryptStatus::Decrypted,
+          "the right password decrypts it");
+    if (!error.empty()) std::cout << "         " << error << "\n";
+    UCZipPackageReader zip;
+    std::string sheetXml;
+    Check(zip.OpenFromMemory(package) && zip.ReadEntry("xl/worksheets/sheet1.xml", sheetXml) &&
+              Contains(sheetXml, "<c r=\"A403\"><v>2821</v></c>"),
+          "into the ZIP package, to its last block");
+    Check(DecryptOfficePackageFile(xlsx, "wrong", package, error) == OfficeDecryptStatus::WrongPassword &&
+              package.empty(),
+          "a wrong password is WrongPassword");
+    Check(DecryptOfficePackageFile(xlsx, "", package, error) == OfficeDecryptStatus::PasswordRequired,
+          "no password is PasswordRequired");
+    Check(CheckOfficePassword(xlsx, kPassword, error) == OfficeDecryptStatus::Decrypted &&
+              CheckOfficePassword(xlsx, "wrong", error) == OfficeDecryptStatus::WrongPassword,
+          "CheckOfficePassword tells the two apart");
+
+    std::vector<uint8_t> info, encrypted;
+    if (ReadStreams(xlsx, info, encrypted)) {
+        std::vector<uint8_t> rc4 = info;
+        rc4[4] &= static_cast<uint8_t>(~0x20);   // fAES off: RC4 CryptoAPI
+        Check(DecryptOfficePackage(rc4, encrypted, kPassword, package, error) ==
+                      OfficeDecryptStatus::Unsupported && Contains(error, "RC4"),
+              "RC4 standard encryption is Unsupported, by name");
+        std::vector<uint8_t> unknownCipher = info;
+        unknownCipher[12 + 8] = 0x01;   // AlgID 0x6601 (DES)
+        Check(DecryptOfficePackage(unknownCipher, encrypted, kPassword, package, error) ==
+                  OfficeDecryptStatus::Unsupported,
+              "a cipher other than AES is Unsupported");
+        std::vector<uint8_t> cut(info.begin(), info.begin() + 40);
+        Check(DecryptOfficePackage(cut, encrypted, kPassword, package, error) ==
+                  OfficeDecryptStatus::Damaged,
+              "a truncated header is Damaged");
+        std::vector<uint8_t> shortPackage(encrypted.begin(), encrypted.end() - 5);
+        Check(DecryptOfficePackage(info, shortPackage, kPassword, package, error) ==
+                  OfficeDecryptStatus::Damaged,
+              "a package that is not whole blocks is Damaged");
+    }
+    UltraCanvasSpreadsheet book("Std", 0, 0, 400, 300);
+    Check(book.LoadFromFile(xlsx, kPassword) && TextOf(book, 1, 0) == "Widget" &&
+              NumberOf(book, 402, 0) == 2821.0,
+          "the spreadsheet opens it with its content");
+}
+
 // ===== WRITING =====
 
 fs::path TempDir() {
@@ -419,6 +472,7 @@ int main() {
     TestSpreadsheet();
     TestDocument();
     TestSha1();
+    TestStandard();
     TestCompoundFileWriter();
     TestEncryptor();
     TestSaving();
