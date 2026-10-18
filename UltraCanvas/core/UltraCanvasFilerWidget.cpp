@@ -50,6 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.39.0 - RequestBackgroundStop / BackgroundStopped; every worker thread is
+//                  counted (StartWorkerThread) so a host can tell when they are gone
 // Version: 1.38.5 - a file or folder on a remote drive (isRemotePath) is never
 //                  handed to the background readers - thumbnails, text and folder
 //                  previews, media probes, folder stats, prefetch - so a closing
@@ -2474,6 +2476,81 @@ namespace UltraCanvas {
             if (!run.process || !run.process->IsRunning())
                 RemoveArchiveRunFolder(run.folder);
         archiveRuns.clear();
+    }
+
+    // ===== RETIRING =====
+    std::thread UltraCanvasFilerWidget::StartWorkerThread(std::function<void()> body) {
+        std::shared_ptr<std::atomic<int>> live = liveWorkerThreads;
+        live->fetch_add(1);
+        return std::thread([live, body = std::move(body)]() {
+            // Counted down however the body ends: a worker that let an
+            // exception out ends the process anyway, but the count must not be
+            // what keeps a retired widget alive until then.
+            struct Done {
+                std::shared_ptr<std::atomic<int>> live;
+                ~Done() { live->fetch_sub(1); }
+            } done{live};
+            body();
+        });
+    }
+
+    void UltraCanvasFilerWidget::RequestBackgroundStop() {
+        // The destructor's teardown, minus every wait. Timers first: their
+        // callbacks capture `this` and could start a worker again.
+        CancelPendingRename();
+        StopListingPendingTicks();
+        StopFolderWatchTimer();
+        thumbAlive->store(false);   // results still in flight redraw nothing
+        {
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            thumbShutdown = true;
+            thumbQueue.clear();
+            textQueue.clear();
+            peekQueue.clear();
+        }
+        thumbCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(hostIconMutex);
+            hostIconShutdown = true;
+            hostIconQueue.clear();
+        }
+        hostIconCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(statsMutex);
+            statsShutdown = true;
+            statsQueue.clear();
+            aspectQueue.clear();
+            mediaQueue.clear();
+            lockQueue.clear();
+            lockHolderQueue.clear();
+        }
+        statsCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(prefetchMutex);
+            prefetchShutdown = true;
+            prefetchQueue.clear();
+        }
+        prefetchCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(folderWatchMutex);
+            folderWatchShutdown = true;
+            folderWatchPath.clear();
+        }
+        folderWatchCond.notify_all();
+        // A copy / move / delete or a pack / unpack: stopped as their Cancel
+        // stops them, with nothing left to continue or refresh afterwards.
+        if (fileOp) {
+            fileOp->onStretchDone = nullptr;
+            fileOp->cancelled.store(true);
+        }
+        if (archiveJob) {
+            archiveJob->onFinished = nullptr;
+            archiveJob->cancelRequested.store(true);
+        }
+    }
+
+    bool UltraCanvasFilerWidget::BackgroundStopped() const {
+        return liveWorkerThreads->load() == 0;
     }
 
     // ===== FOLDER =====
@@ -8283,7 +8360,7 @@ namespace UltraCanvas {
         op->onStretchDone = std::move(onDone);
         op->finished.store(false);
         op->running.store(true);
-        op->worker = std::thread([op, work = std::move(work)]() {
+        op->worker = StartWorkerThread([op, work = std::move(work)]() {
             RunGuarded("file operation", op->caption, work);
             op->finished.store(true);
         });
@@ -8409,7 +8486,7 @@ namespace UltraCanvas {
             return !job->cancelRequested.load();
         };
 
-        job->worker = std::thread([job, work = std::move(work), report]() {
+        job->worker = StartWorkerThread([job, work = std::move(work), report]() {
             bool ok = false;
             try {
                 ok = work(report);
@@ -11694,7 +11771,7 @@ namespace UltraCanvas {
             thumbWorkerBase = std::min(4u, std::max(1u, hw / 2));
             thumbWorkers.reserve(thumbWorkerBase + kThumbExtraWorkersMax);
             for (unsigned i = 0; i < thumbWorkerBase; ++i)
-                thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+                thumbWorkers.push_back(StartWorkerThread([this]() { ThumbnailWorkerMain(); }));
             return;
         }
         // Watchdog: one more worker for every job that has run past
@@ -11713,7 +11790,7 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvasFilerWidget: a thumbnail job has run for "
                         << "over 20 s (" << (stuckKey ? *stuckKey : std::string())
                         << "); starting another worker" << std::endl;
-            thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+            thumbWorkers.push_back(StartWorkerThread([this]() { ThumbnailWorkerMain(); }));
         }
     }
 
@@ -12428,7 +12505,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartHostIconWorkerLocked() {
         if (hostIconWorker.joinable() || hostIconShutdown) return;
-        hostIconWorker = std::thread([this]() { HostIconWorkerMain(); });
+        hostIconWorker = StartWorkerThread([this]() { HostIconWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopHostIconWorker() {
@@ -13672,7 +13749,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartFolderStatsWorkerLocked() {
         if (statsWorker.joinable() || statsShutdown) return;
-        statsWorker = std::thread([this]() { FolderStatsWorkerMain(); });
+        statsWorker = StartWorkerThread([this]() { FolderStatsWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopFolderStatsWorker() {
@@ -14179,7 +14256,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartFolderWatchWorkerLocked() {
         if (folderWatchWorker.joinable() || folderWatchShutdown) return;
-        folderWatchWorker = std::thread([this]() { FolderWatchWorkerMain(); });
+        folderWatchWorker = StartWorkerThread([this]() { FolderWatchWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopFolderWatchWorker() {
@@ -14283,7 +14360,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartFolderPrefetchWorkerLocked() {
         if (prefetchWorker.joinable() || prefetchShutdown) return;
-        prefetchWorker = std::thread([this]() { FolderPrefetchWorkerMain(); });
+        prefetchWorker = StartWorkerThread([this]() { FolderPrefetchWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopFolderPrefetchWorker() {
