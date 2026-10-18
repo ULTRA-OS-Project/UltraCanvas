@@ -4957,6 +4957,18 @@ and wraps its open-source engine so that the engine can be replaced.
 
 ## 3. Comparison
 
+### 3.0 Origins
+
+| Framework | Created | First stable release | Origin |
+|---|---|---|---|
+| **Qt** | 1991 | 1995 (public), 1.0 in 1996 | Trolltech (Haavard Nord, Eirik Chambe-Eng), now The Qt Company |
+| **wxWidgets** | 1992 | n/a | Julian Smart, University of Edinburgh |
+| **GTK** | 1997 | 1.0 in 1998 | Written for the GIMP (Spencer Kimball, Peter Mattis, Josh MacDonald), now GNOME |
+| **Electron** | 2013 (as "Atom Shell") | 1.0 in 2016 | GitHub, now the OpenJS Foundation |
+| **Dear ImGui** | 2014 | n/a | Omar Cornut |
+| **Flutter** | 2015 (as "Sky") | 1.0 in 2018 | Google |
+| **UltraCanvas** | 2025 | none yet (0.9.x) | ULTRA OS Development GmbH |
+
 ### 3.1 Feature table
 
 ✅ built in · 🟡 partial, experimental or via an official add-on · ❌ not available / third-party only
@@ -4997,7 +5009,7 @@ and wraps its open-source engine so that the engine can be replaced.
 | AI / LLM integration | ✅ UltraAI | ❌ | ❌ | ❌ | ❌ | 🟡 (packages) | 🟡 (packages) |
 | WebAssembly plugin host | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟡 (V8) |
 | Docs written for AI coding assistants | ✅ AGENTS.md, llms.txt, CI-compiled examples | ❌ | ❌ | ❌ | ❌ | 🟡 | ❌ |
-| Maturity / production track record | 🟡 young (0.9.x) | ✅ 30 years | ✅ 25+ years | ✅ 30 years | ✅ | ✅ | ✅ |
+| Maturity / production track record | 🟡 young (0.9.x) | ✅ 30+ years | ✅ 25+ years | ✅ 30+ years | ✅ | ✅ | ✅ |
 | Community and third-party ecosystem | 🟡 small | ✅ very large | ✅ large | ✅ medium | ✅ large | ✅ very large | ✅ very large |
 | Typical "hello world" footprint | medium (one shared core + Cairo / Pango / libvips) | medium to large | medium | small | tiny | medium | large (about 100 MB+) |
 
