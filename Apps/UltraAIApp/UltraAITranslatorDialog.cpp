@@ -8,6 +8,8 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasContainer.h"
 
+#include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -35,6 +37,18 @@ std::vector<std::string> SplitLines(const std::string& in) {
     }
     if (!current.empty()) out.push_back(current);
     return out;
+}
+
+// The active language value for a field: the dropdown's selected code when it
+// is shown, otherwise the free-text input. Mirrors the show/hide done in
+// OnEndpointChanged.
+std::string ActiveLang(const std::shared_ptr<UltraCanvasDropdown>& dd,
+                       const std::shared_ptr<UltraCanvasTextInput>& in) {
+    if (dd && dd->IsVisible()) {
+        if (const auto* item = dd->GetSelectedItem()) return item->value;
+        return "";
+    }
+    return in ? in->GetText() : "";
 }
 
 } // namespace
@@ -72,6 +86,8 @@ void UltraAITranslatorDialog::CreateTranslatorDialog() {
     endpointPicker_ = std::make_shared<UltraCanvasDropdown>("tr-endpoint", 0, 0, 0, 28);
     endpointPicker_->size.height = Dimension::Px(28);
     endpointPicker_->layoutItem.SetFlexGrow(1);
+    endpointPicker_->onSelectionChanged =
+        [this](int, const DropdownItem&) { OnEndpointChanged(); };
     topRow->AddChild(endpointPicker_);
 
     auto settingsBtn = std::make_shared<UltraCanvasButton>("tr-settings", 0, 0, 130, 28);
@@ -136,6 +152,12 @@ void UltraAITranslatorDialog::CreateTranslatorDialog() {
     targetInput_->size.height = Dimension::Px(28);
     targetInput_->layoutItem.SetFlexShrink(0);
     tgtCol->AddChild(targetInput_);
+    // Shown in place of the text input when the model lists its languages.
+    targetLangDropdown_ = std::make_shared<UltraCanvasDropdown>("tr-tgt-dd", 0, 0, 0, 28);
+    targetLangDropdown_->size.height = Dimension::Px(28);
+    targetLangDropdown_->layoutItem.SetFlexShrink(0);
+    targetLangDropdown_->SetVisible(false);
+    tgtCol->AddChild(targetLangDropdown_);
     opts->AddChild(tgtCol);
 
     auto srcCol = makeColumn("tr-src", "Source (empty = detect)", 220);
@@ -144,6 +166,11 @@ void UltraAITranslatorDialog::CreateTranslatorDialog() {
     sourceInput_->size.height = Dimension::Px(28);
     sourceInput_->layoutItem.SetFlexShrink(0);
     srcCol->AddChild(sourceInput_);
+    sourceLangDropdown_ = std::make_shared<UltraCanvasDropdown>("tr-src-dd", 0, 0, 0, 28);
+    sourceLangDropdown_->size.height = Dimension::Px(28);
+    sourceLangDropdown_->layoutItem.SetFlexShrink(0);
+    sourceLangDropdown_->SetVisible(false);
+    srcCol->AddChild(sourceLangDropdown_);
     opts->AddChild(srcCol);
 
     auto fmtCol = makeColumn("tr-fmt", "Formality", 150);
@@ -224,6 +251,9 @@ void UltraAITranslatorDialog::RebuildEndpointPicker(const std::string& selectId)
     }
     endpointPicker_->SetSelectedIndex(selectIndex, false);
     SetStatus("");
+    // SetSelectedIndex above runs no notifications, so reflect the new endpoint
+    // in the language controls explicitly.
+    OnEndpointChanged();
 }
 
 void UltraAITranslatorDialog::OnOpenSettings() {
@@ -244,6 +274,68 @@ void UltraAITranslatorDialog::OnOpenSettings() {
     RebuildEndpointPicker(selectId);
 }
 
+void UltraAITranslatorDialog::OnEndpointChanged() {
+    if (!targetLangDropdown_ || !sourceLangDropdown_) return;
+
+    // Find a translation model for the selected endpoint that lists languages:
+    // the endpoint's default model if it carries them, else the first
+    // translation-task model that does.
+    const Endpoint::DiscoveredModel* tm = nullptr;
+    const int idx = endpointPicker_ ? endpointPicker_->GetSelectedIndex() : -1;
+    if (idx >= 0 && idx < static_cast<int>(translationEndpoints_.size())) {
+        const Endpoint& e = translationEndpoints_[static_cast<size_t>(idx)];
+        for (const auto& m : e.models) {
+            if (m.name == e.defaultModel && !m.supportedLanguages.empty()) {
+                tm = &m; break;
+            }
+        }
+        if (!tm) {
+            for (const auto& m : e.models) {
+                if (m.task == "translation" && !m.supportedLanguages.empty()) {
+                    tm = &m; break;
+                }
+            }
+        }
+    }
+
+    const bool useDropdowns = (tm != nullptr);
+    if (targetInput_)   targetInput_->SetVisible(!useDropdowns);
+    if (sourceInput_)   sourceInput_->SetVisible(!useDropdowns);
+    targetLangDropdown_->SetVisible(useDropdowns);
+    sourceLangDropdown_->SetVisible(useDropdowns);
+    if (!useDropdowns) return;
+
+    // The server returns the languages in its own order; present them sorted
+    // alphabetically by display name (case-insensitive) so the picker is easy
+    // to scan. Source is built from the same sorted list for consistency.
+    std::vector<std::pair<std::string, std::string>> langs = tm->supportedLanguages;
+    std::sort(langs.begin(), langs.end(),
+              [](const auto& a, const auto& b) {
+                  return std::lexicographical_compare(
+                      a.second.begin(), a.second.end(),
+                      b.second.begin(), b.second.end(),
+                      [](unsigned char x, unsigned char y) {
+                          return std::tolower(x) < std::tolower(y);
+                      });
+              });
+
+    // Keep the current target code selected across the rebuild when possible.
+    const std::string wantTarget = targetInput_ ? targetInput_->GetText() : "";
+    targetLangDropdown_->ClearItems();
+    sourceLangDropdown_->ClearItems();
+    sourceLangDropdown_->AddItem("Auto-detect", "");   // empty code => detect
+    int targetSel = -1;
+    for (size_t i = 0; i < langs.size(); ++i) {
+        const auto& [code, name] = langs[i];
+        const std::string label = name + " (" + code + ")";
+        targetLangDropdown_->AddItem(label, code);
+        sourceLangDropdown_->AddItem(label, code);
+        if (code == wantTarget) targetSel = static_cast<int>(i);
+    }
+    targetLangDropdown_->SetSelectedIndex(targetSel >= 0 ? targetSel : 0, false);
+    sourceLangDropdown_->SetSelectedIndex(0, false);   // Auto-detect
+}
+
 void UltraAITranslatorDialog::OnRun() {
     if (running_) return;
 
@@ -256,8 +348,8 @@ void UltraAITranslatorDialog::OnRun() {
 
     TranslateRequest req;
     req.texts          = SplitLines(input_ ? input_->GetText() : "");
-    req.targetLanguage = targetInput_ ? targetInput_->GetText() : "";
-    req.sourceLanguage = sourceInput_ ? sourceInput_->GetText() : "";
+    req.targetLanguage = ActiveLang(targetLangDropdown_, targetInput_);
+    req.sourceLanguage = ActiveLang(sourceLangDropdown_, sourceInput_);
     switch (formalityPicker_ ? formalityPicker_->GetSelectedIndex() : 0) {
         case 1:  req.formality = TranslationFormality::Formal;   break;
         case 2:  req.formality = TranslationFormality::Informal; break;

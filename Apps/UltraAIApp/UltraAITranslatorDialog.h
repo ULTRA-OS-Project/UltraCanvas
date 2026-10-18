@@ -38,6 +38,10 @@ private:
     void RebuildEndpointPicker(const std::string& selectId = "");
     void OnOpenSettings();
     void OnRun();
+    // Re-evaluate which endpoint is selected: when its translation model
+    // advertises supported_languages, drive Target/Source from dropdowns;
+    // otherwise fall back to the free-text BCP-47 inputs.
+    void OnEndpointChanged();
 
     void SetStatus(const std::string& text);
     // Marshalled onto the UI thread when the off-thread translate finishes.
@@ -48,6 +52,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> targetInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> sourceInput_;
+    // Shown instead of the text inputs when the endpoint's translation model
+    // lists supported_languages; value per item is the BCP-47 code.
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  targetLangDropdown_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  sourceLangDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  formalityPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  result_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    runButton_;
