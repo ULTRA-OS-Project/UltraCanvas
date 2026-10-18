@@ -1394,6 +1394,12 @@ int SpreadsheetSheet::ReplaceAll(const std::string& searchText,
 // CLONE
 // ============================================================================
 
+std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::CloneKeepingId() const {
+    auto copy = Clone();
+    copy->id_ = id_;
+    return copy;
+}
+
 std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::Clone(const std::string& newName) const {
     auto clone = std::make_unique<SpreadsheetSheet>(
         newName.empty() ? name_ : newName, index_);

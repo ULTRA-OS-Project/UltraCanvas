@@ -15,6 +15,8 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <climits>
 
 namespace UltraCanvas {
@@ -116,6 +118,11 @@ private:
     // Sheet identification
     std::string name_ = "Sheet1";
     int index_ = 0;
+    uint64_t id_ = NextId();
+    static uint64_t NextId() {
+        static std::atomic<uint64_t> next{1};
+        return next++;
+    }
     Color tabColor_ = Colors::Transparent;
     bool visible_ = true;
     bool selected_ = false;
@@ -198,6 +205,12 @@ public:
     
     int GetIndex() const { return index_; }
     void SetIndex(int index) { index_ = index; }
+
+    // A number no other sheet made in this run has, kept through renames and
+    // moves. Undo finds a step's sheet by it, so a step never lands on a
+    // different sheet that has since taken the name. Clone() gets a new one;
+    // CloneKeepingId() (undo putting a deleted sheet back) keeps it.
+    uint64_t GetId() const { return id_; }
     
     const Color& GetTabColor() const { return tabColor_; }
     void SetTabColor(const Color& color) { tabColor_ = color; }
@@ -522,6 +535,7 @@ public:
     
     // Clone sheet (deep copy)
     std::unique_ptr<SpreadsheetSheet> Clone(const std::string& newName = "") const;
+    std::unique_ptr<SpreadsheetSheet> CloneKeepingId() const;
     
     // Get memory usage
     size_t GetMemorySize() const;
