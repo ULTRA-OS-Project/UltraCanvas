@@ -99,6 +99,14 @@ UltraCanvas/
 
 ----------
 
+## How it compares
+
+[`Docs/UltraCanvasComparison.md`](Docs/UltraCanvasComparison.md) lists every
+feature of the framework and compares it with Qt, GTK, wxWidgets, Dear ImGui,
+Flutter and Electron (feature table, pros and cons, when to choose which).
+
+----------
+
 ## Building
 
 New to the framework? [`Docs/GettingStarted.md`](Docs/GettingStarted.md) is the
