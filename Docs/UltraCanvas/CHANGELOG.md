@@ -1,3 +1,32 @@
+#### 2026-10-18 *0.9.342*
+- **The Android camera preview follows the device as it turns.** It used to
+  stay at the rotation it had when the camera opened, so turning the phone
+  left the picture sideways until the camera was closed and opened again.
+  - Every preview frame is now turned for the display as it is at that
+    moment. `UltraCanvasActivity` reports each turn through a display
+    listener, which also catches 180-degree flips that change no
+    configuration. The application re-reads the rotation on every
+    configuration change too.
+  - Preview frames swap width and height when the device turns between
+    portrait and landscape.
+  - A recording still keeps the orientation it started with, because an MP4
+    file has a single orientation.
+- **Android: Java could not call back into C++. Fixed before it ever ran.**
+  `UltraCanvasActivity` sends dialog answers, typed text, permission answers
+  and display turns to C++ through `native` methods. `NativeActivity` loads
+  the app's library with a plain `dlopen`, and Android's runtime only finds
+  `native` methods in libraries loaded through `System.loadLibrary`. So every
+  such call would have thrown `UnsatisfiedLinkError` on the UI thread,
+  crashing the app on the first keystroke, dialog answer or permission
+  answer. The fixes:
+  - `UltraCanvasActivity` now loads the same library (named by
+    `android.app.lib_name`, as `NativeActivity` finds it) through
+    `System.loadLibrary` before `NativeActivity` starts.
+  - At startup the native side checks the bridge and writes one logcat line,
+    `Java->native bridge OK` or `BROKEN`, whatever the build type.
+  - `scripts/android-java-check.sh` (run in CI) now fails when a Java
+    `native` method has no C++ definition.
+
 #### 2026-10-18 *0.9.341*
 - **UltraCloud uploads to FTP and SFTP by way of a part name, and removes
   what an unfinished one left.** A server that writes an upload into the
