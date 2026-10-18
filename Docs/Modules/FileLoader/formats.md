@@ -23,9 +23,11 @@ framework was compiled and which plugins the application registers.
 
 Legend: ✅ supported · — not supported · † depends on the installed libvips
 build · ‡ requires the matching plugin to be compiled and registered ·
-§ depends on the platform backend and installed codecs · ¶ also when saved
-with *Encrypt with Password* (agile encryption, Office 2010 and later), given
-the password - see `UltraCanvasFileLoader::RequestDocumentPassword`.
+§ depends on the platform backend and installed codecs · ¶ also
+password-protected (*Encrypt with Password*, agile encryption, Office 2010 and
+later): read given the password, and written with one - see
+`UltraCanvasFileLoader::RequestDocumentPassword` and
+`RequestNewDocumentPassword`.
 
 ### Bitmaps — libvips †
 
@@ -99,8 +101,9 @@ minimal OBJ reader for its GL viewer only.
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
-| Word (OOXML) | `.docx` | ✅ | ✅ | built-in (miniz + tinyxml2) ¶ |
+| Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
 | OpenDocument Text | `.odt` | ✅ | ✅ | built-in (miniz + tinyxml2) |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.potx` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |
@@ -117,7 +120,7 @@ engines linked into the binary are reported. RTF is **not** supported.
 | Format | Extension(s) | Load | Save |
 |--------|--------------|:----:|:----:|
 | OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
-| Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ |
+| Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ ¶ |
 | Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |

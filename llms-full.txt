@@ -833,11 +833,18 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
   `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
+  storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
+  the password-protected Office files.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
-  AES-CBC, SHA-256/512), decrypted back into their ZIP package with UltraCrypt.
+  AES-CBC, SHA-512/256 and Office 2010's SHA-1; Office 2007's standard
+  encryption, AES-ECB with no integrity check), decrypted back into their ZIP
+  package with UltraCrypt, and written: `EncryptOfficePackage` /
+  `EncryptOfficePackageToFile` (AES-256, SHA-512, the DataSpaces storage, in a
+  compound file `UCCompoundFileWriter` builds).
   In `core/UltraCanvasOfficeEncryption.cpp`; the integrity HMAC is checked
   before anything is decrypted. `DecryptOfficePackage` / `DecryptOfficePackageFile`
   (`OfficeDecryptStatus`: Decrypted, NotEncrypted, PasswordRequired,
@@ -845,8 +852,23 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `CheckOfficePassword` (the verifier only), `IsEncryptedOfficePackage`. Used by
   `UltraCanvasSpreadsheet::LoadXLSX` / `LoadXLS` / `LoadFromFile`,
   `UCWordDocumentIO::Load` / `LoadDocx` (each with an optional password) and
-  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it.
+  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
+  by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
+  `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
+  `RequestNewDocumentPassword` to ask for a new one.
   See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
+  decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
+  `PptxPresentation` → `PptxSlide` (title, hidden, notes) → `PptxShape`
+  (title / subtitle / body / text / table / picture, EMU place) →
+  `PptxParagraph` (level, bullet, numbered) → `PptxRun`. `ReadPptxPresentation`
+  (path, optional password - protected decks decrypt through
+  UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
+  `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
+  outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
+  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -20422,6 +20444,33 @@ the format specifies. `ReadStream` and `HasStream` look in the root storage;
 when a writer left the directory tree empty (or it is damaged), the first
 stream of that name anywhere is taken instead.
 
+## Writing one
+
+`UCCompoundFileWriter` builds a compound file in memory - what the
+[password-protected `.xlsx` / `.docx` writer](UltraCanvasOfficeEncryption.md)
+puts its `EncryptionInfo`, `EncryptedPackage` and `\x06DataSpaces` streams in:
+
+<!-- doc-check: std::vector<uint8_t> info; std::vector<uint8_t> package; std::vector<uint8_t> primary; -->
+```cpp
+#include "UltraCanvasCompoundFile.h"
+
+UltraCanvas::UCCompoundFileWriter writer;
+writer.AddStream("EncryptionInfo", info);
+writer.AddStream("EncryptedPackage", package);
+// Storages are named on the way, separated by '/'.
+writer.AddStream("\x06" "DataSpaces/TransformInfo/StrongEncryptionTransform/\x06" "Primary", primary);
+std::vector<uint8_t> file = writer.Build();
+```
+
+`AddStream` refuses an empty name, one over 31 characters or not ASCII, and a
+stream where a storage of that name already is (or the other way round);
+adding a path again replaces the stream. `Build` writes version 3: 512-byte
+sectors, every stream under 4096 bytes in the mini stream as the format
+requires, a FAT of any size (DIFAT sectors past the header's 109 entries), and
+each storage's children in a balanced tree coloured as a valid red-black tree
+(the deepest level red when it is not full), ordered as [MS-CFB] 2.6.4 orders
+names - which Office checks.
+
 ## Implementation notes
 
 - Version 3 (512-byte sectors) and version 4 (4096-byte sectors, 64-bit stream
@@ -20439,16 +20488,21 @@ stream of that name anywhere is taken instead.
 
 ## Where it is used
 
-The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`),
-the [`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
+The reader: the `.doc` importer
+(`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`), the
+[`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
 [password-protected `.xlsx` and `.docx` files](UltraCanvasOfficeEncryption.md),
-which reads their `EncryptionInfo` and `EncryptedPackage` streams.
+which reads their `EncryptionInfo` and `EncryptedPackage` streams. The writer:
+the encryptor of those files, which builds them.
 
 ## Test
 
-Covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a `.doc`, and a file
-that is no compound file) and, through the `.doc` importer, by
-`Tests/WordFormatsTest.cpp`.
+The reader is covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a
+`.doc`, and a file that is no compound file) and, through the `.doc` importer,
+by `Tests/WordFormatsTest.cpp`. The writer by `Tests/OfficeEncryptionTest.cpp`:
+what it builds read back, streams in the mini stream and in sectors, nested
+storages, and a 9 MB file that needs DIFAT sectors; Python's olefile and
+msoffcrypto-tool opened its output when it was written.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasContourChart.md
@@ -27939,7 +27993,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -48103,12 +48157,14 @@ package. It is an OLE2 [compound file](UltraCanvasCompoundFile.md) holding two
 streams: `EncryptionInfo`, which says how the key is derived, and
 `EncryptedPackage`, the original package encrypted. This module turns the
 second back into the ZIP, which the `.xlsx` and `.docx` readers then read as
-usual. The spreadsheet, the Word reader and `UltraCanvasFileLoader` use it;
-most code never calls it directly, but passes a password to them.
+usual, and the other way round for the writers. The spreadsheet, the Word
+reader and writer, the [PowerPoint reader](UltraCanvasPresentationPptx.md)
+and `UltraCanvasFileLoader` use it; most code never calls it
+directly, but passes a password to them.
 
 Header: `UltraCanvasOfficeEncryption.h`. The cryptography is UltraCrypt's
-(`Docs/Modules/UltraCrypt/README.md`): its constant-time AES-CBC, SHA-2 and
-HMAC.
+(`Docs/Modules/UltraCrypt/README.md`): its constant-time AES-CBC, SHA-2, HMAC
+and random numbers, and SHA-1 to read Office 2010's files.
 
 ## Opening one
 
@@ -48149,6 +48205,42 @@ password-protected, never that it is damaged or of another format. A file
 named `.xls` that is a password-protected `.xlsx` opens through `LoadXLS` too,
 as Excel opens it.
 
+## Saving one
+
+The writers take the password the same way, and write the file encrypted -
+the unencrypted package never reaches the disk:
+
+<!-- doc-check: std::string path; std::string password; UltraCanvas::UltraCanvasWindowBase* window; UltraCanvas::UCRichDocument document; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasFileLoader.h"
+
+using namespace UltraCanvas;
+
+auto sheet = std::make_shared<UltraCanvasSpreadsheet>("Book", 0, 0, 800, 600);
+if (!sheet->SaveToFile(path, password)) ShowError(sheet->GetLastError());   // or SaveXLSX
+
+std::string error;
+if (!UltraCanvasFileLoader::SaveTextDocument(document, path, error, password)) ShowError(error);
+// (UCWordDocumentIO::Save / SaveDocx take it too.)
+
+// Ask for a new one: typed twice, asked again until the two match.
+UltraCanvasFileLoader::RequestNewDocumentPassword(window,
+    [sheet, path](bool proceed, const std::string& typed) {
+        if (proceed && !sheet->SaveToFile(path, typed)) ShowError(sheet->GetLastError());
+    });
+```
+
+Only `.xlsx` and `.docx` carry a password. `SaveToFile` and
+`UCWordDocumentIO::Save` refuse one for `.ods`, `.odt`, `.csv` or any other
+format, rather than save the file unprotected. Without a password the writers
+write an ordinary package, as before. The demo's spreadsheet page shows the
+round: a workbook opened with a password keeps it when saved again as `.xlsx`,
+and an unprotected one saved as `.xlsx` is offered one.
+
+`EncryptOfficePackage(zip, password, file, error)` encrypts a package already
+in memory; `EncryptOfficePackageToFile` writes the result.
+
 ## Decrypting directly
 
 <!-- doc-check: std::string path; std::string password; void ReadPackage(const std::vector<uint8_t>& zip); void ShowError(const std::string& message); -->
@@ -48185,9 +48277,11 @@ contents, or an open `UCCompoundFileReader`.
 
 ## What is supported
 
-ECMA-376 **agile** encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15), with
-AES-128, -192 or -256 in CBC mode and SHA-256 or SHA-512: what Office writes by
-default since 2013, and what LibreOffice and msoffcrypto-tool write. In order:
+**Read:** ECMA-376 **agile** encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15),
+with AES-128, -192 or -256 in CBC mode and SHA-512, SHA-256 or SHA-1: what
+Office writes by default since 2010 (SHA-1 and AES-128 in Office 2010, SHA-512
+and AES-256 since 2013), and what LibreOffice and msoffcrypto-tool write. In
+order:
 
 1. **The password key.** The hash of the password salt and the password in
    UTF-16LE, rehashed `spinCount` times (100 000 by default), each round
@@ -48203,14 +48297,38 @@ default since 2013, and what LibreOffice and msoffcrypto-tool write. In order:
 5. **The package**, in 4096-byte segments, each decrypted with its own IV: the
    hash of the key data's salt and the segment's index.
 
-Refused as `Unsupported`, each with the reason: Office 2007's **standard**
-encryption (AES-ECB, version 3.2), extensible encryption, a key encryptor for a
-certificate rather than a password, and agile files keyed with **SHA-1**
-(Office 2010's default) — UltraCrypt offers SHA-1 for HMAC only. Saving such a
-file again from a current Office converts it to SHA-512.
+**Also read:** Office 2007's **standard** encryption ([MS-OFFCRYPTO]
+2.3.4.5-2.3.4.9, versions 2.2 / 3.2 / 4.2 with the CryptoAPI and AES flags): a
+binary header instead of XML, the password key as SHA-1 over the salt and
+password rehashed 50 000 times and then derived as 2.3.4.7 says, the same kind
+of password verifier, and the package in AES-128, -192 or -256 **ECB** mode in
+one piece. UltraCrypt has no ECB; it is CBC with a zero IV, each block then
+XORed with the ciphertext block before it.
 
-Writing encrypted files is not supported: a decrypted workbook or document
-saves as an ordinary one.
+The standard format carries **no integrity check**. A wrong password is still
+told apart by its verifier, but a changed file decrypts into changed content
+rather than being refused as `Tampered` - the ZIP reader's CRCs catch most of
+that, not all. Such files are opened anyway, as Office and every other reader
+opens them: refusing them would refuse every Office 2007 file. (An agile file
+that lacks its HMAC is still refused - Office always writes one there, so a
+missing one means it was removed.)
+
+Refused as `Unsupported`, each with the reason: RC4 standard encryption (the
+CryptoAPI flag without AES), extensible encryption (version 4.3), a key
+encryptor for a certificate rather than a password, and a hash UltraCrypt does
+not have (SHA-384).
+
+SHA-1 is UltraCrypt's legacy digest, which `UltraCrypt_Hash` refuses unless
+asked. This module asks, and only for reading: Office 2010 keys its files with
+it, and SHA-1's collision weakness does not reach a password hash or a key
+derivation.
+
+**Written:** what Office 2013 and later write - AES-256-CBC, SHA-512, a spin
+count of 100 000, random 16-byte salts, a random intermediate key and HMAC key
+drawn from the CSPRNG for every save, the integrity HMAC, and the
+`\x06DataSpaces` storage ([MS-OFFCRYPTO] 2.1.5-2.1.8) Office looks for before
+it will call a file encrypted. The compound file around them is built by
+`UCCompoundFileWriter` ([UltraCanvasCompoundFile](UltraCanvasCompoundFile.md)).
 
 ## Implementation notes
 
@@ -48222,6 +48340,10 @@ saves as an ordinary one.
   when done with; the decrypted package is the document itself and is not.
 - Status messages never say which of the verifier values or HMAC fields was
   off — there is no oracle to consult.
+- The HMAC key and value are a whole number of AES blocks when encrypted
+  (SHA-1's 20 bytes are padded to 32) and compared over the hash's size, as
+  2.3.4.14 says. msoffcrypto-tool 6.0.0 compares the padded block, so it
+  rejects every SHA-1 file's integrity check, Office 2010's included.
 
 ## Test
 
@@ -48231,10 +48353,24 @@ msoffcrypto-tool, an implementation independent of this one
 `Tests/fixtures/make-office-encrypted-fixtures.py` rebuilds them). The password
 is not ASCII, and the workbook spans five segments. It checks the right, a
 wrong and a missing password, a changed byte of the package and of its size
-field, a package cut short, standard encryption, a damaged header, an absurd
-spin count, SHA-1, a missing integrity check, `CheckOfficePassword`, and the
-spreadsheet, the Word reader and `UltraCanvasFileLoader::LoadTextDocument`
-opening the files.
+field, a package cut short, extensible encryption, a damaged header, an absurd
+spin count, an unknown hash, a missing integrity check, `CheckOfficePassword`,
+and the spreadsheet, the Word reader and `UltraCanvasFileLoader::LoadTextDocument`
+opening the files. `office-agile-sha1-encrypted.xlsx` is the workbook keyed as
+Office 2010 keys it (SHA-1, AES-128), and `office-standard-encrypted.xlsx` the
+workbook in Office 2007's standard encryption (AES-128-ECB); for the latter it
+also checks RC4 and a cipher other than AES refused, and a truncated header
+and package.
+
+For writing it reads back what `UCCompoundFileWriter` builds (a mini-stream
+stream, a sector stream, nested storages), round-trips packages of 200 bytes,
+21 KB and 9 MB (past the header's 109 FAT sectors, so DIFAT sectors are
+written), checks that two saves differ, that a wrong password and a changed
+byte are caught, and saves and reopens through `SaveToFile`,
+`UCWordDocumentIO::Save` and `UltraCanvasFileLoader::SaveTextDocument`. When
+the writer was made, msoffcrypto-tool decrypted its output - integrity check
+included - for packages in the mini stream, in sectors and past the DIFAT
+limit, byte for byte.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
@@ -52276,6 +52412,127 @@ Layout values (centerX, plot width, padding) are recomputed by `CalculateLayout(
 - [UltraCanvasPieChartExamples](UltraCanvasPieChartExamples.md) — Pie / donut / 3D chart
 - [UltraCanvasJitterPlotExamples](UltraCanvasJitterPlotExamples.md) — Categorical distribution plots
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — Line chart component
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPresentationPptx.md
+==============================================================================
+
+# UltraCanvasPresentationPptx — PowerPoint decks (.pptx) as text
+
+`UltraCanvasPresentationPptx.h` reads a PowerPoint presentation - `.pptx`,
+and `.pptm` / `.ppsx` / `.potx`, which are the same package - into a UI-free
+model of its slides' text: titles, the paragraphs of every placeholder and
+text box with their outline levels and bullets, tables, the pictures' names
+and descriptions, speaker notes, and which slides are hidden. A
+password-protected deck is decrypted on the way in, through the same code as
+a protected `.xlsx` or `.docx` ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)).
+
+It is a reader of text, not a slide renderer. There is no writer.
+
+## Opening one as a document
+
+`UltraCanvasFileLoader::LoadTextDocument` and `OpenTextDocument` open a deck
+as an outline, and `OpenTextDocument` asks for the password of a protected
+one first:
+
+<!-- doc-check: std::string path; std::string password; void ShowDocument(std::shared_ptr<UltraCanvas::UCRichDocument> document); void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasFileLoader.h"
+
+using namespace UltraCanvas;
+
+std::string error;
+if (auto outline = UltraCanvasFileLoader::LoadTextDocument(path, error, password)) {
+    ShowDocument(outline);   // e.g. in an UltraCanvasRichTextEdit
+} else {
+    ShowError(error);        // "The file is password-protected; ...", ...
+}
+```
+
+The outline: per slide a heading (its number and title, "(hidden)" after a
+hidden slide's), its bulleted paragraphs as list items at their level - a
+numbered list where the deck numbers them - and its other text as
+paragraphs, a subtitle in italics, each table as a table (the first row as
+its header), a line `[Picture: <description>]` for each picture, and the
+speaker notes as a block quote opening "Notes:"; a rule between slides.
+
+UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
+the same outline: the first page of a deck's slide text on its tile and in
+the detail pane. A protected deck keeps its type glyph, since the preview has
+no password to ask for.
+
+## Reading the model
+
+<!-- doc-check: std::string path; std::string password; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasPresentationPptx.h"
+
+using namespace UltraCanvas;
+
+PptxPresentation deck;
+std::string error;
+if (!ReadPptxPresentation(path, deck, error, password)) {
+    ShowError(error);
+} else {
+    for (const PptxSlide& slide : deck.slides) {
+        if (slide.hidden) continue;
+        for (const PptxShape& shape : slide.shapes) {
+            for (const PptxParagraph& paragraph : shape.paragraphs) {
+                std::string line = std::string(paragraph.level * 2, ' ') +
+                                   (paragraph.bullet ? "- " : "") + paragraph.Text();
+                (void)line;
+            }
+        }
+        for (const PptxParagraph& note : slide.notes) (void)note.Text();
+    }
+}
+UCRichDocument outline = PptxPresentationToRichDocument(deck);
+```
+
+| Type | Holds |
+|---|---|
+| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order |
+| `PptxSlide` | `number` (1-based), `hidden`, `title`, `shapes` back to front, `notes` |
+| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`), `name`, `x` / `y` / `width` / `height` in EMU, `paragraphs`; a table's `rows` (cells, each a list of paragraphs); a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`) and `altText` |
+| `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`; `Text()` joins the runs |
+| `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline` |
+
+`IsPptxPackage(path)` tells a deck by its content (a ZIP holding
+`ppt/presentation.xml`); a protected deck is a compound file instead, which
+`IsEncryptedOfficePackage` tells, and whose type shows only once decrypted -
+`IsPptxExtension` names the extensions to go by. `ReadPptxPresentationFromPackage`
+reads a package already in memory.
+
+## What is read, and what is not
+
+- Slides in the order `p:sldIdLst` gives them, through the presentation's
+  relationships; a slide whose part is missing is skipped.
+- Placeholders by type: `title` and `ctrTitle` are the title, `subTitle` the
+  subtitle, any other (`body`, `obj`, or none) content, bulleted unless a
+  paragraph says `buNone`. A text box is not bulleted unless it says `buChar`
+  or `buAutoNum`. The date, footer and slide-number placeholders are slide
+  furniture and left out.
+- Groups are read through, their shapes in order; their positions stay in the
+  group's own coordinates. A shape that takes its place from the layout has
+  none (0, 0, 0, 0).
+- Speaker notes: the body placeholder of the slide's notes slide.
+- Not read: masters, layouts and themes as drawn (fonts, sizes, colours,
+  fills), charts, SmartArt, embedded objects, comments, animations and
+  transitions. Pictures are named, not decoded.
+
+## Test
+
+`Tests/OfficeEncryptionTest.cpp` reads `Tests/fixtures/office-pptx-sample.pptx`,
+which python-pptx - an independent writer - builds from its default template
+(`Tests/fixtures/make-office-encrypted-fixtures.py`): the slide size and
+order, titles, a subtitle, bullets on two levels with a bold run, a numbered
+pair, a text box at its place, speaker notes, a table, a picture's
+description and part, a hidden slide, sixty bullets, no slide-number text,
+and the outline. `office-agile-encrypted.pptx` is the same deck encrypted;
+it is refused without the password, read with it, and opened by
+`UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
+preview page: the plain deck's slides, titles first, and no page for the
+protected deck or a protected `.docx`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasProgressDialog.md
@@ -63174,12 +63431,13 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 // password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
 // formats ignore it.
 bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-bool SaveToFile(const std::string& filePath);
+// With a password: a password-protected .xlsx; any other format with one is refused.
+bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
 bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
-bool SaveXLSX(const std::string& filePath);
+bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());
 // Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx (password-protected or
 // not), HTML table, Excel 2003 XML file or delimited text saved under the
 // name. Read only.
@@ -78775,7 +79033,8 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT).
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
+// a PowerPoint deck, .pptx, as an outline of its slides).
 // A password-protected .docx asks for its password before it loads.
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
@@ -78788,7 +79047,10 @@ needs its password before any loader can read it.
 field, checks it, and asks again after a wrong one; it calls straight back
 with `(true, "")` for a file that has none. Pass what it hands back to the
 loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
-`LoadFromFile(path, password)`. See
+`LoadFromFile(path, password)`. Saving works the same way:
+`RequestNewDocumentPassword(parent, onResult)` asks for a new password twice,
+and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
+`SaveToFile(path, password)` writes the file encrypted. See
 [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
 ### Editable Vector Documents
@@ -79106,9 +79368,11 @@ framework was compiled and which plugins the application registers.
 
 Legend: ✅ supported · — not supported · † depends on the installed libvips
 build · ‡ requires the matching plugin to be compiled and registered ·
-§ depends on the platform backend and installed codecs · ¶ also when saved
-with *Encrypt with Password* (agile encryption, Office 2010 and later), given
-the password - see `UltraCanvasFileLoader::RequestDocumentPassword`.
+§ depends on the platform backend and installed codecs · ¶ also
+password-protected (*Encrypt with Password*, agile encryption, Office 2010 and
+later): read given the password, and written with one - see
+`UltraCanvasFileLoader::RequestDocumentPassword` and
+`RequestNewDocumentPassword`.
 
 ### Bitmaps — libvips †
 
@@ -79182,8 +79446,9 @@ minimal OBJ reader for its GL viewer only.
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
-| Word (OOXML) | `.docx` | ✅ | ✅ | built-in (miniz + tinyxml2) ¶ |
+| Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
 | OpenDocument Text | `.odt` | ✅ | ✅ | built-in (miniz + tinyxml2) |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.potx` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |
@@ -79200,7 +79465,7 @@ engines linked into the binary are reported. RTF is **not** supported.
 | Format | Extension(s) | Load | Save |
 |--------|--------------|:----:|:----:|
 | OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
-| Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ |
+| Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ ¶ |
 | Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |
@@ -83721,7 +83986,11 @@ therefore in place.
 **Notes on two of these.** SHA-1 is vendored (~150 lines in
 `UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
 unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
-accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. One caller
+sets `allowLegacy`: the reader of password-protected Office files
+(`UltraCanvasOfficeEncryption.cpp`), because Office 2010 derives its keys with
+SHA-1 - a password hash and key derivation, which SHA-1's collisions do not
+reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. AES is
 vendored too (`UltraCryptAes.cpp`, ~470 lines), because libsodium has no AES

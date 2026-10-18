@@ -654,11 +654,18 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
   `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
+  storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
+  the password-protected Office files.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
-  AES-CBC, SHA-256/512), decrypted back into their ZIP package with UltraCrypt.
+  AES-CBC, SHA-512/256 and Office 2010's SHA-1; Office 2007's standard
+  encryption, AES-ECB with no integrity check), decrypted back into their ZIP
+  package with UltraCrypt, and written: `EncryptOfficePackage` /
+  `EncryptOfficePackageToFile` (AES-256, SHA-512, the DataSpaces storage, in a
+  compound file `UCCompoundFileWriter` builds).
   In `core/UltraCanvasOfficeEncryption.cpp`; the integrity HMAC is checked
   before anything is decrypted. `DecryptOfficePackage` / `DecryptOfficePackageFile`
   (`OfficeDecryptStatus`: Decrypted, NotEncrypted, PasswordRequired,
@@ -666,8 +673,23 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `CheckOfficePassword` (the verifier only), `IsEncryptedOfficePackage`. Used by
   `UltraCanvasSpreadsheet::LoadXLSX` / `LoadXLS` / `LoadFromFile`,
   `UCWordDocumentIO::Load` / `LoadDocx` (each with an optional password) and
-  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it.
+  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
+  by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
+  `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
+  `RequestNewDocumentPassword` to ask for a new one.
   See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
+  decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
+  `PptxPresentation` → `PptxSlide` (title, hidden, notes) → `PptxShape`
+  (title / subtitle / body / text / table / picture, EMU place) →
+  `PptxParagraph` (level, bullet, numbered) → `PptxRun`. `ReadPptxPresentation`
+  (path, optional password - protected decks decrypt through
+  UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
+  `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
+  outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
+  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML

@@ -50,6 +50,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.40.1 - a PowerPoint deck (.pptx, .pptm, .ppsx, .potx) previews its
+//                  slides' text; a document that cannot be read (a protected
+//                  .docx or .pptx) keeps its type glyph instead of an empty page
 // Version: 1.39.0 - RequestBackgroundStop / BackgroundStopped; every worker thread is
 //                  counted (StartWorkerThread) so a host can tell when they are gone
 // Version: 1.38.5 - a file or folder on a remote drive (isRemotePath) is never
@@ -79,7 +82,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-18
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -138,6 +141,7 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasPresentationPptx.h"   // a deck's preview page
 #include "Documents/eBook/EPUBEngine.h"     // e-book covers for the thumbnails
 #include "Documents/eBook/MOBIEngine.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -537,6 +541,10 @@ namespace UltraCanvas {
                 {"odt",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
                 {"doc",  {"Word", FilerFileCategory::Document, ColorFamily::Document, 4}},
                 {"docx", {"Word", FilerFileCategory::Document, ColorFamily::Document, 3}},
+                {"pptx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"pptm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"ppsx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"potx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
                 {"rtf",  {"RTF",  FilerFileCategory::Document, ColorFamily::Document, 5}},
                 {"md",   {"Markdown", FilerFileCategory::Document, ColorFamily::Document, 6}},
                 {"html", {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
@@ -1544,16 +1552,10 @@ namespace UltraCanvas {
             }
         }
 
-        // Word-processing formats go through the shared rich-document reader,
-        // so ODT, DOCX, legacy DOC and LaTeX all preview from the same block
-        // model (a .tex shows its title and sections, not its markup).
-        void RichDocumentToPreviewLines(const std::string& path,
-                                        std::vector<std::string>& lines) {
-            UCRichDocument doc;
-            std::string error;
-            if (!UCWordDocumentIO::Load(path, doc, error)) return;
-            // The first page's header and footer belong to what the page shows.
-            if (!doc.FurnitureForPage(0).IsEmpty()) doc = doc.WithFirstPageFurnitureInline();
+        // A rich document's blocks as preview lines: a line per paragraph,
+        // a table's rows as tab-separated cells.
+        void RichBlocksToPreviewLines(const UCRichDocument& doc,
+                                      std::vector<std::string>& lines) {
             for (const RichDocBlock& block : doc.blocks) {
                 if (lines.size() >= kPreviewMaxLines) break;
                 std::string text;
@@ -1578,6 +1580,35 @@ namespace UltraCanvas {
                 }
                 AppendPreviewLine(lines, text);
             }
+        }
+
+        // Word-processing formats go through the shared rich-document reader,
+        // so ODT, DOCX, legacy DOC and LaTeX all preview from the same block
+        // model (a .tex shows its title and sections, not its markup). False
+        // when the document cannot be read - a password-protected .docx among
+        // them: its tile keeps the type glyph rather than an empty page.
+        bool RichDocumentToPreviewLines(const std::string& path,
+                                        std::vector<std::string>& lines) {
+            UCRichDocument doc;
+            std::string error;
+            if (!UCWordDocumentIO::Load(path, doc, error)) return false;
+            // The first page's header and footer belong to what the page shows.
+            if (!doc.FurnitureForPage(0).IsEmpty()) doc = doc.WithFirstPageFurnitureInline();
+            RichBlocksToPreviewLines(doc, lines);
+            return true;
+        }
+
+        // A PowerPoint deck previews its slides' text, the outline
+        // UltraCanvasPresentationPptx makes of it: each slide's number and
+        // title, then its bullets, tables and notes. A protected deck cannot
+        // be read without its password and keeps the type glyph.
+        bool PresentationToPreviewLines(const std::string& path,
+                                        std::vector<std::string>& lines) {
+            PptxPresentation deck;
+            std::string error;
+            if (!ReadPptxPresentation(path, deck, error)) return false;
+            RichBlocksToPreviewLines(PptxPresentationToRichDocument(deck), lines);
+            return true;
         }
 
         // Fills `lines` (and `tabular`) with the start of the file's content.
@@ -1670,8 +1701,10 @@ namespace UltraCanvas {
                 return true;
             }
             if (ext == "odt" || ext == "docx" || ext == "doc" || ext == "tex") {
-                RichDocumentToPreviewLines(path, lines);
-                return true;
+                return RichDocumentToPreviewLines(path, lines);
+            }
+            if (IsPptxExtension(ext)) {
+                return PresentationToPreviewLines(path, lines);
             }
             if (ext == "html" || ext == "htm") {
                 // The page as a browser lays it out: a line per paragraph,
