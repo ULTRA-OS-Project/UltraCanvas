@@ -969,13 +969,18 @@ itself, as Excel does: `=Gone.E5*2` becomes `=#REF!*2` and
 `=SUM(Gone.A1:B3)` becomes `=SUM(#REF!)`, so the cell shows `#REF!` and the
 formula says why.
 
-Deleting a sheet is one undo step: **Ctrl+Z** puts it back where it was,
+Every change to the sheets is one undo step: inserting, duplicating,
+renaming, moving and deleting. **Ctrl+Z** takes an inserted or duplicated
+sheet away again (and **Ctrl+Y** brings it back, cells and all), gives a
+renamed sheet its old name with the formulas that name it following, and
+moves a moved sheet back. Loading a file starts a fresh undo history.
+
+Undoing a delete puts the sheet back where it was,
 with its cells, its own undo history, and the references the delete turned to
 `#REF!` naming it again; **Ctrl+Y** deletes it again. If another sheet has
 taken its name in the meantime, it comes back as "Gone (2)".
 
-Undo keeps up with renames too: the sheet's earlier steps still undo into it,
-and an undone formula names the sheet's new name. Each step finds its sheet
+Each step finds its sheet
 by a fixed id (`SpreadsheetSheet::GetId()`), not by name, so it never writes
 into whichever sheet is open, or into another sheet that has since taken the
 name.

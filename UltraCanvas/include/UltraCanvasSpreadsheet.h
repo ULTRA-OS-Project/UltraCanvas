@@ -52,8 +52,12 @@ struct SpreadsheetUndoAction {
     // the formulas on other sheets that deleting it turned to #REF!, so undo
     // can put all of it back.
     struct FormulaText { uint64_t sheetId; int row; int col; std::string formula; };
+    // SheetInsert undone: the same, so redo can put it back.
+    // SheetReorder: the sheet moved from sheetIndex to toIndex.
+    // SheetRename: from oldName to newName.
     std::shared_ptr<SpreadsheetSheet> removedSheet;
     int sheetIndex = -1;
+    int toIndex = -1;
     std::vector<FormulaText> rewrittenFormulas;
 };
 
@@ -267,9 +271,10 @@ public:
     const SpreadsheetSheet* GetSheetByName(const std::string& name) const;
     SpreadsheetSheet* AddSheet(const std::string& name = "");
     SpreadsheetSheet* InsertSheet(int index, const std::string& name = "");
-    // Deletes the sheet as one undo step: Undo puts it back where it was,
-    // with its cells, its own undo history and the references to it that
-    // the delete turned to #REF!.
+    // Inserting, duplicating, deleting, renaming and moving a sheet are each
+    // one undo step. Undo of a delete puts the sheet back where it was, with
+    // its cells, its own undo history and the references to it that the
+    // delete turned to #REF!. Loading a file starts a fresh undo history.
     void RemoveSheet(int index);
     void RemoveSheetByName(const std::string& name);
     // Renames the sheet and rewrites every formula, on every sheet, that
@@ -716,6 +721,19 @@ private:
     // step that puts it back (RestoreDeletedSheet).
     void RemoveSheetAt(int index, SpreadsheetUndoAction* record);
     void RestoreDeletedSheet(const SpreadsheetUndoAction& action);
+    // Undoes (or redoes) a sheet insert, delete, rename or move step,
+    // recording into `action` what the other direction needs.
+    static bool IsSheetStep(UndoActionType type);
+    void ApplySheetStep(SpreadsheetUndoAction& action, bool undo);
+    void RecordSheetStep(UndoActionType type, const SpreadsheetSheet& sheet, const std::string& description);
+    // Turns undo recording off for its lifetime: a file load builds a new
+    // document, not a series of edits to undo.
+    struct UndoRecordingPause {
+        explicit UndoRecordingPause(UltraCanvasSpreadsheet& s) : sheet(s), was(s.recordingUndo_) { s.recordingUndo_ = false; }
+        ~UndoRecordingPause() { sheet.recordingUndo_ = was; }
+        UltraCanvasSpreadsheet& sheet;
+        bool was;
+    };
     static void RewriteSnapshotFormulas(SpreadsheetUndoAction& action,
                                         const std::function<std::string(const std::string&)>& rewrite);
     
