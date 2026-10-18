@@ -7,8 +7,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
-// Version: 1.8.0 - the transform bar: position, size, scale with a locked aspect ratio,
+// Version: 1.9.0 - the transform bar: position, size, scale with a locked aspect ratio,
 //                  rotation and shear of the selection about a reference point
+// Version: 1.8.0 - settings (ArtCreatorSettings): the colour picker opens as it was left
 // Version: 1.7.0 - icon mode: an icon size, a pixel grid, pixel snapping aware of the
 //                  line width, Snap to Pixels and the pixel preview; the palette's
 //                  tools in groups (toolSlots)
@@ -43,6 +44,7 @@
 #include "ArtCreatorTools.h"
 #include "ArtCreatorDialogs.h"
 #include "ArtCreatorIcon.h"
+#include "ArtCreatorSettings.h"
 
 #include <memory>
 #include <string>
@@ -84,6 +86,9 @@ private:
     void BuildTransformBar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next window opens it the way it was left.
+    void RememberColourPicker();
     void BuildStatusBar();
     void InstallShortcuts();
     // The app's icons come in three sizes, each drawn on its own pixel grid
@@ -234,6 +239,7 @@ private:
     std::shared_ptr<UltraCanvasVectorCanvas>    canvas;
     std::shared_ptr<UltraCanvasContainer>       rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>     colorPicker;
+    ArtCreatorSettings                          settings;
     std::shared_ptr<UltraCanvasColorSwatchBar>  swatches;
     std::shared_ptr<UltraCanvasGradientEditor>  ramp;
     std::shared_ptr<UltraCanvasContainer>       optionsPanel;

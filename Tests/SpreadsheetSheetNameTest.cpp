@@ -1,7 +1,8 @@
 // Tests/SpreadsheetSheetNameTest.cpp
 // The rules behind the sheet tab menu's Rename: CheckSheetName, which says
 // why a name cannot be a sheet's, and RenameSheetInFormula, which makes
-// every formula naming the renamed sheet follow it. Runs on the sheet code
+// every formula naming the renamed sheet follow it, and RemoveSheetFromFormula,
+// which makes references to a deleted sheet #REF!. Runs on the sheet code
 // alone, with no UI stack.
 #include "UltraCanvasSpreadsheetSheet.h"
 
@@ -56,9 +57,22 @@ static void TestRenameSheetInFormula() {
     CHECK_EQ(RenameSheetInFormula("=2016.5*'2016'.A1", "2016", "Y"), std::string("=2016.5*Y.A1"));
 }
 
+static void TestRemoveSheetFromFormula() {
+    CHECK_EQ(RemoveSheetFromFormula("=Sales.A1*2", "Sales"), std::string("=#REF!*2"));
+    CHECK_EQ(RemoveSheetFromFormula("=Sales!$B$2+1", "Sales"), std::string("=#REF!+1"));
+    CHECK_EQ(RemoveSheetFromFormula("=SUM(sales.A1:B3)", "Sales"), std::string("=SUM(#REF!)"));
+    CHECK_EQ(RemoveSheetFromFormula("=SUM('Q 1'.A1:'Q 1'.C9)", "Q 1"), std::string("=SUM(#REF!)"));
+    CHECK_EQ(RemoveSheetFromFormula("=Sales.A1+Costs.A1", "Sales"), std::string("=#REF!+Costs.A1"));
+    // Left alone: other sheets, longer names, text, plain references, numbers.
+    CHECK_EQ(RemoveSheetFromFormula("=Sales2.A1+MySales.B2", "Sales"), std::string("=Sales2.A1+MySales.B2"));
+    CHECK_EQ(RemoveSheetFromFormula("=\"Sales.A1\"&A1", "Sales"), std::string("=\"Sales.A1\"&A1"));
+    CHECK_EQ(RemoveSheetFromFormula("=A1:B2*2016.5", "2016"), std::string("=A1:B2*2016.5"));
+}
+
 int main() {
     TestCheckSheetName();
     TestRenameSheetInFormula();
+    TestRemoveSheetFromFormula();
 
     if (failures == 0) {
         std::cout << "SpreadsheetSheetNameTest: all checks passed\n";

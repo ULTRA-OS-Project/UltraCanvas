@@ -80,10 +80,12 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.28.0 - a closed tab's folder display is destroyed once its workers
+//                  have stopped (RetireDisplay), not while the tab closes
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1107,6 +1109,16 @@ private:
 
     // ===== STATE =====
     std::vector<std::unique_ptr<FilerTabState>> tabStates;  // mirrors tab order
+    // Closed tabs whose folder display is still stopping its workers. A
+    // display is destroyed on the UI thread, and its destructor waits for
+    // every worker - one busy with a slow file (a video grab, a folder walk
+    // on a sleeping disk) would freeze the window as the tab closes. So a
+    // closed tab's display is told to stop (RequestBackgroundStop), kept
+    // here, and destroyed by ReapRetiredDisplays once its workers are gone.
+    std::vector<std::unique_ptr<FilerTabState>> retiredDisplays;
+    TimerId retiredReapTimer = InvalidTimerId;
+    void RetireDisplay(std::unique_ptr<FilerTabState> state);
+    void ReapRetiredDisplays();
     int tabCounter = 0;                    // unique widget ids for new tabs
     // The split view's right-hand display: a folder display like a tab's,
     // with its own Back / Forward history, that is in no tab. Created with

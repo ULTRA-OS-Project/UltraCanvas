@@ -89,11 +89,21 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT)
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT).
+// A password-protected .docx asks for its password before it loads.
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
 });
 ```
+
+A file saved with *Encrypt with Password* - an `.xlsx`, `.docx` or `.pptx` -
+needs its password before any loader can read it.
+`RequestDocumentPassword(path, parent, onResult)` asks for it in a password
+field, checks it, and asks again after a wrong one; it calls straight back
+with `(true, "")` for a file that has none. Pass what it hands back to the
+loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
+`LoadFromFile(path, password)`. See
+[UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
 ### Editable Vector Documents
 

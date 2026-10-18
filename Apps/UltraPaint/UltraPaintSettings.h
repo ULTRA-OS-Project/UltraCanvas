@@ -4,14 +4,15 @@
 // config.ini - ~/.config/UltraCanvas/UltraPaint/config.ini on Linux). The
 // settings window (UltraPaintSettingsDialog) applies a change to the running
 // editor at once and saves it right away, so there is no OK / Cancel.
+// Version: 1.2.1 - the designs' names are the framework's (ColorPickerWheelStyleName)
 // Version: 1.2.0 - the colour picker's design and whether its channels are open
 // Version: 1.1.0 - Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasColorPicker.h"    // ColorPickerWheelStyle
+#include "UltraCanvasColorPicker.h"    // ColorPickerWheelStyle and its names
 #include "UltraCanvasPathUtf8.h"       // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasSettingsFolder.h"
 
@@ -22,7 +23,6 @@
 #include <map>
 #include <string>
 #include <system_error>
-#include <utility>
 
 namespace UltraCanvas {
 
@@ -122,11 +122,7 @@ public:
             else if (it->second == "static") paletteAdaptive = false;
         }
         it = kv.find("picker.design");
-        if (it != kv.end()) {
-            for (const auto& [design, name] : kPickerDesigns) {
-                if (it->second == name) pickerDesign = design;
-            }
-        }
+        if (it != kv.end()) ColorPickerWheelStyleFromName(it->second, pickerDesign);
         it = kv.find("picker.channels");
         if (it != kv.end()) {
             if (it->second == "open") pickerChannelsOpen = true;
@@ -148,22 +144,12 @@ public:
         file << "display.magnifier.factor = " << magnifierFactor << "\n";
         file << "display.magnifier.size = " << magnifierSize << "\n";
         file << "palette.toolbar = " << (paletteAdaptive ? "adaptive" : "static") << "\n";
-        for (const auto& [design, name] : kPickerDesigns) {
-            if (design == pickerDesign) file << "picker.design = " << name << "\n";
-        }
+        file << "picker.design = " << ColorPickerWheelStyleName(pickerDesign) << "\n";
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
         return file.good();
     }
 
 private:
-    // The designs as the file names them.
-    static constexpr std::pair<ColorPickerWheelStyle, const char*> kPickerDesigns[] = {
-        { ColorPickerWheelStyle::Ring,                "circle"    },
-        { ColorPickerWheelStyle::Bar,                 "square"    },
-        { ColorPickerWheelStyle::HueLightnessField,   "rectangle" },
-        { ColorPickerWheelStyle::HueLightnessSliders, "sliders"   },
-    };
-
     static std::string Trim(const std::string& s) {
         const size_t a = s.find_first_not_of(" \t");
         if (a == std::string::npos) return {};

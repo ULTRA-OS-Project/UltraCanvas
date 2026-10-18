@@ -1,3 +1,139 @@
+#### 2026-10-18 *0.9.337*
+- **An FTP call can be called off** (UltraNet FTP 0.7.0).
+  `UltraNetFtpOptions::isCancelled`, or `UltraNet_SetThreadFtpCancel` for a
+  caller behind a layer that builds the options (UltraCloud), is asked while
+  the call runs - as bytes move, and about once a second while none do - and
+  ends it as `UltraNetResultCode::Cancelled` ("called off"). Until now a
+  download ran to its last byte whoever was waiting for it. UltraCloud's FTP
+  provider reports such a call as `ResultCode::Cancelled` rather than as a
+  server refusal. Two loopback tests in `test_ftp_log.cpp` call off a stalled
+  listing, through the options and through the thread.
+- **A folder display can be retired without waiting for its workers**
+  (`UltraCanvasFilerWidget::RequestBackgroundStop` / `BackgroundStopped`).
+  The destructor joins every worker the widget started, so destroying a
+  display whose worker was busy with a slow file held the UI thread for as
+  long. A host now tells the workers to stop, keeps the widget, and destroys
+  it once `BackgroundStopped()` says every worker thread has returned; every
+  thread the widget starts is counted for it. `FilerRetireTest` checks it, on
+  Windows too.
+
+#### 2026-10-18 *0.9.336*
+- **UltraFiler: the move / copy and delete questions show how much is going.** The
+  *Move files* / *Copy files* confirmation said **Size: 0 B** for every file:
+  `UltraCanvasFilerWidget::EntriesForPaths()` built its entries from the file
+  status alone and never read a size, so the delete confirmation's totals were
+  short by the same amount. It now reads each file's size. A folder is counted
+  too, on the background worker the info bar's folder sizes use: the dialog
+  opens at once with **Size:** *counting…* and the line fills in when the walk
+  lands - "4.5 MB (120 files in 8 folders)" for one folder, "1 folder and 2
+  files (4.6 MB)" for a set, "≥" when the walk stopped at its safety cap. A
+  folder rescan while the question is open queues the walk again. New
+  `OperationDialogSpec::liveFacts` lets any operation dialog re-derive its
+  facts as walks land.
+- **The delete confirmation counts folders the same way.** Its **Size:**
+  line used to add up only the files' own sizes ("… in the files") and was
+  missing for a single file or folder; it now uses the same background count
+  as the move / copy question (`UltraCanvasFilerWidget::CountedSizeFact()`).
+  Folders on a remote drive or inside an archive, which the walk cannot read,
+  keep the files-only total.
+
+#### 2026-10-18 *0.9.335*
+- **The colour picker's designs have names for a settings file.**
+  `ColorPickerWheelStyleName` gives each design the name a host keeps it
+  under - `circle`, `square`, `rectangle`, `sliders` - and
+  `ColorPickerWheelStyleFromName` reads one back, refusing a name that is
+  none of them and leaving the design as it was. UltraPaint's settings used
+  a table of their own for this; they and ArtCreator's new settings file now
+  share these (`ArtCreatorSettingsTest`).
+
+#### 2026-10-18 *0.9.334*
+- **Spreadsheet: deleting a sheet can be undone.** `RemoveSheet` (and the
+  sheet tab menu's Delete) is now one undo step: Ctrl+Z puts the sheet back at
+  its place with its cells, its own undo history, and the formulas the delete
+  had turned to `#REF!` naming it again; Ctrl+Y deletes it again. A sheet that
+  comes back to find its name taken returns as "Name (2)". Undo steps now find
+  their sheet by a fixed id (`SpreadsheetSheet::GetId`) instead of its name,
+  so a deleted sheet's history waits for it instead of being thrown away, and
+  can never reach a different sheet that took the name.
+
+#### 2026-10-18 *0.9.333*
+- **`RunProcessCaptured` can hand over the output as it comes.** A fourth,
+  optional argument, `onOutput(data, size, fromStandardError)`, receives each
+  chunk as it is read from the child's pipes, while the output is still
+  collected into the result as before; existing callers are unchanged. The
+  calls come from the calling thread (POSIX) or the reader threads
+  (Windows), serialised so that two never run at once. UltraCanvasStart uses
+  it to show the MSYS2 set-up, the package install and the build while they
+  run. `ProcessRunnerTest` checks that the first chunk arrives before the
+  child ends and that the chunks add up to what is collected.
+
+#### 2026-10-17 *0.9.332*
+- **Spreadsheet: undo after a sheet is renamed or deleted wrote into the open
+  sheet.** An undo step finds its sheet by name, and when none had that name
+  it fell back to the active sheet - so after renaming "Sales", undoing an
+  edit made on it cleared the same cells on whatever sheet was open, and the
+  same after deleting a sheet. Renaming now carries the history along (the
+  steps name the new name, and formulas they put back refer to it); deleting
+  drops the sheet's steps; and undo never falls back to another sheet.
+- **Spreadsheet: deleting a sheet makes references to it `#REF!` in the
+  formula text,** as Excel does: `=Gone.E5*2` becomes `=#REF!*2`,
+  `=SUM(Gone.A1:B3)` becomes `=SUM(#REF!)`. They used to keep the deleted
+  sheet's name, and a sheet later added under that name would quietly have
+  been read in its place (`RemoveSheetFromFormula`).
+
+#### 2026-10-17 *0.9.331*
+- **DemoApp: the File Explorer TreeView looks like a file manager's
+  navigation pane.** The first tree on the TreeView page now shows *Pinned*
+  (Documents, Work, ULTRA OS, privat) and *Computer* with Home (Downloads,
+  Dokumente, Desktop, Bilder, Videos, Music), Cloud Storage (OneDrive,
+  Dropbox), Remote Drives (an FTP server) and drive C: with its folders. The
+  root is hidden (`SetRootVisible(false)`) so Pinned and Computer are the top
+  level, joined by root lines; Home starts selected.
+
+#### 2026-10-17 *0.9.330*
+- **Password-protected .xlsx and .docx files open.** A workbook or document
+  saved with *Encrypt with Password* (ECMA-376 agile encryption, what Office
+  2010 and later write) is a compound file, not a ZIP, and was refused as
+  password-protected (`.xlsx`) or as a `.doc` that could not be read (`.docx`).
+  `UltraCanvasOfficeEncryption.h` decrypts it with UltraCrypt: the SHA-512
+  password key (100 000 rounds), the password verifier, the dataIntegrity HMAC
+  over the whole encrypted package - checked before a byte is decrypted, so a
+  changed file is refused - and the package in 4096-byte segments, each with
+  its own IV.
+  - `UltraCanvasSpreadsheet::LoadFromFile`, `LoadXLSX` and `LoadXLS` (a
+    protected `.xlsx` under the `.xls` name), and `UCWordDocumentIO::Load` /
+    `LoadDocx`, take the password as a last, optional argument. Without it the
+    message says the file is password-protected; with a wrong one, that the
+    password is not correct.
+  - `UltraCanvasFileLoader::RequestDocumentPassword` asks for the password,
+    checks it (`CheckOfficePassword`, the verifier only) and asks again after
+    a wrong one; `OpenTextDocument` and the demo's spreadsheet Open button use
+    it. `LoadTextDocument` takes the password too.
+  - `UCZipPackageReader::OpenFromMemory` reads the decrypted package.
+  - Refused with the reason: Office 2007's standard encryption, SHA-1-keyed
+    agile files (Office 2010's default), certificate-only encryption, a file
+    without an integrity check.
+  - The core library now uses UltraCrypt: a shared core already absorbs it, a
+    static one links it `PUBLIC`.
+  - `Tests/OfficeEncryptionTest.cpp` reads a workbook and a document encrypted
+    by msoffcrypto-tool (`Tests/fixtures/make-office-encrypted-fixtures.py`).
+- **UltraCrypt 0.3.0: AES-CBC, for formats defined elsewhere.** Encrypted
+  Office files, PDF's AESV2/AESV3 and OpenSSL's `enc` output are AES in CBC
+  mode, and libsodium has no AES block cipher, so UltraCrypt now carries its
+  own: `UltraCrypt_AesCbcEncrypt` / `UltraCrypt_AesCbcDecrypt` with a 128-,
+  192- or 256-bit key, PKCS #7 or no padding, and a random IV generated when
+  none is given (`core/UltraCrypt/UltraCryptAes.cpp`).
+  - Constant-time: bitsliced, with the Boyar-Peralta S-box circuit, so no
+    table is indexed by a secret byte. Portable software, independent of
+    libsodium and of AES instructions.
+  - Refused padding is the new `UltraCryptResultCode::DecryptionFailed`, with
+    an empty output; the check does not branch on the plaintext.
+  - Interop only. CBC has no integrity, so UltraCanvas's own data stays on
+    XChaCha20-Poly1305, and a format that carries a MAC must have it checked
+    before decrypting (`Docs/Modules/UltraCrypt/README.md` §5.9).
+  - `UltraCryptTests` checks FIPS 197 App. C and SP 800-38A F.2 for all three
+    key sizes, PKCS #7 lengths 0-80, and refused padding.
+
 #### 2026-10-17 *0.9.329*
 - **Spreadsheet: clicking a cell while typing a formula types its address.**
   Typing `=SUM(` and dragging over C2:C8 used to end the edit and select the

@@ -155,6 +155,8 @@ void  RequestRemoveSheet(int index);   // asks first when the sheet has cells
 std::string CheckSheetName(const std::string& name);   // why not, or ""
 std::string RenameSheetInFormula(const std::string& formula,
                                  const std::string& oldName, const std::string& newName);
+std::string RemoveSheetFromFormula(const std::string& formula,
+                                   const std::string& sheetName);   // its references -> #REF!
 ```
 
 ### Selection and Navigation
@@ -288,17 +290,20 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 ### File Operations
 
 ```cpp
-// Format chosen automatically from the file extension.
-bool LoadFromFile(const std::string& filePath);
+// Format chosen automatically from the file extension. `password` opens a
+// password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
+// formats ignore it.
+bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
 bool SaveToFile(const std::string& filePath);
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
-bool LoadXLSX(const std::string& filePath);
+bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
 bool SaveXLSX(const std::string& filePath);
-// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx, HTML table, Excel 2003
-// XML file or delimited text saved under the name. Read only.
-bool LoadXLS(const std::string& filePath);
+// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx (password-protected or
+// not), HTML table, Excel 2003 XML file or delimited text saved under the
+// name. Read only.
+bool LoadXLS(const std::string& filePath, const std::string& password = std::string());
 
 // CSV/TSV: single-argument form auto-detects encoding/separators.
 bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
@@ -504,7 +509,7 @@ sheet->Recalculate();
 
 ### 4. Open a Spreadsheet File (.ods / .csv)
 
-Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback.
+Wire an "Open" button to a file dialog and load via `LoadFromFile` (format auto-detected from the extension). On failure, report `GetLastError()`. Capture `shared_ptr`s so the grid and label stay valid for the async callback. A password-protected `.xlsx` needs its password: `UltraCanvasFileLoader::RequestDocumentPassword` asks for it (and calls straight back for any other file), then pass it as `LoadFromFile(path, password)` - the demo's Open button does this, see [UltraCanvasOfficeEncryption.md](UltraCanvasOfficeEncryption.md).
 
 ```cpp
 auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,
@@ -948,7 +953,7 @@ Right-click a sheet tab: the sheet opens, and its menu offers
 - **Move left**, **Move right**, **Move to start**, **Move to end** — each
   greyed out where the sheet already is;
 - **Delete sheet** — asks first when the sheet holds any cells, and is
-  greyed out for the only sheet.
+  greyed out for the only sheet; Ctrl+Z brings it back.
 
 A right-click on the empty part of the strip offers **Insert sheet**, which
 adds one at the end.
@@ -957,8 +962,22 @@ A sheet name is at most 31 characters, has none of `[ ] : * ? / \`, does not
 start or end with an apostrophe, and is not another sheet's name (ignoring
 case) — the rules `.xlsx` and `.ods` files share. A rejected name is
 explained and the dialog asked again. Renaming rewrites every formula, on any
-sheet, that names the sheet: `=Sales.C2` becomes `='Sales 2016'.C2`. A
-formula naming a deleted sheet shows `#REF!`.
+sheet, that names the sheet: `=Sales.C2` becomes `='Sales 2016'.C2`.
+Deleting a sheet turns every reference to it into `#REF!` in the formula
+itself, as Excel does: `=Gone.E5*2` becomes `=#REF!*2` and
+`=SUM(Gone.A1:B3)` becomes `=SUM(#REF!)`, so the cell shows `#REF!` and the
+formula says why.
+
+Deleting a sheet is one undo step: **Ctrl+Z** puts it back where it was,
+with its cells, its own undo history, and the references the delete turned to
+`#REF!` naming it again; **Ctrl+Y** deletes it again. If another sheet has
+taken its name in the meantime, it comes back as "Gone (2)".
+
+Undo keeps up with renames too: the sheet's earlier steps still undo into it,
+and an undone formula names the sheet's new name. Each step finds its sheet
+by a fixed id (`SpreadsheetSheet::GetId()`), not by name, so it never writes
+into whichever sheet is open, or into another sheet that has since taken the
+name.
 
 From code: `RenameSheet` (returns false for a name `ValidateSheetName`
 rejects), `PromptRenameSheet`, `RequestRemoveSheet`, and

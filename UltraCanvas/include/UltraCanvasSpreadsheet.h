@@ -45,6 +45,16 @@ struct SpreadsheetUndoAction {
     int count = 0;
     std::string oldName;
     std::string newName;
+    // The sheet the step belongs to (SpreadsheetSheet::GetId); 0 for a step
+    // that only knows sheetName.
+    uint64_t sheetId = 0;
+    // SheetDelete: a copy of the deleted sheet (same id), where it stood, and
+    // the formulas on other sheets that deleting it turned to #REF!, so undo
+    // can put all of it back.
+    struct FormulaText { uint64_t sheetId; int row; int col; std::string formula; };
+    std::shared_ptr<SpreadsheetSheet> removedSheet;
+    int sheetIndex = -1;
+    std::vector<FormulaText> rewrittenFormulas;
 };
 
 // A text measurer backed by a live render context: it selects each cell's own
@@ -257,6 +267,9 @@ public:
     const SpreadsheetSheet* GetSheetByName(const std::string& name) const;
     SpreadsheetSheet* AddSheet(const std::string& name = "");
     SpreadsheetSheet* InsertSheet(int index, const std::string& name = "");
+    // Deletes the sheet as one undo step: Undo puts it back where it was,
+    // with its cells, its own undo history and the references to it that
+    // the delete turned to #REF!.
     void RemoveSheet(int index);
     void RemoveSheetByName(const std::string& name);
     // Renames the sheet and rewrites every formula, on every sheet, that
@@ -549,17 +562,23 @@ public:
     void SetAutoCalculate(bool enabled);
     
     // ===== FILE OPERATIONS =====
-    bool LoadFromFile(const std::string& filePath);
+    // `password` opens a password-protected .xlsx (also one named .xls): the
+    // ECMA-376 agile encryption Excel 2010 and later write, see
+    // UltraCanvasOfficeEncryption.h. Without it such a file fails with a
+    // message saying a password is needed; a wrong one, with "The password is
+    // not correct". UltraCanvasFileLoader::RequestDocumentPassword asks the
+    // user for it. Other formats ignore it.
+    bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
     bool SaveToFile(const std::string& filePath);
     bool LoadODS(const std::string& filePath);
     bool SaveODS(const std::string& filePath);
-    bool LoadXLSX(const std::string& filePath);
+    bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
     bool SaveXLSX(const std::string& filePath);
     // Legacy Excel workbooks (.xls): Excel 97-2003 and 5.0/95 binary files, and
     // what else Excel opens under the name - an .xlsx renamed, an HTML table, an
     // Excel 2003 XML workbook, delimited text. Read only: save as .xlsx or .ods.
     // See UltraCanvasSpreadsheetXls.h.
-    bool LoadXLS(const std::string& filePath);
+    bool LoadXLS(const std::string& filePath, const std::string& password = std::string());
     // Load a CSV/TSV file. The single-argument form auto-detects the encoding,
     // field separator and decimal separator (see CSVDetectOptions); use the
     // WithOptions form to apply settings chosen in the import dialog.
@@ -685,6 +704,17 @@ private:
     void CancelUndoGroup();
     void PushUndo(const SpreadsheetUndoAction& action);
     void ApplyUndo(const SpreadsheetUndoAction& action);
+    // Keeps the undo and redo history in step with a renamed or deleted
+    // sheet: `keep` may edit each step and returns false to drop it.
+    void RewriteUndoHistory(const std::function<bool(SpreadsheetUndoAction&)>& keep);
+    // The sheet a step belongs to: by id, or by name for a step without one.
+    SpreadsheetSheet* FindUndoSheet(const SpreadsheetUndoAction& action);
+    // Deletes sheet `index`; with `record`, fills it in as the SheetDelete
+    // step that puts it back (RestoreDeletedSheet).
+    void RemoveSheetAt(int index, SpreadsheetUndoAction* record);
+    void RestoreDeletedSheet(const SpreadsheetUndoAction& action);
+    static void RewriteSnapshotFormulas(SpreadsheetUndoAction& action,
+                                        const std::function<std::string(const std::string&)>& rewrite);
     
     void InitializeDefaultSheet();
     // Clear/select the target sheet for a CSV import (creating Sheet1 when the

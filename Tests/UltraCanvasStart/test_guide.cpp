@@ -2,6 +2,7 @@
 // The Markdown the pages show: one action per numbered step, links that
 // open, the SDK named for real, and the plain-text reduction the report uses;
 // and the words of the Tools step's rows and of what Install will do.
+// Version: 0.2.3 - InstallPreview with switches off
 // Version: 0.2.2 - the SDK named with the download page, not a release asset link
 // Version: 0.2.1 - no AI assistant: its guide and --assistant none
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
@@ -106,6 +107,28 @@ TEST(InstallPreview_says_what_Install_does) {
 
     checks[1].present = true;
     REQUIRE(InstallPreview(BuildPlan(profile, choices, checks)).find("nothing to do") != std::string::npos);
+}
+
+TEST(InstallPreview_counts_only_what_is_switched_on) {
+    SystemProfile profile;
+    profile.platform = Platform::Linux;
+    profile.architecture = "x86_64";
+    profile.packageManager = PackageManager::Apt;
+    profile.packageManagerPath = "/usr/bin/apt-get";
+    Choices choices;
+    choices.platform = Platform::Linux;
+    std::vector<CheckResult> checks(2);
+    checks[0].dependencyId = "cairo"; checks[0].checked = true; checks[0].packageName = "libcairo2-dev";
+    checks[1].dependencyId = "pango"; checks[1].checked = true; checks[1].packageName = "libpango1.0-dev";
+
+    choices.SetSkipped("cairo", true);
+    const std::string some = InstallPreview(BuildPlan(profile, choices, checks));
+    REQUIRE(some.find("for the 1 switched on (of 2 missing)") != std::string::npos);
+    REQUIRE(some.find("libcairo2-dev") == std::string::npos);
+
+    choices.SetSkipped("pango", true);
+    const std::string none = InstallPreview(BuildPlan(profile, choices, checks));
+    REQUIRE(none.find("All 2 missing are switched off") == 0);
 }
 
 TEST(AiGuide_says_how_to_install_or_where_it_is) {

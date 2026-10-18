@@ -5,7 +5,11 @@
 //    address at the caret, a drag a range, Shift+click grows it, Ctrl+click
 //    adds another, and a click where no reference fits ends the edit;
 //  - Ctrl+D / Ctrl+R and the fill handle's Ctrl (copy) mode;
-//  - renaming a sheet: refused names, and formulas following the new name.
+//  - renaming a sheet: refused names, and formulas following the new name;
+//  - undo after a sheet is renamed: its steps follow it, and nothing lands
+//    on the sheet that is open instead;
+//  - deleting a sheet: references to it become #REF! in the formula text,
+//    and undo puts the sheet, its history and those references back.
 //
 // Usage: SpreadsheetPointModeTest
 // Exit code is the number of failed checks.
@@ -147,6 +151,87 @@ int main() {
     Check(grid->RenameSheet(sales, "Sales 2016"), "Sales 2016 is accepted");
     Check(grid->GetCellFormula(0, 0) == "='Sales 2016'.A1*2",
           "formulas follow the new name [" + grid->GetCellFormula(0, 0) + "]");
+
+    std::printf("\n-- undo follows a renamed sheet --\n");
+    {
+        auto book = std::make_shared<UltraCanvasSpreadsheet>("book", 0, 0, 900, 600);
+        book->GetSheet(0)->GetCell(0, 0)->SetNumber(42);      // Sheet1.A1, outside the history
+        book->AddSheet("Sales");
+        book->SetActiveSheet(1);
+        book->SetCellValue(0, 0, 5.0);                        // Sales.A1 = 5 (undoable)
+        book->SetCellFormula(1, 0, "=A1*2");
+        book->SetActiveSheet(0);
+        book->SetCellFormula(0, 1, "=Sales.A1+1");            // Sheet1.B1
+        book->SetCellFormula(0, 1, "=Sales.A1+2");
+        book->RenameSheet(1, "Revenue");
+        book->SetCellValue(0, 0, 77.0);                       // Sheet1.A1, open sheet
+        book->Undo();                                         // Sheet1.A1 back to empty
+        book->Undo();                                         // Sheet1.B1 back to =...+1
+        Check(book->GetCellFormula(0, 1) == "=Revenue.A1+1",
+              "an undone formula names the sheet's new name [" + book->GetCellFormula(0, 1) + "]");
+        book->Undo();                                         // B1 empty
+        book->Undo();                                         // Revenue.A2 formula gone
+        book->Undo();                                         // Revenue.A1 back to empty
+        auto* revenue = book->GetSheetByName("Revenue");
+        const SpreadsheetCell* a1 = revenue ? revenue->GetCellIfExists(0, 0) : nullptr;
+        Check(revenue && (!a1 || a1->IsEmpty()), "undo emptied the renamed sheet's A1 again");
+        Check(book->GetCellNumber(0, 0) == 42.0, "and left the open sheet's A1 alone");
+    }
+
+    std::printf("\n-- deleting a sheet: references become #REF!, and undo puts it all back --\n");
+    {
+        auto book = std::make_shared<UltraCanvasSpreadsheet>("book2", 0, 0, 900, 600);
+        book->GetSheet(0)->GetCell(4, 4)->SetNumber(1);       // Sheet1.E5, outside the history
+        book->AddSheet("Gone");
+        book->AddSheet("Last");
+        book->SetActiveSheet(1);
+        book->SetCellValue(4, 4, 99.0);                       // Gone.E5 = 99 (undoable)
+        book->SetActiveSheet(0);
+        book->SetCellFormula(0, 0, "=Gone.E5*2");
+        book->SetCellFormula(1, 0, "=SUM(Gone.A1:B3)+E5");
+        book->RemoveSheet(1);
+        Check(book->GetSheetCount() == 2, "the sheet is gone");
+        Check(book->GetCellFormula(0, 0) == "=#REF!*2", "=Gone.E5*2 became =#REF!*2 [" + book->GetCellFormula(0, 0) + "]");
+        Check(book->GetCellFormula(1, 0) == "=SUM(#REF!)+E5", "a range became #REF! [" + book->GetCellFormula(1, 0) + "]");
+        Check(book->GetCellDisplayValue(0, 0) == "#REF!", "and shows #REF! [" + book->GetCellDisplayValue(0, 0) + "]");
+        Check(book->GetUndoDescription() == "Delete sheet Gone", "the delete is an undo step [" + book->GetUndoDescription() + "]");
+
+        book->Undo();
+        Check(book->GetSheetCount() == 3 && book->GetSheet(1)->GetName() == "Gone", "undo puts Gone back in its place");
+        Check(book->GetActiveSheetIndex() == 1, "and opens it");
+        Check(book->GetCellNumber(4, 4) == 99.0, "with its cells (E5 = 99)");
+        book->SetActiveSheet(0);
+        Check(book->GetCellFormula(0, 0) == "=Gone.E5*2", "the #REF! references name it again [" + book->GetCellFormula(0, 0) + "]");
+        Check(book->GetCellNumber(0, 0) == 198.0, "and calculate (198)");
+
+        book->Redo();
+        Check(book->GetSheetCount() == 2 && book->GetCellFormula(0, 0) == "=#REF!*2", "redo deletes it again");
+        book->Undo();
+        Check(book->GetSheetCount() == 3, "and undo brings it back once more");
+
+        // Gone's own history came back with it: undo the two formulas, then
+        // its E5 edit, which lands on Gone, not on the open Sheet1.
+        book->SetActiveSheet(0);
+        book->Undo();
+        book->Undo();
+        book->Undo();
+        Check(book->GetSheet(1)->GetCellIfExists(4, 4) == nullptr || book->GetSheet(1)->GetCellIfExists(4, 4)->IsEmpty(),
+              "Gone's own undo step restored Gone.E5");
+        Check(book->GetCellNumber(4, 4) == 1.0, "Sheet1.E5 is untouched");
+    }
+
+    std::printf("\n-- a deleted sheet whose name was taken comes back renamed --\n");
+    {
+        // A name taken in the meantime: the restored sheet comes back renamed.
+        auto clash = std::make_shared<UltraCanvasSpreadsheet>("book4", 0, 0, 900, 600);
+        clash->AddSheet("Q1");
+        clash->RemoveSheet(1);
+        clash->RenameSheet(0, "Q1");
+        clash->Undo();
+        Check(clash->GetSheetCount() == 2 && clash->GetSheet(1)->GetName() == "Q1 (2)",
+              "a restored sheet whose name was taken comes back as \"Q1 (2)\" [" +
+              (clash->GetSheetCount() > 1 ? clash->GetSheet(1)->GetName() : std::string("-")) + "]");
+    }
 
     std::printf("\n%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;

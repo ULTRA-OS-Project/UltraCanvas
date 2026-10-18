@@ -108,21 +108,90 @@ SpreadsheetSheet* UltraCanvasSpreadsheet::InsertSheet(int index, const std::stri
 void UltraCanvasSpreadsheet::RemoveSheet(int index) {
     if (index < 0 || index >= (int)sheets_.size()) return;
     //if (sheets_.size() <= 1) return;  // Always keep at least one sheet.
+    if (!recordingUndo_) {
+        RemoveSheetAt(index, nullptr);
+        return;
+    }
+    SpreadsheetUndoAction action;
+    action.type = UndoActionType::SheetDelete;
+    action.description = "Delete sheet " + sheets_[index]->GetName();
+    RemoveSheetAt(index, &action);
+    PushUndo(action);
+}
 
+void UltraCanvasSpreadsheet::RemoveSheetAt(int index, SpreadsheetUndoAction* record) {
+    if (index < 0 || index >= (int)sheets_.size()) return;
+    const std::string removedName = sheets_[index]->GetName();
+    if (record) {
+        record->sheetName = removedName;
+        record->sheetId = sheets_[index]->GetId();
+        record->sheetIndex = index;
+        record->removedSheet = std::shared_ptr<SpreadsheetSheet>(sheets_[index]->CloneKeepingId());
+        record->rewrittenFormulas.clear();
+    }
     sheets_.erase(sheets_.begin() + index);
+
+    // References to it become #REF! in the formulas themselves, as in Excel;
+    // what they said is kept for undo. The sheet's own undo steps stay: they
+    // find their sheet by id, so they wait, under this step, for undo to put
+    // it back, and a later sheet given the same name never receives them.
+    for (auto& sheet : sheets_) {
+        sheet->ForEachCell([&](int row, int col, SpreadsheetCell& cell) {
+            if (!cell.HasFormula()) return;
+            const std::string text = RemoveSheetFromFormula(cell.GetFormulaText(), removedName);
+            if (text == cell.GetFormulaText()) return;
+            if (record) record->rewrittenFormulas.push_back({ sheet->GetId(), row, col, cell.GetFormulaText() });
+            cell.SetFormula(text);
+        });
+    }
 
     for (int i = 0; i < (int)sheets_.size(); ++i) {
         sheets_[i]->SetIndex(i);
     }
 
     if (onSheetRemove) onSheetRemove(index);
-    RecalculateAll();   // references to the removed sheet become #REF!
+    RecalculateAll();   // the #REF! formulas show it
 
     // Keep the active sheet index valid.
     if (activeSheetIndex_ >= (int)sheets_.size()) {
         activeSheetIndex_ = (int)sheets_.size() - 1;
     }
     SetActiveSheet(activeSheetIndex_);
+}
+
+void UltraCanvasSpreadsheet::RestoreDeletedSheet(const SpreadsheetUndoAction& action) {
+    if (!action.removedSheet) return;
+    const int index = std::clamp(action.sheetIndex, 0, (int)sheets_.size());
+    auto sheet = action.removedSheet->CloneKeepingId();
+    SpreadsheetSheet* ptr = sheet.get();
+    // A sheet given its name since then keeps it; this one comes back as
+    // "Gone (2)" rather than as a second "Gone".
+    if (!ValidateSheetName(-1, ptr->GetName()).empty()) {
+        const std::string base = ptr->GetName();
+        for (int n = 2; n < 1000; ++n) {
+            const std::string name = base + " (" + std::to_string(n) + ")";
+            if (ValidateSheetName(-1, name).empty()) { ptr->SetName(name); break; }
+        }
+    }
+    ptr->SetParent(this);
+    SetupSheetCallbacks(ptr);
+    sheets_.insert(sheets_.begin() + index, std::move(sheet));
+    for (int i = 0; i < (int)sheets_.size(); ++i) {
+        sheets_[i]->SetIndex(i);
+    }
+
+    // The references the delete turned to #REF! name the sheet again.
+    for (const auto& f : action.rewrittenFormulas) {
+        for (auto& other : sheets_) {
+            if (other->GetId() != f.sheetId) continue;
+            if (SpreadsheetCell* cell = other->GetCell(f.row, f.col)) cell->SetFormula(f.formula);
+            break;
+        }
+    }
+
+    if (onSheetAdd) onSheetAdd(index);
+    RecalculateAll();
+    SetActiveSheet(index);
 }
 
 void UltraCanvasSpreadsheet::RemoveSheetByName(const std::string& name) {
@@ -169,6 +238,17 @@ bool UltraCanvasSpreadsheet::RenameSheet(int index, const std::string& newName) 
         });
     }
     if (rewritten) RecalculateAll();
+
+    // The undo history follows too: the formulas its steps would put back
+    // name the new name (the steps find the sheet itself by its id).
+    const uint64_t renamedId = sheets_[index]->GetId();
+    RewriteUndoHistory([&](SpreadsheetUndoAction& action) {
+        if (action.sheetId == renamedId || (action.sheetId == 0 && action.sheetName == oldName)) {
+            action.sheetName = newName;
+        }
+        RewriteSnapshotFormulas(action, [&](const std::string& f) { return RenameSheetInFormula(f, oldName, newName); });
+        return true;
+    });
 
     if (onSheetRename) onSheetRename(index, newName);
     UpdateFormulaBar();
@@ -1256,9 +1336,53 @@ void UltraCanvasSpreadsheet::PushUndo(const SpreadsheetUndoAction& action) {
     if (onUndoStackChange) onUndoStackChange();
 }
 
+void UltraCanvasSpreadsheet::RewriteUndoHistory(const std::function<bool(SpreadsheetUndoAction&)>& keep) {
+    auto rewrite = [&keep](std::stack<SpreadsheetUndoAction>& stack) {
+        std::vector<SpreadsheetUndoAction> actions;   // top first
+        while (!stack.empty()) { actions.push_back(std::move(stack.top())); stack.pop(); }
+        for (auto it = actions.rbegin(); it != actions.rend(); ++it) {
+            if (keep(*it)) stack.push(std::move(*it));
+        }
+    };
+    const size_t before = undoStack_.size() + redoStack_.size();
+    rewrite(undoStack_);
+    rewrite(redoStack_);
+    if (undoStack_.size() + redoStack_.size() != before && onUndoStackChange) onUndoStackChange();
+}
+
+void UltraCanvasSpreadsheet::RewriteSnapshotFormulas(SpreadsheetUndoAction& action,
+                                                     const std::function<std::string(const std::string&)>& rewrite) {
+    for (auto& row : action.cellData) {
+        for (auto& cell : row) {
+            if (!cell.HasFormula()) continue;
+            const std::string text = rewrite(cell.GetFormulaText());
+            if (text != cell.GetFormulaText()) cell.SetFormula(text);
+        }
+    }
+    // A deleted sheet's step: the formulas it would put back, on the sheet
+    // and on the others.
+    for (auto& f : action.rewrittenFormulas) f.formula = rewrite(f.formula);
+    if (action.removedSheet) {
+        action.removedSheet->ForEachCell([&](int, int, SpreadsheetCell& cell) {
+            if (!cell.HasFormula()) return;
+            const std::string text = rewrite(cell.GetFormulaText());
+            if (text != cell.GetFormulaText()) cell.SetFormula(text);
+        });
+    }
+}
+
+SpreadsheetSheet* UltraCanvasSpreadsheet::FindUndoSheet(const SpreadsheetUndoAction& action) {
+    if (action.sheetId == 0) return GetSheetByName(action.sheetName);
+    for (auto& sheet : sheets_) {
+        if (sheet->GetId() == action.sheetId) return sheet.get();
+    }
+    return nullptr;
+}
+
 void UltraCanvasSpreadsheet::ApplyUndo(const SpreadsheetUndoAction& action) {
-    SpreadsheetSheet* sheet = GetSheetByName(action.sheetName);
-    if (!sheet) sheet = GetActiveSheet();
+    // Only ever into the sheet it was recorded on - never another sheet that
+    // happens to be open, or that has since taken its name.
+    SpreadsheetSheet* sheet = FindUndoSheet(action);
     if (!sheet) return;
 
     switch (action.type) {
@@ -1298,9 +1422,17 @@ void UltraCanvasSpreadsheet::Undo() {
 
     SpreadsheetUndoAction action = undoStack_.top();
 
+    if (action.type == UndoActionType::SheetDelete) {
+        // Put the sheet back; redoing deletes it again.
+        undoStack_.pop();
+        RestoreDeletedSheet(action);
+        redoStack_.push(action);
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
+
     // Snapshot the current state of the action's range as the redo entry.
-    SpreadsheetSheet* sheet = GetSheetByName(action.sheetName);
-    if (!sheet) sheet = GetActiveSheet();
+    SpreadsheetSheet* sheet = FindUndoSheet(action);
     if (sheet) {
         SpreadsheetUndoAction inverse = action;
         inverse.cellData = sheet->CopyCells(action.range);
@@ -1323,8 +1455,20 @@ void UltraCanvasSpreadsheet::Redo() {
 
     SpreadsheetUndoAction action = redoStack_.top();
 
-    SpreadsheetSheet* sheet = GetSheetByName(action.sheetName);
-    if (!sheet) sheet = GetActiveSheet();
+    if (action.type == UndoActionType::SheetDelete) {
+        redoStack_.pop();
+        SpreadsheetUndoAction again = action;
+        for (int i = 0; i < (int)sheets_.size(); ++i) {
+            if (sheets_[i]->GetId() != action.sheetId) continue;
+            RemoveSheetAt(i, &again);   // records what this delete rewrites
+            undoStack_.push(again);
+            break;
+        }
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
+
+    SpreadsheetSheet* sheet = FindUndoSheet(action);
     if (sheet) {
         SpreadsheetUndoAction inverse = action;
         inverse.cellData = sheet->CopyCells(action.range);
@@ -1380,6 +1524,7 @@ void UltraCanvasSpreadsheet::RecordRangeChange(const CellRange& range) {
     SpreadsheetUndoAction action;
     action.type = UndoActionType::CellValueChange;
     action.sheetName = sheet->GetName();
+    action.sheetId = sheet->GetId();
     action.range = range;
     action.cellData = sheet->CopyCells(range);  // pre-change snapshot
     action.description = "Edit " + range.ToString();
@@ -1398,6 +1543,7 @@ void UltraCanvasSpreadsheet::RecordStructureChange() {
     SpreadsheetUndoAction action;
     action.type = UndoActionType::Composite;
     action.sheetName = sheet->GetName();
+    action.sheetId = sheet->GetId();
     action.range = sheet->GetUsedRange();
     action.description = "Structure change";
 

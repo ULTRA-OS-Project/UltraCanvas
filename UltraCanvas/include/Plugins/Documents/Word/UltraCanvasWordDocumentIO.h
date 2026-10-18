@@ -8,8 +8,8 @@
 // [Content_Types].xml probe, CFB magic, \documentclass head) so renamed
 // files are classified correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md
 // and Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md.
-// Version: 1.2.0
-// Last Modified: 2026-09-25
+// Version: 1.3.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -38,12 +38,19 @@ public:
     // Auto-detects the format and loads. Returns false with a user-facing
     // reason in outError. When a legacy .doc cannot be read, the error
     // suggests converting it to .docx.
+    //
+    // `password` opens a password-protected .docx: the ECMA-376 agile
+    // encryption Word 2010 and later write (UltraCanvasOfficeEncryption.h).
+    // Such a file is a compound file, so DetectWordDocumentFormat calls it
+    // LegacyDoc; Load and LoadDocx recognise it and decrypt it. Without the
+    // password it fails with a message saying one is needed;
+    // UltraCanvasFileLoader::RequestDocumentPassword asks the user for it.
     static bool Load(const std::string& filePath, UCRichDocument& outDocument,
-                     std::string& outError);
+                     std::string& outError, const std::string& password = std::string());
     static bool LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
                         std::string& outError);
     static bool LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
-                         std::string& outError);
+                         std::string& outError, const std::string& password = std::string());
     // Word 97-2003 binary (CFB container, piece table, FKPs, stylesheet,
     // list tables): headings, character formatting, alignment, bullet and
     // numbered lists, tables, hyperlinks and PNG/JPEG pictures. Headers,
@@ -74,7 +81,7 @@ public:
 private:
     // Load's format dispatch, before the shared post-processing.
     static bool LoadByFormat(const std::string& filePath, UCRichDocument& outDocument,
-                             std::string& outError);
+                             std::string& outError, const std::string& password);
 };
 
 } // namespace UltraCanvas

@@ -2,6 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.9.0 - the colour picker opens with the design and channels it was left with
+//                 (ArtCreatorSettings: picker.design, picker.channels in config.ini)
 // Version: 1.8.2 - the colour picker offers its design list, folds its channels and is
 //                 as tall as its content (SetAutoHeight)
 // Version: 1.8.1 - the colour picker in the framework's light style (ColorPickerStyle::Light)
@@ -27,7 +29,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -201,6 +203,7 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(236, 236, 238, 255));
 
+    settings.Load();   // no file yet: the defaults stand
     tools = CreateArtTools();
 
     BuildMenuBar();
@@ -986,9 +989,13 @@ void ArtCreatorWindow::BuildRightPanel() {
     colorPicker->SetBackgroundColor(lineColour);
     colorPicker->SetShowAlpha(true);
     // The design list top right (circle, square, rectangle, two sliders), and
-    // the HSV / HSL / RGB channels folded under their disclosure row.
+    // the HSV / HSL / RGB channels under their disclosure row - both as the
+    // user left them (folded the first time).
+    colorPicker->SetWheelStyle(settings.pickerDesign);
     colorPicker->SetShowWheelStyleSelector(true);
-    colorPicker->SetSlidersCollapsible(true, false);
+    colorPicker->SetSlidersCollapsible(true, settings.pickerChannelsOpen);
+    colorPicker->onWheelStyleChanged = [this](ColorPickerWheelStyle) { RememberColourPicker(); };
+    colorPicker->onSlidersExpandedChanged = [this](bool) { RememberColourPicker(); };
     // As tall as its content: the hue ring fills the panel's width, and what
     // is below moves up and down as the channels fold or another design is
     // chosen. The height is also the picker's flex basis.
@@ -1074,6 +1081,14 @@ void ArtCreatorWindow::BuildRightPanel() {
     rightPanel->AddChild(layersPanel);
 
     body->AddChild(rightPanel);
+}
+
+void ArtCreatorWindow::RememberColourPicker() {
+    // The file holds only the picker, so this window's state is the whole of
+    // it: whichever window changed its picker last is the one remembered.
+    settings.pickerDesign = colorPicker->GetWheelStyle();
+    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
+    settings.Save();
 }
 
 void ArtCreatorWindow::BuildStatusBar() {
