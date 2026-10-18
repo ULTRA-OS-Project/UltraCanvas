@@ -619,7 +619,8 @@ void UltraCanvasSpreadsheet::RequestRemoveSheet(int index) {
     std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
     UltraCanvasDialogManager::ShowMessage(
         "Delete sheet \"" + name + "\" and everything on it?\n\n"
-        "Formulas on other sheets that refer to it will show #REF!.",
+        "Formulas on other sheets that refer to it will show #REF!. "
+        "Undo (Ctrl+Z) brings the sheet back.",
         "Delete sheet", DialogType::Warning, DialogButtons::OKCancel,
         [weakSelf, name](DialogResult result) {
             if (result != DialogResult::OK) return;

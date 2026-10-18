@@ -1,3 +1,18 @@
+#### 2026-10-17 *1.75.0*
+- **Closing a tab no longer waits for its folder display's workers.** A closed
+  tab's display is told to stop its workers and destroyed once they have all
+  ended, instead of on the spot, where its destructor waited for every one -
+  a worker busy with a slow file froze the window ("Not responding") until it
+  was done. Most noticeable with two tabs on the same FTP folder.
+- **A preview copy no longer holds up a remote drive.** A file selected on
+  an FTP drive is downloaded for the preview pane (up to 64 MB), and every
+  other request to the drive - opening a folder, a refresh, a delete - waited
+  behind it. The download is now called off when you ask the drive for
+  anything else, and fetched again once that is done; called off for good
+  when the selection moves to another file; and called off when the window
+  closes, which no longer waits for it. The connection log shows it as called
+  off, not as a failure.
+
 #### 2026-10-15 *1.74.1*
 - **The colour popup's picker is the framework's light picker.** Settings >
   Display > Treeview opens the colour picker with the framework's

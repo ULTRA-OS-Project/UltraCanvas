@@ -61,6 +61,9 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.33.0 - a closed tab's folder display is told to stop its workers and
+//                  destroyed once they are gone (RetireDisplay), so a busy worker
+//                  no longer freezes the window as the tab closes
 // Version: 1.32.0 - the connection log button on every remote drive; add-drive
 //                  sign-ins in the connection log; "+ Drive > Connection log..."
 // Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
@@ -68,7 +71,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -946,6 +949,13 @@ UltraFilerWindow::~UltraFilerWindow() {
         remoteDrives->onPreviewCopyReady = nullptr;
         remoteDrives->onConnectionLogChanged = nullptr;
         remoteDrives->Stop();
+    }
+    // Its callback captures the window. A display still retiring is
+    // destroyed with the window, waiting for its workers as before.
+    if (retiredReapTimer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(retiredReapTimer);
+        retiredReapTimer = InvalidTimerId;
     }
     // The log window lives on its own, but its Clear button calls back here.
     if (connectionLogRefreshTimer != InvalidTimerId) {
@@ -4869,6 +4879,9 @@ void UltraFilerWindow::BuildTabbedContainer() {
                 searchStatus.clear();
                 searchQueryText.clear();
             }
+            // Not destroyed here: its workers may be busy, and the
+            // destructor would wait for them on this thread.
+            RetireDisplay(std::move(tabStates[index]));
             tabStates.erase(tabStates.begin() + index);
         }
         return true;
@@ -4884,6 +4897,34 @@ void UltraFilerWindow::BuildTabbedContainer() {
         tabStates.erase(tabStates.begin() + from);
         tabStates.insert(tabStates.begin() + to, std::move(st));
     };
+}
+
+void UltraFilerWindow::RetireDisplay(std::unique_ptr<FilerTabState> state) {
+    if (!state) return;
+    if (state->filer) state->filer->RequestBackgroundStop();
+    retiredDisplays.push_back(std::move(state));
+    ReapRetiredDisplays();   // the common case: nothing was running
+    if (retiredDisplays.empty() || retiredReapTimer != InvalidTimerId) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;   // no timers: destroyed with the window
+    retiredReapTimer = app->StartTimer(100, true, [this](TimerId) {
+        ReapRetiredDisplays();
+        if (!retiredDisplays.empty()) return;
+        if (auto* a = UltraCanvasApplication::GetInstance())
+            a->StopTimer(retiredReapTimer);
+        retiredReapTimer = InvalidTimerId;
+    });
+}
+
+void UltraFilerWindow::ReapRetiredDisplays() {
+    // Only displays whose workers have all returned: their destructor's
+    // waits are then instant.
+    retiredDisplays.erase(
+            std::remove_if(retiredDisplays.begin(), retiredDisplays.end(),
+                           [](const std::unique_ptr<FilerTabState>& st) {
+                               return !st->filer || st->filer->BackgroundStopped();
+                           }),
+            retiredDisplays.end());
 }
 
 void UltraFilerWindow::ApplyTabStripStyle() {

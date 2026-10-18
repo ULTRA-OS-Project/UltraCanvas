@@ -3,6 +3,8 @@
 // machine has, what the programmer chose, what the checks found and the plan
 // the two together produce. Plain data, no UI, shared by the GUI, the CLI
 // modes and the test suite.
+// Version: 0.1.4 - PlanStep::setsUpPackageManager / mayFail (MSYS2 set up by winget)
+// Version: 0.1.3 - Choices::skipped: the Tools step's switches leave a package out
 // Version: 0.1.2 - Assistant::NoAssistant ("None"): a local IDE or compiler, no AI
 // Version: 0.1.1 - Assistant: which AI the programmer works with
 // Version: 0.1.0
@@ -150,9 +152,14 @@ struct Choices {
     bool cloudOnly = false;          // ...and has no compiler locally (GettingStarted-Cloud.md)
     std::string projectFolder;       // UTF-8; where the application lives
     std::string appName = "MyApp";
+    // Dependency ids the programmer switched off on the Tools step: missing,
+    // but left out of the install (they install it another way, or not at all).
+    std::vector<std::string> skipped;
 
     bool Has(DependencyGroup group) const;
     void Set(DependencyGroup group, bool on);
+    bool Skips(const std::string& dependencyId) const;
+    void SetSkipped(const std::string& dependencyId, bool skip);
 };
 
 // ===== THE PLAN =====
@@ -171,6 +178,8 @@ struct PlanStep {
     std::string description;          // what it does and why, for the report
     std::vector<std::string> argv;    // the command, as a list; empty for Manual
     bool needsElevation = false;      // sudo / pkexec / an administrator shell
+    bool setsUpPackageManager = false; // installs or prepares the package manager itself (MSYS2)
+    bool mayFail = false;             // a failure does not stop the install (MSYS2's core update)
     bool done = false;
 };
 
@@ -182,6 +191,8 @@ struct Plan {
     std::vector<std::string> notes;   // things worth knowing that are not steps
 
     size_t MissingCount() const;
+    // Of those, the ones switched off (Choices::skipped): not installed.
+    size_t SkippedCount() const;
 };
 
 // ===== VERSIONS =====

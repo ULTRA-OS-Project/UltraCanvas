@@ -59,6 +59,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
   - [Changing a remote folder](#changing-a-remote-folder)
 - [Folder listing prefetch](#folder-listing-prefetch)
+- [Retiring a display](#retiring-a-display)
 - [Hidden entries](#hidden-entries)
 - [Hidden-items notice](#hidden-items-notice)
 - [Hiding Details columns](#hiding-details-columns)
@@ -1330,6 +1331,12 @@ filer->remoteDownload = [drives](const std::string& folderPath,
 - **`listingIsRealDirectory` stays false** for a remote listing, which turns
   off the features that read the local filesystem per entry: the folder
   previews and the in-use (lock) column.
+- **Nothing on a remote path is read in the background.** Thumbnails, text and
+  folder previews, media probes, folder statistics and the folder prefetch
+  skip every path `isRemotePath` claims: no decoder can open
+  `ultracloud://...`, and a video grab would wait out its timeout before
+  giving up. A thumbnail the host supplies as a local file
+  (`FilerEntry::thumbnailPath`) is still shown.
 
 UltraFiler's remote drives are built on these two hooks; see
 `Apps/UltraFiler/UltraFilerRemoteDrives.h`.
@@ -1359,6 +1366,31 @@ spinning disks.
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
+
+## Retiring a display
+
+The destructor waits for every background worker the widget started -
+thumbnails, previews, media probes, folder statistics, prefetch, the folder
+watch, a running file operation or archive job. One busy with a slow file
+holds whichever thread destroys the widget for as long. A host that drops a
+display while its UI runs - UltraFiler closing a tab - retires it instead:
+
+```cpp
+// The tab closes: tell the workers to stop, keep the widget.
+filer->RequestBackgroundStop();   // never blocks
+retired.push_back(filer);
+
+// Later, from a timer: destroy what has nothing left to wait for.
+std::erase_if(retired, [](const auto& f) { return f->BackgroundStopped(); });
+```
+
+- **`RequestBackgroundStop()`** is the destructor's teardown without its
+  waits: the timers are stopped, every worker queue is cleared and its worker
+  told to end, and a file operation or archive job still running is stopped
+  as its own Cancel would stop it, with nothing reported back.
+- **`BackgroundStopped()`** is true once every worker thread the widget
+  started has returned; the destructor's joins are then instant.
+- A retired widget is not shown or used again.
 
 ## Hidden entries
 

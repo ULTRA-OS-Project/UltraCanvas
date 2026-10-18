@@ -50,8 +50,12 @@
 // the log window. A sign-in from the add-drive dialog is a session too
 // (RemoteSignInLog), and a cloud service that limits requests is waited out
 // and asked again (kRemoteRateLimitMaxWaitSeconds).
+// Version: 1.10.0 - a preview copy being downloaded is called off when the
+//                  user asks the drive for anything else (and fetched again
+//                  after it), when the selection moves on, and when the
+//                  window closes
 // Version: 1.9.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -522,6 +526,23 @@ private:
     // ... and the step its connection is at (RemoteActivity::step), for the
     // same notice.
     std::string activeJobStep_;
+    // A preview copy being downloaded can be called off (UltraNet's
+    // UltraNet_SetThreadFtpCancel, asked as its bytes move): the path it is
+    // for and the flag the worker's transfer asks, both set by the worker
+    // under the lock for the length of the job (no flag between jobs). The
+    // flag says why, which decides what becomes of the copy.
+    enum PreviewCancel : int {
+        PreviewKeep = 0,       // go on
+        PreviewYield = 1,      // the user asked for something else: run that
+                               // first, then fetch the copy again
+        PreviewSuperseded = 2, // the selection moved on: drop it
+        PreviewShutdown = 3    // the window is closing
+    };
+    std::string activePreviewPath_;
+    std::shared_ptr<std::atomic<int>> activePreviewCancel_;
+    // Calls the running preview copy off for `why`, unless an earlier reason
+    // already did. Under the lock.
+    void CancelActivePreviewLocked(PreviewCancel why);
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;

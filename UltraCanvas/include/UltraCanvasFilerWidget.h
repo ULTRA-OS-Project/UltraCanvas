@@ -99,7 +99,10 @@
 // PowerPoint deck's slide text too.
 // GetBottomStripsHeight says how much of the bottom edge the info bar and
 // the hidden-items notice take, for a host floating something in the corner.
-// Version: 1.39.3
+// Version: 1.40.1 - TextPreviewLines reads a PowerPoint deck's slide text
+// Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
+//                  end before it destroys the widget
+// Version: 1.39.2
 // Last Modified: 2026-10-18
 // Author: UltraCanvas Framework
 #pragma once
@@ -139,6 +142,7 @@
 namespace UltraCanvas {
 
     class UltraCanvasProgressDialog;   // compress / extract progress window
+    class UltraCanvasModalDialog;
 
 
     class UltraCanvasMenu;
@@ -617,6 +621,21 @@ namespace UltraCanvas {
             : UltraCanvasFilerWidget(identifier, -1, -1, -1, -1) {}
 
         ~UltraCanvasFilerWidget() override;
+
+        // ===== RETIRING =====
+        // The destructor waits for every background worker - thumbnails,
+        // previews, media probes, folder statistics, prefetch, the folder
+        // watch, a running file operation or archive job - and one busy with
+        // a slow file holds the thread that destroys the widget for as long.
+        // A host that drops a display while the UI runs (a closed tab) asks
+        // them to stop first, keeps the widget, and destroys it once
+        // BackgroundStopped() says they are all gone - the destructor's waits
+        // are then instant. A file operation or archive job still running is
+        // told to stop as its own Cancel would, and nothing reports back.
+        // Never blocks. The widget must not be shown or used afterwards.
+        void RequestBackgroundStop();
+        // True once every worker thread the widget started has returned.
+        bool BackgroundStopped() const;
 
         // ===== FOLDER =====
         void SetPath(const std::string& folderPath);   // scans + displays the folder
@@ -2268,6 +2287,12 @@ namespace UltraCanvas {
         std::condition_variable thumbCond;
         std::vector<std::thread> thumbWorkers;
         bool thumbShutdown = false;
+        // Every worker thread the widget starts goes through StartWorkerThread,
+        // which counts it here until its body returns: what BackgroundStopped
+        // reads. Shared with the threads, which may outlive a moved-from count.
+        std::shared_ptr<std::atomic<int>> liveWorkerThreads =
+                std::make_shared<std::atomic<int>>(0);
+        std::thread StartWorkerThread(std::function<void()> body);
         uint64_t thumbGeneration = 0;           // bumped to drop stale results
         size_t thumbBytes = 0;                  // content-preview bytes held
         size_t thumbNativeBytes = 0;            // application-icon bytes held
@@ -3543,6 +3568,10 @@ namespace UltraCanvas {
             std::vector<OperationDialogButton> buttons;
             int width = 560;
             bool showIcon = false;
+            // Re-derives `facts` while the dialog is open: called again each
+            // time a background folder walk lands, so a size still being
+            // counted fills in without holding the question back.
+            std::function<std::string()> liveFacts;
         };
         // Shows the dialog; `onAnswer(buttonIndex, applyToAll)` runs for the
         // button that was pressed, `onDismiss` when the dialog went without
@@ -3551,6 +3580,18 @@ namespace UltraCanvas {
         bool ShowOperationDialog(const OperationDialogSpec& spec,
                                  std::function<void(size_t button, bool applyToAll)> onAnswer,
                                  std::function<void()> onDismiss);
+        // The open operation dialog whose facts follow the folder walks
+        // (OperationDialogSpec::liveFacts), and the source of those facts.
+        std::weak_ptr<UltraCanvasModalDialog> liveFactsDialog;
+        std::function<std::string()> liveFactsSource;
+        // Puts the current liveFacts into that dialog; asking again also
+        // re-queues a walk a rescan dropped.
+        void RefreshLiveDialogFacts();
+        // A **Size:** value for a move / copy / delete question: a file's
+        // own size, a folder's walked contents ("counting…" while the
+        // background walk runs), or a set's tally. Call it again as walks
+        // land (OperationDialogSpec::liveFacts) for the finished figure.
+        std::string CountedSizeFact(const std::vector<FilerEntry>& entries);
         // The entry list the operation dialogs share (the delete confirmation's
         // list, generalised): at most kOperationListRows rows, `visibleRows`
         // of them at a time, the rest behind a scrollbar.
