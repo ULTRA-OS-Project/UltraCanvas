@@ -3865,6 +3865,23 @@ add_test(NAME VectorEditTest COMMAND VectorEditTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VectorEditTest")
 
+# ===== REFERENCE POINT PICKER TEST =====
+# UltraCanvasReferencePointPicker's nine points and SetPoint, and
+# UltraCanvasSpinner::SetSnapToStep(false) - ArtCreator's transform bar.
+message(STATUS "  Building ReferencePointPickerTest...")
+add_executable(ReferencePointPickerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ReferencePointPickerTest.cpp
+)
+target_include_directories(ReferencePointPickerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ReferencePointPickerTest PRIVATE cxx_std_20)
+target_link_libraries(ReferencePointPickerTest PRIVATE UltraCanvas)
+set_target_properties(ReferencePointPickerTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ReferencePointPickerTest COMMAND ReferencePointPickerTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ReferencePointPickerTest")
+
 # VectorEdit::SnapToPixels: shapes onto the pixel grid of an icon's size -
 # whole-pixel line widths, odd widths on pixel centres, even widths and
 # fills on pixel edges, paths made absolute with their control points

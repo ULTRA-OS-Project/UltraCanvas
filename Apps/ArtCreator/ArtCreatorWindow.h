@@ -7,6 +7,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.9.0 - the transform bar: position, size, scale with a locked aspect ratio,
+//                  rotation and shear of the selection about a reference point
 // Version: 1.8.0 - settings (ArtCreatorSettings): the colour picker opens as it was left
 // Version: 1.7.0 - icon mode: an icon size, a pixel grid, pixel snapping aware of the
 //                  line width, Snap to Pixels and the pixel preview; the palette's
@@ -32,6 +34,8 @@
 #include "UltraCanvasColorPicker.h"
 #include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasGradientEditor.h"
+#include "UltraCanvasSpinner.h"
+#include "UltraCanvasReferencePointPicker.h"
 #include "UltraCanvasVectorCanvas.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
@@ -79,6 +83,7 @@ private:
     // ----- construction -----
     void BuildMenuBar();
     void BuildToolbar();
+    void BuildTransformBar();
     void BuildToolPalette();
     void BuildRightPanel();
     // The colour picker's design and open / folded channels, into the
@@ -162,6 +167,25 @@ private:
     void CmdAbout();
     void CmdQuit();
 
+    // ----- transform bar -----
+    // The selection's position, size, scale, rotation and shear, under the
+    // toolbar. X / Y are the reference point's place on the page and every
+    // change keeps that point where it is. One object shows its own rotation
+    // and shear; several show 0 and turn by what is typed. Lengths are in
+    // the page's unit, or icon pixels in icon mode. `merge` folds the change
+    // into the undo step before it: the steps of one held arrow are one.
+    void RefreshTransformBar();
+    void TransformUnit(double& pointsPerUnit, std::string& symbol) const;
+    Point2Dd TransformPivot() const;
+    // The rotation (counter-clockwise) and shear (top to the right) of one
+    // selected object in degrees; 0, 0 for several.
+    void SelectionAngles(double& rotation, double& shear) const;
+    void ApplyPosition(bool horizontal, double value, bool merge = false);
+    void ApplySize(bool horizontal, double value, bool merge = false);
+    void ApplyScalePercent(bool horizontal, double percent, bool merge = false);
+    void ApplyRotation(double degrees, bool merge = false);
+    void ApplyShear(double degrees, bool merge = false);
+
     // ----- icon mode -----
     // An icon is drawn for the size it is shown at (16 to 256 px). Icon mode
     // lays a grid of that many pixels across the page, snaps the pointer to
@@ -228,6 +252,11 @@ private:
     std::shared_ptr<UltraCanvasButton>          undoButton, redoButton;
     std::shared_ptr<UltraCanvasSlider>          qualitySlider;
     std::shared_ptr<UltraCanvasLabel>           qualityLabel;
+    std::shared_ptr<UltraCanvasContainer>       transformBar;
+    std::shared_ptr<UltraCanvasReferencePointPicker> referencePicker;
+    std::shared_ptr<UltraCanvasSpinner>         posXBox, posYBox, sizeWBox, sizeHBox, scaleWBox, scaleHBox;
+    std::shared_ptr<UltraCanvasSpinner>         rotationBox, shearBox;
+    std::shared_ptr<UltraCanvasButton>          ratioLockButton;
     // The palette's slots: one per group of tools (see PaletteGroups()).
     std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
     std::shared_ptr<UltraCanvasContainer>       iconPanel;
@@ -249,6 +278,15 @@ private:
     Color fillColour = Color(60, 120, 220, 255);
     Color lineColour = Color(30, 30, 40, 255);
     bool syncingColours = false;
+    bool syncingTransform = false;
+    // The change being applied is a step of a spinner's arrows, keys or
+    // wheel; and a run of such steps is open (one undo step so far).
+    bool transformStepping = false;
+    bool transformRunOpen = false;
+    // The selection the bar last showed: while it stays the same the
+    // rotation field counts on past 180 deg instead of jumping to -180.
+    std::vector<std::string> transformBarIds;
+    bool lockAspectRatio = true;
     ArtCreatorPageResult lastPage;
     int iconSize = 0;
     bool iconGrid = true, iconSnap = true, iconMarkSoft = true;
