@@ -1,3 +1,12 @@
+#### 2026-10-18 *0.9.335*
+- **The colour picker's designs have names for a settings file.**
+  `ColorPickerWheelStyleName` gives each design the name a host keeps it
+  under - `circle`, `square`, `rectangle`, `sliders` - and
+  `ColorPickerWheelStyleFromName` reads one back, refusing a name that is
+  none of them and leaving the design as it was. UltraPaint's settings used
+  a table of their own for this; they and ArtCreator's new settings file now
+  share these (`ArtCreatorSettingsTest`).
+
 #### 2026-10-18 *0.9.334*
 - **Spreadsheet: deleting a sheet can be undone.** `RemoveSheet` (and the
   sheet tab menu's Delete) is now one undo step: Ctrl+Z puts the sheet back at
