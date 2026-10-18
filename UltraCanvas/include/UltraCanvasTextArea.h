@@ -246,6 +246,9 @@ namespace UltraCanvas {
         Color selectionColor;
         Color currentLineHighlightColor;
         Color cursorColor;
+        // Background of every search match (HighlightMatches); the current
+        // match is the selection, painted over it in selectionColor.
+        Color searchHighlightColor = Color(255, 200, 0, 110);
 
         // Placeholder hint shown when the document is empty
         Color placeholderColor = Color(150, 150, 150, 255);
@@ -662,7 +665,10 @@ namespace UltraCanvas {
         void IncrementalFind(const std::string& searchText, bool caseSensitive = false);
 
         void ReplaceText(const std::string& findText, const std::string& replaceText, bool all = false);
+        // Marks every match of searchText with style.searchHighlightColor. The
+        // marks follow edits (re-run on every text change) until ClearHighlights.
         void HighlightMatches(const std::string& searchText);
+        void HighlightMatches(const std::string& searchText, bool caseSensitive);
         void ClearHighlights();
 
         /// Count total occurrences of search text in document
@@ -1224,6 +1230,12 @@ namespace UltraCanvas {
         // inside the current selection. When selection changes, ReconcileLayoutState
         // invalidates the union of old+new selected line ranges so MakeLineLayout runs again.
         void ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex);
+        // Search-match backgrounds of one line, applied before the selection so
+        // the current match (the selection) shows over them.
+        void ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex);
+        // Paints [startCp, endCp) of a real line (codepoints) in color.
+        void ApplyLineBackgroundRange(LineLayoutBase* ll, int lineIndex,
+                                      int startCp, int endCp, const Color& color);
         // Kept as no-op stubs — attribute application happens during rebuild, not in-place patching.
         void ApplySelectionAttributes();
         void ClearSelectionAttributes(int logicalLine);
@@ -1246,6 +1258,14 @@ namespace UltraCanvas {
         
         // Search highlights (grapheme positions: start, end)
         std::vector<std::pair<int, int>> searchHighlights;
+        // The same matches split per line, sorted by line, for the text views.
+        struct SearchHighlightSegment { int lineIndex; int startCp; int endCp; };
+        std::vector<SearchHighlightSegment> searchHighlightSegments;
+        // Term and case of the live highlights; empty when none are shown.
+        std::string searchHighlightText;
+        bool searchHighlightCaseSensitive = false;
+        void RecomputeSearchHighlights();
+        void BuildSearchHighlightSegments();
 
         // Undo/Redo stacks. Positions are stored as LineColumnIndex (authoritative since Step 8b).
         struct TextState {

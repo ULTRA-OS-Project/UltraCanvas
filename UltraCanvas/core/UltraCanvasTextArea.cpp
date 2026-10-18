@@ -2387,13 +2387,25 @@ namespace UltraCanvas {
         if (lineIndex < a.lineIndex || lineIndex > b.lineIndex) return;
         if (a.lineIndex == b.lineIndex && a.columnIndex == b.columnIndex) return;
 
-        int realLineCpCount = GetLineVisibleLength(lineIndex);
         int startCp = (lineIndex == a.lineIndex) ? a.columnIndex : 0;
-        int endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : realLineCpCount;
+        int endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : GetLineVisibleLength(lineIndex);
+        ApplyLineBackgroundRange(ll, lineIndex, startCp, endCp, style.selectionColor);
+    }
 
+    void UltraCanvasTextArea::ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex) {
+        if (!ll || !ll->layout || searchHighlightSegments.empty()) return;
+        auto it = std::lower_bound(searchHighlightSegments.begin(), searchHighlightSegments.end(), lineIndex,
+            [](const SearchHighlightSegment& seg, int line) { return seg.lineIndex < line; });
+        for (; it != searchHighlightSegments.end() && it->lineIndex == lineIndex; ++it) {
+            ApplyLineBackgroundRange(ll, lineIndex, it->startCp, it->endCp, style.searchHighlightColor);
+        }
+    }
+
+    void UltraCanvasTextArea::ApplyLineBackgroundRange(LineLayoutBase* ll, int /*lineIndex*/,
+                                                       int startCp, int endCp, const Color& color) {
         // Translate from real-line codepoints to layout-text codepoints. The end snaps
-        // backward so a selection ending at a trailing marker doesn't visually grow over
-        // it; the start snaps forward so a selection starting at a leading marker doesn't
+        // backward so a range ending at a trailing marker doesn't visually grow over
+        // it; the start snaps forward so a range starting at a leading marker doesn't
         // visually grow into it either.
         startCp = SourceCpToVisibleCp(ll->cpMap, startCp, /*snapForward=*/true);
         endCp   = SourceCpToVisibleCp(ll->cpMap, endCp,   /*snapForward=*/false);
@@ -2406,10 +2418,9 @@ namespace UltraCanvas {
         int startByte = static_cast<int>(utf8_cp_to_byte(layoutText, startCp));
         int endByte   = static_cast<int>(utf8_cp_to_byte(layoutText, endCp));
 
-        auto bgAttr = TextAttributeFactory::CreateBackground(style.selectionColor);
+        auto bgAttr = TextAttributeFactory::CreateBackground(color);
         bgAttr->SetRange(startByte, endByte);
         ll->layout->ChangeAttribute(std::move(bgAttr));
-        //debugOutput << "Layout attrs: " << ll->layout->GetAttributesAsString() << " ltype: " << ll->layoutType << " str:" << layoutText << " startbyte:" << startByte << " endbyte:" << endByte << std::endl;
     }
 
     // BuildLineLayout removed in Step 8b — the single layout cache is populated by
@@ -2425,6 +2436,8 @@ namespace UltraCanvas {
         for (const auto& l : lines) total += l.size();
         textContent.reserve(total);
         for (const auto& l : lines) textContent.append(l);
+        // Match positions shift with the edit; find them again in the new text.
+        if (!searchHighlightText.empty()) RecomputeSearchHighlights();
         isNeedRebuildLineLayouts = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
@@ -2727,6 +2740,7 @@ namespace UltraCanvas {
         style.lineNumbersColor = {80, 80, 80, 255};           // Dimmer — less visual noise in dark mode
         style.lineNumbersBackgroundColor = {35, 35, 35, 255}; // Dark gutter background
         style.selectionColor = {60, 90, 150, 100};
+        style.searchHighlightColor = {160, 120, 0, 140};
         style.cursorColor = {255, 255, 255, 255};
         style.scrollbarTrackColor = {50, 50, 50, 255};
         style.scrollbarColor = {100, 100, 100, 255};
@@ -2754,6 +2768,7 @@ namespace UltraCanvas {
         style.fontColor = {0, 0, 0, 255};
         style.borderColor = {200, 200, 200, 255};
         style.selectionColor = {51, 153, 255, 100};
+        style.searchHighlightColor = {255, 200, 0, 110};
         style.cursorColor = {0, 0, 0, 255};
         style.currentLineColor = {240, 240, 240, 255};
         style.lineNumbersColor = {128, 128, 128, 255};
@@ -2999,41 +3014,101 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::HighlightMatches(const std::string& searchText) {
-        searchHighlights.clear();
-        if (searchText.empty()) {
-            RequestRedraw();
-            return;
-        }
+        HighlightMatches(searchText, lastSearchCaseSensitive);
+    }
 
-        if (editingMode == TextAreaEditingMode::Hex) {
-            std::string haystack(hexBuffer.begin(), hexBuffer.end());
-            std::string needle = searchText;
-            if (!lastSearchCaseSensitive) {
-                std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
-                std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
-            }
-            int searchLen = static_cast<int>(searchText.size());
-            size_t pos = 0;
-            while ((pos = haystack.find(needle, pos)) != std::string::npos) {
-                searchHighlights.push_back({static_cast<int>(pos), static_cast<int>(pos) + searchLen});
-                pos += searchLen;
-            }
-            RequestRedraw();
-            return;
-        }
-
-        int searchLen = utf8_length(searchText);
-        const std::vector<int> matches = utf8_find_all(textContent, searchText, lastSearchCaseSensitive);
-        searchHighlights.reserve(matches.size());
-        for (int pos : matches) {
-            searchHighlights.push_back({pos, pos + searchLen});
-        }
+    void UltraCanvasTextArea::HighlightMatches(const std::string& searchText, bool caseSensitive) {
+        searchHighlightText = searchText;
+        searchHighlightCaseSensitive = caseSensitive;
+        RecomputeSearchHighlights();
         RequestRedraw();
     }
 
     void UltraCanvasTextArea::ClearHighlights() {
-        searchHighlights.clear();
+        searchHighlightText.clear();
+        RecomputeSearchHighlights();
         RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::RecomputeSearchHighlights() {
+        std::vector<SearchHighlightSegment> oldSegments = std::move(searchHighlightSegments);
+        searchHighlightSegments.clear();
+        searchHighlights.clear();
+
+        if (!searchHighlightText.empty()) {
+            if (editingMode == TextAreaEditingMode::Hex) {
+                std::string haystack(hexBuffer.begin(), hexBuffer.end());
+                std::string needle = searchHighlightText;
+                if (!searchHighlightCaseSensitive) {
+                    std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                    std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+                }
+                int searchLen = static_cast<int>(needle.size());
+                size_t pos = 0;
+                while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+                    searchHighlights.push_back({static_cast<int>(pos), static_cast<int>(pos) + searchLen});
+                    pos += searchLen;
+                }
+            } else {
+                int searchLen = utf8_length(searchHighlightText);
+                const std::vector<int> matches =
+                    utf8_find_all(textContent, searchHighlightText, searchHighlightCaseSensitive);
+                searchHighlights.reserve(matches.size());
+                for (int pos : matches) {
+                    searchHighlights.push_back({pos, pos + searchLen});
+                }
+                BuildSearchHighlightSegments();
+            }
+        }
+
+        // The marks live in the line layouts: rebuild the lines that gained or
+        // lost one. Both lists are sorted by line, so one merge walk finds them.
+        auto sameSegment = [](const SearchHighlightSegment& x, const SearchHighlightSegment& y) {
+            return x.lineIndex == y.lineIndex && x.startCp == y.startCp && x.endCp == y.endCp;
+        };
+        auto invalidate = [this](int line) {
+            if (line >= 0 && line < static_cast<int>(lineLayouts.size())) lineLayouts[line].reset();
+        };
+        size_t a = 0, b = 0;
+        const auto& newSegments = searchHighlightSegments;
+        while (a < oldSegments.size() || b < newSegments.size()) {
+            if (b >= newSegments.size() ||
+                (a < oldSegments.size() && oldSegments[a].lineIndex < newSegments[b].lineIndex)) {
+                invalidate(oldSegments[a++].lineIndex);
+            } else if (a >= oldSegments.size() || newSegments[b].lineIndex < oldSegments[a].lineIndex) {
+                invalidate(newSegments[b++].lineIndex);
+            } else {
+                if (!sameSegment(oldSegments[a], newSegments[b])) invalidate(newSegments[b].lineIndex);
+                a++; b++;
+            }
+        }
+        isNeedRecalculateVisibleArea = true;
+    }
+
+    // Splits searchHighlights (document codepoints, ascending) into per-line
+    // codepoint ranges in one walk over the lines.
+    void UltraCanvasTextArea::BuildSearchHighlightSegments() {
+        const int lineCount = static_cast<int>(lines.size());
+        int line = 0;
+        int lineStart = 0;   // document codepoint where `line` begins
+        for (const auto& [matchStart, matchEnd] : searchHighlights) {
+            while (line < lineCount) {
+                int lineEnd = lineStart + GetLineVisibleLength(line);
+                int nextStart = lineEnd + (LineHasNewline(line) ? 1 : 0);
+                if (matchStart >= nextStart && line + 1 < lineCount) {
+                    lineStart = nextStart;
+                    line++;
+                    continue;
+                }
+                int from = std::max(matchStart, lineStart) - lineStart;
+                int to   = std::min(matchEnd, lineEnd) - lineStart;
+                if (to > from) searchHighlightSegments.push_back({line, from, to});
+                // A match running past this line (a term with a newline) goes on.
+                if (matchEnd <= nextStart || line + 1 >= lineCount) break;
+                lineStart = nextStart;
+                line++;
+            }
+        }
     }
 
 // ===== BOOKMARKS =====
@@ -3651,6 +3726,7 @@ namespace UltraCanvas {
             uAttr->SetRange(compositionByte, compositionByte + compositionBytes);
             ll->layout->InsertAttribute(std::move(uAttr));
         }
+        ApplyLineSearchHighlights(ll.get(), lineIndex);
         ApplyLineSelectionBackground(ll.get(), lineIndex);
 
         ll->bounds.width = ll->layout->GetLayoutWidth();
@@ -3672,6 +3748,7 @@ namespace UltraCanvas {
 
         if (editingMode == TextAreaEditingMode::MarkdownHybrid) {
             auto md = MakeMarkdownLineLayout(ctx, lineIndex);
+            ApplyLineSearchHighlights(md.get(), lineIndex);
             ApplyLineSelectionBackground(md.get(), lineIndex);
             return md;
         }
