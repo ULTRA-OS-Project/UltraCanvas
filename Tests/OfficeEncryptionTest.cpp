@@ -14,6 +14,10 @@
 //     calls straight back for one;
 //   * Office 2010's SHA-1 / AES-128 keying, in a workbook encrypted that way;
 //   * Office 2007's standard encryption (AES-128-ECB, SHA-1, no HMAC);
+//   * the PowerPoint reader on a deck python-pptx wrote, plain and encrypted:
+//     slide order and size, titles, bullets and levels, numbering, a text
+//     box, a table, a picture, notes, a hidden slide, the outline, and
+//     LoadTextDocument opening it;
 //   * writing: UCCompoundFileWriter read back, EncryptOfficePackage round
 //     trips (a package in the mini stream, one past the header's 109 FAT
 //     sectors), fresh salts on every save, a changed byte caught, and the
@@ -23,7 +27,7 @@
 // rebuilds them and says what each holds). That msoffcrypto-tool decrypts
 // what EncryptOfficePackage writes was checked when the writer was made; the
 // test cannot run Python, so it checks the format against the reader here.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
@@ -31,6 +35,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -344,6 +349,105 @@ void TestStandard() {
           "the spreadsheet opens it with its content");
 }
 
+// ===== POWERPOINT =====
+
+const PptxShape* FindShape(const PptxSlide& slide, PptxShapeKind kind) {
+    for (const PptxShape& shape : slide.shapes)
+        if (shape.kind == kind) return &shape;
+    return nullptr;
+}
+
+void TestPresentation() {
+    std::cout << "\n=== PowerPoint (.pptx) ===\n";
+    const std::string plain = Fixture("office-pptx-sample.pptx");
+    Check(IsPptxPackage(plain) && !IsPptxPackage(Fixture("word97-formatting.docx")),
+          "a deck is told from a Word package");
+    Check(IsPptxExtension("deck.PPTX") && IsPptxExtension("ppsx") && !IsPptxExtension("x.docx"),
+          "the PowerPoint extensions are known");
+
+    PptxPresentation deck;
+    std::string error;
+    const bool ok = ReadPptxPresentation(plain, deck, error);
+    Check(ok, "ReadPptxPresentation reads it");
+    if (!ok) {
+        std::cout << "         " << error << "\n";
+        return;
+    }
+    Check(deck.slideWidth == 12192000 && deck.slideHeight == 6858000, "16:9 slide size");
+    Check(deck.slides.size() == 5, "five slides, in order");
+    if (deck.slides.size() != 5) return;
+    Check(deck.slides[0].title == "Quarterly Review" && deck.slides[1].title == "Agenda" &&
+              deck.slides[4].title == "Appendix",
+          "each slide's title");
+    const PptxShape* subtitle = FindShape(deck.slides[0], PptxShapeKind::Subtitle);
+    Check(subtitle && subtitle->paragraphs.size() == 1 && subtitle->paragraphs[0].Text() == "October 2026",
+          "the title slide's subtitle");
+
+    const PptxShape* body = FindShape(deck.slides[1], PptxShapeKind::Body);
+    Check(body && body->paragraphs.size() == 6, "the agenda's six paragraphs");
+    if (body && body->paragraphs.size() == 6) {
+        const auto& p = body->paragraphs;
+        Check(p[0].Text() == "Results" && p[0].bullet && p[0].level == 0 && p[0].runs[0].bold,
+              "a bold top-level bullet");
+        Check(p[1].Text() == "Revenue up" && p[1].level == 1 && p[2].level == 1, "two level-2 bullets");
+        Check(p[4].Text() == "Hire" && p[4].numbered && p[5].numbered && !p[3].numbered,
+              "a numbered pair after a plain bullet");
+    }
+    const PptxShape* box = FindShape(deck.slides[1], PptxShapeKind::Text);
+    Check(box && box->paragraphs[0].Text() == "Confidential" && !box->paragraphs[0].bullet &&
+              box->x == 914400,
+          "the text box, unbulleted, at its place (1 inch)");
+    Check(deck.slides[1].notes.size() == 1 && deck.slides[1].notes[0].Text() == "Remember the Q3 numbers.",
+          "the speaker notes");
+
+    const PptxShape* table = FindShape(deck.slides[2], PptxShapeKind::Table);
+    Check(table && table->rows.size() == 2 && table->rows[1].size() == 2 &&
+              table->rows[1][1][0].Text() == "1.2M",
+          "the table's cells");
+    const PptxShape* picture = FindShape(deck.slides[2], PptxShapeKind::Picture);
+    Check(picture && picture->altText == "Revenue chart" &&
+              picture->pictureTarget.rfind("ppt/media/", 0) == 0,
+          "the picture's description and part");
+    Check(deck.slides[3].hidden && !deck.slides[2].hidden, "the hidden slide is marked");
+    const PptxShape* appendix = FindShape(deck.slides[4], PptxShapeKind::Body);
+    Check(appendix && appendix->paragraphs.size() == 60 && appendix->paragraphs[59].Text() == "Item 60",
+          "sixty bullets on the last slide");
+    for (const PptxSlide& slide : deck.slides)
+        for (const PptxShape& shape : slide.shapes)
+            for (const PptxParagraph& paragraph : shape.paragraphs)
+                if (paragraph.Text() == "1" || paragraph.Text() == "<#>")
+                    Check(false, "no slide-number placeholder text on slide " + std::to_string(slide.number));
+
+    const UCRichDocument outline = PptxPresentationToRichDocument(deck);
+    const std::string text = outline.ToPlainText();
+    Check(Contains(text, "1. Quarterly Review") && Contains(text, "4. Backup (hidden)") &&
+              Contains(text, "Revenue up") && Contains(text, "Remember the Q3 numbers.") &&
+              Contains(text, "[Picture: Revenue chart]"),
+          "the outline holds headings, bullets, notes and the picture");
+    size_t listItems = 0, headings = 0, tables = 0;
+    for (const RichDocBlock& block : outline.blocks) {
+        listItems += block.type == RichBlockType::ListItem;
+        headings += block.type == RichBlockType::Heading;
+        tables += block.type == RichBlockType::Table;
+    }
+    Check(headings == 5 && tables == 1 && listItems >= 66, "one heading per slide, the table, the bullets");
+
+    // Encrypted: the same deck behind the password.
+    const std::string encrypted = Fixture("office-agile-encrypted.pptx");
+    PptxPresentation locked;
+    Check(!ReadPptxPresentation(encrypted, locked, error) && Contains(error, "password-protected"),
+          "a protected deck without its password says so");
+    Check(ReadPptxPresentation(encrypted, locked, error, kPassword) && locked.slides.size() == 5 &&
+              locked.slides[1].notes.size() == 1,
+          "with the password it reads the same");
+    auto loaded = UltraCanvasFileLoader::LoadTextDocument(encrypted, error, kPassword);
+    Check(loaded && Contains(loaded->ToPlainText(), "Item 60"),
+          "UltraCanvasFileLoader::LoadTextDocument opens the protected deck");
+    auto plainLoaded = UltraCanvasFileLoader::LoadTextDocument(plain, error);
+    Check(plainLoaded && Contains(plainLoaded->ToPlainText(), "2. Agenda"),
+          "and the plain one, as an outline");
+}
+
 // ===== WRITING =====
 
 fs::path TempDir() {
@@ -473,6 +577,7 @@ int main() {
     TestDocument();
     TestSha1();
     TestStandard();
+    TestPresentation();
     TestCompoundFileWriter();
     TestEncryptor();
     TestSaving();

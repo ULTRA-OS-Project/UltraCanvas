@@ -6,7 +6,8 @@ streams: `EncryptionInfo`, which says how the key is derived, and
 `EncryptedPackage`, the original package encrypted. This module turns the
 second back into the ZIP, which the `.xlsx` and `.docx` readers then read as
 usual, and the other way round for the writers. The spreadsheet, the Word
-reader and writer and `UltraCanvasFileLoader` use it; most code never calls it
+reader and writer, the [PowerPoint reader](UltraCanvasPresentationPptx.md)
+and `UltraCanvasFileLoader` use it; most code never calls it
 directly, but passes a password to them.
 
 Header: `UltraCanvasOfficeEncryption.h`. The cryptography is UltraCrypt's

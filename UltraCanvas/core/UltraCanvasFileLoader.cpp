@@ -1,6 +1,7 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
 //                  password-protected .docx
 // Version: 1.6.0 - RequestDocumentPassword; OpenTextDocument and LoadTextDocument open
@@ -21,6 +22,7 @@
 #include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
+#include "UltraCanvasPresentationPptx.h"    // .pptx, read as an outline
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
 #include "UltraCanvasVectorRaster.h"    // RasterizeVectorDocument: a drawing saved as a bitmap
 #include "UltraCanvasRasterDocument.h"  // ... written through the image writer
@@ -649,6 +651,15 @@ namespace UltraCanvas {
             const std::string& filePath, std::string& outError, const std::string& password) {
         outError.clear();
 
+        // A PowerPoint deck reads as an outline of its slides. A protected one
+        // is a compound file whose content shows only once decrypted, so it
+        // goes by its extension.
+        if (IsPptxPackage(filePath) || (IsPptxExtension(filePath) && IsEncryptedOfficePackage(filePath))) {
+            PptxPresentation deck;
+            if (!ReadPptxPresentation(filePath, deck, outError, password)) return nullptr;
+            return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
+        }
+
         // Package formats (and renamed/legacy files) go by content signature.
         WordDocumentFormat format = DetectWordDocumentFormat(filePath);
         if (format != WordDocumentFormat::Unknown) {
@@ -674,9 +685,11 @@ namespace UltraCanvas {
 
     namespace {
         // The document types LoadTextDocument reads: the Word document reader's
-        // (ODT, DOCX, DOC, LaTeX) and the Markdown text path's.
+        // (ODT, DOCX, DOC, LaTeX), PowerPoint decks as outlines, and the
+        // Markdown text path's.
         bool TextDocumentReads(const MediaFormatInfo& format) {
             if (WordDocumentFormatFromExtension(format.extension) != WordDocumentFormat::Unknown) return true;
+            if (IsPptxExtension(format.extension)) return true;
             return format.extension == "md" || format.extension == "txt";
         }
 

@@ -89,7 +89,8 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT).
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
+// a PowerPoint deck, .pptx, as an outline of its slides).
 // A password-protected .docx asks for its password before it loads.
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);

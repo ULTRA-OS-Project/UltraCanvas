@@ -679,6 +679,18 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `RequestNewDocumentPassword` to ask for a new one.
   See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
 
+- **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
+  decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
+  `PptxPresentation` → `PptxSlide` (title, hidden, notes) → `PptxShape`
+  (title / subtitle / body / text / table / picture, EMU place) →
+  `PptxParagraph` (level, bullet, numbered) → `PptxRun`. `ReadPptxPresentation`
+  (path, optional password - protected decks decrypt through
+  UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
+  `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
+  outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
+  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
+
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
   tables and Excel 2003 XML files saved under the name, read into a UI-free

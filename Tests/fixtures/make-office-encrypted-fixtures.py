@@ -37,6 +37,14 @@ count of 100000, and the dataIntegrity HMAC.
                                  bytes, so it fails every SHA-1 file. The
                                  script checks the HMAC itself instead
                                  (check_hmac).
+    office-pptx-sample.pptx      a PowerPoint deck, not encrypted, written by
+                                 python-pptx from its default template: a
+                                 title slide (title, subtitle); "Agenda" with
+                                 bullets on two levels, a numbered pair, a
+                                 text box and speaker notes; "Figures" with a
+                                 2 x 2 table and a picture; a hidden slide
+                                 "Backup"; and "Appendix" with 60 bullets
+    office-agile-encrypted.pptx  the same deck, encrypted like the .xlsx
     office-standard-encrypted.xlsx
                                  the same workbook in Office 2007's
                                  "standard" encryption: a binary header,
@@ -257,3 +265,77 @@ encrypt(package([
     ("_rels/.rels", ROOT_RELS_DOCX),
     ("word/document.xml", DOCUMENT),
 ], zipfile.ZIP_STORED), "office-agile-encrypted.docx")
+
+
+# ----- PowerPoint -----
+# Built with python-pptx (pip install python-pptx), another independent
+# writer: its default template brings a real slide master, layouts and theme,
+# so the deck is one PowerPoint opens, not just the parts the reader reads.
+def build_presentation():
+    from pptx import Presentation
+    from pptx.oxml.ns import qn
+    from pptx.util import Inches
+    from PIL import Image
+
+    deck = Presentation()
+    deck.slide_width, deck.slide_height = 12192000, 6858000   # 16:9
+
+    title = deck.slides.add_slide(deck.slide_layouts[0])
+    title.shapes.title.text = "Quarterly Review"
+    title.placeholders[1].text = "October 2026"
+
+    agenda = deck.slides.add_slide(deck.slide_layouts[1])
+    agenda.shapes.title.text = "Agenda"
+    body = agenda.placeholders[1].text_frame
+    body.text = "Results"
+    body.paragraphs[0].runs[0].font.bold = True
+    for text, level in (("Revenue up", 1), ("Costs flat", 1), ("Next steps", 0), ("Hire", 0), ("Ship", 0)):
+        paragraph = body.add_paragraph()
+        paragraph.text, paragraph.level = text, level
+        if text in ("Hire", "Ship"):
+            number = paragraph._p.get_or_add_pPr().makeelement(qn("a:buAutoNum"), {"type": "arabicPeriod"})
+            paragraph._p.get_or_add_pPr().append(number)
+    agenda.shapes.add_textbox(Inches(1), Inches(6.5), Inches(3), Inches(0.5)).text_frame.text = "Confidential"
+    agenda.notes_slide.notes_text_frame.text = "Remember the Q3 numbers."
+
+    figures = deck.slides.add_slide(deck.slide_layouts[5])
+    figures.shapes.title.text = "Figures"
+    table = figures.shapes.add_table(2, 2, Inches(1), Inches(2), Inches(6), Inches(1)).table
+    for (r, c), text in {(0, 0): "Quarter", (0, 1): "Revenue", (1, 0): "Q3", (1, 1): "1.2M"}.items():
+        table.cell(r, c).text = text
+    png = io.BytesIO()
+    Image.new("RGB", (4, 4), (40, 90, 160)).save(png, "PNG")
+    png.seek(0)
+    picture = figures.shapes.add_picture(png, Inches(8), Inches(2))
+    picture._element.nvPicPr.cNvPr.set("descr", "Revenue chart")
+
+    backup = deck.slides.add_slide(deck.slide_layouts[1])
+    backup.shapes.title.text = "Backup"
+    backup.placeholders[1].text_frame.text = "Spare data"
+    backup._element.set("show", "0")
+
+    appendix = deck.slides.add_slide(deck.slide_layouts[1])
+    appendix.shapes.title.text = "Appendix"
+    frame = appendix.placeholders[1].text_frame
+    frame.text = "Item 1"
+    for n in range(2, 61):
+        frame.add_paragraph().text = "Item %d" % n
+
+    out = io.BytesIO()
+    deck.save(out)
+    return out.getvalue()
+
+
+def write_plain(plain, name):
+    if WANTED and name not in WANTED:
+        return
+    path = os.path.join(HERE, name)
+    with open(path, "wb") as f:
+        f.write(plain)
+    print("wrote", path, len(plain), "bytes")
+
+
+if not WANTED or WANTED & {"office-pptx-sample.pptx", "office-agile-encrypted.pptx"}:
+    PRESENTATION_PACKAGE = build_presentation()
+    write_plain(PRESENTATION_PACKAGE, "office-pptx-sample.pptx")
+    encrypt(PRESENTATION_PACKAGE, "office-agile-encrypted.pptx")

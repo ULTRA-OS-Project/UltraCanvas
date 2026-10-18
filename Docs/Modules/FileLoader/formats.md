@@ -103,6 +103,7 @@ minimal OBJ reader for its GL viewer only.
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
 | Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
 | OpenDocument Text | `.odt` | ✅ | ✅ | built-in (miniz + tinyxml2) |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.potx` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |
