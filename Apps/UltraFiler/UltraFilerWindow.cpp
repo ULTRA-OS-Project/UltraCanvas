@@ -2645,9 +2645,13 @@ void UltraFilerWindow::AddRemoteTreePlaceholder(const std::string& path) {
     if (treeChildrenLoaded.count(path)) return;   // its real children are in
     TreeNode* node = folderTree->FindNode(path);
     if (!node || !node->children.empty()) return;
+    // Only for the expand button: hidden, so a row expanded before its
+    // listing is in shows no "..." row under it - its own row slides the
+    // loading bar instead (TreeNodeData::loading, LoadRemoteTreeChildren).
     TreeNodeData placeholder;
     placeholder.nodeId = PlaceholderId(path);
     placeholder.text = "...";
+    placeholder.visible = false;
     folderTree->AddNode(path, placeholder);
 }
 
@@ -2679,10 +2683,19 @@ void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
     if (!remoteDrives->List(path, entries, error)) {
         // The drive refused it - an account that is gone, a folder the server
         // will not list. Nothing below it, and no button promising there is.
+        node->data.loading = false;
         folderTree->RemoveNode(PlaceholderId(path));
         folderTree->RequestRedraw();
         ScheduleTreeFit();
         return;
+    }
+    // Being fetched - for the first time, or again behind the rows it has:
+    // the row slides the loading bar along its foot, as the folder display
+    // does, until the answer is in (listingReady) and this runs again.
+    const bool fetching = !listingReady && !remoteDrives->ListingStatus(path).empty();
+    if (node->data.loading != fetching) {
+        node->data.loading = fetching;
+        folderTree->RequestRedraw();
     }
 
     std::vector<TreeChild> wanted;
@@ -6691,6 +6704,13 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
                         " of " +
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesTotal));
+                // Every byte sent, the server still taking them in - which on a
+                // slow line is a while: the step says so ("Finishing the
+                // upload...", then the server's answer) rather than the count
+                // standing still.
+                if (remoteActivity.bytesDone >= remoteActivity.bytesTotal &&
+                    !remoteActivity.step.empty())
+                    text += " - " + remoteActivity.step;
             } else if (remoteActivity.bytesDone > 0) {
                 // A server that never said how big the file is: what has gone
                 // is still worth showing, and is all there is to show.

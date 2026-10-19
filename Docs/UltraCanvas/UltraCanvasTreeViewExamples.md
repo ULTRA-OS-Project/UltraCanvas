@@ -1,6 +1,6 @@
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
 
 ## Contents
 
@@ -31,6 +31,7 @@
   - [Basic Tree Creation](#basic-tree-creation)
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
+  - [Rows still loading](#rows-still-loading)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -171,6 +172,7 @@ struct TreeNodeData {
     const TreeCellData* GetCell(const std::string& colId) const;
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
+    bool loading = false;                  // children being fetched: a bar slides along the row's foot
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -761,6 +763,7 @@ void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
+void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
@@ -773,6 +776,8 @@ inherited from `UltraCanvasUIElement`.
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
+`SetLoadingBarColor` sets the bar a loading row slides along its foot (default
+the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
 
 ### Event Callbacks
 
@@ -890,6 +895,31 @@ treeView->onNodeExpanded = [](TreeNode* node) {
         LoadChildrenFromDisk(node);
     }
 };
+```
+
+### Rows still loading
+
+When children come from somewhere slow - a server, a long scan - the
+placeholder can stay hidden (`visible = false`: it still gives the row its
+expand button) and the row itself say it is waiting. `TreeNodeData::loading`
+makes the row slide a thin bar along its foot, from its icon to the right
+edge, in the tree's loading colour (`SetLoadingBarColor`, the accent blue by
+default) - the same sign the filer widget gives a folder being fetched. A
+40 ms timer keeps the bar moving while such a row is on screen and stops once
+none is drawn.
+
+```cpp
+TreeNodeData placeholder("remote/photos#placeholder", "...");
+placeholder.visible = false;               // the expand button, without a row
+treeView->AddNode("remote/photos", placeholder);
+
+treeView->onNodeExpanded = [treeView](TreeNode* node) {
+    node->data.loading = true;             // the bar slides until the answer is in
+    treeView->RequestRedraw();
+    StartFetch(node->data.nodeId);         // calls back on the UI thread
+};
+// ...when the children have arrived:
+//     add them, remove the placeholder, node->data.loading = false, RequestRedraw()
 
 // Handle right-click (open a context menu at the pointer)
 treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {

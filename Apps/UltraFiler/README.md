@@ -269,7 +269,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     slides along its foot while the folder is fetched, over the files it
     showed before (after an upload, a rename or a delete they stay on screen
     until the update is in, and each file of a batch upload appears as it
-    lands), or over an empty area the first time. Every job (opening a folder, an upload, a delete, a
+    lands), or over an empty area the first time; in the folder tree, a
+    drive's folder whose subfolders are being read slides the same bar along
+    its own row. Every job (opening a folder, an upload, a delete, a
     folder fetched ahead) is recorded in the **connection log**: the round
     button with the network symbol in the bottom-left corner of a folder
     display opens it. It is there only while that display shows a folder on

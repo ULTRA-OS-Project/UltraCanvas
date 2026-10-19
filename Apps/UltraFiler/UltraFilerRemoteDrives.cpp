@@ -204,12 +204,13 @@ bool ProviderSpeaksHttp(const std::string& providerId) {
     return providerId != "ftp";
 }
 
-// The same line as the status bar's step: a status as it is, the rest with
-// what kind of line it is in front, the way an FTP client's log reads.
+// The same line as the status bar's step: a status as it is (libcurl's own
+// notes in plain words, StatusStepText), the rest with what kind of line it
+// is in front, the way an FTP client's log reads.
 // `http`: a cloud drive's line, whose commands are requests.
 std::string StepText(const RemoteLogLine& line, bool http) {
     switch (line.kind) {
-        case RemoteLogLine::Kind::Step:     return line.text;
+        case RemoteLogLine::Kind::Step:     return StatusStepText(line.text);
         // A request's URL is long; the status line gets its host and the end
         // of its path, the connection log the whole of it.
         case RemoteLogLine::Kind::Command:
@@ -431,7 +432,9 @@ std::string UltraFilerRemoteDrives::ListingStatus(const std::string& path) const
     // Fetched beside the transfer the worker is in the middle of.
     if (sideListingPaths_.count(path)) return "Reading " + folder + " from " + server;
 
-    if (activeJobPath_ == path) {
+    // The worker reading this folder - not an upload into it, whose job has
+    // the same path and whose steps are the transfer's.
+    if (activeIsListing_ && activeJobPath_ == path) {
         const auto waited = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::steady_clock::now() - activeJobSince_).count();
         // The step the connection is at, once it has logged one: where a

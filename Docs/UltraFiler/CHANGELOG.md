@@ -15,6 +15,22 @@
   of a batch upload appears as it lands; so does a folder opened during a
   batch, which no longer waits for the whole of it. The filer widget does the
   drawing (framework changelog: `filer-remote-loading-bar`).
+- **The folder tree marks a drive's folder being read the same way.**
+  Expanding a folder on a remote drive before its subfolders were known put a
+  row reading *...* under it until they came; now there is no such row, and
+  the folder's own row slides the same thin blue bar along its foot until
+  they are in - also while a folder whose rows are shown is read again after
+  a change. The tree view does the drawing (framework changelog:
+  `treeview-loading-rows`).
+- **An upload's last moment says *Finishing the upload...*.** Once every byte
+  of an upload was sent, the status bar stood at *146 KB of 146 KB* for as
+  long as the server took to take them in - on a slow line, many seconds -
+  and a folder waiting behind it could show libcurl's own note, *We are
+  completely uploaded and fine*, described as reading that folder. The count
+  is now followed by *Finishing the upload...* (then the server's answer),
+  libcurl's notes are put in plain words on the status bar (the connection
+  log keeps them as they were), and a folder's wait says *Reading* only
+  while the folder itself is being read.
 - **A drop onto a remote folder is asked about at once, not after the
   upload in progress.** Before an upload replaces anything, the folder is
   listed afresh to see which names are taken - and that listing waited in
