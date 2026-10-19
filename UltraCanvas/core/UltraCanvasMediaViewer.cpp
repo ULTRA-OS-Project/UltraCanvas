@@ -1,6 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.11.1 - the viewer's notes - a *.ucd summary, a locked PDF's - are in its dark
+//                   colours, laid out like Details (noteView), not on a white text page
 // Version: 1.11.0 - password-protected files: a layered *.ucd image or a PDF that needs
 //                   its password shows an Unlock button (info bar and toolbar, Enter)
 //                   that asks for it - again when it is not right - and then shows it
@@ -12,7 +14,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -1397,6 +1399,28 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(textView);
     }
 
+    // ----- NOTE VIEW (the viewer's own words about a file) -----
+    // A *.ucd without a picture to show, a PDF that needs its password: what
+    // the viewer says about them reads in its own dark colours, laid out as
+    // the Details panel lays out its facts - not on the white page a text
+    // file is shown on.
+    {
+        auto nv = std::make_shared<UltraCanvasTextArea>("MV_Note", 0, 0, 0, 0);
+        nv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        nv->ApplyDarkTheme();
+        nv->SetBackgroundColor(Color(24, 24, 28, 255));
+        nv->SetFontSize(12);
+        nv->SetWordWrap(true);
+        nv->SetShowLineNumbers(false);
+        nv->SetHighlightSyntax(false);
+        nv->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        nv->SetDisplayOnly(true);
+        nv->SetVisible(false);
+        noteView = nv;
+        AddChild(noteView);
+    }
+
     // ----- EBOOK VIEW (EPUB / FB2 / MOBI / AZW) -----
     // Complete reading widget: chapter toolbar, table of contents and reflowing
     // chapter content. Engines come from the eBook registry; registering the
@@ -1872,6 +1896,7 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (bookView) static_cast<UltraCanvasEBookViewer*>(bookView.get())->CloseDocument();
     if (fontView) static_cast<UltraCanvasFontViewer*>(fontView.get())->CloseFont();
     if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
+    if (noteView) static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
     // The document can be a large drawing; a closed preview must not keep it.
     if (vectorView) static_cast<UltraCanvasVectorElement*>(vectorView.get())->ClearDocument();
     DropPluginView();
@@ -2063,6 +2088,8 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (sheetView)   sheetView->SetVisible(kind == MediaKind::Sheet);
     if (modelView)   modelView->SetVisible(kind == MediaKind::Model);
     if (textView)    textView->SetVisible(kind == MediaKind::Text);
+    noteShown = false;   // ShowNote puts it up in the text view's place
+    if (noteView)    noteView->SetVisible(false);
     if (bookView)    bookView->SetVisible(kind == MediaKind::Book);
     if (fontView)    fontView->SetVisible(kind == MediaKind::Font);
     if (vectorView)  vectorView->SetVisible(kind == MediaKind::Vector && !pluginView);
@@ -2332,14 +2359,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
             ShowView(MediaKind::Image);
             surface->ShowImage(thumb, transition, transitionDurationMs, animated,
                                SurfaceAdjustmentsFor(path));
-        } else if (textView) {
-            ShowView(MediaKind::Text);
+        } else {
             surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
-            auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
-            ta->SetEditingMode(TextAreaEditingMode::PlainText);
-            ta->SetHighlightSyntax(false);
-            ta->SetDisplayOnly(true);
-            ta->SetText(ucdDetails);
+            ShowNote(ucdDetails);
         }
         handled = true;
     }
@@ -2583,17 +2605,9 @@ void UltraCanvasMediaViewer::ApplyToolAvailability() {
 // ===== PASSWORD-PROTECTED FILES =====
 
 void UltraCanvasMediaViewer::ShowLockedPDFNote(const std::string& path) {
-    if (!textView) {
-        if (infoLabel) infoLabel->SetText(BaseName(path) + " is password-protected");
-        return;
-    }
-    ShowView(MediaKind::Text);
-    auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
-    ta->SetEditingMode(TextAreaEditingMode::PlainText);
-    ta->SetHighlightSyntax(false);
-    ta->SetDisplayOnly(true);
-    ta->SetText(BaseName(path) + " is password-protected.\n\n"
-                "Its pages open with its password: Unlock, in the bar below (or Enter), asks for it.\n");
+    if (!noteView && infoLabel) infoLabel->SetText(BaseName(path) + " is password-protected");
+    ShowNote(BaseName(path) + " is password-protected\n\n"
+             "Unlock, in the bar below (or Enter), asks for its password and opens it.\n");
 }
 
 void UltraCanvasMediaViewer::Unlock() {
@@ -2674,7 +2688,7 @@ MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& 
             return MediaUnlockResult::Failed;
         }
         locked = MediaLock::NotLocked;
-        if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
+        if (noteView) static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
         ShowView(MediaKind::Document);
     }
 #endif
@@ -3284,6 +3298,17 @@ void UltraCanvasMediaViewer::ShowDetailsText(const std::string& plain) {
     dv->ScrollTo(0);
 }
 
+void UltraCanvasMediaViewer::ShowNote(const std::string& plain) {
+    ShowView(MediaKind::Text);
+    if (!noteView) return;
+    if (textView) textView->SetVisible(false);
+    auto* nv = static_cast<UltraCanvasTextArea*>(noteView.get());
+    nv->SetText(DetailsToMarkdown(plain));
+    nv->ScrollTo(0);
+    nv->SetVisible(true);
+    noteShown = true;
+}
+
 bool UltraCanvasMediaViewer::IsDetailsVisible() const {
     return detailsView && detailsView->IsVisible();
 }
@@ -3517,7 +3542,7 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
         case MediaKind::Document: return pdfView.get();
         case MediaKind::Sheet:    return sheetView.get();
         case MediaKind::Model:    return modelView.get();
-        case MediaKind::Text:     return textView.get();
+        case MediaKind::Text:     return noteShown ? noteView.get() : textView.get();
         case MediaKind::Book:     return bookView.get();
         case MediaKind::Font:     return fontView.get();
         case MediaKind::Vector:   return pluginView ? pluginView.get()
@@ -3534,6 +3559,7 @@ bool UltraCanvasMediaViewer::IsDisplayView(const UltraCanvasUIElement* element) 
     return element == surface.get()     || element == pdfView.get() ||
            element == sheetView.get()   || element == modelView.get() ||
            element == textView.get()    || element == bookView.get() ||
+           element == noteView.get()    ||
            element == vectorView.get()  || element == pluginView.get() ||
            element == videoPlayer.get() || element == audioPlayer.get();
 }
@@ -3627,9 +3653,11 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
         return true;
     }
 
-    // The text view is display-only, so scrolling it is the widget's job.
-    if (activeKind == MediaKind::Text && textView) {
-        auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
+    // The text view (or a note in its place) is display-only, so scrolling
+    // it is the widget's job.
+    UltraCanvasUIElement* shownText = noteShown ? noteView.get() : textView.get();
+    if (activeKind == MediaKind::Text && shownText) {
+        auto* ta = static_cast<UltraCanvasTextArea*>(shownText);
         switch (event.virtualKey) {
             case UCKeys::Up:       ta->ScrollUp(1);     return true;
             case UCKeys::Down:     ta->ScrollDown(1);   return true;

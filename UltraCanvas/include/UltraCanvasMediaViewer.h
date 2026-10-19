@@ -77,10 +77,11 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.13.1 - noteView: the viewer's notes (a *.ucd summary, a locked PDF) are dark
 // Version: 1.13.0 - password-protected files: IsLocked / Unlock / UnlockWithPassword,
 //                   MediaViewerTools::unlock, MediaUnlockResult
 // Version: 1.12.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -633,6 +634,9 @@ private:
     void AskForPassword(const std::string& note);
     // What a locked PDF shows: a note in the text view.
     void ShowLockedPDFNote(const std::string& path);
+    // Shows `plain` - "Key: value" lines, as the Details panel takes them -
+    // in noteView, in place of the text view.
+    void ShowNote(const std::string& plain);
     void UpdateDetailedInfo();
     // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
     // "## " / "### " headings) converted to Markdown tables.
@@ -731,6 +735,12 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    sheetView;     // UltraCanvasSpreadsheet
     std::shared_ptr<UltraCanvasUIElement>    modelView;     // UltraCanvasSTLElement (3D)
     std::shared_ptr<UltraCanvasUIElement>    textView;      // UltraCanvasTextArea (read-only)
+    // The viewer's own note about a file it shows no picture of - a *.ucd's
+    // header summary, a locked PDF's - in the viewer's dark colours, laid
+    // out like the Details panel (UltraCanvasTextArea, Markdown). Shown in
+    // the text view's place (activeKind Text) by ShowNote; `noteShown` says so.
+    std::shared_ptr<UltraCanvasUIElement>    noteView;
+    bool noteShown = false;
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement
