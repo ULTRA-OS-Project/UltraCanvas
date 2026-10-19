@@ -3,9 +3,10 @@
 // function (UltraNet_HttpRequest by default, a fake in tests), Basic /
 // Bearer auth from the credentials, the HTTP → Result mapping, and the wait
 // and retry when a service limits requests (RateLimitPolicy).
+// Version: 0.5.0 - DownloadToFile: a download goes to disk as it arrives
 // Version: 0.4.0 - a throttled request is sent again after the wait the
 //                  service asks for (RateLimitPolicy, per thread)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -56,6 +57,18 @@ protected:
     // `response` is the last answer.
     UltraNetResult Send(const Credentials& credentials, UltraNetHttpRequest request,
                         UltraNetResponse& response) const;
+    // A download: Send, with the body of a successful answer written to
+    // `localPath` (UTF-8) as it arrives rather than held in memory first, so
+    // a file is as large as the disk allows, not as the address space. The
+    // file is made when the service has answered 2xx; a refusal's body is
+    // kept for its reason and the throttling check instead, and nothing is
+    // written. A download that fails part-way - the connection lost, the
+    // caller calling it off, the disk full - removes what it wrote. No
+    // whole-transfer time limit (a download is as long as the file is large)
+    // but a stall limit, unless the request sets its own. `what` names it in
+    // a failure ("download /x").
+    Result DownloadToFile(const Credentials& credentials, UltraNetHttpRequest request,
+                          const std::string& localPath, const std::string& what) const;
     // Map an HTTP outcome onto a Result (2xx → Ok; 429, or a 503 / Google 403
     // that says so → RateLimited; 401/403 → AuthFailed; 404 → NotFound; other
     // 4xx/5xx → Server; transport failure → Network). A refusal's message
@@ -64,6 +77,12 @@ protected:
     // wait asked for and what the transport knew about the connection.
     static Result FromHttp(const UltraNetResult& net, const UltraNetResponse& response,
                            const std::string& what);
+    // Send, calling `afterAnswer` on each answer before it is looked at - the
+    // throttling check reads its body, so a download that streamed the body
+    // away puts a refusal's back here.
+    UltraNetResult SendWith(const Credentials& credentials, UltraNetHttpRequest request,
+                            UltraNetResponse& response,
+                            const std::function<void(UltraNetResponse&)>& afterAnswer) const;
     static std::string BodyText(const UltraNetResponse& response) {
         return std::string(response.body.begin(), response.body.end());
     }

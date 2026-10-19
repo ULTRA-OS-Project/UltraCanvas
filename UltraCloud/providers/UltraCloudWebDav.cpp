@@ -1,7 +1,8 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
+// Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile)
 // Version: 0.4.0 - Delete and Rename, so a WebDAV server is a drive and a publish target that can prune
 // Version: 0.3.0 - WebDavErrorMessage: the <s:message> of an error body
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudWebDav.h>
 
@@ -294,15 +295,8 @@ Result WebDavProvider::Download(const Account& account, const Credentials& crede
     UltraNetHttpRequest req;
     req.url = DavUrl(account, remotePath);
     req.method = UltraNetHttpMethod::Get;
-    UltraNetResponse resp;
-    UltraNetResult net = Send(credentials, req, resp);
-    Result r = FromHttp(net, resp, "download " + remotePath);
-    if (!r) return r;
-    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
-    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
-    os.write(reinterpret_cast<const char*>(resp.body.data()),
-             static_cast<std::streamsize>(resp.body.size()));
-    return os ? Result::Ok() : Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    // Written to disk as it arrives, not held in memory first.
+    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
 }
 
 Result WebDavProvider::CreateShareLink(const Account& account, const Credentials&,

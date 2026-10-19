@@ -1,6 +1,7 @@
 // UltraCloud/providers/UltraCloudDropbox.cpp
+// Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudDropbox.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -211,15 +212,8 @@ Result DropboxProvider::Download(const Account&, const Credentials& credentials,
     req.url = std::string(kContent) + "files/download";
     req.method = UltraNetHttpMethod::Post;
     req.headers.Set("Dropbox-API-Arg", ToJson(arg));
-    UltraNetResponse resp;
-    UltraNetResult net = Send(credentials, req, resp);
-    Result r = FromHttp(net, resp, "download " + remotePath);
-    if (!r) return r;
-    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
-    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
-    os.write(reinterpret_cast<const char*>(resp.body.data()),
-             static_cast<std::streamsize>(resp.body.size()));
-    return os ? Result::Ok() : Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    // Written to disk as it arrives, not held in memory first.
+    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
 }
 
 Result DropboxProvider::CreateShareLink(const Account&, const Credentials& credentials,

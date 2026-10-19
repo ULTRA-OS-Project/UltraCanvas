@@ -1,6 +1,7 @@
 // UltraCloud/providers/UltraCloudOneDrive.cpp
+// Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOneDrive.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -190,15 +191,8 @@ Result OneDriveProvider::Download(const Account&, const Credentials& credentials
                                   const std::string& remotePath, const std::string& localPath) {
     UltraNetHttpRequest req;
     req.url = OneDriveItemUrl(remotePath, "content");   // 302 to the bytes; followed
-    UltraNetResponse resp;
-    UltraNetResult net = Send(credentials, req, resp);
-    Result r = FromHttp(net, resp, "download " + remotePath);
-    if (!r) return r;
-    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
-    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
-    os.write(reinterpret_cast<const char*>(resp.body.data()),
-             static_cast<std::streamsize>(resp.body.size()));
-    return os ? Result::Ok() : Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    // Written to disk as it arrives, not held in memory first.
+    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
 }
 
 Result OneDriveProvider::CreateShareLink(const Account&, const Credentials& credentials,

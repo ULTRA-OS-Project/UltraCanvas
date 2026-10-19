@@ -1,14 +1,21 @@
 // UltraCloud/core/UltraCloudHttp.cpp
+// Version: 0.5.0 - DownloadToFile: a download is written to disk as it arrives
 // Version: 0.4.0 - a throttled request is sent again after the wait the
 //                  service asks for (RateLimitPolicy)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudHttp.h>
 #include <UltraCloud/UltraCloudLog.h>
 
+#include <UltraCanvasPathUtf8.h>
+
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <memory>
 #include <thread>
 
 namespace UltraCloud {
@@ -95,6 +102,13 @@ HttpProviderBase::HttpProviderBase(HttpFn http) : http_(std::move(http)) {
 
 UltraNetResult HttpProviderBase::Send(const Credentials& credentials, UltraNetHttpRequest request,
                                       UltraNetResponse& response) const {
+    return SendWith(credentials, std::move(request), response, nullptr);
+}
+
+UltraNetResult HttpProviderBase::SendWith(
+        const Credentials& credentials, UltraNetHttpRequest request,
+        UltraNetResponse& response,
+        const std::function<void(UltraNetResponse&)>& afterAnswer) const {
     if (!credentials.token.empty()) {
         request.options.authType = UltraNetAuthType::Bearer;
         request.options.credentials.type = UltraNetAuthType::Bearer;
@@ -123,6 +137,7 @@ UltraNetResult HttpProviderBase::Send(const Credentials& credentials, UltraNetHt
             LogToThread(LogKind::Request, MethodText(request) + " " + LoggableUrl(request.url));
         response = UltraNetResponse{};
         net = http_(request, response);
+        if (afterAnswer) afterAnswer(response);
 
         const int status = response.statusCode;
         const std::string took = Duration(response.elapsedTime);
@@ -184,6 +199,98 @@ UltraNetResult HttpProviderBase::Send(const Credentials& credentials, UltraNetHt
             return net;
         }
     }
+}
+
+Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
+                                        UltraNetHttpRequest request,
+                                        const std::string& localPath,
+                                        const std::string& what) const {
+    if (localPath.empty())
+        return Result::Error(ResultCode::InvalidArgument, what + ": no local file given");
+
+    // Shared with the transfer's callbacks, which run on this thread inside
+    // the request - once per try when a throttled request is sent again.
+    struct Target {
+        std::filesystem::path path;
+        std::ofstream out;
+        bool made = false;         // the file exists because of this download
+        bool accepted = false;     // the answer being read is a 2xx
+        bool writeFailed = false;
+        std::vector<uint8_t> refusal;   // a non-2xx answer's body, for its reason
+    };
+    auto target = std::make_shared<Target>();
+    target->path = UltraCanvas::PathFromUtf8(localPath);
+    // A refusal's body is a few hundred bytes of JSON or XML; a service that
+    // sends a page instead is not kept whole.
+    static constexpr std::size_t kRefusalKept = 64 * 1024;
+
+    request.onHeaders = [target](const UltraNetResponse& answer) {
+        target->accepted = answer.statusCode >= 200 && answer.statusCode < 300;
+        target->refusal.clear();
+        if (!target->accepted || target->made) return true;
+        target->out.open(target->path, std::ios::binary | std::ios::trunc);
+        target->made = true;
+        if (!target->out) {
+            target->writeFailed = true;
+            return false;   // ends the transfer: nowhere to put it
+        }
+        return true;
+    };
+    request.onDataChunk = [target](const std::vector<uint8_t>& chunk) {
+        if (!target->accepted) {
+            const std::size_t room = kRefusalKept - std::min(kRefusalKept, target->refusal.size());
+            target->refusal.insert(target->refusal.end(), chunk.begin(),
+                                   chunk.begin() + std::min(room, chunk.size()));
+            return;
+        }
+        if (target->writeFailed || !target->out.is_open()) return;
+        target->out.write(reinterpret_cast<const char*>(chunk.data()),
+                          static_cast<std::streamsize>(chunk.size()));
+        if (!target->out) target->writeFailed = true;
+    };
+    // A download is as long as the file is large: no limit on the whole
+    // transfer, only on a server that has stopped sending.
+    if (request.options.timeoutMs == 0) request.options.timeoutMs = -1;
+    if (request.options.stallTimeoutMs == 0) request.options.stallTimeoutMs = 30000;
+
+    UltraNetResponse response;
+    const UltraNetResult net = SendWith(
+            credentials, std::move(request), response, [target](UltraNetResponse& answer) {
+                // The refusal's body where Send and FromHttp read a reason
+                // from - Google Drive's rate-limit 403 is told apart by it.
+                if (!target->accepted && answer.body.empty())
+                    answer.body = target->refusal;
+            });
+    if (target->out.is_open()) {
+        target->out.close();
+        if (!target->out) target->writeFailed = true;
+    }
+    // A transport that hands the body over whole instead of in chunks (a
+    // test's fake, a stand-in): written now, the old way.
+    if (!target->made && net && response.statusCode >= 200 && response.statusCode < 300) {
+        std::ofstream out(target->path, std::ios::binary | std::ios::trunc);
+        target->made = true;
+        out.write(reinterpret_cast<const char*>(response.body.data()),
+                  static_cast<std::streamsize>(response.body.size()));
+        out.close();
+        if (!out) target->writeFailed = true;
+    }
+
+    auto discard = [&target]() {
+        if (!target->made) return;
+        std::error_code ec;
+        std::filesystem::remove(target->path, ec);
+    };
+    if (target->writeFailed) {
+        discard();
+        return Result::Error(ResultCode::IoError, what + ": cannot write " + localPath);
+    }
+    Result r = FromHttp(net, response, what);
+    if (!r) {
+        discard();   // half a file is no file
+        return r;
+    }
+    return Result::Ok();
 }
 
 Result HttpProviderBase::FromHttp(const UltraNetResult& net, const UltraNetResponse& response,
