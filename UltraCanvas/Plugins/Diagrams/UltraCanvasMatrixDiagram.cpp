@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.6.1 - a level colour too dark for the dark theme (HighMediumLow's High) is drawn in the label colour, as competitors are
 // Version: 1.6.0 - the C shape: a cube drawn as stacked isometric slices, one per depth item
 // Version: 1.5.1 - the dark theme recolours the competitive block, direction arrows, ranks and roll-up bars; a competitor too dark to see is drawn in the label colour
 // Version: 1.5.0 - the attribute gutter: a set's attribute columns between its row labels and the grid (L and House)
@@ -473,7 +474,7 @@ namespace UltraCanvas {
                 ChartLegendEntry entry;
                 entry.id = level.id;
                 entry.label = level.label.empty() ? level.id : level.label;
-                entry.color = level.color;
+                entry.color = ReadableOn(level.color, style.cellBackground);
                 entry.glyph = level.glyph;
                 switch (level.shape) {
                     case MatrixMarkShape::Ring:  entry.swatch = LegendSwatch::Ring;   break;
@@ -1859,7 +1860,7 @@ namespace UltraCanvas {
                 if (cell.row < 0 || cell.row >= pl.rows || cell.col < 0 || cell.col >= pl.cols) continue;
                 const MatrixLevel* level = panel.scale.Find(cell.levelId);
                 if (!level) continue;
-                Color tint = level->color;
+                Color tint = ReadableOn(level->color, style.cellBackground);
                 tint.a = IsDimmed(cell.levelId) ? static_cast<uint8_t>(style.cellTintAlpha / 4)
                                                 : style.cellTintAlpha;
                 ctx->SetFillPaint(tint);
@@ -1959,7 +1960,7 @@ namespace UltraCanvas {
 
         const Point2Dd c(cell.x + cell.width / 2.0, cell.y + cell.height / 2.0);
 
-        Color color = level.color;
+        Color color = ReadableOn(level.color, style.cellBackground);
         if (dimmed) color.a = static_cast<uint8_t>(color.a / 5);
 
         switch (level.shape) {
@@ -3254,18 +3255,23 @@ namespace UltraCanvas {
         return style.labelColor;
     }
 
-    // A competitor's colour is the model's, chosen against one theme. When
-    // it would all but vanish on the block's background - the House sample's
-    // near-black "ours" on the dark theme - draw it in the label colour, which
-    // every theme keeps readable, rather than lose the line.
-    Color UltraCanvasMatrixDiagram::CompetitorColor(const MatrixCompetitor& competitor) const {
-        auto luma = [](const Color& c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; };
-        if (std::fabs(luma(competitor.color) - luma(style.competitiveBackground)) >= 60.0) {
-            return competitor.color;
-        }
+    // Level and competitor colours are the model's, chosen against one theme.
+    // When one would all but vanish on what it is drawn over - the near-black
+    // "High" of HighMediumLow, or the House sample's "ours", on the dark
+    // theme - draw it in the label colour, which every theme keeps readable,
+    // rather than lose the mark. The alpha is kept, so dimming still works.
+    // Distance in RGB, not in brightness: a saturated red or blue is as dark
+    // as the grid yet plainly visible on it, and must keep its colour.
+    Color UltraCanvasMatrixDiagram::ReadableOn(const Color& color, const Color& background) const {
+        const double dr = color.r - background.r, dg = color.g - background.g, db = color.b - background.b;
+        if (std::sqrt(dr * dr + dg * dg + db * db) >= 60.0) return color;
         Color readable = style.labelColor;
-        readable.a = competitor.color.a;
+        readable.a = color.a;
         return readable;
+    }
+
+    Color UltraCanvasMatrixDiagram::CompetitorColor(const MatrixCompetitor& competitor) const {
+        return ReadableOn(competitor.color, style.competitiveBackground);
     }
 
     std::string UltraCanvasMatrixDiagram::FormatTotal(double value) const {

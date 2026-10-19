@@ -13,6 +13,7 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.6.1 - a near-black level stays visible in the dark theme, and keeps its colour in the light
 // Version: 1.6.0 - the C shape: every cell of every slice reachable over the same area, slice labels, Page Up/Down, editing in depth
 // Version: 1.5.1 - the dark theme darkens the competitive block, and a dark competitor stays visible on it
 // Version: 1.5.0 - the attribute gutter: L and House rows are hit across it, and hiding it gives the grid the width back
@@ -790,6 +791,50 @@ void TestCube() {
           "a click steps the level of that slice's cell only");
 }
 
+// HighMediumLow's "High" is near-black. On the dark grid it is drawn in the
+// label colour instead; on the light grid it keeps its own colour; and a
+// saturated colour that is merely dark keeps its colour in both.
+void TestDarkLevels() {
+    std::cout << "\nLevel colours in the dark theme\n";
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    const MatrixModel model = MatrixSamples::SupplyChain();
+    const int row = model.RowSet(0)->IndexOf("Supplier A");
+    const int col = model.ColSet(0)->IndexOf("W/H 1");
+    Check(model.LevelAt(0, row, col) == "high", "the X sample has a High mark at Supplier A x W/H 1");
+
+    auto diagram = LaidOut(model, canvas);
+    Point2Di centre;
+    int cellW = 0;
+    Check(FindCellCentre(*diagram, Ref(0, row, col), kWidth, kHeight, centre, cellW), "and it is on screen");
+
+    diagram->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    const Color light = canvas.PixelAt(centre.x, centre.y);
+    Check(light.r < 80 && light.g < 80 && light.b < 80, "light theme: the High mark keeps its near-black");
+
+    diagram->SetDarkTheme(true);
+    diagram->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    canvas.Save("matrix-X-dark");
+    const Color dark = canvas.PixelAt(centre.x, centre.y);
+    Check(dark.r > 160 && dark.g > 160 && dark.b > 160,
+          "dark theme: it is drawn light, so it stands out (" + std::to_string(dark.r) + ", "
+          + std::to_string(dark.g) + ", " + std::to_string(dark.b) + ")");
+
+    // The QFD scale's strong red is as dark as the grid in brightness, but
+    // plainly visible on it: it must stay red.
+    auto qfd = LaidOut(MatrixSamples::QualityFunctionDeployment(), canvas);
+    qfd->SetDarkTheme(true);
+    int strongRow = -1, strongCol = -1;
+    for (const MatrixCell& cell : qfd->GetModel().cells) {
+        if (cell.panel == 0 && cell.levelId == "strong") { strongRow = cell.row; strongCol = cell.col; break; }
+    }
+    qfd->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    Point2Di strong;
+    FindCellCentre(*qfd, Ref(0, strongRow, strongCol), kWidth, kHeight, strong, cellW);
+    const Color red = canvas.PixelAt(strong.x, strong.y);
+    Check(red.r > 150 && red.g < 90 && red.b < 90, "a saturated colour keeps its own hue in the dark");
+}
+
 } // namespace
 
 int main() {
@@ -814,6 +859,7 @@ int main() {
     TestCompetitive();
     TestAttributeGutter();
     TestCube();
+    TestDarkLevels();
     TestThemeKeepsSettings();
 
     std::cout << "\n================================\n";

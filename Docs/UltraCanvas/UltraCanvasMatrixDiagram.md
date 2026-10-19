@@ -467,6 +467,13 @@ else: sizes, fonts and switches such as `alternateRowBands` or
 so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
 and `ApplyLightTheme()` do the same to a style you hold.
 
+Level and competitor colours belong to the model, not the theme. When one is
+too close to what it is drawn on to be seen, it is drawn in the label colour
+instead. One case is the near-black "High" of `MatrixScale::HighMediumLow()`
+on the dark grid. The legend swatch follows the mark. Closeness is measured
+as distance in RGB, so a saturated red or blue that is as dark as the grid
+keeps its own colour.
+
 ## Interaction
 
 ```cpp
