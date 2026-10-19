@@ -27,7 +27,10 @@
 // body — the format is designed for that, UltraCanvasUCDContainer.h) plus the
 // header details; files without a thumbnail get a header summary. A
 // password-protected layered image or PDF shows an Unlock button that asks for
-// its password (IsLocked / Unlock / UnlockWithPassword). The
+// its password (IsLocked / Unlock / UnlockWithPassword); opened, the info bar
+// says "unlocked" beside its kind (IsUnlocked). The passwords are kept for the
+// folder until the desktop session locks or the window has been left alone
+// for a while (ForgetPasswords, SetForgetPasswordsAfterIdle). The
 // right view is chosen automatically from the file kind, and the toolbar
 // offers only the tools that kind takes (GetAvailableTools): colour
 // adjustments and Curves for bitmaps, rotate / mirror / save for anything on
@@ -77,6 +80,10 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.15.0 - Unlock's passwords are forgotten - and an unlocked file shown locked
+//                   again - when the desktop session locks or the window has had no
+//                   input for a while (SetForgetPasswordsAfterIdle); IsUnlocked, and
+//                   "unlocked" beside the kind in the info bar
 // Version: 1.14.0 - Unlock's passwords are kept for the folder being browsed: a file
 //                   unlocked there, or another with the same password, shows without
 //                   asking again (ForgetPasswords, SetRememberPasswords)
@@ -97,6 +104,7 @@
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasSessionLock.h"   // ForgetPasswords when the session locks
 #include <string>
 #include <vector>
 #include <memory>
@@ -576,9 +584,28 @@ public:
     // them, and so does ForgetPasswords. SetRememberPasswords(false) keeps
     // none: every protected file asks each time it is shown.
     static constexpr size_t kMaxRememberedPasswords = 8;
+    // Forgets the kept passwords, and shows a file showing unlocked locked
+    // again. The viewer does this itself when the desktop session locks
+    // (UltraCanvasSessionLock.h) and when its window has had no key or mouse
+    // input for GetForgetPasswordsAfterIdle(), so neither a password nor an
+    // opened document outlives the user stepping away.
     void ForgetPasswords();
     void SetRememberPasswords(bool remember);
     bool GetRememberPasswords() const { return rememberPasswords; }
+    // How long the window may go without input before ForgetPasswords
+    // (default ten minutes; zero never - the session lock still forgets).
+    static constexpr std::chrono::seconds kDefaultForgetPasswordsAfterIdle{600};
+    void SetForgetPasswordsAfterIdle(std::chrono::seconds idle);
+    std::chrono::seconds GetForgetPasswordsAfterIdle() const { return forgetAfterIdle; }
+    // What the viewer's idle timer runs: ForgetPasswords when there is
+    // something to forget and the window has been idle that long. True when
+    // it forgot. A host that measures idleness its own way calls
+    // ForgetPasswords instead.
+    bool ForgetPasswordsIfIdle();
+    // The shown file is password-protected and showing whole: opened with
+    // its password, typed or kept. The info bar says "unlocked" beside its
+    // kind, and the Details say so.
+    bool IsUnlocked() const { return unlocked; }
 
     // ===== KEYBOARD =====
     // Give the widget the window keyboard focus, so the browsing keys work
@@ -787,6 +814,7 @@ private:
     // so Unlock knows how to open it (see IsLocked()).
     enum class MediaLock { NotLocked, UCDImage, PDF };
     MediaLock locked = MediaLock::NotLocked;
+    bool unlocked = false;            // ... or it is, and was opened with its password (IsUnlocked)
     bool askingForPassword = false;   // Unlock's question is up
     // Unlock's passwords for the folder being browsed (see ForgetPasswords).
     bool rememberPasswords = true;
@@ -800,6 +828,15 @@ private:
     void UnlockFromRememberedPasswords();
     // Forgets the passwords when `folder` is not the one they belong to.
     void KeepPasswordsOnlyFor(const std::string& folder);
+    // The passwords go; what they opened stays shown (ForgetPasswords relocks it).
+    void DropKeptPasswords();
+    // Watched for the user's absence - the session lock, the idle timer -
+    // exactly while a password is kept or a file is shown unlocked.
+    void UpdateAbsenceWatch();
+    std::chrono::seconds forgetAfterIdle = kDefaultForgetPasswordsAfterIdle;
+    std::chrono::steady_clock::time_point lastActivity = std::chrono::steady_clock::now();   // last key or mouse input
+    TimerId idleTimer = 0;
+    SessionLockListenerId sessionLockListener = 0;
     std::shared_ptr<UltraCanvasButton> unlockButton;   // in the info bar
 
     MediaAdjustments adjustments;
@@ -843,7 +880,7 @@ private:
     bool  transparencyPaletteEnabled = true;  // backdrop strip under the picture
 
     bool grabFocusOnAttach = true;   // claim the keyboard when attached to a window
-    bool keyFilterInstalled = false; // window key filter is live
+    bool keyFilterInstalled = false; // window key filter (and input-activity watch) is live
 };
 
 // ===== FACTORY =====

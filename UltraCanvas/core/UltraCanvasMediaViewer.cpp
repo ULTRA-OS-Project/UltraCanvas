@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.13.0 - Unlock's passwords are forgotten, and an unlocked file locked again,
+//                   when the session locks or the window has been idle (ten minutes by
+//                   default); an unlocked file says "unlocked" in the info bar and Details
 // Version: 1.12.0 - Unlock's passwords are kept for the folder being browsed and tried,
 //                   without asking, on each protected file shown there
 // Version: 1.11.1 - the viewer's notes - a *.ucd summary, a locked PDF's - are in its dark
@@ -1080,6 +1083,12 @@ UltraCanvasMediaViewer::UltraCanvasMediaViewer(const std::string& identifier,
 UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
     // The key filter captures `this`; it must not outlive the widget.
     RemoveKeyFilter();
+    // So do the session-lock listener and the idle timer.
+    if (sessionLockListener) RemoveSessionLockListener(sessionLockListener);
+    if (idleTimer) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(idleTimer);
+        idleTimer = 0;
+    }
     // Same for the Curves dialog: it lives in the application's window list and
     // would call back into a destroyed viewer.
     if (auto dlg = curvesDialog.lock()) {
@@ -2233,6 +2242,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     bool handled = false;
     ucdDetails.clear();   // only set while a *.ucd container is showing
     locked = MediaLock::NotLocked;
+    unlocked = false;
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
     if (kind == MediaKind::Document && pdfView) {
@@ -2526,6 +2536,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // A protected file whose password was given in this folder - its own,
     // or one that opened another file here - shows without asking again.
     if (IsLocked()) UnlockFromRememberedPasswords();
+    UpdateAbsenceWatch();
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
@@ -2636,6 +2647,8 @@ void UltraCanvasMediaViewer::AskForPassword(const std::string& note) {
             if (self.expired()) return;
             askingForPassword = false;
             if (r != DialogResult::OK) return;
+            // Typed in the dialog's window, which the activity watch does not see.
+            lastActivity = std::chrono::steady_clock::now();
             // Browsed on while the question was up: the answer was for another file.
             if (GetCurrentPath() != path || !IsLocked()) return;
             std::string error;
@@ -2705,7 +2718,9 @@ MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& 
         return MediaUnlockResult::Failed;
     }
 
+    unlocked = true;
     RememberPassword(path, password);
+    UpdateAbsenceWatch();
     UpdateToolAvailability();
     UpdateInfoBar();
     if (IsDetailsVisible()) UpdateDetailedInfo();
@@ -2730,20 +2745,74 @@ namespace {
     }
 }
 
-void UltraCanvasMediaViewer::ForgetPasswords() {
+void UltraCanvasMediaViewer::DropKeptPasswords() {
     rememberedPasswords.clear();
     passwordForFile.clear();
     noRememberedPasswordFits.clear();
     passwordFolder.clear();
 }
 
+void UltraCanvasMediaViewer::ForgetPasswords() {
+    DropKeptPasswords();
+    // What a password opened goes back behind its Unlock: loaded again, with
+    // nothing kept to open it.
+    if (unlocked) LoadCurrent(false);
+    UpdateAbsenceWatch();
+}
+
 void UltraCanvasMediaViewer::SetRememberPasswords(bool remember) {
     rememberPasswords = remember;
-    if (!remember) ForgetPasswords();
+    if (!remember) DropKeptPasswords();
+    UpdateAbsenceWatch();
 }
 
 void UltraCanvasMediaViewer::KeepPasswordsOnlyFor(const std::string& folder) {
-    if (!passwordFolder.empty() && !SameFolder(folder, passwordFolder)) ForgetPasswords();
+    if (!passwordFolder.empty() && !SameFolder(folder, passwordFolder)) DropKeptPasswords();
+}
+
+void UltraCanvasMediaViewer::SetForgetPasswordsAfterIdle(std::chrono::seconds idle) {
+    forgetAfterIdle = std::max(idle, std::chrono::seconds(0));
+    // The timer's period follows the setting: started again at the new one.
+    if (idleTimer) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(idleTimer);
+        idleTimer = 0;
+    }
+    UpdateAbsenceWatch();
+}
+
+bool UltraCanvasMediaViewer::ForgetPasswordsIfIdle() {
+    if (forgetAfterIdle.count() == 0 || (!unlocked && rememberedPasswords.empty())) return false;
+    if (std::chrono::steady_clock::now() - lastActivity < forgetAfterIdle) return false;
+    ForgetPasswords();
+    return true;
+}
+
+void UltraCanvasMediaViewer::UpdateAbsenceWatch() {
+    const bool holding = unlocked || !rememberedPasswords.empty();
+    if (holding && !sessionLockListener) {
+        // Called on the UI thread; the destructor removes it before `this` goes.
+        sessionLockListener = AddSessionLockListener([this](bool sessionLocked) {
+            if (sessionLocked) ForgetPasswords();
+        });
+    } else if (!holding && sessionLockListener) {
+        RemoveSessionLockListener(sessionLockListener);
+        sessionLockListener = 0;
+    }
+
+    auto* app = UltraCanvasApplication::GetInstance();
+    const bool timed = holding && forgetAfterIdle.count() > 0;
+    if (timed && !idleTimer && app) {
+        // Looked at a few times per idle period - at most every 15 s - so a
+        // password goes within a quarter of the period after it is due.
+        const auto period = std::clamp<std::chrono::milliseconds>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(forgetAfterIdle) / 4,
+                std::chrono::seconds(1), std::chrono::seconds(15));
+        idleTimer = app->StartTimer(static_cast<unsigned int>(period.count()), true,
+                                    [this](TimerId) { ForgetPasswordsIfIdle(); });
+    } else if (!timed && idleTimer) {
+        if (app) app->StopTimer(idleTimer);
+        idleTimer = 0;
+    }
 }
 
 void UltraCanvasMediaViewer::RememberPassword(const std::string& path, const std::string& password) {
@@ -3025,6 +3094,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   UC DOCUMENT";
         if (locked != MediaLock::NotLocked) os << "   \xC2\xB7   password-protected";
+        else if (unlocked) os << "   \xC2\xB7   unlocked";
         std::error_code ec;
         auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
@@ -3048,6 +3118,8 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   PDF";
+        // Opened with its password: protected, though it looks like any other.
+        if (unlocked) os << "   \xC2\xB7   unlocked";
         if (pv->HasDocument()) {
             os << "   \xC2\xB7   page " << pv->GetCurrentPage()
                << " / " << pv->GetPageCount();
@@ -3226,6 +3298,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
         dos << "Type: PDF document\n";
+        if (unlocked) dos << "Encryption: password-protected - unlocked with its password\n";
         if (pv->HasDocument()) dos << "Pages: " << pv->GetPageCount() << "\n";
         ShowDetailsText(dos.str());
         return;
@@ -3667,9 +3740,14 @@ void UltraCanvasMediaViewer::InstallKeyFilter() {
     auto* win = GetWindow();
     if (!win || keyFilterInstalled) return;
     keyFilterInstalled = true;
+    // The same filter notes the user's input, for the idle forgetting of
+    // Unlock's passwords; only keys are ever handled here.
     win->InstallEventFilter(KeyFilterId(),
-            [this](const UCEvent& e) -> bool { return HandleFilteredKey(e); },
-            { UCEventType::KeyDown });
+            [this](const UCEvent& e) -> bool {
+                lastActivity = std::chrono::steady_clock::now();
+                return HandleFilteredKey(e);
+            },
+            { UCEventType::KeyDown, UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseWheel });
 }
 
 void UltraCanvasMediaViewer::RemoveKeyFilter() {

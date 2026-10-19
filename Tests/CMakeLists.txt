@@ -5781,6 +5781,36 @@ else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== SESSION LOCK TEST =====
+# Session-lock listeners hear a lock and an unlock once each; on Linux the
+# D-Bus backend turns a screensaver's ActiveChanged into those calls. That
+# half needs a display and a session bus, so CTest gives it a bus of its own
+# through dbus-run-session where one is installed; it skips without either.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SessionLockTest...")
+    add_executable(SessionLockTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SessionLockTest.cpp
+    )
+    target_include_directories(SessionLockTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SessionLockTest PRIVATE cxx_std_20)
+    target_link_libraries(SessionLockTest PRIVATE UltraCanvas)
+    set_target_properties(SessionLockTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    find_program(ULTRACANVAS_DBUS_RUN_SESSION dbus-run-session)
+    if(ULTRACANVAS_DBUS_RUN_SESSION AND UNIX AND NOT APPLE)
+        add_test(NAME SessionLockTest
+                 COMMAND ${ULTRACANVAS_DBUS_RUN_SESSION} -- $<TARGET_FILE:SessionLockTest>
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    else()
+        add_test(NAME SessionLockTest COMMAND SessionLockTest
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
+    message(STATUS "    Test registered: SessionLockTest")
+else()
+    message(STATUS "  SessionLockTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== MEDIA VIEWER SAVE TEST =====
 # Save image as at another size and with the type's save settings: a bitmap
 # resized, an SVG drawn again at the size chosen (sharp), the stored JPEG

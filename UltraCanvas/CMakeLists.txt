@@ -678,6 +678,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
         # picked up by the platform glob.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVolumeMonitor.cpp
+        # The desktop session locking and unlocking. The platform backend
+        # lives in OS/<Platform>/UltraCanvas*SessionLock.* and is picked up by
+        # the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSessionLock.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaCodecRegistry.cpp
@@ -2062,6 +2066,11 @@ endif()
 # PUBLIC so an app can tell a device notification from the polling fallback.
 if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
+endif()
+# The session lock: the same arrangement for UltraCanvasSessionLock. PUBLIC so
+# an app can tell whether a lock will ever be reported.
+if(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_SESSION_LOCK)
 endif()
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)

@@ -15,10 +15,15 @@
 // button is offered, a wrong password leaves it locked, the right one shows
 // it, and browsing away and back shows it without asking: the password is
 // kept for the folder - and opens another file there with the same one -
-// until another folder is opened or ForgetPasswords.
+// until another folder is opened or ForgetPasswords. The session locking,
+// or the window going without input for GetForgetPasswordsAfterIdle(),
+// forgets them too and shows the unlocked file locked again; while it is
+// unlocked the info bar says so beside its kind.
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.4.0 - forgotten, and the file locked again, on a session lock, ForgetPasswords
+//                  and idleness; IsUnlocked and "unlocked" in the info bar
 // Version: 1.3.0 - Unlock's passwords kept for the folder: back, the same password, another
 //                  folder, ForgetPasswords, SetRememberPasswords(false)
 // Version: 1.2.1 - the viewer's notes (a summary, a locked PDF) are its dark note view
@@ -32,6 +37,7 @@
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasUCDContainer.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasPathUtf8.h"
@@ -41,6 +47,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -58,6 +65,16 @@ void Check(bool condition, const std::string& what) {
 void WriteFile(const fs::path& path, const std::string& content) {
     std::ofstream out(path, std::ios::binary);
     out << content;
+}
+
+// The info bar's text: name, kind, size, place in the folder.
+std::string InfoText(UltraCanvasMediaViewer& viewer) {
+    auto* label = dynamic_cast<UltraCanvasLabel*>(viewer.FindChildById("MV_InfoLabel"));
+    return label ? label->GetText() : std::string();
+}
+
+bool Has(const std::string& text, const std::string& part) {
+    return text.find(part) != std::string::npos;
 }
 
 bool Shown(UltraCanvasMediaViewer& viewer, const std::string& id) {
@@ -209,6 +226,9 @@ int main() {
         Check(shown && shown->IsValid() && shown->GetWidth() == 400 && shown->GetHeight() == 300,
               "layered.ucd: shown at its full 400 x 300, not as its thumbnail");
         Expect(*viewer, plain, true, false, false, false);
+        viewer->SetFiles({ PathToUtf8(plain) });
+        Check(!viewer->IsUnlocked() && !Has(InfoText(*viewer), "unlocked"),
+              "layered.ucd: not protected, so not marked unlocked (" + InfoText(*viewer) + ")");
 
         if (UCD::EncryptionAvailable()) {
             viewer->SetFiles({ PathToUtf8(locked), PathToUtf8(plain) });
@@ -224,8 +244,12 @@ int main() {
                   viewer->IsLocked(), "locked.ucd: a wrong password leaves it locked (" + why + ")");
             Check(viewer->UnlockWithPassword("", why) == MediaUnlockResult::WrongPassword,
                   "locked.ucd: no password is not its password");
+            Check(!viewer->IsUnlocked() && Has(InfoText(*viewer), "UC DOCUMENT   \xC2\xB7   password-protected"),
+                  "locked.ucd: locked, the info bar says it is protected");
             Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked && !viewer->IsLocked(),
                   "locked.ucd: the right password unlocks it");
+            Check(viewer->IsUnlocked() && Has(InfoText(*viewer), "UC DOCUMENT   \xC2\xB7   unlocked"),
+                  "locked.ucd: unlocked, the info bar says so (" + InfoText(*viewer) + ")");
             shown = viewer->GetSurface()->GetImage();
             Check(shown && shown->IsValid() && shown->GetWidth() == 400 && shown->GetHeight() == 300,
                   "locked.ucd: unlocked, it shows at its full 400 x 300");
@@ -244,11 +268,24 @@ int main() {
 
             // The folder's passwords open another file there with the same one.
             viewer->SetFiles({ PathToUtf8(hidden) });
-            Check(!viewer->IsLocked(),
+            Check(!viewer->IsLocked() && viewer->IsUnlocked(),
                   "hidden.ucd: in the same folder with the same password, it shows without asking");
 
-            // Forgotten, it asks again.
+            // The session locks: the passwords go, and what they opened is
+            // shown locked again.
+            NotifySessionLockChanged(true);
+            Check(viewer->IsLocked() && !viewer->IsUnlocked() && !viewer->GetSurface()->GetImage(),
+                  "hidden.ucd: the session locked - it is shown locked again");
+            NotifySessionLockChanged(false);
+            Check(viewer->IsLocked(), "hidden.ucd: the session unlocked - it stays locked until Unlock");
+            viewer->SetFiles({ PathToUtf8(locked) });
+            Check(viewer->IsLocked(), "locked.ucd: after the session lock its password is forgotten - it asks");
+
+            // ForgetPasswords does the same.
+            Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked,
+                  "locked.ucd: unlocked again");
             viewer->ForgetPasswords();
+            Check(viewer->IsLocked() && !viewer->IsUnlocked(), "locked.ucd: ForgetPasswords shows it locked again");
             viewer->SetFiles({ PathToUtf8(hidden) });
             shown = viewer->GetSurface()->GetImage();
             Check(!shown, "hidden.ucd: private as well - no picture at all");
@@ -261,6 +298,20 @@ int main() {
             shown = viewer->GetSurface()->GetImage();
             Check(shown && shown->IsValid() && shown->GetWidth() == 400,
                   "hidden.ucd: unlocked, the image shows");
+
+            // Left alone for longer than the idle time, the viewer forgets.
+            Check(viewer->GetForgetPasswordsAfterIdle() == UltraCanvasMediaViewer::kDefaultForgetPasswordsAfterIdle,
+                  "idle: ten minutes unless set");
+            viewer->SetForgetPasswordsAfterIdle(std::chrono::seconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+            Check(viewer->ForgetPasswordsIfIdle() && viewer->IsLocked(),
+                  "hidden.ucd: a second without input - forgotten and locked again");
+            Check(!viewer->ForgetPasswordsIfIdle(), "idle: nothing left to forget");
+            viewer->SetForgetPasswordsAfterIdle(std::chrono::seconds(0));
+            Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked &&
+                  !viewer->ForgetPasswordsIfIdle() && viewer->IsUnlocked(),
+                  "hidden.ucd: with the idle time at zero it is never forgotten for idleness");
+            viewer->SetForgetPasswordsAfterIdle(UltraCanvasMediaViewer::kDefaultForgetPasswordsAfterIdle);
 
             // Another folder: the passwords are not taken there.
             const fs::path elsewhere = dir / "elsewhere";
@@ -300,8 +351,11 @@ int main() {
             std::string why;
             Check(viewer->UnlockWithPassword("tulpi", why) == MediaUnlockResult::WrongPassword &&
                   viewer->IsLocked(), "pdf-aes256-locked.pdf: a wrong password leaves it locked");
+            Check(!Has(InfoText(*viewer), "unlocked"), "pdf-aes256-locked.pdf: locked, not marked unlocked");
             Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked &&
                   !viewer->IsLocked(), "pdf-aes256-locked.pdf: the right password opens it");
+            Check(viewer->IsUnlocked() && Has(InfoText(*viewer), "PDF   \xC2\xB7   unlocked"),
+                  "pdf-aes256-locked.pdf: open, \"unlocked\" beside PDF (" + InfoText(*viewer) + ")");
             Check(!Shown(*viewer, "MV_Note"), "pdf-aes256-locked.pdf: open, the note is gone");
             {
                 const MediaViewerTools t = viewer->GetAvailableTools();
@@ -311,9 +365,17 @@ int main() {
             viewer->Next();   // sample.pdf: not protected
             Check(!viewer->IsLocked() && viewer->GetAvailableTools().zoom,
                   "sample.pdf: not protected, opens as before");
+            Check(!viewer->IsUnlocked() && Has(InfoText(*viewer), "PDF") && !Has(InfoText(*viewer), "unlocked"),
+                  "sample.pdf: not protected, not marked unlocked");
             viewer->Previous();
             Check(!viewer->IsLocked() && viewer->GetAvailableTools().zoom,
                   "pdf-aes256-locked.pdf: browsed away and back, it opens without asking");
+            Check(viewer->IsUnlocked() && Has(InfoText(*viewer), "unlocked"),
+                  "pdf-aes256-locked.pdf: opened with the kept password, still marked unlocked");
+            NotifySessionLockChanged(true);
+            Check(viewer->IsLocked() && Shown(*viewer, "MV_Note"),
+                  "pdf-aes256-locked.pdf: the session locked - closed again, its note back");
+            NotifySessionLockChanged(false);
         }
     }
 
