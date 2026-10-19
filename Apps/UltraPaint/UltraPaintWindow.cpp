@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.9.2 - every file that is read asks for its password when it is protected: each
+//                  of a multi-file drop in turn, the next waiting for the answer
+//                  (ApplyImports), and a file pasted (LoadDocumentAsking)
 // Version: 1.9.1 - a password-protected PDF imports: its password is asked for (again when
 //                  it is wrong) before the import dialog, and rasterizes it
 // Version: 1.9.0 - password-protected *.ucd: File > Password Protection... sets, changes or
@@ -421,20 +424,10 @@ void UltraPaintWindow::Show() {
     if (!pendingImport.empty()) {
         const std::string path = pendingImport;
         pendingImport.clear();
-        auto* app = UltraCanvasApplicationBase::GetCurrent();
-        if (!app) {
-            ImportFile(path, false);
-            return;
-        }
-        // Whatever it asks - the import dialog, a protected file's password,
-        // which can be the desktop's own dialog that holds the loop until it
-        // is answered - is asked once the editor has drawn (a task posted
-        // from a posted task runs after the loop's render), not over a
-        // window with nothing in it.
-        std::weak_ptr<bool> alive = lifeToken;
-        app->PostToUIThread([this, alive, path, app]() {
-            app->PostToUIThread([this, alive, path]() { if (!alive.expired()) ImportFile(path, false); });
-        });
+        // Whatever it asks - the import dialog, a protected file's password
+        // - is asked once the editor has drawn, not over a window with
+        // nothing in it.
+        AfterNextDraw([this, path]() { ImportFile(path, false); });
     }
 }
 
@@ -1050,20 +1043,30 @@ void UltraPaintWindow::OpenFile(const std::string& path) {
 void UltraPaintWindow::AskForFilePassword(const std::string& path,
                                           const std::function<PasswordTry(const std::string& password,
                                                                           std::string& error)>& attempt,
+                                          const std::function<void()>& notOpened,
                                           const std::string& note) {
     const std::string prompt = (note.empty() ? std::string() : note + "\n") +
                                "Password for " + FileNameOf(path) + ":";
     std::weak_ptr<bool> alive = lifeToken;
     UltraCanvasDialogManager::ShowInputDialog(prompt, "Open " + FileNameOf(path), std::string(), InputType::Password,
-        [this, alive, path, attempt](DialogResult r, const std::string& password) {
-            if (alive.expired() || r != DialogResult::OK) return;
+        [this, alive, path, attempt, notOpened](DialogResult r, const std::string& password) {
+            if (alive.expired()) return;
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (r != DialogResult::OK) {
+                // Cancelled: whatever waits on the answer goes on without
+                // the file, once this dialog has closed.
+                if (notOpened) {
+                    if (app) app->PostToUIThread([alive, notOpened]() { if (!alive.expired()) notOpened(); });
+                    else notOpened();
+                }
+                return;
+            }
             // Asked again on the next turn of the loop, once the dialog that
             // answered has closed.
-            auto askAgain = [this, alive, path, attempt](const std::string& why) {
-                auto* app = UltraCanvasApplicationBase::GetCurrent();
+            auto askAgain = [this, alive, path, attempt, notOpened, app](const std::string& why) {
                 if (!app) return;
-                app->PostToUIThread([this, alive, path, attempt, why]() {
-                    if (!alive.expired()) AskForFilePassword(path, attempt, why);
+                app->PostToUIThread([this, alive, path, attempt, notOpened, why]() {
+                    if (!alive.expired()) AskForFilePassword(path, attempt, notOpened, why);
                 });
             };
             if (password.empty()) { askAgain("Type the password."); return; }
@@ -1075,8 +1078,9 @@ void UltraPaintWindow::AskForFilePassword(const std::string& path,
                     askAgain("That password is not right.");
                     return;
                 case PasswordTry::Failed:
-                    UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error),
-                                                        "Open", nullptr, window.get());
+                    UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error), "Open",
+                        [alive, notOpened](DialogResult) { if (!alive.expired() && notOpened) notOpened(); },
+                        window.get());
                     return;
             }
         }, window.get());
@@ -1164,7 +1168,7 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
         forTheRest.width = 0;
         forTheRest.height = 0;
         forTheRest.page = 0;
-        for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
+        AfterNextDraw([this, alsoFiles, forTheRest]() { ApplyImports(alsoFiles, forTheRest); });
     });
 }
 
@@ -1265,7 +1269,9 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         forTheRest.width = 0;
         forTheRest.height = 0;
         forTheRest.page = 0;
-        for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
+        // Once this dialog has closed and the first file is on show: the
+        // rest may ask for passwords.
+        AfterNextDraw([this, alsoFiles, forTheRest]() { ApplyImports(alsoFiles, forTheRest); });
     };
     // A drop answers a gesture made on this window, so the question belongs
     // over it rather than wherever the window manager would drop it.
@@ -1277,8 +1283,40 @@ void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImpo
     if (result.action == UltraPaintImportResult::Action::Cancel) return;
 
     auto incoming = preloaded ? preloaded : LoadDocument(path, result);
-    if (!incoming) return;
+    if (incoming) ApplyLoaded(path, result, incoming);
+}
 
+void UltraPaintWindow::ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result) {
+    if (files.empty() || result.action == UltraPaintImportResult::Action::Cancel) return;
+    const std::string path = files.front();
+    files.erase(files.begin());
+    // One at a time: a protected file's question has to be answered before
+    // the next file is read, or the questions would pile up on each other;
+    // and the next one comes once this one is on show.
+    auto next = [this, files, result]() {
+        if (!files.empty()) AfterNextDraw([this, files, result]() { ApplyImports(files, result); });
+    };
+    LoadDocumentAsking(path, result,
+        [this, path, result, next](std::shared_ptr<UCRasterDocument> incoming) {
+            ApplyLoaded(path, result, incoming);
+            next();
+        },
+        next);
+}
+
+void UltraPaintWindow::AfterNextDraw(std::function<void()> task) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { task(); return; }
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([app, alive, task]() {
+        if (alive.expired()) return;
+        app->PostToUIThread([alive, task]() { if (!alive.expired()) task(); });
+    });
+}
+
+void UltraPaintWindow::ApplyLoaded(const std::string& path, const UltraPaintImportResult& result,
+                                   const std::shared_ptr<UCRasterDocument>& incoming) {
+    if (!incoming) return;
     switch (result.action) {
         case UltraPaintImportResult::Action::Merge:
             MergeDocument(incoming, path, result.scaleToFit);
@@ -1362,6 +1400,50 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
         return nullptr;
     }
     return doc;
+}
+
+void UltraPaintWindow::LoadDocumentAsking(const std::string& path, const UltraPaintImportResult& result,
+                                          const std::function<void(std::shared_ptr<UCRasterDocument>)>& loaded,
+                                          const std::function<void()>& notLoaded) {
+    const bool protectedUCD = UCRasterDocument::IsPasswordProtected(path);
+    const bool protectedPDF = !protectedUCD && result.password.empty() && IsVectorPath(path) &&
+                              InspectVectorFile(path).passwordRequired;
+    if (!protectedUCD && !protectedPDF) {
+        if (auto doc = LoadDocument(path, result)) { if (loaded) loaded(doc); }
+        else if (notLoaded) notLoaded();
+        return;
+    }
+    // Its password first. The answer is tried in the question's own
+    // callback; the document comes back on the next turn of the loop, once
+    // the question has closed - so whatever `loaded` asks next (the next
+    // file's password, a confirmation) is not asked over it.
+    std::weak_ptr<bool> alive = lifeToken;
+    AskForFilePassword(path,
+        [this, alive, path, result, protectedUCD, loaded, notLoaded](const std::string& given, std::string& error) {
+            std::shared_ptr<UCRasterDocument> opened;
+            if (protectedUCD) {
+                opened = std::make_shared<UCRasterDocument>();
+                if (!opened->LoadUCD(path, error, given))
+                    return error == UCD::kWrongPassword ? PasswordTry::Wrong : PasswordTry::Failed;
+            } else {
+                const VectorSourceInfo info = InspectVectorFile(path, given);
+                if (info.passwordWrong) return PasswordTry::Wrong;
+                if (!info.ok) { error = info.error; return PasswordTry::Failed; }
+            }
+            UltraPaintImportResult withPassword = result;
+            withPassword.password = given;
+            auto finish = [this, alive, path, withPassword, opened, loaded, notLoaded]() {
+                if (alive.expired()) return;
+                // A PDF is rasterized with it now (LoadDocument says why if not).
+                auto doc = opened ? opened : LoadDocument(path, withPassword);
+                if (doc) { if (loaded) loaded(doc); }
+                else if (notLoaded) notLoaded();
+            };
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(finish);
+            else finish();
+            return PasswordTry::Opened;
+        },
+        notLoaded);
 }
 
 void UltraPaintWindow::MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
@@ -2451,11 +2533,14 @@ void UltraPaintWindow::CmdPaste() {
     if (!source.file.empty()) {
         // A copied file comes in whole, flattened, at its natural size -
         // drawings and models included, rendered the way a drop renders the
-        // extra files it carries.
-        auto incoming = LoadDocument(source.file, UltraPaintImportResult{});
-        if (!incoming) return;   // LoadDocument said why
-        source.image = incoming->Flatten();
-        layerName = FileNameOf(source.file);
+        // extra files it carries; a password-protected one once its password
+        // has been given.
+        const std::string file = source.file;
+        LoadDocumentAsking(file, UltraPaintImportResult{}, [this, file](std::shared_ptr<UCRasterDocument> incoming) {
+            if (!document) return;
+            PasteAsLayer(incoming->Flatten(), FileNameOf(file), false, FileNameOf(file) + ", ");
+        });
+        return;   // LoadDocumentAsking says why when it cannot
     }
     auto img = source.image;
     if (!img || !img->IsValid()) {
@@ -2555,24 +2640,23 @@ std::shared_ptr<UCRasterLayer> UltraPaintWindow::LastCopiedImage(std::string& wh
 void UltraPaintWindow::CmdPasteAsNew() {
     CommitTextEdit();
     PasteSource source = ReadPasteSource();
-    std::shared_ptr<UCRasterDocument> fromFile;
     if (!source.file.empty()) {
         // The file's own layers come along, but not its path: this is a new,
         // unsaved image, so Save asks where to put it instead of writing
-        // over the file that was copied.
-        fromFile = LoadDocument(source.file, UltraPaintImportResult{});
-        if (!fromFile) return;   // LoadDocument said why
-        fromFile->SetFilePath("");
-        fromFile->ClearHistory();
-        fromFile->SetModified(true);
+        // over the file that was copied. A password-protected one asks for
+        // its password first, and the new image keeps it, as the file opened
+        // would: saved as a .ucd it is protected the same way.
+        LoadDocumentAsking(source.file, UltraPaintImportResult{}, [this](std::shared_ptr<UCRasterDocument> fromFile) {
+            fromFile->SetFilePath("");
+            fromFile->ClearHistory();
+            fromFile->SetModified(true);
+            auto go = [this, fromFile]() { SetDocument(fromFile, "Untitled"); };
+            if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
+            else go();
+        });
+        return;   // LoadDocumentAsking says why when it cannot
     }
     auto img = source.image;
-    if (fromFile) {
-        auto go = [this, fromFile]() { SetDocument(fromFile, "Untitled"); };
-        if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
-        else go();
-        return;
-    }
     if (!img || !img->IsValid()) {
         OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) { PasteAsNewImage(std::move(last)); });
         return;

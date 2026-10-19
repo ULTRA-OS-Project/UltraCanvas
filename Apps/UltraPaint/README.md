@@ -245,7 +245,10 @@ the preview too* leaves the thumbnail out as well, so a file manager shows
 nothing of the picture. The same dialog changes the password or removes the
 protection; either takes effect at the next save. Opening a protected `.ucd`
 (Open, a drop, the command line) asks for its password, and again if it is
-not right; once open, *Save* keeps it protected. *Save* or *Save As* to any
+not right; once open, *Save* keeps it protected. So does every other way a
+file comes in: each protected file of a multi-file drop in turn, and a
+protected file copied in a file manager and pasted - *Paste as New Layer*
+or *Paste as New Image*, which keeps its password like the file opened. *Save* or *Save As* to any
 other format says first that the file goes without the protection - only a
 `.ucd` carries a password. Needs the framework built with libsodium
 (UltraCrypt); without it the dialog says so and nothing is written
@@ -288,9 +291,10 @@ rasterize, and it is what the Open dialog's filter lists.
 A **password-protected PDF** asks for its password first - the page cannot
 even be measured without it - and again, saying so, while it is not right;
 then the raster-size question comes as for any drawing, and the page is
-rendered with the password. Cancel imports nothing. Of the files dropped
-together, the first is asked for; a protected one among the rest says it
-needs its password and is left out (drop it on its own).
+rendered with the password. Cancel imports nothing. Of several files dropped
+together, each protected one asks for its password in turn, once the one
+before it is on the canvas; Cancel leaves just that file out and the rest
+come in.
 
 ### 3D models
 

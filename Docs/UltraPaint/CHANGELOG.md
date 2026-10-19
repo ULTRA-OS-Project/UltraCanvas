@@ -14,6 +14,14 @@
   a password. It now asks for the password first - again when it is not
   right - then for the raster size as for any drawing, and renders the page
   with it (framework changelog, pending entry `vector-raster-pdf-password`).
+- **Every protected file is asked for, not only the first.** Of several
+  files dropped together, only the first could ask for a password; a
+  protected one among the rest was left out with a message. Each now asks in
+  turn - the next waiting for the answer, once the one before is on the
+  canvas - and Cancel leaves out just that file. A protected file copied in a
+  file manager and pasted (*Paste as New Layer*, *Paste as New Image*) asks
+  for its password too, where it used to stop at "needs its password"; a
+  `.ucd` pasted as a new image keeps its protection, as when it is opened.
 
 #### 2026-10-16 *0.2.25*
 - **The colour panel takes less room, and stays as it was left.** The

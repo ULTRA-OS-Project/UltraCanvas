@@ -8,6 +8,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.7.2 - LoadDocumentAsking: a protected file asks for its password wherever a
+//                  file is read - each of a multi-file drop in turn (ApplyImports), a
+//                  pasted one; AskForFilePassword's notOpened
 // Version: 1.7.1 - AskForFilePassword: one password question for a protected *.ucd and a
 //                  protected PDF; ImportFile takes the PDF's password on to the rasterizer
 // Version: 1.7.0 - password-protected *.ucd: CmdPassword (File > Password Protection...),
@@ -136,9 +139,12 @@ private:
     // A password-protected file - a *.ucd to open, a PDF to import: asks for
     // its password and tries it with `attempt`, asking again (`note` says
     // why) while it is not right. Cancel opens nothing; a failure is shown.
+    // `notOpened` runs when the question ends without opening the file
+    // (Cancel, or once the failure's message is closed).
     void AskForFilePassword(const std::string& path,
                             const std::function<PasswordTry(const std::string& password,
                                                             std::string& error)>& attempt,
+                            const std::function<void()>& notOpened = nullptr,
                             const std::string& note = std::string());
     // A 3D model takes the framework's model-view dialog instead: it has no
     // view either, and one has to be chosen before there are any pixels.
@@ -149,10 +155,32 @@ private:
     // file is not read a second time; null means read it now.
     void ApplyImport(const std::string& path, const UltraPaintImportResult& result,
                      std::shared_ptr<UCRasterDocument> preloaded = nullptr);
+    // The rest of a multi-file drop: each read and given the same answer, one
+    // after the other - a password-protected one asks for its password first
+    // and the next waits for the answer; one cancelled or unreadable is left
+    // out and the next goes on.
+    void ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result);
+    // Runs `task` once the editor has drawn again (a task posted from a
+    // posted task runs after the loop's render), so what it asks is not
+    // asked over a dialog that has just closed or a canvas that has not
+    // caught up - the desktop's own dialogs hold the loop while they ask.
+    void AfterNextDraw(std::function<void()> task);
+    // What the answer does with a document that has been read.
+    void ApplyLoaded(const std::string& path, const UltraPaintImportResult& result,
+                     const std::shared_ptr<UCRasterDocument>& incoming);
     // Reads a file into a document, rasterizing vector artwork at `result`'s
     // size and page. Null with the reason already shown when it cannot be read.
     std::shared_ptr<UCRasterDocument> LoadDocument(const std::string& path,
                                                    const UltraPaintImportResult& result);
+    // LoadDocument for a file that may be password-protected (a *.ucd, a
+    // PDF): asks for its password first, again while it is wrong. `loaded`
+    // gets the document; `notLoaded` runs instead when there is none
+    // (cancelled, or unreadable - the reason already shown). Either runs at
+    // once for a file that needs no password, and on a later turn of the
+    // loop - once the question has closed - for one that did.
+    void LoadDocumentAsking(const std::string& path, const UltraPaintImportResult& result,
+                            const std::function<void(std::shared_ptr<UCRasterDocument>)>& loaded,
+                            const std::function<void()>& notLoaded = nullptr);
     // Merges a document's flattened pixels into the open image as a new layer.
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
