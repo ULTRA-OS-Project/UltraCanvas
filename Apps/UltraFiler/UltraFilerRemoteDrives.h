@@ -62,6 +62,8 @@
 // rest. An upload can be given a name of its own (Upload's `remoteName`),
 // which is how the window's "Keep both" puts one beside a file of the same
 // name, and CachedListing answers what the window needs to ask about one.
+// Version: 1.12.0 - a cloud drive's preview copy (HTTP) is called off like an FTP
+//                  drive's: the worker's abort check answers for it
 // Version: 1.11.0 - PendingTransfers; Stop() calls a running transfer off;
 //                   an upload under a name of its own; CachedListing,
 //                   Revalidate
@@ -70,7 +72,7 @@
 //                  after it), when the selection moves on, and when the
 //                  window closes
 // Version: 1.9.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -592,8 +594,10 @@ private:
     // `job` as PendingTransfers lists it; false for a job that is not an
     // upload or a download the user asked for. Called with the lock held.
     bool DescribeTransferLocked(const Job& job, RemoteTransfer& out) const;
-    // A preview copy being downloaded can be called off (UltraNet's
-    // UltraNet_SetThreadFtpCancel, asked as its bytes move): the path it is
+    // A preview copy being downloaded can be called off, on an FTP drive and
+    // a cloud drive alike (the worker's UltraNet_SetThreadAbortCheck, asked by
+    // every transfer as its bytes move, and the wait out of a service's rate
+    // limit): the path it is
     // for and the flag the worker's transfer asks, both set by the worker
     // under the lock for the length of the job (no flag between jobs). The
     // flag says why, which decides what becomes of the copy.

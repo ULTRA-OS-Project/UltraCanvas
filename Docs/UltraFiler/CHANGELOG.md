@@ -1,3 +1,19 @@
+#### 2026-10-19 *1.77.0*
+- **A cloud drive's preview copy no longer holds the drive up.** What 1.75.0
+  did for FTP drives now holds on Dropbox, OneDrive, Google Drive, Nextcloud
+  and WebDAV too: a copy being downloaded for the preview pane is called off
+  when you ask the drive for anything else (and fetched again after it), when
+  the selection moves to another file, and when the window closes - also
+  while the service makes it wait out a rate limit. The drive worker's abort
+  check answers for the copy while it runs, and every transfer asks it, HTTP
+  and FTP alike.
+- **Turning the split view off retires its right-hand display.** It used to
+  stay alive behind the hidden pane, its background work (thumbnails,
+  previews, folder statistics, prefetch) running on, and the window waited
+  for all of it when it closed. It now goes the way of a closed tab: told to
+  stop, and destroyed once it has. Turning the split view on again makes a
+  new display on the same folder, with the same Back / Forward history.
+
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**
   Closing UltraFiler while a remote drive was copying dropped every upload

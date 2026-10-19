@@ -1,10 +1,12 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+// Version: 1.11.0 - a preview copy is called off through the thread's abort check,
+//                  so on a cloud drive (HTTP) too, and out of a rate-limit wait
 // Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off; a
 //                   failed download leaves no half-written file; an upload
 //                   under a name of its own; CachedListing, Revalidate
 // Version: 1.9.0 - a running preview copy can be called off (CancelActivePreviewLocked)
 // Version: 1.8.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -1235,6 +1237,9 @@ void UltraFilerRemoteDrives::CancelActivePreviewLocked(PreviewCancel why) {
     while (current < why &&
            !activePreviewCancel_->compare_exchange_weak(current, why)) {
     }
+    // A cloud drive's copy may be waiting out a service's rate limit on
+    // cond_ rather than moving bytes: wake it to see the flag.
+    cond_.notify_all();
 }
 
 void UltraFilerRemoteDrives::Stop() {
@@ -1432,13 +1437,18 @@ void UltraFilerRemoteDrives::WorkerMain() {
         };
         UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
                 [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
-        // Asked by the FTP transfer as its bytes move. Only a preview copy
-        // has one: everything else is something the user asked for.
-        std::function<bool()> previousCancel = UltraNet_SetThreadFtpCancel(
-                previewCancel ? std::function<bool()>([previewCancel]() {
-                                    return previewCancel->load() != PreviewKeep;
-                                })
-                              : std::function<bool()>());
+        // A preview copy can also be called off, on any drive: the thread's
+        // abort check - asked by every transfer it makes, an FTP download and
+        // a cloud drive's HTTP request alike, as the bytes move and about
+        // once a second while none do - answers for it too while it runs.
+        // Everything else is something the user asked for, and only the
+        // window closing stops it.
+        std::function<bool()> previousAbort;
+        if (previewCancel) {
+            previousAbort = UltraNet_SetThreadAbortCheck([this, previewCancel]() {
+                return stopping_.load() || previewCancel->load() != PreviewKeep;
+            });
+        }
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
         UltraCloud::LogCallback previousCloudLog = UltraCloud::SetThreadLog(
                 [onLine](const UltraCloud::LogLine& in) { onLine(ToRemoteLogLine(in)); });
@@ -1450,10 +1460,14 @@ void UltraFilerRemoteDrives::WorkerMain() {
         UltraCloud::RateLimitPolicy rateLimit;
         rateLimit.maxRetries = job.isPrefetch ? 0 : 3;
         rateLimit.maxWaitSeconds = kRemoteRateLimitMaxWaitSeconds;
-        rateLimit.wait = [this](long long seconds) {
+        // A preview copy called off ends the wait as well
+        // (CancelActivePreviewLocked wakes it).
+        rateLimit.wait = [this, previewCancel](long long seconds) {
             std::unique_lock<std::mutex> lk(mutex_);
-            return !cond_.wait_for(lk, std::chrono::seconds(seconds),
-                                   [this]() { return shutdown_; });
+            return !cond_.wait_for(lk, std::chrono::seconds(seconds), [&]() {
+                return shutdown_ ||
+                       (previewCancel && previewCancel->load() != PreviewKeep);
+            });
         };
         UltraCloud::RateLimitPolicy previousRateLimit =
                 UltraCloud::SetThreadRateLimitPolicy(std::move(rateLimit));
@@ -1519,7 +1533,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
         }
         UltraNet_SetThreadFtpLog(std::move(previousLog));
-        UltraNet_SetThreadFtpCancel(std::move(previousCancel));
+        if (previewCancel) UltraNet_SetThreadAbortCheck(std::move(previousAbort));
         // Why the preview copy was called off, if it was and the download did
         // not finish anyway. Not a failure: the log shows it as called off and
         // the window hears nothing, so it raises no alarm.
