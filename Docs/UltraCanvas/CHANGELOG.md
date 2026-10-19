@@ -1,3 +1,33 @@
+#### 2026-10-19 *0.9.347*
+- **Media viewer: one compact toolbar instead of two rows.** The browse /
+  slideshow controls and the zoom / rotate / mirror / adjust / curves / save
+  tools now share a single flat toolbar with 16 px icons (they were 24 px in
+  bordered boxes, on two 40 px rows). A window too narrow for the row scrolls
+  it (mouse wheel, edge chevron) instead of clipping it. The Details button
+  left the toolbar - it duplicated the one at the right end of the info bar,
+  which stays.
+
+#### 2026-10-19 *0.9.346*
+- **Spinner: a field without step buttons.** `SpinnerLayout::FieldOnly`
+  gives the whole control to the value field and draws no arrows; the value
+  is typed, or stepped with the arrow keys and the mouse wheel as before.
+  `HasButtons()` says whether the layout has them. ArtCreator's percentage
+  fields in its transform bar are the first user.
+
+#### 2026-10-19 *0.9.345*
+- **FilerWidget: `onTransferFinished`.** A paste, a drop or a Move to / Copy
+  to now reports when it has ended - walked to its end or cancelled from the
+  progress window - with a new `FilerTransferResult`: how many of the chosen
+  entries arrived (files and folders apart, a folder counting once), how many
+  were skipped, the one entry's name, the destination, and a ready sentence
+  for a status line (`"report.pdf" moved to "alt"`, `3 files copied to
+  "alt"`, `Copy cancelled - 2 of 5 items copied to "alt"`). A delete reports
+  the same way through `onDeleteFinished` and `FilerDeleteResult`
+  (`"report.pdf" moved to the Trash`, `3 files deleted`, `3 of 5 items
+  deleted (2 left)`), counting entries removed inside an archive and by the
+  administrator helper too. UltraFiler shows both on its status line
+  (UltraFiler changelog 1.77.0).
+
 #### 2026-10-19 *0.9.344*
 - **Editing a `$$` math block in a Markdown text area hid its LaTeX.** The
   opening fence and the source lines of a display-math block collapse in

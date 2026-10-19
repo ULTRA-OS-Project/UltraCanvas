@@ -1,7 +1,7 @@
 - **The media viewer unlocks password-protected files.** A layered `.ucd`
   image (UCD 2.2) or a PDF that needs its password shows what it can without
   it - the thumbnail (nothing when private), or a note for the PDF - and an
-  **Unlock** button in the info bar and the second toolbar row; Enter does the
+  **Unlock** button in the info bar and the toolbar; Enter does the
   same. Unlock asks for the password over the viewer's window, again when it
   is not right, and then shows the file whole: the image at full size, the PDF
   with every page. Nothing asks on its own while browsing. `IsLocked`, `Unlock`,

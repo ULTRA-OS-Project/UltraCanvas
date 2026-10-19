@@ -8,10 +8,12 @@
 //   * Integer  - whole-number stepping
 //   * Decimal  - fixed-precision floating stepping
 //   * List     - cycle through an ordered list of arbitrary string values
-// and two button layouts:
+// and three button layouts:
 //   * UpDownRight    - editable field with stacked up/down buttons on the right
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
+//   * FieldOnly      - the field alone; the arrow keys and the wheel still step
 //
+// Version: 1.5.0 - SpinnerLayout::FieldOnly: a field without step buttons
 // Version: 1.4.0 - onStepsFinished: once when a run of steps ends (button or key
 //                  released, the wheel at rest), not on every step
 // Version: 1.3.0 - SetSnapToStep: a Decimal value off the step grid
@@ -45,7 +47,8 @@ namespace UltraCanvas {
 
     enum class SpinnerLayout {
         UpDownRight,      // Editable field on the left, stacked ▲/▼ buttons on the right
-        SidesHorizontal   // Buttons flanking the field:  ◀ / −   value   ▶ / +
+        SidesHorizontal,  // Buttons flanking the field:  ◀ / −   value   ▶ / +
+        FieldOnly         // The field alone, no buttons: typed, or stepped by the arrow keys and the wheel
     };
 
     // Glyph drawn inside the step buttons.
@@ -254,6 +257,8 @@ namespace UltraCanvas {
         // ===== LAYOUT / STYLE =====
         void SetLayout(SpinnerLayout l) { layout = l; RequestRedraw(); }
         SpinnerLayout GetLayout() const { return layout; }
+        // False for SpinnerLayout::FieldOnly: the control is its field alone.
+        bool HasButtons() const { return layout != SpinnerLayout::FieldOnly; }
 
         void SetButtonGlyph(SpinnerButtonGlyph g) { style.glyph = g; RequestRedraw(); }
         void SetButtonThickness(float t) { style.buttonThickness = std::max(8.0f, t); RequestRedraw(); }

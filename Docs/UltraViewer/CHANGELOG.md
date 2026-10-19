@@ -1,4 +1,4 @@
-#### 2026-10-17 *1.0.8*
+#### 2026-10-19 *1.0.9*
 - **Password-protected files open with their password.** A protected PDF or
   UltraCanvas layered image (`.ucd`) shows an **Unlock** button in the bar at
   the bottom (and a lock in the toolbar; Enter does the same): it asks for the
@@ -9,6 +9,12 @@
   browsed: going back to the file - or on to another one there with the same
   password - shows it without asking again; opening another folder forgets
   it (framework changelog, pending entry `media-viewer-unlock`).
+- **Passwords don't outlive you stepping away.** When the screen locks - or
+  UltraViewer has had no key or mouse input for ten minutes - the passwords
+  it kept are forgotten, and a file shown unlocked goes back behind its
+  Unlock button. A file opened with its password says so: *unlocked* beside
+  *PDF* (or *UC DOCUMENT*) in the bar at the bottom, and in the Details
+  (framework changelog, pending entry `session-lock`).
 - **The viewer's own notes are dark.** What it says about a file it shows no
   picture of - a `.ucd`'s summary, a protected PDF's note - was printed on a
   white page in the dark window; it is in the viewer's colours now, laid out
@@ -19,6 +25,13 @@
 - **A layered `.ucd` image shows whole.** Its layers are drawn at full size
   instead of the small thumbnail stored in the file (pending entry
   `media-viewer-layered-ucd`).
+
+#### 2026-10-19 *1.0.8*
+- **One compact toolbar.** The two toolbar rows at the top are one row now,
+  with smaller, flat icons, so the picture gets the room back. The Details
+  (info) button is gone from the toolbar; the one at the bottom right of the
+  window opens the same panel. Framework: `UltraCanvasMediaViewer` (framework
+  changelog: `media-viewer-one-toolbar`).
 
 #### 2026-10-14 *1.0.7*
 - **One UltraViewer at a time.** Opening a file while UltraViewer is already

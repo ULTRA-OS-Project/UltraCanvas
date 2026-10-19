@@ -80,16 +80,18 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
-// Version: 1.15.0 - Unlock's passwords are forgotten - and an unlocked file shown locked
+// Version: 1.16.0 - Unlock's passwords are forgotten - and an unlocked file shown locked
 //                   again - when the desktop session locks or the window has had no
 //                   input for a while (SetForgetPasswordsAfterIdle); IsUnlocked, and
 //                   "unlocked" beside the kind in the info bar
-// Version: 1.14.0 - Unlock's passwords are kept for the folder being browsed: a file
+// Version: 1.15.0 - Unlock's passwords are kept for the folder being browsed: a file
 //                   unlocked there, or another with the same password, shows without
 //                   asking again (ForgetPasswords, SetRememberPasswords)
-// Version: 1.13.1 - noteView: the viewer's notes (a *.ucd summary, a locked PDF) are dark
-// Version: 1.13.0 - password-protected files: IsLocked / Unlock / UnlockWithPassword,
+// Version: 1.14.1 - noteView: the viewer's notes (a *.ucd summary, a locked PDF) are dark
+// Version: 1.14.0 - password-protected files: IsLocked / Unlock / UnlockWithPassword,
 //                   MediaViewerTools::unlock, MediaUnlockResult
+// Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
+//                   narrow); Details only in the info bar
 // Version: 1.12.0
 // Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
@@ -194,9 +196,10 @@ struct MediaAdjustments {
 };
 
 // ===== WHICH VIEW / EDIT TOOLS APPLY =====
-// The groups of the second toolbar row that mean something for the file on
+// The view / edit groups of the toolbar that mean something for the file on
 // show. The viewer offers only these, so a video, a PDF or a 3D model is not
-// given colour sliders it cannot apply. Details is always available.
+// given colour sliders it cannot apply. Details (in the info bar) is always
+// available.
 //   bitmap image          zoom, transform, colour, save
 //   SVG / vector drawing  zoom, transform, save (rasterized) - on the image
 //                         surface; a drawing in the vector view zooms only
@@ -538,7 +541,7 @@ public:
 
     // ===== TOP BARS (EMBEDDED MODE) =====
     // Show/hide everything above the display surface: the folder breadcrumb,
-    // both toolbar rows and the adjustments panel. Hosts that embed the viewer
+    // the toolbar and the adjustments panel. Hosts that embed the viewer
     // as a plain preview pane (e.g. the UltraFiler preview) turn them off and
     // provide their own navigation. Default: visible.
     void SetTopBarsVisible(bool visible);
@@ -551,7 +554,7 @@ public:
 
     // ===== TOOLS FOR THE SHOWN FILE =====
     // Which view / edit tools apply to what is on show (see MediaViewerTools),
-    // decided on every load. The second toolbar row shows only these groups,
+    // decided on every load. The toolbar shows only these groups,
     // and the adjustments panel folds away while colour does not apply (it
     // comes back with the next bitmap if its toggle is still on). A host with
     // its own controls can ask the same question. Colour adjustments made on
@@ -563,8 +566,8 @@ public:
     // A password-protected file the viewer can open with its password - a
     // layered *.ucd image (UCD 2.2) or a PDF - first shows what it can
     // without it: the *.ucd's thumbnail (nothing when it is private), a note
-    // for the PDF. An Unlock button comes up in the info bar and the second
-    // toolbar row (Enter does the same), and the Details say why. Nothing
+    // for the PDF. An Unlock button comes up in the info bar and the
+    // toolbar (Enter does the same), and the Details say why. Nothing
     // asks on its own: browsing a folder never pops up a password prompt.
     // The passwords Unlock is given are kept for the folder being browsed
     // (see ForgetPasswords), so going back to a file - or on to another file
@@ -766,8 +769,7 @@ private:
     bool infoBarVisible = true;    // the info bar under it
 
     std::shared_ptr<UltraCanvasBreadcrumb>   breadcrumb;
-    std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row
-    std::shared_ptr<UltraCanvasToolbar>      toolbar2;  // view / edit row
+    std::shared_ptr<UltraCanvasToolbar>      toolbar;   // browse / slideshow / view / edit
     std::shared_ptr<UltraCanvasContainer>    adjustPanel;
     std::shared_ptr<UltraCanvasMediaSurface> surface;
     std::shared_ptr<UltraCanvasColorSwatchBar> backdropBar;   // under the picture

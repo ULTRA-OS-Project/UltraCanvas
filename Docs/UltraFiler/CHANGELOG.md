@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.76.1*
+#### 2026-10-19 *1.77.1*
 - **The preview pane shows PDFs in the PDF view, and unlocks protected
   files.** A PDF in the preview pane had been a picture of its first page; it
   is the PDF view again, pages and all, and PDFs on a remote drive are still
@@ -6,7 +6,30 @@
   image shows an **Unlock** button in the pane's info line that asks for the
   password; while the folder is browsed it is kept, so selecting the file
   again - or another one there with the same password - previews it without
-  asking (framework changelog, pending entry `media-viewer-unlock`).
+  asking. The passwords are forgotten - and an unlocked preview locked again -
+  when the screen locks or UltraFiler has been left alone for ten minutes,
+  and an unlocked preview says *unlocked* beside *PDF* in the info line
+  (framework changelog, pending entries `media-viewer-unlock` and
+  `session-lock`).
+
+#### 2026-10-19 *1.77.0*
+- **Home button.** The navigation row has a Home button (a house) between
+  Refresh and the split-view button. It opens the home folder of the host
+  system - `HOME` on Linux and macOS, `USERPROFILE` on Windows - in the active
+  folder display, from the History, Favorites and Computer views too.
+- **A copy, move or delete says what it did on the status line.** When a copy or move
+  ends - a paste, a drop onto a folder, Move to / Copy to - the status line
+  says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
+  "alt"`, `2 folders moved to "Archive"`, or `Copy cancelled - 2 of 5 items
+  copied to "alt"` after a Cancel in the progress window. A delete says so
+  the same way: `"report.pdf" moved to the Trash`, `3 files deleted`,
+  `3 of 5 items moved to the Recycle Bin (2 left)`. Before, a short
+  operation finished without a word: its refresh put the folder's item count
+  straight back on the line. Opening another folder ends the note early.
+  The progress window over a long copy or move is unchanged: it opens once the
+  operation has run for the time set in *Settings > Handling > File
+  operations* (2 seconds by default), the same window as Compress and Extract
+  (framework changelog, pending entry `filer-transfer-finished`).
 
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**
