@@ -7240,6 +7240,9 @@ void UltraFilerWindow::WireTransferNotice(UltraCanvasFilerWidget* target) {
     target->onTransferFinished = [this](const FilerTransferResult& result) {
         ShowTransferNote(result.message);
     };
+    target->onDeleteFinished = [this](const FilerDeleteResult& result) {
+        ShowTransferNote(result.message);
+    };
 }
 
 void UltraFilerWindow::ShowTransferNote(const std::string& message) {

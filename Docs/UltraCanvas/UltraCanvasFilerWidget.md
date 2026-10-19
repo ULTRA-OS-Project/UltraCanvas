@@ -2720,6 +2720,15 @@ filer->onTransferFinished = [this](const FilerTransferResult& r) {
 };
 ```
 
+A delete reports the same way through `onDeleteFinished(result)`, with a
+`FilerDeleteResult`: `items`, `files`, `folders`, `skipped`, `firstName`,
+`toTrash`, `trashName` (`TrashDisplayName()`), `cancelled` and `message` -
+`"report.pdf" moved to the Trash`, `3 files deleted`,
+`3 of 5 items moved to the Recycle Bin (2 left)`,
+`Delete cancelled - 2 of 5 items deleted`. Entries removed inside an archive
+and by the administrator helper count with the rest; a delete on a remote
+drive is the host's (`remoteDelete`) and is not reported here.
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -2876,6 +2885,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
+| `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |

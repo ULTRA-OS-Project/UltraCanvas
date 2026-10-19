@@ -6919,6 +6919,7 @@ namespace UltraCanvas {
         // Folders that already lost an entry (archive deletions below) —
         // seeds the queue's onFolderModified reports.
         std::vector<std::string> archiveModified;
+        std::vector<FilerEntry> archiveGone;   // ... and the entries that went
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::error_code ec;
         // Entries living inside an archive cannot be removed via the real
@@ -6928,6 +6929,7 @@ namespace UltraCanvas {
         // the archive once per entry, which for thousands of files takes
         // practically forever.
         std::vector<std::string> archiveOrder;
+        std::map<std::string, std::vector<FilerEntry>> archiveEntries;
         std::map<std::string, std::vector<std::string>> archiveVictims;
         std::map<std::string, std::vector<std::string>> archiveParents;
         std::vector<FilerEntry> fsVictims;
@@ -6940,6 +6942,7 @@ namespace UltraCanvas {
                     auto& list = archiveVictims[resolved.realPath];
                     if (list.empty()) archiveOrder.push_back(resolved.realPath);
                     list.push_back(resolved.virtualPath);
+                    archiveEntries[resolved.realPath].push_back(e);
                     archiveParents[resolved.realPath].push_back(
                             PathToUtf8(PathFromUtf8(e.path).parent_path()));
                     continue;
@@ -6957,6 +6960,8 @@ namespace UltraCanvas {
             }
             for (const std::string& folder : archiveParents[archive])
                 if (!folder.empty()) archiveModified.push_back(folder);
+            for (const FilerEntry& gone : archiveEntries[archive])
+                archiveGone.push_back(gone);
         }
 #else
         const std::vector<FilerEntry>& fsVictims = victims;
@@ -6969,6 +6974,11 @@ namespace UltraCanvas {
         pendingDelete->modifiedFolders = std::move(archiveModified);
         pendingDelete->onDone = std::move(onDone);
         pendingDelete->toTrash = mode == FilerDeleteMode::MoveToTrash;
+        pendingDelete->requested = victims.size();
+        for (const FilerEntry& gone : archiveGone) {
+            ++pendingDelete->removed;
+            NoteDeleted(*pendingDelete, gone);
+        }
         if (problemPolicy == FilerProblemPolicy::SkipAndReport)
             pendingDelete->skipFailedForAll = true;   // listed in the summary
         // The removals run on the file-operation worker; the window over them
@@ -7033,6 +7043,7 @@ namespace UltraCanvas {
                 }
                 credit.Finish();
                 ++pd->removed;
+                NoteDeleted(*pd, e);
                 const std::string folder = PathToUtf8(PathFromUtf8(e.path).parent_path());
                 if (!folder.empty()) pd->modifiedFolders.push_back(folder);
                 AdvancePendingDelete();
@@ -7146,6 +7157,7 @@ namespace UltraCanvas {
             }
             credit.Finish();
             ++pd->removed;
+            NoteDeleted(*pd, e);
             const std::string folder = PathToUtf8(PathFromUtf8(e.path).parent_path());
             if (!folder.empty()) pd->modifiedFolders.push_back(folder);
             AdvancePendingDelete();
@@ -7232,6 +7244,8 @@ namespace UltraCanvas {
         for (const FilerEntry& v : pd.elevatedVictims) {
             if (fs::exists(PathFromUtf8(v.path), ec)) continue;
             ++gone;
+            ++pd.removed;
+            NoteDeleted(pd, v);
             const std::string folder = PathToUtf8(PathFromUtf8(v.path).parent_path());
             if (!folder.empty()) pd.modifiedFolders.push_back(folder);
         }
@@ -7287,6 +7301,18 @@ namespace UltraCanvas {
         }
         std::unique_ptr<PendingDelete> pd = std::move(pendingDelete);
         const bool walkedToEnd = pd->stop == FileOpStop::Done;
+        FilerDeleteResult result;
+        result.toTrash = pd->toTrash;
+        // Anything short of the end - a Cancel in the progress window or in
+        // a problem dialog - left part of the selection in place.
+        result.cancelled = !walkedToEnd;
+        result.files = pd->goneFiles;
+        result.folders = pd->goneFolders;
+        result.items = result.files + result.folders;
+        result.firstName = pd->firstGone;
+        result.skipped = pd->skipped.size();
+        result.trashName = TrashDisplayName();
+        result.message = DescribeDelete(result, pd->requested);
         // Silent clear when a neighbour is waiting to inherit the selection:
         // the rescan reports that one change. Firing an empty selection first
         // would fold an attached preview pane away and open it again.
@@ -7304,6 +7330,7 @@ namespace UltraCanvas {
         // A caller that ran its own confirmation (DeletePaths) is told what
         // came of it, the way a paste's caller is.
         if (pd->onDone) pd->onDone(!pd->modifiedFolders.empty());
+        if (onDeleteFinished && !result.message.empty()) onDeleteFinished(result);
 
         // The summary: what stayed and why, once the queue ran to its end.
         // (Entries handed to the administrator were reported by that run.)
@@ -7325,6 +7352,40 @@ namespace UltraCanvas {
                                                             : FilerDeleteMode::Permanently);
                     });
         }
+    }
+
+    void UltraCanvasFilerWidget::NoteDeleted(PendingDelete& pd, const FilerEntry& entry) {
+        if (entry.isDirectory) ++pd.goneFolders;
+        else ++pd.goneFiles;
+        if (pd.firstGone.empty()) pd.firstGone = entry.name;
+    }
+
+    std::string UltraCanvasFilerWidget::DescribeDelete(const FilerDeleteResult& r,
+                                                       size_t requested) {
+        if (requested == 0 || (r.items == 0 && r.skipped == 0 && !r.cancelled)) return {};
+        auto count = [](size_t n, const char* one, const char* many) {
+            return std::to_string(n) + " " + (n == 1 ? one : many);
+        };
+        const std::string done = r.toTrash ? "moved to the " + r.trashName
+                                           : std::string("deleted");
+        std::string what;
+        if (r.items == 1)
+            what = "\"" + RepairLegacyEncodedName(r.firstName) + "\"";
+        else if (r.folders == 0)
+            what = count(r.items, "file", "files");
+        else if (r.files == 0)
+            what = count(r.items, "folder", "folders");
+        else
+            what = count(r.items, "item", "items");
+        if (r.cancelled)
+            return "Delete cancelled - " + std::to_string(r.items) + " of "
+                 + count(requested, "item", "items") + " " + done;
+        // Short of the whole selection: skipped entries, and entries an
+        // administrator prompt that was declined left in place.
+        if (r.items < requested)
+            return std::to_string(r.items) + " of " + count(requested, "item", "items")
+                 + " " + done + " (" + std::to_string(requested - r.items) + " left)";
+        return what + " " + done;
     }
 
     void UltraCanvasFilerWidget::ShowDeleteProblemDialog(const FilerEntry& entry,

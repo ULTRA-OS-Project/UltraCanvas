@@ -3,11 +3,13 @@
   Refresh and the split-view button. It opens the home folder of the host
   system - `HOME` on Linux and macOS, `USERPROFILE` on Windows - in the active
   folder display, from the History, Favorites and Computer views too.
-- **A copy or move says what it did on the status line.** When a copy or move
+- **A copy, move or delete says what it did on the status line.** When a copy or move
   ends - a paste, a drop onto a folder, Move to / Copy to - the status line
   says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
   "alt"`, `2 folders moved to "Archive"`, or `Copy cancelled - 2 of 5 items
-  copied to "alt"` after a Cancel in the progress window. Before, a short
+  copied to "alt"` after a Cancel in the progress window. A delete says so
+  the same way: `"report.pdf" moved to the Trash`, `3 files deleted`,
+  `3 of 5 items moved to the Recycle Bin (2 left)`. Before, a short
   operation finished without a word: its refresh put the folder's item count
   straight back on the line. Opening another folder ends the note early.
   The progress window over a long copy or move is unchanged: it opens once the

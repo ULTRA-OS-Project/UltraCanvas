@@ -520,6 +520,27 @@ namespace UltraCanvas {
         std::string message;
     };
 
+    // ===== A FINISHED DELETE =====
+    // What a delete amounted to, handed to UltraCanvasFilerWidget::
+    // onDeleteFinished once it is over - to the trash or for good, walked to
+    // its end or cancelled. Counted like FilerTransferResult: the entries the
+    // user chose, a folder once however much it held.
+    struct FilerDeleteResult {
+        bool toTrash = false;        // moved to the trash; false = removed for good
+        bool cancelled = false;      // stopped from the progress window or a problem dialog
+        size_t items = 0;            // entries that are gone
+        size_t files = 0;            // ... of them files
+        size_t folders = 0;          // ... of them folders
+        size_t skipped = 0;          // entries that stayed (see the summary)
+        std::string firstName;       // the entry's name when items == 1
+        std::string trashName;       // "Trash", "Recycle Bin" - TrashDisplayName()
+        // The same as one sentence for a status line: "\"report.pdf\" moved
+        // to the Trash", "3 files deleted", "Delete cancelled - 2 of 5 items
+        // moved to the Trash", "3 of 5 items deleted (2 left)". Empty when
+        // nothing was deleted or asked about.
+        std::string message;
+    };
+
     // ===== "OPEN WITH >" APPLICATION =====
     struct FilerOpenWithApp {
         std::string label;
@@ -1623,6 +1644,9 @@ namespace UltraCanvas {
         // confirmation on the host's status line; the widget shows nothing
         // of its own beyond the summary window for skipped entries.
         std::function<void(const FilerTransferResult&)> onTransferFinished;
+        // The same for a delete (see FilerDeleteResult). A delete on a remote
+        // drive is the host's own and does not report here.
+        std::function<void(const FilerDeleteResult&)> onDeleteFinished;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
         // After a column splitter drag (or a programmatic width change) — the
@@ -3702,8 +3726,20 @@ namespace UltraCanvas {
             // For the summary at the end: the entries that stayed, with why.
             std::vector<SkippedItem> skipped;
             size_t removed = 0;
+            // What is gone, for onDeleteFinished: files and folders apart,
+            // the first one's name, and how many the delete was asked for.
+            size_t goneFiles = 0;
+            size_t goneFolders = 0;
+            std::string firstGone;
+            size_t requested = 0;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
+        // Counts one chosen entry the delete removed (worker or UI thread,
+        // never both at once).
+        static void NoteDeleted(PendingDelete& pd, const FilerEntry& entry);
+        // FilerDeleteResult::message.
+        static std::string DescribeDelete(const FilerDeleteResult& result,
+                                          size_t requested);
 
         // Hands the queue to the file-operation worker (which stops at the
         // first victim needing a dialog) or finishes it. Called again by every
