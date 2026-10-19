@@ -308,14 +308,22 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     about the way a local paste is - Keep both (uploaded as "name (2)"),
     Replace, Skip or Stop, with Apply to all - after a fresh look at the
     folder, so a file put there since it was opened counts too. Settings >
-    Handling's standing answer applies.
+    Handling's standing answer applies. The look goes ahead of everything
+    queued for the drive, and beside an upload or download in progress on a
+    connection of its own, so the question comes in about a second rather
+    than when that transfer ends (a server that takes one connection at a
+    time has it wait behind the transfer instead). A file still uploading to
+    that folder, or waiting to, counts as there.
   - **An FTP upload replaces a file only once it is complete.** An upload to
     an FTP or SFTP drive goes to a hidden part name (`.name.part`) and is
     renamed to its own name when the last byte is in, so the file it
     replaces stays whole until then; what one that did not finish left is
     removed before the next request to the drive, in this session or a later
-    one. UltraCloud does this (`UltraCloudUploads.h`), and its steps are in
-    the connection log.
+    one. One that was complete when the connection went, before its rename,
+    is given its name by that request instead - replacing the file there if
+    it finished within the hour, otherwise beside it as "name (2)". UltraCloud
+    does this (`UltraCloudUploads.h`), and its steps are in the connection
+    log.
   - **A service that limits requests is waited out.** When a cloud service
     answers that it is limiting requests, the drive waits as long as it
     asks (1, 2, 4 s when it does not say) and asks again, up to three times;

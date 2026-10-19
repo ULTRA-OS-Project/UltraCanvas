@@ -3699,6 +3699,9 @@ void UltraFilerWindow::BuildFolderTree() {
                                          static_cast<std::ptrdiff_t>(i));
             std::vector<FilerEntry> there;
             remoteDrives->CachedListing(path, there);
+            // ... and the names of uploads into it not in yet, which a
+            // listing taken while they are on their way does not show.
+            remoteDrives->AddUploadsUnderWay(path, there);
             std::string why;
             PlanRemoteUploads(path, files, there, why);
         }

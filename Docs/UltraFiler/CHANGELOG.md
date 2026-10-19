@@ -1,3 +1,40 @@
+#### 2026-10-19 *1.77.0*
+- **A drop onto a remote folder is asked about at once, not after the
+  upload in progress.** Before an upload replaces anything, the folder is
+  listed afresh to see which names are taken - and that listing waited in
+  the drive's one queue behind whatever was there, so a file dropped while a
+  large upload was running was asked about only once that upload had ended,
+  minutes later. The listing now goes ahead of everything queued, and while
+  an upload or download is running it is fetched beside it on a connection
+  of its own: the question appears in about a second, the transfer carrying
+  on. A server that takes only one connection at a time refuses the second
+  one; the listing then waits behind the transfer as before (the connection
+  log says so), and the question comes when that ends. A file still on its
+  way to the folder - uploading, or waiting its turn - counts as there: a
+  listing read meanwhile cannot show it yet, so dropping a file of the same
+  name again asks rather than replacing it later, unasked. A listing that
+  the upload under way changed while it was read is read again.
+- **An upload that was complete when the connection went is put in place,
+  not thrown away.** An upload to an FTP or SFTP drive goes to a hidden part
+  name and is renamed once the last byte is in; a connection that died in
+  between left the whole file under the part name, and the next use of the
+  drive deleted it as an unfinished upload. Now the error says *the upload
+  is complete, but the server stopped answering before it could be renamed
+  to "report.pdf" - it is given that name the next time this account
+  reaches the server*, and that is what happens: the next request to the
+  drive, in this run or a later one, renames it into place. If a file has
+  that name by then, the upload replaces it when it finished within the
+  hour - it was replacing that file - and is otherwise kept beside it as
+  *report (2).pdf*, so a file written there since is never lost. Only a
+  server that refuses the rename still has it removed. UltraCloud does this
+  (framework changelog: `ftp-upload-cut-off-before-rename`).
+- **A preview copy is called off the same way on a cloud drive as on an FTP
+  drive.** Moving the selection on from a picture still being fetched for
+  the preview pane stopped the download on an FTP drive, but on Nextcloud,
+  WebDAV, Dropbox, OneDrive or Google Drive it ran to its last byte. The
+  drive worker now has one abort check - the window closing, or the preview
+  copy no longer wanted - which every request asks, HTTP and FTP alike.
+
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**
   Closing UltraFiler while a remote drive was copying dropped every upload

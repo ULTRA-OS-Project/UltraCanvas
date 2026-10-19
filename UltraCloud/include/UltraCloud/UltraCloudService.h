@@ -151,8 +151,10 @@ private:
                           ICloudProvider& provider, const std::string& localPath,
                           const std::string& path, uint64_t fileSize);
     // What unfinished uploads to `account` left, removed where it is still
-    // theirs (IsLeftByPendingUpload). One cleanup at a time: a call that
-    // finds another one running goes on without it.
+    // theirs (IsLeftByPendingUpload) - and an upload that was complete under
+    // its part name when the connection went given its name
+    // (PlaceCompletePart). One cleanup at a time: a call that finds another
+    // one running goes on without it.
     void CleanUpPendingUploads(const Account& account, const Credentials& credentials,
                                ICloudProvider& provider, std::vector<std::string>* removed);
     // A call on `accountId` got through: the pending uploads whose server did
