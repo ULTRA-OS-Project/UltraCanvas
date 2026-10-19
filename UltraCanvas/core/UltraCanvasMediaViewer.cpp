@@ -1,10 +1,13 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.10.0 - one compact toolbar row: flat buttons, 16 px icons, scrolls
+//                   when the window is too narrow; the Details button lives in
+//                   the info bar only
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-19
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -1082,12 +1085,23 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     breadcrumb->SetVisible(false);   // shown once a folder is known
     AddChild(breadcrumb);
 
-    // ----- TOP TOOLBAR ROW 1: navigation + slideshow -----
-    // Two rows keep every control visible at modest widths (the toolbar widget
-    // does not yet implement overflow handling).
-    toolbar = std::make_shared<UltraCanvasToolbar>("MV_Toolbar", 0, 0, 0, 40);
+    // ----- TOP TOOLBAR: navigation + slideshow, then view + edit -----
+    // One compact row: flat buttons with small icons. A window too narrow for
+    // every control scrolls the row (mouse wheel, edge chevron) instead of
+    // clipping it. Details is not on it - the info bar under the picture
+    // carries that button.
+    toolbar = std::make_shared<UltraCanvasToolbar>("MV_Toolbar", 0, 0, 0, 30);
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    {
+        ToolbarAppearance app = toolbar->GetAppearance();
+        app.style = ToolbarStyle::Flat;
+        app.showIconLabels = false;
+        app.hasShadow = false;
+        app.iconSize = ToolbarIconSize::Small;
+        toolbar->SetAppearance(app);
+    }
+    toolbar->SetOverflowMode(ToolbarOverflowMode::Scroll);
 
     IconOnly(toolbar->AddButton("mv_open", "", ViewerIconPath("folder-open.svg"),
                                 [this] { ShowOpenDialog(); }),
@@ -1131,57 +1145,49 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         dd->SetTooltip("Slideshow transition");
         dd->SetSelectedIndex(1, false);      // Cross fade, the default
     }
-    AddChild(toolbar);
+    toolbar->AddSeparator("mv_sep2");
 
-    // ----- TOP TOOLBAR ROW 2: view + edit -----
-    toolbar2 = std::make_shared<UltraCanvasToolbar>("MV_Toolbar2", 0, 0, 0, 40);
-    toolbar2->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    IconOnly(toolbar2->AddButton("mv_zoomout", "", ViewerIconPath("zoom-out.svg"),
+    IconOnly(toolbar->AddButton("mv_zoomout", "", ViewerIconPath("zoom-out.svg"),
                                  [this] { ZoomOutAction(); }),
              "Zoom out (-)");
-    toolbar2->AddDropdownButton("mv_zoom", "",
+    toolbar->AddDropdownButton("mv_zoom", "",
             { "Fit", "25%", "50%", "75%", "100%", "150%", "200%", "400%" },
             [this](const std::string& s) {
                 if (s == "Fit") ZoomFitAction();
                 else            ZoomPercentAction(std::atof(s.c_str()));
             })->SetTooltip("Zoom level");
-    IconOnly(toolbar2->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
+    IconOnly(toolbar->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
                                  [this] { ZoomInAction(); }),
              "Zoom in (+)");
-    IconOnly(toolbar2->AddButton("mv_fit", "", ViewerIconPath("zoom-fit.svg"),
+    IconOnly(toolbar->AddButton("mv_fit", "", ViewerIconPath("zoom-fit.svg"),
                                  [this] { ZoomFitAction(); }),
              "Fit to window");
-    toolbar2->AddSeparator("mv_sep3");
-    IconOnly(toolbar2->AddButton("mv_rotl", "", ViewerIconPath("rotate-left.svg"),
+    toolbar->AddSeparator("mv_sep3");
+    IconOnly(toolbar->AddButton("mv_rotl", "", ViewerIconPath("rotate-left.svg"),
                                  [this] { if (surface) surface->RotateBy(-1); }),
              "Rotate left");
-    IconOnly(toolbar2->AddButton("mv_rotr", "", ViewerIconPath("rotate-right.svg"),
+    IconOnly(toolbar->AddButton("mv_rotr", "", ViewerIconPath("rotate-right.svg"),
                                  [this] { if (surface) surface->RotateBy(1); }),
              "Rotate right");
-    IconOnly(toolbar2->AddButton("mv_mirh", "", ViewerIconPath("mirror-h.svg"),
+    IconOnly(toolbar->AddButton("mv_mirh", "", ViewerIconPath("mirror-h.svg"),
                                  [this] { if (surface) surface->ToggleFlipHorizontal(); }),
              "Mirror horizontally");
-    IconOnly(toolbar2->AddButton("mv_mirv", "", ViewerIconPath("mirror-v.svg"),
+    IconOnly(toolbar->AddButton("mv_mirv", "", ViewerIconPath("mirror-v.svg"),
                                  [this] { if (surface) surface->ToggleFlipVertical(); }),
              "Mirror vertically");
-    toolbar2->AddSeparator("mv_sep4");
+    toolbar->AddSeparator("mv_sep4");
     // The panel follows the toggle only while the shown file takes colour
     // adjustments (ApplyToolAvailability); the toggle remembers it meanwhile.
-    IconOnly(toolbar2->AddToggleButton("mv_adjust", "", ViewerIconPath("settings-sliders.svg"),
+    IconOnly(toolbar->AddToggleButton("mv_adjust", "", ViewerIconPath("settings-sliders.svg"),
             [this](bool on) { adjustPanelOpen = on; ApplyToolAvailability(); }),
             "Adjustments: gamma, brightness, colour, sharpen");
-    IconOnly(toolbar2->AddButton("mv_curves", "", ViewerIconPath("curves.svg"),
+    IconOnly(toolbar->AddButton("mv_curves", "", ViewerIconPath("curves.svg"),
                                  [this] { ShowCurvesDialog(); }),
              "Curves");
-    IconOnly(toolbar2->AddButton("mv_save", "", ViewerIconPath("save.svg"),
+    IconOnly(toolbar->AddButton("mv_save", "", ViewerIconPath("save.svg"),
                                  [this] { ShowSaveDialog(); }),
              "Save as\xE2\x80\xA6");
-    IconOnly(toolbar2->AddButton("mv_info", "", ViewerIconPath("file-info.svg"),
-                                 [this] { ToggleDetails(); }),
-             "Details");
-    AddChild(toolbar2);
+    AddChild(toolbar);
 
     // ----- ADJUSTMENTS PANEL (hidden until "Adjust" is toggled) -----
     adjustPanel = std::make_shared<UltraCanvasContainer>("MV_Adjust", 0, 0, 0, 84);
@@ -1976,9 +1982,8 @@ void UltraCanvasMediaViewer::SetInfoBarVisible(bool visible) {
 void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
     if (topBarsVisible == visible) return;
     topBarsVisible = visible;
-    if (toolbar)  toolbar->SetVisible(visible);
-    if (toolbar2) toolbar2->SetVisible(visible);
-    // The adjustments panel opens through its toolbar2 toggle; it never stays
+    if (toolbar) toolbar->SetVisible(visible);
+    // The adjustments panel opens through its toolbar toggle; it never stays
     // open while the bars are hidden, and comes back with them if the toggle
     // is still on.
     ApplyToolAvailability();
@@ -2439,20 +2444,22 @@ void UltraCanvasMediaViewer::UpdateToolAvailability() {
 }
 
 void UltraCanvasMediaViewer::ApplyToolAvailability() {
-    if (toolbar2) {
+    if (toolbar) {
         auto show = [this](const char* id, bool on) {
-            if (auto item = toolbar2->GetWidget(id)) item->SetVisible(on);
+            if (auto item = toolbar->GetWidget(id)) item->SetVisible(on);
         };
         for (const char* id : { "mv_zoomout", "mv_zoom", "mv_zoomin", "mv_fit" }) show(id, tools.zoom);
         for (const char* id : { "mv_rotl", "mv_rotr", "mv_mirh", "mv_mirv" })   show(id, tools.transform);
         show("mv_adjust", tools.colour);
         show("mv_curves", tools.colour);
         show("mv_save",   tools.save);
-        // A separator only between two groups that are both up. Details
-        // (always shown) ends the row, so the last one needs only a group
-        // before it.
+        // A separator only between two groups that are both up: the
+        // navigation / slideshow group is always there, the view and edit
+        // groups only for a file that takes them.
+        const bool edit = tools.colour || tools.save;
+        show("mv_sep2", tools.zoom || tools.transform || edit);
         show("mv_sep3", tools.zoom && tools.transform);
-        show("mv_sep4", tools.zoom || tools.transform);
+        show("mv_sep4", (tools.zoom || tools.transform) && edit);
     }
     if (adjustPanel) adjustPanel->SetVisible(adjustPanelOpen && tools.colour && topBarsVisible);
     RequestRedraw();

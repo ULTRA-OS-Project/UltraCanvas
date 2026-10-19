@@ -936,6 +936,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
     CancelPreviewReloadTimer(); // and so does this one's
+    ClearTransferNote();        // and the status note's
     StopSubfolderSearch();
     ReapSearchWorkers(true);    // now the search threads are waited for
     exportWindows.clear();      // each joins the walk building its text
@@ -1143,6 +1144,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     WireDisplayFormatCallbacks(folderPreview.get());
     WireFolderIconProvider(folderPreview.get());
     WireFavoriteMarkProvider(folderPreview.get());
+    WireTransferNotice(folderPreview.get());
 
     // The pane is narrow, so it carries the one way out of it: a round button
     // floating over the middle of its left edge that moves the folder it
@@ -2121,7 +2123,7 @@ void UltraFilerWindow::UnpinTargetsFromTree() {
     if (changed) RefreshPinnedTreeNodes();
 }
 
-// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb + settings) =====
+// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh / Home + breadcrumb + settings) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
@@ -2155,6 +2157,16 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     row->AddChild(forwardButton);
     row->AddChild(upButton);
     row->AddChild(refresh);
+
+    // Home: the host's home folder (HOME / USERPROFILE) in the active folder
+    // display, from wherever the window is - History, Favorites and the
+    // Computer page included, which NavigateTo leaves for the folder view.
+    auto home = MakeToolButton("ufl-home", "", "home.svg", 30, [this]() {
+        const std::string dir = UserHomeDir();
+        if (!dir.empty()) NavigateTo(dir);
+    });
+    home->SetTooltip("Home folder");
+    row->AddChild(home);
 
     // The split screen: two folder displays side by side in place of the
     // tree and the one display, each with a tree button and a breadcrumb of
@@ -5466,6 +5478,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
     WireFavoriteMarkProvider(tab->filer.get());
+    WireTransferNotice(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -5788,6 +5801,7 @@ void UltraFilerWindow::BuildHistoryView() {
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
         WireFavoriteMarkProvider(histFiler.get());
+        WireTransferNotice(histFiler.get());
         // Display > Type from the page's own context menu.
         histFiler->onViewTypeChanged = [this](FilerViewType) {
             SyncCommandBarToVisibleDisplay();
@@ -6037,6 +6051,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onFolderModified = [this, self = favFiler.get()](const std::string& folder) {
             HandleFolderModified(folder, self);
         };
+        WireTransferNotice(favFiler.get());
         favFiler->onError = [this](const std::string& message) {
             if (statusLabel) statusLabel->SetText("Error: " + message);
         };
@@ -6164,6 +6179,7 @@ void UltraFilerWindow::BuildComputerPage() {
     computerFolders->onPathChanged = [this](const std::string& path) {
         OpenHistoryEntry(path, true);
     };
+    WireTransferNotice(computerFolders.get());
     computerFolders->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
@@ -6485,6 +6501,7 @@ void UltraFilerWindow::NavigateTo(const std::string& path) {
     ShowBrowsingView();
     // A new folder ends whatever the last drop onto a drive had to report.
     remoteDropNote.clear();
+    ClearTransferNote();
     if (!filer || path.empty() || path == filer->GetPath()) return;
     filer->SetPath(path);
 }
@@ -7005,6 +7022,12 @@ void UltraFilerWindow::UpdateStatusBar() {
         statusLabel->SetText(remoteDropNote);
         return;
     }
+    // A copy or move that just ended: its refresh would otherwise replace the
+    // confirmation with the folder's counts the moment it is written.
+    if (!transferNote.empty()) {
+        statusLabel->SetText(transferNote);
+        return;
+    }
     if (!remotePreviewNote.empty()) {
         statusLabel->SetText(remotePreviewNote);
         return;
@@ -7218,6 +7241,39 @@ void UltraFilerWindow::ArmPreviewReloadTimer(unsigned int delayMs) {
         previewReloadTimer = InvalidTimerId;
         ReloadChangedPreview();
     });
+}
+
+void UltraFilerWindow::WireTransferNotice(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->onTransferFinished = [this](const FilerTransferResult& result) {
+        ShowTransferNote(result.message);
+    };
+    target->onDeleteFinished = [this](const FilerDeleteResult& result) {
+        ShowTransferNote(result.message);
+    };
+}
+
+void UltraFilerWindow::ShowTransferNote(const std::string& message) {
+    ClearTransferNote();
+    if (message.empty()) return;
+    transferNote = message;
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        transferNoteTimer = app->StartTimer(kTransferNoteMs, false, [this](TimerId) {
+            transferNoteTimer = InvalidTimerId;
+            transferNote.clear();
+            UpdateStatusBar();
+        });
+    }
+    UpdateStatusBar();
+}
+
+void UltraFilerWindow::ClearTransferNote() {
+    if (transferNoteTimer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(transferNoteTimer);
+        transferNoteTimer = InvalidTimerId;
+    }
+    transferNote.clear();
 }
 
 void UltraFilerWindow::CancelPreviewReloadTimer() {
