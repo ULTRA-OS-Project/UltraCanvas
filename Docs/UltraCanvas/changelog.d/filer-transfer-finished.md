@@ -5,4 +5,4 @@
   were skipped, the one entry's name, the destination, and a ready sentence
   for a status line (`"report.pdf" moved to "alt"`, `3 files copied to
   "alt"`, `Copy cancelled - 2 of 5 items copied to "alt"`). UltraFiler shows
-  it on its status line (UltraFiler changelog 1.76.0).
+  it on its status line (UltraFiler changelog 1.77.0).

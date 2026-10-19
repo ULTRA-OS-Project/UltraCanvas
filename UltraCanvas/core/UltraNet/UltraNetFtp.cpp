@@ -15,6 +15,8 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.7.1 - an upload or download also ends when its thread's abort
+//                  check says so (UltraNet_SetThreadAbortCheck)
 // Version: 0.7.0 - a call can be called off (isCancelled, UltraNet_SetThreadFtpCancel)
 // Version: 0.6.0 - SFTP with a private key
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
@@ -305,9 +307,11 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 // this takes.
 int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dlnow,
                            curl_off_t ultotal, curl_off_t ulnow) {
-    // Called off: libcurl ends the call with CURLE_ABORTED_BY_CALLBACK, which
-    // the result reports as Cancelled.
-    if (t_callCancel && t_callCancel()) return 1;
+    // Called off - by this call's own question, or by the thread's owner
+    // wanting the thread back (UltraNet_SetThreadAbortCheck): libcurl ends the
+    // call with CURLE_ABORTED_BY_CALLBACK, which the result reports as
+    // Cancelled.
+    if ((t_callCancel && t_callCancel()) || UltraNet_ThreadAbortRequested()) return 1;
     if (!t_callReports) return 0;
     const UltraNetTransferCallbacks cb = UltraNet_GetTransferCallbacks();
     if (cb.onDownloadProgress && dlnow > 0) {

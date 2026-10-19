@@ -223,6 +223,11 @@ namespace {
         out.push_back({ "docx", {}, "Word document (OOXML)",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "pptx", { "pptm", "ppsx", "potx" }, "PowerPoint presentation (OOXML)",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in (miniz + tinyxml2)",
+                        "read as an outline: slide titles, text, tables, speaker notes; "
+                        "no layout, pictures or writer" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });

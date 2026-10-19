@@ -4,6 +4,9 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
+// Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
+//                  password-protected .docx
 // Version: 1.6.0 - RequestDocumentPassword; OpenTextDocument and LoadTextDocument open
 //                  password-protected .docx files
 // Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
@@ -201,6 +204,8 @@ namespace UltraCanvas {
         // .odt and .docx are fully parsed (detection is signature-based, so
         // renamed files still load); .tex is imported by the LaTeX document
         // reader (article subset, formulas kept for the math engine);
+        // a PowerPoint deck (.pptx, .pptm, .ppsx, .potx) reads as an outline of
+        // its slides (UltraCanvasPresentationPptx.h);
         // .md/.markdown parse as Markdown; anything
         // else readable as text becomes plain paragraphs. Legacy Word 97-2003
         // .doc files are detected and rejected with a clear loadError telling
@@ -215,7 +220,8 @@ namespace UltraCanvas {
 
         // Dialog-free core of OpenTextDocument: parses filePath into a
         // UCRichDocument. Returns null and fills outError on failure.
-        // `password` opens a password-protected .docx (UCWordDocumentIO::Load).
+        // `password` opens a password-protected .docx (UCWordDocumentIO::Load)
+        // or .pptx.
         static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
                                                                 std::string& outError,
                                                                 const std::string& password = std::string());
@@ -233,14 +239,25 @@ namespace UltraCanvas {
         static void RequestDocumentPassword(const std::string& filePath,
                                             UltraCanvasWindowBase* parent,
                                             std::function<void(bool proceed, const std::string& password)> onResult);
+        // Asks for a new password to save a file with: typed twice, and
+        // asked again when the two differ. onResult(true, password) once
+        // they match; onResult(false, "") on cancel. An empty password is
+        // asked again too - leave the file unprotected by not calling this.
+        // Pass the password to the writer: SaveTextDocument,
+        // UltraCanvasSpreadsheet::SaveToFile.
+        static void RequestNewDocumentPassword(UltraCanvasWindowBase* parent,
+                                               std::function<void(bool proceed, const std::string& password)> onResult);
         // The Open dialog's file types for a text document: one "Documents"
         // filter with every type LoadTextDocument reads (ODT, DOCX, DOC,
         // LaTeX, Markdown, plain text), then each under its name.
         // OpenTextDocument offers these when it is given no filters.
         static void AddTextDocumentLoadTypes(FileDialogOptions& opts);
         // Writes `document` as the type its path names: .odt or .docx.
+        // `password` saves a password-protected .docx (UCWordDocumentIO::Save);
+        // an .odt with a password is refused, not saved unprotected.
         static bool SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
-                                     std::string& outError);
+                                     std::string& outError,
+                                     const std::string& password = std::string());
         // The Save dialog's file types for SaveTextDocument, each under its
         // name, ODT first.
         static void AddTextDocumentSaveTypes(FileDialogOptions& opts);

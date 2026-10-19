@@ -392,6 +392,7 @@ private:
 } // namespace
 
 bool UltraCanvasSpreadsheet::LoadXLS(const std::string& filePath, const std::string& password) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     switch (DetectXlsFileKind(filePath)) {
         case XlsFileKind::Missing:
@@ -419,6 +420,7 @@ bool UltraCanvasSpreadsheet::LoadXLS(const std::string& filePath, const std::str
     if (!ReadXlsWorkbook(filePath, workbook, lastError_)) return false;
     XlsWorkbookLoader loader(this, workbook);
     loader.Load();
+    ClearUndoHistory();   // the loaded document starts a fresh history
     Recalculate();
     RequestAutoFitForUnsizedColumns();
     Invalidate();

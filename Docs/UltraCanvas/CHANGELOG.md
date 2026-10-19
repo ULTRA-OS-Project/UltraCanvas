@@ -1,3 +1,213 @@
+#### 2026-10-19 *0.9.344*
+- **Editing a `$$` math block in a Markdown text area hid its LaTeX.** The
+  opening fence and the source lines of a display-math block collapse in
+  rendered form, and only the caret's own line was shown raw - so with the
+  caret on a fence the formula source vanished from view.
+  - With the caret on any line of the block, every line of it is now shown
+    as raw source, one under the other; moving the caret out renders the
+    formula again. `InlineMathTest` covers each caret position.
+
+#### 2026-10-19 *0.9.343*
+- **TextArea: every search match is highlighted, not only the current one.**
+  `HighlightMatches` collected all matches, but only the hex view drew them;
+  the plain-text, code and markdown views now paint each match visible on
+  screen in the new `searchHighlightColor` style colour (amber, a darker
+  amber in the dark theme), with the current match - the selection - shown
+  over it in the selection colour. The hex view uses the same colour instead
+  of its own fixed yellow. New overload
+  `HighlightMatches(text, caseSensitive)`, so a caller no longer has to set
+  the case through `SetTextToFind` first.
+- **TextArea: matches outside the view show on the scrollbar.** Each match
+  puts a tick on the vertical track at its line's place in the document
+  (wrapped lines included; rows in the hex view), and the current match a
+  tick in the selection colour.
+- **TextArea: the marks follow edits.** They are found again after every text
+  change until `ClearHighlights`, and only the lines whose marks changed are
+  re-laid out. In a document over 256 KB the search waits until typing has
+  paused for 200 ms instead of making a pass over the whole text on every
+  keystroke.
+
+#### 2026-10-18 *0.9.342*
+- **The Android camera preview follows the device as it turns.** It used to
+  stay at the rotation it had when the camera opened, so turning the phone
+  left the picture sideways until the camera was closed and opened again.
+  - Every preview frame is now turned for the display as it is at that
+    moment. `UltraCanvasActivity` reports each turn through a display
+    listener, which also catches 180-degree flips that change no
+    configuration. The application re-reads the rotation on every
+    configuration change too.
+  - Preview frames swap width and height when the device turns between
+    portrait and landscape.
+  - A recording still keeps the orientation it started with, because an MP4
+    file has a single orientation.
+- **Android: Java could not call back into C++. Fixed before it ever ran.**
+  `UltraCanvasActivity` sends dialog answers, typed text, permission answers
+  and display turns to C++ through `native` methods. `NativeActivity` loads
+  the app's library with a plain `dlopen`, and Android's runtime only finds
+  `native` methods in libraries loaded through `System.loadLibrary`. So every
+  such call would have thrown `UnsatisfiedLinkError` on the UI thread,
+  crashing the app on the first keystroke, dialog answer or permission
+  answer. The fixes:
+  - `UltraCanvasActivity` now loads the same library (named by
+    `android.app.lib_name`, as `NativeActivity` finds it) through
+    `System.loadLibrary` before `NativeActivity` starts.
+  - At startup the native side checks the bridge and writes one logcat line,
+    `Java->native bridge OK` or `BROKEN`, whatever the build type.
+  - `scripts/android-java-check.sh` (run in CI) now fails when a Java
+    `native` method has no C++ definition.
+
+#### 2026-10-18 *0.9.341*
+- **UltraCloud uploads to FTP and SFTP by way of a part name, and removes
+  what an unfinished one left.** A server that writes an upload into the
+  file as it arrives - the new `ProviderCapabilities::partialUploadsRemain`,
+  set by the FTP provider - left the part of an upload stopped part way
+  under the file's own name, and an upload that replaced a file had
+  destroyed the old one with its first byte. `CloudService::Upload` and
+  `UploadAndShare` now, for every application (`UltraCloudUploads.h`):
+  - write to a hidden part name (`UploadPartName`: ".report.pdf.part") and
+    rename it into place once complete (`PutUploadInPlace`); a server that
+    will not rename onto an existing file (SFTP, some Windows servers) has
+    the old one set aside (`UploadSetAsideName`) and put back if the rename
+    fails;
+  - go straight to the name for an anonymous FTP login
+    (`IsAnonymousFtpLogin`), a name too long to mark, a server that refuses
+    the part name, and an account whose server refused a rename -
+    remembered for 30 days (`AccountStore::SetUploadsDirect` /
+    `UploadsDirect`);
+  - keep a `PendingUpload` in the account store (`AddPendingUpload`,
+    `ListPendingUploads`, `RemovePendingUpload`; schema versions 2 and 3)
+    from before the first byte at a part name, and from the moment the
+    server created the file at the file's own name - the FTP provider
+    watches the reply to STOR, and looks in the folder first on SFTP, which
+    says nothing - so a process that ends during the upload leaves the
+    record too.
+  Every call on such an account first removes what those records point to,
+  where it is still the upload's (`IsLeftByPendingUpload`: any part; at the
+  file's own name, one shorter than the whole file), puts back an old file
+  left set aside, and says each step in the thread's log. A part a listing
+  leaves out (vsftpd hides dot names) is removed by name; one the server
+  will not remove stays recorded for the next run; a cleanup the server did
+  not answer is tried again straight after a later call that gets through,
+  up to `kPendingCleanupTriesPerRun` times a run, and a listing then leaves
+  out what was removed. `UltraCloudTests` (`test_uploads.cpp`, 17 cases)
+  run it all against a fake FTP server that can refuse renames, deletes or
+  dot names, hide dot names, break an upload or not answer.
+- **A running transfer can be called off from outside it.**
+  `UltraNet_SetThreadAbortCheck(fn)` (`UltraNetCore.h`) sets a check for the
+  calling thread; its synchronous HTTP requests and its FTP uploads and
+  downloads ask it from libcurl's progress callback - as the bytes go by,
+  and about once a second while the server is silent - and end as
+  `UltraNetResultCode::Cancelled` once it says true.
+  `UltraNet_ThreadAbortRequested()` asks it directly. UltraFiler's drive
+  worker uses it so that quitting stops an upload where it is instead of
+  keeping the process alive, windowless, until the last byte has gone.
+  `UltraNetTests` (`test_abort.cpp`): an HTTP request and an FTP upload to a
+  port that never answers end as Cancelled within a second of the check
+  saying so, and a check that never fires changes nothing.
+- **`UltraCanvasApplicationBase::ClosingEndsApplication(window)`** says
+  whether closing `window` leaves the application without a window - every
+  other one already closing, or a child of it (its config `parentWindow`, at
+  any depth) that `CloseChildWindows` takes down with it - so that `Run()`
+  returns. An application with something to lose by quitting asks in that
+  window's `onWindowClosing` when it is true: UltraFiler and UltraMail ask
+  before a quit would stop an upload. UltraMail's own copy of the test is
+  gone.
+
+#### 2026-10-18 *0.9.340*
+- **Spreadsheet: inserting, duplicating, renaming and moving a sheet can be
+  undone.** Each is now one undo step, like deleting: undo takes an inserted
+  or duplicated sheet away again (redo brings it back with its cells), gives
+  a renamed sheet its old name - the formulas naming it follow - and moves a
+  moved sheet back. The steps find the sheet by its id, as deleting does.
+- **Spreadsheet: loading a file starts a fresh undo history.** The loaders
+  clear the workbook with `RemoveSheet`, which since sheet deletion became
+  undoable recorded a "Delete sheet" step - with a full copy of the sheet -
+  for every sheet of the document being replaced, so Ctrl+Z after opening a
+  file brought the old document's sheets back into the new one. Loads now run
+  without recording and clear the history when they succeed.
+
+#### 2026-10-18 *0.9.339*
+- **Office 2007's and 2010's password-protected files open, and .xlsx /
+  .docx save with a password.**
+  - Reading: agile-encrypted files keyed with SHA-1 (Office 2010's default,
+    with AES-128) were refused; they now open like the SHA-512 ones. SHA-1 is
+    asked of UltraCrypt as a legacy digest for this read only.
+  - Reading Office 2007's "standard" encryption too (a binary header, a
+    SHA-1 key of 50 000 rounds, AES-128/192/256 in ECB mode, built from
+    UltraCrypt's CBC with a zero IV). The format has no integrity check, so
+    such files open without one, as in every Office reader; RC4 standard
+    encryption is still refused, by name.
+  - Writing: `UltraCanvasSpreadsheet::SaveToFile` / `SaveXLSX`,
+    `UCWordDocumentIO::Save` / `SaveDocx` and
+    `UltraCanvasFileLoader::SaveTextDocument` take an optional password and
+    write the file encrypted as Office 2013 and later do - AES-256-CBC,
+    SHA-512, 100 000 rounds, fresh random salts and keys every save, the
+    integrity HMAC and the DataSpaces storage. The unencrypted package never
+    reaches the disk. A password for any other format (.ods, .odt, .csv) is
+    refused rather than dropped.
+  - `EncryptOfficePackage` / `EncryptOfficePackageToFile` do it for any
+    package; `UCCompoundFileWriter` (new) builds the compound file, and
+    `UCZipPackageWriter::OpenInMemory` / `TakeBytes` the package in memory.
+  - `UltraCanvasFileLoader::RequestNewDocumentPassword` asks for a new
+    password twice. The demo's spreadsheet page keeps a workbook's password
+    when it is saved again as .xlsx and offers one to an unprotected workbook.
+  - msoffcrypto-tool decrypts what is written, integrity check included;
+    `OfficeEncryptionTest` covers the round trips, an Office 2010-style SHA-1
+    fixture and an Office 2007 standard-encrypted one.
+- **PowerPoint decks (.pptx) open - as text, and password-protected ones
+  too.** `UltraCanvasPresentationPptx.h` (new) reads a deck (`.pptx`,
+  `.pptm`, `.ppsx`, `.potx`) into a UI-free model: slides in order with their
+  titles, the paragraphs of every placeholder and text box with outline levels,
+  bullets and numbering, tables, pictures' descriptions and parts, speaker
+  notes and hidden slides; slide furniture (date, footer, slide number) is left
+  out. A protected deck decrypts through the same code as a protected `.xlsx` /
+  `.docx`.
+  - `PptxPresentationToRichDocument` makes an outline of it, and
+    `UltraCanvasFileLoader::LoadTextDocument` / `OpenTextDocument` open a deck
+    that way (asking for a protected one's password); the format inventory
+    lists PowerPoint as readable, so the Open dialog offers it.
+  - Not read: the layout as drawn, charts, SmartArt, embedded objects. No
+    writer.
+  - `OfficeEncryptionTest` reads a deck python-pptx wrote from its default
+    template, plain and encrypted.
+  - UltraFiler's preview page shows a deck's slide text (each slide's number
+    and title, then its bullets, tables and notes), on the tile and in the
+    detail pane; the Filer names the type "PowerPoint". Before, a deck had no
+    entry in the Filer's type table, and once PowerPoint was in the format
+    inventory its page would have shown the head of the ZIP. A
+    password-protected `.docx` or `.pptx` now keeps its type glyph instead of
+    an empty page.
+
+#### 2026-10-18 *0.9.338*
+- **New element: `UltraCanvasReferencePointPicker`.** A 3 x 3 grid of the
+  corners, edge midpoints and centre of a box, for a transform bar to say
+  which point of the selection stays put when it is moved, scaled, rotated or
+  sheared. Click or the arrow keys pick a point; `ReferencePointIn(point, box)`
+  gives its position. Doc: `Docs/UltraCanvas/UltraCanvasReferencePointPicker.md`.
+  ArtCreator 0.8.0's transform bar is the first user.
+- **`UltraCanvasSpinner::SetSnapToStep(false)`** keeps a Decimal value off the
+  step grid: a field can show a measurement of `8.61 cm` and still step by
+  `0.1` from it. Until now `SetValue` rounded every value onto
+  `min + n * step`, so a field had either fine steps or rounded values.
+- **`UltraCanvasSpinner::onStepsFinished`** fires once when a run of steps
+  ends - the arrow button or key released, the wheel at rest, the focus gone -
+  instead of once per step like `onValueChanged`. A held arrow key reached a
+  caller as one change per repeat, so an editor that records undo per change
+  made a held key dozens of undo steps; with this it can make them one.
+  `IsStepping()` says whether a run is open.
+- **Linux: a held key is one press, its repeats and one release.** X11 sent
+  a held key's every repeat as a release and a press, so an element's key-up
+  handler ran once per repeat and could not tell the key was still down -
+  unlike Windows and macOS, where repeats are presses only. The Linux backend
+  now turns on X11's detectable auto-repeat (`XkbSetDetectableAutoRepeat`),
+  and on a server without it drops a release that the next queued event
+  presses again at the same moment. `KeyUp` now means the key was let go on
+  every platform.
+  The desktop shell's global shortcuts (`UltraCanvasDesktopShell`, e.g.
+  Super+V for the clipboard history) do the same: they count when the key is
+  let go, so on a server without detectable auto-repeat a held shortcut
+  counted once per repeat; that release is now dropped there too.
+
 #### 2026-10-18 *0.9.337*
 - **An FTP call can be called off** (UltraNet FTP 0.7.0).
   `UltraNetFtpOptions::isCancelled`, or `UltraNet_SetThreadFtpCancel` for a

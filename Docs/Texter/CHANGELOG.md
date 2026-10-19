@@ -1,3 +1,13 @@
+#### 2026-10-18 *1.68*
+- **Search shows every match.** While the search bar is open, all matches in
+  the visible part of the document are highlighted, not only the one that is
+  selected; the selected match keeps the selection colour so it still stands
+  out. Matches above or below the view show as ticks on the scrollbar, so you
+  can see where the rest are. The highlights move with the
+  text as you edit (in files over 256 KB, once you pause typing). The hex view
+  marks matches in the same colour. Framework: `HighlightMatches` in
+  `UltraCanvasTextArea` (framework changelog: `textarea-search-highlights`).
+
 #### 2026-10-14 *1.67*
 - **One UltraTexter at a time.** Opening a file while UltraTexter is already
   running opens it in the running copy - in a new tab of the window used

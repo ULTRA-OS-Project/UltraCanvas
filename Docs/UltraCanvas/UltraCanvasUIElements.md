@@ -69,6 +69,7 @@ from an external "Show password" checkbox. See
 | Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
+| Which point of a box stays put - a 3 x 3 grid of corners, edge midpoints and centre, for a transform bar's scale / rotate / move ([doc](UltraCanvasReferencePointPicker.md)) | `UltraCanvasReferencePointPicker` | `UltraCanvasReferencePointPicker.h` |
 | A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
 | The stops of a gradient (a colour ramp) | `UltraCanvasGradientEditor` | `UltraCanvasGradientEditor.h` |
 | A score out of N | `UltraCanvasRating` | `UltraCanvasRating.h` |

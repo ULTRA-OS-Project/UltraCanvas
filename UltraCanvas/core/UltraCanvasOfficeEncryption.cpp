@@ -1,16 +1,19 @@
 // core/UltraCanvasOfficeEncryption.cpp
-// ECMA-376 agile decryption of password-protected Office packages. See
-// UltraCanvasOfficeEncryption.h; [MS-OFFCRYPTO] 2.3.4.10-2.3.4.15 is the
-// specification each step below names.
-// Version: 1.0.0
+// ECMA-376 agile decryption and encryption of password-protected Office
+// packages. See UltraCanvasOfficeEncryption.h; [MS-OFFCRYPTO] 2.3.4.10-2.3.4.15
+// is the specification each step below names.
+// Version: 1.2.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasCompoundFile.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCanvasPathUtf8.h"   // OpenFileUtf8
 #include "tinyxml2.h"
 
+#include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 namespace UltraCanvas {
@@ -84,11 +87,13 @@ bool ReadCipherParams(const tinyxml2::XMLElement* e, CipherParams& out, Fail& fa
         out.hash = UltraCryptHashAlgorithm::SHA512;
     } else if (hash == "SHA256") {
         out.hash = UltraCryptHashAlgorithm::SHA256;
+    } else if (hash == "SHA1") {
+        // Office 2010's default. Read only: EncryptOfficePackage writes SHA-512.
+        out.hash = UltraCryptHashAlgorithm::SHA1;
     } else {
         fail = {OfficeDecryptStatus::Unsupported,
                 "The file's encryption is keyed with " + hash +
-                ", which this program does not use; save it again from Office 2013 or later "
-                "(SHA-512) to open it here"};
+                ", which this program does not read"};
         return false;
     }
     out.hashSize = UltraCrypt_GetDigestSize(out.hash);
@@ -108,9 +113,20 @@ bool ReadCipherParams(const tinyxml2::XMLElement* e, CipherParams& out, Fail& fa
     return true;
 }
 
+bool Hash(UltraCryptHashAlgorithm algorithm, const void* data, size_t size,
+          std::vector<uint8_t>& out) {
+    // SHA-1 is UltraCrypt's legacy digest, refused unless asked for. Asked
+    // for here, and only here: Office 2010 keys its files with it, and
+    // reading them back is all it is used for - its collision weakness does
+    // not reach a password hash or a block-key derivation.
+    UltraCryptHashOptions options;
+    options.allowLegacy = algorithm == UltraCryptHashAlgorithm::SHA1;
+    return static_cast<bool>(UltraCrypt_Hash(algorithm, data, size, out, options));
+}
+
 bool Hash(UltraCryptHashAlgorithm algorithm, const std::vector<uint8_t>& data,
           std::vector<uint8_t>& out) {
-    return static_cast<bool>(UltraCrypt_Hash(algorithm, data.data(), data.size(), out));
+    return Hash(algorithm, data.data(), data.size(), out);
 }
 
 // [MS-OFFCRYPTO] 2.3.4.11: a hash cut to `size` bytes, or padded with 0x36.
@@ -245,6 +261,136 @@ OfficeDecryptStatus Refuse(const Fail& fail, std::vector<uint8_t>& outPackage,
     return fail.status;
 }
 
+// ===== STANDARD ENCRYPTION (Office 2007) =====
+// [MS-OFFCRYPTO] 2.3.4.5-2.3.4.9: a binary header, a SHA-1 password key of
+// 50 000 rounds, AES in ECB mode over the whole package - and no integrity
+// check, which the format does not have.
+
+constexpr uint32_t kStandardSpinCount = 50000;
+constexpr uint32_t kFlagCryptoApi = 0x04, kFlagAes = 0x20;
+
+uint32_t U32(const std::vector<uint8_t>& b, size_t at) {
+    return b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (static_cast<uint32_t>(b[at + 3]) << 24);
+}
+
+// AES-ECB decryption from UltraCrypt's CBC, which has no ECB of its own: CBC
+// with a zero IV yields D(c[i]) ^ c[i-1], so XOR the previous ciphertext block
+// back in. `size` is whole blocks.
+bool DecryptEcb(const UltraCryptSecureBuffer& key, const uint8_t* cipher, size_t size,
+                UltraCryptSecureBuffer& out) {
+    UltraCryptCbcParams cbc;
+    cbc.iv.assign(16, 0);
+    cbc.padding = UltraCryptCbcPadding::NoPadding;
+    if (!UltraCrypt_AesCbcDecrypt(key, cbc, cipher, size, out)) return false;
+    for (size_t i = 16; i < size; ++i) out.Data()[i] ^= cipher[i - 16];
+    return true;
+}
+
+// [MS-OFFCRYPTO] 2.3.4.7.
+bool StandardKey(const std::vector<uint8_t>& salt, const std::string& password, size_t keyBytes,
+                 UltraCryptSecureBuffer& outKey) {
+    CipherParams p;
+    p.hash = UltraCryptHashAlgorithm::SHA1;
+    p.salt = salt;
+    UltraCryptSecureBuffer h;
+    if (!PasswordHash(p, password, kStandardSpinCount, h)) return false;
+    std::vector<uint8_t> input(h.Data(), h.Data() + h.GetSize()), hFinal;
+    input.insert(input.end(), 4, 0);   // block 0
+    const bool ok = Hash(p.hash, input, hFinal);
+    UltraCrypt_SecureZero(input.data(), input.size());
+    if (!ok) return false;
+    // X1 = SHA-1 of 64 bytes of 0x36 with H_final XORed in, X2 the same with
+    // 0x5C; the key is the first keyBytes of X1 + X2.
+    std::vector<uint8_t> x;
+    for (uint8_t fill : {uint8_t(0x36), uint8_t(0x5C)}) {
+        std::vector<uint8_t> buffer(64, fill), digest;
+        for (size_t i = 0; i < hFinal.size(); ++i) buffer[i] ^= hFinal[i];
+        const bool hashed = Hash(p.hash, buffer, digest);
+        UltraCrypt_SecureZero(buffer.data(), buffer.size());
+        if (!hashed) return false;
+        x.insert(x.end(), digest.begin(), digest.end());
+        UltraCrypt_SecureZero(digest.data(), digest.size());
+    }
+    UltraCrypt_SecureZero(hFinal.data(), hFinal.size());
+    outKey = UltraCryptSecureBuffer(x.data(), keyBytes);
+    UltraCrypt_SecureZero(x.data(), x.size());
+    return true;
+}
+
+OfficeDecryptStatus DecryptStandard(const std::vector<uint8_t>& info,
+                                    const std::vector<uint8_t>& encryptedPackage,
+                                    const std::string& password, bool verifyOnly,
+                                    std::vector<uint8_t>& outPackage, std::string& error) {
+    const Fail damaged{OfficeDecryptStatus::Damaged, "The file's encryption header is damaged"};
+    if (info.size() < 12) return Refuse(damaged, outPackage, error);
+    const uint32_t flags = U32(info, 4);
+    if (!(flags & kFlagCryptoApi) || !(flags & kFlagAes)) {
+        return Refuse({OfficeDecryptStatus::Unsupported,
+                       "The file uses Office 2007's RC4 encryption, which this program cannot open"},
+                      outPackage, error);
+    }
+    // EncryptionHeader (2.3.2): Flags, SizeExtra, AlgID, AlgIDHash, KeySize, ...
+    const size_t headerSize = U32(info, 8);
+    if (headerSize < 32 || 12 + headerSize > info.size()) return Refuse(damaged, outPackage, error);
+    const uint32_t algId = U32(info, 12 + 8);
+    const uint32_t algIdHash = U32(info, 12 + 12);
+    const uint32_t keyBits = U32(info, 12 + 16);
+    const uint32_t expectedBits = algId == 0x660E ? 128 : algId == 0x660F ? 192 : algId == 0x6610 ? 256 : 0;
+    if (expectedBits == 0 || keyBits != expectedBits || (algIdHash != 0x8004 && algIdHash != 0)) {
+        return Refuse({OfficeDecryptStatus::Unsupported,
+                       "The file uses an Office 2007 cipher this program does not know"},
+                      outPackage, error);
+    }
+    // EncryptionVerifier (2.3.3): SaltSize, Salt, EncryptedVerifier,
+    // VerifierHashSize, EncryptedVerifierHash (a SHA-1 hash in two AES blocks).
+    size_t at = 12 + headerSize;
+    if (at + 4 + 16 + 16 + 4 + 32 > info.size() || U32(info, at) != 16 || U32(info, at + 36) != 20)
+        return Refuse(damaged, outPackage, error);
+    const std::vector<uint8_t> salt(info.begin() + static_cast<std::ptrdiff_t>(at + 4),
+                                    info.begin() + static_cast<std::ptrdiff_t>(at + 20));
+    const uint8_t* encryptedVerifier = info.data() + at + 20;
+    const uint8_t* encryptedVerifierHash = info.data() + at + 40;
+    if (password.empty()) {
+        return Refuse({OfficeDecryptStatus::PasswordRequired,
+                       "The file is password-protected; enter its password to open it"},
+                      outPackage, error);
+    }
+
+    const Fail cryptoFailed{OfficeDecryptStatus::Damaged,
+                            "The file's encryption header could not be processed"};
+    UltraCryptSecureBuffer key, verifier, verifierHash;
+    if (!StandardKey(salt, password, keyBits / 8, key) ||
+        !DecryptEcb(key, encryptedVerifier, 16, verifier) ||
+        !DecryptEcb(key, encryptedVerifierHash, 32, verifierHash))
+        return Refuse(cryptoFailed, outPackage, error);
+    std::vector<uint8_t> expected;
+    if (!Hash(UltraCryptHashAlgorithm::SHA1, verifier.Data(), verifier.GetSize(), expected))
+        return Refuse(cryptoFailed, outPackage, error);
+    if (!UltraCrypt_ConstantTimeEquals(expected.data(), expected.size(), verifierHash.Data(), 20)) {
+        return Refuse({OfficeDecryptStatus::WrongPassword, "The password is not correct"},
+                      outPackage, error);
+    }
+    if (verifyOnly) return OfficeDecryptStatus::Decrypted;
+
+    // 2.3.4.15 for standard encryption: StreamSize, then the package in ECB.
+    if (encryptedPackage.size() < 8 || (encryptedPackage.size() - 8) % 16 != 0) {
+        return Refuse({OfficeDecryptStatus::Damaged, "The encrypted package is truncated"},
+                      outPackage, error);
+    }
+    uint64_t streamSize = 0;
+    for (int i = 7; i >= 0; --i) streamSize = (streamSize << 8) | encryptedPackage[static_cast<size_t>(i)];
+    const size_t cipherSize = encryptedPackage.size() - 8;
+    if (streamSize > cipherSize) {
+        return Refuse({OfficeDecryptStatus::Damaged, "The encrypted package is truncated"},
+                      outPackage, error);
+    }
+    UltraCryptSecureBuffer plain;
+    if (cipherSize > 0 && !DecryptEcb(key, encryptedPackage.data() + 8, cipherSize, plain))
+        return Refuse(cryptoFailed, outPackage, error);
+    outPackage.assign(plain.Data(), plain.Data() + static_cast<size_t>(streamSize));
+    return OfficeDecryptStatus::Decrypted;
+}
+
 // Everything DecryptOfficePackage does; with verifyOnly, it stops once the
 // password verifier has matched and returns Decrypted without decrypting.
 OfficeDecryptStatus Decrypt(const std::vector<uint8_t>& encryptionInfo,
@@ -301,12 +447,15 @@ OfficeDecryptStatus Decrypt(const std::vector<uint8_t>& encryptionInfo,
     }
     const unsigned major = encryptionInfo[0] | (encryptionInfo[1] << 8);
     const unsigned minor = encryptionInfo[2] | (encryptionInfo[3] << 8);
+    if (minor == 2 && major >= 2 && major <= 4) {
+        return DecryptStandard(encryptionInfo, encryptedPackage, password, verifyOnly, outPackage,
+                               error);
+    }
     if (major != 4 || minor != 4) {
-        const bool standard = minor == 2 && major >= 2 && major <= 4;
         return Refuse({OfficeDecryptStatus::Unsupported,
-                       standard ? "The file uses Office 2007's encryption, which this program "
-                                  "cannot open; save it again from Office 2010 or later"
-                                : "The file uses an encryption this program does not know"},
+                       minor == 3 ? "The file uses extensible encryption, which this program "
+                                    "cannot open"
+                                  : "The file uses an encryption this program does not know"},
                       outPackage, error);
     }
     const std::string xml(encryptionInfo.begin() + 8, encryptionInfo.end());
@@ -390,7 +539,7 @@ OfficeDecryptStatus Decrypt(const std::vector<uint8_t>& encryptionInfo,
                       outPackage, error);
     }
     std::vector<uint8_t> verifierHash;
-    if (!UltraCrypt_Hash(keyParams.hash, verifierInput.Data(), verifierInput.GetSize(), verifierHash))
+    if (!Hash(keyParams.hash, verifierInput.Data(), verifierInput.GetSize(), verifierHash))
         return Refuse(cryptoFailed, outPackage, error);
     if (!UltraCrypt_ConstantTimeEquals(verifierHash.data(), verifierHash.size(),
                                        verifierValue.Data(), verifierValue.GetSize())) {
@@ -506,6 +655,221 @@ OfficeDecryptStatus CheckOfficePassword(const std::string& filePath, const std::
     std::vector<uint8_t> info, package, unused;
     if (!ReadStreams(cfb, info, package, error)) return OfficeDecryptStatus::Damaged;
     return Decrypt(info, package, password, true, unused, error);
+}
+
+// ===== WRITING =====
+
+namespace {
+
+// What Office 2013 and later write: AES-256, SHA-512, 16-byte salts.
+CipherParams WriterParams() {
+    CipherParams p;
+    p.hash = UltraCryptHashAlgorithm::SHA512;
+    p.hashSize = 64;
+    p.keyBytes = 32;
+    p.blockSize = 16;
+    return p;
+}
+constexpr uint32_t kWriterSpinCount = 100000;
+
+bool EncryptValue(const UltraCryptSecureBuffer& key, const std::vector<uint8_t>& iv,
+                  const uint8_t* data, size_t size, std::vector<uint8_t>& out) {
+    UltraCryptCbcParams cbc;
+    cbc.iv = iv;
+    cbc.padding = UltraCryptCbcPadding::NoPadding;
+    return static_cast<bool>(UltraCrypt_AesCbcEncrypt(key, cbc, data, size, out));
+}
+
+// The cipher attributes <keyData> and <p:encryptedKey> share.
+std::string CipherAttributes(const CipherParams& p) {
+    return "saltSize=\"" + std::to_string(p.salt.size()) + "\" blockSize=\"" +
+           std::to_string(p.blockSize) + "\" keyBits=\"" + std::to_string(p.keyBytes * 8) +
+           "\" hashSize=\"" + std::to_string(p.hashSize) +
+           "\" cipherAlgorithm=\"AES\" cipherChaining=\"ChainingModeCBC\" hashAlgorithm=\"SHA512\" "
+           "saltValue=\"" + Base64Encode(p.salt, false) + "\"";
+}
+
+// The UNICODE-LP-P4 strings of the DataSpaces streams ([MS-OFFCRYPTO] 2.1.2):
+// a byte length, UTF-16LE, padded to four bytes.
+void PutLengthPrefixed(std::vector<uint8_t>& out, const std::string& ascii) {
+    const uint32_t bytes = static_cast<uint32_t>(ascii.size() * 2);
+    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(bytes >> (8 * i)));
+    for (char c : ascii) { out.push_back(static_cast<uint8_t>(c)); out.push_back(0); }
+    while (out.size() % 4) out.push_back(0);
+}
+
+void Put32(std::vector<uint8_t>& out, uint32_t v) {
+    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
+}
+
+// Reader, updater and writer version 1.0 ([MS-OFFCRYPTO] 2.1.5).
+void PutVersions(std::vector<uint8_t>& out) {
+    for (int i = 0; i < 3; ++i) Put32(out, 1);
+}
+
+// The \x06DataSpaces storage that says the package is encrypted
+// ([MS-OFFCRYPTO] 2.1.5-2.1.8, 2.2.6); Office will not open the file without it.
+void AddDataSpaces(UCCompoundFileWriter& cfb) {
+    std::vector<uint8_t> version;
+    PutLengthPrefixed(version, "Microsoft.Container.DataSpaces");
+    PutVersions(version);
+    cfb.AddStream("\x06" "DataSpaces/Version", version);
+
+    std::vector<uint8_t> entry;   // one map entry: EncryptedPackage -> StrongEncryptionDataSpace
+    Put32(entry, 1);              // reference components
+    Put32(entry, 0);              // a stream
+    PutLengthPrefixed(entry, "EncryptedPackage");
+    PutLengthPrefixed(entry, "StrongEncryptionDataSpace");
+    std::vector<uint8_t> map;
+    Put32(map, 8);                // header length
+    Put32(map, 1);                // entries
+    Put32(map, static_cast<uint32_t>(entry.size() + 4));
+    map.insert(map.end(), entry.begin(), entry.end());
+    cfb.AddStream("\x06" "DataSpaces/DataSpaceMap", map);
+
+    std::vector<uint8_t> definition;
+    Put32(definition, 8);
+    Put32(definition, 1);
+    PutLengthPrefixed(definition, "StrongEncryptionTransform");
+    cfb.AddStream("\x06" "DataSpaces/DataSpaceInfo/StrongEncryptionDataSpace", definition);
+
+    std::vector<uint8_t> id;
+    PutLengthPrefixed(id, "{FF9A3F03-56EF-4613-BDD5-5A41C1D07246}");
+    std::vector<uint8_t> primary;
+    Put32(primary, static_cast<uint32_t>(8 + id.size()));   // header length up to the ID
+    Put32(primary, 1);                                      // a password transform
+    primary.insert(primary.end(), id.begin(), id.end());
+    PutLengthPrefixed(primary, "Microsoft.Container.EncryptionTransform");
+    PutVersions(primary);
+    Put32(primary, 0);   // EncryptionName: empty
+    Put32(primary, 0);   // EncryptionBlockSize
+    Put32(primary, 0);   // CipherMode
+    Put32(primary, 4);   // Reserved
+    cfb.AddStream("\x06" "DataSpaces/TransformInfo/StrongEncryptionTransform/\x06" "Primary", primary);
+}
+
+} // namespace
+
+bool EncryptOfficePackage(const std::vector<uint8_t>& package, const std::string& password,
+                          std::vector<uint8_t>& outFile, std::string& error) {
+    outFile.clear();
+    error.clear();
+    if (password.empty()) {
+        error = "A password is needed to save a password-protected file";
+        return false;
+    }
+    if (!UltraCrypt_IsAvailable()) {
+        error = "This program was built without cryptography, so it cannot save "
+                "password-protected files";
+        return false;
+    }
+    const std::string failed = "The file could not be encrypted";
+    CipherParams keyParams = WriterParams(), dataParams = WriterParams();
+    keyParams.salt.resize(16);
+    dataParams.salt.resize(16);
+    UltraCryptSecureBuffer intermediateKey, hmacKey, verifierInput;
+    if (!UltraCrypt_RandomBytes(keyParams.salt, 16) || !UltraCrypt_RandomBytes(dataParams.salt, 16) ||
+        !UltraCrypt_RandomSecureBuffer(dataParams.keyBytes, intermediateKey) ||
+        !UltraCrypt_RandomSecureBuffer(dataParams.hashSize, hmacKey) ||
+        !UltraCrypt_RandomSecureBuffer(keyParams.salt.size(), verifierInput)) {
+        error = failed + ": no random numbers";
+        return false;
+    }
+
+    // The package: StreamSize, then 4096-byte segments, the last padded to
+    // the block, each with its own IV.
+    std::vector<uint8_t> encrypted(8);
+    const uint64_t streamSize = package.size();
+    for (int i = 0; i < 8; ++i) encrypted[static_cast<size_t>(i)] = static_cast<uint8_t>(streamSize >> (8 * i));
+    for (size_t offset = 0, segment = 0; offset < package.size(); offset += kSegmentSize, ++segment) {
+        const size_t length = std::min(kSegmentSize, package.size() - offset);
+        std::vector<uint8_t> chunk(package.begin() + static_cast<std::ptrdiff_t>(offset),
+                                   package.begin() + static_cast<std::ptrdiff_t>(offset + length));
+        chunk.resize((length + 15) / 16 * 16, 0);
+        const uint8_t index[4] = {static_cast<uint8_t>(segment), static_cast<uint8_t>(segment >> 8),
+                                  static_cast<uint8_t>(segment >> 16), static_cast<uint8_t>(segment >> 24)};
+        std::vector<uint8_t> iv, cipher;
+        if (!DeriveIv(dataParams, index, 4, iv) ||
+            !EncryptValue(intermediateKey, iv, chunk.data(), chunk.size(), cipher)) {
+            error = failed;
+            return false;
+        }
+        encrypted.insert(encrypted.end(), cipher.begin(), cipher.end());
+    }
+
+    // The integrity HMAC over that stream, and its key, both wrapped.
+    std::vector<uint8_t> mac, hmacKeyIv, hmacValueIv, encryptedHmacKey, encryptedHmacValue;
+    if (!UltraCrypt_Hmac(dataParams.hash, hmacKey, encrypted.data(), encrypted.size(), mac) ||
+        !DeriveIv(dataParams, kHmacKeyBlock, 8, hmacKeyIv) ||
+        !DeriveIv(dataParams, kHmacValueBlock, 8, hmacValueIv) ||
+        !EncryptValue(intermediateKey, hmacKeyIv, hmacKey.Data(), hmacKey.GetSize(), encryptedHmacKey) ||
+        !EncryptValue(intermediateKey, hmacValueIv, mac.data(), mac.size(), encryptedHmacValue)) {
+        error = failed;
+        return false;
+    }
+
+    // The password key, the verifier and the wrapped intermediate key.
+    UltraCryptSecureBuffer passwordHash, inputKey, valueKey, keyKey;
+    if (!PasswordHash(keyParams, password, kWriterSpinCount, passwordHash) ||
+        !BlockKey(keyParams, passwordHash, kVerifierInputBlock, inputKey) ||
+        !BlockKey(keyParams, passwordHash, kVerifierValueBlock, valueKey) ||
+        !BlockKey(keyParams, passwordHash, kKeyValueBlock, keyKey)) {
+        error = failed;
+        return false;
+    }
+    passwordHash.Clear();
+    std::vector<uint8_t> keyIv = keyParams.salt, verifierHash, encryptedInput, encryptedValue,
+                         encryptedKeyValue;
+    FitTo(keyIv, keyParams.blockSize);
+    if (!Hash(keyParams.hash, verifierInput.Data(), verifierInput.GetSize(), verifierHash) ||
+        !EncryptValue(inputKey, keyIv, verifierInput.Data(), verifierInput.GetSize(), encryptedInput) ||
+        !EncryptValue(valueKey, keyIv, verifierHash.data(), verifierHash.size(), encryptedValue) ||
+        !EncryptValue(keyKey, keyIv, intermediateKey.Data(), intermediateKey.GetSize(), encryptedKeyValue)) {
+        error = failed;
+        return false;
+    }
+
+    const std::string xml =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
+        "<encryption xmlns=\"http://schemas.microsoft.com/office/2006/encryption\" "
+        "xmlns:p=\"http://schemas.microsoft.com/office/2006/keyEncryptor/password\" "
+        "xmlns:c=\"http://schemas.microsoft.com/office/2006/keyEncryptor/certificate\">"
+        "<keyData " + CipherAttributes(dataParams) + "/>"
+        "<dataIntegrity encryptedHmacKey=\"" + Base64Encode(encryptedHmacKey, false) +
+        "\" encryptedHmacValue=\"" + Base64Encode(encryptedHmacValue, false) + "\"/>"
+        "<keyEncryptors><keyEncryptor uri=\"http://schemas.microsoft.com/office/2006/keyEncryptor/password\">"
+        "<p:encryptedKey spinCount=\"" + std::to_string(kWriterSpinCount) + "\" " +
+        CipherAttributes(keyParams) +
+        " encryptedVerifierHashInput=\"" + Base64Encode(encryptedInput, false) +
+        "\" encryptedVerifierHashValue=\"" + Base64Encode(encryptedValue, false) +
+        "\" encryptedKeyValue=\"" + Base64Encode(encryptedKeyValue, false) + "\"/>"
+        "</keyEncryptor></keyEncryptors></encryption>";
+    std::vector<uint8_t> info = {0x04, 0x00, 0x04, 0x00, 0x40, 0x00, 0x00, 0x00};   // 4.4, reserved 0x40
+    info.insert(info.end(), xml.begin(), xml.end());
+
+    UCCompoundFileWriter cfb;
+    AddDataSpaces(cfb);
+    cfb.AddStream("EncryptionInfo", std::move(info));
+    cfb.AddStream("EncryptedPackage", std::move(encrypted));
+    outFile = cfb.Build();
+    return true;
+}
+
+bool EncryptOfficePackageToFile(const std::vector<uint8_t>& package, const std::string& password,
+                                const std::string& filePath, std::string& error) {
+    std::vector<uint8_t> file;
+    if (!EncryptOfficePackage(package, password, file, error)) return false;
+    std::FILE* f = OpenFileUtf8(filePath, "wb");
+    if (!f) {
+        error = "Cannot create file: " + filePath;
+        return false;
+    }
+    const bool ok = std::fwrite(file.data(), 1, file.size(), f) == file.size();
+    if (std::fclose(f) != 0 || !ok) {
+        error = "Write failed (disk full?): " + filePath;
+        return false;
+    }
+    return true;
 }
 
 } // namespace UltraCanvas

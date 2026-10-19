@@ -5381,7 +5381,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->FindNext();
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5399,7 +5399,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->FindFirst();
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5419,7 +5419,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->IncrementalFind(text, cs);
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5442,7 +5442,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->FindPrevious();
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5460,7 +5460,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, false);
-            doc->textArea->HighlightMatches(find);
+            doc->textArea->HighlightMatches(find, cs);
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(find, cs, selPos);
@@ -5477,7 +5477,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, true);
-            doc->textArea->HighlightMatches(find);
+            doc->textArea->HighlightMatches(find, cs);
             StartAsyncMatchCount(find, cs, -1);
         };
 

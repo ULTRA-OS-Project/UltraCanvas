@@ -584,6 +584,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPagination.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRating.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasReferencePointPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStepper.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChip.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
@@ -1013,6 +1014,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
         # UltraCrypt - linked below, after the module is defined
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
+        # PowerPoint (.pptx) decks read as text: slides, shapes, tables, notes
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptx.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.

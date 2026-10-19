@@ -3865,6 +3865,23 @@ add_test(NAME VectorEditTest COMMAND VectorEditTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VectorEditTest")
 
+# ===== REFERENCE POINT PICKER TEST =====
+# UltraCanvasReferencePointPicker's nine points and SetPoint, and
+# UltraCanvasSpinner::SetSnapToStep(false) - ArtCreator's transform bar.
+message(STATUS "  Building ReferencePointPickerTest...")
+add_executable(ReferencePointPickerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ReferencePointPickerTest.cpp
+)
+target_include_directories(ReferencePointPickerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ReferencePointPickerTest PRIVATE cxx_std_20)
+target_link_libraries(ReferencePointPickerTest PRIVATE UltraCanvas)
+set_target_properties(ReferencePointPickerTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ReferencePointPickerTest COMMAND ReferencePointPickerTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ReferencePointPickerTest")
+
 # VectorEdit::SnapToPixels: shapes onto the pixel grid of an icon's size -
 # whole-pixel line widths, odd widths on pixel centres, even widths and
 # fills on pixel edges, paths made absolute with their control points
@@ -4509,6 +4526,27 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TextAreaSyntaxStateTest")
 else()
     message(STATUS "  TextAreaSyntaxStateTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TEXTAREA SEARCH HIGHLIGHT TEST =====
+# HighlightMatches marks every match on screen, follows edits and clears.
+# Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaSearchHighlightTest...")
+    add_executable(TextAreaSearchHighlightTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaSearchHighlightTest.cpp
+    )
+    target_include_directories(TextAreaSearchHighlightTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaSearchHighlightTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaSearchHighlightTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaSearchHighlightTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaSearchHighlightTest COMMAND TextAreaSearchHighlightTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaSearchHighlightTest")
+else()
+    message(STATUS "  TextAreaSearchHighlightTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== TEXTAREA DETACHED TEST =====

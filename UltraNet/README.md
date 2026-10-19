@@ -502,6 +502,13 @@ architecture.
   first use for scanners and printers is built on these.
 * **Threading:** async callbacks run on the libcurl multi worker
   thread — callers must marshal to their own loop and not block.
+* **Calling a transfer off:** a thread that runs synchronous HTTP requests
+  or FTP uploads and downloads sets `UltraNet_SetThreadAbortCheck(fn)`; the
+  transfers it makes ask `fn` as they run (libcurl's progress callback, so
+  about once a second even while the server is silent) and end as
+  `UltraNetResultCode::Cancelled` once it says true. UltraFiler's drive
+  worker uses it so that quitting does not wait for a large upload to
+  finish. Asynchronous requests are cancelled with `UltraNet_CancelRequest`.
 * **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
   `ResolveHost()` etc. at module level — always go through the
   `UltraNet_*` API. (Full reserved-pattern list lives in the master

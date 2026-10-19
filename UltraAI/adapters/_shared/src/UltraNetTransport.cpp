@@ -18,9 +18,11 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <utility>
 #include <vector>
 
@@ -34,6 +36,40 @@ std::string UpperCopy(std::string s) {
     });
     return s;
 }
+
+#ifdef ULTRAAI_DEBUG
+std::string LowerCopy(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return s;
+}
+
+// A credential-carrying header whose value must never reach the log. Matches
+// the Authorization header and the various *api-key* spellings providers use.
+bool IsSecretHeader(const std::string& name) {
+    const std::string n = LowerCopy(name);
+    return n == "authorization" ||
+           n.find("api-key") != std::string::npos ||
+           n.find("apikey")  != std::string::npos ||
+           n.find("api_key") != std::string::npos;
+}
+
+// A single-string dump of the outgoing request for stderr: method + URL, one
+// header per line (secrets redacted), then the body. Built whole so the
+// emitting std::cerr call is one write and cannot interleave across threads.
+std::string DumpRequest(const TransportRequest& request) {
+    std::ostringstream os;
+    os << "[UltraAI HTTP] \xE2\x86\x92 " << UpperCopy(request.method)
+       << ' ' << request.url << '\n';
+    for (const auto& kv : request.headers) {
+        os << "    " << kv.first << ": "
+           << (IsSecretHeader(kv.first) ? "***REDACTED***" : kv.second) << '\n';
+    }
+    os << "    body: " << request.body;
+    return os.str();
+}
+#endif // ULTRAAI_DEBUG
 
 UltraNetHttpRequest BuildNetRequest(const TransportRequest& request) {
     UltraNetHttpRequest net;
@@ -375,16 +411,33 @@ TransportResponse UltraNetTransport::Request(const TransportRequest& request,
                                              Error* outError) {
     UltraNetHttpRequest net = BuildNetRequest(request);
 
+#ifdef ULTRAAI_DEBUG
+    std::cerr << DumpRequest(request) << std::endl;
+#endif
+
     UltraNetResponse netResp;
     UltraNetResult result = UltraNet_HttpRequest(net, netResp);
 
     // HTTP >= 400 is a completed exchange: return the response for the
     // adapter to map (MapHttpStatus + provider error body).
     if (result || result.code == UltraNetResultCode::HttpError) {
+#ifdef ULTRAAI_DEBUG
+        std::cerr << "[UltraAI HTTP] \xE2\x86\x90 " << netResp.statusCode
+                  << '\n' << "    body: " << netResp.GetBodyAsString()
+                  << std::endl;
+#endif
         if (outError) *outError = {};
         return ConvertResponse(netResp);
     }
 
+#ifdef ULTRAAI_DEBUG
+    {
+        const Error e = MapNetError(result);
+        std::cerr << "[UltraAI HTTP] \xE2\x86\x90 transport error: "
+                  << (e.message.empty() ? "(no message)" : e.message)
+                  << std::endl;
+    }
+#endif
     if (outError) *outError = MapNetError(result);
     return {};
 }

@@ -16,6 +16,7 @@
 #include "UltraAIAppSettings.h"
 #include "UltraAI.h"
 
+#include "UltraCanvasApplication.h"   // UltraCanvasApplicationBase::GetCurrent
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
@@ -29,6 +30,7 @@
 #include <UltraVault/UltraVault.h>
 #endif
 
+#include <atomic>
 #include <algorithm>
 #include <cstring>
 #include <functional>
@@ -36,6 +38,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -121,11 +124,18 @@ namespace {
         std::shared_ptr<UltraCanvasDropdown>  epProvider;
         std::shared_ptr<UltraCanvasTextInput> epBaseUrl;
         std::shared_ptr<UltraCanvasTextInput> epModel;
+        std::shared_ptr<UltraCanvasDropdown>  epModelDropdown;
         std::shared_ptr<UltraCanvasTextInput> epKey;
         std::map<AICapability, std::shared_ptr<UltraCanvasCheckbox>> epModes;
         std::shared_ptr<UltraCanvasLabel>     epStatus;
         std::string                           epEditingId;   // "" => New endpoint
+        std::vector<Endpoint::DiscoveredModel> epModels;     // last fetch / loaded
+        bool                                  epFetching = false;
         bool                                  rebuildingNodes = false;
+        // False once the window has closed: a late /v1/model/info delivery then
+        // becomes a no-op instead of touching torn-down widgets.
+        std::shared_ptr<std::atomic<bool>>    alive =
+            std::make_shared<std::atomic<bool>>(true);
     };
 
     std::shared_ptr<DialogState> g_dialog;
@@ -135,6 +145,8 @@ namespace {
     void SaveEndpoint(DialogState* d);
     void DeleteEndpoint(DialogState* d);
     void RebuildEndpointNodes(DialogState* d, const std::string& selectNodeId);
+    void OnFetchModels(DialogState* d);
+    void PopulateModelDropdown(DialogState* d);
 
     // ===== TEXT =====
 
@@ -465,6 +477,10 @@ namespace {
         if (d->epModel)   d->epModel->SetText(e ? e->defaultModel : "");
         if (d->epKey)     d->epKey->SetText("");
 
+        // Offer the endpoint's previously-fetched models without re-querying.
+        d->epModels = e ? e->models : std::vector<Endpoint::DiscoveredModel>{};
+        PopulateModelDropdown(d);
+
         if (d->epProvider && e && !e->providerId.empty()) {
             for (int i = 0; i < d->epProvider->GetItemCount(); ++i) {
                 if (const auto* item = d->epProvider->GetItem(i);
@@ -529,12 +545,37 @@ namespace {
         form->AddChild(MakeField("uai-ep-baseurl",
             "Base URL (optional, for self-hosted)",
             "https://... — leave empty for the provider default", d->epBaseUrl));
-        form->AddChild(MakeField("uai-ep-model",
-            "Default model (id, GGUF path or checkpoint)",
-            "provider default", d->epModel));
+        // The key sits above the model/fetch row: fetching the server's model
+        // list needs it, so it has to be filled in first.
         form->AddChild(MakeField("uai-ep-key",
             "API key — cloud providers only; leave empty for local/self-hosted",
             "leave empty to keep the stored key", d->epKey));
+        form->AddChild(MakeField("uai-ep-model",
+            "Default model (id, GGUF path or checkpoint)",
+            "provider default", d->epModel));
+
+        // Model discovery: fetch the server's model list, then pick one (which
+        // fills the model field above). Needs the Base URL and, usually, a key.
+        {
+            auto fetchRow = std::make_shared<UltraCanvasContainer>("uai-ep-fetch-row");
+            fetchRow->layout.SetFlexRow().SetFlexGap(8)
+                           .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            fetchRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            fetchRow->size.height = CSSLayout::Dimension::Px(30);
+            fetchRow->AddChild(MakeButton("uai-ep-fetch", "Fetch models", 150,
+                                          [d]() { OnFetchModels(d); }));
+            d->epModelDropdown = std::make_shared<UltraCanvasDropdown>(
+                "uai-ep-model-dd", 0, 0, 0, 28);
+            d->epModelDropdown->size.height = CSSLayout::Dimension::Px(28);
+            d->epModelDropdown->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            d->epModelDropdown->onSelectionChanged =
+                [d](int, const DropdownItem& item) {
+                    if (d->epModel)
+                        d->epModel->SetText(item.value.empty() ? item.text : item.value);
+                };
+            fetchRow->AddChild(d->epModelDropdown);
+            form->AddChild(fetchRow);
+        }
 
         // Mode checkboxes in a fixed two-column grid (as the former dialog).
         form->AddChild(MakeLabel("uai-ep-modes-lbl",
@@ -735,6 +776,7 @@ namespace {
         e.providerId   = provider;
         e.baseUrl      = d->epBaseUrl ? d->epBaseUrl->GetText() : "";
         e.defaultModel = d->epModel ? d->epModel->GetText() : "";
+        e.models       = d->epModels;   // cache the discovered model list
         e.modes.clear();
         for (auto& [cap, cb] : d->epModes) {
             if (cb->IsChecked()) e.modes.insert(cap);
@@ -780,6 +822,72 @@ namespace {
         d->epEditingId.clear();
         RebuildEndpointNodes(d, kNodeNewEndpoint);
         if (d->epStatus) d->epStatus->SetText("Endpoint deleted.");
+    }
+
+    void PopulateModelDropdown(DialogState* d) {
+        if (!d || !d->epModelDropdown) return;
+        d->epModelDropdown->ClearItems();
+        for (const auto& m : d->epModels) {
+            const std::string label =
+                m.task.empty() ? m.name : (m.name + "  — " + m.task);
+            d->epModelDropdown->AddItem(label, m.name);   // value = the model_name
+        }
+        const std::string cur = d->epModel ? d->epModel->GetText() : "";
+        for (size_t i = 0; i < d->epModels.size(); ++i) {
+            if (d->epModels[i].name == cur) {
+                d->epModelDropdown->SetSelectedIndex(static_cast<int>(i), false);
+                break;
+            }
+        }
+    }
+
+    void OnFetchModels(DialogState* d) {
+        if (!d || d->epFetching) return;
+
+        const std::string baseUrl = d->epBaseUrl ? d->epBaseUrl->GetText() : "";
+        if (baseUrl.empty()) {
+            if (d->epStatus)
+                d->epStatus->SetText("Set a Base URL first (e.g. https://ai.ultraos.eu).");
+            return;
+        }
+
+        // A freshly-typed key wins; otherwise the stored key of the endpoint
+        // being edited (a new, unsaved endpoint has none yet).
+        std::string key = d->epKey ? d->epKey->GetText() : "";
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+        if (key.empty() && !d->epEditingId.empty()) {
+            if (const auto* e = EndpointStore::Instance().FindById(d->epEditingId)) {
+                if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+                UltraVault::SecretValue sv;
+                if (UltraVault::Get(e->VaultRef(), sv).IsOk()) key = sv.AsString();
+            }
+        }
+#endif
+
+        d->epFetching = true;
+        if (d->epStatus) d->epStatus->SetText("Fetching models from " + baseUrl + "...");
+
+        std::thread worker([d, alive = d->alive, baseUrl, key]() {
+            ModelInfoFetch res = FetchModelInfo(baseUrl, key);
+            auto deliver = [d, alive, res]() {
+                if (!alive->load()) return;    // the window is gone
+                d->epFetching = false;
+                if (!res.ok) {
+                    if (d->epStatus)
+                        d->epStatus->SetText(res.error.empty() ? "Fetch failed." : res.error);
+                    return;
+                }
+                d->epModels = res.models;
+                PopulateModelDropdown(d);
+                if (d->epStatus)
+                    d->epStatus->SetText("Found " + std::to_string(res.models.size()) +
+                                         " model(s) — pick one to set the model field.");
+            };
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (app) app->PostToUIThread(std::move(deliver));
+            else deliver();
+        });
+        worker.detach();
     }
 
     void BuildWindow(DialogState* d, UltraCanvasWindowBase* parent) {
@@ -920,7 +1028,10 @@ namespace {
             }
             return false;
         });
-        d->window->onWindowClosed = [d]() { d->closed = true; };
+        d->window->onWindowClosed = [d]() {
+            d->closed = true;
+            if (d->alive) d->alive->store(false);   // silence in-flight fetches
+        };
 
         d->window->Show();
     }
@@ -949,6 +1060,7 @@ void UltraAISettingsWindow::Show(UltraCanvasWindowBase* parent, Page page) {
 }
 
 void UltraAISettingsWindow::Shutdown() {
+    if (g_dialog && g_dialog->alive) g_dialog->alive->store(false);
     g_dialog.reset();
 }
 
