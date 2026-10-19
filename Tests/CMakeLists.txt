@@ -4528,6 +4528,27 @@ else()
     message(STATUS "  TextAreaSyntaxStateTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXTAREA SEARCH HIGHLIGHT TEST =====
+# HighlightMatches marks every match on screen, follows edits and clears.
+# Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaSearchHighlightTest...")
+    add_executable(TextAreaSearchHighlightTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaSearchHighlightTest.cpp
+    )
+    target_include_directories(TextAreaSearchHighlightTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaSearchHighlightTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaSearchHighlightTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaSearchHighlightTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaSearchHighlightTest COMMAND TextAreaSearchHighlightTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaSearchHighlightTest")
+else()
+    message(STATUS "  TextAreaSearchHighlightTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXTAREA DETACHED TEST =====
 # A text area outside any window has no render context: SetText + ScrollTo on
 # it (the media viewer's Details panel) must not build layouts. Skips without
