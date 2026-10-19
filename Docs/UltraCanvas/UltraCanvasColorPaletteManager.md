@@ -2,6 +2,16 @@
 
 <!-- doc-check: std::shared_ptr<UltraCanvasContainer> card; std::shared_ptr<UltraCanvasColorPicker> picker; std::string savedLine; void SaveSetting(const std::string& value); -->
 
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Keeping the palettes](#keeping-the-palettes)
+- [The palettes](#the-palettes)
+- [Selection and popups](#selection-and-popups)
+- [Style](#style)
+- [Callbacks](#callbacks)
+
 ## Overview
 
 **UltraCanvasColorPaletteManager** is the set of colour palettes that sits

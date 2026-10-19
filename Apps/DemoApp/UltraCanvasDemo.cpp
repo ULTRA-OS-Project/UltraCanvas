@@ -1,12 +1,13 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.11 - Widgets > Colour Palettes (UltraCanvasColorPaletteManager)
 // Version: 1.0.10 - A filter field over the component tree ("Reset" inside it); the List
 //                  View page holds the domain dashboard, which is no page of its own
 // Version: 1.0.9 - The image performance page is registered only with libvips, as it is built
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-19
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -2247,6 +2248,20 @@ namespace UltraCanvas {
                                "Docs/UltraCanvas/UltraCanvasColorPicker.md")
                 .AddVariant("colorpicker", "Full Picker (Wheel + Sliders)")
                 .AddVariant("colorpicker", "HSV / HSL / RGB Modes");
+
+        // The picker's companion: the palette rows UltraPaint and ArtCreator
+        // show under it.
+        widgetsBuilder.AddItem("colorpalettes", "Colour Palettes",
+                               "Palette rows under a colour picker: a gallery of colour schemes "
+                               "(up to 256-colour GIF palettes) behind +, - to remove a row, and "
+                               "a right click that edits one entry",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateColorPaletteManagerExamples(); },
+                               "DemoApp/UltraCanvasColorPaletteManagerExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasColorPaletteManager.md")
+                .AddVariant("colorpalettes", "Under a Colour Picker")
+                .AddVariant("colorpalettes", "Several Palettes")
+                .AddVariant("colorpalettes", "Indexed (GIF) Palettes");
 
         widgetsBuilder.AddItem("datepicker", "Date Picker / Calendar",
                                "Calendar widgets covering single, range, multiple and week selection",

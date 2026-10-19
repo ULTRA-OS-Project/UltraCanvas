@@ -24,3 +24,6 @@
   foreground-only picker for editing one colour: the background swatch and
   the swap arrow are gone, and the right button and the eyedropper's right
   click edit the foreground as the left ones do.
+- **Demo app: Widgets > Colour Palettes**, next to the Colour Picker: the
+  manager under a picker (as in UltraPaint), several rows of retro and mood
+  schemes, and the indexed 216- and 256-colour palettes as wrapped blocks.
