@@ -844,6 +844,10 @@ namespace UltraCanvas {
         std::vector<std::shared_ptr<UltraCanvasContainer>> paneFrames;
         std::vector<std::shared_ptr<UltraCanvasLabel>> fieldLabels;
         std::shared_ptr<UltraCanvasLabel> fileIconCaption;
+        // Save, with the picture's size given: under the type, the pixels it
+        // is written at and its proportions for a bitmap type ("1920 x 1080
+        // pixels (16:9)"), the proportions alone for a vector type ("(16:9)").
+        std::shared_ptr<UltraCanvasLabel> pictureSizeLabel;
         std::vector<std::string> selectedFiles;
         std::string currentDirectory;
 
@@ -1005,6 +1009,9 @@ namespace UltraCanvas {
         void SaveIntoDroppedFolder(const std::string& folder);
         // Points the breadcrumb at currentDirectory.
         void ShowPathInBreadcrumb();
+        // Puts the size and proportions of what is saved, in the type chosen,
+        // under the type (pictureSizeLabel).
+        void UpdatePictureSizeLabel();
         // The Settings button: the save settings of the type being saved,
         // and the picture's size for this save when the caller gave it.
         void ShowSaveTypeSettings();

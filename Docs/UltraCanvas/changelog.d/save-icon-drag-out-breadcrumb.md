@@ -17,3 +17,9 @@
   each folder segment opens that folder or, from its drop-down, a folder
   inside it. Hovering shows the whole path, and a path is typed in the name
   field.
+- **The Save dialog shows the picture's size under the file type.** When
+  the caller gives the picture's size, a bitmap type shows the pixels and
+  the proportions, for example `640 × 480 pixels (4:3)`. The pixels follow a
+  size chosen in Settings. A vector type shows the proportions alone,
+  `(4:3)`. Proportions that don't reduce to short numbers are written as a
+  decimal, `(1.78:1)`.

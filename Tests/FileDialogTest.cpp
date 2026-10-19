@@ -983,6 +983,17 @@ int main() {
                 c.imageHeight = 480;
             });
             TEST("Nothing chosen, the size is the picture's own", run.dialog->GetSaveImageSize().IsOriginal());
+            auto sizeLine = [&run]() {
+                auto* label = dynamic_cast<UltraCanvasLabel*>(run.dialog->FindChildById("FileDialogPictureSize"));
+                return label ? label->GetText() : std::string("<none>");
+            };
+            TEST("Under the type: the pixels and the proportions of a bitmap",
+                 sizeLine() == "640 \xC3\x97 480 pixels (4:3)");
+            if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
+                WritePpm(run.dialog.get(), static_cast<int>(run.dialog->GetWidth()),
+                         static_cast<int>(run.dialog->GetHeight()), std::string(shotDir) + "/save-dialog-size.ppm");
+            }
             top = openSettings(run);
             auto* sizeW = top ? dynamic_cast<UltraCanvasSpinner*>(top->FindChildById("SaveSizeWidth")) : nullptr;
             auto* sizeH = top ? dynamic_cast<UltraCanvasSpinner*>(top->FindChildById("SaveSizeHeight")) : nullptr;
@@ -1015,6 +1026,7 @@ int main() {
                 const FileSaveImageSize picked = run.dialog->GetSaveImageSize();
                 TEST("OK makes it this save's size", picked.width == 100 && picked.height == 50 &&
                                                      !picked.keepProportions);
+                TEST("... and the line under the type says so", sizeLine() == "100 \xC3\x97 50 pixels (2:1)");
                 TEST("... without storing it as a setting", !UltraCanvasFileLoader::HasStoredSaveSettings("png") ||
                      UltraCanvasFileLoader::GetSaveSettings("png").values.count("width") == 0);
                 TypeName(run, "notes.txt");
@@ -1022,6 +1034,12 @@ int main() {
                     types->SetSelectedIndex(3);   // All files: a text file is no picture
                 TEST("A type that is not a bitmap is saved at no size",
                      run.dialog->GetSaveImageSize().IsOriginal());
+                TEST("... and shows no size", sizeLine().empty());
+                const std::vector<std::string> drawings = UltraCanvasFileLoader::GetVectorSaveExtensions();
+                if (!drawings.empty()) {
+                    TypeName(run, "picture." + drawings.front());
+                    TEST("A drawing type shows the proportions alone", sizeLine() == "(4:3)");
+                }
                 TypeName(run, "picture.bmp");
                 TEST("BMP has no settings but its size: the button can be used",
                      !dynamic_cast<UltraCanvasButton*>(run.dialog->FindChildById("FileDialogSaveSettings"))->IsDisabled());
@@ -1029,8 +1047,21 @@ int main() {
             }
             run.dialog->CloseDialog(DialogResult::Cancel);
 
+            // Proportions that do not reduce to short numbers, as a decimal.
+            run = ShowSave(folder, "screen.png", 0, "", [](FileDialogConfig& c) {
+                c.imageWidth = 1366;
+                c.imageHeight = 768;
+            });
+            {
+                auto* label = dynamic_cast<UltraCanvasLabel*>(run.dialog->FindChildById("FileDialogPictureSize"));
+                TEST("1366 x 768 reads (1.78:1)", label && label->GetText() == "1366 \xC3\x97 768 pixels (1.78:1)");
+            }
+            run.dialog->CloseDialog(DialogResult::Cancel);
+
             // Without the picture's size: no Size row, and BMP has nothing.
             run = ShowSave(folder, "picture.png");
+            TEST("Without the picture's size there is no size line",
+                 run.dialog->FindChildById("FileDialogPictureSize") == nullptr);
             top = openSettings(run);
             TEST("Without the picture's size there is no Size row",
                  top && top->FindChildById("SaveSizeWidth") == nullptr);

@@ -387,6 +387,16 @@ there for every pixel format, so BMP, ICO and QOI - which have no settings of
 their own - get a Settings dialog with the size alone. Defaults puts the
 picture's size back with the rest.
 
+With the size given, a line under the type says what is written. For a
+**bitmap type** that is the pixels and the proportions,
+`640 × 480 pixels (4:3)`, at the size chosen in the Settings once one is
+chosen. For a **vector type** it is the proportions alone, `(4:3)`. The
+proportions are the smallest whole numbers (16:9, 3:2). When those would be
+long (1366 × 768 is 683:384) they are written as a decimal instead,
+`(1.78:1)`. The types are told apart by the loader's inventory
+(`UltraCanvasFileLoader::CanSaveImage`, `GetVectorSaveExtensions`). A type
+that is neither, such as a text file, shows no line.
+
 The size is **not** a setting of the format: it belongs to this picture, so
 it is not stored and the next Save starts on the next picture's own size. It
 comes back with the save instead:
