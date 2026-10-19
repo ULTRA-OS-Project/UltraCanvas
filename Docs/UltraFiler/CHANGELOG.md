@@ -4,7 +4,9 @@
   is the PDF view again, pages and all, and PDFs on a remote drive are still
   fetched to preview them. A password-protected PDF or UltraCanvas layered
   image shows an **Unlock** button in the pane's info line that asks for the
-  password (framework changelog, pending entry `media-viewer-unlock`).
+  password; while the folder is browsed it is kept, so selecting the file
+  again - or another one there with the same password - previews it without
+  asking (framework changelog, pending entry `media-viewer-unlock`).
 
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**

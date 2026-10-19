@@ -77,6 +77,9 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.14.0 - Unlock's passwords are kept for the folder being browsed: a file
+//                   unlocked there, or another with the same password, shows without
+//                   asking again (ForgetPasswords, SetRememberPasswords)
 // Version: 1.13.1 - noteView: the viewer's notes (a *.ucd summary, a locked PDF) are dark
 // Version: 1.13.0 - password-protected files: IsLocked / Unlock / UnlockWithPassword,
 //                   MediaViewerTools::unlock, MediaUnlockResult
@@ -99,6 +102,10 @@
 #include <memory>
 #include <functional>
 #include <chrono>
+#include <map>
+#include <set>
+
+class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h - Unlock's passwords, zeroed when freed
 
 namespace UltraCanvas {
 
@@ -551,7 +558,9 @@ public:
     // for the PDF. An Unlock button comes up in the info bar and the second
     // toolbar row (Enter does the same), and the Details say why. Nothing
     // asks on its own: browsing a folder never pops up a password prompt.
-    // The password is not kept - browsing away and back locks the file again.
+    // The passwords Unlock is given are kept for the folder being browsed
+    // (see ForgetPasswords), so going back to a file - or on to another file
+    // there with the same password - shows it without asking again.
     bool IsLocked() const { return locked != MediaLock::NotLocked; }
     // Asks for the password in a dialog over the viewer's window - again
     // when it is not right - and shows the file whole once it is.
@@ -559,6 +568,17 @@ public:
     // Tries `password` on the shown file without asking: what Unlock does
     // with the answer. `error` says why when it is not Unlocked.
     MediaUnlockResult UnlockWithPassword(const std::string& password, std::string& error);
+    // The passwords that unlocked files in the folder being browsed are
+    // tried, without a word, on each protected file shown there - the one
+    // that opened it first - before it is shown locked. They are held
+    // zeroed-on-free, at most kMaxRememberedPasswords of them, and only for
+    // that folder: opening another folder or a selection elsewhere forgets
+    // them, and so does ForgetPasswords. SetRememberPasswords(false) keeps
+    // none: every protected file asks each time it is shown.
+    static constexpr size_t kMaxRememberedPasswords = 8;
+    void ForgetPasswords();
+    void SetRememberPasswords(bool remember);
+    bool GetRememberPasswords() const { return rememberPasswords; }
 
     // ===== KEYBOARD =====
     // Give the widget the window keyboard focus, so the browsing keys work
@@ -768,6 +788,18 @@ private:
     enum class MediaLock { NotLocked, UCDImage, PDF };
     MediaLock locked = MediaLock::NotLocked;
     bool askingForPassword = false;   // Unlock's question is up
+    // Unlock's passwords for the folder being browsed (see ForgetPasswords).
+    bool rememberPasswords = true;
+    std::string passwordFolder;                                          // where they belong
+    std::vector<std::shared_ptr<UltraCryptSecureBuffer>> rememberedPasswords;   // newest first
+    std::map<std::string, std::shared_ptr<UltraCryptSecureBuffer>> passwordForFile;   // the one that opened it
+    std::set<std::string> noRememberedPasswordFits;   // tried with all of them; until another is kept
+    // Keeps `password` for the folder `path` is in, as the one that opens it.
+    void RememberPassword(const std::string& path, const std::string& password);
+    // The shown file is locked: the kept passwords, tried without asking.
+    void UnlockFromRememberedPasswords();
+    // Forgets the passwords when `folder` is not the one they belong to.
+    void KeepPasswordsOnlyFor(const std::string& folder);
     std::shared_ptr<UltraCanvasButton> unlockButton;   // in the info bar
 
     MediaAdjustments adjustments;

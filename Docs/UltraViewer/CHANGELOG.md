@@ -5,7 +5,10 @@
   password, again if it is not right, and then shows the file - the PDF with
   all its pages, the image at full size. Until then a `.ucd` shows its
   thumbnail and a PDF a note saying it is protected. Browsing a folder never
-  asks on its own (framework changelog, pending entry `media-viewer-unlock`).
+  asks on its own, and a password once given is kept while the folder is
+  browsed: going back to the file - or on to another one there with the same
+  password - shows it without asking again; opening another folder forgets
+  it (framework changelog, pending entry `media-viewer-unlock`).
 - **The viewer's own notes are dark.** What it says about a file it shows no
   picture of - a `.ucd`'s summary, a protected PDF's note - was printed on a
   white page in the dark window; it is in the viewer's colours now, laid out

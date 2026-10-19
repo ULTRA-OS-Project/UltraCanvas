@@ -267,9 +267,26 @@ is not right - and then shows the file whole: the image at full size with
 its layers composited, the PDF in its view with every page.
 
 Nothing asks on its own: browsing a folder of protected files never pops up
-a prompt. The password is not kept, so browsing away and back locks the file
-again. The info bar says *password-protected*, and the Details panel adds an
-*Encryption* row and a *Shown* row that says what Unlock would show.
+a prompt. The info bar says *password-protected*, and the Details panel adds
+an *Encryption* row and a *Shown* row that says what Unlock would show.
+
+**Passwords are kept for the folder being browsed.** A password Unlock was
+given opens, without asking again, the file it unlocked when it is browsed
+back to, and is tried - with the others kept, the one that opened that file
+first - on every other protected file shown in the same folder, which then
+shows whole straight away. A file none of them opens is not tried again
+until another password is given. They are held in `UltraCryptSecureBuffer`s
+(zeroed when freed), at most `kMaxRememberedPasswords` (8), and only for that
+folder: opening another folder, or a selection in another folder, forgets
+them; `CloseFile` keeps them, so a preview pane that closes and reopens the
+same folder does not ask again. `ForgetPasswords()` forgets them at once, and
+`SetRememberPasswords(false)` keeps none - every protected file asks each
+time it is shown.
+
+```cpp
+viewer->SetRememberPasswords(false);   // a kiosk: ask every time
+viewer->ForgetPasswords();             // or: forget now, e.g. when the screen locks
+```
 
 ```cpp
 if (viewer->IsLocked()) {

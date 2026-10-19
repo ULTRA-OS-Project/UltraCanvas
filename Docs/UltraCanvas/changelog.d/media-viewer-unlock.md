@@ -4,9 +4,15 @@
   **Unlock** button in the info bar and the second toolbar row; Enter does the
   same. Unlock asks for the password over the viewer's window, again when it
   is not right, and then shows the file whole: the image at full size, the PDF
-  with every page. Nothing asks on its own while browsing, and the password is
-  not kept. `IsLocked`, `Unlock`, `UnlockWithPassword` (`MediaUnlockResult`) and
-  `MediaViewerTools::unlock` let a host drive it.
+  with every page. Nothing asks on its own while browsing. `IsLocked`, `Unlock`,
+  `UnlockWithPassword` (`MediaUnlockResult`) and `MediaViewerTools::unlock` let
+  a host drive it.
+  - The passwords Unlock is given are kept for the folder being browsed
+    (zeroed-on-free, at most eight): a file browsed back to shows without
+    asking, and another protected file there that one of them opens shows
+    whole straight away. Opening another folder forgets them;
+    `ForgetPasswords` does at once, and `SetRememberPasswords(false)` keeps
+    none.
   - `IPDFDocument::GetLastOpenError` and `UltraCanvasPDFView::GetLastOpenError`
     (`PDFOpenError`: `NeedsPassword`, `WrongPassword`, `Failed`) say why an open
     failed, so a protected PDF is no longer taken for a damaged one; a password

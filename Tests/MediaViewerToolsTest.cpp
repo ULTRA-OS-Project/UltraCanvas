@@ -13,10 +13,14 @@
 // and a private one nothing at all, until it is unlocked. So does a
 // password-protected PDF (Tests/fixtures/pdf-aes256-locked.pdf): the Unlock
 // button is offered, a wrong password leaves it locked, the right one shows
-// it, and browsing away and back locks it again.
+// it, and browsing away and back shows it without asking: the password is
+// kept for the folder - and opens another file there with the same one -
+// until another folder is opened or ForgetPasswords.
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.3.0 - Unlock's passwords kept for the folder: back, the same password, another
+//                  folder, ForgetPasswords, SetRememberPasswords(false)
 // Version: 1.2.1 - the viewer's notes (a summary, a locked PDF) are its dark note view
 // Version: 1.2.0 - Unlock: a protected *.ucd and a protected PDF
 // Version: 1.1.0 - layered *.ucd images: full size; protected: the thumbnail
@@ -234,8 +238,17 @@ int main() {
                   "locked.ucd: there is nothing left to unlock");
             viewer->Next();
             viewer->Previous();
-            Check(viewer->IsLocked(), "locked.ucd: browsed away and back, it is locked again");
+            shown = viewer->GetSurface()->GetImage();
+            Check(!viewer->IsLocked() && shown && shown->GetWidth() == 400,
+                  "locked.ucd: browsed away and back, it shows without asking - its password is kept");
 
+            // The folder's passwords open another file there with the same one.
+            viewer->SetFiles({ PathToUtf8(hidden) });
+            Check(!viewer->IsLocked(),
+                  "hidden.ucd: in the same folder with the same password, it shows without asking");
+
+            // Forgotten, it asks again.
+            viewer->ForgetPasswords();
             viewer->SetFiles({ PathToUtf8(hidden) });
             shown = viewer->GetSurface()->GetImage();
             Check(!shown, "hidden.ucd: private as well - no picture at all");
@@ -248,6 +261,23 @@ int main() {
             shown = viewer->GetSurface()->GetImage();
             Check(shown && shown->IsValid() && shown->GetWidth() == 400,
                   "hidden.ucd: unlocked, the image shows");
+
+            // Another folder: the passwords are not taken there.
+            const fs::path elsewhere = dir / "elsewhere";
+            fs::create_directories(elsewhere);
+            std::error_code copied;
+            fs::copy_file(locked, elsewhere / "locked.ucd", fs::copy_options::overwrite_existing, copied);
+            viewer->SetFiles({ PathToUtf8(elsewhere / "locked.ucd") });
+            Check(viewer->IsLocked(), "elsewhere/locked.ucd: in another folder the passwords are forgotten - it asks");
+
+            // Kept none when told not to.
+            viewer->SetRememberPasswords(false);
+            viewer->SetFiles({ PathToUtf8(locked) });
+            Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked,
+                  "locked.ucd: unlocked with SetRememberPasswords(false)");
+            viewer->SetFiles({ PathToUtf8(locked) });
+            Check(viewer->IsLocked(), "locked.ucd: with SetRememberPasswords(false) it asks every time it is shown");
+            viewer->SetRememberPasswords(true);
         } else {
             std::cout << "  (no libsodium in this build: the protected cases are skipped)\n";
         }
@@ -282,7 +312,8 @@ int main() {
             Check(!viewer->IsLocked() && viewer->GetAvailableTools().zoom,
                   "sample.pdf: not protected, opens as before");
             viewer->Previous();
-            Check(viewer->IsLocked(), "pdf-aes256-locked.pdf: browsed away and back, locked again");
+            Check(!viewer->IsLocked() && viewer->GetAvailableTools().zoom,
+                  "pdf-aes256-locked.pdf: browsed away and back, it opens without asking");
         }
     }
 

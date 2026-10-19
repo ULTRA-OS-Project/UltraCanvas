@@ -23,11 +23,12 @@
   for its password too, where it used to stop at "needs its password"; a
   `.ucd` pasted as a new image keeps its protection, as when it is opened.
 - **A password is typed once for a drop, not once per file.** Files dropped
-  together often share a password: the last one given is tried first on the
-  next protected file of the drop, which then comes in without a question.
-  Only a file it does not open asks, saying the password before does not
-  fit. The password is held zeroed-on-free and forgotten when the drop has
-  been read.
+  together often share a password, or a few: every password given in the
+  drop (up to eight) is tried on the next protected file - the one that last
+  opened a file first - which then comes in without a question, so a drop
+  that alternates between two passwords asks for each once. Only a file none
+  of them opens asks, saying so. They are held zeroed-on-free and forgotten
+  when the drop has been read.
 - **Paste as New Image says what it pasted.** It left the previous status
   message showing; it now reads *Pasted photo.png as a new image, 800 x 600
   pixels* (or *Pasted as a new image* for a copied picture), as Paste as New

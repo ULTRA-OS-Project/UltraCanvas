@@ -1,6 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.12.0 - Unlock's passwords are kept for the folder being browsed and tried,
+//                   without asking, on each protected file shown there
 // Version: 1.11.1 - the viewer's notes - a *.ucd summary, a locked PDF's - are in its dark
 //                   colours, laid out like Details (noteView), not on a white text page
 // Version: 1.11.0 - password-protected files: a layered *.ucd image or a PDF that needs
@@ -66,6 +68,7 @@
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
 #include "UltraCanvasUCDContainer.h"   // a *.ucd's header and thumbnail
 #include "UltraCanvasRasterDocument.h"  // ... and a layered image's layers
+#include "UltraCrypt/UltraCryptCore.h"   // Unlock's passwords, kept zeroed-on-free
 #include "miniz.h"                      // which reach the image surface as a PNG
 #include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "UltraCanvasVectorPreview.h"   // the readers a registered plugin lends core
@@ -1825,6 +1828,7 @@ std::string UltraCanvasMediaViewer::GetCurrentPath() const {
 
 void UltraCanvasMediaViewer::OpenFolder(const std::string& folderPath,
                                         const std::string& selectFile) {
+    KeepPasswordsOnlyFor(folderPath);
     playlist = EnumerateFolder(folderPath);
     currentIndex = 0;
     if (!selectFile.empty()) {
@@ -1854,6 +1858,7 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
         }
     }
     if (out.empty()) return;
+    KeepPasswordsOnlyFor(PathToUtf8(fs::path(UltraCanvas::PathFromUtf8(out.front())).parent_path()));
     playlist = std::move(out);
     currentIndex = std::min(startIndex, playlist.size() - 1);
     // Reflect the folder the (first) file lives in.
@@ -2518,6 +2523,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // The Details text costs a metadata read of the file; it is built only
     // while the panel is open, and SetDetailsVisible() builds it on opening.
     if (IsDetailsVisible()) UpdateDetailedInfo();
+    // A protected file whose password was given in this folder - its own,
+    // or one that opened another file here - shows without asking again.
+    if (IsLocked()) UnlockFromRememberedPasswords();
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
@@ -2697,11 +2705,98 @@ MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& 
         return MediaUnlockResult::Failed;
     }
 
+    RememberPassword(path, password);
     UpdateToolAvailability();
     UpdateInfoBar();
     if (IsDetailsVisible()) UpdateDetailedInfo();
     RequestRedraw();
     return MediaUnlockResult::Unlocked;
+}
+
+namespace {
+    std::string BufferText(const UltraCryptSecureBuffer& buffer) {
+        return buffer.IsEmpty() ? std::string()
+                                : std::string(reinterpret_cast<const char*>(buffer.Data()), buffer.GetSize());
+    }
+
+    // The same folder however it was written: "a/b", "a/b/", "a/./b".
+    bool SameFolder(const std::string& a, const std::string& b) {
+        auto normal = [](const std::string& s) {
+            fs::path p = UltraCanvas::PathFromUtf8(s).lexically_normal();
+            if (!p.has_filename() && p.has_parent_path() && p != p.root_path()) p = p.parent_path();
+            return p;
+        };
+        return normal(a) == normal(b);
+    }
+}
+
+void UltraCanvasMediaViewer::ForgetPasswords() {
+    rememberedPasswords.clear();
+    passwordForFile.clear();
+    noRememberedPasswordFits.clear();
+    passwordFolder.clear();
+}
+
+void UltraCanvasMediaViewer::SetRememberPasswords(bool remember) {
+    rememberPasswords = remember;
+    if (!remember) ForgetPasswords();
+}
+
+void UltraCanvasMediaViewer::KeepPasswordsOnlyFor(const std::string& folder) {
+    if (!passwordFolder.empty() && !SameFolder(folder, passwordFolder)) ForgetPasswords();
+}
+
+void UltraCanvasMediaViewer::RememberPassword(const std::string& path, const std::string& password) {
+    if (!rememberPasswords || password.empty()) return;
+    const std::string folder = PathToUtf8(fs::path(UltraCanvas::PathFromUtf8(path)).parent_path());
+    KeepPasswordsOnlyFor(folder);
+    passwordFolder = folder;
+    // One buffer per distinct password, the newest first.
+    std::shared_ptr<UltraCryptSecureBuffer> kept;
+    for (auto it = rememberedPasswords.begin(); it != rememberedPasswords.end(); ++it) {
+        if ((*it)->GetSize() == password.size() &&
+            std::memcmp((*it)->Data(), password.data(), password.size()) == 0) {
+            kept = *it;
+            rememberedPasswords.erase(it);
+            break;
+        }
+    }
+    if (!kept) {
+        kept = std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size());
+        // A password not held before may open files none of the others did.
+        noRememberedPasswordFits.clear();
+    }
+    rememberedPasswords.insert(rememberedPasswords.begin(), kept);
+    if (rememberedPasswords.size() > kMaxRememberedPasswords) {
+        const auto dropped = rememberedPasswords.back();
+        rememberedPasswords.pop_back();
+        for (auto it = passwordForFile.begin(); it != passwordForFile.end();) {
+            it = it->second == dropped ? passwordForFile.erase(it) : std::next(it);
+        }
+    }
+    passwordForFile[path] = kept;
+    noRememberedPasswordFits.erase(path);
+}
+
+void UltraCanvasMediaViewer::UnlockFromRememberedPasswords() {
+    const std::string path = GetCurrentPath();
+    if (!IsLocked() || path.empty() || rememberedPasswords.empty()) return;
+    if (!SameFolder(PathToUtf8(fs::path(UltraCanvas::PathFromUtf8(path)).parent_path()), passwordFolder)) return;
+    // The one that opened this file before, else - once - every one kept.
+    std::vector<std::shared_ptr<UltraCryptSecureBuffer>> order;
+    if (auto it = passwordForFile.find(path); it != passwordForFile.end()) order.push_back(it->second);
+    else if (noRememberedPasswordFits.count(path)) return;
+    else order = rememberedPasswords;
+    for (const auto& candidate : order) {
+        std::string error;
+        const MediaUnlockResult result = UnlockWithPassword(BufferText(*candidate), error);
+        if (result == MediaUnlockResult::Unlocked) return;
+        if (result != MediaUnlockResult::WrongPassword) return;   // right, but it would not open: say so on Unlock
+    }
+    // None fits (the file may have been given another password since): not
+    // tried again until another password is kept.
+    passwordForFile.erase(path);
+    noRememberedPasswordFits.insert(path);
 }
 
 void UltraCanvasMediaViewer::ResetAdjustments() {
