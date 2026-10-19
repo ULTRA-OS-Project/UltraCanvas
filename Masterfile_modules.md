@@ -984,6 +984,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
 
+- **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
+  desktop session locks and when it unlocks, so a program forgets what should
+  not outlive the user stepping away (a kept password, a decrypted document on
+  screen). Listener list in `core/UltraCanvasSessionLock.cpp`; per-platform
+  backends under `OS/<Platform>/` (Linux/BSD: logind `Lock` / `Unlock` and
+  `LockedHint` on the system bus plus the screensaver's `ActiveChanged` on the
+  session bus, through GDBus on the application's loop; Windows: WTS session
+  notifications on a message-only window; macOS: the
+  `com.apple.screenIsLocked` / `screenIsUnlocked` distributed notifications).
+  Public surface: `AddSessionLockListener(onChange)` /
+  `RemoveSessionLockListener(id)` (the platform is watched only while one is
+  registered; calls on the UI thread, once per change),
+  `IsWatchingSessionLock`, `NotifySessionLockChanged` (what backends, hosts
+  with a lock of their own and tests call). Wired up by
+  `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` in the **top-level** `CMakeLists.txt`;
+  without it nothing is reported. Used by `UltraCanvasMediaViewer` to forget
+  Unlock's passwords. See `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
+
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
   jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a

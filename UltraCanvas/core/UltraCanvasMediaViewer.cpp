@@ -1923,6 +1923,7 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
     ucdDetails.clear();
     locked = MediaLock::NotLocked;
+    unlocked = false;   // what a password opened is closed with the rest
     // A stopped clip is still an OPEN clip: the decoder keeps the file until
     // it is unloaded, and on Windows that handle is what makes the file
     // impossible to rename, replace or delete - the very operations a file
@@ -2233,10 +2234,14 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (playlist.empty()) {
         ShowView(MediaKind::Image);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        ucdDetails.clear();
+        locked = MediaLock::NotLocked;
+        unlocked = false;
         UpdateTransparencyPalette();   // nothing shown - the strip goes away
         UpdateToolAvailability();      // and no tool has anything to act on
         UpdateInfoBar();
         if (IsDetailsVisible()) UpdateDetailedInfo();
+        UpdateAbsenceWatch();          // kept passwords may still be held
         return;
     }
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
@@ -2726,6 +2731,10 @@ MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& 
     }
 
     unlocked = true;
+    // A password given - typed, or passed in by the host - is the user's
+    // doing; the kept ones tried as a file is shown are not, or an unattended
+    // slideshow through protected files would never be idle.
+    if (!tryingKeptPasswords) lastActivity = std::chrono::steady_clock::now();
     RememberPassword(path, password);
     UpdateAbsenceWatch();
     UpdateToolAvailability();
@@ -2863,12 +2872,16 @@ void UltraCanvasMediaViewer::UnlockFromRememberedPasswords() {
     if (auto it = passwordForFile.find(path); it != passwordForFile.end()) order.push_back(it->second);
     else if (noRememberedPasswordFits.count(path)) return;
     else order = rememberedPasswords;
+    tryingKeptPasswords = true;
+    MediaUnlockResult result = MediaUnlockResult::WrongPassword;
     for (const auto& candidate : order) {
         std::string error;
-        const MediaUnlockResult result = UnlockWithPassword(BufferText(*candidate), error);
-        if (result == MediaUnlockResult::Unlocked) return;
-        if (result != MediaUnlockResult::WrongPassword) return;   // right, but it would not open: say so on Unlock
+        result = UnlockWithPassword(BufferText(*candidate), error);
+        // Opened - or right, but it would not open: Unlock says so.
+        if (result != MediaUnlockResult::WrongPassword) break;
     }
+    tryingKeptPasswords = false;
+    if (result != MediaUnlockResult::WrongPassword) return;
     // None fits (the file may have been given another password since): not
     // tried again until another password is kept.
     passwordForFile.erase(path);

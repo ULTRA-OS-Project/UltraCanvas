@@ -307,14 +307,20 @@ int main() {
             Check(viewer->GetForgetPasswordsAfterIdle() == UltraCanvasMediaViewer::kDefaultForgetPasswordsAfterIdle,
                   "idle: ten minutes unless set");
             viewer->SetForgetPasswordsAfterIdle(std::chrono::seconds(1));
+            Check(!viewer->ForgetPasswordsIfIdle() && viewer->IsUnlocked(),
+                  "hidden.ucd: a password just given is the user's doing - not idle");
             std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+            // Opened by a kept password, as a slideshow would: that is not
+            // the user, so the second without input still counts.
+            viewer->SetFiles({ PathToUtf8(locked) });
+            Check(viewer->IsUnlocked(), "locked.ucd: opened with the kept password");
             Check(viewer->ForgetPasswordsIfIdle() && viewer->IsLocked(),
-                  "hidden.ucd: a second without input - forgotten and locked again");
+                  "locked.ucd: a second without input - forgotten and locked again");
             Check(!viewer->ForgetPasswordsIfIdle(), "idle: nothing left to forget");
             viewer->SetForgetPasswordsAfterIdle(std::chrono::seconds(0));
             Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked &&
                   !viewer->ForgetPasswordsIfIdle() && viewer->IsUnlocked(),
-                  "hidden.ucd: with the idle time at zero it is never forgotten for idleness");
+                  "locked.ucd: with the idle time at zero it is never forgotten for idleness");
             viewer->SetForgetPasswordsAfterIdle(UltraCanvasMediaViewer::kDefaultForgetPasswordsAfterIdle);
 
             // Another folder: the passwords are not taken there.

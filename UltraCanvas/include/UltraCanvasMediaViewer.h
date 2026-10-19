@@ -837,6 +837,7 @@ private:
     void UpdateAbsenceWatch();
     std::chrono::seconds forgetAfterIdle = kDefaultForgetPasswordsAfterIdle;
     std::chrono::steady_clock::time_point lastActivity = std::chrono::steady_clock::now();   // last key or mouse input
+    bool tryingKeptPasswords = false;   // UnlockWithPassword is called by UnlockFromRememberedPasswords
     TimerId idleTimer = 0;
     SessionLockListenerId sessionLockListener = 0;
     std::shared_ptr<UltraCanvasButton> unlockButton;   // in the info bar

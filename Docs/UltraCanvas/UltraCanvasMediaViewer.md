@@ -286,9 +286,33 @@ same folder does not ask again. `ForgetPasswords()` forgets them at once, and
 `SetRememberPasswords(false)` keeps none - every protected file asks each
 time it is shown.
 
+**They do not outlive the user stepping away.** When the desktop session
+locks ([UltraCanvasSessionLock](UltraCanvasSessionLock.md): the screen locked
+by hand or by the screensaver), or the viewer's window has had no key or
+mouse input for `GetForgetPasswordsAfterIdle()` - ten minutes unless set -
+the viewer calls `ForgetPasswords()` itself. That forgets the passwords *and*
+shows a file showing unlocked locked again: the PDF closes behind its note,
+the image goes back to its thumbnail (or to nothing, when it is private). The
+viewer watches for this only while it holds something - a kept password or
+an unlocked file. Input means a key, a click, a wheel turn or the mouse moving
+anywhere in the viewer's window, and a password given - typed into Unlock or
+passed to `UnlockWithPassword` - but not a kept password opening a file as it
+is shown, so an unattended slideshow through protected files still forgets.
+`SetForgetPasswordsAfterIdle(std::chrono::seconds(0))` turns the idle half
+off; the session lock still forgets. `ForgetPasswordsIfIdle()` is what the
+idle timer runs.
+
+**An unlocked file says so.** A protected file opened with its password -
+typed, or kept - looks like any other once it is open, so the info bar puts
+*unlocked* beside its kind (`name · PDF · unlocked · page 1 / 3 · …`,
+`name · UC DOCUMENT · unlocked · …`) and the Details name its encryption.
+`IsUnlocked()` reports the same.
+
 ```cpp
 viewer->SetRememberPasswords(false);   // a kiosk: ask every time
-viewer->ForgetPasswords();             // or: forget now, e.g. when the screen locks
+viewer->ForgetPasswords();             // or: forget now - and lock the shown file again
+viewer->SetForgetPasswordsAfterIdle(std::chrono::minutes(2));   // a shared desk: sooner
+if (viewer->IsUnlocked()) { /* the shown file is protected, and open */ }
 ```
 
 ```cpp

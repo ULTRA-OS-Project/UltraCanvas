@@ -1163,6 +1163,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
 
+- **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
+  desktop session locks and when it unlocks, so a program forgets what should
+  not outlive the user stepping away (a kept password, a decrypted document on
+  screen). Listener list in `core/UltraCanvasSessionLock.cpp`; per-platform
+  backends under `OS/<Platform>/` (Linux/BSD: logind `Lock` / `Unlock` and
+  `LockedHint` on the system bus plus the screensaver's `ActiveChanged` on the
+  session bus, through GDBus on the application's loop; Windows: WTS session
+  notifications on a message-only window; macOS: the
+  `com.apple.screenIsLocked` / `screenIsUnlocked` distributed notifications).
+  Public surface: `AddSessionLockListener(onChange)` /
+  `RemoveSessionLockListener(id)` (the platform is watched only while one is
+  registered; calls on the UI thread, once per change),
+  `IsWatchingSessionLock`, `NotifySessionLockChanged` (what backends, hosts
+  with a lock of their own and tests call). Wired up by
+  `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` in the **top-level** `CMakeLists.txt`;
+  without it nothing is reported. Used by `UltraCanvasMediaViewer` to forget
+  Unlock's passwords. See `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
+
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
   jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a
@@ -1364,7 +1382,9 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
   `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
   `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
-  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips; password
+  protection with `SetUCDPassword` / `LoadUCD(path, error, password)` /
+  `IsPasswordProtected`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1380,7 +1400,10 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
   `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
   `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
-  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  little-endian `ByteWriter` / `ByteReader`; password protection (UCD 2.2):
+  `Writer::SetPassword`, `Reader::NeedsPassword/Unlock` (Argon2id key,
+  XChaCha20-Poly1305 per section, through UltraCrypt; fails closed without
+  libsodium, `EncryptionAvailable()`). Doc:
   `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -6688,9 +6711,12 @@ Status: **Draft specification** — reference for the v2 implementation of
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
 layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
 frames that stay text) and pins down what 2.0 left open — the `INDX` layout
-(§4.2.1) and the deflate and gzip stream formats (§2.3). The container itself
-(`UltraCanvasUCDContainer.h`) and layered images (`UCRasterDocument`, `*.ucd`)
-are implemented; the other content types are still to come.
+(§4.2.1) and the deflate and gzip stream formats (§2.3). Revision **2.2**
+defines password protection byte for byte: the `SECU` record and the layout
+of an encrypted section (§4.3.1, §4.3.2). The container itself
+(`UltraCanvasUCDContainer.h`, password protection included) and layered images
+(`UCRasterDocument`, `*.ucd`) are implemented; SuperVault and the other content
+types are still to come.
 
 UCD v2 is a multipurpose container for documents, forms, vector graphics and
 window/UI descriptions, with room for bitmap graphics and video in the future.
@@ -6788,7 +6814,7 @@ Detection rules:
 | Offset | Size | Field | Values / meaning |
 |---|---|---|---|
 | 12 | 1 | Version major | `2` for this specification |
-| 13 | 1 | Version minor | `1` for this revision (`0`: written before layered images; read the same way) |
+| 13 | 1 | Version minor | `2` for this revision (`1`: before §4.3.1–4.3.2 were defined; `0`: before layered images — all read the same way) |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
 | 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). *Deflate* is a zlib stream (RFC 1950: two header bytes, the deflate data, an Adler-32 checksum) — what HTTP calls the `deflate` coding; *gzip* is a gzip member (RFC 1952). Both carry a checksum, so a damaged section is detected rather than decoded into wrong pixels. |
 | 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
@@ -6883,7 +6909,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
-| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. | Never encrypted (it is the input to decryption). |
+| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. Layout in 4.3.1. | Never encrypted or compressed (it is the input to decryption); required when key source = `1`. |
 | `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when key source = `2`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
@@ -6941,6 +6967,54 @@ Per section, in this order:
    `SECU` parameters, or supplied by SuperVault (4.4). Each encrypted section
    carries its own random 192-bit nonce; the section header is passed as
    associated data, so editing it invalidates the tag.
+
+#### 4.3.1 `SECU` layout (key source `1`, password)
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 1 | KDF | `1` = Argon2id — the only code point |
+| 2 | 1 | AEAD | `1` = XChaCha20-Poly1305 — the only code point |
+| 3 | 1 | Reserved | `0x00` |
+| 4 | 4 | Passes | uint32, Argon2id time cost |
+| 8 | 4 | Memory | uint32, Argon2id memory cost in KiB |
+| 12 | 4 | Parallelism | uint32, Argon2id lanes; `1` |
+| 16 | 16 | Salt | random per save |
+| 32 | 4 | Permissions | uint32, bit 0 print, bit 1 copy, bit 2 edit, bit 3 form-fill (`1` = allowed); advisory — anyone with the password has the content |
+| 36 | 24 | Check nonce | random |
+| 60 | 16 | Check tag | the XChaCha20-Poly1305 tag of an **empty** message under the document key, this nonce, and as associated data the ASCII bytes `UCD-SECU` followed by bytes 0–35 of this record |
+
+The **document key** is 32 bytes of Argon2id over the password's UTF-8 bytes
+with this salt and these costs. The check tag lets a reader tell a wrong
+password ("the password is not right") from a damaged section ("the file is
+damaged") before it decrypts anything, and binds the stored costs, so they
+cannot be lowered without the password.
+
+A reader refuses a record whose costs no honest writer would choose — more
+than 64 passes or more than 4 GiB of memory — before deriving anything, so a
+hostile file cannot make it allocate without bound.
+
+#### 4.3.2 An encrypted section
+
+An encrypted section has bit 0 of its section flags set, and its payload as
+stored is:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 24 | Nonce, random per section and per save |
+| 24 | n | Ciphertext: XChaCha20-Poly1305 of the payload *after* compression — the compression byte names what the decrypted bytes are |
+| 24 + n | 16 | Tag |
+
+The associated data is the section's 12-byte header exactly as stored (type,
+the stored length — `40 + n` — compression byte, flags, reserved), so a
+header edited to name another type, length or compression fails the tag.
+
+Writer rules for key source `1`: the header's `ENCRYPTED` flag is set; the
+`SECU` section comes before every encrypted one; every section is encrypted
+except `INDX`, `SECU`, `SVLT` and, at the writer's choice, `META`. The `INDX`
+still lists every section's type and lengths, as the section headers do — the
+sizes of a protected document are not secret, its content is. `PRIVATE` (§2.4)
+leaves the thumbnail out as well.
 
 **One cipher, one KDF — deliberately.** UCD is our own format, so it offers no
 algorithm menu: every writer emits XChaCha20-Poly1305 with Argon2id, and every
@@ -7322,6 +7396,16 @@ signature; loaders should keep the v1 read path during a transition period.
 
 A 2.0 reader opens a 2.1 layered image as the 2.0 rules allow: it skips the
 unknown `LAYR` and shows the first `BMAP`, or the thumbnail.
+
+### 7.2 Changes in 2.2
+
+| Aspect | 2.1 | 2.2 |
+|---|---|---|
+| Version minor | `1` | `2` |
+| `SECU` | contents named, layout open | layout defined (4.3.1), with a check tag that tells a wrong password from a damaged file |
+| Encrypted sections | "carries its own nonce" | nonce, ciphertext, tag; the stored header is the associated data (4.3.2) |
+
+Files without a password are written exactly as in 2.1.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
@@ -43635,14 +43719,14 @@ tool and a missing plugin should stop it running.
 | `MediaKind` | Formats | Display view |
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
-| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
+| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`); a password-protected one is unlocked first (*Password-protected files*). Classified before `Vector`: a libvips with a PDF loader would otherwise take a PDF for a drawing and show its first page flat. Without the plugin a PDF is an image the pipeline rasterizes |
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
-| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
+| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
@@ -43678,10 +43762,12 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
 | Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
 | Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
-| `*.ucd` preview thumbnail | yes | — | — | — |
+| `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
 | Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
 
+*Unlock* (`tools.unlock`) is there only while the shown file is
+password-protected and not unlocked yet - see *Password-protected files*.
 Separators follow the groups, so none is left standing alone. Text,
 spreadsheet, font, 3D, video and audio views carry their own controls (the
 players' transport bar, the model's orbit and dolly), so the toolbar is down to
@@ -43786,18 +43872,110 @@ recognised by the 12-byte signature of the fixed header, read through the
 container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
 format deliberately makes available without parsing the body:
 
-- the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
-  fixed header) on the image surface, when present — respecting the
-  `PRIVATE` flag, which suppresses the preview;
-- otherwise a **header summary** in the text view.
+- a **layered image** (`UCBitmap`) whole: its layers read through
+  `UCRasterDocument::LoadUCD` and composited, at full size - the picture,
+  not the 256 px thumbnail - and zoomable like a photo (it is still not an
+  image to turn or save from here); a password-protected one once it is
+  unlocked (*Password-protected files*);
+- otherwise the **embedded preview thumbnail** (raw HEIC/PNG stored
+  directly after the fixed header) on the image surface, when present —
+  respecting the `PRIVATE` flag, which suppresses the preview. A
+  password-protected layered image shows this until it is unlocked;
+- otherwise a **header summary** in the viewer's **note view**: dark like
+  the rest of the viewer and laid out as the Details panel lays out its
+  facts (a heading, then a table of the container's fields) - not on the
+  white page a text file is shown on.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
 container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
 `UCBitmap` …), version, body encoding, compression, encryption (always
 XChaCha20-Poly1305; the key from a password or from SuperVault) and
 thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
-document) gets a summary saying why. A layered image (`UCBitmap`) shows its
-thumbnail here; `UCRasterDocument` opens it with its layers.
+document) gets a summary saying why. For a layered image it adds the size
+and the layer count, and a *Shown* row says what the pane shows - the image
+at full size, or the thumbnail and why not the image (password-protected,
+damaged).
+
+## Password-protected files
+
+A file the viewer can open with its password - a layered `*.ucd` image
+(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
+or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
+(its header summary when the document is private), or a note saying the PDF
+is password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
+that hides the top bars, such as UltraFiler's preview pane, still offers it)
+and as an icon in the toolbar; **Enter** does the same. Unlock
+asks for the password over the viewer's window - again, saying so, when it
+is not right - and then shows the file whole: the image at full size with
+its layers composited, the PDF in its view with every page.
+
+Nothing asks on its own: browsing a folder of protected files never pops up
+a prompt. The info bar says *password-protected*, and the Details panel adds
+an *Encryption* row and a *Shown* row that says what Unlock would show.
+
+**Passwords are kept for the folder being browsed.** A password Unlock was
+given opens, without asking again, the file it unlocked when it is browsed
+back to, and is tried - with the others kept, the one that opened that file
+first - on every other protected file shown in the same folder, which then
+shows whole straight away. A file none of them opens is not tried again
+until another password is given. They are held in `UltraCryptSecureBuffer`s
+(zeroed when freed), at most `kMaxRememberedPasswords` (8), and only for that
+folder: opening another folder, or a selection in another folder, forgets
+them; `CloseFile` keeps them, so a preview pane that closes and reopens the
+same folder does not ask again. `ForgetPasswords()` forgets them at once, and
+`SetRememberPasswords(false)` keeps none - every protected file asks each
+time it is shown.
+
+**They do not outlive the user stepping away.** When the desktop session
+locks ([UltraCanvasSessionLock](UltraCanvasSessionLock.md): the screen locked
+by hand or by the screensaver), or the viewer's window has had no key or
+mouse input for `GetForgetPasswordsAfterIdle()` - ten minutes unless set -
+the viewer calls `ForgetPasswords()` itself. That forgets the passwords *and*
+shows a file showing unlocked locked again: the PDF closes behind its note,
+the image goes back to its thumbnail (or to nothing, when it is private). The
+viewer watches for this only while it holds something - a kept password or
+an unlocked file. Input means a key, a click, a wheel turn or the mouse moving
+anywhere in the viewer's window, and a password given - typed into Unlock or
+passed to `UnlockWithPassword` - but not a kept password opening a file as it
+is shown, so an unattended slideshow through protected files still forgets.
+`SetForgetPasswordsAfterIdle(std::chrono::seconds(0))` turns the idle half
+off; the session lock still forgets. `ForgetPasswordsIfIdle()` is what the
+idle timer runs.
+
+**An unlocked file says so.** A protected file opened with its password -
+typed, or kept - looks like any other once it is open, so the info bar puts
+*unlocked* beside its kind (`name · PDF · unlocked · page 1 / 3 · …`,
+`name · UC DOCUMENT · unlocked · …`) and the Details name its encryption.
+`IsUnlocked()` reports the same.
+
+```cpp
+viewer->SetRememberPasswords(false);   // a kiosk: ask every time
+viewer->ForgetPasswords();             // or: forget now - and lock the shown file again
+viewer->SetForgetPasswordsAfterIdle(std::chrono::minutes(2));   // a shared desk: sooner
+if (viewer->IsUnlocked()) { /* the shown file is protected, and open */ }
+```
+
+```cpp
+if (viewer->IsLocked()) {
+    viewer->Unlock();                      // asks, in a dialog
+}
+// ... or, with a password the host already has:
+const std::string password = "tulip";
+std::string why;
+const MediaUnlockResult result = viewer->UnlockWithPassword(password, why);
+if (result == MediaUnlockResult::WrongPassword) { /* still locked; `why` says so */ }
+else if (result == MediaUnlockResult::Failed)   { /* right, but it would not open */ }
+// Unlocked: shown whole. NotLocked: there was nothing to unlock.
+```
+
+What a protected PDF needs from the engine is a reason: `IPDFDocument` and
+`UltraCanvasPDFView` report it with `GetLastOpenError()` - `NeedsPassword`
+for a document opened without one, `WrongPassword` for one opened with the
+wrong one, `Failed` for anything else - so the viewer offers Unlock rather
+than calling the file damaged. A host that hides both bars still has Enter,
+or calls `Unlock()` itself. Formats the framework can tell are encrypted but
+not decrypt - an encrypted Excel workbook - say so in their view instead
+(*"The workbook is password-protected"*), with no Unlock.
 
 ## Details panel
 
@@ -48595,6 +48773,7 @@ view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
 
 ```cpp
 bool LoadFromPath(const std::string& path, const std::string& password = "");
+PDFOpenError GetLastOpenError() const;      // why the last LoadFromPath failed
 void SetDocument(std::unique_ptr<IPDFDocument> doc);
 IPDFDocument* GetDocument() const;
 bool HasDocument() const;
@@ -48611,6 +48790,25 @@ that streamed the file would block the very file it is showing. A bigger file is
 streamed instead, because holding hundreds of megabytes of PDF in RAM is the
 worse trade; raise or lower the limit to move that line, or set 0 to always
 stream. `SetDocument()` takes whatever the caller opened, unchanged.
+
+A **password-protected** document opens with its password as the second
+argument. When `LoadFromPath()` fails, `GetLastOpenError()` says why, so a
+caller can ask for the password instead of calling the file damaged:
+
+```cpp
+if (!view->LoadFromPath(path)) {
+    switch (view->GetLastOpenError()) {
+        case PDFOpenError::NeedsPassword: /* ask for it, then LoadFromPath(path, password) */ break;
+        case PDFOpenError::WrongPassword: /* ask again */ break;
+        default:                          /* unreadable or damaged */ break;
+    }
+}
+```
+
+A password refusal is not retried as a stream (it would be refused the same
+way), and a failed load leaves the document that was shown in place. The media
+viewer builds its *Unlock* button on this
+([`UltraCanvasMediaViewer.md`](UltraCanvasMediaViewer.md#password-protected-files)).
 
 ### Navigation
 
@@ -48958,6 +49156,7 @@ void Close();
 bool IsOpen() const;
 bool IsDirty() const;
 const std::string& GetSourcePath() const;
+PDFOpenError GetLastOpenError() const;      // NoError, NeedsPassword, WrongPassword, Failed
 
 PDFDocumentInfo GetInfo() const;            // title/author/dates/version/encryption…
 int             GetPageCount() const;
@@ -48972,6 +49171,11 @@ afterwards — it still reports `path` as its source and saves normally, and onl
 by it, and returns `false` on a memory-opened one). Use `OpenInMemory()` whenever
 the document is merely being displayed and the file must stay movable; use
 `Open()` for a document too big to hold in memory.
+
+`GetLastOpenError()` says why the last `Open*` failed: `NeedsPassword` (the
+document is encrypted and no password was given), `WrongPassword` (the one
+given does not open it), `Failed` (unreadable, not a PDF, damaged); `NoError`
+after a successful open. An engine that cannot tell answers `NoError`.
 
 `PDFSaveOptions`: `linearize` (web-optimize), `garbageCollect`, `deflateStreams`,
 `cleanContentStreams`.
@@ -49811,6 +50015,10 @@ doc->SaveToFile("out.png", err);               // flattened, format by extension
                                                // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 doc->SaveToFile("work.ucd", err);              // layers kept, as a UCD layered image
+doc->SetUCDPassword("tulip");                  // ... and from now on password-protected
+doc->SaveToFile("work.ucd", err);
+UCRasterDocument reopened;
+reopened.LoadUCD("work.ucd", err, "tulip");    // UCRasterDocument::IsPasswordProtected says it needs one
 ```
 
 ### Layered files
@@ -49830,6 +50038,16 @@ extension (`IsProjectFile` is true for both, `IsUCDFile` for the first):
   (`ExtractEmbeddedPreviewBytes`, the media viewer). Needs no libvips. A
   `UCBitmap` file without a stack opens as one layer; a text frame this cannot
   read leaves its layer the bitmap it shows.
+
+  **Password-protected** (UCD 2.2): `SetUCDPassword(password, hidePreview)`
+  makes every later `SaveUCD` encrypt the file (Argon2id key,
+  XChaCha20-Poly1305 per section; `hidePreview` leaves the thumbnail out
+  too), an empty password takes it off, and `HasUCDPassword` /
+  `GetUCDHidesPreview` say what is set. `IsPasswordProtected(path)` reads
+  only the header; `LoadUCD(path, error, password)` opens such a file - a
+  wrong password fails with `UCD::kWrongPassword`, without one it says the
+  file needs it - and keeps the password, so the next save is protected
+  again. Loading anything else clears it.
 - **`.ucraster`, an UltraPaint project** (`SaveProject` / `LoadProject`,
   libvips): a ZIP of `document.json`, one PNG per layer and an OpenDocument
   text per text layer.
@@ -60316,6 +60534,89 @@ flow->FitView();
   model this feature's layering follows
 - [`UltraCanvasClassDiagramProposal.md`](UltraCanvasClassDiagramProposal.md)
   — the UML family's roadmap
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSessionLock.md
+==============================================================================
+
+# UltraCanvasSessionLock
+
+<!-- doc-check: void ForgetPasswords(); void ShowLockedAgain(); -->
+
+A call when the desktop session locks — the user locked the screen, or
+stepped away and the screensaver did — and when it unlocks again. It is what
+a program holding something it should not keep past the user's absence
+listens to: a password typed earlier, a decrypted document on screen.
+
+```cpp
+#include "UltraCanvasSessionLock.h"
+
+SessionLockListenerId listener = AddSessionLockListener([this](bool locked) {
+    if (locked) {
+        ForgetPasswords();
+        ShowLockedAgain();
+    }
+});
+// ... and before `this` goes:
+RemoveSessionLockListener(listener);
+```
+
+The [media viewer](UltraCanvasMediaViewer.md) is the first user: while it
+keeps a password Unlock was given, or shows a file opened with one, a lock
+forgets the passwords and puts the file back behind its Unlock button.
+
+## Calls
+
+| Call | Meaning |
+|---|---|
+| `AddSessionLockListener(onChange)` | `onChange(true)` when the session locks, `onChange(false)` when it unlocks, on the UI thread. Returns the id to remove it by; 0 for an empty callback. The first listener starts the platform backend. |
+| `RemoveSessionLockListener(id)` | Removes it; the last one stops the backend. Safe from inside a callback (its own or another's) and safe twice. |
+| `IsWatchingSessionLock()` | True while a backend is watching: a listener is registered and the platform answered. |
+| `NotifySessionLockChanged(locked)` | Tells every listener — what a backend calls. A host with a lock of its own (a kiosk's screen lock) calls it too, and so do tests. |
+
+Each change is reported once. A lock usually arrives from two sources at once
+— logind's signal and the screensaver's, or the signal and the property that
+follows it — and the second, saying the same thing, calls nobody.
+
+## Where it comes from
+
+| Platform | Source |
+|---|---|
+| Linux, the BSDs | logind (system bus): the `Lock` / `Unlock` signals of this process's session and its `LockedHint` property, which the screen locker sets while it shows. The screensaver (session bus): the `ActiveChanged` signal (a boolean) of `org.freedesktop.ScreenSaver` (KDE, Xfce and most others) and `org.gnome.ScreenSaver` (GNOME). Either is enough. GDBus runs on a private context the application's loop watches — no thread of its own. |
+| Windows | WTS session notifications (`WTS_SESSION_LOCK`, `WTS_SESSION_UNLOCK`) on a message-only window of the UI thread; `wtsapi32` is loaded when the first listener arrives. |
+| macOS | The loginwindow's `com.apple.screenIsLocked` / `com.apple.screenIsUnlocked` distributed notifications, on the main queue. |
+
+Everything else — Android, WebAssembly, a Linux session with no bus — reports
+nothing, and `IsWatchingSessionLock()` stays false. A caller that must not
+depend on a lock being reported keeps an idle timeout of its own as well; the
+media viewer forgets after ten minutes without input either way.
+
+On Linux the session is the caller's own (logind's `GetSession` asked for
+`"auto"`, which for a program started from a user service is the user's
+graphical session), falling back to the one its process is in. The screensaver's signal is taken from any
+sender on any path, since each desktop emits it on a path of its own; a forged
+one can do no more than make a listener forget.
+
+## Testing
+
+`NotifySessionLockChanged(true)` is a lock as far as every listener can tell,
+so a test needs no desktop. The backend itself is tested by
+`Tests/SessionLockTest.cpp`, which CTest runs under `dbus-run-session` and
+which sends the screensaver's signal with `gdbus`:
+
+```sh
+gdbus emit --session --object-path /org/gnome/ScreenSaver \
+           --signal org.gnome.ScreenSaver.ActiveChanged true
+```
+
+## Building
+
+`ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` (top-level `CMakeLists.txt`) is set for
+Windows, macOS and desktop Unix, and is a PUBLIC define of the library. Without
+it `core/UltraCanvasSessionLock.cpp` compiles a backend that never starts. The
+backends are `OS/Linux/UltraCanvasLinuxSessionLock.cpp` (gio, which GTK
+already brings), `OS/MSWindows/UltraCanvasWindowsSessionLock.cpp` and
+`OS/MacOS/UltraCanvasMacOSSessionLock.mm`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasShellLink.md
@@ -72426,6 +72727,7 @@ on. The format itself is specified in
 | `UCD::Writer` | Builds a file: a type descriptor, an optional PNG thumbnail, sections; writes an `INDX` first and stages the write |
 | `UCD::Reader` | Reads a whole file: header, thumbnail, every section as stored; decodes a section on request |
 | `UCD::ReadHeaderAndThumbnail` | A filer's read: the 28-byte header and the raw thumbnail, the body untouched |
+| `Writer::SetPassword` / `Reader::Unlock` | Password protection (key source 1): an Argon2id key, every section but `INDX` and `SECU` sealed with XChaCha20-Poly1305 |
 | `UCD::AppendPreamble` / `ReadPreamble` | The 8-byte sub-format preamble a `VECT` / `BMAP` / `VIDS` / `AUDS` / `SC3D` payload starts with |
 | `UCD::ByteWriter` / `ByteReader` | Little-endian, bounds-checked bytes - what section payloads are built from |
 
@@ -72453,13 +72755,13 @@ std::string error;
 if (!writer.WriteToFile(path, error)) { /* the file that was there is untouched */ }
 ```
 
-- The header is version **2.1**, binary body, deflate by default, key source
-  none; the thumbnail flags say PNG.
+- The header is version **2.2**, binary body, deflate by default, key source
+  none (password, with `SetPassword`); the thumbnail flags say PNG.
 - Sections are written in the order added, after an `INDX` that lists each
   one's type, offset, stored and whole length.
 - `WriteToFile` writes through `WriteFileAtomically`: a failure leaves the
   previous file as it was. `WriteToBuffer` gives the bytes.
-- Only *Uncompressed* and *Deflate* are written; there is no encryption yet.
+- Only *Uncompressed* and *Deflate* are written.
 
 ## Reading
 
@@ -72490,13 +72792,60 @@ if (reader.Open(path, error)) {
 - `Open` reads the whole file and lists every section, unknown types
   included - the caller skips what it does not know (the spec's
   forward-compatibility rule).
-- `Decode` gives the payload as serialized: it inflates zlib and gzip
-  sections (checksums checked), resolves the header-default code `0xFF`, and
-  refuses - with the reason - an encrypted section, LZMA, a damaged stream,
-  or a section that would decompress past `limit` (2 GiB by default).
+- `Decode` gives the payload as serialized: it decrypts a section once the
+  reader is unlocked, inflates zlib and gzip sections (checksums checked),
+  resolves the header-default code `0xFF`, and refuses - with the reason - an
+  encrypted section before `Unlock`, LZMA, a damaged stream, or a section
+  that would decompress past `limit` (2 GiB by default).
 - Refused outright, with a message: a damaged signature (all 12 bytes are
   checked), a version 1 file (`UCD\x01`), a later **major** version, a file
   cut short. A later **minor** version reads.
+
+## Password protection
+
+```cpp
+#include "UltraCanvasUCDContainer.h"
+using namespace UltraCanvas;
+
+if (UCD::EncryptionAvailable()) {             // UltraCrypt with libsodium
+    UCD::Writer writer("UCBitmap");
+    writer.SetPassword("correct horse", /*hidePreview=*/false);
+    writer.AddSection("BMAP", payload);
+    std::string error;
+    writer.WriteToFile(path, error);
+}
+
+UCD::Reader reader;
+std::string error;
+if (reader.Open(path, error) && reader.NeedsPassword()) {
+    if (!reader.Unlock("correct horse", error)) {
+        if (error == UCD::kWrongPassword) { /* ask again */ }
+        else { /* damaged, SuperVault, no libsodium ... - say why */ }
+    }
+}
+```
+
+- `SetPassword` (spec section 4.3, key source `1`): the writer derives a
+  32-byte key with **Argon2id** (UltraCrypt's recommended cost - 3 passes,
+  64 MiB - and a fresh salt every write), puts a `SECU` record straight after
+  the `INDX`, and seals every other section with **XChaCha20-Poly1305**
+  after compressing it: a fresh 24-byte nonce, the section's 12-byte header
+  as associated data, so a header changed on disk fails like a changed
+  payload. The header gets key source `1` and the `ENCRYPTED` flag;
+  `hidePreview` adds `PRIVATE` and leaves the thumbnail out. The password is
+  held in an `UltraCryptSecureBuffer` (zeroed when freed); an empty one
+  protects nothing.
+- A protected file opens as any other - header, thumbnail, section list;
+  `NeedsPassword()` says its sections will not decode yet. `Unlock` reads
+  the `SECU`, refuses costs over 64 passes or 4 GiB before deriving
+  anything, and checks the key against the record's check tag, so a wrong
+  password (`UCD::kWrongPassword`) is told apart from a damaged file.
+- A build without libsodium fails closed: `EncryptionAvailable()` is false,
+  `WriteToBuffer` refuses rather than writing the file unprotected, and
+  `Unlock` says why. SuperVault (key source `2`) is refused with a message.
+- `UCRasterDocument` carries a password for its `.ucd` (`SetUCDPassword`,
+  `LoadUCD(path, error, password)`, `IsPasswordProtected`): see
+  [`UltraCanvasPaintSurface.md`](UltraCanvasPaintSurface.md), *Layered files*.
 
 ## The filer's read
 
@@ -72523,7 +72872,10 @@ out.
 bytes a writer puts down, the round trip through a buffer and a file, the
 header-default code, gzip, an unknown section, LZMA and encrypted sections
 refused, damaged checksums, the refusals above, the preamble and the byte
-helpers. `RasterEditingTest` covers layered images on top of it, and
+helpers - and password protection: the bytes a protected file puts down,
+a wrong and the right password, a tampered payload and a tampered header, a
+hostile `SECU` cost refused, a fresh salt on every save, a private document,
+and failing closed without libsodium. `RasterEditingTest` covers layered images on top of it, and
 `EmbeddedPreviewTest` the thumbnail as an embedded preview.
 
 ==============================================================================
@@ -73879,6 +74231,33 @@ onto white without touching what is drawn on top.
 `page` selects the page of a paged source; `VectorSourceInfo::pageCount` says
 how many there are (1 for everything but PDF).
 
+### A password-protected PDF
+
+A PDF (or `.ai`) that does not open without its password reports it rather
+than failing like a damaged file: `InspectVectorFile(path)` comes back with
+`ok` false and `passwordRequired` true. Ask for the password and inspect
+again with it - `passwordWrong` says the one given does not open it either -
+then hand it to the rasterizer in `VectorRasterOptions::password`:
+
+```cpp
+VectorSourceInfo info = InspectVectorFile(path);
+if (!info.ok && info.passwordRequired) {
+    const std::string password = "tulip";            // what the user typed
+    info = InspectVectorFile(path, password);
+    if (info.passwordWrong) { /* ask again */ }
+    VectorRasterOptions options;
+    options.password = password;
+    std::string error;
+    auto layer = RasterizeVectorFile(path, options, error);
+    if (!layer) ShowError(error);
+}
+```
+
+Which refusals are about a password is decided from the file, not from the
+loader's wording (poppler says *"Document is encrypted"* for a missing and a
+wrong password alike): the refused PDF names an `/Encrypt` dictionary. A
+password given to a file that has none is ignored.
+
 ## Elements of a loaded drawing
 
 `RasterizeVectorElements` is the same job for a drawing that is already open:
@@ -73965,7 +74344,8 @@ ArtCreator's Export is those two calls.
 
 UltraPaint: dropping or opening a drawing asks for the raster size and then
 comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
-`UltraPaintImportDialog`).
+`UltraPaintImportDialog`); a password-protected PDF asks for its password
+first, again while it is wrong.
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
 by `RasterizeVectorElements`, and *Export* writes PNG, JPEG and the other
@@ -73985,7 +74365,9 @@ build: the crop to what is painted, a stroke past the bounds, the scale, an
 ancestor's transform, and the refusals. So do its `RasterizeVectorDocument`
 checks: the natural size, a page twenty times larger with a hard edge, one
 side following the page's shape, a size in another shape, both backgrounds,
-and the refusals.
+and the refusals. A password-protected PDF (`Tests/fixtures/pdf-aes256-locked.pdf`)
+reports a missing and a wrong password as such, is refused without one, and
+measures and rasterizes with the right one.
 
 ## See also
 
