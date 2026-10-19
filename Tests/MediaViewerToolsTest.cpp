@@ -17,10 +17,11 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.2.1 - the viewer's notes (a summary, a locked PDF) are its dark note view
 // Version: 1.2.0 - Unlock: a protected *.ucd and a protected PDF
 // Version: 1.1.0 - layered *.ucd images: full size; protected: the thumbnail
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -163,6 +164,8 @@ int main() {
     if (!svgShown) std::cout << "\n(no SVG loader in this build)\n";
     Expect(*viewer, svg, svgShown, svgShown, false, svgShown);
     Expect(*viewer, text,  false, false, false, false);
+    Check(Shown(*viewer, "MV_Text") && !Shown(*viewer, "MV_Note"),
+          "notes.txt: a text file is on the text page, not in a note");
     Expect(*viewer, sheet, false, false, false, false);
     Expect(*viewer, model, false, false, false, false);
     Expect(*viewer, video, false, false, false, false);
@@ -236,6 +239,8 @@ int main() {
             viewer->SetFiles({ PathToUtf8(hidden) });
             shown = viewer->GetSurface()->GetImage();
             Check(!shown, "hidden.ucd: private as well - no picture at all");
+            Check(Shown(*viewer, "MV_Note") && !Shown(*viewer, "MV_Text"),
+                  "hidden.ucd: its summary is the viewer's dark note, not a white text page");
             Check(viewer->IsLocked(), "hidden.ucd: locked, Unlock offered");
             Expect(*viewer, hidden, false, false, false, false);
             Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked,
@@ -257,6 +262,8 @@ int main() {
             std::cout << "  (no PDF engine in this build: the PDF cases are skipped)\n";
         } else {
             Check(viewer->IsLocked(), "pdf-aes256-locked.pdf: locked, not reported as damaged");
+            Check(Shown(*viewer, "MV_Note") && !Shown(*viewer, "MV_Text"),
+                  "pdf-aes256-locked.pdf: the note saying so is the viewer's dark note");
             Expect(*viewer, lockedPdf, false, false, false, false);   // (shows it alone)
             viewer->SetFiles({ PathToUtf8(lockedPdf), PathToUtf8(media / "sample.pdf") });
             Check(viewer->GetAvailableTools().unlock, "pdf-aes256-locked.pdf: Unlock is offered");
@@ -265,6 +272,7 @@ int main() {
                   viewer->IsLocked(), "pdf-aes256-locked.pdf: a wrong password leaves it locked");
             Check(viewer->UnlockWithPassword("tulip", why) == MediaUnlockResult::Unlocked &&
                   !viewer->IsLocked(), "pdf-aes256-locked.pdf: the right password opens it");
+            Check(!Shown(*viewer, "MV_Note"), "pdf-aes256-locked.pdf: open, the note is gone");
             {
                 const MediaViewerTools t = viewer->GetAvailableTools();
                 Check(t.zoom && !t.unlock, "pdf-aes256-locked.pdf: open, its pages zoom; Unlock goes away");
