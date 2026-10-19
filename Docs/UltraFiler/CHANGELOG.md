@@ -1,3 +1,24 @@
+#### 2026-10-19 *1.78.0*
+- **Changes on an FTP server that takes one connection at a time work.** A
+  delete, a rename, a new folder - and the rename that puts an upload in
+  place - each log in on an FTP connection of their own, and a server that
+  allows one connection per address (vsftpd's `max_per_ip=1`, ProFTPD's
+  `MaxClientsPerHost 1`) turned that one away with *421 There are too many
+  connections from your internet address.* while the drive kept its listing
+  connection open: the delete failed, and an upload stayed under its hidden
+  part name until the next run. Now the connection kept open is closed and
+  the change sent again - waiting a moment if the server is still counting
+  the closed one - and the connection log says so. UltraNet does this
+  (framework changelog: `ftp-change-one-connection-server`).
+- **A folder the tree is reading for you is named on the status bar.**
+  Expanding a drive's folder in the folder tree that was already being read
+  ahead showed the thin bar on its row and nothing on the status bar, which
+  went on showing the item count: a folder read ahead reports nothing. Now,
+  until its subfolders are in, the status bar says what it waits for - *Reading
+  /photos from Studio FTP (ftp://files.example.org) - Retrieving directory
+  listing... - 3 s*, or *Waiting for Studio FTP - 1 request ahead* - after a
+  transfer's progress when one is running.
+
 #### 2026-10-19 *1.77.0*
 - **A drive's folder being opened or updated no longer covers the folder
   display.** Opening a folder on an FTP, SFTP or cloud drive put a turning

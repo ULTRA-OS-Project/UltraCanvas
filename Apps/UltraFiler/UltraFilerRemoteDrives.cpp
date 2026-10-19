@@ -1619,15 +1619,17 @@ void UltraFilerRemoteDrives::WorkerMain() {
         auto onLine = [this, logId, current, reportsActivity, http](const RemoteLogLine& line) {
             log_.Append(logId, line);
             NotifyLogChanged();
-            if (!reportsActivity) return;
             // Every step, not one in eighty milliseconds: when a connection
-            // hangs, the step on screen has to be the one it hangs at.
+            // hangs, the step on screen has to be the one it hangs at. Kept
+            // for a folder read ahead too - ListingStatus says it when the
+            // user turns out to be waiting for that folder after all (the
+            // tree row they expanded) - but only reported for the rest.
             current->step = StepText(line, http);
             {
                 std::lock_guard<std::mutex> lk(mutex_);
                 activeJobStep_ = current->step;
             }
-            ReportActivity(*current, /*force=*/true);
+            if (reportsActivity) ReportActivity(*current, /*force=*/true);
         };
         UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
                 [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });

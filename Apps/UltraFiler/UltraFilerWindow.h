@@ -1117,6 +1117,17 @@ private:
     // The log window while it is open; it owns itself (deleteOnClose).
     std::weak_ptr<UltraFilerConnectionLogWindow> connectionLogWindow;
     TimerId connectionLogRefreshTimer = InvalidTimerId;
+    // The drive's folder the user expanded in the tree while its subfolders
+    // are being fetched: its wait is said on the status bar (TreeFetchStatus),
+    // kept current by the timer until the row stops loading.
+    std::string treeFetchPath;
+    TimerId treeFetchTimer = InvalidTimerId;
+    void WatchTreeFetch(const std::string& path);
+    void StopTreeFetchTimer();
+    // What that fetch waits for, as the status bar says it; empty when there
+    // is none, or when it is the folder the display shows (whose own wait is
+    // said already).
+    std::string TreeFetchStatus() const;
     // How many failed connections the log window has shown: the button
     // counts the ones beyond this.
     std::size_t connectionLogSeenErrors = 0;
