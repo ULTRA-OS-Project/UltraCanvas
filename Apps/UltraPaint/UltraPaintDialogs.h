@@ -135,6 +135,9 @@ struct UltraPaintImportResult {
     int  height = 0;
     int  page = 0;                // 0-based
     bool scaleToFit = false;      // merge: shrink the image into the canvas
+    // A password-protected PDF's password, given before the dialog asked
+    // anything (the dialog leaves it alone): what rasterizes it.
+    std::string password;
 };
 
 class UltraPaintImportDialog : public UltraCanvasWindow {

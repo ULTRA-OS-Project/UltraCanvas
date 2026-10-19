@@ -5383,6 +5383,8 @@ if(TARGET UltraCanvas)
     target_include_directories(VectorRasterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(VectorRasterTest PRIVATE cxx_std_20)
     target_link_libraries(VectorRasterTest PRIVATE UltraCanvas)
+    target_compile_definitions(VectorRasterTest PRIVATE
+        UC_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     set_target_properties(VectorRasterTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

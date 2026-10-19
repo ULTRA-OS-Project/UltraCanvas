@@ -8,6 +8,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.7.1 - AskForFilePassword: one password question for a protected *.ucd and a
+//                  protected PDF; ImportFile takes the PDF's password on to the rasterizer
 // Version: 1.7.0 - password-protected *.ucd: CmdPassword (File > Password Protection...),
 //                  OpenProtectedFile asks for a file's password, SaveLossQuestion
 // Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
@@ -121,17 +123,23 @@ private:
     // or merge it into the open image — and carries the answer out.
     // `fromDrop` decides which of those the dialog offers; `alsoFiles` are the
     // rest of a multi-file drop, which follow the same answer.
-    // `preloaded`: the file already read (a password-protected one, opened
-    // once its password was given), so it is not read again.
+    // `preloaded`: the file already read (a password-protected *.ucd, opened
+    // once its password was given), so it is not read again. `password`: a
+    // password-protected PDF's, asked for before the import dialog.
     void ImportFile(const std::string& path, bool fromDrop,
                     const std::vector<std::string>& alsoFiles = {},
-                    std::shared_ptr<UCRasterDocument> preloaded = nullptr);
-    // A password-protected *.ucd: asks for its password and hands the opened
-    // document to `opened`. A wrong password asks again (`note` says so);
-    // Cancel opens nothing, and any other failure is shown.
-    void OpenProtectedFile(const std::string& path,
-                           const std::function<void(std::shared_ptr<UCRasterDocument>)>& opened,
-                           const std::string& note = std::string());
+                    std::shared_ptr<UCRasterDocument> preloaded = nullptr,
+                    const std::string& password = std::string());
+    // What a password does when it is tried on a file: opens it, is not its
+    // password, or is right but the file would not open (`error` says why).
+    enum class PasswordTry { Opened, Wrong, Failed };
+    // A password-protected file - a *.ucd to open, a PDF to import: asks for
+    // its password and tries it with `attempt`, asking again (`note` says
+    // why) while it is not right. Cancel opens nothing; a failure is shown.
+    void AskForFilePassword(const std::string& path,
+                            const std::function<PasswordTry(const std::string& password,
+                                                            std::string& error)>& attempt,
+                            const std::string& note = std::string());
     // A 3D model takes the framework's model-view dialog instead: it has no
     // view either, and one has to be chosen before there are any pixels.
     void ImportModel(const std::string& path, bool fromDrop,

@@ -1,12 +1,13 @@
 // PixelFX/core/PixelFX.cpp
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
+// Version: 1.5.0 - LoadPdf: a protected PDF's password (pdfload "password")
 // Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
 //                  FileLoader's lists, not a fixed one; SaveGif through
 //                  libvips' GIF saver, the framework's where it has none
 // Version: 1.3.1 - Generate::CopyBlank passes its 0.0 without braces (-Wbraced-scalar-init;
 //                 the same new_from_image(double) call)
 // Version: 1.3.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
@@ -212,10 +213,11 @@ namespace PixelFX {
             catch (const vips::VError& e) { throw PixelFXException("Failed to load HEIF: " + std::string(e.what())); }
         }
 
-        PFXImage LoadPdf(const std::string& filename, int page, double dpi) {
+        PFXImage LoadPdf(const std::string& filename, int page, double dpi, const std::string& password) {
             try {
-                return PFXImage(vips::VImage::pdfload(filename.c_str(),
-                                                      vips::VImage::option()->set("page", page)->set("dpi", dpi)));
+                vips::VOption* options = vips::VImage::option()->set("page", page)->set("dpi", dpi);
+                if (!password.empty()) options->set("password", password.c_str());
+                return PFXImage(vips::VImage::pdfload(filename.c_str(), options));
             } catch (const vips::VError& e) { throw PixelFXException("Failed to load PDF: " + std::string(e.what())); }
         }
 
