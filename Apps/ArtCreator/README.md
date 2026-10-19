@@ -43,7 +43,8 @@ group box on the section page, as UltraPaint's - with a small caption.
 The cards that belong to a tool show only while it is active: *Tool
 Options* (captioned with the tool's name, and left out for a tool without
 options), *Gradient* (the fill's ramp) with the Fill tool, and *Line* with
-Pen, Freehand and Straight Line.
+Pen, Freehand and Straight Line, or with the Selector or Shape Editor while
+a line (a straight line, polyline or open path) is selected.
 
 The colour picker has a list of designs in its corner - colour circle,
 slider and square, colour rectangle, or colour and brightness sliders - and

@@ -6,7 +6,8 @@
 //                  section page, as UltraPaint's, with a smaller caption; Tool Options,
 //                  Gradient (was Fill) and Line show only while their tool is active; the transform
 //                  bar's ratio lock holds for the selector's handles, its percentage
-//                  fields have no arrows and every field steps by 1
+//                  fields have no arrows and every field steps by 1; the Line card also
+//                  with the Selector or Shape Editor while a line is selected
 // Version: 1.9.0 - the colour picker opens with the design and channels it was left with
 //                 (ArtCreatorSettings: picker.design, picker.channels in config.ini)
 // Version: 1.8.2 - the colour picker offers its design list, folds its channels and is
@@ -162,6 +163,23 @@ namespace {
     float CardInnerWidth(const UltraCanvasGroupBox& card) {
         const GroupBoxVisualStyle& s = card.GetVisualStyle();
         return kRightInner - 2.0f * (s.borderWidth + s.contentPadding);
+    }
+
+    // A line in the sense of the Line card: an open stroke that arrowheads,
+    // a width profile and a brush go along - a straight line, a polyline or
+    // an open path, not a closed shape.
+    bool IsOpenLine(const VectorElement& e) {
+        switch (e.Type) {
+            case VectorElementType::Line: case VectorElementType::Polyline: return true;
+            case VectorElementType::Path: {
+                const auto* path = dynamic_cast<const VectorPath*>(&e);
+                if (!path || path->Path.Closed) return false;
+                for (const auto& c : path->Path.commands)
+                    if (c.Type == PathCommandType::ClosePath) return false;
+                return true;
+            }
+            default: return false;
+        }
     }
 
     const char* ElementKindName(const VectorElement& e) {
@@ -1336,6 +1354,7 @@ void ArtCreatorWindow::OnSelectionChanged() {
     SyncLinePanelFromSelection();
     RefreshTransformBar();
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
+    UpdateToolCards();   // the Line card follows a selected line
     UpdateStatus();
 }
 
@@ -1979,13 +1998,23 @@ void ArtCreatorWindow::RebuildToolOptions() {
 void ArtCreatorWindow::UpdateToolCards() {
     if (!optionsPanel) return;
     const ArtToolId id = activeTool;
-    const bool drawsLines = id == ArtToolId::Pen || id == ArtToolId::Freehand || id == ArtToolId::Line;
+    bool lineCard = id == ArtToolId::Pen || id == ArtToolId::Freehand || id == ArtToolId::Line;
+    // The Selector and the Shape Editor show it while a line is selected, so
+    // its arrowheads and brush are set without changing tools.
+    if (!lineCard && (id == ArtToolId::Selector || id == ArtToolId::ShapeEditor)) {
+        for (const auto& e : selection->Elements())
+            if (e && IsOpenLine(*e)) { lineCard = true; break; }
+    }
     // Zoom and Push have nothing to set: no card rather than an empty one.
     const bool hasOptions = !optionsPanel->GetChildren().empty();
-    if (optionsPanel->IsVisible() != hasOptions) optionsPanel->SetVisible(hasOptions);
-    if (fillPanel && fillPanel->IsVisible() != (id == ArtToolId::Fill)) fillPanel->SetVisible(id == ArtToolId::Fill);
-    if (linePanel && linePanel->IsVisible() != drawsLines) linePanel->SetVisible(drawsLines);
-    rightPanel->InvalidateLayout();
+    bool changed = false;
+    auto show = [&changed](const std::shared_ptr<UltraCanvasGroupBox>& card, bool on) {
+        if (card && card->IsVisible() != on) { card->SetVisible(on); changed = true; }
+    };
+    show(optionsPanel, hasOptions);
+    show(fillPanel, id == ArtToolId::Fill);
+    show(linePanel, lineCard);
+    if (changed) rightPanel->InvalidateLayout();
     rightPanel->RequestRedraw();
 }
 

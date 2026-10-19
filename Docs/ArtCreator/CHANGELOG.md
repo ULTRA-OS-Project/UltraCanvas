@@ -10,7 +10,10 @@
   tool's options carry that name already) shows under them with the Fill
   tool, and the
   *Line* card (width, arrowheads, profile, brush) with the tools that draw
-  lines - Pen, Freehand and Straight Line.
+  lines - Pen, Freehand and Straight Line - and with the Selector or the
+  Shape Editor while a line (a straight line, polyline or open path) is
+  selected, so its arrowheads, profile and brush are set without changing
+  tools.
 - **Transform bar fixes.**
   - The *lock* button now also holds when the selection is scaled with the
     mouse: a corner handle scales width and height alike (shift frees it for

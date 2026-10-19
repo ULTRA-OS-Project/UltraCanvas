@@ -222,7 +222,8 @@ private:
     void RebuildToolOptions();
     // Shows the cards that belong to the active tool and hides the rest:
     // Tool Options when the tool has any, Gradient with the Fill tool, Line with
-    // the tools that draw lines.
+    // the tools that draw lines, and with the Selector or Shape Editor while
+    // a line (an open stroke) is selected.
     void UpdateToolCards();
     void RebuildLayerPanel();
     void RebuildLinePanel();
