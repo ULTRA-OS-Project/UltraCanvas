@@ -43671,7 +43671,7 @@ tool and a missing plugin should stop it running.
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
-| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or text view (header summary) |
+| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
@@ -43825,7 +43825,10 @@ format deliberately makes available without parsing the body:
   directly after the fixed header) on the image surface, when present —
   respecting the `PRIVATE` flag, which suppresses the preview. A
   password-protected layered image shows this until it is unlocked;
-- otherwise a **header summary** in the text view.
+- otherwise a **header summary** in the viewer's **note view**: dark like
+  the rest of the viewer and laid out as the Details panel lays out its
+  facts (a heading, then a table of the container's fields) - not on the
+  white page a text file is shown on.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
 container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
@@ -43842,8 +43845,8 @@ damaged).
 A file the viewer can open with its password - a layered `*.ucd` image
 (UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
 or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
-(nothing when the document is private), or a note saying the PDF is
-password-protected. An **Unlock** button comes up in the info bar (so a host
+(its header summary when the document is private), or a note saying the PDF
+is password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
 that hides the top bars, such as UltraFiler's preview pane, still offers it)
 and as an icon in the second toolbar row; **Enter** does the same. Unlock
 asks for the password over the viewer's window - again, saying so, when it
@@ -74045,6 +74048,33 @@ onto white without touching what is drawn on top.
 `page` selects the page of a paged source; `VectorSourceInfo::pageCount` says
 how many there are (1 for everything but PDF).
 
+### A password-protected PDF
+
+A PDF (or `.ai`) that does not open without its password reports it rather
+than failing like a damaged file: `InspectVectorFile(path)` comes back with
+`ok` false and `passwordRequired` true. Ask for the password and inspect
+again with it - `passwordWrong` says the one given does not open it either -
+then hand it to the rasterizer in `VectorRasterOptions::password`:
+
+```cpp
+VectorSourceInfo info = InspectVectorFile(path);
+if (!info.ok && info.passwordRequired) {
+    const std::string password = "tulip";            // what the user typed
+    info = InspectVectorFile(path, password);
+    if (info.passwordWrong) { /* ask again */ }
+    VectorRasterOptions options;
+    options.password = password;
+    std::string error;
+    auto layer = RasterizeVectorFile(path, options, error);
+    if (!layer) ShowError(error);
+}
+```
+
+Which refusals are about a password is decided from the file, not from the
+loader's wording (poppler says *"Document is encrypted"* for a missing and a
+wrong password alike): the refused PDF names an `/Encrypt` dictionary. A
+password given to a file that has none is ignored.
+
 ## Elements of a loaded drawing
 
 `RasterizeVectorElements` is the same job for a drawing that is already open:
@@ -74131,7 +74161,8 @@ ArtCreator's Export is those two calls.
 
 UltraPaint: dropping or opening a drawing asks for the raster size and then
 comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
-`UltraPaintImportDialog`).
+`UltraPaintImportDialog`); a password-protected PDF asks for its password
+first, again while it is wrong.
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
 by `RasterizeVectorElements`, and *Export* writes PNG, JPEG and the other
@@ -74151,7 +74182,9 @@ build: the crop to what is painted, a stroke past the bounds, the scale, an
 ancestor's transform, and the refusals. So do its `RasterizeVectorDocument`
 checks: the natural size, a page twenty times larger with a hard edge, one
 side following the page's shape, a size in another shape, both backgrounds,
-and the refusals.
+and the refusals. A password-protected PDF (`Tests/fixtures/pdf-aes256-locked.pdf`)
+reports a missing and a wrong password as such, is refused without one, and
+measures and rasterizes with the right one.
 
 ## See also
 

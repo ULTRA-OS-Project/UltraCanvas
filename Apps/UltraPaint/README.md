@@ -285,6 +285,13 @@ graphics plugins the application registers: **DXF**, **DWG**, **EMF** and
 `GetVectorRasterExtensions()` is what the running build can actually
 rasterize, and it is what the Open dialog's filter lists.
 
+A **password-protected PDF** asks for its password first - the page cannot
+even be measured without it - and again, saying so, while it is not right;
+then the raster-size question comes as for any drawing, and the page is
+rendered with the password. Cancel imports nothing. Of the files dropped
+together, the first is asked for; a protected one among the rest says it
+needs its password and is left out (drop it on its own).
+
 ### 3D models
 
 A model has neither pixels nor a size — and, unlike a drawing, no view either,

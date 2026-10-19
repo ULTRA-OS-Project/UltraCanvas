@@ -16,3 +16,7 @@
     drawing: the viewer showed its first page as a flat picture, without the
     other pages or the page inventory. A PDF that fails to open no longer
     leaves the last one on show under its name.
+  - The viewer's own notes - a `*.ucd`'s header summary, a locked PDF's -
+    are in a note view of their own, dark like the rest of the viewer and laid
+    out as the Details panel is, instead of plain text on the white page the
+    text view gives a text file.

@@ -6,6 +6,10 @@
   all its pages, the image at full size. Until then a `.ucd` shows its
   thumbnail and a PDF a note saying it is protected. Browsing a folder never
   asks on its own (framework changelog, pending entry `media-viewer-unlock`).
+- **The viewer's own notes are dark.** What it says about a file it shows no
+  picture of - a `.ucd`'s summary, a protected PDF's note - was printed on a
+  white page in the dark window; it is in the viewer's colours now, laid out
+  like the Details panel.
 - **PDFs show every page again.** A PDF had been shown as a picture of its
   first page; it opens in the PDF view again, with the page strip and page
   zoom.

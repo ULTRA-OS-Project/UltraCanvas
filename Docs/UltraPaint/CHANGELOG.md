@@ -9,6 +9,11 @@
   one, and *Save* keeps it protected; *Save* or *Save As* to another format
   says first that the file goes without the protection (framework
   changelog, pending entry `ucd-password-protection`).
+- **A password-protected PDF imports.** Opening or dropping one only ever
+  failed: the PDF reader UltraPaint draws pages with had no way to be given
+  a password. It now asks for the password first - again when it is not
+  right - then for the raster size as for any drawing, and renders the page
+  with it (framework changelog, pending entry `vector-raster-pdf-password`).
 
 #### 2026-10-16 *0.2.25*
 - **The colour panel takes less room, and stays as it was left.** The

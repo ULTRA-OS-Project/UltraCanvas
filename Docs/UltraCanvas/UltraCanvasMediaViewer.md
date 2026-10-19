@@ -84,7 +84,7 @@ tool and a missing plugin should stop it running.
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
-| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or text view (header summary) |
+| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
@@ -238,7 +238,10 @@ format deliberately makes available without parsing the body:
   directly after the fixed header) on the image surface, when present —
   respecting the `PRIVATE` flag, which suppresses the preview. A
   password-protected layered image shows this until it is unlocked;
-- otherwise a **header summary** in the text view.
+- otherwise a **header summary** in the viewer's **note view**: dark like
+  the rest of the viewer and laid out as the Details panel lays out its
+  facts (a heading, then a table of the container's fields) - not on the
+  white page a text file is shown on.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
 container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
@@ -255,8 +258,8 @@ damaged).
 A file the viewer can open with its password - a layered `*.ucd` image
 (UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
 or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
-(nothing when the document is private), or a note saying the PDF is
-password-protected. An **Unlock** button comes up in the info bar (so a host
+(its header summary when the document is private), or a note saying the PDF
+is password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
 that hides the top bars, such as UltraFiler's preview pane, still offers it)
 and as an icon in the second toolbar row; **Enter** does the same. Unlock
 asks for the password over the viewer's window - again, saying so, when it
