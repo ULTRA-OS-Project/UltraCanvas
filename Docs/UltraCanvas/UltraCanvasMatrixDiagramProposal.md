@@ -69,7 +69,24 @@ The competitive-assessment block followed: `MatrixModel::competitors` and
 House's grid as one marker per need per competitor, joined row to row, with the
 competitors in the legend and the ratings in JSON.
 
-Still open: D7 `C` (deferred per Q3) and C4 attribute gutters (deferred).
+C4 (2026-10-19) delivered the attribute gutter: `MatrixItemSet::columns` names
+the columns and `MatrixItem::attributes` holds each item's values, drawn as plain
+text columns between the row labels and the grid of an `L` or a `House`, carried
+in JSON and listed in a row's tooltip. Departures from the plan below:
+
+* **The driver is the improvement-tools sample, not image 2.** Image 2 was
+  ceded in revision 3; the gutter shipped once the L sample had facts worth
+  showing beside its departments (head count, a trained facilitator).
+* **Left of the grid, not right of it.** The row totals and a House's
+  competitive block already own the right edge, and the values describe the row
+  item, so they read with its label.
+* **No gutter on T, X or Y.** A T's labels sit on the spine between two grids,
+  and the X and Y list items along arms shared by two panels; none has a free
+  edge beside its labels. Their values are in the tooltip.
+* **Not in the CSV forms.** Those carry one panel's marks, and an extra column
+  would collide with `ImportMatrixTable`'s Importance column.
+
+Still open: D7 `C` (deferred per Q3).
 
 **Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
 architectural room-adjacency matrices, and adjacency data is already modelled by
@@ -642,7 +659,7 @@ Codes follow the fishbone/contour proposals so phasing can reference them.
 - **C4** Attribute gutter columns — **demoted in revision 3.** Image 2 was its
   only driver and is now ceded, and the adjacency proposal picks the feature up
   as its own §2.4. Keep the slot, build it when a matrix-element caller asks.
-  *(Deferred)*
+  *(Done 2026-10-19 — L and House; see the status notes at the top)*
 - **C5** Scale presets: QFD (9/3/1), Strength531 (5/3/1), HighMediumLow,
   Presence — with caller-settable weights throughout (§3.6a).
 - **C6** Three worked samples for the demo: improvement tools × departments

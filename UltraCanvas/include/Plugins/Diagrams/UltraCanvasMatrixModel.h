@@ -1,11 +1,12 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixModel.h
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.5.0 - attribute gutter: per-set attribute columns and per-item values
 // Version: 1.4.0 - competitive assessment: competitors and their per-need ratings
 // Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
 // Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 //
 // This is the semantic model behind the matrix diagram feature. Like
@@ -169,6 +170,11 @@ namespace UltraCanvas {
         MatrixImprovement improvement = MatrixImprovement::NoDirection;
         std::string       target;
 
+        // Values for the set's attribute columns (MatrixItemSet::columns), in
+        // the same order. Free text - "Y", "N", "120 m2" - read by people and
+        // never parsed. A short vector leaves the remaining columns blank.
+        std::vector<std::string> attributes;
+
         MatrixItem() = default;
         MatrixItem(const std::string& itemId, const std::string& itemLabel,
                    double itemImportance = 1.0)
@@ -181,6 +187,12 @@ namespace UltraCanvas {
         Color                   accent = Color(90, 130, 200, 255);
         std::vector<MatrixItem> items;
 
+        // Headers of the attribute gutter: extra columns of plain text the
+        // diagram draws between a set's row labels and the grid - a size, an
+        // owner, a Y/N flag. Each item's values are in MatrixItem::attributes.
+        // Empty = no gutter.
+        std::vector<std::string> columns;
+
         MatrixItemSet() = default;
         MatrixItemSet(const std::string& setId, const std::string& setTitle)
                 : id(setId), title(setTitle) {}
@@ -189,6 +201,10 @@ namespace UltraCanvas {
         int IndexOf(const std::string& itemId) const;
 
         int Count() const { return static_cast<int>(items.size()); }
+
+        // An item's value for attribute column `column`, or an empty string
+        // when either index is out of range or the item leaves it blank.
+        std::string AttributeOf(int item, int column) const;
     };
 
 // =============================================================================
@@ -384,8 +400,9 @@ namespace UltraCanvas {
         // Checks set count against the shape, panel set references, cell
         // indices and level ids, that an X or Y panel crosses two sets the
         // shape can actually place side by side, and that every rating names a
-        // known need and competitor and lies in 1..ratingMax. Cheap enough to call before
-        // every render.
+        // known need and competitor and lies in 1..ratingMax. Warns about an
+        // item with more attribute values than its set has columns - the
+        // extras are never drawn. Cheap enough to call before every render.
         MatrixValidation Validate() const;
 
         void Clear();
@@ -430,8 +447,9 @@ namespace UltraCanvas {
     //
     //   { "format": "ultracanvas-matrix", "version": 1, "title": ..., "shape": "House",
     //     "header": [ {"label", "value"} ],
-    //     "sets":   [ {"id", "title", "accent": [r,g,b,a], "items": [ {"id", "label",
-    //                 "importance", "note", "improvement", "target", "accent"} ]} ],
+    //     "sets":   [ {"id", "title", "accent": [r,g,b,a], "columns": [ ... ],
+    //                 "items": [ {"id", "label", "importance", "note", "improvement",
+    //                 "target", "accent", "attributes": [ ... ]} ]} ],
     //     "panels": [ {"rows", "columns", "symmetric", "scale": {"title", "levels":
     //                 [ {"id", "label", "glyph", "shape", "color", "weight", "size"} ]}} ],
     //     "cells":  [ {"panel", "row", "column", "level", "note"} ] }
@@ -457,7 +475,9 @@ namespace UltraCanvas {
     namespace MatrixSamples {
 
         // L-shaped: which improvement tools each department applies, on the
-        // 5/3/1 strength scale, with totals on both axes.
+        // 5/3/1 strength scale, with totals on both axes. The departments
+        // carry two attribute columns, head count and whether they have a
+        // trained facilitator.
         MatrixModel ImprovementTools();
 
         // T-shaped: employees down the spine, projects on the left wing and

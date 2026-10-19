@@ -1,11 +1,12 @@
 // Plugins/Diagrams/UltraCanvasMatrixModel.cpp
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.5.0 - attribute gutter: per-set attribute columns and per-item values
 // Version: 1.4.0 - competitive assessment: competitors and their per-need ratings
 // Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
 // Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
@@ -128,6 +129,13 @@ namespace UltraCanvas {
             if (items[i].id == itemId) return static_cast<int>(i);
         }
         return -1;
+    }
+
+    std::string MatrixItemSet::AttributeOf(int item, int column) const {
+        if (item < 0 || item >= Count() || column < 0) return std::string();
+        const std::vector<std::string>& values = items[static_cast<size_t>(item)].attributes;
+        return static_cast<size_t>(column) < values.size() ? values[static_cast<size_t>(column)]
+                                                           : std::string();
     }
 
 // =============================================================================
@@ -384,6 +392,14 @@ namespace UltraCanvas {
             if (sets[s].id.empty()) fail("set " + std::to_string(s) + " has an empty id");
             if (sets[s].items.empty()) {
                 result.warnings.push_back("set '" + sets[s].id + "' has no items");
+            }
+            for (const MatrixItem& item : sets[s].items) {
+                if (item.attributes.size() > sets[s].columns.size()) {
+                    result.warnings.push_back("item '" + item.id + "' of set '" + sets[s].id + "' has "
+                                              + std::to_string(item.attributes.size())
+                                              + " attribute values for "
+                                              + std::to_string(sets[s].columns.size()) + " columns");
+                }
             }
             for (size_t i = 0; i < sets[s].items.size(); ++i) {
                 for (size_t j = i + 1; j < sets[s].items.size(); ++j) {
@@ -906,6 +922,20 @@ namespace UltraCanvas {
             if (!text.empty()) object.Set(key, text);
         }
 
+        JSONValue StringArray(const std::vector<std::string>& texts) {
+            JSONValue array = JSONValue::MakeArray();
+            for (const std::string& text : texts) array.Append(JSONValue(text));
+            return array;
+        }
+
+        // An array of strings; anything else in it is read as an empty string,
+        // so one stray number cannot shift the values after it a column left.
+        std::vector<std::string> ReadStrings(const JSONValue& array) {
+            std::vector<std::string> texts;
+            for (const JSONValue& value : array.GetElements()) texts.push_back(value.GetString());
+            return texts;
+        }
+
     } // namespace
 
     JSONValue MatrixModelToJson(const MatrixModel& model) {
@@ -930,6 +960,7 @@ namespace UltraCanvas {
             s.Set("id", set.id);
             SetText(s, "title", set.title);
             s.Set("accent", JSON::FromColor(set.accent));
+            if (!set.columns.empty()) s.Set("columns", StringArray(set.columns));
             JSONValue items = JSONValue::MakeArray();
             for (const MatrixItem& item : set.items) {
                 JSONValue i = JSONValue::MakeObject();
@@ -942,6 +973,7 @@ namespace UltraCanvas {
                     i.Set("improvement", NameOf(kImprovementNames, item.improvement));
                 }
                 SetText(i, "target", item.target);
+                if (!item.attributes.empty()) i.Set("attributes", StringArray(item.attributes));
                 items.Append(i);
             }
             s.Set("items", items);
@@ -1054,6 +1086,7 @@ namespace UltraCanvas {
             if (s.Contains("accent") && !JSON::ToColor(s.Get("accent"), set.accent)) {
                 return failWith("set '" + set.id + "' has an unreadable accent colour");
             }
+            set.columns = ReadStrings(s.Get("columns"));
             for (const JSONValue& i : s.Get("items").GetElements()) {
                 MatrixItem item;
                 item.id = i.Get("id").GetString();
@@ -1064,6 +1097,7 @@ namespace UltraCanvas {
                 if (i.Contains("accent")) JSON::ToColor(i.Get("accent"), item.accent);
                 item.note = i.Get("note").GetString();
                 item.target = i.Get("target").GetString();
+                item.attributes = ReadStrings(i.Get("attributes"));
                 const std::string improvement = i.Get("improvement").GetString("none");
                 if (!ValueOf(kImprovementNames, improvement, item.improvement)) {
                     return failWith("item '" + item.id + "' has an unknown improvement '" + improvement + "'");
@@ -1188,6 +1222,16 @@ namespace UltraCanvas {
                          {"Graphical Analysis", "SPC", "KPIs", "Data Collection Methods",
                           "Cause and Effect", "Process Mapping", "Kaizen", "5S"});
             model.AddPanel("departments", "tools", MatrixScale::Strength531());
+
+            // The attribute gutter: head count, and whether the department has
+            // a trained improvement facilitator of its own.
+            model.sets[0].columns = {"Staff", "Facilitator"};
+            static const char* const attributes[][2] = {
+                {"12", "N"}, {"18", "N"}, {"9", "N"}, {"24", "Y"}, {"15", "Y"},
+                {"11", "N"}, {"31", "Y"}, {"140", "Y"}, {"8", "N"}};
+            for (size_t i = 0; i < model.sets[0].items.size(); ++i) {
+                model.sets[0].items[i].attributes = {attributes[i][0], attributes[i][1]};
+            }
 
             // Rows as (department, one level id per tool; empty = no relationship).
             struct Row { const char* dept; const char* marks[8]; };

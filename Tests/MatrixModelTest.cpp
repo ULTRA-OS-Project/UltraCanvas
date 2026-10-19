@@ -10,12 +10,13 @@
 // tools" matrix that drove the 5/3/1 preset: its printed row totals are the
 // arithmetic these tests pin down.
 //
+// Version: 1.5.0 - attribute columns: lookup, validation and JSON
 // Version: 1.4.0 - competitive assessment: ratings, their validation and their JSON
 // Version: 1.3.0 - JSON interchange: every sample round-trips, failures leave the model untouched
 // Version: 1.2.0 - symmetric panels, House validation, relative weights, the importance column, ImportMatrixTable, the House sample
 // Version: 1.1.0 - X and Y panel validation, form header fields, the X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
@@ -774,6 +775,53 @@ static void TestJsonRoundTrip() {
           "after every failure the model is untouched");
 }
 
+static void TestAttributes() {
+    std::printf("\n[attribute columns]\n");
+
+    MatrixModel tools = MatrixSamples::ImprovementTools();
+    const MatrixItemSet& depts = tools.sets[0];
+    CHECK(depts.columns.size() == 2 && depts.columns[1] == "Facilitator",
+          "the departments carry two attribute columns");
+    CHECK(depts.AttributeOf(depts.IndexOf("IT"), 0) == "24" && depts.AttributeOf(depts.IndexOf("IT"), 1) == "Y",
+          "a value reads back by item and column");
+    CHECK(depts.AttributeOf(-1, 0).empty() && depts.AttributeOf(0, 2).empty() &&
+          depts.AttributeOf(99, 0).empty() && depts.AttributeOf(0, -1).empty(),
+          "out-of-range indices read as blank");
+    CHECK(tools.Validate().warnings.empty(), "the sample validates without warnings");
+
+    MatrixModel shortRow = tools;
+    shortRow.sets[0].items[0].attributes = {"12"};
+    CHECK(shortRow.sets[0].AttributeOf(0, 1).empty() && shortRow.Validate().warnings.empty(),
+          "a short value list leaves the remaining columns blank, without a warning");
+
+    MatrixModel longRow = tools;
+    longRow.sets[0].items[0].attributes.push_back("extra");
+    const MatrixValidation v = longRow.Validate();
+    CHECK(v.valid && v.warnings.size() == 1, "more values than columns is a warning, not an error");
+
+    MatrixModel reread;
+    std::string error;
+    CHECK(ImportMatrixJson(ExportMatrixJson(tools), reread, &error) &&
+          reread.sets[0].columns == tools.sets[0].columns &&
+          reread.sets[0].items[6].attributes == tools.sets[0].items[6].attributes,
+          "columns and values survive JSON");
+
+    const JSONValue plain = MatrixModelToJson(MatrixSamples::QualityFunctionDeployment());
+    CHECK(!plain["sets"][0].Contains("columns") && !plain["sets"][0]["items"][0].Contains("attributes"),
+          "a set without columns writes neither member");
+
+    // A stray non-string reads as blank and keeps the values after it in their columns.
+    std::string text = ExportMatrixJson(tools, false);
+    const std::string hr = "\"attributes\":[\"12\",\"N\"]";
+    const size_t at = text.find(hr);
+    CHECK(at != std::string::npos, "the compact JSON holds HR's values as written");
+    if (at != std::string::npos) text.replace(at, hr.size(), "\"attributes\":[12,\"N\"]");
+    MatrixModel stray;
+    CHECK(ImportMatrixJson(text, stray, &error) && stray.sets[0].AttributeOf(0, 0).empty() &&
+          stray.sets[0].AttributeOf(0, 1) == "N",
+          "a non-string value reads as blank in its own column");
+}
+
 static void TestCompetitiveAssessment() {
     std::printf("\n[competitive assessment]\n");
 
@@ -855,6 +903,7 @@ int main() {
     TestImportTable();
     TestJsonRoundTrip();
     TestCompetitiveAssessment();
+    TestAttributes();
 
     std::printf("\n================================\n");
     if (g_failures == 0) {

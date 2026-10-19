@@ -11,7 +11,7 @@ and the weights behind those symbols roll up into per-row and per-column totals.
 form header band, cell tint, hover bands that run across panels, a ranked bar
 strip for the column totals, and spreadsheet import - and Phase 4: pan and
 zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
-the House's competitive-assessment block. See
+the House's competitive-assessment block and the attribute gutter. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Contents
@@ -25,6 +25,7 @@ the House's competitive-assessment block. See
   - [The Y shape](#the-y-shape)
   - [The House of Quality](#the-house-of-quality)
   - [The form header band](#the-form-header-band)
+  - [The attribute gutter](#the-attribute-gutter)
 - [Relationship scales](#relationship-scales)
 - [Roll-ups](#roll-ups)
 - [Presentation](#presentation)
@@ -265,6 +266,34 @@ x.headerFields = {
 xDiagram->SetShowHeaderBand(true);   // the default; false hides it
 ```
 
+### The attribute gutter
+
+A row item often carries a few plain facts beside its relationships: a head
+count, an owner, a Y/N flag. Name the columns on the set and give each item its
+values in the same order; an `L` or a `House` draws them as a gutter of text
+columns between the row labels and the grid (and the House's importance column):
+
+<!-- doc-check: MatrixModel tools; -->
+
+```cpp
+MatrixItemSet& departments = tools.sets[0];
+departments.columns = {"Staff", "Facilitator"};
+departments.items[0].attributes = {"12", "N"};
+departments.items[1].attributes = {"18"};          // Facilitator left blank
+std::string staff = departments.AttributeOf(0, 0); // "12"; "" when out of range
+diagram->SetShowAttributes(true);                  // the default; false hides it
+```
+
+Values are text, read by people and never parsed. Each column is as wide as its
+header or its widest value, up to `style.maxAttributeColumnWidth`; longer values
+are ellipsised. Pointing into the gutter reports the whole row, as its label does,
+and a row's tooltip lists its values - which is where a `T`, `X` or `Y` shows
+them, since their labels have no room beside them for a gutter. Hiding the gutter
+gives the grid its width back. The values travel in JSON (`"columns"` on the set,
+`"attributes"` on the item); the CSV forms leave them out. An item with more
+values than its set has columns validates with a warning, and the extras are not
+drawn.
+
 ## Relationship scales
 
 A scale is an ordered list of levels, strongest first. Each level carries an id,
@@ -369,6 +398,7 @@ style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
 style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
 style.cellTintAlpha = 56;          // ... this faintly, under the mark
+style.maxAttributeColumnWidth = 90; // the attribute gutter's widest column
 diagram->SetStyle(style);
 ```
 
@@ -509,7 +539,7 @@ if (!ImportMatrixTable(sheetCsv, MatrixScale::QFD(), imported,
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+`MatrixSamples::ImprovementTools()` (L, with an attribute gutter), `MatrixSamples::EmployeeAllocation()`
 (T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
 `MatrixSamples::SupplyChain()` (X, with a form header),
 `MatrixSamples::DesignTraceability()` (Y) and `MatrixSamples::HouseOfQuality()`
@@ -532,7 +562,8 @@ quadrant; for a `Y`, that every panel crosses two different sets among the first
 three and that no pair appears twice; for a `House`, that panel 0 crosses two
 different sets and any further panel is the symmetric roof over its columns.
 A cell of a symmetric panel on or below the diagonal is an error. `warnings` collects things that are drawable but
-suspicious, such as an empty item set.
+suspicious, such as an empty item set or an item with more attribute values than
+its set has columns.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
 items and level ids, so `Validate()` mainly matters when you have assembled a

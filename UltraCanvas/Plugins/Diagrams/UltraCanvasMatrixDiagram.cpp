@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.5.0 - the attribute gutter: a set's attribute columns between its row labels and the grid (L and House)
 // Version: 1.4.0 - the House of Quality's competitive-assessment block
 // Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
 // Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
@@ -7,7 +8,7 @@
 // Version: 1.1.0 - Phase 2: X (blank or captioned hub) and Y shapes on one cell lattice, form header band, cell tint, hover bands across panels
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
@@ -52,6 +53,8 @@ namespace UltraCanvas {
         to.headerFieldValueColor   = from.headerFieldValueColor;
         to.headerBandBackground    = from.headerBandBackground;
         to.headerBandBorderColor   = from.headerBandBorderColor;
+        to.attributeBackground     = from.attributeBackground;
+        to.attributeTextColor      = from.attributeTextColor;
     }
 
     void MatrixDiagramStyle::ApplyLightTheme() {
@@ -78,6 +81,8 @@ namespace UltraCanvas {
         headerFieldValueColor   = Color(232, 236, 242, 255);
         headerBandBackground    = Color( 38,  42,  50, 255);
         headerBandBorderColor   = Color( 74,  80,  92, 255);
+        attributeBackground     = Color( 43,  47,  56, 255);
+        attributeTextColor      = Color(222, 228, 236, 255);
     }
 
 // =============================================================================
@@ -375,6 +380,13 @@ namespace UltraCanvas {
         if (showCompetitive == on) return;
         showCompetitive = on;
         RebuildLegend();
+        DropLayoutCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::SetShowAttributes(bool on) {
+        if (showAttributes == on) return;
+        showAttributes = on;
         DropLayoutCache();
         RequestRedraw();
     }
@@ -705,9 +717,35 @@ namespace UltraCanvas {
         return pl;
     }
 
+    double UltraCanvasMatrixDiagram::MeasureAttributes(IRenderContext* ctx, PanelLayout& pl) const {
+        pl.attributeWidths.clear();
+        const MatrixItemSet* rows = model.RowSet(pl.panelIndex);
+        if (!showAttributes || !rows || rows->columns.empty()) return 0.0;
+
+        // As wide as the header or the widest value, whichever is wider, so
+        // a short Y/N column stays narrow and a header is never cut short of
+        // the cap.
+        double total = 0.0;
+        for (size_t c = 0; c < rows->columns.size(); ++c) {
+            ctx->SetFontSize(style.colLabelFontSize);
+            double widest = ctx->GetTextLineWidth(rows->columns[c]);
+            ctx->SetFontSize(style.attributeFontSize);
+            for (int r = 0; r < rows->Count(); ++r) {
+                widest = std::max(widest, static_cast<double>(
+                        ctx->GetTextLineWidth(rows->AttributeOf(r, static_cast<int>(c)))));
+            }
+            const double width = std::min(widest + style.labelPadding * 2.0,
+                                          style.maxAttributeColumnWidth);
+            pl.attributeWidths.push_back(width);
+            total += width;
+        }
+        return total;
+    }
+
     void UltraCanvasMatrixDiagram::LayoutL(IRenderContext* ctx, const Rect2Dd& area) {
         PanelLayout pl = MeasurePanel(ctx, 0, false);
         if (pl.rows == 0 || pl.cols == 0) return;
+        const double attrW = MeasureAttributes(ctx, pl);
 
         const bool rowTotals = (totals == MatrixTotals::Rows || totals == MatrixTotals::Both);
         const bool colTotals = (totals == MatrixTotals::Columns || totals == MatrixTotals::Both);
@@ -718,7 +756,7 @@ namespace UltraCanvas {
         // The header fit then follows from the cell width, and the band height
         // from the fit - which is what keeps this a single pass instead of a
         // measure/place cycle (see the proposal, section 7.3).
-        const double gridLeft = area.x + pl.rowLabels.width + axisTitleSpace;
+        const double gridLeft = area.x + pl.rowLabels.width + attrW + axisTitleSpace;
         const double gridAvailW = area.x + area.width - gridLeft
                                   - (rowTotals ? style.totalsGutterSize : 0.0);
         pl.cellWidth = FitCellSize(gridAvailW, pl.cols);
@@ -757,6 +795,7 @@ namespace UltraCanvas {
                                pl.rowLabels.width, pl.grid.height);
         pl.colLabels = Rect2Dd(pl.grid.x, area.y + axisTitleSpace,
                                pl.grid.width, bandHeight);
+        if (attrW > 0.0) pl.attributes = Rect2Dd(gridLeft - attrW, pl.grid.y, attrW, pl.grid.height);
 
         if (rowTotals) {
             pl.rowTotals = Rect2Dd(pl.grid.x + pl.grid.width, pl.grid.y,
@@ -793,6 +832,7 @@ namespace UltraCanvas {
         PanelLayout pl = MeasurePanel(ctx, 0, false);
         if (pl.rows == 0 || pl.cols == 0) return false;
         const MatrixItemSet* cols = model.ColSet(0);
+        const double attrW = MeasureAttributes(ctx, pl);
 
         const bool rowTotals = (totals == MatrixTotals::Rows || totals == MatrixTotals::Both);
         const bool colTotals = (totals == MatrixTotals::Columns || totals == MatrixTotals::Both);
@@ -808,7 +848,7 @@ namespace UltraCanvas {
         const double dirH = anyDirection ? style.improvementRowHeight : 0.0;
         const double tgtH = anyTarget ? style.targetRowHeight : 0.0;
 
-        const double gridLeft = area.x + axisTitleSpace + pl.rowLabels.width + impW;
+        const double gridLeft = area.x + axisTitleSpace + pl.rowLabels.width + attrW + impW;
         // The competitive block takes its width off the right before the cells
         // are sized, and the rotated headers may not lean into it either.
         const double compGap = 10.0;
@@ -855,8 +895,9 @@ namespace UltraCanvas {
 
         pl.grid = Rect2Dd(gridLeft, gridTop, pl.cellWidth * pl.cols, pl.cellHeight * pl.rows);
         SetAxisLattice(pl, false);
-        pl.rowLabels = Rect2Dd(gridLeft - impW - pl.rowLabels.width, gridTop,
+        pl.rowLabels = Rect2Dd(gridLeft - impW - attrW - pl.rowLabels.width, gridTop,
                                pl.rowLabels.width, pl.grid.height);
+        if (attrW > 0.0) pl.attributes = Rect2Dd(gridLeft - impW - attrW, gridTop, attrW, pl.grid.height);
         pl.colLabels = Rect2Dd(gridLeft, roofBase, pl.grid.width, bandHeight);
         pl.colTitleInCorner = true;
         if (impW > 0.0) pl.importance = Rect2Dd(gridLeft - impW, gridTop, impW, pl.grid.height);
@@ -1588,6 +1629,7 @@ namespace UltraCanvas {
         RenderColumnLabels(ctx, pl);
         RenderTotals(ctx, pl);
         RenderHouseBands(ctx, pl);
+        RenderAttributes(ctx, pl);
         RenderCompetitive(ctx, pl);
         if (showAxisTitles) RenderAxisTitles(ctx, pl);
     }
@@ -2124,6 +2166,62 @@ namespace UltraCanvas {
     // joined row to row so the eye follows one product down the needs - the
     // way a House of Quality is read. A gap in a competitor's ratings breaks
     // its line rather than bridging it.
+    // The attribute gutter: one plain-text column per header, every row's
+    // value in it, and each header standing in the column-label band above
+    // like the grid's own.
+    void UltraCanvasMatrixDiagram::RenderAttributes(IRenderContext* ctx, const PanelLayout& pl) {
+        const MatrixItemSet* rows = model.RowSet(pl.panelIndex);
+        if (!rows || pl.attributes.width <= 0.0) return;
+
+        ctx->SetFillPaint(style.attributeBackground);
+        ctx->FillRectangle(pl.attributes);
+        ctx->SetStrokePaint(style.gridLineColor);
+        ctx->SetStrokeWidth(style.gridLineWidth);
+        for (int r = 0; r <= pl.rows; ++r) {
+            const double y = pl.grid.y + r * pl.cellHeight;
+            ctx->DrawLine(Point2Dd(pl.attributes.x, y), Point2Dd(pl.attributes.x + pl.attributes.width, y));
+        }
+
+        const double headerH = style.colLabelFontSize + 12.0;
+        const double bandBottom = pl.colLabels.y + pl.colLabels.height;
+        double x = pl.attributes.x;
+        for (size_t c = 0; c < pl.attributeWidths.size() && c < rows->columns.size(); ++c) {
+            const double w = pl.attributeWidths[c];
+            ctx->SetStrokePaint(style.gridLineColor);
+            ctx->DrawLine(Point2Dd(x, pl.attributes.y), Point2Dd(x, pl.attributes.y + pl.attributes.height));
+
+            ctx->SetFontSize(style.attributeFontSize);
+            ctx->SetTextPaint(style.attributeTextColor);
+            for (int r = 0; r < pl.rows && r < rows->Count(); ++r) {
+                const std::string text = EllipsizeToWidth(
+                        ctx, rows->AttributeOf(r, static_cast<int>(c)), w - style.labelPadding);
+                if (text.empty()) continue;
+                Size2Di s = ctx->GetTextLineDimensions(text);
+                ctx->DrawText(text, Point2Dd(x + (w - s.width) / 2.0,
+                                             pl.grid.y + r * pl.cellHeight + (pl.cellHeight - s.height) / 2.0));
+            }
+
+            // The header, at the foot of the band in a strip like the
+            // horizontal column labels'.
+            if (pl.colLabels.height > 0.0) {
+                const Rect2Dd strip(x, bandBottom - headerH, w, headerH);
+                if (style.fillLabelBands) {
+                    ctx->SetFillPaint(style.labelBandColor);
+                    ctx->FillRectangle(strip);
+                }
+                ctx->SetFontSize(style.colLabelFontSize);
+                ctx->SetTextPaint(style.fillLabelBands ? style.labelBandTextColor : EffectiveLabelColor());
+                const std::string header = EllipsizeToWidth(ctx, rows->columns[c], w - 4.0);
+                Size2Di s = ctx->GetTextLineDimensions(header);
+                ctx->DrawText(header, Point2Dd(x + (w - s.width) / 2.0,
+                                               strip.y + (strip.height - s.height) / 2.0));
+            }
+            x += w;
+        }
+        ctx->SetStrokePaint(style.gridLineColor);
+        ctx->DrawLine(Point2Dd(x, pl.attributes.y), Point2Dd(x, pl.attributes.y + pl.attributes.height));
+    }
+
     void UltraCanvasMatrixDiagram::RenderCompetitive(IRenderContext* ctx, const PanelLayout& pl) {
         if (pl.competitive.width <= 0.0 || pl.rows == 0) return;
         const MatrixItemSet* needs = model.RowSet(pl.panelIndex);
@@ -2472,14 +2570,17 @@ namespace UltraCanvas {
             const bool inGridY = py >= pl.grid.y && py < pl.grid.y + pl.grid.height;
 
 
-            // Row label band, or a House's importance column -> the whole row.
+            // Row label band, the attribute gutter, or a House's importance
+            // column -> the whole row.
             const bool inRowLabels = pl.rowLabels.width > 0.0 &&
                     px >= pl.rowLabels.x && px < pl.rowLabels.x + pl.rowLabels.width;
+            const bool inAttributes = pl.attributes.width > 0.0 &&
+                    px >= pl.attributes.x && px < pl.attributes.x + pl.attributes.width;
             const bool inImportance = pl.importance.width > 0.0 &&
                     px >= pl.importance.x && px < pl.importance.x + pl.importance.width;
             const bool inCompetitive = pl.competitive.width > 0.0 &&
                     px >= pl.competitive.x && px < pl.competitive.x + pl.competitive.width;
-            if (inGridY && (inRowLabels || inImportance || inCompetitive)) {
+            if (inGridY && (inRowLabels || inAttributes || inImportance || inCompetitive)) {
                 MatrixRef ref;
                 ref.panel = pl.panelIndex;
                 ref.row = std::clamp(static_cast<int>((py - pl.grid.y) / pl.cellHeight),
@@ -2939,6 +3040,11 @@ namespace UltraCanvas {
         } else if (ref.row >= 0 && ref.row < rows->Count()) {
             const MatrixItem& item = rows->items[static_cast<size_t>(ref.row)];
             out << item.label << "\ntotal " << FormatTotal(model.RowScore(ref.panel, ref.row));
+            // The attribute values - also the only place a T, X or Y shows them.
+            for (size_t c = 0; c < rows->columns.size(); ++c) {
+                const std::string value = rows->AttributeOf(ref.row, static_cast<int>(c));
+                if (!value.empty()) out << "\n" << rows->columns[c] << ": " << value;
+            }
             // A need's ratings, when the House shows them.
             if (ref.panel == 0 && CompetitiveShown()) {
                 for (const MatrixCompetitor& competitor : model.competitors) {

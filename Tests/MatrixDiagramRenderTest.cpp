@@ -13,12 +13,13 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.5.0 - the attribute gutter: L and House rows are hit across it, and hiding it gives the grid the width back
 // Version: 1.4.0 - the competitive-assessment block: its rows are hit as the needs, and it gives way when hidden
 // Version: 1.3.0 - pan and zoom keep the pointed-at cell put; keyboard navigation follows the screen; editing cycles levels
 // Version: 1.2.0 - the House: roof cells only above the diagonal, each centred between its two columns; the bar strip
 // Version: 1.1.0 - rotated headers stay inside the element; a theme switch keeps non-colour settings
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
@@ -609,6 +610,67 @@ void TestCompetitive() {
     Check(bareW > cellW, "a House without competitors keeps the whole width for its cells");
 }
 
+// The attribute gutter stands between the row labels and the grid. Pointing
+// into it reports the whole row, as the label does, so the band of x that
+// answers for a row widens by the gutter; hiding the gutter gives that width
+// back and the grid moves left.
+void CheckAttributeGutter(const std::string& name, const MatrixModel& model) {
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    auto diagram = LaidOut(model, canvas);
+    canvas.Save("matrix-attributes-" + name);
+
+    // How far left of the grid the row still answers, and where the grid starts.
+    auto measure = [&](int& rowSpan, int& gridLeft) {
+        Point2Di centre;
+        int cellW = 0;
+        rowSpan = 0;
+        gridLeft = -1;
+        if (!FindCellCentre(*diagram, Ref(0, 2, 0), kWidth, kHeight, centre, cellW)) return;
+        gridLeft = centre.x - cellW / 2;
+        for (int x = 0; x < gridLeft; ++x) {
+            const MatrixRef ref = HoverAt(*diagram, Point2Di(x, centre.y));
+            if (ref.panel == 0 && ref.row == 2 && ref.col < 0) ++rowSpan;
+        }
+    };
+
+    int spanOn = 0, leftOn = 0;
+    measure(spanOn, leftOn);
+    Check(leftOn > 0, name + ": the first column is on screen");
+
+    diagram->SetShowAttributes(false);
+    diagram->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    int spanOff = 0, leftOff = 0;
+    measure(spanOff, leftOff);
+
+    Check(spanOn >= spanOff + 40,
+          name + ": the gutter answers for its row (" + std::to_string(spanOn) + " px of row against "
+          + std::to_string(spanOff) + " without it)");
+    Check(leftOff < leftOn, name + ": hidden, it gives its width back and the grid moves left");
+}
+
+void TestAttributeGutter() {
+    std::cout << "\nAttribute gutter\n";
+    CheckAttributeGutter("L", MatrixSamples::ImprovementTools());
+
+    MatrixModel house = MatrixSamples::HouseOfQuality();
+    house.sets[0].columns = {"Source"};
+    for (MatrixItem& item : house.sets[0].items) item.attributes = {"Survey"};
+    CheckAttributeGutter("House", house);
+
+    // A set without columns draws no gutter: the switch changes nothing.
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    auto plain = LaidOut(MatrixSamples::QualityFunctionDeployment(), canvas);
+    Point2Di before, after;
+    int w0 = 0, w1 = 0;
+    FindCellCentre(*plain, Ref(0, 2, 0), kWidth, kHeight, before, w0);
+    plain->SetShowAttributes(false);
+    plain->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    FindCellCentre(*plain, Ref(0, 2, 0), kWidth, kHeight, after, w1);
+    Check(before.x == after.x && w0 == w1, "a set without attribute columns lays out the same either way");
+}
+
 } // namespace
 
 int main() {
@@ -631,6 +693,7 @@ int main() {
     TestKeyboard();
     TestEditing();
     TestCompetitive();
+    TestAttributeGutter();
     TestThemeKeepsSettings();
 
     std::cout << "\n================================\n";

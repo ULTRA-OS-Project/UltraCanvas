@@ -1,6 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
 // Matrix diagram element: item sets crossed in L, T, X, Y and House arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.5.0 - the attribute gutter: a set's attribute columns between its row labels and the grid (L and House)
 // Version: 1.4.0 - the House of Quality's competitive-assessment block
 // Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
 // Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
@@ -8,7 +9,7 @@
 // Version: 1.1.0 - Phase 2: the X shape (blank or captioned hub), the Y shape, the form header band, cell tint by level, hover bands across panels
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 //
 // The matrix diagram is one of the Seven Management and Planning Tools: it
@@ -183,6 +184,14 @@ namespace UltraCanvas {
         Color   competitiveBackground = Color(250, 251, 252, 255);
         Color   competitiveTickColor  = Color(218, 222, 228, 255);
 
+        // ---- Attribute gutter (L and House) ----
+        // Each column is as wide as its header or its widest value, up to
+        // this; longer values are ellipsised.
+        double  maxAttributeColumnWidth = 120.0;
+        float   attributeFontSize       = 10.5f;
+        Color   attributeBackground     = Color(248, 249, 251, 255);
+        Color   attributeTextColor      = Color(55, 60, 70, 255);
+
         // ---- Cell tint ----
         // Fill each populated cell with its level's colour at this alpha,
         // under the mark - a heatmap look for readers who want one. Off by
@@ -257,6 +266,14 @@ namespace UltraCanvas {
         // has no competitors. A competitor's legend entry highlights it.
         void SetShowCompetitiveAssessment(bool on);
         bool GetShowCompetitiveAssessment() const { return showCompetitive; }
+
+        // L and House: the attribute gutter of the row set's columns
+        // (MatrixItemSet::columns), between the row labels and the grid. On
+        // by default; it draws nothing while the row set has no columns. The
+        // T, X and Y have no room for it beside their labels and leave the
+        // values to the tooltip.
+        void SetShowAttributes(bool on);
+        bool GetShowAttributes() const { return showAttributes; }
 
         void SetShowAxisTitles(bool on);
 
@@ -352,6 +369,7 @@ namespace UltraCanvas {
         MatrixRollUp    rollUp          = MatrixRollUp::Numbers;
         bool            showImportance  = true;
         bool            showCompetitive = true;
+        bool            showAttributes  = true;
         std::string     competitorFilter;   // a highlighted competitor's id, or empty
         bool            showAxisTitles  = true;
         bool            showLegend      = true;
@@ -413,6 +431,11 @@ namespace UltraCanvas {
             Rect2Dd targetRow;                  // target values, below the grid
             Rect2Dd competitive;                // the competitive assessment, right of it
             bool    colTitleInCorner = false;   // the roof takes the space above the header
+
+            // The row set's attribute gutter, between the row labels and the
+            // grid (and a House's importance column). Empty elsewhere.
+            Rect2Dd attributes;
+            std::vector<double> attributeWidths;    // one per MatrixItemSet::columns entry
         };
 
         // A band listing one item set, used by the X and Y shapes, where the
@@ -523,6 +546,10 @@ namespace UltraCanvas {
         void RenderHub(IRenderContext* ctx);
         void RenderHeaderBand(IRenderContext* ctx);
         void RenderHouseBands(IRenderContext* ctx, const PanelLayout& pl);
+        void RenderAttributes(IRenderContext* ctx, const PanelLayout& pl);
+        // The attribute column widths of panel `pl.panelIndex`'s row set, or
+        // none when the gutter is off or the set has no columns. Returns the sum.
+        double MeasureAttributes(IRenderContext* ctx, PanelLayout& pl) const;
         void RenderColumnBars(IRenderContext* ctx, const PanelLayout& pl);
         void RenderCompetitive(IRenderContext* ctx, const PanelLayout& pl);
         bool CompetitiveShown() const;
