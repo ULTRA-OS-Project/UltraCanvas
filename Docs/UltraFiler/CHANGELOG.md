@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.77.0*
+#### 2026-10-19 *1.78.0*
 - **A drive's folder being opened or updated no longer covers the folder
   display.** Opening a folder on an FTP, SFTP or cloud drive put a turning
   ring, *Loading folder* and a line about the connection in the middle of
@@ -66,6 +66,25 @@
   WebDAV, Dropbox, OneDrive or Google Drive it ran to its last byte. The
   drive worker now has one abort check - the window closing, or the preview
   copy no longer wanted - which every request asks, HTTP and FTP alike.
+
+#### 2026-10-19 *1.77.0*
+- **Home button.** The navigation row has a Home button (a house) between
+  Refresh and the split-view button. It opens the home folder of the host
+  system - `HOME` on Linux and macOS, `USERPROFILE` on Windows - in the active
+  folder display, from the History, Favorites and Computer views too.
+- **A copy, move or delete says what it did on the status line.** When a copy or move
+  ends - a paste, a drop onto a folder, Move to / Copy to - the status line
+  says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
+  "alt"`, `2 folders moved to "Archive"`, or `Copy cancelled - 2 of 5 items
+  copied to "alt"` after a Cancel in the progress window. A delete says so
+  the same way: `"report.pdf" moved to the Trash`, `3 files deleted`,
+  `3 of 5 items moved to the Recycle Bin (2 left)`. Before, a short
+  operation finished without a word: its refresh put the folder's item count
+  straight back on the line. Opening another folder ends the note early.
+  The progress window over a long copy or move is unchanged: it opens once the
+  operation has run for the time set in *Settings > Handling > File
+  operations* (2 seconds by default), the same window as Compress and Extract
+  (framework changelog, pending entry `filer-transfer-finished`).
 
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**
