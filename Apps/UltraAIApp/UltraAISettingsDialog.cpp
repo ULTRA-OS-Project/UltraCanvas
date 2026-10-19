@@ -4,6 +4,7 @@
 #include "UltraAISettingsDialog.h"
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasApplication.h"   // UltraCanvasApplicationBase::GetCurrent
 #include "UltraAI.h"
 #ifdef ULTRAAI_HAS_ULTRAVAULT
 #include <UltraVault/UltraVault.h>
@@ -11,6 +12,8 @@
 
 #include <algorithm>
 #include <set>
+#include <thread>
+#include <utility>
 
 namespace UltraAIApp {
 
@@ -22,6 +25,10 @@ constexpr const char* kNewEndpointLabel = "➕  New endpoint";
 } // namespace
 
 UltraAISettingsDialog::UltraAISettingsDialog() = default;
+
+UltraAISettingsDialog::~UltraAISettingsDialog() {
+    uiAlive_->store(false);
+}
 
 std::vector<std::string> UltraAISettingsDialog::AllKnownProviders() const {
     std::set<std::string> uniq;
@@ -150,11 +157,38 @@ void UltraAISettingsDialog::CreateSettingsDialog(const std::string& selectEndpoi
 
     form->AddChild(FieldColumn("set-baseurl", "Base URL (optional, for self-hosted)",
         "https://... — leave empty for the provider default", baseUrlInput_));
-    form->AddChild(FieldColumn("set-model", "Default model (id, GGUF path or checkpoint)",
-        "provider default", modelInput_));
+    // The key sits above the model/fetch row: fetching the server's model list
+    // needs it, so it has to be filled in first.
     form->AddChild(FieldColumn("set-key",
         "API key — cloud providers only; leave empty for local/self-hosted",
         "leave empty to keep the stored key", keyInput_));
+    form->AddChild(FieldColumn("set-model", "Default model (id, GGUF path or checkpoint)",
+        "provider default", modelInput_));
+
+    // Model discovery row: fetch the server's model list, then pick one (which
+    // fills the model field above). Needs the Base URL and, usually, the key.
+    {
+        auto fetchRow = std::make_shared<UltraCanvasContainer>("set-fetch-row");
+        fetchRow->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(AlignItems::Center);
+        fetchRow->size.height = Dimension::Px(30);
+        fetchRow->layoutItem.SetFlexShrink(0);
+
+        auto fetchBtn = std::make_shared<UltraCanvasButton>("set-fetch", 0, 0, 150, 28);
+        fetchBtn->SetText("Fetch models");
+        fetchBtn->size.width = Dimension::Px(150);
+        fetchBtn->layoutItem.SetFlexShrink(0);
+        fetchBtn->onClick = [this]() { OnFetchModels(); };
+        fetchRow->AddChild(fetchBtn);
+
+        modelDropdown_ = std::make_shared<UltraCanvasDropdown>("set-model-dd", 0, 0, 0, 28);
+        modelDropdown_->size.height = Dimension::Px(28);
+        modelDropdown_->layoutItem.SetFlexGrow(1);
+        modelDropdown_->onSelectionChanged = [this](int, const DropdownItem& item) {
+            if (modelInput_) modelInput_->SetText(item.value.empty() ? item.text : item.value);
+        };
+        fetchRow->AddChild(modelDropdown_);
+        form->AddChild(fetchRow);
+    }
 
     // Mode checkboxes in a fixed two-column grid so the second column lines up
     // regardless of how wide each checkbox's label is (a flex row sized each
@@ -263,6 +297,10 @@ void UltraAISettingsDialog::LoadIntoEditor(const Endpoint* e) {
     if (modelInput_)   modelInput_->SetText(e ? e->defaultModel : "");
     if (keyInput_)     keyInput_->SetText("");   // never surface stored keys
 
+    // Offer the endpoint's previously-fetched models without re-querying.
+    fetchedModels_ = e ? e->models : std::vector<Endpoint::DiscoveredModel>{};
+    PopulateModelDropdown();
+
     if (providerDropdown_ && e && !e->providerId.empty()) {
         for (int i = 0; i < providerDropdown_->GetItemCount(); ++i) {
             if (const auto* item = providerDropdown_->GetItem(i);
@@ -311,6 +349,7 @@ void UltraAISettingsDialog::OnSave() {
     e.providerId   = provider;
     e.baseUrl      = baseUrlInput_ ? baseUrlInput_->GetText() : "";
     e.defaultModel = modelInput_ ? modelInput_->GetText() : "";
+    e.models       = fetchedModels_;   // cache the discovered model list
     e.modes.clear();
     for (auto& [cap, cb] : modeChecks_) {
         if (cb->IsChecked()) e.modes.insert(cap);
@@ -339,6 +378,71 @@ void UltraAISettingsDialog::OnSave() {
     editingId_ = e.id;
     RebuildEndpointPicker(e.id);
     SetStatus("Saved \"" + e.name + "\".");
+}
+
+void UltraAISettingsDialog::OnFetchModels() {
+    if (fetching_) return;
+
+    const std::string baseUrl = baseUrlInput_ ? baseUrlInput_->GetText() : "";
+    if (baseUrl.empty()) {
+        SetStatus("Set a Base URL first (e.g. https://ai.ultraos.eu).");
+        return;
+    }
+
+    // Resolve the key: a freshly-typed one wins; otherwise the stored key of
+    // the endpoint being edited (a new, unsaved endpoint has none yet).
+    std::string key = keyInput_ ? keyInput_->GetText() : "";
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+    if (key.empty() && !editingId_.empty()) {
+        if (const auto* e = EndpointStore::Instance().FindById(editingId_)) {
+            if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+            UltraVault::SecretValue sv;
+            if (UltraVault::Get(e->VaultRef(), sv).IsOk()) key = sv.AsString();
+        }
+    }
+#endif
+
+    fetching_ = true;
+    SetStatus("Fetching models from " + baseUrl + "...");
+
+    // Off the UI thread: a reachable server answers in well under a second, an
+    // unreachable one blocks to the timeout — either way the window stays live.
+    std::thread worker([this, alive = uiAlive_, baseUrl, key]() {
+        ModelInfoFetch res = FetchModelInfo(baseUrl, key);
+        auto deliver = [this, alive, res]() {
+            if (!alive->load()) return;    // the dialog is gone
+            fetching_ = false;
+            if (!res.ok) {
+                SetStatus(res.error.empty() ? "Fetch failed." : res.error);
+                return;
+            }
+            fetchedModels_ = res.models;
+            PopulateModelDropdown();
+            SetStatus("Found " + std::to_string(res.models.size()) +
+                      " model(s) — pick one to set the model field.");
+        };
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (app) app->PostToUIThread(std::move(deliver));
+        else deliver();
+    });
+    worker.detach();
+}
+
+void UltraAISettingsDialog::PopulateModelDropdown() {
+    if (!modelDropdown_) return;
+    modelDropdown_->ClearItems();
+    for (const auto& m : fetchedModels_) {
+        const std::string label = m.task.empty() ? m.name : (m.name + "  — " + m.task);
+        modelDropdown_->AddItem(label, m.name);   // value = the model_name
+    }
+    // Reflect the model field as the selected row when it names a listed model.
+    const std::string cur = modelInput_ ? modelInput_->GetText() : "";
+    for (size_t i = 0; i < fetchedModels_.size(); ++i) {
+        if (fetchedModels_[i].name == cur) {
+            modelDropdown_->SetSelectedIndex(static_cast<int>(i), false);
+            break;
+        }
+    }
 }
 
 void UltraAISettingsDialog::SetStatus(const std::string& text) {

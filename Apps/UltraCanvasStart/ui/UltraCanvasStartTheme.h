@@ -12,6 +12,8 @@
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
 // badge for the key/value cards (step 1, step 4).
+// Version: 0.3.3 - MakeChoiceSwitch (a missing row's switch: install it or not)
+// Version: 0.3.2 - kAlertText: red, for the None among the AI assistants
 // Version: 0.3.1 - the console is dark again: a text area paints the element's
 //                  background, not its style's (MakeConsole, MakeMarkdownView)
 // Version: 0.3.0 - MakeIndicatorSwitch (the Tools step's rows); scrollbars half
@@ -67,6 +69,8 @@ inline const UltraCanvas::Color kGoodText       { 21, 128,  61};
 inline const UltraCanvas::Color kGoodTint       {220, 252, 231};
 inline const UltraCanvas::Color kWarnText       {194,  65,  12};
 inline const UltraCanvas::Color kWarnTint       {255, 237, 213};
+// Red text for a choice that leaves something out (no AI assistant).
+inline const UltraCanvas::Color kAlertText      {200,  30,  30};
 
 // Code: a tinted chip behind a command, the way the Markdown view shows
 // inline code, and a dark console for command output.
@@ -518,6 +522,16 @@ MakeIndicatorSwitch(const std::string& id, bool on) {
     indicator->SetDisabled(true);
     indicator->layoutItem.SetFlexShrink(0);
     return indicator;
+}
+
+// The same switch, but the programmer flips it: on installs the row's package,
+// off leaves it out.
+inline std::shared_ptr<UltraCanvas::UltraCanvasSwitch>
+MakeChoiceSwitch(const std::string& id, bool on) {
+    auto choice = UltraCanvas::UltraCanvasSwitch::Create(id, 0, 0, "", on);
+    choice->SetTrackSize(28, 14);
+    choice->layoutItem.SetFlexShrink(0);
+    return choice;
 }
 
 } // namespace Theme

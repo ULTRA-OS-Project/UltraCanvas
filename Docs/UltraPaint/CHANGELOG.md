@@ -1,4 +1,4 @@
-#### 2026-10-16 *0.2.25*
+#### 2026-10-19 *0.2.26*
 - **Password-protected images.** *File > Password Protection...* gives the
   image a password; saved as an UltraCanvas layered image (`.ucd`) it is then
   encrypted - an Argon2id key, every section sealed with XChaCha20-Poly1305 -
@@ -9,6 +9,19 @@
   one, and *Save* keeps it protected; *Save* or *Save As* to another format
   says first that the file goes without the protection (framework
   changelog, pending entry `ucd-password-protection`).
+
+#### 2026-10-16 *0.2.25*
+- **The colour panel takes less room, and stays as it was left.** The
+  picker in the Colour card folds its channels away: the HSV / HSL / RGB
+  tabs and the channel sliders sit under a *Channels* row that opens them,
+  so the panel starts with the hue ring, the swatches and the hex field, and
+  the active tool's options card moves up into view. A list top right
+  switches the picker between the colour circle, the slider and square, the
+  colour rectangle and the two sliders (hue and brightness); the picker is
+  as tall as what it shows, so the card and the cards below move up and down
+  with it. UltraPaint opens the picker with the design and the channels it
+  was left with: the settings file keeps them as `picker.design` and
+  `picker.channels` (framework changelog: `colour-picker-toolbox`).
 
 #### 2026-10-16 *0.2.24*
 - **Layered images in the UCD format.** *Save As* offers *UltraCanvas layered

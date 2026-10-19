@@ -296,6 +296,26 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     log. While the drive works, the status line shows the request short -
     *Request: PROPFIND cloud.example.org/.../erika/Fotos Mai/* - and the log
     keeps the whole address.
+  - **Quitting during a transfer asks first.** Closing UltraFiler while an
+    upload or a download is running, or waiting its turn, on a remote drive
+    asks *An upload is still running — quit anyway?*, naming the file and the
+    drive. *Keep UltraFiler open* (the default) changes nothing; *Quit anyway*
+    stops the running one where it is and drops the rest, and UltraFiler is
+    gone within a second rather than staying in the background until the
+    upload is done. A download stopped part way leaves no half a file.
+  - **An upload onto a taken name asks first.** A file dropped or pasted
+    into a folder on a drive that already holds one of that name is asked
+    about the way a local paste is - Keep both (uploaded as "name (2)"),
+    Replace, Skip or Stop, with Apply to all - after a fresh look at the
+    folder, so a file put there since it was opened counts too. Settings >
+    Handling's standing answer applies.
+  - **An FTP upload replaces a file only once it is complete.** An upload to
+    an FTP or SFTP drive goes to a hidden part name (`.name.part`) and is
+    renamed to its own name when the last byte is in, so the file it
+    replaces stays whole until then; what one that did not finish left is
+    removed before the next request to the drive, in this session or a later
+    one. UltraCloud does this (`UltraCloudUploads.h`), and its steps are in
+    the connection log.
   - **A service that limits requests is waited out.** When a cloud service
     answers that it is limiting requests, the drive waits as long as it
     asks (1, 2, 4 s when it does not say) and asks again, up to three times;

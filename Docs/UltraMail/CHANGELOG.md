@@ -1,3 +1,37 @@
+#### 2026-10-17 *0.10.60*
+- **An *Attach cloud link* upload to an FTP or SFTP account no longer leaves
+  half a file behind.** Such a server writes an upload into the file as it
+  arrives, so quitting UltraMail during one - or a connection that broke -
+  left the part already sent on the server under the file's full name, and
+  an upload that replaced a file had destroyed the old one with its first
+  byte. The upload now goes to a hidden part name (`.report.pdf.part`) and
+  is renamed into place once complete, and what one that did not finish
+  left is removed the next time UltraMail uses that account - even when
+  UltraMail was quit, or ended, during the upload. The quit question says
+  so: *What was sent is removed from Studio FTP the next time UltraMail uses
+  it.* UltraCloud does this for every application (framework changelog:
+  `ftp-uploads-in-place`).
+
+#### 2026-10-17 *0.10.59*
+- **Closing a compose window during a cloud upload no longer risks a
+  crash.** *Attach cloud link* uploads a file, lists folders and makes the
+  link on threads of their own, and its *Add account…* waits for the browser
+  sign-in; each of them used the application's cloud service through a
+  plain pointer, so one still running when the window - or UltraMail - closed
+  could use it after it was freed. UltraMail now keeps its cloud accounts,
+  their secrets and the service in shared ownership, and hands the picker
+  the shared service, which every one of those threads holds until it ends
+  (`ShowCloudLinkPicker`'s new shared form, see the framework changelog).
+- **Quitting during a cloud upload asks first.** Closing UltraMail's last
+  window ended an upload *Attach cloud link* was still running - the file
+  never arrived, and nothing said so. That close now asks *An upload is
+  still running — quit anyway?*, naming the file and the cloud account it
+  goes to; *Keep UltraMail open* (the default, and what Return gives) leaves
+  everything as it was, *Quit anyway* closes. Closing a window that is not
+  the last asks nothing - the upload carries on behind the windows still
+  open. Downloads are asked about the same way. The framework side is
+  `CloudService::TransfersInProgress` (see the framework changelog).
+
 #### 2026-10-16 *0.10.58*
 - **An unreachable sign-in service is worded like every other failure.**
   When a browser sign-in could not reach the sign-in service, the alert

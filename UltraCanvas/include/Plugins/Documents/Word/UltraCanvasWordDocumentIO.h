@@ -8,8 +8,8 @@
 // [Content_Types].xml probe, CFB magic, \documentclass head) so renamed
 // files are classified correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md
 // and Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md.
-// Version: 1.2.0
-// Last Modified: 2026-09-25
+// Version: 1.4.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -38,12 +38,19 @@ public:
     // Auto-detects the format and loads. Returns false with a user-facing
     // reason in outError. When a legacy .doc cannot be read, the error
     // suggests converting it to .docx.
+    //
+    // `password` opens a password-protected .docx: the ECMA-376 agile
+    // encryption Word 2010 and later write (UltraCanvasOfficeEncryption.h).
+    // Such a file is a compound file, so DetectWordDocumentFormat calls it
+    // LegacyDoc; Load and LoadDocx recognise it and decrypt it. Without the
+    // password it fails with a message saying one is needed;
+    // UltraCanvasFileLoader::RequestDocumentPassword asks the user for it.
     static bool Load(const std::string& filePath, UCRichDocument& outDocument,
-                     std::string& outError);
+                     std::string& outError, const std::string& password = std::string());
     static bool LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
                         std::string& outError);
     static bool LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
-                         std::string& outError);
+                         std::string& outError, const std::string& password = std::string());
     // Word 97-2003 binary (CFB container, piece table, FKPs, stylesheet,
     // list tables): headings, character formatting, alignment, bullet and
     // numbered lists, tables, hyperlinks and PNG/JPEG pictures. Headers,
@@ -64,17 +71,20 @@ public:
                           std::string& outError);
 
     // Picks the writer from the target extension (.odt/.docx).
+    // `password` saves a password-protected .docx (agile encryption,
+    // AES-256 / SHA-512, what Word 2013 and later write); any other format
+    // with a password is refused rather than saved unprotected.
     static bool Save(const std::string& filePath, const UCRichDocument& document,
-                     std::string& outError);
+                     std::string& outError, const std::string& password = std::string());
     static bool SaveOdt(const std::string& filePath, const UCRichDocument& document,
                         std::string& outError);
     static bool SaveDocx(const std::string& filePath, const UCRichDocument& document,
-                         std::string& outError);
+                         std::string& outError, const std::string& password = std::string());
 
 private:
     // Load's format dispatch, before the shared post-processing.
     static bool LoadByFormat(const std::string& filePath, UCRichDocument& outDocument,
-                             std::string& outError);
+                             std::string& outError, const std::string& password);
 };
 
 } // namespace UltraCanvas

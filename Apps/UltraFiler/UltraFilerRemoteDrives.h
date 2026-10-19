@@ -49,9 +49,28 @@
 // (RemoteActivity::step), and a failure keeps its codes and diagnostics for
 // the log window. A sign-in from the add-drive dialog is a session too
 // (RemoteSignInLog), and a cloud service that limits requests is waited out
-// and asked again (kRemoteRateLimitMaxWaitSeconds).
+// and asked again (kRemoteRateLimitMaxWaitSeconds). The uploads and
+// downloads not finished yet are listed for the window's question before it
+// quits (PendingTransfers), and Stop() calls the running one off rather than
+// waiting for it. A preview copy being downloaded gives way to any request
+// of the user's and is fetched again after it.
+//
+// On an FTP or SFTP drive an upload goes to a hidden part name and is
+// renamed into place once complete, and what one that did not finish left
+// is removed by the next request to the drive - UltraCloud does both
+// (UltraCloudUploads.h), and its steps are in the connection log with the
+// rest. An upload can be given a name of its own (Upload's `remoteName`),
+// which is how the window's "Keep both" puts one beside a file of the same
+// name, and CachedListing answers what the window needs to ask about one.
+// Version: 1.11.0 - PendingTransfers; Stop() calls a running transfer off;
+//                   an upload under a name of its own; CachedListing,
+//                   Revalidate
+// Version: 1.10.0 - a preview copy being downloaded is called off when the
+//                  user asks the drive for anything else (and fetched again
+//                  after it), when the selection moves on, and when the
+//                  window closes
 // Version: 1.9.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -92,6 +111,10 @@ struct RemoteDrive {
     // Whether opening a folder fetches its subfolders ahead and the listings
     // are kept between runs (RemoteProviderPrefetches: FTP only).
     bool prefetches = false;
+    // The provider's ProviderCapabilities::partialUploadsRemain: an upload
+    // stopped part way leaves what it sent, which UltraCloud removes the
+    // next time the drive is used (FTP and SFTP).
+    bool partialUploadsRemain = false;
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -159,6 +182,19 @@ struct RemoteActivity {
 };
 
 class UltraFilerRemoteDrives;
+
+// An upload or a download the drives were asked for and have not finished:
+// the one under way, or one waiting its turn behind it (PendingTransfers).
+struct RemoteTransfer {
+    bool upload = true;     // false: a download
+    bool running = false;   // false: queued, not started yet
+    std::string name;       // the file's name
+    std::string drive;      // the drive's name, as the folder tree shows it
+    // An upload to a drive that keeps what a stopped one sent
+    // (RemoteDrive::partialUploadsRemain): removed the next time the drive
+    // is used.
+    bool cleanedUpIfStopped = false;
+};
 
 // The add-drive dialog's sign-ins still running, shared between the drives
 // and each RemoteSignInLog: UltraFilerRemoteDrives::Stop() sets `stopping`,
@@ -283,14 +319,30 @@ public:
     bool CanUpload(const std::string& path) const;
 
     // Queues the upload of one local file into the remote folder `remoteFolder`
-    // (an ultracloud:// folder path) under the file's own name, and answers at
-    // once; onOperationFinished fires for that folder when the server has
-    // taken it or refused it. Returns false with a message for what can be
-    // refused outright: a path that is not a remote path, a drive that is
-    // gone or cannot take uploads, a local path that is not a file (folders
-    // are not uploaded - a transfer of a tree is not one provider verb).
+    // (an ultracloud:// folder path) under the file's own name - or under
+    // `remoteName` when one is given, a bare name - and answers at once;
+    // onOperationFinished fires for that folder when the server has taken it
+    // or refused it. A file already there under that name is replaced: the
+    // caller asks first (UltraFilerWindow's name-conflict question). Returns
+    // false with a message for what can be refused outright: a path that is
+    // not a remote path, a drive that is gone or cannot take uploads, a local
+    // path that is not a file (folders are not uploaded - a transfer of a
+    // tree is not one provider verb), a name that is really a path.
     bool Upload(const std::string& remoteFolder, const std::string& localFile,
-                std::string& error);
+                std::string& error, const std::string& remoteName = std::string());
+
+    // What the cache holds for the folder `path` - fetched in this run, or
+    // kept from the last one - without queueing anything. False when it
+    // holds nothing for it (never fetched, still on its way, or failed).
+    bool CachedListing(const std::string& path, std::vector<FilerEntry>& out) const;
+
+    // Asks the server for the folder `path` again while the display goes on
+    // showing what the cache has (a Ready listing becomes Stale until the
+    // answer is in), and onListingArrived fires for it then. A fetch already
+    // on its way is joined rather than repeated. For a caller that must know
+    // what is there now, not when it was last looked at - the window, before
+    // an upload could replace a file that appeared since.
+    void Revalidate(const std::string& path);
 
     // Queues the download of the remote file `remoteFile` into the local
     // folder `localFolder`, under its own name, and answers at once;
@@ -381,11 +433,19 @@ public:
     // is gone if need be.
     std::shared_ptr<UltraCloud::CloudService> Service();
 
-    // Joins the worker, calls off a sign-in the add-drive dialog is still
-    // running and waits up to two seconds for it to end (RemoteSignInLog),
-    // then writes the prefetching drives' listings to disk for the next run.
-    // Must run before the owner is destroyed - the worker posts into it.
-    // Idempotent.
+    // The uploads and downloads under way or waiting, the running one first;
+    // empty when there are none. What a window asks about before it quits:
+    // Stop() ends the running one part way and drops the rest. Preview copies
+    // are not among them - nobody asked for those. Any thread.
+    std::vector<RemoteTransfer> PendingTransfers() const;
+
+    // Stops the worker: the jobs still queued are dropped, and a transfer
+    // under way is called off where it is (UltraNet_SetThreadAbortCheck), so
+    // the join takes a second, not as long as a large upload has left to go.
+    // Then calls off a sign-in the add-drive dialog is still running and
+    // waits up to two seconds for it to end (RemoteSignInLog), and writes
+    // the prefetching drives' listings to disk for the next run. Must run
+    // before the owner is destroyed - the worker posts into it. Idempotent.
     void Stop();
 
     // Where the listings are kept between runs: remote-listings.cache in
@@ -429,6 +489,8 @@ private:
         // onPreviewCopyReady rather than onOperationFinished.
         bool isPreview = false;
         std::string previewTarget;
+        // An Upload under a name other than the local file's (Keep both).
+        std::string remoteName;
     };
 
     // How one job ended, for the connection log: the message the window is
@@ -522,9 +584,37 @@ private:
     // ... and the step its connection is at (RemoteActivity::step), for the
     // same notice.
     std::string activeJobStep_;
+    // The upload or download the worker is carrying out, for
+    // PendingTransfers; activeIsTransfer_ is false for any other job.
+    // Written by the worker under the lock.
+    bool activeIsTransfer_ = false;
+    RemoteTransfer activeTransfer_;
+    // `job` as PendingTransfers lists it; false for a job that is not an
+    // upload or a download the user asked for. Called with the lock held.
+    bool DescribeTransferLocked(const Job& job, RemoteTransfer& out) const;
+    // A preview copy being downloaded can be called off (UltraNet's
+    // UltraNet_SetThreadFtpCancel, asked as its bytes move): the path it is
+    // for and the flag the worker's transfer asks, both set by the worker
+    // under the lock for the length of the job (no flag between jobs). The
+    // flag says why, which decides what becomes of the copy.
+    enum PreviewCancel : int {
+        PreviewKeep = 0,       // go on
+        PreviewYield = 1,      // the user asked for something else: run that
+                               // first, then fetch the copy again
+        PreviewSuperseded = 2, // the selection moved on: drop it
+        PreviewShutdown = 3    // the window is closing
+    };
+    std::string activePreviewPath_;
+    std::shared_ptr<std::atomic<int>> activePreviewCancel_;
+    // Calls the running preview copy off for `why`, unless an earlier reason
+    // already did. Under the lock.
+    void CancelActivePreviewLocked(PreviewCancel why);
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
+    // Set by Stop(), read by the worker's abort check on every progress
+    // callback of the transfer it is running - without the lock.
+    std::atomic<bool> stopping_{false};
     // The local paths downloads have been promised but not yet written. A
     // queued download has nothing on the disk to collide with, so without
     // this every file of one name queued together would be given that same

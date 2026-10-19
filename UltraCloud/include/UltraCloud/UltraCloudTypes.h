@@ -2,9 +2,10 @@
 // Core data types of the UltraCloud module: results, accounts, credentials,
 // remote entries and share links. Provider-independent; every provider and
 // every app-facing call speaks in these.
+// Version: 0.6.0 - ProviderCapabilities::partialUploadsRemain
 // Version: 0.5.1 - Credentials::privateKeyFile (SFTP with a key)
 // Version: 0.5.0 - ResultCode::Cancelled
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -114,6 +115,11 @@ struct ProviderCapabilities {
     bool expiringLinks = false;
     bool needsServerUrl = false;   // self-hosted: the user enters a URL
     bool needsOAuth = false;       // sign-in through the browser
+    // The server writes an upload into the file as it arrives (FTP, FTPS,
+    // SFTP): stopped part way, it leaves what it sent there. CloudService
+    // uploads to such a provider by way of a part name and removes what an
+    // unfinished one left (UltraCloudUploads.h).
+    bool partialUploadsRemain = false;
 };
 
 } // namespace UltraCloud

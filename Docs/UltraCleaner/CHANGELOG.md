@@ -1,3 +1,17 @@
+#### 2026-10-17 *0.66*
+- **Windows registry cleaning.** A new *Windows registry* tab (and
+  `--registry`, `--registry --fix --yes`, `--registry-restore <file>`) finds
+  entries that point at programs, files and folders that are gone: leftover
+  uninstall entries, startup commands, App Paths, shared-DLL counters,
+  Explorer's MUI cache, help-file and installer-folder records, and per-user
+  COM classes. An entry counts only when its target is provably missing from
+  a fixed disk, outside the Windows folder; removable drives, shares, bare
+  program names, Windows Installer products and system components are never
+  judged. Every ticked entry is re-checked, written to a `.reg` backup under
+  `%LOCALAPPDATA%\UltraCleaner\RegistryBackups`, and only then removed; no
+  backup, no removal. `test_registry.cpp` runs every check, the guard, the
+  backup and the cleaner against an in-memory registry.
+
 #### 2026-10-16 *0.65*
 - **On Linux and macOS a `\` in a name is no longer read as a folder
   separator.** The path guard compared paths after turning every `\` into

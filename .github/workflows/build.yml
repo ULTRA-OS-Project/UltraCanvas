@@ -1305,12 +1305,14 @@ jobs:
       # conversion was missed. The host-icons test asks the real shell for
       # its icons, the shortcut test reads .lnk files on the system they
       # come from, and the history test keeps UltraFiler's recently-used lists
-      # under %APPDATA%. ULTRACANVAS_BUILD_FILER_TESTS builds the five without
-      # the Linux-only BUILD_TESTS; Linux runs them in the full pass.
+      # under %APPDATA%, and the retire test stops a display's workers the way
+      # UltraFiler does for a closed tab. ULTRACANVAS_BUILD_FILER_TESTS builds
+      # them without the Linux-only BUILD_TESTS; Linux runs them in the full
+      # pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest)$"
 
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)

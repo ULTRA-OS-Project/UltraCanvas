@@ -1,7 +1,8 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
+// Version: 1.3.0 - SetSegmentTextColor: one segment's own text colour
 // Version: 1.2.0
-// Last Modified: 2026-05-31
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -39,6 +40,9 @@ namespace UltraCanvas {
         TextAlignment alignment;
         std::unique_ptr<ITextLayout> textLayout;
         double customWidth = 0.0f;  // Used when SegmentWidthMode::Custom
+        // The segment's own text colour while it is not selected; alpha 0
+        // (the default) uses the style's normal / hover text colour.
+        Color textColor = Colors::Transparent;
 
         SegmentData() = default;
         SegmentData(const std::string& txt, TextAlignment al) : text(txt), alignment(al) {}
@@ -187,6 +191,10 @@ namespace UltraCanvas {
 
         void SetSegmentIcon(int index, const std::string &iconPath);
         void SetSegmentEnabled(int index, bool enabled);
+        // A text colour for one segment while it is not selected (a warning
+        // option in red, say); selected, it takes selectedTextColor like the
+        // rest. Colors::Transparent restores the style's colours.
+        void SetSegmentTextColor(int index, const Color& color);
         bool IsSegmentEnabled(int index) const;
         void SetSegmentWidth(int index, float width);
 

@@ -24,6 +24,13 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
  status: pointer x,y | zoom | size, layers | hint
 ```
 
+The colour picker has a list of designs in its corner - colour circle,
+slider and square, colour rectangle, or colour and brightness sliders - and
+folds its channels (the HSV / HSL / RGB tabs and sliders) away under
+*Channels*. It is as tall as what it shows, so the panels below move up and
+down with it, and it opens with the design and the channels it was left with
+(`picker.design` and `picker.channels` in the settings file).
+
 ## Tools
 
 The palette groups tools of a kind on one button: resting the pointer on it

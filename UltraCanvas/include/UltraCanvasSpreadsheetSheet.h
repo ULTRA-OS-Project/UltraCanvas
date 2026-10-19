@@ -15,6 +15,8 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <climits>
 
 namespace UltraCanvas {
@@ -46,6 +48,10 @@ using CellTextMeasureFn = std::function<int(const std::string& text, const CellF
 
 // Declared at namespace scope (not nested) so it can be used as a default
 // argument with its NSDMIs inside SpreadsheetSheet's still-incomplete class body.
+// How the fill handle fills: continuing series and counting on ("1, 2" ->
+// "3, 4"; "Item 1" -> "Item 2"), or repeating the source as it is.
+enum class AutoFillMode { Series, Copy };
+
 struct SheetFindOptions {
     bool matchCase = false;
     bool matchEntireCell = false;
@@ -60,6 +66,36 @@ struct SheetFindOptions {
 // function names (LOG10) are left alone, and a reference pushed off the top or
 // left edge of the sheet becomes #REF!.
 std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int colDelta);
+
+// Point mode: whether a cell or range address typed over text[start, end) of a
+// formula being edited would be a reference, not glued to what is around it.
+// True when the text is a formula (starts with '='), the span is not inside
+// "quotes", what comes before it (spaces skipped) is the '=', an opening
+// parenthesis, an argument separator or an operator ("=SUM(|", "=A1+|",
+// "=SUM(A1:|"), and what follows it does not continue a name ("=(|B2)" is
+// false). The spreadsheet asks this before a click on a cell types its
+// address into the formula instead of ending the edit.
+bool FormulaAcceptsReferenceAt(const std::string& text, size_t start, size_t end);
+
+// Why `name` cannot name a sheet, or "" when it can: not empty, at most 31
+// characters, none of [ ] : * ? / \, and not starting or ending with an
+// apostrophe - the rules spreadsheet files share, so the name survives a save
+// to .xlsx / .ods. Whether another sheet already has it is the workbook's to
+// check (UltraCanvasSpreadsheet::ValidateSheetName).
+std::string CheckSheetName(const std::string& name);
+
+// The formula with every reference to sheet `oldName` (Sales.A1, Sales!A1,
+// 'Sales 2016'.A1, case-insensitive) naming `newName` instead, quoted when
+// it needs to be. Text in "quotes" and longer names (Sales2.A1) are left
+// alone.
+std::string RenameSheetInFormula(const std::string& formula, const std::string& oldName,
+                                 const std::string& newName);
+
+// The formula with every reference to the deleted sheet `sheetName` - a cell
+// (Sales.A1, Sales!$B$2) or a range (Sales.A1:B3, 'Q 1'.A1:'Q 1'.C9) - made
+// #REF!, as a spreadsheet does when a sheet is deleted: =Sales.A1*2 becomes
+// =#REF!*2. Case-insensitive; text in "quotes" and other sheets are left alone.
+std::string RemoveSheetFromFormula(const std::string& formula, const std::string& sheetName);
 
 // ============================================================================
 // SPREADSHEET SHEET CLASS
@@ -82,6 +118,11 @@ private:
     // Sheet identification
     std::string name_ = "Sheet1";
     int index_ = 0;
+    uint64_t id_ = NextId();
+    static uint64_t NextId() {
+        static std::atomic<uint64_t> next{1};
+        return next++;
+    }
     Color tabColor_ = Colors::Transparent;
     bool visible_ = true;
     bool selected_ = false;
@@ -164,6 +205,12 @@ public:
     
     int GetIndex() const { return index_; }
     void SetIndex(int index) { index_ = index; }
+
+    // A number no other sheet made in this run has, kept through renames and
+    // moves. Undo finds a step's sheet by it, so a step never lands on a
+    // different sheet that has since taken the name. Clone() gets a new one;
+    // CloneKeepingId() (undo putting a deleted sheet back) keeps it.
+    uint64_t GetId() const { return id_; }
     
     const Color& GetTabColor() const { return tabColor_; }
     void SetTabColor(const Color& color) { tabColor_ = color; }
@@ -451,7 +498,17 @@ public:
     //  - a formula is copied with its relative references shifted by the
     //    distance it moved ($-anchored parts stay), like a copy and paste;
     //  - anything else is copied as it is. Formatting comes with the value.
-    void AutoFill(const CellRange& source, const CellRange& destination);
+    // AutoFillMode::Copy (the fill handle dragged with Ctrl held, Ctrl+D,
+    // Ctrl+R) repeats the source as it is instead: no series, no counting on;
+    // formulas still shift their relative references.
+    void AutoFill(const CellRange& source, const CellRange& destination,
+                  AutoFillMode mode = AutoFillMode::Series);
+
+    // The last row a double-click on the fill handle fills `source` down to:
+    // the end of the block of filled cells in the column left of it (or, when
+    // that is empty, right of it), starting on the row below the source. -1
+    // when neither neighbour has data there, or it ends level with the source.
+    int GetAutoFillDownEnd(const CellRange& source) const;
     
     // Fill with value
     void FillRange(const CellRange& range, const SpreadsheetCell& value);
@@ -478,6 +535,7 @@ public:
     
     // Clone sheet (deep copy)
     std::unique_ptr<SpreadsheetSheet> Clone(const std::string& newName = "") const;
+    std::unique_ptr<SpreadsheetSheet> CloneKeepingId() const;
     
     // Get memory usage
     size_t GetMemorySize() const;

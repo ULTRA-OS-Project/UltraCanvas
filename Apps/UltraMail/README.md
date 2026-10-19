@@ -291,6 +291,9 @@ under the body show what is attached). "Attach cloud link…" goes through the
 account (the default is preselected), browse it or upload the file into the
 current folder, and the share link lands in the body. Run with
 `ULTRAMAIL_DEMO_CLOUD=1` for a demo account with files and an open composer.
+An upload keeps running when the compose window closes; closing UltraMail's
+last window while one runs asks *An upload is still running — quit anyway?*
+first, since quitting stops it.
 
 **Account setup:** the wizard collects name / email / password; on submit,
 `AutoDiscovery` resolves the incoming (IMAP) and outgoing (SMTP) servers from

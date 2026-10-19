@@ -405,6 +405,17 @@ sink for its thread instead: `UltraNet_SetThreadFtpLog(fn)` returns the
 previous sink to put back afterwards, and only calls without an `onLog` of
 their own go to it.
 
+A call can be called off. `UltraNetFtpOptions::isCancelled` is asked while
+the call runs - as bytes move, and about once a second while none do, so a
+stalled transfer is called off as promptly as a busy one; once it answers
+true the call ends as `UltraNetResultCode::Cancelled` with the message
+*called off*, and a listing is not tried again in another format. It runs on
+the calling thread inside libcurl and must answer at once (an atomic flag). As
+with the log, a caller behind a layer that builds the options sets one for
+its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
+UltraFiler's drive worker uses it to stop a preview download the user is no
+longer waiting for.
+
 What a failure says, whether or not anyone reads the log:
 
 - `message` is libcurl's specific reason (its error buffer, not just the error
@@ -491,6 +502,13 @@ architecture.
   first use for scanners and printers is built on these.
 * **Threading:** async callbacks run on the libcurl multi worker
   thread — callers must marshal to their own loop and not block.
+* **Calling a transfer off:** a thread that runs synchronous HTTP requests
+  or FTP uploads and downloads sets `UltraNet_SetThreadAbortCheck(fn)`; the
+  transfers it makes ask `fn` as they run (libcurl's progress callback, so
+  about once a second even while the server is silent) and end as
+  `UltraNetResultCode::Cancelled` once it says true. UltraFiler's drive
+  worker uses it so that quitting does not wait for a large upload to
+  finish. Asynchronous requests are cancelled with `UltraNet_CancelRequest`.
 * **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
   `ResolveHost()` etc. at module level — always go through the
   `UltraNet_*` API. (Full reserved-pattern list lives in the master

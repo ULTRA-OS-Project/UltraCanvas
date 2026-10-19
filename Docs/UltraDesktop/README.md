@@ -12,6 +12,9 @@ which is where every question about windows, desktops, devices and installed
 applications is answered, so the desktop itself never touches the window
 system.
 
+- User manual: [`Manual.md`](Manual.md) — the desktop task by task, using it
+  as the Windows desktop and getting the Windows desktop back, and
+  troubleshooting. This README is the reference.
 - Source: [`Apps/UltraDesktop`](../../Apps/UltraDesktop/README.md)
 - Version: its own, from the first line of [`CHANGELOG.md`](CHANGELOG.md).
   `cmake/UltraCanvasVersion.cmake` reads it into `ULTRADESKTOP_VERSION`,

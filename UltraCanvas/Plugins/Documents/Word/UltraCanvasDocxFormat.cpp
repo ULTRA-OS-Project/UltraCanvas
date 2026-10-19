@@ -2,14 +2,15 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.2.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasTextUtils.h"
 
 #include "tinyxml2.h"
@@ -78,11 +79,28 @@ void ProtectWhitespaceRuns(std::string& xml) {
 
 class DocxReader {
 public:
-    bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error) {
+    bool Load(const std::string& filePath, const std::string& password, UCRichDocument& doc,
+              std::string& error) {
         doc_ = &doc;
-        if (!zip_.Open(filePath)) {
-            error = "The file is not a valid Word document (.docx): " + filePath;
-            return false;
+        // A password-protected document is a compound file holding the
+        // package encrypted (UltraCanvasOfficeEncryption.h), not a ZIP.
+        std::vector<uint8_t> package;
+        switch (DecryptOfficePackageFile(filePath, password, package, error)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                if (!zip_.Open(filePath)) {
+                    error = "The file is not a valid Word document (.docx): " + filePath;
+                    return false;
+                }
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!zip_.OpenFromMemory(std::move(package))) {
+                    error = "The decrypted document is not a valid Word document (.docx): " + filePath;
+                    return false;
+                }
+                break;
+            default:
+                error += ": " + filePath;
+                return false;
         }
         std::string documentXml;
         if (!zip_.ReadEntry("word/document.xml", documentXml)) {
@@ -1770,9 +1788,14 @@ private:
 
 class DocxWriter {
 public:
-    bool Save(const std::string& filePath, const UCRichDocument& doc, std::string& error) {
+    bool Save(const std::string& filePath, const UCRichDocument& doc, const std::string& password,
+              std::string& error) {
         doc_ = &doc;
-        if (!zip_.Open(filePath)) {
+        // With a password the package is built in memory and encrypted into
+        // the file (UltraCanvasOfficeEncryption.h); nothing unencrypted is
+        // written to disk.
+        const bool encrypt = !password.empty();
+        if (encrypt ? !zip_.OpenInMemory() : !zip_.Open(filePath)) {
             error = "Cannot create file: " + filePath;
             return false;
         }
@@ -1813,7 +1836,7 @@ public:
             error = "Failed to finalize document: " + zip_.GetLastError();
             return false;
         }
-        return true;
+        return !encrypt || EncryptOfficePackageToFile(zip_.TakeBytes(), password, filePath, error);
     }
 
 private:
@@ -3004,23 +3027,24 @@ private:
 } // namespace
 
 bool UCWordDocumentIO::LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
-                                std::string& outError) {
+                                std::string& outError, const std::string& password) {
     outDocument = UCRichDocument{};
     DocxReader reader;
-    if (!reader.Load(filePath, outDocument, outError)) return false;
+    if (!reader.Load(filePath, password, outDocument, outError)) return false;
     outDocument.ReadCheckboxPrefixes();
     return true;
 }
 
 bool UCWordDocumentIO::SaveDocx(const std::string& filePath, const UCRichDocument& document,
-                                std::string& outError) {
+                                std::string& outError, const std::string& password) {
     DocxWriter writer;
     // The format has no check list: its items go out as a ballot box
     // opening their text, which is what reads back in.
     for (const RichDocBlock& block : document.blocks) {
-        if (block.checkbox) return writer.Save(filePath, document.WithCheckboxesAsPrefixes(), outError);
+        if (block.checkbox)
+            return writer.Save(filePath, document.WithCheckboxesAsPrefixes(), password, outError);
     }
-    return writer.Save(filePath, document, outError);
+    return writer.Save(filePath, document, password, outError);
 }
 
 } // namespace UltraCanvas

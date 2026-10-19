@@ -50,6 +50,15 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.40.1 - a PowerPoint deck (.pptx, .pptm, .ppsx, .potx) previews its
+//                  slides' text; a document that cannot be read (a protected
+//                  .docx or .pptx) keeps its type glyph instead of an empty page
+// Version: 1.39.0 - RequestBackgroundStop / BackgroundStopped; every worker thread is
+//                  counted (StartWorkerThread) so a host can tell when they are gone
+// Version: 1.38.5 - a file or folder on a remote drive (isRemotePath) is never
+//                  handed to the background readers - thumbnails, text and folder
+//                  previews, media probes, folder stats, prefetch - so a closing
+//                  tab on an FTP folder no longer waits out a video grab
 // Version: 1.38.4 - layered images (LayeredImage: *.ucd, *.ucraster) are filed as images; a
 //                  bitmap the image pipeline does not decode thumbnails from the preview
 //                  it carries (a *.ucd's)
@@ -73,7 +82,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-18
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -132,6 +141,7 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasPresentationPptx.h"   // a deck's preview page
 #include "Documents/eBook/EPUBEngine.h"     // e-book covers for the thumbnails
 #include "Documents/eBook/MOBIEngine.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -531,6 +541,10 @@ namespace UltraCanvas {
                 {"odt",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
                 {"doc",  {"Word", FilerFileCategory::Document, ColorFamily::Document, 4}},
                 {"docx", {"Word", FilerFileCategory::Document, ColorFamily::Document, 3}},
+                {"pptx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"pptm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"ppsx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"potx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
                 {"rtf",  {"RTF",  FilerFileCategory::Document, ColorFamily::Document, 5}},
                 {"md",   {"Markdown", FilerFileCategory::Document, ColorFamily::Document, 6}},
                 {"html", {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
@@ -1538,16 +1552,10 @@ namespace UltraCanvas {
             }
         }
 
-        // Word-processing formats go through the shared rich-document reader,
-        // so ODT, DOCX, legacy DOC and LaTeX all preview from the same block
-        // model (a .tex shows its title and sections, not its markup).
-        void RichDocumentToPreviewLines(const std::string& path,
-                                        std::vector<std::string>& lines) {
-            UCRichDocument doc;
-            std::string error;
-            if (!UCWordDocumentIO::Load(path, doc, error)) return;
-            // The first page's header and footer belong to what the page shows.
-            if (!doc.FurnitureForPage(0).IsEmpty()) doc = doc.WithFirstPageFurnitureInline();
+        // A rich document's blocks as preview lines: a line per paragraph,
+        // a table's rows as tab-separated cells.
+        void RichBlocksToPreviewLines(const UCRichDocument& doc,
+                                      std::vector<std::string>& lines) {
             for (const RichDocBlock& block : doc.blocks) {
                 if (lines.size() >= kPreviewMaxLines) break;
                 std::string text;
@@ -1572,6 +1580,35 @@ namespace UltraCanvas {
                 }
                 AppendPreviewLine(lines, text);
             }
+        }
+
+        // Word-processing formats go through the shared rich-document reader,
+        // so ODT, DOCX, legacy DOC and LaTeX all preview from the same block
+        // model (a .tex shows its title and sections, not its markup). False
+        // when the document cannot be read - a password-protected .docx among
+        // them: its tile keeps the type glyph rather than an empty page.
+        bool RichDocumentToPreviewLines(const std::string& path,
+                                        std::vector<std::string>& lines) {
+            UCRichDocument doc;
+            std::string error;
+            if (!UCWordDocumentIO::Load(path, doc, error)) return false;
+            // The first page's header and footer belong to what the page shows.
+            if (!doc.FurnitureForPage(0).IsEmpty()) doc = doc.WithFirstPageFurnitureInline();
+            RichBlocksToPreviewLines(doc, lines);
+            return true;
+        }
+
+        // A PowerPoint deck previews its slides' text, the outline
+        // UltraCanvasPresentationPptx makes of it: each slide's number and
+        // title, then its bullets, tables and notes. A protected deck cannot
+        // be read without its password and keeps the type glyph.
+        bool PresentationToPreviewLines(const std::string& path,
+                                        std::vector<std::string>& lines) {
+            PptxPresentation deck;
+            std::string error;
+            if (!ReadPptxPresentation(path, deck, error)) return false;
+            RichBlocksToPreviewLines(PptxPresentationToRichDocument(deck), lines);
+            return true;
         }
 
         // Fills `lines` (and `tabular`) with the start of the file's content.
@@ -1664,8 +1701,10 @@ namespace UltraCanvas {
                 return true;
             }
             if (ext == "odt" || ext == "docx" || ext == "doc" || ext == "tex") {
-                RichDocumentToPreviewLines(path, lines);
-                return true;
+                return RichDocumentToPreviewLines(path, lines);
+            }
+            if (IsPptxExtension(ext)) {
+                return PresentationToPreviewLines(path, lines);
             }
             if (ext == "html" || ext == "htm") {
                 // The page as a browser lays it out: a line per paragraph,
@@ -2470,6 +2509,81 @@ namespace UltraCanvas {
             if (!run.process || !run.process->IsRunning())
                 RemoveArchiveRunFolder(run.folder);
         archiveRuns.clear();
+    }
+
+    // ===== RETIRING =====
+    std::thread UltraCanvasFilerWidget::StartWorkerThread(std::function<void()> body) {
+        std::shared_ptr<std::atomic<int>> live = liveWorkerThreads;
+        live->fetch_add(1);
+        return std::thread([live, body = std::move(body)]() {
+            // Counted down however the body ends: a worker that let an
+            // exception out ends the process anyway, but the count must not be
+            // what keeps a retired widget alive until then.
+            struct Done {
+                std::shared_ptr<std::atomic<int>> live;
+                ~Done() { live->fetch_sub(1); }
+            } done{live};
+            body();
+        });
+    }
+
+    void UltraCanvasFilerWidget::RequestBackgroundStop() {
+        // The destructor's teardown, minus every wait. Timers first: their
+        // callbacks capture `this` and could start a worker again.
+        CancelPendingRename();
+        StopListingPendingTicks();
+        StopFolderWatchTimer();
+        thumbAlive->store(false);   // results still in flight redraw nothing
+        {
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            thumbShutdown = true;
+            thumbQueue.clear();
+            textQueue.clear();
+            peekQueue.clear();
+        }
+        thumbCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(hostIconMutex);
+            hostIconShutdown = true;
+            hostIconQueue.clear();
+        }
+        hostIconCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(statsMutex);
+            statsShutdown = true;
+            statsQueue.clear();
+            aspectQueue.clear();
+            mediaQueue.clear();
+            lockQueue.clear();
+            lockHolderQueue.clear();
+        }
+        statsCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(prefetchMutex);
+            prefetchShutdown = true;
+            prefetchQueue.clear();
+        }
+        prefetchCond.notify_all();
+        {
+            std::lock_guard<std::mutex> lk(folderWatchMutex);
+            folderWatchShutdown = true;
+            folderWatchPath.clear();
+        }
+        folderWatchCond.notify_all();
+        // A copy / move / delete or a pack / unpack: stopped as their Cancel
+        // stops them, with nothing left to continue or refresh afterwards.
+        if (fileOp) {
+            fileOp->onStretchDone = nullptr;
+            fileOp->cancelled.store(true);
+        }
+        if (archiveJob) {
+            archiveJob->onFinished = nullptr;
+            archiveJob->cancelRequested.store(true);
+        }
+    }
+
+    bool UltraCanvasFilerWidget::BackgroundStopped() const {
+        return liveWorkerThreads->load() == 0;
     }
 
     // ===== FOLDER =====
@@ -3355,6 +3469,10 @@ namespace UltraCanvas {
                isRemotePath && isRemotePath(currentPath);
     }
 
+    bool UltraCanvasFilerWidget::IsRemoteEntryPath(const std::string& path) const {
+        return !path.empty() && isRemotePath && isRemotePath(path);
+    }
+
     std::string UltraCanvasFilerWidget::UniqueRemoteChildName(
             const std::string& base) const {
         auto taken = [this](const std::string& name) {
@@ -3576,6 +3694,9 @@ namespace UltraCanvas {
             lockHolderQueue.clear();
             lockHoldersAsked.clear();
         }
+        // An open question still counting a folder lost its walk with the
+        // stats above: queue it again.
+        RefreshLiveDialogFacts();
         DropThumbnailCache();
 
         std::error_code ec;
@@ -5270,13 +5391,21 @@ namespace UltraCanvas {
             return common;
         }
 
-        // "1 folder and 2 files (2.6 MB)" - what a set of entries amounts to.
-        // Only the files' own sizes are added up; what the folders hold is
-        // not walked, which for a drop of a whole tree would take longer than
-        // the question deserves.
-        std::string DescribeEntries(const std::vector<FilerEntry>& entries) {
-            size_t folders = 0, files = 0;
+        // What one folder's walk has found so far, as a Size fact value.
+        struct FolderTally {
             uint64_t bytes = 0;
+            bool pending = false;   // a walk still running
+            bool capped = false;    // a walk stopped at the entry cap
+        };
+
+        // "1 folder and 2 files (2.6 MB)" - what a set of entries amounts to.
+        // With `folderTally` the folders' contents are included once their
+        // background walks are in ("counting…" until then); without it only
+        // the files' own sizes are added up.
+        std::string DescribeEntries(const std::vector<FilerEntry>& entries,
+                                    const FolderTally* folderTally = nullptr) {
+            size_t folders = 0, files = 0;
+            uint64_t bytes = folderTally ? folderTally->bytes : 0;
             for (const FilerEntry& e : entries) {
                 if (e.isDirectory) ++folders;
                 else { ++files; bytes += e.size; }
@@ -5285,7 +5414,14 @@ namespace UltraCanvas {
             if (folders) text += std::to_string(folders) + (folders == 1 ? " folder" : " folders");
             if (folders && files) text += " and ";
             if (files) text += std::to_string(files) + (files == 1 ? " file" : " files");
-            if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+            if (!folderTally) {
+                if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+            } else if (folderTally->pending) {
+                text += " (" + (bytes ? FormatSize(bytes) + " so far, " : std::string())
+                      + "counting…)";
+            } else {
+                text += " (" + std::string(folderTally->capped ? "≥ " : "") + FormatSize(bytes) + ")";
+            }
             return text;
         }
 
@@ -5294,6 +5430,32 @@ namespace UltraCanvas {
         std::string FactPath(const std::string& path) {
             return "`" + path + "`";
         }
+    }
+
+    std::string UltraCanvasFilerWidget::CountedSizeFact(
+            const std::vector<FilerEntry>& entries) {
+        FolderTally tally;
+        uint64_t walkedFiles = 0, walkedFolders = 0;
+        for (const FilerEntry& e : entries) {
+            if (!e.isDirectory) continue;
+            const FolderStats st = GetFolderStats(e.path);
+            tally.bytes += st.bytes;
+            tally.pending = tally.pending || !st.ready;
+            tally.capped = tally.capped || st.capped;
+            walkedFiles += st.files;
+            walkedFolders += st.folders;
+        }
+        if (entries.size() > 1) return DescribeEntries(entries, &tally);
+        if (entries.empty()) return {};
+        if (!entries.front().isDirectory) return FormatSize(entries.front().size);
+        if (tally.pending) return "counting…";
+        const std::string atLeast = tally.capped ? "≥ " : "";
+        std::string size = atLeast + FormatSize(tally.bytes) + " (" + atLeast
+                + std::to_string(walkedFiles) + (walkedFiles == 1 ? " file" : " files");
+        if (walkedFolders)
+            size += " in " + std::to_string(walkedFolders)
+                  + (walkedFolders == 1 ? " folder" : " folders");
+        return size + ")";
     }
 
     void UltraCanvasFilerWidget::ConfirmTransfer(const std::vector<std::string>& sources,
@@ -5326,15 +5488,16 @@ namespace UltraCanvas {
         spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
                                                    : FactPath(from))
                    + "\n\n**Into:** " + FactPath(destDir);
-        // How much is going: the set's tally, or a single file's own size. A
-        // single folder is not walked for it - the line says so instead of
-        // going missing.
-        if (entries.size() > 1)
-            spec.facts += "\n\n**Size:** " + DescribeEntries(entries);
-        else if (entries.size() == 1)
-            spec.facts += "\n\n**Size:** " + (entries.front().isDirectory
-                    ? std::string("folder (size not counted)")
-                    : FormatSize(entries.front().size));
+        // How much is going: the set's tally, or a single entry's own size.
+        // What a folder holds comes from the background walk the info bar
+        // uses; the dialog opens at once and the line fills in as walks land.
+        const std::string placeFacts = spec.facts;
+        auto sizeFacts = [this, placeFacts, entries]() {
+            if (entries.empty()) return placeFacts;
+            return placeFacts + "\n\n**Size:** " + CountedSizeFact(entries);
+        };
+        spec.facts = sizeFacts();
+        spec.liveFacts = sizeFacts;
         if (entries.size() > 1) {
             spec.listed.assign(entries.begin(), entries.begin() +
                     static_cast<std::ptrdiff_t>(std::min(entries.size(), kOperationListRows)));
@@ -5716,7 +5879,17 @@ namespace UltraCanvas {
                     ? DialogResult::Cancel : DialogResult::Yes;
             dialog->AddCustomButton(b.label, result, b.role, [chosen, i]() { *chosen = i; });
         }
-        dialog->onResult = [chosen, applyToAll, onAnswer, onDismiss](DialogResult) {
+        if (spec.liveFacts) {
+            liveFactsDialog = dialog;
+            liveFactsSource = spec.liveFacts;
+        }
+        auto alive = thumbAlive;
+        dialog->onResult = [this, alive, chosen, applyToAll, onAnswer, onDismiss](DialogResult) {
+            // The answer is in: later walks have nothing left to update.
+            if (alive->load()) {
+                liveFactsDialog.reset();
+                liveFactsSource = nullptr;
+            }
             if (chosen->has_value()) {
                 if (onAnswer) onAnswer(**chosen, *applyToAll);
             } else if (onDismiss) {
@@ -5725,6 +5898,17 @@ namespace UltraCanvas {
         };
         UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
         return true;
+    }
+
+    void UltraCanvasFilerWidget::RefreshLiveDialogFacts() {
+        if (!liveFactsSource) return;
+        auto dialog = liveFactsDialog.lock();
+        if (!dialog) {
+            liveFactsSource = nullptr;
+            return;
+        }
+        const std::string facts = liveFactsSource();
+        if (facts != dialog->GetDetails()) dialog->SetDetails(facts);
     }
 
     void UltraCanvasFilerWidget::PasteFilesInto(std::string folder,
@@ -7368,10 +7552,8 @@ namespace UltraCanvas {
         std::vector<FilerEntry> listed;
         size_t listedTotal = 0;
         std::string listCaption;
-        std::string amount;
         if (victims.size() > 1) {
             listedTotal = victims.size();
-            amount = DescribeEntries(victims);
             listed.assign(victims.begin(), victims.begin() +
                           static_cast<std::ptrdiff_t>(std::min(victims.size(), kOperationListRows)));
         } else if (victims.front().isDirectory) {
@@ -7456,7 +7638,29 @@ namespace UltraCanvas {
         const std::string from = CommonParentFolder(paths);
         spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
                                                    : FactPath(from));
-        if (!amount.empty()) spec.facts += "\n\n**Size:** " + amount;
+        // How much goes, as the move / copy question counts it: the folders'
+        // contents from the background walk, the line filling in as walks
+        // land. Only a folder on this machine's file system can be walked -
+        // one on a remote drive or inside an archive would read as empty -
+        // so with any of those the files alone are added up, as before.
+        bool walkable = !ShowingRemoteFolder();
+        for (const FilerEntry& v : victims) {
+            if (!walkable) break;
+            std::error_code ec;
+            if (v.isDirectory && !fs::is_directory(PathFromUtf8(v.path), ec)) walkable = false;
+        }
+        if (walkable) {
+            const std::string placeFacts = spec.facts;
+            auto sizeFacts = [this, placeFacts, victims]() {
+                return placeFacts + "\n\n**Size:** " + CountedSizeFact(victims);
+            };
+            spec.facts = sizeFacts();
+            spec.liveFacts = sizeFacts;
+        } else if (victims.size() > 1) {
+            spec.facts += "\n\n**Size:** " + DescribeEntries(victims);
+        } else if (!victims.front().isDirectory) {
+            spec.facts += "\n\n**Size:** " + FormatSize(victims.front().size);
+        }
         spec.listed = std::move(listed);
         spec.listCaption = listCaption;
         spec.listVisibleRows = 10;
@@ -8189,7 +8393,7 @@ namespace UltraCanvas {
         op->onStretchDone = std::move(onDone);
         op->finished.store(false);
         op->running.store(true);
-        op->worker = std::thread([op, work = std::move(work)]() {
+        op->worker = StartWorkerThread([op, work = std::move(work)]() {
             RunGuarded("file operation", op->caption, work);
             op->finished.store(true);
         });
@@ -8315,7 +8519,7 @@ namespace UltraCanvas {
             return !job->cancelRequested.load();
         };
 
-        job->worker = std::thread([job, work = std::move(work), report]() {
+        job->worker = StartWorkerThread([job, work = std::move(work), report]() {
             bool ok = false;
             try {
                 ok = work(report);
@@ -10854,6 +11058,11 @@ namespace UltraCanvas {
         // name different icons in it.
         // A bundle is a directory, and the one directory that has an icon of
         // its own to draw.
+        // A file on a remote drive is not on this disk: no decoder can open
+        // "ultracloud://...", and a video grab waits out its timeout before
+        // it gives up - on a background worker that a closing tab has to join.
+        // Only a local copy the host supplied is read.
+        if (IsRemoteEntryPath(e.path)) return e.thumbnailPath;
         if ((!e.isDirectory || e.isBundle) && e.thumbnailPath.empty() &&
             NativeFileIconAvailable(e.path))
             return e.path;
@@ -11359,6 +11568,7 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::AcquireTextPreview(const FilerEntry& e,
                                                     TextPreviewSnippet& out) {
         if (e.isDirectory || e.path.empty()) return false;
+        if (IsRemoteEntryPath(e.path)) return false;   // not on this disk
         std::lock_guard<std::mutex> lk(thumbMutex);
         auto it = textSlots.find(e.path);
         if (it != textSlots.end()) {
@@ -11412,6 +11622,7 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::AcquireFolderPeek(const FilerEntry& e,
                                                    std::vector<FilerEntry>& out) {
         if (!e.isDirectory || e.path.empty()) return false;
+        if (IsRemoteEntryPath(e.path)) return false;   // not on this disk
         std::lock_guard<std::mutex> lk(thumbMutex);
         auto it = peekSlots.find(e.path);
         if (it != peekSlots.end()) {
@@ -11593,7 +11804,7 @@ namespace UltraCanvas {
             thumbWorkerBase = std::min(4u, std::max(1u, hw / 2));
             thumbWorkers.reserve(thumbWorkerBase + kThumbExtraWorkersMax);
             for (unsigned i = 0; i < thumbWorkerBase; ++i)
-                thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+                thumbWorkers.push_back(StartWorkerThread([this]() { ThumbnailWorkerMain(); }));
             return;
         }
         // Watchdog: one more worker for every job that has run past
@@ -11612,7 +11823,7 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvasFilerWidget: a thumbnail job has run for "
                         << "over 20 s (" << (stuckKey ? *stuckKey : std::string())
                         << "); starting another worker" << std::endl;
-            thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+            thumbWorkers.push_back(StartWorkerThread([this]() { ThumbnailWorkerMain(); }));
         }
     }
 
@@ -12327,7 +12538,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartHostIconWorkerLocked() {
         if (hostIconWorker.joinable() || hostIconShutdown) return;
-        hostIconWorker = std::thread([this]() { HostIconWorkerMain(); });
+        hostIconWorker = StartWorkerThread([this]() { HostIconWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopHostIconWorker() {
@@ -13554,6 +13765,8 @@ namespace UltraCanvas {
     // placeholder that is filled in by a posted redraw.
     UltraCanvasFilerWidget::FolderStats
     UltraCanvasFilerWidget::GetFolderStats(const std::string& path) {
+        // A remote folder has nothing on this disk to walk.
+        if (IsRemoteEntryPath(path)) return FolderStats{};
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = folderStatsCache.find(path);
         if (it != folderStatsCache.end()) return it->second;
@@ -13569,7 +13782,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartFolderStatsWorkerLocked() {
         if (statsWorker.joinable() || statsShutdown) return;
-        statsWorker = std::thread([this]() { FolderStatsWorkerMain(); });
+        statsWorker = StartWorkerThread([this]() { FolderStatsWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopFolderStatsWorker() {
@@ -13821,6 +14034,8 @@ namespace UltraCanvas {
         app->PostToUIThread([this, alive]() {
             if (!alive->load()) return;   // widget destroyed meanwhile
             statsRedrawPosted.store(false);
+            // A move / copy question counting a folder shows the new total.
+            RefreshLiveDialogFacts();
             // New directory weights change the size-weighted geometries.
             if (viewType == FilerViewType::BarSize ||
                 viewType == FilerViewType::TreeMap) {
@@ -13862,6 +14077,9 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::QueueFolderPrefetch() {
         if (!folderPrefetchEnabled) return;
+        // A remote drive's subfolders are fetched ahead by its host (the
+        // remoteListing hook), never by reading this disk.
+        if (ShowingRemoteFolder()) return;
         std::lock_guard<std::mutex> lk(prefetchMutex);
         if (prefetchShutdown) return;
         ++prefetchGeneration;      // drops whatever the last folder queued
@@ -14071,7 +14289,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartFolderWatchWorkerLocked() {
         if (folderWatchWorker.joinable() || folderWatchShutdown) return;
-        folderWatchWorker = std::thread([this]() { FolderWatchWorkerMain(); });
+        folderWatchWorker = StartWorkerThread([this]() { FolderWatchWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopFolderWatchWorker() {
@@ -14175,7 +14393,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartFolderPrefetchWorkerLocked() {
         if (prefetchWorker.joinable() || prefetchShutdown) return;
-        prefetchWorker = std::thread([this]() { FolderPrefetchWorkerMain(); });
+        prefetchWorker = StartWorkerThread([this]() { FolderPrefetchWorkerMain(); });
     }
 
     void UltraCanvasFilerWidget::StopFolderPrefetchWorker() {
@@ -14278,6 +14496,8 @@ namespace UltraCanvas {
         if (!isImage && e.category != FilerFileCategory::Audio &&
             e.category != FilerFileCategory::Video)
             return "";
+        // Probing reads the file, and a remote one is not on this disk.
+        if (IsRemoteEntryPath(e.path)) return "";
 
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = mediaInfoCache.find(e.path);

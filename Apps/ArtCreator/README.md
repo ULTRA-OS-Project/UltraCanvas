@@ -24,6 +24,7 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 ```
 ┌ menu bar ─────────────────────────────────────────────────────────────┐
 ├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror | quality ┤
+├ transform bar: reference point | X Y | W H | W% H% | lock | rotation shear ┤
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Icon (icon mode)   │
 │ pal- │ ┌──────────────────────────────────────┐    │ Colour (fill/line) │
@@ -36,6 +37,15 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 │ status: pointer | zoom | selection | hint                              │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+The colour picker has a list of designs in its corner - colour circle,
+slider and square, colour rectangle, or colour and brightness sliders - and
+folds its channels (the HSV / HSL / RGB tabs and sliders) away under
+*Channels*. It is as tall as what it shows, so the panels below move up and
+down with it, and it opens with the design and the channels it was left
+with: `picker.design` and `picker.channels` in
+`~/.config/UltraCanvas/ArtCreator/config.ini` (the platform's settings folder
+elsewhere).
 
 ## Tools
 
@@ -99,6 +109,14 @@ the selection and to every line drawn afterwards.
   Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others
   show through), Remove ClipView, Blend or Mould, Convert to Editable
   Shapes, Snap to Pixels (Ctrl+Shift+P, in icon mode).
+- **Transform bar** (under the toolbar): the selection's X / Y, W / H,
+  scale in percent, rotation and shear, typed or stepped. The 3 x 3
+  *reference point* picker on its left says which point of the selection
+  the position is that of and stays put while it is resized, rotated or
+  sheared; the lock button keeps the aspect ratio. One object shows its own
+  angles; several show 0 and turn or shear by what is typed. Lengths are in
+  the page's unit, or icon pixels in icon mode. A held arrow key or a turn
+  of the wheel is one undo step.
 - **Object**: No Fill, No Line, line widths in points (hairline to 8 pt)
   and in pixels (1 to 4 px: the icon's pixels in icon mode, 96 DPI pixels
   otherwise).

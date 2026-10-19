@@ -968,8 +968,10 @@ $$
 - `$...$` is text-style math (fractions and operators sized for a line of
   text); `$$...$$` on one line is display-style math inline.
 - `$$` alone on a line opens a display block; the next `$$` line closes it.
-  The block is rendered centred at the closing fence, and the source lines
-  between show only while the caret is on them.
+  The block is rendered centred at the closing fence. While the caret is on
+  any line of the block - either fence or a source line - the whole block
+  shows as raw source, one line under the other, so the formula being edited
+  is always in view; moving the caret out renders it again.
 - A pair of dollar signs counts as math only when it looks like one: no space
   right after the opener or before the closer, and no digit after the closer,
   so `costs $5 and $10` stays text.

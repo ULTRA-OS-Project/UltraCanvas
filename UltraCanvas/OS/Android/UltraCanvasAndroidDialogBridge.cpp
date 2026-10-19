@@ -266,8 +266,9 @@ namespace AndroidDialogs {
 } // namespace UltraCanvas
 
 // ===== JNI ENTRY POINT =====
-// Resolved by name against the native library NativeActivity already loaded,
-// so no RegisterNatives call is needed. Runs on the Java UI thread.
+// Resolved by name - no RegisterNatives needed - because UltraCanvasActivity
+// loads this library through System.loadLibrary too (NativeActivity's own
+// load is invisible to JNI lookup). Runs on the Java UI thread.
 extern "C" JNIEXPORT void JNICALL
 Java_org_ultraos_ultracanvas_UltraCanvasActivity_nativeOnDialogResult(
         JNIEnv* env, jclass, jint requestId, jint result, jstring value) {

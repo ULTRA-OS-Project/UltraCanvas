@@ -2,6 +2,10 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.9.0 - the colour picker opens with the design and channels it was left with
+//                 (ArtCreatorSettings: picker.design, picker.channels in config.ini)
+// Version: 1.8.2 - the colour picker offers its design list, folds its channels and is
+//                 as tall as its content (SetAutoHeight)
 // Version: 1.8.1 - the colour picker in the framework's light style (ColorPickerStyle::Light)
 // Version: 1.8.0 - icon mode: File > New Icon (16 to 256 px), an Icon panel with the
 //                 icon size, a pixel grid, pointer snapping that puts lines of odd
@@ -25,7 +29,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -36,6 +40,7 @@
 #include "UltraCanvasClipboardDib.h"   // ClipboardDib::EncodePng
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextUtils.h"      // Base64Encode
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModalDialog.h"
@@ -198,10 +203,12 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(236, 236, 238, 255));
 
+    settings.Load();   // no file yet: the defaults stand
     tools = CreateArtTools();
 
     BuildMenuBar();
     BuildToolbar();
+    BuildTransformBar();
 
     body = std::make_shared<UltraCanvasContainer>("ac-body", 0, 0, 0, 0);
     body->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -256,6 +263,7 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     canvas->onToolDrag = [this](const VectorPointerEvent& e) {
         pointerX = e.doc.x; pointerY = e.doc.y; pointerInside = true;
         if (auto* t = ActiveTool()) t->OnDrag(toolContext, IconEvent(e));
+        RefreshTransformBar();   // the selection follows a drag live
         UpdateStatus();
     };
     canvas->onToolRelease = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, IconEvent(e)); };
@@ -564,6 +572,298 @@ void ArtCreatorWindow::SetDisplayQuality(int level) {
     if (canvas) canvas->SetDisplayQuality(quality);
 }
 
+// ===========================================================================
+// TRANSFORM BAR
+// ===========================================================================
+
+namespace {
+    constexpr float kTransformBarHeight = 50.0f;
+    constexpr float kTransformRowHeight = 21.0f;
+    constexpr double kDegrees = 180.0 / 3.14159265358979323846;
+}
+
+void ArtCreatorWindow::BuildTransformBar() {
+    transformBar = std::make_shared<UltraCanvasContainer>("ac-transform", 0, 0, 0, kTransformBarHeight);
+    transformBar->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    transformBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    transformBar->SetPadding(0, 8);
+    transformBar->SetBackgroundColor(Color(228, 228, 232, 255));
+
+    referencePicker = CreateReferencePointPicker("ac-tf-reference", 0, 0, 40, 40);
+    referencePicker->SetTooltip("Reference point: the point of the selection that stays put");
+    referencePicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    referencePicker->onPointChanged = [this](ReferencePoint) { RefreshTransformBar(); };
+    transformBar->AddChild(referencePicker);
+
+    // A column of two rows, each a caption and a field.
+    auto column = [&](const std::string& id, float width) {
+        auto c = std::make_shared<UltraCanvasContainer>("ac-tf-col-" + id, 0, 0, width, kTransformBarHeight - 4);
+        c->layout.SetFlexColumn().SetFlexGap(4).SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+        c->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        transformBar->AddChild(c);
+        return std::make_pair(c, width);
+    };
+    auto row = [&](const std::pair<std::shared_ptr<UltraCanvasContainer>, float>& col, const std::string& id) {
+        auto r = std::make_shared<UltraCanvasContainer>("ac-tf-row-" + id, 0, 0, col.second, kTransformRowHeight);
+        r->layout.SetFlexRow().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        r->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        col.first->AddChild(r);
+        return r;
+    };
+    auto caption = [&](const std::shared_ptr<UltraCanvasContainer>& r, const std::string& id, const std::string& text) {
+        auto l = CreateLabel("ac-tf-cap-" + id, 0, 0, 14, kTransformRowHeight, text);
+        l->SetFontSize(11);
+        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        r->AddChild(l);
+    };
+    auto icon = [&](const std::shared_ptr<UltraCanvasContainer>& r, const std::string& id, const std::string& file) {
+        auto image = CreateImageFromFile("ac-tf-icon-" + id, 0, 0, 16, 16, MenuIconPath(file));
+        image->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        r->AddChild(image);
+    };
+    auto field = [&](const std::shared_ptr<UltraCanvasContainer>& r, const std::string& id, float width,
+                     double minimum, double maximum, int decimals, double step, const std::string& tooltip,
+                     std::function<void(double, bool)> apply) {
+        auto s = CreateSpinner("ac-tf-" + id, 0, 0, width, kTransformRowHeight);
+        s->SetDecimals(decimals);
+        s->SetSnapToStep(false);
+        s->SetRange(minimum, maximum);
+        s->SetStep(step);
+        s->SetLayout(SpinnerLayout::UpDownRight);
+        s->SetButtonThickness(14.0f);
+        s->GetStyle().fontStyle.fontSize = 11.0f;
+        s->SetTooltip(tooltip);
+        s->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Every step applies at once, so the drawing follows a held arrow;
+        // the steps of one run go into one undo step, which the run's end
+        // closes.
+        s->onValueChanging = [this](double) { if (!syncingTransform) transformStepping = true; };
+        s->onValueChanged = [this, apply = std::move(apply)](double v) {
+            if (syncingTransform) return;
+            const bool step = transformStepping;
+            transformStepping = false;
+            const size_t before = history.UndoCount();
+            apply(v, step && transformRunOpen);
+            // Open only once a step made an undo step to merge into.
+            if (step && history.UndoCount() > before) transformRunOpen = true;
+        };
+        s->onStepsFinished = [this](double) { transformRunOpen = false; };
+        r->AddChild(s);
+        return s;
+    };
+
+    constexpr double kFar = 1.0e6;
+    auto position = column("pos", 113);
+    auto posX = row(position, "x");
+    caption(posX, "x", "X");
+    posXBox = field(posX, "x", 96, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
+                    [this](double v, bool merge) { ApplyPosition(true, v, merge); });
+    auto posY = row(position, "y");
+    caption(posY, "y", "Y");
+    posYBox = field(posY, "y", 96, -kFar, kFar, 2, 1, "Vertical position of the reference point",
+                    [this](double v, bool merge) { ApplyPosition(false, v, merge); });
+
+    auto size = column("size", 113);
+    auto sizeW = row(size, "w");
+    caption(sizeW, "w", "W");
+    sizeWBox = field(sizeW, "w", 96, 0, kFar, 2, 1, "Width of the selection",
+                     [this](double v, bool merge) { ApplySize(true, v, merge); });
+    auto sizeH = row(size, "h");
+    caption(sizeH, "h", "H");
+    sizeHBox = field(sizeH, "h", 96, 0, kFar, 2, 1, "Height of the selection",
+                     [this](double v, bool merge) { ApplySize(false, v, merge); });
+
+    auto scale = column("scale", 91);
+    auto scaleW = row(scale, "sw");
+    caption(scaleW, "sw", "W");
+    scaleWBox = field(scaleW, "sw", 74, 0.1, 100000, 1, 10, "Scale the width by a percentage",
+                      [this](double v, bool merge) { ApplyScalePercent(true, v, merge); });
+    scaleWBox->SetSuffix(" %");
+    auto scaleH = row(scale, "sh");
+    caption(scaleH, "sh", "H");
+    scaleHBox = field(scaleH, "sh", 74, 0.1, 100000, 1, 10, "Scale the height by a percentage",
+                      [this](double v, bool merge) { ApplyScalePercent(false, v, merge); });
+    scaleHBox->SetSuffix(" %");
+
+    ratioLockButton = std::make_shared<UltraCanvasButton>("ac-tf-lock", 0, 0, 28, 28, "");
+    ratioLockButton->SetIcon(IconPath("lock-ratio.svg"));
+    ratioLockButton->SetIconSize(18, 18);
+    ratioLockButton->SetCanToggled(true);
+    ratioLockButton->SetPressed(lockAspectRatio);
+    ratioLockButton->SetTooltip("Lock the aspect ratio: width and height scale together");
+    ButtonStyle lockStyle = ratioLockButton->GetStyle();
+    lockStyle.cornerRadius = 6.0f;
+    ratioLockButton->SetStyle(lockStyle);
+    ratioLockButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    ratioLockButton->onToggle = [this](bool on) { lockAspectRatio = on; };
+    transformBar->AddChild(ratioLockButton);
+
+    auto angles = column("angles", 93);
+    auto rotation = row(angles, "rot");
+    icon(rotation, "rot", "rotate.svg");
+    rotationBox = field(rotation, "rot", 74, -3600, 3600, 1, 15, "Rotation, counter-clockwise, about the reference point",
+                        [this](double v, bool merge) { ApplyRotation(v, merge); });
+    rotationBox->SetSuffix("\xC2\xB0");
+    auto shear = row(angles, "shear");
+    icon(shear, "shear", "shear.svg");
+    shearBox = field(shear, "shear", 74, -89, 89, 1, 5, "Shear: how far the top leans to the right",
+                     [this](double v, bool merge) { ApplyShear(v, merge); });
+    shearBox->SetSuffix("\xC2\xB0");
+
+    window->AddChild(transformBar);
+}
+
+void ArtCreatorWindow::TransformUnit(double& pointsPerUnit, std::string& symbol) const {
+    if (iconSize > 0 && IconPixel() > 0) {
+        pointsPerUnit = IconPixel();
+        symbol = "px";
+    } else {
+        pointsPerUnit = lastPage.PointsPerUnit();
+        symbol = ArtCreatorPageResult::UnitSymbol(lastPage.unit);
+    }
+    if (pointsPerUnit <= 0) pointsPerUnit = 1.0;
+}
+
+Point2Dd ArtCreatorWindow::TransformPivot() const {
+    const ReferencePoint point = referencePicker ? referencePicker->GetPoint() : ReferencePoint::Centre;
+    return ReferencePointIn(point, selection->Bounds());
+}
+
+void ArtCreatorWindow::SelectionAngles(double& rotation, double& shear) const {
+    rotation = 0;
+    shear = 0;
+    if (selection->Count() != 1) return;
+    const auto e = selection->First();
+    const Matrix3x3 m = ParentToDocument(e) * e->Transform.value_or(Matrix3x3::Identity());
+    // m = R(theta) * [sx sh; 0 sy]: the rotation turns the x axis, the
+    // shear is what is left of the y axis once it is turned back.
+    const double theta = std::atan2(m.m[1][0], m.m[0][0]);
+    const double c = std::cos(theta), s = std::sin(theta);
+    const double sh = m.m[0][1] * c + m.m[1][1] * s;
+    const double sy = -m.m[0][1] * s + m.m[1][1] * c;
+    // The page's y runs down: a positive angle turns clockwise on screen
+    // and a positive SkewX leans the top left, so both change sign.
+    rotation = -theta * kDegrees;
+    shear = std::fabs(sy) > 1e-12 ? -std::atan(sh / sy) * kDegrees : 0.0;
+    if (std::fabs(rotation) < 0.005) rotation = 0;
+    if (std::fabs(shear) < 0.005) shear = 0;
+}
+
+void ArtCreatorWindow::RefreshTransformBar() {
+    if (!transformBar || !document) return;
+    syncingTransform = true;
+    const bool any = !selection->Empty();
+    for (UltraCanvasUIElement* e : std::initializer_list<UltraCanvasUIElement*>{
+             posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), scaleWBox.get(), scaleHBox.get(),
+             rotationBox.get(), shearBox.get()})
+        if (e->IsDisabled() == any) e->SetDisabled(!any);
+    double k = 1;
+    std::string unit;
+    TransformUnit(k, unit);
+    for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get()}) {
+        if (s->GetSuffix() != unit) s->SetSuffix(unit);
+        // Steps of a whole unit for millimetres, points and pixels, a tenth
+        // for centimetres and inches.
+        s->SetStep(k >= 20.0 ? 0.1 : 1.0);
+    }
+    const auto ids = selection->Ids();
+    const bool sameSelection = ids == transformBarIds;
+    transformBarIds = ids;
+    if (any) {
+        const Rect2Dd b = selection->Bounds();
+        const Point2Dd p = TransformPivot();
+        posXBox->SetValue(p.x / k);
+        posYBox->SetValue(p.y / k);
+        sizeWBox->SetValue(b.width / k);
+        sizeHBox->SetValue(b.height / k);
+        double rotation = 0, shear = 0;
+        SelectionAngles(rotation, shear);
+        // The object's angle is only known to a turn: show the one nearest
+        // what the field holds, so stepping on from 165 gives 180, 195 ...
+        // rather than -165. A new selection starts from -180 to 180.
+        if (sameSelection) rotation += 360.0 * std::round((rotationBox->GetValue() - rotation) / 360.0);
+        rotationBox->SetValue(rotation);
+        shearBox->SetValue(shear);
+    } else {
+        for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), rotationBox.get(), shearBox.get()})
+            s->SetValue(0);
+    }
+    scaleWBox->SetValue(100);
+    scaleHBox->SetValue(100);
+    syncingTransform = false;
+}
+
+void ArtCreatorWindow::ApplyPosition(bool horizontal, double value, bool merge) {
+    if (selection->Empty()) return;
+    double k = 1;
+    std::string unit;
+    TransformUnit(k, unit);
+    const Point2Dd p = TransformPivot();
+    const double dx = horizontal ? value * k - p.x : 0.0;
+    const double dy = horizontal ? 0.0 : value * k - p.y;
+    if (std::fabs(dx) < 1e-9 && std::fabs(dy) < 1e-9) return;
+    auto ids = selection->Ids();
+    history.Record("Move", [&]() { TranslateElements(selection->Elements(), dx, dy); }, merge);
+    Reselect(ids);
+}
+
+void ArtCreatorWindow::ApplySize(bool horizontal, double value, bool merge) {
+    if (selection->Empty()) return;
+    double k = 1;
+    std::string unit;
+    TransformUnit(k, unit);
+    const Rect2Dd b = selection->Bounds();
+    const double current = horizontal ? b.width : b.height;
+    // A line along one axis has no size across it to scale.
+    if (current < 1e-9 || value <= 0) { RefreshTransformBar(); return; }
+    const double factor = value * k / current;
+    ApplyScalePercent(horizontal, factor * 100.0, merge);
+}
+
+void ArtCreatorWindow::ApplyScalePercent(bool horizontal, double percent, bool merge) {
+    if (selection->Empty() || percent <= 0) { RefreshTransformBar(); return; }
+    const double factor = percent / 100.0;
+    const double sx = horizontal || lockAspectRatio ? factor : 1.0;
+    const double sy = !horizontal || lockAspectRatio ? factor : 1.0;
+    if (std::fabs(sx - 1.0) < 1e-9 && std::fabs(sy - 1.0) < 1e-9) { RefreshTransformBar(); return; }
+    const Point2Dd pivot = TransformPivot();
+    auto ids = selection->Ids();
+    history.Record("Resize", [&]() { ScaleElements(selection->Elements(), sx, sy, pivot); }, merge);
+    Reselect(ids);
+}
+
+void ArtCreatorWindow::ApplyRotation(double degrees, bool merge) {
+    if (selection->Empty()) return;
+    double rotation = 0, shear = 0;
+    SelectionAngles(rotation, shear);
+    // The shortest turn there: 375 typed over 0 turns by 15.
+    const double turn = std::remainder(degrees - rotation, 360.0);
+    if (std::fabs(turn) < 1e-9) { RefreshTransformBar(); return; }
+    const Point2Dd pivot = TransformPivot();
+    auto ids = selection->Ids();
+    history.Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); }, merge);
+    Reselect(ids);
+}
+
+void ArtCreatorWindow::ApplyShear(double degrees, bool merge) {
+    if (selection->Empty()) return;
+    double rotation = 0, shear = 0;
+    SelectionAngles(rotation, shear);
+    const double target = std::clamp(degrees, -89.0, 89.0);
+    // In the object's own turned frame the shear is a SkewX; going from one
+    // angle to another adds the difference of their tangents.
+    const double delta = std::atan(std::tan(-target / kDegrees) - std::tan(-shear / kDegrees));
+    if (std::fabs(delta) < 1e-9) return;
+    const double theta = -rotation / kDegrees;
+    const Point2Dd pivot = TransformPivot();
+    const Matrix3x3 m = Matrix3x3::Translate(pivot.x, pivot.y) * Matrix3x3::Rotate(theta) *
+                        Matrix3x3::SkewX(delta) * Matrix3x3::Rotate(-theta) *
+                        Matrix3x3::Translate(-pivot.x, -pivot.y);
+    auto ids = selection->Ids();
+    history.Record("Shear", [&]() { TransformElements(selection->Elements(), m); }, merge);
+    Reselect(ids);
+}
+
 namespace {
     // The palette's groups, top to bottom, as UltraPaint's: tools of a kind
     // share one slot, the group's main tool first. The slot shows the tool
@@ -688,13 +988,18 @@ void ArtCreatorWindow::BuildRightPanel() {
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(lineColour);
     colorPicker->SetShowAlpha(true);
-    // The hue ring is capped by whatever vertical space the controls leave it,
-    // so a picker sized by eye draws a wheel narrower than the panel. Ask for
-    // the height at which the ring fills the panel's width instead.
-    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
-    // the panel's next layout pass puts back the size the picker was created
-    // with. The declared height is also the picker's flex basis.
-    colorPicker->SetElementSize(Size2Df(kRightInner, colorPicker->PreferredHeightForWidth(kRightInner)));
+    // The design list top right (circle, square, rectangle, two sliders), and
+    // the HSV / HSL / RGB channels under their disclosure row - both as the
+    // user left them (folded the first time).
+    colorPicker->SetWheelStyle(settings.pickerDesign);
+    colorPicker->SetShowWheelStyleSelector(true);
+    colorPicker->SetSlidersCollapsible(true, settings.pickerChannelsOpen);
+    colorPicker->onWheelStyleChanged = [this](ColorPickerWheelStyle) { RememberColourPicker(); };
+    colorPicker->onSlidersExpandedChanged = [this](bool) { RememberColourPicker(); };
+    // As tall as its content: the hue ring fills the panel's width, and what
+    // is below moves up and down as the channels fold or another design is
+    // chosen. The height is also the picker's flex basis.
+    colorPicker->SetAutoHeight(true);
     // Not stretched: the panel's content box is wider than what is visible
     // beside the scrollbar, and a stretched picker lays its hex field and
     // channel values out into the part that is covered.
@@ -776,6 +1081,14 @@ void ArtCreatorWindow::BuildRightPanel() {
     rightPanel->AddChild(layersPanel);
 
     body->AddChild(rightPanel);
+}
+
+void ArtCreatorWindow::RememberColourPicker() {
+    // The file holds only the picker, so this window's state is the whole of
+    // it: whichever window changed its picker last is the one remembered.
+    settings.pickerDesign = colorPicker->GetWheelStyle();
+    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
+    settings.Save();
 }
 
 void ArtCreatorWindow::BuildStatusBar() {
@@ -875,6 +1188,7 @@ void ArtCreatorWindow::SetDocument(std::shared_ptr<VectorDocument> doc, const st
     UpdateUndoButtons();
     UpdateTitle();
     UpdateStatus();
+    RefreshTransformBar();
 }
 
 // Every vector format goes through the FileLoader, which reads into and
@@ -972,12 +1286,14 @@ void ArtCreatorWindow::OnDocumentChanged() {
     UpdateTitle();
     UpdateStatus();
     RefreshIconPreview();
+    RefreshTransformBar();
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
 }
 
 void ArtCreatorWindow::OnSelectionChanged() {
     SyncColourPanelFromSelection();
     SyncLinePanelFromSelection();
+    RefreshTransformBar();
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
     UpdateStatus();
 }
@@ -1910,6 +2226,7 @@ void ArtCreatorWindow::SetIconSize(int pixels) {
     }
     if (iconPanel) iconPanel->SetVisible(iconSize > 0);
     RefreshIconPreview();
+    RefreshTransformBar();   // lengths in icon pixels, or the page's unit
     UpdateStatus();
     canvas->Refresh();
 }

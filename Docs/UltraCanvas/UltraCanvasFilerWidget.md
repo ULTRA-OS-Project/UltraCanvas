@@ -59,6 +59,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
   - [Changing a remote folder](#changing-a-remote-folder)
 - [Folder listing prefetch](#folder-listing-prefetch)
+- [Retiring a display](#retiring-a-display)
 - [Hidden entries](#hidden-entries)
 - [Hidden-items notice](#hidden-items-notice)
 - [Hiding Details columns](#hiding-details-columns)
@@ -644,7 +645,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -1330,6 +1331,12 @@ filer->remoteDownload = [drives](const std::string& folderPath,
 - **`listingIsRealDirectory` stays false** for a remote listing, which turns
   off the features that read the local filesystem per entry: the folder
   previews and the in-use (lock) column.
+- **Nothing on a remote path is read in the background.** Thumbnails, text and
+  folder previews, media probes, folder statistics and the folder prefetch
+  skip every path `isRemotePath` claims: no decoder can open
+  `ultracloud://...`, and a video grab would wait out its timeout before
+  giving up. A thumbnail the host supplies as a local file
+  (`FilerEntry::thumbnailPath`) is still shown.
 
 UltraFiler's remote drives are built on these two hooks; see
 `Apps/UltraFiler/UltraFilerRemoteDrives.h`.
@@ -1359,6 +1366,31 @@ spinning disks.
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
+
+## Retiring a display
+
+The destructor waits for every background worker the widget started -
+thumbnails, previews, media probes, folder statistics, prefetch, the folder
+watch, a running file operation or archive job. One busy with a slow file
+holds whichever thread destroys the widget for as long. A host that drops a
+display while its UI runs - UltraFiler closing a tab - retires it instead:
+
+```cpp
+// The tab closes: tell the workers to stop, keep the widget.
+filer->RequestBackgroundStop();   // never blocks
+retired.push_back(filer);
+
+// Later, from a timer: destroy what has nothing left to wait for.
+std::erase_if(retired, [](const auto& f) { return f->BackgroundStopped(); });
+```
+
+- **`RequestBackgroundStop()`** is the destructor's teardown without its
+  waits: the timers are stopped, every worker queue is cleared and its worker
+  told to end, and a file operation or archive job still running is stopped
+  as its own Cancel would stop it, with nothing reported back.
+- **`BackgroundStopped()`** is true once every worker thread the widget
+  started has returned; the destructor's joins are then instant.
+- A retired widget is not shown or used again.
 
 ## Hidden entries
 

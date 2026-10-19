@@ -10,6 +10,7 @@
 // to it and the application exits with the last of them.
 // Version: 1.7.0 - password-protected *.ucd: CmdPassword (File > Password Protection...),
 //                  OpenProtectedFile asks for a file's password, SaveLossQuestion
+// Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
 // Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
 //                  the keyboard back to the text being typed
 // Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
@@ -92,6 +93,9 @@ private:
     void BuildToolbar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next editor opens it the way it was left.
+    void RememberColourPicker();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;

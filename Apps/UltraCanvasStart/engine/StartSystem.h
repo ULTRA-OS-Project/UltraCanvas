@@ -1,6 +1,7 @@
 // Apps/UltraCanvasStart/engine/StartSystem.h
 // Finds out what machine UltraCanvasStart is running on: platform, OS name,
 // architecture, distribution and the package manager that goes with it.
+// Version: 0.1.1 - InstallingPackageManager, kMsys2DefaultRoot
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -38,5 +39,12 @@ std::string FindProgram(const std::string& name,
 // The MSYS2 installation root on Windows ("C:/msys64"): MSYS2_ROOT, the
 // directory an MSYSTEM shell runs from, then the usual places. Empty elsewhere.
 std::string FindMsys2Root();
+
+// Where winget's MSYS2 installer puts MSYS2 when nothing else is said.
+inline constexpr const char* kMsys2DefaultRoot = "C:/msys64";
+
+// The manager whose package names the checks and the plan use: the one found,
+// or, on Windows without MSYS2, MSYS2's pacman, which Install sets up first.
+PackageManager InstallingPackageManager(const SystemProfile& profile);
 
 } // namespace UltraCanvasStart

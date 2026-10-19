@@ -1,0 +1,115 @@
+// include/UltraCanvasOfficeEncryption.h
+// Opens and writes password-protected Office Open XML files: an .xlsx, .docx
+// or .pptx saved with "Encrypt with Password" by Office 2010 or later (and by
+// LibreOffice and others that write the same thing).
+//
+// Such a file is not a ZIP package. It is an OLE2 compound file holding two
+// streams: "EncryptionInfo", which says how the key is derived, and
+// "EncryptedPackage", the original ZIP package encrypted. DecryptOfficePackage
+// turns the second back into the ZIP, which the .xlsx and .docx readers then
+// read as usual. EncryptOfficePackage does the reverse, for the writers.
+//
+// Read: ECMA-376 agile encryption ([MS-OFFCRYPTO] 2.3.4.10-2.3.4.15) with
+// AES-128/192/256 in CBC mode and SHA-512, SHA-256 or SHA-1 - what Office
+// writes by default since 2010 (SHA-1 then, SHA-512 since 2013). In order:
+//   1. the password key: the hash of the salt and the UTF-16LE
+//      password, rehashed spinCount times (100000 by default);
+//   2. the password verifier, which tells a wrong password from a right one;
+//   3. the intermediate key the password key unwraps;
+//   4. the dataIntegrity HMAC over the whole EncryptedPackage stream, checked
+//      BEFORE anything is decrypted - a changed file is refused, never
+//      decrypted into something else;
+//   5. the package, in 4096-byte segments, each with its own IV (the hash of
+//      the salt and the segment's index).
+// Also read: Office 2007's "standard" encryption ([MS-OFFCRYPTO] 2.3.4.5-
+// 2.3.4.9) - a binary header, a SHA-1 password key of 50000 rounds, the
+// verifier, and AES-128/192/256 in ECB mode over the whole package. The format
+// has no integrity check, so a changed standard-encrypted file decrypts into
+// changed content (which the ZIP reader's CRCs usually catch); such files are
+// opened anyway, as every Office reader does - refusing them would refuse
+// every Office 2007 file.
+// Not supported, each refused as Unsupported with the reason: RC4 standard
+// encryption, extensible encryption, and certificate-only key encryptors.
+//
+// Written: what Office 2013 and later write - AES-256-CBC, SHA-512, a spin
+// count of 100000, random 16-byte salts, a random intermediate and HMAC key,
+// the dataIntegrity HMAC, and the \x06DataSpaces storage Office looks for,
+// in a compound file built by UCCompoundFileWriter.
+//
+// Cryptography is UltraCrypt's (UltraCryptCore.h): its constant-time AES-CBC,
+// SHA-2, HMAC and CSPRNG. SHA-1 is asked for as a legacy digest only to read
+// Office 2010's files. Without a crypto backend every decryption reports
+// NoCryptoBackend and every encryption fails.
+//
+// Version: 1.2.0
+// Last Modified: 2026-10-17
+// Author: UltraCanvas Framework
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace UltraCanvas {
+
+class UCCompoundFileReader;
+
+enum class OfficeDecryptStatus {
+    Decrypted,          // outPackage holds the ZIP package
+    NotEncrypted,       // not an encrypted Office package: read it as it is
+    PasswordRequired,   // encrypted, and the password given was empty
+    WrongPassword,      // the password verifier does not match
+    Tampered,           // the password is right but the integrity HMAC does
+                        // not match: the file was changed after it was saved
+    Unsupported,        // an encryption this reader does not implement
+    Damaged,            // the streams are truncated or malformed
+    NoCryptoBackend     // UltraCrypt was built without a crypto backend
+};
+
+// True when the compound file holds both EncryptionInfo and EncryptedPackage.
+bool IsEncryptedOfficePackage(const UCCompoundFileReader& compoundFile);
+// The same for a file on disk (`filePath` is UTF-8): false when it cannot be
+// read or is not a compound file at all - an ordinary .xlsx is a ZIP.
+bool IsEncryptedOfficePackage(const std::string& filePath);
+
+// Decrypts the two streams' contents. `password` is UTF-8, as typed. On any
+// status other than Decrypted, outPackage is empty and `error` says why in
+// words a user can be shown.
+OfficeDecryptStatus DecryptOfficePackage(const std::vector<uint8_t>& encryptionInfo,
+                                         const std::vector<uint8_t>& encryptedPackage,
+                                         const std::string& password,
+                                         std::vector<uint8_t>& outPackage,
+                                         std::string& error);
+// The same, reading the streams from an open compound file. NotEncrypted when
+// it does not hold them.
+OfficeDecryptStatus DecryptOfficePackage(const UCCompoundFileReader& compoundFile,
+                                         const std::string& password,
+                                         std::vector<uint8_t>& outPackage,
+                                         std::string& error);
+// The same for a file on disk. NotEncrypted for a file that is not a compound
+// file (an ordinary ZIP package); Damaged when it cannot be read.
+OfficeDecryptStatus DecryptOfficePackageFile(const std::string& filePath,
+                                             const std::string& password,
+                                             std::vector<uint8_t>& outPackage,
+                                             std::string& error);
+
+// Checks a password without decrypting the file: the key derivation and the
+// password verifier only, for a prompt that asks again after a wrong one.
+// Decrypted here means "the password is right"; every other status is what
+// DecryptOfficePackageFile would return (Tampered excepted: the integrity
+// check needs the whole file and runs when it is opened).
+OfficeDecryptStatus CheckOfficePassword(const std::string& filePath, const std::string& password,
+                                        std::string& error);
+
+// Encrypts a ZIP package (an .xlsx, .docx or .pptx as its writer produced it)
+// into a password-protected Office file. `password` is UTF-8 and must not be
+// empty. False with `error` set when there is no crypto backend or no
+// randomness; outFile is then empty.
+bool EncryptOfficePackage(const std::vector<uint8_t>& package, const std::string& password,
+                          std::vector<uint8_t>& outFile, std::string& error);
+// The same, writing the result to `filePath` (UTF-8). Nothing is written when
+// the encryption fails.
+bool EncryptOfficePackageToFile(const std::vector<uint8_t>& package, const std::string& password,
+                                const std::string& filePath, std::string& error);
+
+} // namespace UltraCanvas

@@ -18,6 +18,7 @@
 
 #include "UltraAIEndpoints.h"
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
@@ -28,6 +29,7 @@ namespace UltraAIApp {
 class UltraAISettingsDialog : public UltraCanvas::UltraCanvasModalDialog {
 public:
     UltraAISettingsDialog();
+    ~UltraAISettingsDialog() override;
 
     // Build the dialog shell and its widgets, then load the endpoint identified
     // by selectEndpointId into the editor. When empty (the default), loads the
@@ -40,6 +42,10 @@ private:
     void OnPickerChanged();
     void OnDelete();
     void OnSave();
+    // Fetch the server's model list (/v1/model/info) off-thread and fill the
+    // model dropdown; the result is cached on the endpoint when saved.
+    void OnFetchModels();
+    void PopulateModelDropdown();
     void SetStatus(const std::string& text);
 
     // Union of every capability's registered providers, de-duplicated.
@@ -51,6 +57,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  providerDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> baseUrlInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> modelInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  modelDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> keyInput_;
     std::map<AICapability, std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>> modeChecks_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
@@ -59,6 +66,15 @@ private:
     std::vector<std::string> pickerIds_;
     // The endpoint currently loaded in the editor; empty => new/unsaved.
     std::string editingId_;
+
+    // Models from the last fetch (or the loaded endpoint); saved onto the
+    // endpoint on Save and used to populate modelDropdown_.
+    std::vector<Endpoint::DiscoveredModel> fetchedModels_;
+    bool fetching_ = false;
+    // Flipped false in the dtor so a late fetch delivery becomes a no-op
+    // instead of calling into a destroyed dialog (the RunOffThread pattern).
+    std::shared_ptr<std::atomic<bool>> uiAlive_ =
+        std::make_shared<std::atomic<bool>>(true);
 
     static constexpr long kW      = 780;
     static constexpr long kH      = 590;

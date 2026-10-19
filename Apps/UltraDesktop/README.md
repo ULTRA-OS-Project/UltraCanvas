@@ -8,7 +8,8 @@ everything they show or do goes through the
 [`UltraCanvasDesktopShell`](../../Docs/UltraCanvas/UltraCanvasDesktopShell.md)
 module.
 
-User guide: [`Docs/UltraDesktop/README.md`](../../Docs/UltraDesktop/README.md).
+User manual: [`Docs/UltraDesktop/Manual.md`](../../Docs/UltraDesktop/Manual.md).
+Reference: [`Docs/UltraDesktop/README.md`](../../Docs/UltraDesktop/README.md).
 Changelog and version: [`Docs/UltraDesktop/CHANGELOG.md`](../../Docs/UltraDesktop/CHANGELOG.md).
 
 ## Layout

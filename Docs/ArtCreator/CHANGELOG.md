@@ -1,3 +1,51 @@
+#### 2026-10-17 *0.8.0*
+- **A transform bar for the selection.** A bar under the toolbar shows and
+  sets the selected objects' position, size, scale, rotation and shear, as
+  Xara's selector bar does:
+  - a *reference point* picker on the left - nine points for the corners,
+    edge midpoints and centre of the selection - says which point stays put
+    when the selection is resized, rotated or sheared, and which point X and
+    Y give the place of;
+  - *X* / *Y* move that point to the position typed; *W* / *H* make the
+    selection that wide or high; the two *%* fields scale it by a
+    percentage and go back to 100;
+  - the *lock* button keeps the aspect ratio: with it down, changing the
+    width changes the height in proportion, and the other way round;
+  - *rotation* and *shear* show one object's own angles (counter-clockwise,
+    and how far its top leans to the right) and set them; with several
+    objects selected they show 0 and turn or shear by what is typed. The
+    rotation counts on past 180 deg while the same objects stay selected -
+    holding the up arrow from 165 shows 180, 195, ... 345, not -165 - and a
+    typed angle turns the shortest way to it.
+
+  Lengths are in the page's unit (*File > Document Setup*), or in icon
+  pixels in icon mode, and follow a drag as it happens. Every change is one
+  step of undo - a held arrow key, the arrow buttons clicked or the wheel
+  turned in one go too: the drawing follows each step, and *Undo* takes the
+  whole run back (framework: `UltraCanvasSpinner::onStepsFinished`). The reference point picker is a new framework element
+  (framework changelog: `reference-point-picker`).
+
+#### 2026-10-17 *0.7.3*
+- **The colour picker stays as it was left.** ArtCreator opens the picker
+  with the design chosen in its list and the channels open or folded as they
+  were when it was last used. It keeps them in a settings file of its own,
+  `config.ini` in the UltraCanvas settings folder
+  (`~/.config/UltraCanvas/ArtCreator/` on Linux), as `picker.design`
+  (`circle`, `square`, `rectangle` or `sliders`) and `picker.channels`
+  (`open` or `folded`) - the names UltraPaint's settings use - saved as the
+  picker changes (framework changelog: `colour-picker-design-names`).
+
+#### 2026-10-16 *0.7.2*
+- **The colour panel takes less room.** The picker in the right-hand panel
+  folds its channels away: the HSV / HSL / RGB tabs and the channel sliders
+  sit under a *Channels* row that opens them, so the panel starts with the
+  hue ring, the swatches and the hex field, and the active tool's options
+  move up into view. A list top right switches the picker between the colour
+  circle, the slider and square, the colour rectangle and the two sliders
+  (hue and brightness); the picker is as tall as what it shows, so the
+  panels below move up and down with it (framework changelog:
+  `colour-picker-toolbox`).
+
 #### 2026-10-15 *0.7.1*
 - **The colour picker is light, like the panel it sits in.** The picker in
   the right-hand panel was the framework's default dark one - a charcoal

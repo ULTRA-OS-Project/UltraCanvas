@@ -1,3 +1,64 @@
+#### 2026-10-17 *0.4.3*
+- **The Tools step's switches can be flipped.** A missing or not checkable
+  row's switch was a read-only indicator, so a click did nothing. It is a
+  choice now: on (the default) installs that package with the rest, off
+  leaves it out of *Install what is missing*, of the command shown above
+  the rows and of the report (`(switched off, not installed)`). The badge
+  says *N missing, M off*; with every missing one off, Install has nothing
+  to do and says so. Installed rows stay on and locked, and the choice
+  survives *Check again* (`Choices::skipped`, `Plan::SkippedCount`).
+- **Windows without MSYS2: Install sets it up.** Before, the step said no
+  package manager was found and Install stayed off - and the rows named no
+  package, so their switches could not be flipped either, and Linux-only
+  rows (X11, Xcursor, GTK 3) were listed. The checks now name MSYS2's
+  packages (`InstallingPackageManager`), and Install runs, after one
+  confirmation that lists every command: `winget install --id MSYS2.MSYS2`
+  into `C:\msys64`, a first login shell that sets up pacman's keyring and
+  runs `pacman -Syuu` (twice: a core update ends the first run, which may
+  fail without stopping the install), then MSYS2's `pacman -S` for the
+  missing ones. MSYS2 is detected again and the checks run. Without winget
+  the output says to install App Installer or MSYS2 by hand. Every install
+  command runs with the MSYS2 bin directories on its PATH and `MSYSTEM`
+  set (`StartRunner` 0.1.1), so pacman's hooks find their programs.
+- **An installed MSYS2 is updated before pacman installs.** On an old
+  MSYS2 the package lists name files the mirrors no longer have, and
+  `pacman -S` alone failed with 404s. Install now runs `pacman -Syuu` in a
+  login shell twice (`Msys2UpdateSteps`; the first run may end in a core
+  update without stopping the install), then `pacman -S`.
+- **The install and build output appear as they come**, line by line,
+  instead of when each command ends: the MSYS2 set-up and a large install
+  take minutes. `RunStep` and `BuildProject` hand over the output through
+  the framework's new `RunProcessCaptured` `onOutput` callback
+  (framework changelog: `process-output-as-it-comes`).
+  The window gathers it on the worker and shows it in one console update
+  per 100 ms drain of its UI queue, not one per line, so a pacman or cmake
+  run writing thousands of lines a second does not bury the UI.
+- **Any stage of the stepper can be clicked**, ahead as well as back; Next
+  and Back stay as one-step shortcuts. The stepper is locked while a
+  check, an install or a build runs.
+
+#### 2026-10-17 *0.4.2*
+- **"None" among the AI assistants, first and in red.** Step 2 offers
+  *None* - a local IDE or the compiler alone - before Claude Code, Codex,
+  Copilot, Gemini and Other. It writes no instruction file and prepares no
+  first prompt (the instruction-file and GitHub-only boxes turn off), and its
+  guide says how to open the project in an IDE or build it from a terminal.
+  `--assistant none` chooses it from the command line. The red comes from
+  the segmented control's new per-segment text colour (framework changelog:
+  `segmented-control-segment-text-color`).
+- **The SDK comes from the UltraOS download page.** Step 4's *Download page*
+  opens [ultraos.eu/download-file](https://ultraos.eu/download-file/) in the
+  browser, where the archive the step names is downloaded; *Unpack...* picks
+  the downloaded archive (through the file loader's dialog), unpacks it beside
+  itself and fills the SDK prefix in - from the folder named like the archive
+  first, then any SDK beside it, so the file need not keep its name. The
+  GitHub release stays linked as *Also on GitHub*; the Actions-page row is
+  gone. The application no longer downloads anything itself, so it no longer
+  links UltraNet (`StartSdk` 0.2.0: `DownloadSdk`, `SdkDownloadAvailable` and
+  `SdkReleaseAssetUrl` removed, `SdkUnpackedFolder` added).
+- **"AI assistant", not "assistant"**, in step 2's heading, its card title,
+  its hint and its status line.
+
 #### 2026-10-15 *0.4.1*
 - **No console window on Windows when it is started from the Start menu or
   Explorer.** `UltraCanvasStart.exe` is a GUI program now. Beside it,

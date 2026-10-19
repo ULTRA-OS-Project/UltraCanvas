@@ -1,10 +1,74 @@
-#### 2026-10-17 *1.74.2*
+#### 2026-10-19 *1.76.1*
 - **The preview pane shows PDFs in the PDF view, and unlocks protected
   files.** A PDF in the preview pane had been a picture of its first page; it
   is the PDF view again, pages and all, and PDFs on a remote drive are still
   fetched to preview them. A password-protected PDF or UltraCanvas layered
   image shows an **Unlock** button in the pane's info line that asks for the
   password (framework changelog, pending entry `media-viewer-unlock`).
+
+#### 2026-10-18 *1.76.0*
+- **Quitting during an upload or a download asks first, and quits at once.**
+  Closing UltraFiler while a remote drive was copying dropped every upload
+  and download still waiting, without a word, and the one running kept the
+  process alive with no window on screen until its last byte had gone - for
+  a large file over a slow line, minutes. Now that close asks *An upload is still running — quit
+  anyway?* (or *3 uploads are still running or waiting*, *A download is
+  still running*), naming the file being copied, the drive and the ones
+  waiting behind it. *Keep UltraFiler open* (the default, and what Return
+  gives) leaves everything as it was; *Quit anyway* stops the running
+  transfer where it is, drops the rest, and UltraFiler is gone within a
+  second. With nothing to copy, closing asks nothing. The drive worker calls
+  the transfer off through UltraNet's new per-thread abort check, and the
+  question is asked only when the close would end the application
+  (`UltraCanvasApplicationBase::ClosingEndsApplication`); both are in the
+  framework changelog.
+- **A download that fails part way leaves no half a file.** An FTP download
+  writes straight into the file it was given, so one cut off - the
+  connection lost, or UltraFiler quit during it - left the first part of the
+  file in the folder under its full name. It is removed when the download
+  fails; the name was a free one when the download was queued, so nothing
+  else is touched.
+- **An upload onto a name that is taken asks first.** Dropping or pasting
+  a file into a folder on a drive that already held one of that name
+  replaced it without a word. The folder is now listed afresh first - a
+  file may have appeared there since it was opened - and each such file is
+  asked about the way a paste on this computer is: *"report.pdf" already
+  exists in "up" on Studio FTP*, the two sizes and dates, and *Keep both*
+  (uploaded beside it as *report (2).pdf*), *Replace*, *Skip* or *Stop*,
+  with *Apply to all remaining conflicts* when there are more. Settings >
+  Handling's standing answer for name conflicts applies here too; a file
+  never replaces a folder of its name, so that answer becomes Keep both.
+- **An upload to an FTP or SFTP drive replaces a file only once it is
+  complete, and one stopped part way is cleaned up.** An FTP upload writes
+  straight into the file it names, so one that replaced a file destroyed
+  the old version with its first byte, and one stopped part way (UltraFiler
+  quit during it, or the connection broke) left the part on the server
+  looking like the file. Uploads now go to a hidden part name beside the
+  file (`.report.pdf.part`) and are renamed to their own name once the last
+  byte is in; a server that will not rename onto an existing file (SFTP,
+  some Windows servers) has the old one set aside as `.report.pdf.replaced`
+  for that moment, and put back if the rename fails. What an upload that
+  did not finish left - in this session or one UltraFiler did not get to
+  end - is removed before the next request to that drive, and each step is
+  in that request's connection-log session. The quit question says so for
+  an upload to such a drive: *What was sent is removed from Studio FTP the
+  next time you use it.* UltraCloud does all of this, for UltraMail's
+  cloud links as well (framework changelog: `ftp-uploads-in-place`).
+
+#### 2026-10-17 *1.75.0*
+- **Closing a tab no longer waits for its folder display's workers.** A closed
+  tab's display is told to stop its workers and destroyed once they have all
+  ended, instead of on the spot, where its destructor waited for every one -
+  a worker busy with a slow file froze the window ("Not responding") until it
+  was done. Most noticeable with two tabs on the same FTP folder.
+- **A preview copy no longer holds up a remote drive.** A file selected on
+  an FTP drive is downloaded for the preview pane (up to 64 MB), and every
+  other request to the drive - opening a folder, a refresh, a delete - waited
+  behind it. The download is now called off when you ask the drive for
+  anything else, and fetched again once that is done; called off for good
+  when the selection moves to another file; and called off when the window
+  closes, which no longer waits for it. The connection log shows it as called
+  off, not as a failure.
 
 #### 2026-10-15 *1.74.1*
 - **The colour popup's picker is the framework's light picker.** Settings >

@@ -6,6 +6,10 @@
 // Version: 1.9.0 - password-protected *.ucd: File > Password Protection... sets, changes or
 //                  removes it; opening one asks for its password (again when it is wrong);
 //                  Save / Save As to anything but a *.ucd says it drops the protection
+// Version: 1.8.2 - the colour picker opens with the design and channels it was left with
+//                  (settings: picker.design, picker.channels)
+// Version: 1.8.1 - the colour picker offers its design list, folds its channels and is
+//                  as tall as its content (SetAutoHeight)
 // Version: 1.8.0 - Open / Save As offer FileLoader's layered images: *.ucd (UCD 2.1, layers
 //                  and text kept) beside *.ucraster, from the inventory, not a list of our own
 // Version: 1.7.1 - the Text tool's Font and Align lists closed with Escape give the keyboard
@@ -767,13 +771,18 @@ void UltraPaintWindow::BuildRightPanel() {
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(background.ToColor());
     colorPicker->SetShowAlpha(true);
-    // The hue ring is capped by whatever vertical space the controls leave it,
-    // so a picker sized by eye draws a wheel narrower than the card. Ask for
-    // the height at which the ring fills the card's width instead.
-    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
-    // the card's next layout pass puts back the size the picker was created
-    // with. The declared height is also the picker's flex basis.
-    colorPicker->SetElementSize(Size2Df(cardInner, colorPicker->PreferredHeightForWidth(cardInner)));
+    // The design list top right (circle, square, rectangle, two sliders), and
+    // the HSV / HSL / RGB channels under their disclosure row - both as the
+    // user left them (folded the first time).
+    colorPicker->SetWheelStyle(settings.pickerDesign);
+    colorPicker->SetShowWheelStyleSelector(true);
+    colorPicker->SetSlidersCollapsible(true, settings.pickerChannelsOpen);
+    colorPicker->onWheelStyleChanged = [this](ColorPickerWheelStyle) { RememberColourPicker(); };
+    colorPicker->onSlidersExpandedChanged = [this](bool) { RememberColourPicker(); };
+    // As tall as its content: the hue ring fills the card's width, and the
+    // card and the cards below move up and down as the channels fold or
+    // another design is chosen. The height is also the picker's flex basis.
+    colorPicker->SetAutoHeight(true);
     // Not stretched: the picker lays its hex field and channel values out to
     // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -1495,6 +1504,19 @@ void UltraPaintWindow::BuildMagnifier() {
     magnifierFrame->AddChild(magnifier);
     body->AddChild(magnifierFrame);
     ApplySettings();
+}
+
+void UltraPaintWindow::RememberColourPicker() {
+    settings.pickerDesign = colorPicker->GetWheelStyle();
+    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
+    // The other editors' copies too: whichever saves its settings next (its
+    // settings window) writes the picker as it was left last, not as it was
+    // when that editor opened. Their pickers stay as they are.
+    for (const auto& editor : OpenWindows()) {
+        editor->settings.pickerDesign = settings.pickerDesign;
+        editor->settings.pickerChannelsOpen = settings.pickerChannelsOpen;
+    }
+    settings.SavePicker();
 }
 
 void UltraPaintWindow::ApplySettings() {

@@ -7,9 +7,12 @@
 # on a device. This is the Java counterpart of android-syntax-check.sh - the
 # anti-rot gate from Docs/UltraCanvas/AndroidPortInvestigation.md §6.
 #
-# It checks the Java compiles. It cannot check that the native method
-# signatures still match their JNI counterparts; keep them in step by hand
-# (they are listed next to each other in UltraCanvasAndroidDialogBridge.cpp).
+# It checks the Java compiles, and that every `native` method it declares has
+# a C++ definition under UltraCanvas/OS/Android: javac -h writes the exact JNI
+# function names, and each must appear as a definition. A missing one is an
+# UnsatisfiedLinkError - a crash - on the device the first time Java calls it.
+# (It checks names; argument types are only as right as the hand-written
+# C++ parameter lists, which the NDK syntax check compiles.)
 #
 # Usage: scripts/android-java-check.sh [ANDROID_JAR]
 #   ANDROID_JAR defaults to the newest platform under $ANDROID_SDK_ROOT /
@@ -69,10 +72,24 @@ status=0
 # -Xlint:-options silences the "bootstrap classpath not set" note that every
 # --release-less cross-compile against android.jar produces.
 if javac -Xlint:all -Xlint:-options "${platform_flags[@]}" \
-         -source 8 -target 8 -d "$outdir" "${sources[@]}"; then
+         -source 8 -target 8 -d "$outdir" -h "$outdir/jni" "${sources[@]}"; then
     for src in "${sources[@]}"; do
         printf '  %-58s OK\n' "${src#"$repo"/}"
     done
+    # Every JNI entry point javac expects, against the C++ that defines them.
+    mapfile -t expected < <(grep -ho 'Java_[A-Za-z0-9_]*' "$outdir"/jni/*.h 2>/dev/null | sort -u)
+    missing=0
+    for fn in "${expected[@]}"; do
+        if ! grep -rqE "\b${fn}\s*\(" "$repo/UltraCanvas/OS/Android" --include='*.cpp'; then
+            echo "  missing JNI definition: $fn" >&2
+            missing=1
+        fi
+    done
+    if [ $missing -ne 0 ]; then
+        status=1
+    else
+        echo "  ${#expected[@]} JNI entry points, all defined"
+    fi
 else
     status=1
 fi

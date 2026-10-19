@@ -1,7 +1,10 @@
 // UltraCloud/providers/UltraCloudFtp.cpp
+// Version: 0.6.0 - partialUploadsRemain; an upload reports when the server
+//                  created the file, or refused to (internal::UploadReport)
+// Version: 0.5.0 - a transfer called off is Cancelled, not a server refusal
 // Version: 0.4.0 - SFTP with a private key (Credentials::privateKeyFile)
 // Version: 0.2.0 - a failure carries UltraNet's diagnostics
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudFtp.h>
 
@@ -11,8 +14,11 @@
 // copies of percent-encoding is how the two drift apart.
 #include <UltraCloud/UltraCloudWebDav.h>
 
+#include "core/UltraCloudInternal.h"   // UploadReport
+
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -108,6 +114,10 @@ Result ClassifyFtpOutcome(const UltraNetResult& net, const std::string& what) {
             return Result::Error(ResultCode::AuthFailed, message, net.httpStatus);
         case UltraNetResultCode::NotFound:
             return Result::Error(ResultCode::NotFound, message, net.httpStatus);
+        case UltraNetResultCode::Cancelled:
+            // The caller called it off (UltraNet_SetThreadFtpCancel): nobody
+            // refused anything.
+            return Result::Error(ResultCode::Cancelled, message, net.httpStatus);
         case UltraNetResultCode::InvalidUrl:
         case UltraNetResultCode::UnsupportedScheme:
             return Result::Error(ResultCode::InvalidArgument, message, net.httpStatus);
@@ -181,6 +191,7 @@ ProviderCapabilities FtpProvider::Capabilities() const {
     c.shareLinks = false;       // nothing on an FTP server mints one
     c.needsServerUrl = true;
     c.needsOAuth = false;       // a password, typed into the account dialog
+    c.partialUploadsRemain = true;   // STOR / SFTP write writes the file as it comes
     return c;
 }
 
@@ -271,6 +282,62 @@ Result FtpProvider::Upload(const Account& account, const Credentials& credential
     // The folders of a path that is not there yet: uploading into a new
     // subfolder is the common case, and one request beats mkdir per level.
     options.createMissingDirs = true;
+
+    // CloudService wants to know when the server has created the file -
+    // from then on what is at that name is this upload's - and whether it
+    // refused to (internal::UploadReport).
+    internal::UploadReport* report = internal::ThreadUploadReport();
+    if (report) {
+        const bool sftp = FtpTransportFor(account.serverUrl).scheme == "sftp";
+        auto opened = [report]() {
+            if (report->opened) return;
+            report->opened = true;
+            if (report->onOpened) report->onOpened();
+        };
+        if (sftp) {
+            // An SFTP server says nothing when it creates the file, so for
+            // an upload straight to the name the folder is looked at first:
+            // a name that is free there is this upload's from its first
+            // write. One already taken is not - the upload may never get as
+            // far as opening it.
+            if (report->checkFirst) {
+                const std::string path = NormalizePath(remotePath);
+                const std::string::size_type slash = path.find_last_of('/');
+                const std::string folder = slash == 0 ? "/" : path.substr(0, slash);
+                const std::string name = path.substr(slash + 1);
+                std::vector<UltraNetFtpEntry> entries;
+                const UltraNetResult listed =
+                        ops_.list(FtpUrl(account, folder, true), entries, options);
+                bool taken = false;
+                for (const UltraNetFtpEntry& e : entries) taken = taken || e.name == name;
+                // A folder that is not there yet is created by the upload,
+                // and so is everything in it.
+                if (listed.success ? !taken : listed.code == UltraNetResultCode::NotFound)
+                    opened();
+            }
+        } else {
+            // FTP: the reply to STOR (or APPE) says it - 125 / 150 and the
+            // file exists, 4xx / 5xx and the name was not touched. Watched
+            // in this call's log, which goes on to the thread's sink as
+            // before.
+            report->watched = true;
+            UltraNetFtpLogCallback threadSink = UltraNet_SetThreadFtpLog({});
+            UltraNet_SetThreadFtpLog(threadSink);
+            auto storSent = std::make_shared<bool>(false);
+            options.onLog = [report, opened, threadSink, storSent](const UltraNetFtpLogLine& line) {
+                if (line.kind == UltraNetFtpLogKind::Command) {
+                    *storSent = line.text.rfind("STOR ", 0) == 0 ||
+                                line.text.rfind("APPE ", 0) == 0;
+                } else if (line.kind == UltraNetFtpLogKind::Response && *storSent &&
+                           line.replyCode > 0) {
+                    *storSent = false;
+                    if (line.replyCode < 200) opened();
+                    else if (line.replyCode >= 400) report->refused = true;
+                }
+                if (threadSink) threadSink(line);
+            };
+        }
+    }
     const UltraNetResult net = ops_.upload(localPath, FtpUrl(account, remotePath, false),
                                            options);
     return FromFtp(net, "upload " + NormalizePath(remotePath));
