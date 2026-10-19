@@ -1,4 +1,8 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+// Version: 1.12.0 - a changed folder is marked Stale, not dropped, so the display
+//                   keeps its files while it is fetched again; listings the
+//                   user looks at go ahead of queued transfers; ListingStatus
+//                   covers a Stale folder being fetched again
 // Version: 1.11.0 - one abort check per thread, the preview's cancel in it;
 //                   Revalidate goes ahead of the queue, and beside a running
 //                   transfer on a thread of its own
@@ -352,14 +356,16 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
                 // What the folder held last time, shown now; the server is
                 // asked again behind it and the answer replaces it through
                 // onListingArrived. Queued as the user's request, not as a
-                // prefetch: they are looking at this folder.
+                // prefetch: they are looking at this folder - and ahead of
+                // transfers still waiting, so a batch of uploads does not
+                // keep it out of date until the last one is in.
                 out = it->second.entries;
                 if (!it->second.revalidating) {
                     it->second.revalidating = true;
                     Job job;
                     job.isListing = true;
                     job.path = path;
-                    queue_.push_back(std::move(job));
+                    queue_.push_front(std::move(job));
                     CancelActivePreviewLocked(PreviewYield);   // the user's request first
                     EnsureWorker();
                     lk.unlock();
@@ -387,7 +393,8 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
     Job job;
     job.isListing = true;
     job.path = path;
-    queue_.push_back(std::move(job));
+    // Ahead of transfers still waiting: the user is looking at this folder.
+    queue_.push_front(std::move(job));
     CancelActivePreviewLocked(PreviewYield);   // the user's request first
     EnsureWorker();
     lk.unlock();
@@ -401,7 +408,11 @@ std::string UltraFilerRemoteDrives::ListingStatus(const std::string& path) const
 
     std::lock_guard<std::mutex> lk(mutex_);
     const auto it = cache_.find(path);
-    if (it == cache_.end() || it->second.state != CacheState::Loading) return {};
+    if (it == cache_.end()) return {};
+    // Being fetched: for the first time, or again behind what is shown.
+    const bool fetching = it->second.state == CacheState::Loading ||
+                          (it->second.state == CacheState::Stale && it->second.revalidating);
+    if (!fetching) return {};
 
     // The server as the user knows it: the drive's name, and its address
     // when it has one ("Backup NAS (ftp://nas.local)").
@@ -1831,7 +1842,19 @@ void UltraFilerRemoteDrives::WorkerMain() {
             // worked, free to be handed out again if it did not.
             if (job.operation == RemoteOperation::Download)
                 promisedDownloads_.erase(job.argument);
-            cache_.erase(changedFolder);
+            // What the folder showed stays on screen, marked out of date: the
+            // display's refresh asks the server again (Stale), ahead of the
+            // transfers still waiting, rather than blanking a folder of files
+            // for as long as that takes. A failure is forgotten, so the folder
+            // is asked afresh; a fetch already queued runs after this change.
+            if (auto it = cache_.find(changedFolder); it != cache_.end()) {
+                if (it->second.state == CacheState::Ready) {
+                    it->second.state = CacheState::Stale;
+                    it->second.revalidating = false;
+                } else if (it->second.state == CacheState::Failed) {
+                    cache_.erase(it);
+                }
+            }
             // A listing of it being fetched beside this job may have been
             // read before the change: it is not to stand as the fresh one.
             if (sideListingPaths_.count(changedFolder)) sideListingsOverrun_.insert(changedFolder);

@@ -99,11 +99,21 @@
 // PowerPoint deck's slide text too.
 // GetBottomStripsHeight says how much of the bottom edge the info bar and
 // the hidden-items notice take, for a host floating something in the corner.
+// A remote folder being fetched or updated (remoteListingStatus) shows as a
+// thin blue bar sliding along the foot of the file area - its entries, or an
+// empty area, stay as they are - and the words go to the host's status line
+// (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.41.0 - a remote folder being fetched or updated: a thin blue bar
+//                  at the foot of the file area (FilerStyle::loadingBarColor)
+//                  in place of the "Loading folder" notice over it; the status
+//                  line for the host (GetListingPendingStatus,
+//                  onListingPendingChanged); remoteListingStatus is asked for a
+//                  listing with entries too
 // Version: 1.40.1 - TextPreviewLines reads a PowerPoint deck's slide text
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-10-18
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -519,6 +529,9 @@ namespace UltraCanvas {
         Color selectionBorderColor = Color(60, 140, 220, 255);
         Color barColor             = Color(90, 160, 235, 255);
         Color barBackground        = Color(240, 240, 244, 255);
+        // The thin bar sliding along the foot of the file area while a remote
+        // folder is fetched or updated (remoteListingStatus): the accent blue.
+        Color loadingBarColor      = Color(37, 99, 235, 255);
         Color iconMenuBackground   = Color(50, 50, 56, 205);
         Color iconMenuGlyphColor   = Color(255, 255, 255, 235);
         Color renameFieldColor     = Color(255, 255, 255, 255);
@@ -640,6 +653,9 @@ namespace UltraCanvas {
         // ===== FOLDER =====
         void SetPath(const std::string& folderPath);   // scans + displays the folder
         const std::string& GetPath() const { return currentPath; }
+        // What the remote folder shown is waiting for (remoteListingStatus):
+        // empty when nothing is being fetched for it.
+        const std::string& GetListingPendingStatus() const { return listingPendingStatus; }
         void Refresh();                                // rescan the current folder
 
         // ===== FILE LIST (SEARCH RESULTS) =====
@@ -1634,16 +1650,24 @@ namespace UltraCanvas {
         // freezes the window for as long as the server takes.
         std::function<bool(const std::string& path, std::vector<FilerEntry>& out,
                            std::string& error)> remoteListing;
-        // What is going on while the remote listing is still on its way: a
-        // line such as "Connecting to ftp.example.org" or "Waiting for 2
-        // requests ahead". Asked after remoteListing answered "nothing yet"
-        // (true with an empty listing), and again on every tick while the
-        // waiting notice is shown, so the text can follow the fetch. A
-        // non-empty answer shows the listing as loading - a progress ring
-        // over the text - instead of as an empty folder; an empty answer means
-        // the folder really is empty. Left unset, a folder being fetched shows
-        // as empty until the host's Refresh(), as it did before.
+        // What is going on while the remote listing is still on its way, or
+        // being fetched again behind the entries remoteListing answered with:
+        // a line such as "Connecting to ftp.example.org" or "Waiting for 2
+        // requests ahead". Asked after every remoteListing, and again on every
+        // tick while it answers, so the text can follow the fetch. A non-empty
+        // answer shows the folder as loading: a thin blue bar slides along the
+        // foot of the file area (FilerStyle::loadingBarColor), over the
+        // entries there are or an empty area - an empty listing is then not
+        // called empty - and the words are the host's to show
+        // (GetListingPendingStatus, onListingPendingChanged), on its status
+        // line rather than over the files. An empty answer means the listing
+        // is the folder as it is. Left unset, a folder being fetched shows as
+        // empty until the host's Refresh(), as it did before.
         std::function<std::string(const std::string& path)> remoteListingStatus;
+        // The remoteListingStatus line of the folder shown, as it changes:
+        // set when a fetch is waited for, updated as it goes, and empty once
+        // the listing is in. For the host's status line.
+        std::function<void(const std::string& status)> onListingPendingChanged;
 
         // ---- Changing a remote drive ---------------------------------------
         // Unlike remoteListing these do not answer with the result. The host
@@ -2034,10 +2058,11 @@ namespace UltraCanvas {
         TimerId pendingRenameTimer = InvalidTimerId;
 
         // The folder being fetched from a remote drive (see remoteListingStatus):
-        // what the host says is happening, shown with a progress ring in place
-        // of the empty-folder notice; the ring turns on the timer below, which
-        // also re-asks the host so the words follow the fetch. Empty when
-        // nothing is being waited for.
+        // what the host says is happening, for the host's status line, while
+        // a bar slides along the foot of the file area on the timer below -
+        // which also re-asks the host, so the words follow the fetch. Empty
+        // when nothing is being waited for. Changed through
+        // SetListingPendingStatus, which tells the host.
         std::string listingPendingStatus;
         TimerId listingPendingTimer = InvalidTimerId;
         std::chrono::steady_clock::time_point listingPendingSince{};
@@ -2824,17 +2849,22 @@ namespace UltraCanvas {
                                  const std::string& message);
         // "Nothing to show" notice for an empty folder / file list: an
         // attention icon above the message, vertically centered in the view.
-        // The waiting notice of a remote folder still being fetched: a turning
-        // progress ring, "Loading folder", and under it the host's status
-        // line (listingPendingStatus). Drawn where the empty-folder notice
-        // goes, in the same layout.
-        void DrawLoadingState(IRenderContext* ctx, const Rect2Di& bounds);
-        // Keeps the ring turning and the status line current while the
-        // notice is up: a periodic timer that re-asks remoteListingStatus and
-        // repaints. Stopped as soon as the listing arrives or the folder
-        // changes, and in the destructor.
+        // A remote folder being fetched or updated (listingPendingStatus): a
+        // thin bar along the foot of the file area, just above the info bar,
+        // with a segment sliding across it - one pass every 1.2 s, so it moves
+        // while the server says nothing. The entries, or the empty area, are
+        // left as they are.
+        void DrawListingPendingBar(IRenderContext* ctx, const Rect2Di& bounds);
+        Rect2Di ListingPendingBarRect(const Rect2Di& bounds) const;
+        // Keeps the bar sliding and the status line current while a fetch is
+        // waited for: a periodic timer that re-asks remoteListingStatus and
+        // repaints the bar. Stopped as soon as the listing arrives or the
+        // folder changes, and in the destructor.
         void StartListingPendingTicks();
         void StopListingPendingTicks();
+        // Changes listingPendingStatus, telling the host
+        // (onListingPendingChanged) when it changed.
+        void SetListingPendingStatus(const std::string& status);
         void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
                             const std::string& message);
         // ===== NAME FILTER (helpers) =====

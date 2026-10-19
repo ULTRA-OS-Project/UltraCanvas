@@ -1233,16 +1233,30 @@ filer->remoteListingStatus = [drives](const std::string& path) {
 };
 ```
 
-It is asked after `remoteListing` answered with an empty listing, and again
-on every tick while the notice is up. A non-empty answer — "Connecting to
-Backup NAS (ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup
-NAS - 2 requests ahead" — puts a turning progress ring, **Loading folder**
-and that line in place of "Folder is empty!", and the words follow the fetch
-as the host's answer changes. An empty answer means the folder really is
-empty. Left unset, a folder being fetched shows as empty until the host's
-`Refresh()`, as before. The ring runs on a 50 ms application timer that stops
-as soon as the listing arrives, the folder changes or the widget is
-destroyed.
+It is asked after every `remoteListing` — an empty one, or one the host
+answered from its cache while it asks the server again — and again on every
+tick while it answers. A non-empty answer — "Connecting to Backup NAS
+(ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup NAS - 2
+requests ahead" — marks the folder as loading without covering it: a thin
+blue bar (`FilerStyle::loadingBarColor`, the accent blue) slides along the
+foot of the file area, just above the info bar, over whatever entries there
+are or an empty area; an empty folder's info bar says **Loading folder...**
+rather than "0 items", and "Folder is empty!" is not shown. The words are the
+host's to show — on its status line rather than over the files:
+
+```cpp
+filer->onListingPendingChanged = [statusLine](const std::string& status) {
+    statusLine->SetText(status);   // "" once the listing is in
+};
+// or read it when the status line is rebuilt: filer->GetListingPendingStatus()
+```
+
+`onListingPendingChanged` fires when the fetch starts, each time the host's
+answer changes, and with `""` once the listing is in. An empty answer means
+the listing is the folder as it is. Left unset, a folder being fetched shows
+as empty until the host's `Refresh()`, as before. The bar runs on a 40 ms
+application timer that repaints only its own strip, and stops as soon as the
+listing arrives, the folder changes or the widget is destroyed.
 ### Changing a remote folder
 
 Four more hooks let the host carry out the changes that act on the drive
@@ -2850,6 +2864,7 @@ reports what the system hides, not what the host asked for.
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |

@@ -1,4 +1,20 @@
 #### 2026-10-19 *1.77.0*
+- **A drive's folder being opened or updated no longer covers the folder
+  display.** Opening a folder on an FTP, SFTP or cloud drive put a turning
+  ring, *Loading folder* and a line about the connection in the middle of
+  the display, and every change to the folder - an upload, a rename, a
+  delete - threw its listing away, so the files vanished behind that notice
+  until it had been read again: during a batch upload, for the whole batch.
+  Now the display keeps what it showed and marks the wait with a thin blue
+  bar sliding along its foot; the words go to the status bar - *Connecting
+  to Studio FTP (ftp://files.example.org) and reading /photos - 3 s*,
+  *Waiting for Studio FTP - 1 request ahead*, or after the item count,
+  *updating: ...* - and the display's info line says *Loading folder...*
+  rather than *0 items* until the first listing is in. After a change the
+  folder is read again next, ahead of transfers still waiting, so each file
+  of a batch upload appears as it lands; so does a folder opened during a
+  batch, which no longer waits for the whole of it. The filer widget does the
+  drawing (framework changelog: `filer-remote-loading-bar`).
 - **A drop onto a remote folder is asked about at once, not after the
   upload in progress.** Before an upload replaces anything, the folder is
   listed afresh to see which names are taken - and that listing waited in

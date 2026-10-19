@@ -65,6 +65,10 @@
 // from a fresh listing (Revalidate) that goes ahead of the queue, and is
 // fetched beside an upload or download in progress on a thread of its own
 // rather than after it.
+// Version: 1.13.0 - a folder a change was made in keeps its listing on screen
+//                   (Stale) while it is fetched again, and a listing the user
+//                   is looking at goes ahead of queued transfers; ListingStatus
+//                   answers for a Stale folder being fetched again too
 // Version: 1.12.0 - Revalidate goes ahead of the queue, and beside a running
 //                   transfer; the preview copy's cancel is the worker
 //                   thread's abort check
@@ -288,11 +292,14 @@ public:
               std::string& error);
 
     // What the filer widget's remoteListingStatus hook calls: one line about
-    // a listing that List() answered "nothing yet" for. Empty once the data
-    // is in (or the fetch failed, or the path was never asked for); while
-    // the fetch is queued it counts the requests ahead of it, and while the
-    // worker is on it it names the server and the folder, with how long the
-    // server has been keeping it waiting. Never blocks: a lock and a lookup.
+    // a listing being fetched - one List() answered "nothing yet" for, or
+    // one it answered from the cache while the server is asked again
+    // (Stale). The window puts it on its status line; the folder display
+    // slides a bar along its foot meanwhile. Empty once the data is in (or
+    // the fetch failed, or the path was never asked for); while the fetch is
+    // queued it counts the requests ahead of it, and while the worker is on
+    // it it names the server and the folder, with how long the server has
+    // been keeping it waiting. Never blocks: a lock and a lookup.
     std::string ListingStatus(const std::string& path) const;
 
     // Why the listing of `path` failed, as the folder display shows it; empty

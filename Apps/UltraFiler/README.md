@@ -263,9 +263,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     connection is closed once the drive has been quiet for 15 seconds.
   - **Every connection step is shown, and kept.** While a drive is busy the
     status bar shows the step its connection is at — *Connecting to
-    203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and the
-    folder view's *Loading folder* notice names the same step with how long
-    it has waited. Every job (opening a folder, an upload, a delete, a
+    203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and,
+    for a folder being opened or updated, what it waits for with how long it
+    has waited. The folder display itself is not covered: a thin blue bar
+    slides along its foot while the folder is fetched, over the files it
+    showed before (after an upload, a rename or a delete they stay on screen
+    until the update is in, and each file of a batch upload appears as it
+    lands), or over an empty area the first time. Every job (opening a folder, an upload, a delete, a
     folder fetched ahead) is recorded in the **connection log**: the round
     button with the network symbol in the bottom-left corner of a folder
     display opens it. It is there only while that display shows a folder on
