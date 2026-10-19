@@ -28,7 +28,9 @@
   opened a file first - which then comes in without a question, so a drop
   that alternates between two passwords asks for each once. Only a file none
   of them opens asks, saying so. They are held zeroed-on-free and forgotten
-  when the drop has been read.
+  when the drop has been read - or as soon as the screen locks, so a drop
+  left half-answered while you step away asks again for what comes after
+  (framework changelog, pending entry `session-lock`).
 - **Paste as New Image says what it pasted.** It left the previous status
   message showing; it now reads *Pasted photo.png as a new image, 800 x 600
   pixels* (or *Pasted as a new image* for a copied picture), as Paste as New

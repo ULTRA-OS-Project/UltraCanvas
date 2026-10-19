@@ -23,6 +23,11 @@ RemoveSessionLockListener(listener);
 The [media viewer](UltraCanvasMediaViewer.md) is the first user: while it
 keeps a password Unlock was given, or shows a file opened with one, a lock
 forgets the passwords and puts the file back behind its Unlock button.
+UltraPaint listens while a drop of protected files holds the passwords given
+for it, and forgets them, so the files still to come ask again.
+
+A listener is best registered only while there is something to forget, as
+both do: the platform is watched only while one is registered.
 
 ## Calls
 

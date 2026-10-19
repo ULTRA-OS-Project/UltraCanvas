@@ -1000,7 +1000,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   with a lock of their own and tests call). Wired up by
   `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` in the **top-level** `CMakeLists.txt`;
   without it nothing is reported. Used by `UltraCanvasMediaViewer` to forget
-  Unlock's passwords. See `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
+  Unlock's passwords, and by UltraPaint for the passwords of a drop. See
+  `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
 
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of

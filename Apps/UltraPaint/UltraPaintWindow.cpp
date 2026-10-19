@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.9.5 - a drop's passwords are forgotten when the desktop session locks; the
+//                  drop's first file is read through LoadDocumentAsking, so a password
+//                  forgotten while its import dialog was up is asked for again
 // Version: 1.9.4 - every password given in a drop is tried on the files after it, the one
 //                  that last opened a file first, before asking (DropPasswords)
 // Version: 1.9.3 - a drop's files share a password: the one given for a file is tried first
@@ -1272,9 +1275,6 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
     auto dialog = std::make_shared<UltraPaintImportDialog>(request);
     dialog->onAccept = [this, path, alsoFiles, preloaded, remembered](const UltraPaintImportResult& result) {
         if (result.action == UltraPaintImportResult::Action::Cancel) { remembered->Forget(); return; }
-        UltraPaintImportResult withPassword = result;
-        withPassword.password = remembered->Newest();
-        ApplyImport(path, withPassword, preloaded);
         // The rest of a multi-file drop take the same action, but the size the
         // dialog settled on belongs to the file it was shown for: the others
         // come in at their own natural size.
@@ -1284,7 +1284,23 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         forTheRest.page = 0;
         // Once this dialog has closed and the first file is on show: the
         // rest may ask for passwords.
-        AfterNextDraw([this, alsoFiles, forTheRest, remembered]() { ApplyImports(alsoFiles, forTheRest, remembered); });
+        auto rest = [this, alsoFiles, forTheRest, remembered]() {
+            AfterNextDraw([this, alsoFiles, forTheRest, remembered]() { ApplyImports(alsoFiles, forTheRest, remembered); });
+        };
+        if (preloaded) {
+            ApplyImport(path, result, preloaded);
+            rest();
+            return;
+        }
+        // Read now (a PDF is rasterized at the size chosen) with the password
+        // given for it - or, when the session locked while this dialog was up
+        // and it was forgotten, with its password asked for again.
+        LoadDocumentAsking(path, result,
+            [this, path, result, rest](std::shared_ptr<UCRasterDocument> incoming) {
+                ApplyLoaded(path, result, incoming);
+                rest();
+            },
+            rest, remembered);
     };
     // A drop answers a gesture made on this window, so the question belongs
     // over it rather than wherever the window manager would drop it.
@@ -1299,8 +1315,25 @@ void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImpo
     if (incoming) ApplyLoaded(path, result, incoming);
 }
 
+UltraPaintWindow::DropPasswords::~DropPasswords() {
+    Forget();
+}
+
+void UltraPaintWindow::DropPasswords::Forget() {
+    values.clear();
+    if (lockListener) {
+        RemoveSessionLockListener(lockListener);
+        lockListener = 0;
+    }
+}
+
 void UltraPaintWindow::DropPasswords::Remember(const std::string& password) {
     if (password.empty()) return;
+    // Listened for only while a password is held; removed by Forget, which
+    // the destructor runs, so `this` never outlives it.
+    if (!lockListener) {
+        lockListener = AddSessionLockListener([this](bool locked) { if (locked) Forget(); });
+    }
     values.erase(std::remove_if(values.begin(), values.end(),
                                 [&password](const std::shared_ptr<UltraCryptSecureBuffer>& held) {
                                     return held && held->GetSize() == password.size() &&

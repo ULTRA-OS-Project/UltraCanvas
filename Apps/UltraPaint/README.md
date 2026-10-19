@@ -299,7 +299,8 @@ password given in the drop (up to eight) is tried on the next protected file
 - the one that last opened a file first - and a file one of them opens comes
 in without a question; only when none fits is the password asked for, saying
 so. They are held in buffers that are zeroed when freed, and only until the
-drop has been read.
+drop has been read - or until the screen locks, after which the files still
+to come ask for their passwords again.
 
 ### 3D models
 

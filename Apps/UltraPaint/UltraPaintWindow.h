@@ -8,6 +8,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.7.5 - DropPasswords forgets its passwords when the desktop session locks
+//                  (UltraCanvasSessionLock); a drop's first file then asks again
 // Version: 1.7.4 - DropPasswords: every password given in a drop (up to eight, newest
 //                  first) is tried on each protected file after it, not only the last
 // Version: 1.7.3 - DropPassword: the password given for one file of a drop is tried first
@@ -54,6 +56,7 @@
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
+#include "UltraCanvasSessionLock.h"        // a drop's passwords go when the session locks
 
 #include "UltraPaintTools.h"
 #include "UltraPaintFilters.h"
@@ -166,17 +169,25 @@ private:
     // dropped together often share a password, or a few, so each is typed
     // once, not once per file. Held in UltraCryptSecureBuffers (zeroed when
     // freed), at most kMax distinct ones, and only while the drop is being
-    // read: ApplyImports lets go of them when the drop is done.
+    // read: ApplyImports lets go of them when the drop is done, and so does
+    // the desktop session locking - a drop left half-answered while the user
+    // steps away asks again for what comes after.
     struct DropPasswords {
         static constexpr size_t kMax = 8;
         std::vector<std::shared_ptr<UltraCryptSecureBuffer>> values;   // newest first
+        DropPasswords() = default;
+        ~DropPasswords();
+        DropPasswords(const DropPasswords&) = delete;
+        DropPasswords& operator=(const DropPasswords&) = delete;
         // To the front - a password already held moves there; the oldest
-        // goes past kMax.
+        // goes past kMax. While any is held, a session lock forgets them.
         void Remember(const std::string& password);
         std::vector<std::string> All() const;   // newest first
         std::string Newest() const;
         bool Empty() const { return values.empty(); }
-        void Forget() { values.clear(); }
+        void Forget();
+    private:
+        SessionLockListenerId lockListener = 0;
     };
     // The rest of a multi-file drop: each read and given the same answer, one
     // after the other - a password-protected one tries the passwords
