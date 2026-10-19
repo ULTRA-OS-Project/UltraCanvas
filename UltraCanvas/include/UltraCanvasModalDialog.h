@@ -680,6 +680,7 @@ namespace UltraCanvas {
     class UltraCanvasFilerWidget;   // UltraCanvasFilerWidget.h includes this header
     class UltraCanvasSegmentedControl;
     class UltraCanvasFileDragIcon;
+    class UltraCanvasBreadcrumb;
     struct FilerEntry;
     class UltraCanvasDialogManager {
         friend class UltraCanvasModalDialog;
@@ -849,7 +850,10 @@ namespace UltraCanvas {
         bool showHiddenFiles = false;
 
         // ===== ELEMENTS =====
-        std::shared_ptr<UltraCanvasTextInput> pathInput;
+        // The folder shown, as UltraFiler shows it: a breadcrumb whose
+        // segments open their folder and whose drop-downs list the folders
+        // inside. A path is typed in the name field.
+        std::shared_ptr<UltraCanvasBreadcrumb> pathBreadcrumb;
         std::shared_ptr<UltraCanvasButton> upButton;
         std::shared_ptr<UltraCanvasTreeView> folderTree;
         // The listing of the current folder: the framework's file display.
@@ -999,6 +1003,8 @@ namespace UltraCanvas {
         // The folder the icon was dropped on - here, or in another window or
         // program - becomes the one the file is saved in.
         void SaveIntoDroppedFolder(const std::string& folder);
+        // Points the breadcrumb at currentDirectory.
+        void ShowPathInBreadcrumb();
         // The Settings button: the save settings of the type being saved,
         // and the picture's size for this save when the caller gave it.
         void ShowSaveTypeSettings();

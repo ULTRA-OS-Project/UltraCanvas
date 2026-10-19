@@ -795,6 +795,10 @@ std::function<bool(TreeNode* target,
 // onFilesDragAccept accepted), or null - for a drag that carries no files and
 // ends without a Drop, such as the file dialog's Save icon.
 TreeNode* GetDropTargetNode() const;
+// The local folder a node stands for ("" for none), asked when a Save
+// dialog's file icon from another window or program is dropped on a node
+// onFilesDragAccept accepts (a Drop carrying UCEvent::dropFolderReply).
+std::function<std::string(TreeNode* node)> onDropFolderOfNode;
 // Right mouse button released over a node; the event carries the pointer
 // position (event.pointerWindow) for placing a context menu. A right press
 // never changes the selection.

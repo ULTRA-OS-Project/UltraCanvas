@@ -1,3 +1,10 @@
+#### 2026-10-19 *1.77.0*
+- **A Save dialog's file icon dropped on a folder here names that folder.**
+  Dragging the Save dialog's file icon from another program, onto a folder
+  of the listing, the listing's empty space or a folder row of the tree,
+  now tells that dialog to save there. A drive's folders and the Pinned
+  header are not offered.
+
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**
   Closing UltraFiler while a remote drive was copying dropped every upload

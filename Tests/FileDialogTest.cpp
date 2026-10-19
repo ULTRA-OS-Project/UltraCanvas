@@ -50,6 +50,7 @@
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -303,12 +304,13 @@ bool DragIconUntil(UltraCanvasApplication& app, const std::shared_ptr<UltraCanva
     return false;
 }
 
-// The folder the dialog shows, as its path field has it. (Not the dialog's
-// GetCurrentDirectory: windows.h renames that, and new callers are not added.)
+// The folder the dialog shows, as its path breadcrumb has it - the whole
+// path is its tooltip. (Not the dialog's GetCurrentDirectory: windows.h
+// renames that, and new callers are not added.)
 std::string ShownFolder(const SaveRun& run) {
-    auto* field = run.dialog ? dynamic_cast<UltraCanvasTextInput*>(run.dialog->FindChildById("FileDialogPath"))
+    auto* crumb = run.dialog ? dynamic_cast<UltraCanvasBreadcrumb*>(run.dialog->FindChildById("FileDialogPath"))
                              : nullptr;
-    return field ? field->GetText() : std::string();
+    return crumb ? crumb->GetTooltip() : std::string();
 }
 
 std::string Canonical(const std::filesystem::path& p) {
@@ -923,6 +925,10 @@ int main() {
                 icon->onDroppedOnFolder(PathToUtf8(other));
                 TEST("The folder another program names becomes the dialog's",
                      Canonical(PathFromUtf8(ShownFolder(run))) == Canonical(other));
+                auto* crumb = dynamic_cast<UltraCanvasBreadcrumb*>(run.dialog->FindChildById("FileDialogPath"));
+                TEST("The path is a breadcrumb, as in UltraFiler, ending in that folder",
+                     crumb && crumb->GetItemCount() >= 2 &&
+                     crumb->GetItem(static_cast<int>(crumb->GetItemCount()) - 1)->text == "Dropped elsewhere");
             }
             run.dialog->CloseDialog(DialogResult::Cancel);
 

@@ -17,6 +17,7 @@
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasFileDialogSettings.h"
 #include "UltraCanvasFileLoader.h"       // NotifyRecentFile, save settings
+#include "UltraCanvasBreadcrumb.h"       // the path, as UltraFiler shows it
 #include "UltraCanvasFileDragIcon.h"     // the Save dialog's file icon
 #include <cstdlib>
 #include <cstring>
@@ -1591,27 +1592,25 @@ namespace UltraCanvas {
         upButton->onClick = [this]() { NavigateToParentDirectory(); };
         pathRow->AddChild(upButton);
 
-        pathInput = std::make_shared<UltraCanvasTextInput>("FileDialogPath", 0, 0, 300, fieldHeight);
-        pathInput->SetFontSize(fontSize);
-        pathInput->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        // Return in the path field goes to the folder typed there instead of
-        // accepting the dialog.
-        pathInput->onEnterPressed = [this](const std::string& text) {
-            std::error_code ec;
-            const std::filesystem::path typed = PathFromUtf8(text);
-            if (std::filesystem::is_directory(UltraCanvas::PathFromUtf8(typed), ec)) {
-                GoToDirectory(text, true);
-            } else if (fileConfig.dialogType != FileDialogType::SelectFolder &&
-                       std::filesystem::is_directory(typed.parent_path(), ec)) {
-                // A file path: open its folder and put the name in the name field.
-                GoToDirectory(PathToUtf8(typed.parent_path()), true);
-                SetNameText(PathToUtf8(typed.filename()));
-            } else if (pathInput) {
-                pathInput->SetText(currentDirectory);
-            }
-            return true;
-        };
-        pathRow->AddChild(pathInput);
+        // The folder as a breadcrumb, as in UltraFiler: a segment opens its
+        // folder, its drop-down the folders inside, and the leading Computer
+        // the drives. A path is typed in the name field, which opens a
+        // folder typed there.
+        pathBreadcrumb = std::make_shared<UltraCanvasBreadcrumb>("FileDialogPath", 0, 0, 300, fieldHeight);
+        {
+            BreadcrumbStyle look = BreadcrumbStyle::Arrow();
+            look.overflowMode = BreadcrumbOverflowMode::Collapse;
+            look.keepFirstItemOnCollapse = true;
+            look.minVisibleAfterCollapse = 2;
+            look.arrowSize = 8;
+            look.itemPaddingHorizontal = 9;
+            look.itemPaddingVertical = 4;
+            look.fontStyle.fontSize = fontSize;
+            pathBreadcrumb->SetStyle(look);
+        }
+        pathBreadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                .SetAlignSelf(CSSLayout::AlignSelf::Center);
+        pathRow->AddChild(pathBreadcrumb);
 
         // How the listing is drawn, as in UltraFiler: one glyph per layout,
         // the current one marked. Created before the listing it drives, which
@@ -2049,7 +2048,7 @@ namespace UltraCanvas {
         if (fileIconCaption) fileIconCaption->SetTextColor(r.inkMuted);
 
         // The fields: the theme's own, with the corners the buttons have.
-        for (auto& input : {pathInput, fileNameInput}) {
+        for (auto& input : {fileNameInput}) {
             if (!input) continue;
             TextInputStyle look = TextInputStyle::FromTheme(theme, input->GetStyle());
             look.borderRadius = static_cast<int>(kFileDialogCornerRadius);
@@ -2275,7 +2274,7 @@ namespace UltraCanvas {
         const std::filesystem::path path = PathFromUtf8(directory);
         if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec) || ec) {
             debugOutput << "Invalid path: " << directory << std::endl;
-            if (pathInput) pathInput->SetText(currentDirectory);
+            ShowPathInBreadcrumb();
             return false;
         }
         std::filesystem::path canonical = std::filesystem::canonical(UltraCanvas::PathFromUtf8(path), ec);
@@ -2293,7 +2292,7 @@ namespace UltraCanvas {
     void UltraCanvasFileDialog::RefreshFileList() {
         selectedFiles.clear();
         autoFileName.clear();
-        if (pathInput) pathInput->SetText(currentDirectory);
+        ShowPathInBreadcrumb();
         if (!filerView) return;
         if (filerView->GetPath() == currentDirectory) {
             filerView->Refresh();
@@ -2371,7 +2370,7 @@ namespace UltraCanvas {
         // Opening the folder ended the listing's name filter (SetPath); the
         // name typed still stands, so it narrows this folder too.
         if (filerView && !nameFilter.empty()) filerView->SetNameFilter(nameFilter);
-        if (pathInput) pathInput->SetText(currentDirectory);
+        ShowPathInBreadcrumb();
         SyncFolderTree();
         if (onDirectoryChanged) onDirectoryChanged(currentDirectory);
     }
@@ -2769,6 +2768,15 @@ namespace UltraCanvas {
             }
         }
         SaveIntoDroppedFolder(folder);
+    }
+
+    void UltraCanvasFileDialog::ShowPathInBreadcrumb() {
+        if (!pathBreadcrumb) return;
+        // The whole path on hover, which a collapsed strip does not show.
+        pathBreadcrumb->SetTooltip(currentDirectory);
+        if (currentDirectory.empty()) return;
+        BuildFolderBreadcrumb(pathBreadcrumb.get(), currentDirectory,
+                              [this](const std::string& folder) { GoToDirectory(folder, true); });
     }
 
     void UltraCanvasFileDialog::SaveIntoDroppedFolder(const std::string& folder) {
