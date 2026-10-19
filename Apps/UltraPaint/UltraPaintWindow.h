@@ -8,6 +8,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.7.3 - DropPassword: the password given for one file of a drop is tried first
+//                  on the next protected file of it, and forgotten when the drop is done;
+//                  PasteAsNewImage says what it pasted
 // Version: 1.7.2 - LoadDocumentAsking: a protected file asks for its password wherever a
 //                  file is read - each of a multi-file drop in turn (ApplyImports), a
 //                  pasted one; AskForFilePassword's notOpened
@@ -127,8 +130,9 @@ private:
     // `fromDrop` decides which of those the dialog offers; `alsoFiles` are the
     // rest of a multi-file drop, which follow the same answer.
     // `preloaded`: the file already read (a password-protected *.ucd, opened
-    // once its password was given), so it is not read again. `password`: a
-    // password-protected PDF's, asked for before the import dialog.
+    // once its password was given), so it is not read again. `password`: the
+    // one given for it - a PDF is rasterized with it, and the rest of a drop
+    // try it first (DropPassword).
     void ImportFile(const std::string& path, bool fromDrop,
                     const std::vector<std::string>& alsoFiles = {},
                     std::shared_ptr<UCRasterDocument> preloaded = nullptr,
@@ -155,11 +159,23 @@ private:
     // file is not read a second time; null means read it now.
     void ApplyImport(const std::string& path, const UltraPaintImportResult& result,
                      std::shared_ptr<UCRasterDocument> preloaded = nullptr);
+    // The password given for one file of a drop, tried first on the next
+    // protected file of the same drop - files dropped together often share
+    // one - so it is typed once, not once per file. Held in an
+    // UltraCryptSecureBuffer (zeroed when freed), and only while the drop is
+    // being read: ApplyImports lets go of it when the drop is done.
+    struct DropPassword {
+        std::shared_ptr<UltraCryptSecureBuffer> value;
+        void Remember(const std::string& password);
+        std::string Get() const;
+        void Forget() { value.reset(); }
+    };
     // The rest of a multi-file drop: each read and given the same answer, one
-    // after the other - a password-protected one asks for its password first
-    // and the next waits for the answer; one cancelled or unreadable is left
-    // out and the next goes on.
-    void ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result);
+    // after the other - a password-protected one tries `remembered` first,
+    // else asks for its password, and the next waits for the answer; one
+    // cancelled or unreadable is left out and the next goes on.
+    void ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result,
+                      std::shared_ptr<DropPassword> remembered = nullptr);
     // Runs `task` once the editor has drawn again (a task posted from a
     // posted task runs after the loop's render), so what it asks is not
     // asked over a dialog that has just closed or a canvas that has not
@@ -178,9 +194,12 @@ private:
     // (cancelled, or unreadable - the reason already shown). Either runs at
     // once for a file that needs no password, and on a later turn of the
     // loop - once the question has closed - for one that did.
+    // `remembered`, when given, is tried before asking and keeps the
+    // password that is then given.
     void LoadDocumentAsking(const std::string& path, const UltraPaintImportResult& result,
                             const std::function<void(std::shared_ptr<UCRasterDocument>)>& loaded,
-                            const std::function<void()>& notLoaded = nullptr);
+                            const std::function<void()>& notLoaded = nullptr,
+                            std::shared_ptr<DropPassword> remembered = nullptr);
     // Merges a document's flattened pixels into the open image as a new layer.
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
@@ -398,7 +417,9 @@ private:
     // here and still fits, centred otherwise.
     void PasteAsLayer(std::shared_ptr<UCRasterLayer> image, const std::string& layerName, bool fromHere,
                       const std::string& what);
-    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image);
+    // `image` as a new image; `what` names it in the status line ("the last
+    // copied image").
+    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image, const std::string& what = std::string());
     // The clipboard history's newest image (UltraCanvasClipboardHistory, the
     // one UltraDesktop keeps) and when it was copied ("5 min ago"); null when
     // there is no history or no image in it.

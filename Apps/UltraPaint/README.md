@@ -294,7 +294,11 @@ then the raster-size question comes as for any drawing, and the page is
 rendered with the password. Cancel imports nothing. Of several files dropped
 together, each protected one asks for its password in turn, once the one
 before it is on the canvas; Cancel leaves just that file out and the rest
-come in.
+come in. Files dropped together often share a password, so the last one
+given is tried first on the next protected file, which then comes in without
+a question; only when it does not fit is the password asked for, saying so.
+It is held in a buffer that is zeroed when freed, and only until the drop
+has been read.
 
 ### 3D models
 
