@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.9.4 - every password given in a drop is tried on the files after it, the one
+//                  that last opened a file first, before asking (DropPasswords)
 // Version: 1.9.3 - a drop's files share a password: the one given for a file is tried first
 //                  on the next protected one, forgotten when the drop is done; Paste as New
 //                  Image says what it pasted, as Paste as New Layer does
@@ -83,6 +85,7 @@
 #endif
 
 #include <algorithm>
+#include <cstring>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -1173,7 +1176,7 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
         forTheRest.height = 0;
         forTheRest.page = 0;
         AfterNextDraw([this, alsoFiles, forTheRest]() {
-            ApplyImports(alsoFiles, forTheRest, std::make_shared<DropPassword>());
+            ApplyImports(alsoFiles, forTheRest, std::make_shared<DropPasswords>());
         });
     });
 }
@@ -1264,13 +1267,13 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
 
     // The password given for this file, held for the drop (the rest try it
     // first) in a secure buffer rather than in the dialog's callback.
-    auto remembered = std::make_shared<DropPassword>();
+    auto remembered = std::make_shared<DropPasswords>();
     if (!password.empty()) remembered->Remember(password);
     auto dialog = std::make_shared<UltraPaintImportDialog>(request);
     dialog->onAccept = [this, path, alsoFiles, preloaded, remembered](const UltraPaintImportResult& result) {
         if (result.action == UltraPaintImportResult::Action::Cancel) { remembered->Forget(); return; }
         UltraPaintImportResult withPassword = result;
-        withPassword.password = remembered->Get();
+        withPassword.password = remembered->Newest();
         ApplyImport(path, withPassword, preloaded);
         // The rest of a multi-file drop take the same action, but the size the
         // dialog settled on belongs to the file it was shown for: the others
@@ -1296,17 +1299,34 @@ void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImpo
     if (incoming) ApplyLoaded(path, result, incoming);
 }
 
-void UltraPaintWindow::DropPassword::Remember(const std::string& password) {
-    value = std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size());
+void UltraPaintWindow::DropPasswords::Remember(const std::string& password) {
+    if (password.empty()) return;
+    values.erase(std::remove_if(values.begin(), values.end(),
+                                [&password](const std::shared_ptr<UltraCryptSecureBuffer>& held) {
+                                    return held && held->GetSize() == password.size() &&
+                                           std::memcmp(held->Data(), password.data(), password.size()) == 0;
+                                }),
+                 values.end());
+    values.insert(values.begin(), std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size()));
+    if (values.size() > kMax) values.resize(kMax);
 }
 
-std::string UltraPaintWindow::DropPassword::Get() const {
-    if (!value || value->IsEmpty()) return std::string();
-    return std::string(reinterpret_cast<const char*>(value->Data()), value->GetSize());
+std::vector<std::string> UltraPaintWindow::DropPasswords::All() const {
+    std::vector<std::string> out;
+    for (const auto& held : values) {
+        if (held && !held->IsEmpty())
+            out.emplace_back(reinterpret_cast<const char*>(held->Data()), held->GetSize());
+    }
+    return out;
+}
+
+std::string UltraPaintWindow::DropPasswords::Newest() const {
+    const std::vector<std::string> all = All();
+    return all.empty() ? std::string() : all.front();
 }
 
 void UltraPaintWindow::ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result,
-                                   std::shared_ptr<DropPassword> remembered) {
+                                   std::shared_ptr<DropPasswords> remembered) {
     if (files.empty() || result.action == UltraPaintImportResult::Action::Cancel) {
         // The drop is done: its password is not kept past it.
         if (remembered) remembered->Forget();
@@ -1430,7 +1450,7 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
 void UltraPaintWindow::LoadDocumentAsking(const std::string& path, const UltraPaintImportResult& result,
                                           const std::function<void(std::shared_ptr<UCRasterDocument>)>& loaded,
                                           const std::function<void()>& notLoaded,
-                                          std::shared_ptr<DropPassword> remembered) {
+                                          std::shared_ptr<DropPasswords> remembered) {
     const bool protectedUCD = UCRasterDocument::IsPasswordProtected(path);
     const bool protectedPDF = !protectedUCD && result.password.empty() && IsVectorPath(path) &&
                               InspectVectorFile(path).passwordRequired;
@@ -1439,26 +1459,33 @@ void UltraPaintWindow::LoadDocumentAsking(const std::string& path, const UltraPa
         else if (notLoaded) notLoaded();
         return;
     }
-    // The password given for a file before this one in the same drop, tried
-    // first and without a word: files dropped together often share one.
+    // The passwords given for files before this one in the same drop, tried
+    // first and without a word - the one that last opened a file first:
+    // files dropped together often share one, or a few.
     std::string note;
-    if (remembered && remembered->value) {
-        const std::string before = remembered->Get();
-        if (protectedUCD) {
-            auto doc = std::make_shared<UCRasterDocument>();
-            std::string ignored;
-            if (doc->LoadUCD(path, ignored, before)) {
-                if (loaded) loaded(doc);
+    if (remembered && !remembered->Empty()) {
+        const std::vector<std::string> before = remembered->All();
+        for (const std::string& candidate : before) {
+            if (protectedUCD) {
+                auto doc = std::make_shared<UCRasterDocument>();
+                std::string ignored;
+                if (doc->LoadUCD(path, ignored, candidate)) {
+                    remembered->Remember(candidate);   // the next file tries it first
+                    if (loaded) loaded(doc);
+                    return;
+                }
+            } else if (InspectVectorFile(path, candidate).ok) {
+                remembered->Remember(candidate);
+                UltraPaintImportResult withPassword = result;
+                withPassword.password = candidate;
+                if (auto doc = LoadDocument(path, withPassword)) { if (loaded) loaded(doc); }
+                else if (notLoaded) notLoaded();
                 return;
             }
-        } else if (InspectVectorFile(path, before).ok) {
-            UltraPaintImportResult withPassword = result;
-            withPassword.password = before;
-            if (auto doc = LoadDocument(path, withPassword)) { if (loaded) loaded(doc); }
-            else if (notLoaded) notLoaded();
-            return;
         }
-        note = "The password of the file before does not open this one.";
+        note = before.size() == 1 ? "The password given before does not open this one."
+                                  : "None of the " + std::to_string(before.size()) +
+                                    " passwords given before opens this one.";
     }
     // Its password first. The answer is tried in the question's own
     // callback; the document comes back on the next turn of the loop, once
