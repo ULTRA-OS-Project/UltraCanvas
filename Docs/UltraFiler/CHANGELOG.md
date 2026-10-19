@@ -1,3 +1,10 @@
+#### 2026-10-19 *1.78.0*
+- **A Save dialog's file icon dropped on a folder here names that folder.**
+  Dragging the Save dialog's file icon from another program, onto a folder
+  of the listing, the listing's empty space or a folder row of the tree,
+  now tells that dialog to save there. A drive's folders and the Pinned
+  header are not offered.
+
 #### 2026-10-19 *1.77.0*
 - **Home button.** The navigation row has a Home button (a house) between
   Refresh and the split-view button. It opens the home folder of the host

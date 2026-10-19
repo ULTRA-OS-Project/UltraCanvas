@@ -1,9 +1,10 @@
 // UltraCanvas/OS/Linux/UltraCanvasLinuxDragDrop.cpp
 // X11 XDnD (Drag and Drop) protocol implementation
 // Implements XDND version 5: receives file drops from external applications
-// (target side) and drags files out to other applications (source side).
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// (target side) and drags files out to other applications (source side);
+// XDS (XdndDirectSave0) both ways for the Save dialog's file icon.
+// Version: 1.3.0
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxDragDrop.h"
@@ -58,6 +59,7 @@ namespace UltraCanvas {
         // Using a custom property avoids conflicts when xdndSelection is used
         // as both selection AND property (which some X servers reject)
         xdndSelectionProperty = XInternAtom(display, "ULTRACANVAS_XDND_DATA", False);
+        xdndDirectSave = XInternAtom(display, "XdndDirectSave0", False);
 
         // Supported MIME types for drop
         textUriList = XInternAtom(display, "text/uri-list", False);
@@ -83,6 +85,7 @@ namespace UltraCanvas {
         sourceDragActive = false;
         sourceAwaitingFinish = false;
         sourceOnFinished = nullptr;
+        sourceOnSaveFolder = nullptr;
         if (display) {
             if (sourceCursorCopy != None) { XFreeCursor(display, sourceCursorCopy); sourceCursorCopy = None; }
             if (sourceCursorMove != None) { XFreeCursor(display, sourceCursorMove); sourceCursorMove = None; }
@@ -96,6 +99,8 @@ namespace UltraCanvas {
         window = 0;
         isDragActive = false;
         dragSourceWindow = None;
+        incomingSaveDrag = false;
+        awaitingSaveReply = false;
     }
 
 // ===== EVENT HANDLING =====
@@ -179,6 +184,18 @@ namespace UltraCanvas {
         // Check if source offers a file type we support
         acceptDrop = SupportsFileType(sourceTypes);
 
+        // A save drag (XDS) offers no files, only a name: the source put it
+        // in its XdndDirectSave0 property before the drag began.
+        incomingSaveDrag = false;
+        incomingSaveName.clear();
+        awaitingSaveReply = false;
+        if (!acceptDrop && onSaveDrop &&
+            std::find(sourceTypes.begin(), sourceTypes.end(), xdndDirectSave) != sourceTypes.end()) {
+            incomingSaveName = ReadTextProperty(dragSourceWindow, xdndDirectSave);
+            incomingSaveDrag = !incomingSaveName.empty();
+            acceptDrop = incomingSaveDrag;
+        }
+
         debugOutput << "UltraCanvas XDnD: DragEnter from window " << dragSourceWindow
                   << " — " << sourceTypes.size() << " types offered, "
                   << (acceptDrop ? "accepting" : "rejecting") << std::endl;
@@ -214,20 +231,44 @@ namespace UltraCanvas {
     void UltraCanvasLinuxDragDrop::HandleXdndLeave(const XClientMessageEvent& cm) {
         debugOutput << "UltraCanvas XDnD: DragLeave" << std::endl;
 
-        isDragActive = false;
-        dragSourceWindow = None;
-
         if (onDragLeave) {
             onDragLeave(dragX, dragY);
         }
+
+        EndIncomingDrag();
     }
 
     void UltraCanvasLinuxDragDrop::HandleXdndDrop(const XClientMessageEvent& cm) {
         if (!acceptDrop) {
             // We can't accept this drop — send finished with rejected
             SendXdndFinished(dragSourceWindow, false);
-            isDragActive = false;
-            dragSourceWindow = None;
+            EndIncomingDrag();
+            return;
+        }
+
+        if (incomingSaveDrag) {
+            // XDS: the element under the pointer names the folder; the file
+            // URI goes into the source's XdndDirectSave0 property, and the
+            // source is asked for the XdndDirectSave0 target to take it in.
+            const std::string folder = onSaveDrop ? onSaveDrop(incomingSaveName, dragX, dragY)
+                                                  : std::string();
+            if (folder.empty()) {
+                SendXdndFinished(dragSourceWindow, false);
+                EndIncomingDrag();
+                return;
+            }
+            std::string path = folder;
+            if (path.back() != '/') path += '/';
+            path += incomingSaveName;
+            const std::string uri = EncodeFileUri(path);
+            XChangeProperty(display, dragSourceWindow, xdndDirectSave, textPlain, 8,
+                            PropModeReplace,
+                            reinterpret_cast<const unsigned char*>(uri.data()),
+                            static_cast<int>(uri.size()));
+            awaitingSaveReply = true;
+            XConvertSelection(display, xdndSelection, xdndDirectSave,
+                              xdndSelectionProperty, window, CurrentTime);
+            XFlush(display);
             return;
         }
 
@@ -244,8 +285,16 @@ namespace UltraCanvas {
             // Selection conversion failed
             debugOutput << "UltraCanvas XDnD: Selection conversion failed" << std::endl;
             SendXdndFinished(dragSourceWindow, false);
-            isDragActive = false;
-            dragSourceWindow = None;
+            EndIncomingDrag();
+            return;
+        }
+
+        if (awaitingSaveReply) {
+            // XDS: "S" - the source took the folder; "F" / "E" - it did not.
+            const std::string reply = ReadTextProperty(window, sel.property);
+            XDeleteProperty(display, window, sel.property);
+            SendXdndFinished(dragSourceWindow, !reply.empty() && reply[0] == 'S');
+            EndIncomingDrag();
             return;
         }
 
@@ -300,8 +349,31 @@ namespace UltraCanvas {
             SendXdndFinished(dragSourceWindow, false);
         }
 
+        EndIncomingDrag();
+    }
+
+    void UltraCanvasLinuxDragDrop::EndIncomingDrag() {
         isDragActive = false;
         dragSourceWindow = None;
+        incomingSaveDrag = false;
+        incomingSaveName.clear();
+        awaitingSaveReply = false;
+    }
+
+    std::string UltraCanvasLinuxDragDrop::ReadTextProperty(Window win, Atom property) {
+        Atom actualType;
+        int actualFormat = 0;
+        unsigned long itemCount = 0, bytesRemaining = 0;
+        unsigned char* data = nullptr;
+        std::string text;
+        if (XGetWindowProperty(display, win, property, 0, 65536, False, AnyPropertyType,
+                               &actualType, &actualFormat, &itemCount, &bytesRemaining,
+                               &data) == Success && data) {
+            if (actualFormat == 8)
+                text.assign(reinterpret_cast<char*>(data), itemCount);
+            XFree(data);
+        }
+        return text;
     }
 
 // ===== RESPONSE MESSAGES =====
@@ -499,6 +571,9 @@ namespace UltraCanvas {
         sourceAwaitingFinish = false;
 
         // Build the two payloads served from XdndSelection.
+        sourceSaveDrag = false;
+        sourceSaveName.clear();
+        sourceOnSaveFolder = nullptr;
         sourceFilePaths = filePaths;
         sourceUriList.clear();
         sourcePlainList.clear();
@@ -508,6 +583,49 @@ namespace UltraCanvas {
             sourcePlainList += p;
         }
 
+        if (!StartSourceGesture()) return false;
+        sourceOnFinished = std::move(onFinished);
+        debugOutput << "UltraCanvas XDnD: source drag started with "
+                    << filePaths.size() << " file(s)" << std::endl;
+        return true;
+    }
+
+    bool UltraCanvasLinuxDragDrop::BeginSaveDrag(const std::string& fileName,
+                                                 SaveFolderCallback onFolder) {
+        if (!display || window == 0 || fileName.empty()) return false;
+        if (sourceDragActive) return false;
+
+        if (activeSource && activeSource != this) {
+            activeSource->sourceAwaitingFinish = false;
+            if (activeSource->sourceDragActive) {
+                activeSource->FinishSourceDrag(false, false);
+            }
+        }
+        sourceAwaitingFinish = false;
+
+        // XDS: no file, only its name, in our XdndDirectSave0 property, where
+        // the target reads it and writes back the file URI it wants.
+        sourceSaveDrag = true;
+        sourceSaveName = fileName;
+        sourceFilePaths.clear();
+        sourceUriList.clear();
+        sourcePlainList.clear();
+        XChangeProperty(display, window, xdndDirectSave, textPlain, 8, PropModeReplace,
+                        reinterpret_cast<const unsigned char*>(fileName.data()),
+                        static_cast<int>(fileName.size()));
+
+        if (!StartSourceGesture()) {
+            XDeleteProperty(display, window, xdndDirectSave);
+            sourceSaveDrag = false;
+            return false;
+        }
+        sourceOnFinished = nullptr;
+        sourceOnSaveFolder = std::move(onFolder);
+        debugOutput << "UltraCanvas XDnD: save drag started for " << fileName << std::endl;
+        return true;
+    }
+
+    bool UltraCanvasLinuxDragDrop::StartSourceGesture() {
         // Own XdndSelection: targets fetch the data from us via
         // ConvertSelection once the drop lands.
         XSetSelectionOwner(display, xdndSelection, window, CurrentTime);
@@ -554,7 +672,6 @@ namespace UltraCanvas {
         }
 
         sourceDragActive = true;
-        sourceOnFinished = std::move(onFinished);
         sourceTarget = None;
         sourceTargetVersion = 5;
         sourceTargetAccepts = false;
@@ -565,9 +682,6 @@ namespace UltraCanvas {
         sourceDropOnStatus = false;
         sourceCurrentCursor = sourceCursorNo;
         activeSource = this;
-
-        debugOutput << "UltraCanvas XDnD: source drag started with "
-                    << filePaths.size() << " file(s)" << std::endl;
         return true;
     }
 
@@ -736,9 +850,14 @@ namespace UltraCanvas {
         msg.data.l[0] = static_cast<long>(window);
         // Bits 24-31: protocol version; bit 0 clear = all types fit below.
         msg.data.l[1] = static_cast<long>(std::min(sourceTargetVersion, 5)) << 24;
-        msg.data.l[2] = static_cast<long>(textUriList);
-        msg.data.l[3] = static_cast<long>(textPlainUtf8);
-        msg.data.l[4] = static_cast<long>(textPlain);
+        if (sourceSaveDrag) {
+            // Only XDS: a save drag is no text an editor should paste.
+            msg.data.l[2] = static_cast<long>(xdndDirectSave);
+        } else {
+            msg.data.l[2] = static_cast<long>(textUriList);
+            msg.data.l[3] = static_cast<long>(textPlainUtf8);
+            msg.data.l[4] = static_cast<long>(textPlain);
+        }
         XSendEvent(display, target, False, NoEventMask,
                    reinterpret_cast<XEvent*>(&msg));
         XFlush(display);
@@ -836,6 +955,11 @@ namespace UltraCanvas {
     void UltraCanvasLinuxDragDrop::HandleSourceFinished(const XClientMessageEvent& cm) {
         (void)cm;
         sourceAwaitingFinish = false;
+        if (sourceSaveDrag) {
+            sourceSaveDrag = false;
+            sourceOnSaveFolder = nullptr;
+            XDeleteProperty(display, window, xdndDirectSave);
+        }
         if (!sourceDragActive && activeSource == this) {
             activeSource = nullptr;
         }
@@ -876,6 +1000,12 @@ namespace UltraCanvas {
         if (!sourceAwaitingFinish && activeSource == this) {
             activeSource = nullptr;
         }
+        if (!sourceAwaitingFinish && sourceSaveDrag) {
+            // A save drag dropped on nothing: no folder is coming.
+            sourceSaveDrag = false;
+            sourceOnSaveFolder = nullptr;
+            XDeleteProperty(display, window, xdndDirectSave);
+        }
 
         if (sourceOnFinished) {
             auto cb = std::move(sourceOnFinished);
@@ -898,6 +1028,41 @@ namespace UltraCanvas {
         response.time = request.time;
 
         bool served = true;
+        if (sourceSaveDrag) {
+            // XDS: the target has written the file URI it wants into our
+            // XdndDirectSave0 property and asks for "S" (taken) or "E".
+            if (request.target == atomTargets) {
+                Atom targets[] = { atomTargets, xdndDirectSave };
+                XChangeProperty(display, request.requestor, response.property,
+                                XA_ATOM, 32, PropModeReplace,
+                                reinterpret_cast<unsigned char*>(targets),
+                                sizeof(targets) / sizeof(Atom));
+                XSendEvent(display, request.requestor, False, NoEventMask,
+                           reinterpret_cast<XEvent*>(&response));
+                XFlush(display);
+                return true;
+            }
+            if (request.target != xdndDirectSave) {
+                response.property = None;
+                XSendEvent(display, request.requestor, False, NoEventMask,
+                           reinterpret_cast<XEvent*>(&response));
+                XFlush(display);
+                return false;
+            }
+            const std::string folder = ReadSaveTargetFolder();
+            const char* reply = folder.empty() ? "E" : "S";
+            XChangeProperty(display, request.requestor, response.property,
+                            textPlain, 8, PropModeReplace,
+                            reinterpret_cast<const unsigned char*>(reply), 1);
+            XSendEvent(display, request.requestor, False, NoEventMask,
+                       reinterpret_cast<XEvent*>(&response));
+            XFlush(display);
+            // Told once: the dialog may close, or start another drag.
+            SaveFolderCallback onFolder = std::move(sourceOnSaveFolder);
+            sourceOnSaveFolder = nullptr;
+            if (onFolder && !folder.empty()) onFolder(folder);
+            return !folder.empty();
+        }
         if (request.target == atomTargets) {
             Atom targets[] = { atomTargets, textUriList, textPlainUtf8, textPlain };
             XChangeProperty(display, request.requestor, response.property,
@@ -923,6 +1088,17 @@ namespace UltraCanvas {
                    reinterpret_cast<XEvent*>(&response));
         XFlush(display);
         return served;
+    }
+
+    std::string UltraCanvasLinuxDragDrop::ReadSaveTargetFolder() {
+        std::string uri = ReadTextProperty(window, xdndDirectSave);
+        while (!uri.empty() && (uri.back() == '\n' || uri.back() == '\r' || uri.back() == '\0'))
+            uri.pop_back();
+        // The target may name the file anything; only its folder is taken.
+        const std::string path = DecodeUri(uri);
+        const size_t slash = path.find_last_of('/');
+        if (slash == std::string::npos) return std::string();
+        return slash == 0 ? std::string("/") : path.substr(0, slash);
     }
 
     bool UltraCanvasLinuxDragDrop::HandleSourceSelectionEvent(const XEvent& event) {

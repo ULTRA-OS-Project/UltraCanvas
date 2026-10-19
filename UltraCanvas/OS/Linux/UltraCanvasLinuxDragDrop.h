@@ -1,8 +1,8 @@
 // UltraCanvas/OS/Linux/UltraCanvasLinuxDragDrop.h
 // X11 XDnD (Drag and Drop) protocol handler: receives external file drops
 // (target side) and initiates file drags to other applications (source side).
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// Version: 1.3.0
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,6 +23,12 @@ namespace UltraCanvas {
     // moved = the accepted action was XdndActionMove (the target moves the
     // files itself — the source only needs to refresh its view).
     using FileDragFinishedCallback = std::function<void(bool accepted, bool moved)>;
+    // XDS (XdndDirectSave0), the save drag of a file that is not written yet.
+    // Target side: a file `name` dropped at (x, y) asks which folder it goes
+    // in - the folder, or "" when the drop is on no folder. Source side: the
+    // folder the target named.
+    using SaveDropCallback = std::function<std::string(const std::string& name, int x, int y)>;
+    using SaveFolderCallback = std::function<void(const std::string& folder)>;
 
     // =========================================================================
     // XDnD Protocol Handler
@@ -48,6 +54,10 @@ namespace UltraCanvas {
     //   - Format-aware byte count in SelectionNotify handling
     // V1.2.0:
     //   - XDND source implementation (drag files to other applications)
+    // V1.3.0:
+    //   - XDS (XdndDirectSave0) in both directions: the Save dialog's file
+    //     icon dragged onto a folder of another window or program, which
+    //     names the folder (BeginSaveDrag, onSaveDrop)
     // =========================================================================
 
     class UltraCanvasLinuxDragDrop {
@@ -97,6 +107,15 @@ namespace UltraCanvas {
         /// Called repeatedly as the drag moves over the window
         DragOverCallback onDragOver;
 
+        /// Called when a save drag (XDS) is dropped: answers the folder the
+        /// file goes in, or "" to refuse the drop.
+        SaveDropCallback onSaveDrop;
+
+        /// The drag over the window is a save drag (XDS) of a file not yet
+        /// written, named GetSaveDragName(), rather than files.
+        bool IsSaveDrag() const { return incomingSaveDrag; }
+        const std::string& GetSaveDragName() const { return incomingSaveName; }
+
         // ===== SOURCE SIDE (drag files OUT of this window) =====
 
         /// Start dragging files from this window to other applications.
@@ -109,6 +128,12 @@ namespace UltraCanvas {
         /// @return true when the drag started (pointer grab succeeded)
         bool BeginSourceDrag(const std::vector<std::string>& filePaths,
                              FileDragFinishedCallback onFinished = nullptr);
+
+        /// Start a save drag (XDS): a file called `fileName` that is not
+        /// written yet, dropped on a folder of another window or program,
+        /// which names the folder. Same rules as BeginSourceDrag. onFolder
+        /// runs only when a target named one.
+        bool BeginSaveDrag(const std::string& fileName, SaveFolderCallback onFolder);
 
         /// True while a source drag started by BeginSourceDrag() is running.
         bool IsSourceDragActive() const { return sourceDragActive; }
@@ -138,6 +163,9 @@ namespace UltraCanvas {
         std::string DecodeUri(const std::string& uri);
         bool SupportsFileType(const std::vector<Atom>& typeList);
         void FetchTypeListProperty(Window sourceWindow);
+        // An 8-bit text property of `win` ("" when it has none).
+        std::string ReadTextProperty(Window win, Atom property);
+        void EndIncomingDrag();
 
         // ===== X11 STATE =====
         Display* display = nullptr;
@@ -155,6 +183,7 @@ namespace UltraCanvas {
         Atom xdndTypeList = None;
         Atom xdndSelection = None;
         Atom xdndSelectionProperty = None;   // Dedicated property for receiving selection data
+        Atom xdndDirectSave = None;          // XdndDirectSave0: type, property and selection target
 
         // Supported drop types
         Atom textUriList = None;     // text/uri-list (file paths)
@@ -170,7 +199,19 @@ namespace UltraCanvas {
         // Types offered by the drag source
         std::vector<Atom> sourceTypes;
 
+        // An incoming save drag (XDS): the name the source gave the file,
+        // and whether the drop's answer is being fetched.
+        bool incomingSaveDrag = false;
+        std::string incomingSaveName;
+        bool awaitingSaveReply = false;
+
         // ===== SOURCE-SIDE INTERNALS =====
+        // Owns XdndSelection, grabs the pointer and resets the drag state for
+        // a drag whose payload is already set. False when either fails.
+        bool StartSourceGesture();
+        // XDS: the folder the target wrote into our XdndDirectSave0
+        // property, from the file URI it named ("" without one).
+        std::string ReadSaveTargetFolder();
         void SourceMotion(int rootX, int rootY, unsigned int stateMask);
         void SendSourceEnter(Window target);
         void SendSourcePosition(Window target, int rootX, int rootY, Time time);
@@ -200,6 +241,11 @@ namespace UltraCanvas {
         std::string sourceUriList;           // text/uri-list payload
         std::string sourcePlainList;         // text/plain payload (newline paths)
         FileDragFinishedCallback sourceOnFinished;
+        // A save drag (XDS) instead of files: the name, and who is told the
+        // folder the target names.
+        bool sourceSaveDrag = false;
+        std::string sourceSaveName;
+        SaveFolderCallback sourceOnSaveFolder;
         Window sourceTarget = None;          // XdndAware window under pointer
         int sourceTargetVersion = 5;
         bool sourceTargetAccepts = false;

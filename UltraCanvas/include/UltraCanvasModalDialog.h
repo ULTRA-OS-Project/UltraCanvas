@@ -680,6 +680,7 @@ namespace UltraCanvas {
     class UltraCanvasFilerWidget;   // UltraCanvasFilerWidget.h includes this header
     class UltraCanvasSegmentedControl;
     class UltraCanvasFileDragIcon;
+    class UltraCanvasBreadcrumb;
     struct FilerEntry;
     class UltraCanvasDialogManager {
         friend class UltraCanvasModalDialog;
@@ -843,13 +844,20 @@ namespace UltraCanvas {
         std::vector<std::shared_ptr<UltraCanvasContainer>> paneFrames;
         std::vector<std::shared_ptr<UltraCanvasLabel>> fieldLabels;
         std::shared_ptr<UltraCanvasLabel> fileIconCaption;
+        // Save, with the picture's size given: under the type, the pixels it
+        // is written at and its proportions for a bitmap type ("1920 x 1080
+        // pixels (16:9)"), the proportions alone for a vector type ("(16:9)").
+        std::shared_ptr<UltraCanvasLabel> pictureSizeLabel;
         std::vector<std::string> selectedFiles;
         std::string currentDirectory;
 
         bool showHiddenFiles = false;
 
         // ===== ELEMENTS =====
-        std::shared_ptr<UltraCanvasTextInput> pathInput;
+        // The folder shown, as UltraFiler shows it: a breadcrumb whose
+        // segments open their folder and whose drop-downs list the folders
+        // inside. A path is typed in the name field.
+        std::shared_ptr<UltraCanvasBreadcrumb> pathBreadcrumb;
         std::shared_ptr<UltraCanvasButton> upButton;
         std::shared_ptr<UltraCanvasTreeView> folderTree;
         // The listing of the current folder: the framework's file display.
@@ -996,6 +1004,14 @@ namespace UltraCanvas {
         // The icon was dropped on `target` at `windowPoint`: a folder of the
         // listing or the tree under it becomes the current folder.
         void OnFileIconDropped(UltraCanvasUIElement* target, const Point2Di& windowPoint);
+        // The folder the icon was dropped on - here, or in another window or
+        // program - becomes the one the file is saved in.
+        void SaveIntoDroppedFolder(const std::string& folder);
+        // Points the breadcrumb at currentDirectory.
+        void ShowPathInBreadcrumb();
+        // Puts the size and proportions of what is saved, in the type chosen,
+        // under the type (pictureSizeLabel).
+        void UpdatePictureSizeLabel();
         // The Settings button: the save settings of the type being saved,
         // and the picture's size for this save when the caller gave it.
         void ShowSaveTypeSettings();
