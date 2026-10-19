@@ -499,6 +499,48 @@ namespace UltraCanvas {
                                     // empty = an empty file is created
     };
 
+    // ===== A FINISHED COPY / MOVE =====
+    // What a paste, a drop or a Move to / Copy to amounted to, handed to
+    // UltraCanvasFilerWidget::onTransferFinished once the operation is over
+    // (its windows closed, the folders refreshed). The counts are of the
+    // entries the user chose - a folder is one item however much it holds.
+    struct FilerTransferResult {
+        bool moved = false;          // a move; false = a copy
+        bool cancelled = false;      // stopped from the progress window
+        size_t items = 0;            // entries that arrived
+        size_t files = 0;            // ... of them files
+        size_t folders = 0;          // ... of them folders
+        size_t skipped = 0;          // entries that did not (see the summary)
+        std::string firstName;       // the entry's name when items == 1
+        std::string destination;     // the folder they went into
+        // The same as one sentence for a status line: "\"report.pdf\" moved
+        // to \"alt\"", "3 files copied to \"alt\"", "Copy cancelled - 2 of 5
+        // items copied to \"alt\"". Empty when nothing was asked to go anywhere
+        // (a cut pasted back into its own folder).
+        std::string message;
+    };
+
+    // ===== A FINISHED DELETE =====
+    // What a delete amounted to, handed to UltraCanvasFilerWidget::
+    // onDeleteFinished once it is over - to the trash or for good, walked to
+    // its end or cancelled. Counted like FilerTransferResult: the entries the
+    // user chose, a folder once however much it held.
+    struct FilerDeleteResult {
+        bool toTrash = false;        // moved to the trash; false = removed for good
+        bool cancelled = false;      // stopped from the progress window or a problem dialog
+        size_t items = 0;            // entries that are gone
+        size_t files = 0;            // ... of them files
+        size_t folders = 0;          // ... of them folders
+        size_t skipped = 0;          // entries that stayed (see the summary)
+        std::string firstName;       // the entry's name when items == 1
+        std::string trashName;       // "Trash", "Recycle Bin" - TrashDisplayName()
+        // The same as one sentence for a status line: "\"report.pdf\" moved
+        // to the Trash", "3 files deleted", "Delete cancelled - 2 of 5 items
+        // moved to the Trash", "3 of 5 items deleted (2 left)". Empty when
+        // nothing was deleted or asked about.
+        std::string message;
+    };
+
     // ===== "OPEN WITH >" APPLICATION =====
     struct FilerOpenWithApp {
         std::string label;
@@ -1597,6 +1639,14 @@ namespace UltraCanvas {
         // it. A file-list display (ShowFileList) only reports changes whose
         // folder is known, since its entries span many folders.
         std::function<void(const std::string& folderPath)> onFolderModified;
+        // A copy or move has ended - walked to its end, or cancelled part-way
+        // - with what arrived where (see FilerTransferResult). For a
+        // confirmation on the host's status line; the widget shows nothing
+        // of its own beyond the summary window for skipped entries.
+        std::function<void(const FilerTransferResult&)> onTransferFinished;
+        // The same for a delete (see FilerDeleteResult). A delete on a remote
+        // drive is the host's own and does not report here.
+        std::function<void(const FilerDeleteResult&)> onDeleteFinished;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
         // After a column splitter drag (or a programmatic width change) — the
@@ -3464,6 +3514,12 @@ namespace UltraCanvas {
             // conflict answered with Skip), and how many were.
             std::vector<SkippedItem> skipped;
             size_t pasted = 0;
+            // The chosen entries that arrived - the top of the queue, not the
+            // entries a merge spliced in - for onTransferFinished.
+            size_t arrivedFiles = 0;
+            size_t arrivedFolders = 0;
+            std::string firstArrived;
+            size_t requested = 0;     // entries the paste was asked to take
             // The folders a move actually emptied - the parent of every
             // source that was renamed away. The caller of a paste knows the
             // destination and nothing else, so these are reported to
@@ -3495,6 +3551,11 @@ namespace UltraCanvas {
         // dialog that resumes the paste.
         void ContinuePendingPaste();
         void FinishPendingPaste();
+        // Worker-side: counts a chosen entry that arrived (onTransferFinished).
+        static void NoteArrived(PendingPaste& pp, const std::string& name, bool isDir);
+        // FilerTransferResult::message for a finished paste of `requested` entries.
+        static std::string DescribeTransfer(const FilerTransferResult& result,
+                                            size_t requested);
         // The worker's walk through the queue: copies / moves entries until
         // one needs an answer, then records it in `pp->stop` and returns.
         // Runs off the UI thread and touches nothing but the queue, the
@@ -3665,8 +3726,20 @@ namespace UltraCanvas {
             // For the summary at the end: the entries that stayed, with why.
             std::vector<SkippedItem> skipped;
             size_t removed = 0;
+            // What is gone, for onDeleteFinished: files and folders apart,
+            // the first one's name, and how many the delete was asked for.
+            size_t goneFiles = 0;
+            size_t goneFolders = 0;
+            std::string firstGone;
+            size_t requested = 0;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
+        // Counts one chosen entry the delete removed (worker or UI thread,
+        // never both at once).
+        static void NoteDeleted(PendingDelete& pd, const FilerEntry& entry);
+        // FilerDeleteResult::message.
+        static std::string DescribeDelete(const FilerDeleteResult& result,
+                                          size_t requested);
 
         // Hands the queue to the file-operation worker (which stops at the
         // first victim needing a dialog) or finishes it. Called again by every
