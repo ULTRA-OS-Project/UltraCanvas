@@ -13,6 +13,7 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.6.0 - the C shape: every cell of every slice reachable over the same area, slice labels, Page Up/Down, editing in depth
 // Version: 1.5.1 - the dark theme darkens the competitive block, and a dark competitor stays visible on it
 // Version: 1.5.0 - the attribute gutter: L and House rows are hit across it, and hiding it gives the grid the width back
 // Version: 1.4.0 - the competitive-assessment block: its rows are hit as the needs, and it gives way when hidden
@@ -720,6 +721,75 @@ void TestAttributeGutter() {
     Check(before.x == after.x && w0 == w1, "a set without attribute columns lays out the same either way");
 }
 
+// The C draws one isometric slice per depth item. Each (row, col, depth)
+// must be reachable over a comparable area - which a slice hidden behind
+// another, or a lattice pointing the wrong way, would not give - and the
+// depth labels must answer for their whole slice.
+void TestCube() {
+    std::cout << "\nC shape (cube)\n";
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    const MatrixModel model = MatrixSamples::DefectCube();
+    Check(model.Validate().valid, "the cube sample validates");
+    auto cube = LaidOut(model, canvas);
+    canvas.Save("matrix-C");
+    Check(canvas.InkPixels(Color(252, 252, 253, 255)) > kWidth * kHeight / 20, "draws a substantial picture");
+
+    std::map<std::tuple<int, int, int>, int> hits;
+    std::map<int, int> sliceLabelHits;
+    for (int y = 0; y < kHeight; y += 2) {
+        for (int x = 0; x < kWidth; x += 2) {
+            const MatrixRef ref = HoverAt(*cube, Point2Di(x, y));
+            if (ref.IsCell()) ++hits[std::make_tuple(ref.row, ref.col, ref.depth)];
+            else if (ref.IsSlice()) ++sliceLabelHits[ref.depth];
+        }
+    }
+    const int nr = model.sets[0].Count(), nc = model.sets[1].Count(), nd = model.sets[2].Count();
+    int smallest = 1 << 30, largest = 0;
+    bool all = true;
+    for (int d = 0; d < nd; ++d) {
+        for (int r = 0; r < nr; ++r) {
+            for (int c = 0; c < nc; ++c) {
+                auto it = hits.find(std::make_tuple(r, c, d));
+                const int n = it == hits.end() ? 0 : it->second;
+                if (n == 0) all = false;
+                smallest = std::min(smallest, n);
+                largest = std::max(largest, n);
+            }
+        }
+    }
+    Check(all, "every cell of every slice can be pointed at");
+    Check(smallest > 0 && largest <= smallest * 2, "over comparable areas (" + std::to_string(smallest)
+                                                   + "-" + std::to_string(largest) + " samples)");
+    Check(static_cast<int>(hits.size()) == nr * nc * nd, "and nothing else is ever reported as a cell");
+    Check(static_cast<int>(sliceLabelHits.size()) == nd, "each slice has a label that answers for it");
+
+    // A mark is drawn in its own slice only: the Night slice's frequent
+    // weld misalignment is (2, 1, 2), and the Early slice has none there.
+    Check(cube->GetModel().LevelAt(0, 2, 1, 2) == "frequent" && cube->GetModel().LevelAt(0, 2, 1, 0).empty(),
+          "a cell is keyed by its depth as well as its row and column");
+
+    // Keyboard: Page Down walks the same cell down through the slices.
+    cube->SelectCell([] { MatrixRef r = Ref(0, 1, 1); r.depth = 0; return r; }());
+    cube->OnEvent(KeyEvent(UCKeys::PageDown));
+    Check(cube->GetSelectedCell().depth == 1 && cube->GetSelectedCell().row == 1,
+          "Page Down moves to the same cell one slice down");
+    cube->OnEvent(KeyEvent(UCKeys::PageDown));
+    cube->OnEvent(KeyEvent(UCKeys::PageDown));
+    Check(cube->GetSelectedCell().depth == 2, "and stops at the last slice");
+    cube->OnEvent(KeyEvent(UCKeys::Tab));
+    Check(cube->GetSelectedCell().IsCell() && cube->GetSelectedCell().depth == 0,
+          "Tab wraps from the last slice to the first");
+
+    // Editing steps the cell of the slice it is in, and no other.
+    cube->SetEditable(true);
+    MatrixRef early = Ref(0, 4, 0);
+    early.depth = 0;
+    Check(cube->CycleCell(early) && cube->GetModel().LevelAt(0, 4, 0, 0) == "frequent" &&
+          cube->GetModel().LevelAt(0, 4, 0, 1).empty() && cube->GetModel().LevelAt(0, 4, 0).empty(),
+          "a click steps the level of that slice's cell only");
+}
+
 } // namespace
 
 int main() {
@@ -743,6 +813,7 @@ int main() {
     TestEditing();
     TestCompetitive();
     TestAttributeGutter();
+    TestCube();
     TestThemeKeepsSettings();
 
     std::cout << "\n================================\n";

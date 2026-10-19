@@ -1,5 +1,6 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixModel.h
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.6.0 - the C shape: a panel with a depth set, cells keyed by row, column and depth
 // Version: 1.5.0 - attribute gutter: per-set attribute columns and per-item values
 // Version: 1.4.0 - competitive assessment: competitors and their per-need ratings
 // Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
@@ -19,7 +20,7 @@
 // A matrix diagram relates two or more ordered lists. The three primitives are
 // ITEM SETS (the lists), PANELS (one set crossed with another) and CELL MARKS
 // (a symbol at an intersection, drawn from a small ordinal RELATIONSHIP SCALE).
-// The shape - L, T, Y, X - says only how the panels are placed around the sets;
+// The shape - L, T, Y, X, C - says only how the panels are placed around the sets;
 // it never changes what the data means.
 //
 // Two things separate this from UltraCanvasHeatmapChartElement, which also
@@ -56,10 +57,13 @@ namespace UltraCanvas {
         X,      // A x B, B x C, C x D, D x A             (4 sets, 4 panels)
                 // sets[0..3] go left, top, right, bottom; each panel pairs a
                 // left/right set with a top/bottom one
-        House   // L + correlation roof + targets         (QFD composite)
+        House,  // L + correlation roof + targets         (QFD composite)
                 // panels[0] crosses sets[0] (needs) with sets[1] (technical
                 // requirements); panels[1], when present, is the symmetric
                 // roof over sets[1]
+        C       // A x B x C, every cell relating one item of each (3 sets, 1 panel)
+                // panels[0] is a cube panel: rows from sets[0], columns from
+                // sets[1] and depth from sets[2] (MatrixPanel::depthSetId)
     };
     // There is no standalone symmetric ("roof") shape: the only symmetric half
     // matrix this element draws is the QFD correlation roof, which is internal
@@ -222,6 +226,13 @@ namespace UltraCanvas {
         // either way round.
         bool        symmetric = false;
 
+        // A cube panel (the C shape) has a third axis: every cell relates a
+        // row, a column AND an item of this set, and is set with
+        // MatrixModel::SetCubeCellAt. Empty = an ordinary two-way panel.
+        std::string depthSetId;
+
+        bool IsCube() const { return !depthSetId.empty(); }
+
         MatrixPanel() = default;
         MatrixPanel(const std::string& rows, const std::string& cols,
                     const MatrixScale& s)
@@ -234,21 +245,26 @@ namespace UltraCanvas {
         int         panel = 0;
         int         row   = 0;
         int         col   = 0;
+        int         depth = -1;   // the depth item of a cube panel's cell; -1 elsewhere
         std::string levelId;
         std::string note;   // appended to the tooltip
     };
 
     // Identifies one cell for hit testing and selection. row or col of -1 means
-    // "the whole row" / "the whole column"; panel of -1 means "nothing".
+    // "the whole row" / "the whole column"; panel of -1 means "nothing". On a
+    // cube panel `depth` names the slice: a cell has all three set, and a ref
+    // with only panel and depth is the whole slice.
     struct MatrixRef {
         int panel = -1;
         int row   = -1;
         int col   = -1;
+        int depth = -1;
 
         bool IsValid() const { return panel >= 0; }
         bool IsCell()  const { return panel >= 0 && row >= 0 && col >= 0; }
+        bool IsSlice() const { return panel >= 0 && depth >= 0 && row < 0 && col < 0; }
         bool operator==(const MatrixRef& o) const {
-            return panel == o.panel && row == o.row && col == o.col;
+            return panel == o.panel && row == o.row && col == o.col && depth == o.depth;
         }
         bool operator!=(const MatrixRef& o) const { return !(*this == o); }
     };
@@ -354,6 +370,8 @@ namespace UltraCanvas {
 
         const MatrixItemSet* RowSet(int panel) const;
         const MatrixItemSet* ColSet(int panel) const;
+        // A cube panel's depth set, or nullptr for a two-way panel.
+        const MatrixItemSet* DepthSet(int panel) const;
 
         // ---- Cells ----
         // Set a mark by item ids. Replaces any existing mark at that
@@ -362,17 +380,27 @@ namespace UltraCanvas {
         bool SetCell(int panel, const std::string& rowItemId,
                      const std::string& colItemId, const std::string& levelId);
 
-        // Set a mark by index. Same contract.
+        // Set a mark by index. Same contract. A cube panel's cells need a
+        // depth too, so these refuse one: use the cube forms below.
         bool SetCellAt(int panel, int row, int col, const std::string& levelId,
                        const std::string& note = std::string());
 
-        bool ClearCell(int panel, int row, int col);
+        // A cube panel's cell: row, column and depth item. Same contract, and
+        // false on a two-way panel.
+        bool SetCubeCell(int panel, const std::string& rowItemId, const std::string& colItemId,
+                         const std::string& depthItemId, const std::string& levelId);
+        bool SetCubeCellAt(int panel, int row, int col, int depth, const std::string& levelId,
+                           const std::string& note = std::string());
+
+        // `depth` is -1 for a two-way panel's cell and the depth index for a
+        // cube's; each form finds only its own kind.
+        bool ClearCell(int panel, int row, int col, int depth = -1);
         void ClearCells();
 
-        const MatrixCell* FindCell(int panel, int row, int col) const;
+        const MatrixCell* FindCell(int panel, int row, int col, int depth = -1) const;
 
         // Level id at a cell, or an empty string when unpopulated.
-        std::string LevelAt(int panel, int row, int col) const;
+        std::string LevelAt(int panel, int row, int col, int depth = -1) const;
 
         // ---- Derived ----
         // Sum over the panel's rows of importance * cellWeight. With the
@@ -383,6 +411,11 @@ namespace UltraCanvas {
         // Sum over the panel's columns of cellWeight, scaled by this row's own
         // importance.
         double RowScore(int panel, int row) const;
+
+        // On a cube panel the two scores above sum through every depth, and
+        // this one sums one depth slice: importance * cellWeight over its
+        // rows and columns. 0 on a two-way panel.
+        double DepthScore(int panel, int depth) const;
 
         // Column indices ordered by descending ColumnScore. Ties keep their
         // natural order, so the ranking is stable.
@@ -416,6 +449,8 @@ namespace UltraCanvas {
     // item whose first field is the row label and whose cells hold level ids.
     // Empty cells are empty fields. With `withImportance`, a second column
     // headed "Importance" carries each row's importance, written dot-decimal.
+    // A table has no third axis, so a cube panel exports as an empty string -
+    // use the JSON form for a C.
     std::string ExportMatrixCsv(const MatrixModel& model, int panel = 0,
                                 bool withImportance = false);
 
@@ -423,7 +458,7 @@ namespace UltraCanvas {
     // The sets and the scale must already exist - this fills in marks, it does
     // not invent items. An "Importance" second column, when present, sets the
     // row importances too. Returns false and leaves the model untouched when
-    // the header or a row label does not match.
+    // the header or a row label does not match, or `panel` is a cube.
     bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel = 0);
 
     // Build a new L-shaped model from the tabular form a spreadsheet holds: a
@@ -450,9 +485,9 @@ namespace UltraCanvas {
     //     "sets":   [ {"id", "title", "accent": [r,g,b,a], "columns": [ ... ],
     //                 "items": [ {"id", "label", "importance", "note", "improvement",
     //                 "target", "accent", "attributes": [ ... ]} ]} ],
-    //     "panels": [ {"rows", "columns", "symmetric", "scale": {"title", "levels":
+    //     "panels": [ {"rows", "columns", "depth", "symmetric", "scale": {"title", "levels":
     //                 [ {"id", "label", "glyph", "shape", "color", "weight", "size"} ]}} ],
-    //     "cells":  [ {"panel", "row", "column", "level", "note"} ] }
+    //     "cells":  [ {"panel", "row", "column", "depth", "level", "note"} ] }
     //
     // Members that hold their default are left out.
     JSONValue MatrixModelToJson(const MatrixModel& model);
@@ -497,6 +532,11 @@ namespace UltraCanvas {
         // Y-shaped: customer requirements, product functions and components,
         // each related to the other two - a design traceability loop.
         MatrixModel DesignTraceability();
+
+        // C-shaped: defect types against production lines against shifts -
+        // how often each defect turns up on each line in each shift, which
+        // no pair of the three lists can say on its own.
+        MatrixModel DefectCube();
 
         // House of Quality: the QualityFunctionDeployment() matrix with its
         // correlation roof, directions of improvement and target values.

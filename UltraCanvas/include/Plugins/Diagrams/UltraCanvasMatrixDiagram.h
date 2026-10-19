@@ -1,6 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
-// Matrix diagram element: item sets crossed in L, T, X, Y and House arrangements, cell
+// Matrix diagram element: item sets crossed in L, T, X, Y, House and C arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.6.0 - the C shape: a cube drawn as stacked isometric slices, one per depth item
 // Version: 1.5.1 - the dark theme recolours the competitive block, direction arrows, ranks and roll-up bars; a competitor too dark to see is drawn in the label colour
 // Version: 1.5.0 - the attribute gutter: a set's attribute columns between its row labels and the grid (L and House)
 // Version: 1.4.0 - the House of Quality's competitive-assessment block
@@ -32,7 +33,7 @@
 //   * Named relationship levels between two or three ordered lists, with
 //     totals -> this element.
 //
-// Implemented: the L, T, X, Y and House (QFD) shapes; see
+// Implemented: the L, T, X, Y, House (QFD) and C (cube) shapes; see
 // Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md for what remains.
 #pragma once
 
@@ -193,6 +194,13 @@ namespace UltraCanvas {
         Color   attributeBackground     = Color(248, 249, 251, 255);
         Color   attributeTextColor      = Color(55, 60, 70, 255);
 
+        // ---- C shape (cube) ----
+        // The cube is drawn exploded: one isometric slice per depth item,
+        // stacked with this gap between them (in cells), and joined by the
+        // cube's vertical edges.
+        double  cubeSliceGap        = 0.7;
+        Color   cubeEdgeColor       = Color(150, 157, 168, 255);
+
         // ---- Cell tint ----
         // Fill each populated cell with its level's colour at this alpha,
         // under the mark - a heatmap look for readers who want one. Off by
@@ -347,6 +355,8 @@ namespace UltraCanvas {
         // The new level id, or an empty string when the cell was cleared.
         std::function<void(const MatrixRef&, const std::string& levelId)> onCellEdited;
         std::function<void(const MatrixRef&)> onSelectionChanged;
+        // C shape: a depth item's label was clicked - the whole slice.
+        std::function<void(int panel, int depth, const MatrixItem&)> onSliceClick;
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -437,6 +447,10 @@ namespace UltraCanvas {
             // grid (and a House's importance column). Empty elsewhere.
             Rect2Dd attributes;
             std::vector<double> attributeWidths;    // one per MatrixItemSet::columns entry
+
+            // A C's slice: the depth item whose cells this lattice draws.
+            // -1 for every other shape's panels.
+            int     depth = -1;
         };
 
         // A band listing one item set, used by the X and Y shapes, where the
@@ -480,6 +494,8 @@ namespace UltraCanvas {
             std::vector<ArmLayout>   arms;        // X and Y only
             Rect2Dd                  hub;         // X only
             std::vector<HubCaption>  hubCaptions;
+            std::vector<Rect2Dd>     depthLabels; // C only: one box per slice, beside it
+            Point2Dd                 depthTitle;  // C only: centre of the depth set's title
         };
         Layout layout;
 
@@ -497,6 +513,7 @@ namespace UltraCanvas {
         void LayoutT(IRenderContext* ctx, const Rect2Dd& area);
         bool LayoutX(IRenderContext* ctx, const Rect2Dd& area);
         bool LayoutY(IRenderContext* ctx, const Rect2Dd& area);
+        bool LayoutC(IRenderContext* ctx, const Rect2Dd& area);
         bool LayoutHouse(IRenderContext* ctx, const Rect2Dd& area);
         double ColumnGutterHeight() const;
         void LayoutHeaderBand(IRenderContext* ctx, Rect2Dd& area);
@@ -545,6 +562,11 @@ namespace UltraCanvas {
         void RenderArm(IRenderContext* ctx, const ArmLayout& arm);
         void RenderArmTitle(IRenderContext* ctx, const ArmLayout& arm);
         void RenderHub(IRenderContext* ctx);
+        // The C's slices, bottom first, with the cube's outer vertical edges
+        // between them; then the depth labels and the depth set's title.
+        void RenderCube(IRenderContext* ctx);
+        void RenderCubeEdges(IRenderContext* ctx, const PanelLayout& upper, const PanelLayout& lower);
+        void RenderDepthLabels(IRenderContext* ctx);
         void RenderHeaderBand(IRenderContext* ctx);
         void RenderHouseBands(IRenderContext* ctx, const PanelLayout& pl);
         void RenderAttributes(IRenderContext* ctx, const PanelLayout& pl);
@@ -574,7 +596,8 @@ namespace UltraCanvas {
         // coordinates first, and nothing outside the content area is a hit.
         MatrixRef HitTest(const Point2Di& point) const;
         MatrixRef HitTestLayout(double px, double py) const;
-        const PanelLayout* PanelAt(int panelIndex) const;
+        // The laid-out panel - for a C, the slice of `depth`.
+        const PanelLayout* PanelAt(int panelIndex, int depth = -1) const;
 
         // ===== HELPERS =====
         // Corners of the block of cells [row, row + rows) x [col, col + cols).

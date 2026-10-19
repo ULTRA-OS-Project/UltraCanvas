@@ -86,7 +86,27 @@ in JSON and listed in a row's tooltip. Departures from the plan below:
 * **Not in the CSV forms.** Those carry one panel's marks, and an extra column
   would collide with `ImportMatrixTable`'s Importance column.
 
-Still open: D7 `C` (deferred per Q3).
+D7 (2026-10-19) delivered the `C` shape, built on request despite Q3. Panel 0
+is a cube: `MatrixPanel::depthSetId` names its third set, and each
+`MatrixCell::depth` holds the cell's depth index. Departures from the plan
+below:
+
+* **Exploded, not solid.** Q3 expected an isometric projection with marks
+  ordered by depth. A solid cube hides every cell that is not on its outer
+  faces. So the C is drawn as one flat isometric slice per depth item,
+  stacked with a gap and outlined by the cube's side edges. Nothing hides
+  anything else, and no depth ordering is needed beyond drawing the bottom
+  slice first.
+* **Again, no new geometry.** Each slice is the Phase 2 lattice with Y-style
+  steps, so the grid, marks, highlight, hit test, keyboard and editing work
+  unchanged. They only learned which slice a cell belongs to.
+* **The depth is on the cell, not a second kind of cell.** `FindCell`,
+  `LevelAt` and `ClearCell` take a defaulted depth, and `SetCubeCellAt` sits
+  beside `SetCellAt`. A two-way panel and a cube refuse each other's cells, so
+  no caller can mix them up silently.
+* **No CSV.** A table has no third axis. A cube travels as JSON.
+
+Every shape in §2 is now built.
 
 **Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
 architectural room-adjacency matrices, and adjacency data is already modelled by
@@ -599,7 +619,7 @@ struct MatrixModel {
     void SetCell(const std::string& rowId, const std::string& colId,
                  const std::string& levelId, int panel = 0);
     void ClearCell(const std::string& rowId, const std::string& colId, int panel = 0);
-    const MatrixCell* FindCell(int panel, int row, int col) const;
+    const MatrixCell* FindCell(int panel, int row, int col, int depth = -1) const;
 
     // ---- derived (the part worth unit-testing) ----
     double ColumnScore(int panel, int col) const;  // Σ row.importance × weight
@@ -650,7 +670,8 @@ Codes follow the fishbone/contour proposals so phasing can reference them.
 - **D6** `House` — QFD composite: L + the correlation roof + importance +
   target strip. Brings the rotated-triangle geometry of §7.1 with it, and is
   the only thing that needs it. *(Phase 3)*
-- **D7** `C` — 3-set cube. *(Deferred — see §9 Q3)*
+- **D7** `C` — 3-set cube. *(Deferred per §9 Q3; built 2026-10-19 on request —
+  see the status notes at the top)*
 
 ### Data & content (C)
 - **C1** Item sets with per-item labels, accents and notes.
@@ -807,6 +828,8 @@ boundary documented in both guides.
 *Recommendation: defer, and say so in the doc.* It is the rarest of the six and
 needs an isometric projection plus depth-ordered marks — a large amount of new
 geometry for a form most users will never open. Revisit only if asked.
+*Outcome (2026-10-19): asked for, and built. The exploded drawing needed
+neither new geometry nor depth ordering; see the status notes.*
 
 **Q4 — Separate `UltraCanvasMatrixModel.h`?**
 *Recommendation: yes.* Not for separation-of-concerns aesthetics but because

@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.6.0 - the C shape: a cube drawn as stacked isometric slices, one per depth item
 // Version: 1.5.1 - the dark theme recolours the competitive block, direction arrows, ranks and roll-up bars; a competitor too dark to see is drawn in the label colour
 // Version: 1.5.0 - the attribute gutter: a set's attribute columns between its row labels and the grid (L and House)
 // Version: 1.4.0 - the House of Quality's competitive-assessment block
@@ -356,7 +357,7 @@ namespace UltraCanvas {
 
         // Empty -> strongest -> ... -> weakest -> empty, or the reverse.
         const int count = static_cast<int>(scale.levels.size());
-        const MatrixCell* cell = model.FindCell(ref.panel, ref.row, ref.col);
+        const MatrixCell* cell = model.FindCell(ref.panel, ref.row, ref.col, ref.depth);
         const int current = cell ? scale.IndexOf(cell->levelId) : -1;
         const std::string note = cell ? cell->note : std::string();
         int next = backwards ? (current < 0 ? count - 1 : current - 1)
@@ -364,10 +365,10 @@ namespace UltraCanvas {
 
         std::string levelId;
         if (next < 0) {
-            model.ClearCell(ref.panel, ref.row, ref.col);
+            model.ClearCell(ref.panel, ref.row, ref.col, ref.depth);
         } else {
             levelId = scale.levels[static_cast<size_t>(next)].id;
-            if (!model.SetCellAt(ref.panel, ref.row, ref.col, levelId, note)) return false;
+            if (!model.SetCubeCellAt(ref.panel, ref.row, ref.col, ref.depth, levelId, note)) return false;
         }
         if (onCellEdited) onCellEdited(ref, levelId);
         RequestRedraw();
@@ -544,6 +545,7 @@ namespace UltraCanvas {
         layout.arms.clear();
         layout.hubCaptions.clear();
         layout.headerFields.clear();
+        layout.depthLabels.clear();
         layout.hub = Rect2Dd();
         layout.headerBand = Rect2Dd();
     }
@@ -1425,6 +1427,191 @@ namespace UltraCanvas {
         return true;
     }
 
+    // The C shape: a cube of cells, rows x columns x depth. A solid cube shows
+    // only its outer faces, which hold none of the cells inside, so it is
+    // drawn exploded: one flat isometric slice per depth item, the first on
+    // top, stacked with a gap and joined by the cube's vertical edges. Each
+    // slice is the lattice a Y panel uses - rows step down-left and columns
+    // down-right, 30 degrees off level - so the grid, marks, highlight and
+    // hit test need nothing new. The rows are labelled along the top slice's
+    // upper-left edge and the columns along its upper-right edge, as a Y's
+    // arms are; each slice's depth item is named in a box at its right
+    // corner. Every extreme point is fixed + s * moving in the cell size s,
+    // so the largest s that fits is found by bisection, as in LayoutY.
+    bool UltraCanvasMatrixDiagram::LayoutC(IRenderContext* ctx, const Rect2Dd& area) {
+        if (model.panels.empty() || !model.panels[0].IsCube()) return false;
+        const MatrixItemSet* rows = model.RowSet(0);
+        const MatrixItemSet* cols = model.ColSet(0);
+        const MatrixItemSet* depths = model.DepthSet(0);
+        if (!rows || !cols || !depths) return false;
+        const int nr = rows->Count(), nc = cols->Count(), nd = depths->Count();
+        if (nr == 0 || nc == 0 || nd == 0) return false;
+
+        const double kCos30 = 0.8660254037844386;
+        const Point2Dd uRow(-kCos30, 0.5), uCol(kCos30, 0.5), down(0.0, 1.0);
+        // Out of the board, across its two upper edges.
+        const Point2Dd outRow(-0.5, -kCos30), outCol(0.5, -kCos30);
+        // Slice d's apex lies d * sliceStep cells below the top slice's: a
+        // slice is (rows + cols) / 2 cells tall, and the gap keeps it clear
+        // of the next, so no slice hides another.
+        const double sliceStep = (nr + nc) * 0.5 + std::max(0.1, style.cubeSliceGap);
+
+        const double pad = 4.0;
+        const double bandW = std::min(std::max(MeasureWidestLabel(ctx, rows, style.rowLabelFontSize),
+                                               MeasureWidestLabel(ctx, cols, style.rowLabelFontSize)),
+                                      style.maxRowLabelWidth) + style.labelPadding * 2.0;
+        const double depthW = std::min(MeasureWidestLabel(ctx, depths, style.rowLabelFontSize),
+                                       style.maxRowLabelWidth) + style.labelPadding * 2.0;
+        const double depthH = style.rowLabelFontSize + 10.0;
+        const double depthGap = 10.0;
+
+        ctx->SetFontSize(style.axisTitleFontSize);
+        ctx->SetFontWeight(FontWeight::Bold);
+        const double titleH = style.axisTitleFontSize * 1.3;
+        const double rowTitleW = showAxisTitles ? ctx->GetTextLineWidth(rows->title) : 0.0;
+        const double colTitleW = showAxisTitles ? ctx->GetTextLineWidth(cols->title) : 0.0;
+        const double depthTitleW = showAxisTitles ? ctx->GetTextLineWidth(depths->title) : 0.0;
+        ctx->SetFontWeight(FontWeight::Normal);
+
+        // A level title centred outside an edge band's middle: its box
+        // reaches |out.x| * w / 2 + |out.y| * h / 2 along `out`.
+        auto titleOffset = [&](const Point2Dd& out, double w) {
+            return VecScale(out, pad + bandW + 6.0 + std::fabs(out.x) * w / 2.0
+                                 + std::fabs(out.y) * titleH / 2.0);
+        };
+        const Point2Dd rowTitleFixed = titleOffset(outRow, rowTitleW);
+        const Point2Dd colTitleFixed = titleOffset(outCol, colTitleW);
+        const Point2Dd rowTitleMoving = VecScale(uRow, nr / 2.0);
+        const Point2Dd colTitleMoving = VecScale(uCol, nc / 2.0);
+        // The depth title stands on end right of the depth labels, centred on
+        // the stack of right corners.
+        const Point2Dd depthTitleFixed(depthGap + depthW + 8.0 + titleH / 2.0, 0.0);
+        const Point2Dd depthTitleMoving = VecAdd(VecScale(uCol, nc), VecScale(down, (nd - 1) * sliceStep / 2.0));
+
+        struct Extent { Point2Dd fixed; Point2Dd moving; };
+        std::vector<Extent> extents;
+        const Point2Dd zero(0.0, 0.0);
+        const Point2Dd last = VecScale(down, (nd - 1) * sliceStep);
+        // The boards: the top slice's upper corners, the last one's lower.
+        extents.push_back({zero, zero});
+        extents.push_back({zero, VecScale(uRow, nr)});
+        extents.push_back({zero, VecScale(uCol, nc)});
+        extents.push_back({zero, VecAdd(last, VecScale(uRow, nr))});
+        extents.push_back({zero, VecAdd(last, VecScale(uCol, nc))});
+        extents.push_back({zero, VecAdd(last, VecAdd(VecScale(uRow, nr), VecScale(uCol, nc)))});
+        // The two label bands.
+        for (double w : {pad, pad + bandW}) {
+            extents.push_back({VecScale(outRow, w), zero});
+            extents.push_back({VecScale(outRow, w), VecScale(uRow, nr)});
+            extents.push_back({VecScale(outCol, w), zero});
+            extents.push_back({VecScale(outCol, w), VecScale(uCol, nc)});
+        }
+        // The depth labels of the first and the last slice bound the rest.
+        for (const Point2Dd& slice : {zero, last}) {
+            const Point2Dd corner = VecAdd(slice, VecScale(uCol, nc));
+            for (double y : {-depthH / 2.0, depthH / 2.0}) {
+                extents.push_back({Point2Dd(depthGap + depthW, y), corner});
+            }
+        }
+        if (showAxisTitles) {
+            auto box = [&](const Point2Dd& fixed, const Point2Dd& moving, double hw, double hh) {
+                for (int sx = -1; sx <= 1; sx += 2) {
+                    for (int sy = -1; sy <= 1; sy += 2) {
+                        extents.push_back({Point2Dd(fixed.x + sx * hw, fixed.y + sy * hh), moving});
+                    }
+                }
+            };
+            if (rowTitleW > 0.0) box(rowTitleFixed, rowTitleMoving, rowTitleW / 2.0, titleH / 2.0);
+            if (colTitleW > 0.0) box(colTitleFixed, colTitleMoving, colTitleW / 2.0, titleH / 2.0);
+            if (depthTitleW > 0.0) box(depthTitleFixed, depthTitleMoving, titleH / 2.0, depthTitleW / 2.0);
+        }
+
+        auto bounds = [&extents](double size) {
+            double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
+            for (const Extent& e : extents) {
+                const double x = e.fixed.x + size * e.moving.x;
+                const double y = e.fixed.y + size * e.moving.y;
+                minX = std::min(minX, x); maxX = std::max(maxX, x);
+                minY = std::min(minY, y); maxY = std::max(maxY, y);
+            }
+            return Rect2Dd(minX, minY, maxX - minX, maxY - minY);
+        };
+        auto fits = [&](double size) {
+            const Rect2Dd b = bounds(size);
+            return b.width <= area.width && b.height <= area.height;
+        };
+        double lo = style.minCellSize, hi = std::max(style.minCellSize, style.maxCellSize);
+        double s = lo;
+        if (fits(hi)) {
+            s = hi;
+        } else if (fits(lo)) {
+            for (int i = 0; i < 40; ++i) {
+                const double mid = (lo + hi) / 2.0;
+                if (fits(mid)) lo = mid; else hi = mid;
+            }
+            s = lo;
+        }
+
+        // The top slice's apex goes wherever centres the drawing.
+        const Rect2Dd box = bounds(s);
+        const Point2Dd apex(area.x + (area.width - box.width) / 2.0 - box.x,
+                            area.y + (area.height - box.height) / 2.0 - box.y);
+        auto at = [&](const Point2Dd& fixed, const Point2Dd& moving) {
+            return Point2Dd(apex.x + fixed.x + s * moving.x, apex.y + fixed.y + s * moving.y);
+        };
+
+        // The arms. RenderArm turns its labels along `across`, which must
+        // not point left; the row band's outward direction does, so its
+        // across points into the board and its origin sits on the band's
+        // outer edge instead.
+        ArmLayout rowArm;
+        rowArm.setIndex = model.IndexOfSet(model.panels[0].rowSetId);
+        rowArm.dir = uRow;
+        rowArm.across = VecScale(outRow, -1.0);
+        rowArm.origin = at(VecScale(outRow, pad + bandW), zero);
+        rowArm.itemSize = s;
+        rowArm.bandWidth = bandW;
+        rowArm.count = nr;
+        rowArm.titleAnchor = at(rowTitleFixed, rowTitleMoving);
+        layout.arms.push_back(rowArm);
+
+        ArmLayout colArm;
+        colArm.setIndex = model.IndexOfSet(model.panels[0].colSetId);
+        colArm.dir = uCol;
+        colArm.across = outCol;
+        colArm.origin = at(VecScale(outCol, pad), zero);
+        colArm.itemSize = s;
+        colArm.bandWidth = bandW;
+        colArm.count = nc;
+        colArm.titleAnchor = at(colTitleFixed, colTitleMoving);
+        layout.arms.push_back(colArm);
+
+        for (int d = 0; d < nd; ++d) {
+            PanelLayout pl;
+            pl.panelIndex = 0;
+            pl.depth = d;
+            pl.rows = nr;
+            pl.cols = nc;
+            pl.cellWidth = pl.cellHeight = s;
+            pl.axisAligned = false;
+            pl.rowStep = VecScale(uRow, s);
+            pl.colStep = VecScale(uCol, s);
+            pl.origin = at(zero, VecScale(down, d * sliceStep));
+            const Point2Dd left = LatticeAt(pl.origin, nr, pl.rowStep, 0.0, pl.colStep);
+            const Point2Dd right = LatticeAt(pl.origin, 0.0, pl.rowStep, nc, pl.colStep);
+            const Point2Dd bottom = LatticeAt(pl.origin, nr, pl.rowStep, nc, pl.colStep);
+            pl.grid = Rect2Dd(left.x, pl.origin.y, right.x - left.x, bottom.y - pl.origin.y);
+            pl.rowLabels = Rect2Dd(0, 0, 0, 0);
+            pl.colLabels = Rect2Dd(0, 0, 0, 0);
+            layout.panels.push_back(pl);
+
+            layout.depthLabels.push_back(Rect2Dd(right.x + depthGap, right.y - depthH / 2.0,
+                                                 depthW, depthH));
+        }
+        layout.depthTitle = at(depthTitleFixed, depthTitleMoving);
+        return true;
+    }
+
     // The form header band: one box per field, widths in proportion to what
     // each needs, stretched to the full width.
     void UltraCanvasMatrixDiagram::LayoutHeaderBand(IRenderContext* ctx, Rect2Dd& area) {
@@ -1519,6 +1706,9 @@ namespace UltraCanvas {
                 case MatrixShape::House:
                     if (!LayoutHouse(ctx, area)) LayoutL(ctx, area);
                     break;
+                case MatrixShape::C:
+                    if (!LayoutC(ctx, area)) LayoutL(ctx, area);
+                    break;
                 case MatrixShape::L:
                 default:
                     LayoutL(ctx, area);
@@ -1568,8 +1758,12 @@ namespace UltraCanvas {
         ctx->Translate(pan.x, pan.y);
         ctx->Scale(viewport.GetZoomLevel(), viewport.GetZoomLevel());
         if (model.shape == MatrixShape::X && layout.hub.width > 0.0) RenderHub(ctx);
-        for (const PanelLayout& pl : layout.panels) {
-            RenderPanel(ctx, pl);
+        if (!layout.depthLabels.empty()) {
+            RenderCube(ctx);
+        } else {
+            for (const PanelLayout& pl : layout.panels) {
+                RenderPanel(ctx, pl);
+            }
         }
         for (const ArmLayout& arm : layout.arms) {
             RenderArm(ctx, arm);
@@ -1582,7 +1776,7 @@ namespace UltraCanvas {
         // The keyboard's cell: outlined while the diagram has the focus, so
         // it is clear where the arrows will go.
         if (selected.IsCell() && IsFocused()) {
-            if (const PanelLayout* pl = PanelAt(selected.panel)) {
+            if (const PanelLayout* pl = PanelAt(selected.panel, selected.depth)) {
                 if (CellExists(*pl, selected.row, selected.col)) {
                     ctx->SetStrokePaint(style.markHighlightRing);
                     ctx->SetStrokeWidth(2.0f / static_cast<float>(viewport.GetZoomLevel()));
@@ -1711,6 +1905,10 @@ namespace UltraCanvas {
             if (hovered.col >= 0) lit.push_back({&source.colSetId, hovered.col});
 
             ctx->SetFillPaint(style.hoverBandColor);
+            // A depth label lights its whole slice.
+            if (hovered.IsSlice() && hovered.panel == pl.panelIndex && hovered.depth == pl.depth) {
+                FillCells(ctx, pl, 0, 0, pl.rows, pl.cols);
+            }
             for (const Lit& item : lit) {
                 if (here.rowSetId == *item.setId && item.index < pl.rows) {
                     FillCells(ctx, pl, item.index, 0, 1, pl.cols);
@@ -1721,7 +1919,7 @@ namespace UltraCanvas {
             }
         }
 
-        if (selected.IsCell() && selected.panel == pl.panelIndex &&
+        if (selected.IsCell() && selected.panel == pl.panelIndex && selected.depth == pl.depth &&
             selected.row < pl.rows && selected.col < pl.cols) {
             ctx->SetFillPaint(style.selectedCellColor);
             FillCells(ctx, pl, selected.row, selected.col, 1, 1);
@@ -1732,7 +1930,7 @@ namespace UltraCanvas {
         const MatrixPanel& panel = model.panels[static_cast<size_t>(pl.panelIndex)];
 
         for (const MatrixCell& cell : model.cells) {
-            if (cell.panel != pl.panelIndex) continue;
+            if (cell.panel != pl.panelIndex || cell.depth != pl.depth) continue;
             if (cell.row < 0 || cell.row >= pl.rows) continue;
             if (cell.col < 0 || cell.col >= pl.cols) continue;
 
@@ -2009,6 +2207,71 @@ namespace UltraCanvas {
                                           arm.titleAnchor.y - s.height / 2.0));
         }
         ctx->SetFontWeight(FontWeight::Normal);
+    }
+
+    // Painter's order, bottom slice first, so a slice always covers what lies
+    // below it.
+    void UltraCanvasMatrixDiagram::RenderCube(IRenderContext* ctx) {
+        for (size_t i = layout.panels.size(); i-- > 0;) {
+            RenderPanel(ctx, layout.panels[i]);
+            if (i > 0) RenderCubeEdges(ctx, layout.panels[i - 1], layout.panels[i]);
+        }
+        RenderDepthLabels(ctx);
+    }
+
+    void UltraCanvasMatrixDiagram::RenderCubeEdges(IRenderContext* ctx, const PanelLayout& upper,
+                                                   const PanelLayout& lower) {
+        // The left and right corners only: they outline the cube. The front
+        // and back edges would run down through the middle of the slices
+        // and cross their marks.
+        ctx->SetStrokePaint(style.cubeEdgeColor);
+        ctx->SetStrokeWidth(style.gridLineWidth);
+        const int corners[2][2] = {{upper.rows, 0}, {0, upper.cols}};
+        for (const auto& c : corners) {
+            ctx->DrawLine(LatticeAt(upper.origin, c[0], upper.rowStep, c[1], upper.colStep),
+                          LatticeAt(lower.origin, c[0], lower.rowStep, c[1], lower.colStep));
+        }
+    }
+
+    void UltraCanvasMatrixDiagram::RenderDepthLabels(IRenderContext* ctx) {
+        const MatrixItemSet* depths = model.DepthSet(0);
+        if (!depths) return;
+
+        ctx->SetFontSize(style.rowLabelFontSize);
+        for (size_t d = 0; d < layout.depthLabels.size() && d < depths->items.size(); ++d) {
+            const Rect2Dd& box = layout.depthLabels[d];
+            if (style.fillLabelBands) {
+                ctx->SetFillPaint(style.labelBandColor);
+                ctx->FillRectangle(box);
+            } else {
+                ctx->SetStrokePaint(style.gridLineColor);
+                ctx->SetStrokeWidth(style.gridLineWidth);
+                ctx->DrawRectangle(box);
+            }
+            // The slice the pointer or the keyboard is on.
+            if (hovered.depth == static_cast<int>(d) || selected.depth == static_cast<int>(d)) {
+                ctx->SetFillPaint(style.hoverBandColor);
+                ctx->FillRectangle(box);
+            }
+            ctx->SetTextPaint(style.fillLabelBands ? style.labelBandTextColor : EffectiveLabelColor());
+            const std::string text = EllipsizeToWidth(ctx, depths->items[d].label,
+                                                      box.width - style.labelPadding * 2.0);
+            Size2Di s = ctx->GetTextLineDimensions(text);
+            ctx->DrawText(text, Point2Dd(box.x + style.labelPadding, box.y + (box.height - s.height) / 2.0));
+        }
+
+        if (showAxisTitles && !depths->title.empty()) {
+            ctx->SetFontSize(style.axisTitleFontSize);
+            ctx->SetFontWeight(FontWeight::Bold);
+            ctx->SetTextPaint(style.axisTitleColor);
+            Size2Di s = ctx->GetTextLineDimensions(depths->title);
+            ctx->PushState();
+            ctx->Translate(layout.depthTitle.x, layout.depthTitle.y);
+            ctx->Rotate(-M_PI / 2.0);
+            ctx->DrawText(depths->title, Point2Dd(-s.width / 2.0, -s.height / 2.0));
+            ctx->PopState();
+            ctx->SetFontWeight(FontWeight::Normal);
+        }
     }
 
     void UltraCanvasMatrixDiagram::RenderHub(IRenderContext* ctx) {
@@ -2543,9 +2806,9 @@ namespace UltraCanvas {
     }
 
     const UltraCanvasMatrixDiagram::PanelLayout*
-    UltraCanvasMatrixDiagram::PanelAt(int panelIndex) const {
+    UltraCanvasMatrixDiagram::PanelAt(int panelIndex, int depth) const {
         for (const PanelLayout& pl : layout.panels) {
-            if (pl.panelIndex == panelIndex) return &pl;
+            if (pl.panelIndex == panelIndex && pl.depth == depth) return &pl;
         }
         return nullptr;
     }
@@ -2575,6 +2838,7 @@ namespace UltraCanvas {
                 ref.panel = pl.panelIndex;
                 ref.row = std::clamp(static_cast<int>(a), 0, pl.rows - 1);
                 ref.col = std::clamp(static_cast<int>(b), 0, pl.cols - 1);
+                ref.depth = pl.depth;
                 return ref;
             }
             if (!pl.axisAligned) continue;
@@ -2622,6 +2886,16 @@ namespace UltraCanvas {
             if (across < 0.0 || across >= arm.bandWidth) continue;
             if (along < 0.0 || along >= arm.count * arm.itemSize) continue;
             return ArmRef(arm.setIndex, static_cast<int>(along / arm.itemSize));
+        }
+
+        // A C's depth labels: the whole slice.
+        for (size_t d = 0; d < layout.depthLabels.size(); ++d) {
+            if (layout.depthLabels[d].Contains(px, py)) {
+                MatrixRef ref;
+                ref.panel = 0;
+                ref.depth = static_cast<int>(d);
+                return ref;
+            }
         }
         return MatrixRef();
     }
@@ -2794,6 +3068,12 @@ namespace UltraCanvas {
                         onColumnClick(clicked.panel, clicked.col,
                                       cols->items[static_cast<size_t>(clicked.col)]);
                     }
+                } else if (clicked.IsSlice() && onSliceClick) {
+                    const MatrixItemSet* depths = model.DepthSet(clicked.panel);
+                    if (depths && clicked.depth < depths->Count()) {
+                        onSliceClick(clicked.panel, clicked.depth,
+                                     depths->items[static_cast<size_t>(clicked.depth)]);
+                    }
                 }
                 RequestRedraw();
                 return true;
@@ -2841,6 +3121,16 @@ namespace UltraCanvas {
             case UCKeys::Down:  return MoveSelection(0.0, 1.0);
             case UCKeys::Tab:   return SelectPanel(event.shift ? -1 : 1);
 
+            // A C's slices: the same cell one depth item up or down.
+            case UCKeys::PageUp:
+            case UCKeys::PageDown: {
+                if (!selected.IsCell() || selected.depth < 0) return false;
+                MatrixRef ref = selected;
+                ref.depth += (event.virtualKey == UCKeys::PageUp) ? -1 : 1;
+                if (PanelAt(ref.panel, ref.depth)) SelectCell(ref);
+                return true;
+            }
+
             case UCKeys::Escape:
                 if (!selected.IsValid()) return false;
                 SelectCell(MatrixRef());
@@ -2857,7 +3147,7 @@ namespace UltraCanvas {
             case UCKeys::Delete:
             case UCKeys::Backspace:
                 if (!editable || !selected.IsCell()) return false;
-                if (model.ClearCell(selected.panel, selected.row, selected.col)) {
+                if (model.ClearCell(selected.panel, selected.row, selected.col, selected.depth)) {
                     if (onCellEdited) onCellEdited(selected, std::string());
                     RequestRedraw();
                 }
@@ -2872,7 +3162,10 @@ namespace UltraCanvas {
         if (layout.panels.empty()) return false;
         int at = -1;
         for (size_t i = 0; i < layout.panels.size(); ++i) {
-            if (layout.panels[i].panelIndex == selected.panel) at = static_cast<int>(i);
+            if (layout.panels[i].panelIndex == selected.panel &&
+                layout.panels[i].depth == selected.depth) {
+                at = static_cast<int>(i);
+            }
         }
         const int n = static_cast<int>(layout.panels.size());
         const int next = (at < 0) ? 0 : ((at + step) % n + n) % n;
@@ -2883,6 +3176,7 @@ namespace UltraCanvas {
         ref.panel = pl.panelIndex;
         ref.row = 0;
         ref.col = pl.upperTriangle ? 1 : 0;
+        ref.depth = pl.depth;
         if (!CellExists(pl, ref.row, ref.col)) return false;
         SelectCell(ref);
         return true;
@@ -2894,7 +3188,7 @@ namespace UltraCanvas {
     // step on screen goes the arrow's way, and the best one that exists wins.
     bool UltraCanvasMatrixDiagram::MoveSelection(double dx, double dy) {
         if (!selected.IsCell()) return SelectPanel(0);
-        const PanelLayout* pl = PanelAt(selected.panel);
+        const PanelLayout* pl = PanelAt(selected.panel, selected.depth);
         if (!pl) return false;
 
         struct Step { int dr; int dc; double score; };
@@ -2927,7 +3221,7 @@ namespace UltraCanvas {
     // the cell back into view.
     void UltraCanvasMatrixDiagram::KeepSelectionVisible() {
         if (!panZoomEnabled || !selected.IsCell()) return;
-        const PanelLayout* pl = PanelAt(selected.panel);
+        const PanelLayout* pl = PanelAt(selected.panel, selected.depth);
         if (!pl || !CellExists(*pl, selected.row, selected.col)) return;
 
         const Point2Dd centre = LatticeAt(pl->origin, selected.row + 0.5, pl->rowStep,
@@ -3053,8 +3347,12 @@ namespace UltraCanvas {
             if (ref.row >= rows->Count() || ref.col >= cols->Count()) return std::string();
             out << rows->items[static_cast<size_t>(ref.row)].label
                 << "  x  " << cols->items[static_cast<size_t>(ref.col)].label;
+            const MatrixItemSet* depths = model.DepthSet(ref.panel);
+            if (depths && ref.depth >= 0 && ref.depth < depths->Count()) {
+                out << "  x  " << depths->items[static_cast<size_t>(ref.depth)].label;
+            }
 
-            const MatrixCell* cell = model.FindCell(ref.panel, ref.row, ref.col);
+            const MatrixCell* cell = model.FindCell(ref.panel, ref.row, ref.col, ref.depth);
             if (cell) {
                 const MatrixLevel* level =
                         model.panels[static_cast<size_t>(ref.panel)].scale.Find(cell->levelId);
@@ -3064,6 +3362,12 @@ namespace UltraCanvas {
             } else {
                 out << "\nno relationship";
             }
+        } else if (ref.IsSlice()) {
+            const MatrixItemSet* depths = model.DepthSet(ref.panel);
+            if (!depths || ref.depth >= depths->Count()) return std::string();
+            const MatrixItem& item = depths->items[static_cast<size_t>(ref.depth)];
+            out << item.label << "\ntotal " << FormatTotal(model.DepthScore(ref.panel, ref.depth));
+            if (!item.note.empty()) out << "\n" << item.note;
         } else if (ref.row >= 0 && ref.row < rows->Count()) {
             const MatrixItem& item = rows->items[static_cast<size_t>(ref.row)];
             out << item.label << "\ntotal " << FormatTotal(model.RowScore(ref.panel, ref.row));
