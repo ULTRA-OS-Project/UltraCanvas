@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraAI dashboard icon: video-generation. 128 x 128 tile, generated as a set. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF4E6A"/>
+      <stop offset="1" stop-color="#A3123F"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="64" rx="28" fill="url(#gloss)"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="27.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+  <g transform="translate(0 3)">
+    <g transform="rotate(-14 24 48)">
+      <rect x="24" y="34" width="80" height="13" rx="3" fill="#0B1020" fill-opacity="0.22"/>
+      <path d="M36 34 H46 L40 47 H30 Z M56 34 H66 L60 47 H50 Z M76 34 H86 L80 47 H70 Z M96 34 H104 V36 L99 47 H90 Z" fill="none" stroke="none"/>
+    </g>
+    <rect x="24" y="52" width="80" height="48" rx="8" fill="#0B1020" fill-opacity="0.22"/>
+    <path d="M56 63 L80 76 L56 89 Z" fill="none" stroke="none" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+    <g transform="rotate(-14 24 48)">
+      <rect x="24" y="34" width="80" height="13" rx="3" fill="#FFFFFF"/>
+      <path d="M36 34 H46 L40 47 H30 Z M56 34 H66 L60 47 H50 Z M76 34 H86 L80 47 H70 Z M96 34 H104 V36 L99 47 H90 Z" fill="#C61F4E"/>
+    </g>
+    <rect x="24" y="52" width="80" height="48" rx="8" fill="#FFFFFF"/>
+    <path d="M56 63 L80 76 L56 89 Z" fill="#C61F4E" stroke="#C61F4E" stroke-width="3" stroke-linejoin="round"/>
+</svg>

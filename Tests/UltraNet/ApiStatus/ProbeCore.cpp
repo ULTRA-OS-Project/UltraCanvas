@@ -357,6 +357,139 @@ ULTRANET_PROBE(kArea, UltraNet_GetTransferStats) {
 // Global transfer callbacks
 // ---------------------------------------------------------------------------
 
+ULTRANET_PROBE(kArea, UltraNet_PauseRequest) {
+    LoopbackServer& server = Loopback();
+    const UltraNetResult bad = UltraNet_PauseRequest(UltraNetInvalidHandle);
+    PROBE_EXPECT(!bad && bad.code == UltraNetResultCode::InvalidHandle);
+    if (!server.Running()) {
+        return Implemented("rejects the invalid handle correctly, but no "
+                           "loopback origin to pause a live request against: " +
+                           server.Error());
+    }
+
+    std::atomic<int64_t> bytes{0};
+    std::atomic<bool> done{false};
+    UltraNetHttpRequest req;
+    req.url = server.Url("/slow");
+    req.options.timeoutMs = -1;
+    req.onDownloadProgress = [&](int64_t now, int64_t) { bytes = now; };
+    const UltraNetHandle h = UltraNet_HttpRequestAsync(
+        req, [&](const UltraNetResponse&) { done = true; });
+    PROBE_EXPECT(h != UltraNetInvalidHandle);
+
+    for (int i = 0; i < 200 && bytes.load() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    PROBE_EXPECT_MSG(bytes.load() > 0, "the slow download never started");
+    const UltraNetResult paused = UltraNet_PauseRequest(h);
+    PROBE_EXPECT_MSG(static_cast<bool>(paused), paused.message);
+    for (int i = 0; i < 100 && !UltraNet_IsRequestPaused(h); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    PROBE_EXPECT_MSG(UltraNet_IsRequestPaused(h), "the request never reported paused");
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const int64_t atPause = bytes.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    const bool held = bytes.load() == atPause && !done.load();
+    UltraNet_CancelRequest(h);
+    for (int i = 0; i < 100 && !done.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    PROBE_EXPECT_MSG(held, "bytes kept arriving while paused");
+    return Working("an in-flight download stopped at " + std::to_string(atPause) +
+                   " bytes for 500 ms while paused; invalid handle rejected");
+}
+
+ULTRANET_PROBE(kArea, UltraNet_ResumeRequest) {
+    LoopbackServer& server = Loopback();
+    const UltraNetResult bad = UltraNet_ResumeRequest(UltraNetInvalidHandle);
+    PROBE_EXPECT(!bad && bad.code == UltraNetResultCode::InvalidHandle);
+    if (!server.Running()) {
+        return Implemented("rejects the invalid handle correctly, but no "
+                           "loopback origin to resume a live request against: " +
+                           server.Error());
+    }
+
+    std::atomic<int64_t> bytes{0};
+    std::atomic<bool> done{false};
+    UltraNetHttpRequest req;
+    req.url = server.Url("/slow");
+    req.options.timeoutMs = -1;
+    req.onDownloadProgress = [&](int64_t now, int64_t) { bytes = now; };
+    const UltraNetHandle h = UltraNet_HttpRequestAsync(
+        req, [&](const UltraNetResponse&) { done = true; });
+    PROBE_EXPECT(h != UltraNetInvalidHandle);
+
+    for (int i = 0; i < 200 && bytes.load() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    PROBE_EXPECT_MSG(static_cast<bool>(UltraNet_PauseRequest(h)), "pause refused");
+    for (int i = 0; i < 100 && !UltraNet_IsRequestPaused(h); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    const int64_t atPause = bytes.load();
+    const UltraNetResult resumed = UltraNet_ResumeRequest(h);
+    PROBE_EXPECT_MSG(static_cast<bool>(resumed), resumed.message);
+    // The bytes move again after the resume; the rest of the 10 s dribble is
+    // not waited for.
+    bool moved = false;
+    for (int i = 0; i < 300 && !moved && !done.load(); ++i) {
+        moved = bytes.load() > atPause;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const bool unpaused = !UltraNet_IsRequestPaused(h);
+    UltraNet_CancelRequest(h);
+    for (int i = 0; i < 100 && !done.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    PROBE_EXPECT_MSG(moved, "no byte arrived within 3 s of the resume");
+    PROBE_EXPECT_MSG(unpaused, "still reported paused after the resume");
+    return Working("paused at " + std::to_string(atPause) +
+                   " bytes, resumed, and the bytes moved again; invalid handle "
+                   "rejected");
+}
+
+ULTRANET_PROBE(kArea, UltraNet_IsRequestPaused) {
+    LoopbackServer& server = Loopback();
+    PROBE_EXPECT(!UltraNet_IsRequestPaused(UltraNetInvalidHandle));
+    if (!server.Running()) {
+        return Implemented("invalid handle answered correctly; no loopback "
+                           "origin for the paused case: " + server.Error());
+    }
+    std::atomic<bool> done{false};
+    UltraNetHttpRequest req;
+    req.url = server.Url("/slow");
+    req.options.timeoutMs = -1;
+    const UltraNetHandle h = UltraNet_HttpRequestAsync(
+        req, [&](const UltraNetResponse&) { done = true; });
+    PROBE_EXPECT(h != UltraNetInvalidHandle);
+    const bool notPausedAtStart = !UltraNet_IsRequestPaused(h);
+    // A wish made before the connection exists is remembered and reported.
+    UltraNet_PauseRequest(h);
+    bool sawPaused = false;
+    for (int i = 0; i < 200 && !sawPaused; ++i) {
+        sawPaused = UltraNet_IsRequestPaused(h);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    UltraNet_ResumeRequest(h);
+    bool sawResumed = false;
+    for (int i = 0; i < 200 && !sawResumed; ++i) {
+        sawResumed = !UltraNet_IsRequestPaused(h);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    UltraNet_CancelRequest(h);
+    for (int i = 0; i < 100 && !done.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    PROBE_EXPECT_MSG(notPausedAtStart, "reported paused before any pause");
+    PROBE_EXPECT_MSG(sawPaused, "never reported paused after UltraNet_PauseRequest");
+    PROBE_EXPECT_MSG(sawResumed, "still reported paused after UltraNet_ResumeRequest");
+    PROBE_EXPECT(!UltraNet_IsRequestPaused(h));
+    return Working("false before a pause, true after UltraNet_PauseRequest, false "
+                   "after UltraNet_ResumeRequest and after the request ended");
+}
+
 ULTRANET_PROBE(kArea, UltraNet_SetTransferCallbacks) {
     LoopbackServer& server = Loopback();
 

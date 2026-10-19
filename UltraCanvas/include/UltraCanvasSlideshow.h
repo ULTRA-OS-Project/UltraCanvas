@@ -1,7 +1,7 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
-// Version: 1.4.0
-// Last Modified: 2026-06-13
+// Version: 1.5.0
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -10,6 +10,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasImageFileWatch.h"
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -379,6 +380,15 @@ namespace UltraCanvas {
                          const Rect2Dd& rect, float alpha);
 
         std::string LabelForSlide(size_t idx) const;
+
+        // ===== PICTURES SAVED OVER =====
+        // The images the paint in progress drew - the slide or the two slides
+        // of a transition, the thumbnail indicators - and the version of each
+        // file drawn, handed to imageFileWatch when it ends. Its worker checks
+        // the files, so a picture saved over is shown as it is now without a
+        // stat on the paint path. Declared last so it is destroyed first.
+        std::vector<UltraCanvasImageFileWatch::DrawnImage> drawnImages;
+        UltraCanvasImageFileWatch imageFileWatch{[this]() { RequestRedraw(); }};
     };
 
     // ===== FACTORY =====

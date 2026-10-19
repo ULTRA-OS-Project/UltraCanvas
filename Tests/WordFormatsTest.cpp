@@ -5,7 +5,11 @@
 // and the ODF package invariants (mimetype first entry, stored).
 // Builds without the UI stack: only the Word module sources, miniz and
 // tinyxml2 (see Tests/CMakeLists.txt).
-// Usage: WordFormatsTest [output-dir]   (default: current directory)
+// Usage: WordFormatsTest [output-dir]
+//   (default: wordformats-test-out in the system temp directory - never the
+//   current directory, where a run from the repository root left some fifty
+//   sample documents in the source tree; ctest passes a directory in the
+//   build tree)
 #include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasRichDocumentEditor.h"
@@ -443,7 +447,10 @@ static void CheckModelShape(const UCRichDocument& doc, const char* label) {
 }
 
 int main(int argc, char** argv) {
-    gTmpDir = (argc > 1) ? argv[1] : ".";
+    gTmpDir = (argc > 1)
+        ? std::string(argv[1])
+        : UltraCanvas::PathToUtf8(std::filesystem::temp_directory_path() /
+                                  "wordformats-test-out");
     std::filesystem::create_directories(UltraCanvas::PathFromUtf8(gTmpDir));
 
     // ===== 1. Markdown parse sanity =====
@@ -1163,6 +1170,23 @@ int main(int argc, char** argv) {
         }
         CHECK(doc->ToHTML().find("<p dir=\"rtl\">Mixed") != std::string::npos);
         CHECK(UCRichDocument::FromHTML(doc->ToHTML()).blocks[0].rightToLeft);
+    }
+
+    // ===== 5g12. A code block's leading empty line survives ODT and DOCX =====
+    {
+        UCRichDocument doc = UCRichDocument::FromMarkdown("```\n\nint a;\nreturn a;\n```\n");
+        CHECK(!doc.blocks.empty() && doc.blocks[0].type == RichBlockType::CodeBlock);
+        CHECK(!doc.blocks.empty() && UCRichDocument::ConcatenateRunText(doc.blocks[0].runs) == "\nint a;\nreturn a;");
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("leading-blank.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichDocBlock* code = FindBlock(back, "int a;");
+            CHECK_MSG(code && UCRichDocument::ConcatenateRunText(code->runs) == "\nint a;\nreturn a;",
+                      std::string(ext) + ": " + (code ? UCRichDocument::ConcatenateRunText(code->runs) : "<missing>"));
+        }
     }
 
     // ===== 5h. List labels: formats, templates, editing =====

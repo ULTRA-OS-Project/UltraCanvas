@@ -4,7 +4,8 @@
 
 The `UltraCanvasBarChartElement` is a specialized chart component within the UltraCanvas framework that renders vertical bar charts for data visualization. It inherits from `UltraCanvasChartElementBase` and provides comprehensive functionality for displaying categorical data with customizable bar styling, interactive features, and animation support.
 
-**Version:** 1.0.0  
+**Version:** 1.1.1  
+**Last Modified:** 2026-10-07  
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Namespace:** `UltraCanvas`
@@ -20,14 +21,12 @@ UltraCanvasUIElement
 ## Constructor
 
 ```cpp
-UltraCanvasBarChartElement(const std::string& id, long uid, 
-                           int x, int y, int width, int height)
+UltraCanvasBarChartElement(const std::string& id, int x, int y, int width, int height)
 ```
 
 ### Parameters
 
 - **id** - Unique string identifier for the chart element
-- **uid** - Unique numeric identifier
 - **x** - X coordinate position  
 - **y** - Y coordinate position
 - **width** - Width of the chart area
@@ -37,7 +36,7 @@ UltraCanvasBarChartElement(const std::string& id, long uid,
 
 ```cpp
 auto barChart = std::make_shared<UltraCanvasBarChartElement>(
-    "salesChart", 1001, 50, 100, 600, 400
+    "salesChart", 50, 100, 600, 400
 );
 ```
 
@@ -52,18 +51,25 @@ auto barChart = std::make_shared<UltraCanvasBarChartElement>(
 | barBorderWidth | float | 1.0f | Width of bar borders in pixels |
 | barSpacing | float | 0.1f | Spacing between bars as percentage (0.0-0.9) |
 
+### Value axis
+
+The value (y) axis always includes 0: bars rise from the zero line, and
+negative values hang below it. With all-positive data the axis runs from 0 to
+the largest value plus 5 %; with all-negative data, from the smallest value
+minus 5 % to 0.
+
 ### Inherited Properties from Base Class
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | chartTitle | std::string | "" | Chart title displayed above the plot area |
-| backgroundColor | Color | Color(255, 255, 255, 255) | Background color of entire chart |
+| backgroundColor | Color | Color(255, 255, 255, 255) | Background color of entire chart - the element's own (`SetBackgroundColor` / `GetBackgroundColor` of `UltraCanvasUIElement`) |
 | plotAreaColor | Color | Color(250, 250, 250, 255) | Background color of plot area |
 | showGrid | bool | true | Whether to display grid lines |
 | gridColor | Color | Color(220, 220, 220, 255) | Color of grid lines |
 | enableTooltips | bool | true | Enable interactive tooltips |
-| enableZoom | bool | false | Enable zoom functionality |
-| enablePan | bool | false | Enable pan functionality |
+| enableZoom | bool | false | Kept, but the bar chart does not zoom: the wheel goes to the parent |
+| enablePan | bool | false | Kept, but the bar chart does not pan |
 | enableSelection | bool | false | Enable data point selection |
 | animationEnabled | bool | true | Enable chart animations |
 | animationDuration | float | 1.0f | Animation duration in seconds |
@@ -102,7 +108,7 @@ barChart->SetBarBorderColor(Color(34, 139, 34, 255)); // Forest green
 
 #### SetBarBorderWidth
 ```cpp
-void SetBarBorderWidth(float width)
+void SetBarBorderWidth(double width)
 ```
 Sets the width of bar borders in pixels.
 
@@ -116,7 +122,7 @@ barChart->SetBarBorderWidth(2.0f);
 
 #### SetBarSpacing
 ```cpp
-void SetBarSpacing(float spacing)
+void SetBarSpacing(double spacing)
 ```
 Sets the spacing between bars as a percentage of bar width.
 
@@ -177,13 +183,16 @@ Enables or disables interactive tooltips on hover.
 ```cpp
 void SetEnableZoom(bool enabled)
 ```
-Enables or disables zoom functionality.
+Stores the flag. The bar chart has no zoom of its own (the line, area and
+scatter charts zoom their x axis), so the mouse wheel over a bar chart is
+always left to the parent - a scrolling container around it scrolls.
 
 #### SetEnablePan
 ```cpp
 void SetEnablePan(bool enabled)
 ```
-Enables or disables pan functionality.
+Stores the flag; the bar chart does not pan, and drags over it are left to
+the parent.
 
 ## Factory Functions
 
@@ -202,22 +211,12 @@ Factory function to create a new bar chart element.
 auto barChart = CreateBarChartElement("myChart", 50, 50, 600, 400);
 ```
 
-### CreateThemedBarChart (Helper Function)
-```cpp
-std::shared_ptr<UltraCanvasBarChartElement> CreateThemedBarChart(
-    const std::string& id, int x, int y, 
-    int width, int height, const Color& barColor, 
-    const Color& borderColor)
-```
-Helper function to create a pre-styled bar chart.
+A pre-styled chart is the factory plus the colour setters:
 
-**Example:**
 ```cpp
-auto themedChart = CreateThemedBarChart(
-    "themedChart", 1002, 50, 50, 600, 400,
-    Color(60, 179, 113, 255),  // Bar color
-    Color(34, 139, 34, 255)     // Border color
-);
+auto themedChart = CreateBarChartElement("themedChart", 50, 50, 600, 400);
+themedChart->SetBarColor(Color(60, 179, 113, 255));        // Bar color
+themedChart->SetBarBorderColor(Color(34, 139, 34, 255));   // Border color
 ```
 
 ## Rendering Process
@@ -228,7 +227,7 @@ The bar chart rendering process follows these steps:
 2. **Coordinate Transform** - Creates transformation from data to screen coordinates
 3. **Bar Calculation** - Calculates bar width based on number of data points
 4. **Bar Rendering** - For each data point:
-   - Calculates bar position and height
+   - Calculates bar position and height, from the zero line to the value
    - Fills rectangle with bar color
    - Draws border if border width > 0
 5. **Grid and Axes** - Renders grid lines and axis labels (inherited)
@@ -248,9 +247,10 @@ Handles mouse movement for tooltip display and bar highlighting.
 
 ### Inherited Event Handlers
 
-- `HandleMouseDown` - Initiates dragging for pan
-- `HandleMouseUp` - Ends dragging
-- `HandleMouseWheel` - Handles zoom with mouse wheel
+- `HandleMouseDown` / `HandleMouseUp` - leave the left button to the parent
+  (the bar chart does not pan), so a chart in a scrolling or draggable
+  container does not swallow its clicks
+- `HandleMouseWheel` - leaves the wheel to the parent (the bar chart does not zoom)
 
 ## Usage Examples
 
@@ -295,11 +295,7 @@ perfChart->SetBarSpacing(0.25f);                       // 25% spacing
 // Set data and labels
 perfChart->SetDataSource(performanceData);
 perfChart->SetChartTitle("Team Performance Metrics");
-perfChart->SetEnableTooltips(true);
-
-// Enable interaction
-perfChart->SetEnableZoom(true);
-perfChart->SetEnablePan(true);
+perfChart->SetEnableTooltips(true);   // the bar chart's interaction; it does not zoom or pan
 ```
 
 ### Dynamic Data Update
@@ -382,7 +378,8 @@ barChart->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index
 ## Performance Considerations
 
 - **Data Points**: Optimized for up to 100 bars
-- **Rendering**: Uses cached plot area calculations
+- **Rendering**: Uses cached plot area calculations, worked out again when the
+  data source is set or the size changes
 - **Redraw**: Only triggered when properties change via `RequestRedraw()`
 - **Memory**: Uses shared_ptr for data management
 

@@ -1,14 +1,21 @@
 // PixelFX/core/PixelFX.cpp
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
-// Version: 1.2.0
-// Last Modified: 2026-09-13
+// Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
+//                  FileLoader's lists, not a fixed one; SaveGif through
+//                  libvips' GIF saver, the framework's where it has none
+// Version: 1.3.1 - Generate::CopyBlank passes its 0.0 without braces (-Wbraced-scalar-init;
+//                 the same new_from_image(double) call)
+// Version: 1.3.0
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
 #include "PixelFX/PixelFXMetadataDecode.h"
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasFileLoader.h"              // the types Load and Save offer
+#include "UltraCanvasImage.h"                   // VipsCanDecode
 #include "../libspecific/Cairo/VipsQoiLoader.h"
-#include "../libspecific/Cairo/UltraCanvasGifEncoder.h"
+#include "../libspecific/Cairo/VipsGifPlugin.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -224,29 +231,50 @@ namespace PixelFX {
             catch (const vips::VError& e) { throw PixelFXException("Failed to load raw: " + std::string(e.what())); }
         }
 
-        bool Save(const PFXImage& image, const std::string& filename) {
-            // libvips appends to a process-wide error buffer and VError::what()
-            // returns the whole of it, so without this a failure here is
-            // reported together with every message left over from earlier
-            // operations - the save dialog then shows a stack of unrelated
-            // causes and the real one is anybody's guess.
-            ClearError();
-            try { image.write_to_file(filename.c_str()); return true; }
-            catch (const vips::VError& e) {
-                std::string w = UltraCanvas::DescribeFileWriteError(filename);
-                throw PixelFXException(!w.empty() ? w
-                    : ("Could not save image: " + std::string(e.what())));
+        namespace {
+            // Every file saver below writes through here. A libvips writer
+            // opens its file - truncating one that is there - before the first
+            // byte is encoded, so an encoder that then failed left its remains
+            // behind: AVIF on a libheif without an AV1 encoder ("heifsave:
+            // Unsupported compression") left an empty file, and the same
+            // failure saving over an image destroyed it. Staged through
+            // WriteFileAtomically, a failed save leaves no file and the one
+            // that was there as it was. `what` heads an encoder's reason.
+            bool WriteStaged(const std::string& filename, const std::string& what,
+                             const std::function<void(const std::string&)>& write) {
+                // libvips appends to a process-wide error buffer and
+                // VError::what() returns the whole of it, so without this a
+                // failure here is reported together with every message left
+                // over from earlier operations - the save dialog then shows a
+                // stack of unrelated causes and the real one is anybody's guess.
+                ClearError();
+                const std::string failure = UltraCanvas::WriteFileAtomically(filename,
+                        [&](const std::string& staged) -> std::string {
+                            try {
+                                write(staged);
+                                return std::string();
+                            } catch (const vips::VError& e) {
+                                const std::string why = UltraCanvas::DescribeFileWriteError(filename);
+                                return !why.empty() ? why : what + e.what();
+                            } catch (const std::exception& e) {
+                                return e.what();
+                            }
+                        });
+                if (!failure.empty()) throw PixelFXException(failure);
+                return true;
             }
+        } // namespace
+
+        bool Save(const PFXImage& image, const std::string& filename) {
+            return WriteStaged(filename, "Could not save image: ", [&](const std::string& out) {
+                image.write_to_file(out.c_str());
+            });
         }
 
         bool SaveWithOptions(const PFXImage& image, const std::string& filename, vips::VOption* options) {
-            ClearError();   // see Save(): keep the reported cause scoped to this write
-            try { image.write_to_file(filename.c_str(), options); return true; }
-            catch (const vips::VError& e) {
-                std::string w = UltraCanvas::DescribeFileWriteError(filename);
-                throw PixelFXException(!w.empty() ? w
-                    : ("Could not save image: " + std::string(e.what())));
-            }
+            return WriteStaged(filename, "Could not save image: ", [&](const std::string& out) {
+                image.write_to_file(out.c_str(), options);
+            });
         }
 
         std::vector<uint8_t> SaveToBuffer(const PFXImage& image, const std::string& format) {
@@ -260,97 +288,89 @@ namespace PixelFX {
         }
 
         bool SavePng(const PFXImage& image, const std::string& filename, int compression) {
-            try { image.pngsave(filename.c_str(), vips::VImage::option()->set("compression", compression)); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save PNG: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save PNG: ", [&](const std::string& out) {
+                image.pngsave(out.c_str(), vips::VImage::option()->set("compression", compression));
+            });
         }
 
         bool SaveJpeg(const PFXImage& image, const std::string& filename, int quality) {
-            try { image.jpegsave(filename.c_str(), vips::VImage::option()->set("Q", quality)); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save JPEG: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save JPEG: ", [&](const std::string& out) {
+                image.jpegsave(out.c_str(), vips::VImage::option()->set("Q", quality));
+            });
         }
 
         bool SaveWebp(const PFXImage& image, const std::string& filename, int quality, bool lossless) {
-            try { image.webpsave(filename.c_str(), vips::VImage::option()->set("Q", quality)->set("lossless", lossless)); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save WebP: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save WebP: ", [&](const std::string& out) {
+                image.webpsave(out.c_str(), vips::VImage::option()->set("Q", quality)->set("lossless", lossless));
+            });
         }
 
         bool SaveTiff(const PFXImage& image, const std::string& filename, const std::string& compression) {
-            try { image.tiffsave(filename.c_str(), vips::VImage::option()->set("compression", compression.c_str())); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save TIFF: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save TIFF: ", [&](const std::string& out) {
+                image.tiffsave(out.c_str(), vips::VImage::option()->set("compression", compression.c_str()));
+            });
         }
 
         bool SaveGif(const PFXImage& image, const std::string& filename) {
-            try {
-                // gifsave only exists when libvips was built with cgif. On
-                // builds without it the old fallback used ImageMagick's
-                // magicksave, but that fails at run time when ImageMagick has
-                // no GIF encode delegate (NoEncodeDelegateForThisImageFormat
-                // `gif'). Use the bundled, dependency-free encoder instead.
-                if (vips_type_find("VipsOperation", "gifsave") != 0) {
-                    image.gifsave(filename.c_str());
-                } else {
-                    vips::VImage img = image;
-                    if (img.interpretation() != VIPS_INTERPRETATION_sRGB) {
-                        img = img.colourspace(VIPS_INTERPRETATION_sRGB);
-                    }
-                    int bands = img.bands();
-                    if (bands == 1) {
-                        img = img.bandjoin({ img, img });
-                        bands = 3;
-                    } else if (bands == 2) {
-                        vips::VImage gray  = img.extract_band(0);
-                        vips::VImage alpha = img.extract_band(1);
-                        img = gray.bandjoin({ gray, gray, alpha });
-                        bands = 4;
-                    } else if (bands > 4) {
-                        img = img.extract_band(0, vips::VImage::option()->set("n", 4));
-                        bands = 4;
-                    }
-                    if (img.format() != VIPS_FORMAT_UCHAR) {
-                        img = img.cast(VIPS_FORMAT_UCHAR);
-                    }
-                    img = img.copy_memory();
-                    std::string err = UltraCanvas::GifEncode::EncodeGifFile(
-                            filename, static_cast<const uint8_t*>(img.data()),
-                            img.width(), img.height(), bands, 8, false);
-                    if (!err.empty()) throw PixelFXException("Failed to save GIF: " + err);
-                }
-                return true;
-            }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save GIF: " + std::string(e.what())); }
+            // libvips' gifsave (cgif) where it has one, else the framework's
+            // encoder registered as ucgifsave (VipsGifPlugin.h) - by name, so
+            // the file is a GIF whatever it is called.
+            return WriteStaged(filename, "Failed to save GIF: ", [&](const std::string& out) {
+                PFXImage::call(vips_foreign_gif_saver(), PFXImage::option()->set("in", image)->set("filename", out.c_str()));
+            });
         }
 
         bool SaveHeif(const PFXImage& image, const std::string& filename, int quality, bool lossless) {
-            try { image.heifsave(filename.c_str(), vips::VImage::option()->set("Q", quality)->set("lossless", lossless)); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save HEIF: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save HEIF: ", [&](const std::string& out) {
+                image.heifsave(out.c_str(), vips::VImage::option()->set("Q", quality)->set("lossless", lossless));
+            });
         }
 
         bool SaveAvif(const PFXImage& image, const std::string& filename, int quality) {
-            try { image.heifsave(filename.c_str(), vips::VImage::option()->set("Q", quality)->set("compression", VIPS_FOREIGN_HEIF_COMPRESSION_AV1)); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save AVIF: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save AVIF: ", [&](const std::string& out) {
+                image.heifsave(out.c_str(), vips::VImage::option()->set("Q", quality)->set("compression", VIPS_FOREIGN_HEIF_COMPRESSION_AV1));
+            });
         }
 
         bool SavePpm(const PFXImage& image, const std::string& filename) {
-            try { image.ppmsave(filename.c_str()); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save PPM: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save PPM: ", [&](const std::string& out) {
+                image.ppmsave(out.c_str());
+            });
         }
 
         bool SaveFits(const PFXImage& image, const std::string& filename) {
-            try { image.fitssave(filename.c_str()); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save FITS: " + std::string(e.what())); }
+            return WriteStaged(filename, "Failed to save FITS: ", [&](const std::string& out) {
+                image.fitssave(out.c_str());
+            });
         }
 
+        // FileLoader's lists, never one of PixelFX's own (AGENTS.md: the files
+        // a user loads or saves are FileLoader's). Load hands a file to
+        // libvips, so it reads every picture type FileLoader reads - libvips'
+        // loaders, ImageMagick's through it, the framework's ICO and QOI - and
+        // the drawings and documents among FileLoader's types that libvips
+        // itself opens (SVG, PDF, PostScript), not those of a plug-in. A fixed
+        // list offered HEIC where libheif has no HEVC decoder and missed ICO,
+        // QOI, JPEG XL and the rest.
         std::vector<std::string> GetSupportedLoadFormats() {
-            return {"png", "jpg", "jpeg", "webp", "tiff", "tif", "gif", "heic", "heif", "avif", "pdf", "svg", "raw", "ppm", "fits", "exr"};
+            using namespace UltraCanvas;
+            std::vector<std::string> out = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+            for (MediaFormatCategory category : {MediaFormatCategory::Vector, MediaFormatCategory::Document})
+                for (const std::string& ext : UltraCanvasFileLoader::GetSupportedLoadExtensions(category))
+                    if (VipsCanDecode("." + ext) && std::find(out.begin(), out.end(), ext) == out.end())
+                        out.push_back(ext);
+            return out;
         }
 
+        // Every picture type FileLoader writes: a libvips saver that can
+        // encode here, which is what Save's write_to_file looks for.
         std::vector<std::string> GetSupportedSaveFormats() {
-            return {"png", "jpg", "jpeg", "webp", "tiff", "tif", "gif", "heic", "heif", "avif", "ppm", "fits"};
+            return UltraCanvas::UltraCanvasFileLoader::GetSupportedSaveExtensions(UltraCanvas::MediaFormatCategory::Bitmap);
         }
 
         bool IsFormatSupported(const std::string& format) {
             auto formats = GetSupportedLoadFormats();
-            std::string lower = format;
+            std::string lower = !format.empty() && format[0] == '.' ? format.substr(1) : format;
             std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             return std::find(formats.begin(), formats.end(), lower) != formats.end();
         }
@@ -1029,7 +1049,7 @@ namespace PixelFX {
         PFXImage MaskGaussian(int width, int height, double frequencyCutoff, double amplitudeCutoff) { return PFXImage::mask_gaussian(width, height, frequencyCutoff, amplitudeCutoff); }
         PFXImage MaskRing(int width, int height, double frequency, double ringwidth) { return PFXImage::mask_ideal_ring(width, height, frequency, ringwidth); }
         PFXImage NewFromImage(const PFXImage& source, const std::vector<double>& pixel) { return PFXImage(source.new_from_image(pixel)); }
-        PFXImage CopyBlank(const PFXImage& source) { return PFXImage(source.new_from_image({0.0})); }
+        PFXImage CopyBlank(const PFXImage& source) { return PFXImage(source.new_from_image(0.0)); }
 
     } // namespace Generate
 

@@ -1,7 +1,10 @@
 // Tests/UltraCloud/test_service.cpp
 // CloudService: add an account (id, default, secrets), UploadAndShare end to
-// end against a fake Nextcloud (MKCOL, PUT, OCS POST in order).
-// Version: 0.1.0
+// end against a fake Nextcloud (MKCOL, PUT, OCS POST in order), and a shared
+// service keeping its stores for a thread that outlives its maker, and the
+// transfers a host asks about before it quits.
+// Version: 0.3.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
@@ -9,9 +12,15 @@
 #include <UltraCloud/UltraCloudMemory.h>
 #include <UltraCloud/UltraCloudNextcloud.h>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
@@ -269,4 +278,101 @@ TEST(providers_without_the_change_verbs_answer_unsupported_through_the_service) 
 
     REQUIRE(service.Delete(a.accountId, "/x", false).code == ResultCode::Unsupported);
     REQUIRE(service.Rename(a.accountId, "/x", "y").code == ResultCode::Unsupported);
+}
+
+// The add-account dialog's sign-in runs on a thread of its own and can wait
+// minutes on the browser; the window that made the service can close first.
+// A service made over shared stores keeps them alive, so a thread that holds
+// it still stores into them after every other handle has gone.
+TEST(a_shared_service_keeps_its_stores_for_whoever_still_holds_it) {
+    RegisterBuiltInProviders();
+    std::weak_ptr<AccountStore> accountsSeen;
+    std::shared_ptr<CloudService> held;
+    {
+        auto accounts = std::make_shared<AccountStore>();
+        REQUIRE(accounts->Open("uctest-shared-service", ":memory:"));
+        auto secrets = std::make_shared<MemorySecretStore>();
+        accountsSeen = accounts;
+        held = std::make_shared<CloudService>(accounts, secrets);
+    }
+    // Only the service holds the stores now.
+    REQUIRE(!accountsSeen.expired());
+
+    std::atomic<bool> ownerGone{false};
+    Result stored;
+    std::size_t listed = 0;
+    std::thread signIn([service = held, &ownerGone, &stored, &listed]() {
+        while (!ownerGone.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Account a; a.providerId = "memory"; a.username = "erika";
+        Credentials c; c.password = "pw";
+        stored = service->AddAccount(a, c, /*verify=*/true);
+        std::vector<Account> all;
+        if (service->Accounts().List(all)) listed = all.size();
+        Credentials back;
+        if (!service->Secrets().Retrieve(a.accountId, back) || back.password != "pw")
+            listed = 0;
+    });
+    held.reset();          // the window closes: its handle goes
+    ownerGone = true;
+    signIn.join();
+    REQUIRE(static_cast<bool>(stored));
+    REQUIRE_EQ(listed, static_cast<std::size_t>(1));
+    // And with the last holder gone, the stores go too.
+    REQUIRE(accountsSeen.expired());
+}
+
+// A host asks before it quits whether a transfer is running - it ends with the
+// process. An upload counts from the moment it starts until it returns,
+// whichever thread runs it.
+TEST(an_upload_is_listed_as_in_progress_while_it_runs) {
+    std::mutex m;
+    std::condition_variable cv;
+    bool inside = false, release = false;
+    HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        if (req.method == UltraNetHttpMethod::Put) {
+            std::unique_lock<std::mutex> lk(m);
+            inside = true;
+            cv.notify_all();
+            cv.wait(lk, [&] { return release; });
+        }
+        resp.statusCode = 201;
+        UltraNetResult r; r.success = true; return r;
+    };
+    RegisterProvider(std::make_shared<WebDavProvider>(fake));
+
+    AccountStore accounts;
+    REQUIRE(accounts.Open("uctest-transfers", ":memory:"));
+    MemorySecretStore secrets;
+    CloudService service(accounts, secrets);
+    Account a; a.providerId = "webdav"; a.serverUrl = "https://dav.example.org/files";
+    a.username = "erika";
+    REQUIRE(service.AddAccount(a, {}, /*verify=*/false));
+    const std::string dir = TempDir("transfers");
+    const std::string local = dir + "/report.pdf";
+    std::ofstream(UltraCanvas::PathFromUtf8(local)) << "%PDF-1.4 demo";
+    REQUIRE(service.TransfersInProgress().empty());
+
+    Result uploaded;
+    std::thread upload([&] { uploaded = service.Upload(a.accountId, local, "/Inbox/report.pdf"); });
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, [&] { return inside; });
+    }
+    const std::vector<CloudService::Transfer> running = service.TransfersInProgress();
+    {
+        std::lock_guard<std::mutex> lk(m);
+        release = true;
+    }
+    cv.notify_all();
+    upload.join();
+
+    REQUIRE_EQ(running.size(), static_cast<std::size_t>(1));
+    REQUIRE(running[0].kind == CloudService::Transfer::Kind::Upload);
+    REQUIRE_EQ(running[0].accountId, a.accountId);
+    REQUIRE_EQ(running[0].localPath, local);
+    REQUIRE_EQ(running[0].remotePath, std::string("/Inbox/report.pdf"));
+    REQUIRE(static_cast<bool>(uploaded));
+    REQUIRE(service.TransfersInProgress().empty());
+    // The registry outlives the test; its fake points at this test's locals.
+    RegisterProvider(std::make_shared<WebDavProvider>());
 }

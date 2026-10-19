@@ -1,5 +1,20 @@
 # UltraCanvas Spinner / SpinBox Control Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Value Modes (`SpinnerValueType`)](#value-modes-spinnervaluetype)
+  - [Layouts (`SpinnerLayout`)](#layouts-spinnerlayout)
+  - [Button Glyphs (`SpinnerButtonGlyph`)](#button-glyphs-spinnerbuttonglyph)
+  - [Behaviour](#behaviour)
+- [Class Definition](#class-definition)
+- [Quick Start](#quick-start)
+- [Factory Functions](#factory-functions)
+- [Key API](#key-api)
+- [Keyboard Reference](#keyboard-reference)
+- [Notes](#notes)
+
 ## Overview
 
 The **UltraCanvasSpinner** is the UltraCanvas control for selecting a value with
@@ -28,6 +43,8 @@ A value can be changed four ways:
 ### Layouts (`SpinnerLayout`)
 - ✅ **UpDownRight** – editable field with stacked ▲/▼ buttons on the right (classic spin box)
 - ✅ **SidesHorizontal** – `[dec] value [inc]` stepper with buttons flanking the field
+- ✅ **FieldOnly** – the field alone, no step buttons; typing, the arrow keys and the
+  mouse wheel still change the value (`HasButtons()` is false)
 
 ### Button Glyphs (`SpinnerButtonGlyph`)
 - ✅ **Triangle** – filled triangle pointing up/down or left/right
@@ -105,6 +122,7 @@ void   SetPageStep(double s);           // PageUp / PageDown amount
 void   SetDecimals(int d);              // >0 switches to Decimal mode
 void   SetValueType(SpinnerValueType);
 void   SetWrap(bool);
+void   SetSnapToStep(bool);             // false: a Decimal value keeps its own places
 void   StepUp(double steps = 1.0);
 void   StepDown(double steps = 1.0);
 
@@ -130,7 +148,8 @@ void OpenValueDropdown();
 void CloseValueDropdown();
 
 // Layout / style
-void SetLayout(SpinnerLayout);
+void SetLayout(SpinnerLayout);          // UpDownRight, SidesHorizontal, FieldOnly
+bool HasButtons() const;                // false for FieldOnly
 void SetButtonGlyph(SpinnerButtonGlyph);
 void SetButtonThickness(float);
 SpinnerVisualStyle& GetStyle();
@@ -140,6 +159,8 @@ std::function<void(double)> onValueChanged;
 std::function<void(double)> onValueChanging;
 std::function<void(int, const std::string&)> onSelectionChanged; // List mode
 std::function<void()> onEditingFinished;
+std::function<void(double)> onStepsFinished;   // once per run of steps
+bool IsStepping() const;                         // a run of steps is open
 ```
 
 ## Keyboard Reference
@@ -158,6 +179,18 @@ std::function<void()> onEditingFinished;
 
 - In **List** mode `GetValue()` returns the selected index as a `double`; use
   `GetSelectedIndex()` / `GetSelectedText()` for convenience.
+- `SetValue` and a typed value are rounded onto the step grid
+  (`min + n * step`) unless `SetSnapToStep(false)`: then a Decimal spinner keeps
+  any value to its `decimals` places and the buttons step by `step` from it -
+  a measurement field that shows `8.61` and steps by `0.1`.
+- `onValueChanging` and `onValueChanged` fire on every step. `onStepsFinished`
+  fires once when a *run* of steps ends - the arrow button released, the
+  arrow / Page / Home / End key released, the wheel at rest for half a second,
+  or the focus or pointer gone - with the value the run ended on. A caller
+  that records undo (ArtCreator's transform bar) applies each step at once and
+  merges the steps of one run into one undo step, closing it here. A held
+  key's repeats arrive as presses only on every platform, so its release ends
+  the run at once.
 - When `SetWrap(true)`, stepping past an end wraps to the opposite end; otherwise
   the value clamps and the corresponding button renders disabled.
 - Text editing is available for Integer and Decimal modes when `IsEditable()` is
@@ -170,3 +203,5 @@ std::function<void()> onEditingFinished;
   mode, or the `min..max` grid stepped by `step` in numeric modes). Editable
   numeric fields can still be typed into via a **double-click**. Numeric grids
   larger than 512 entries are not listed (the arrows / typing remain available).
+  The list opens under the field, or above it when there is no room below -
+  never over the field (`UltraCanvasMenu::OpenMenuAnchored`).

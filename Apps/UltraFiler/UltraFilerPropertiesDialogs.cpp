@@ -6,8 +6,8 @@
 // matrix (special bits like setuid are preserved), reduced to a single
 // "Read-only" switch on Windows, where only the write bits map onto the
 // filesystem attribute.
-// Version: 1.0.0
-// Last Modified: 2026-08-17
+// Version: 1.0.1 - Read-only works on a name outside the Windows code page
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraFilerPropertiesDialogs.h"
@@ -217,17 +217,21 @@ namespace {
         std::string firstError;
         for (const FilerEntry& e : st->entries) {
             std::error_code ec;
+            // The entry's path is UTF-8. Handed over as a plain string,
+            // Windows read it in the ANSI code page, and a Thai, CJK or emoji
+            // name failed with "no such file".
+            const fs::path path = PathFromUtf8(e.path);
 #ifdef _WIN32
             // Windows maps the write bits onto FILE_ATTRIBUTE_READONLY.
             if (st->readOnlyBox && st->readOnlyBox->IsChecked())
-                fs::permissions(e.path, fs::perms::owner_write | fs::perms::group_write |
-                                        fs::perms::others_write,
+                fs::permissions(path, fs::perms::owner_write | fs::perms::group_write |
+                                      fs::perms::others_write,
                                 fs::perm_options::remove, ec);
             else
-                fs::permissions(e.path, fs::perms::owner_write,
+                fs::permissions(path, fs::perms::owner_write,
                                 fs::perm_options::add, ec);
 #else
-            const fs::perms current = fs::status(e.path, ec).permissions();
+            const fs::perms current = fs::status(path, ec).permissions();
             if (!ec) {
                 fs::perms rwx = fs::perms::none;
                 for (int r = 0; r < 3; ++r)
@@ -237,7 +241,7 @@ namespace {
                 // Keep the special bits (setuid / setgid / sticky) untouched.
                 constexpr fs::perms kAllRwx =
                         fs::perms::owner_all | fs::perms::group_all | fs::perms::others_all;
-                fs::permissions(e.path, (current & ~kAllRwx) | rwx,
+                fs::permissions(path, (current & ~kAllRwx) | rwx,
                                 fs::perm_options::replace, ec);
             }
 #endif
@@ -426,7 +430,7 @@ void UltraFilerPropertiesDialogs::ShowAccess(
     content->AddChild(state->readOnlyBox);
 #else
     std::error_code ec;
-    const fs::perms current = fs::status(first.path, ec).permissions();
+    const fs::perms current = fs::status(PathFromUtf8(first.path), ec).permissions();
 
     for (int r = 0; r < 3; ++r) {
         auto row = std::make_shared<UltraCanvasContainer>(

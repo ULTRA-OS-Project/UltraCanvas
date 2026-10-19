@@ -84,7 +84,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     CreateDialog(cfg);
 
     // Root flex column.
-    layout.SetFlexColumn().SetFlexGap(8);
+    layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     SetPadding(16);
 
     // ===== Endpoint row: picker (grows) + Settings + New chat =====
@@ -120,6 +120,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     transcript_->SetCaretVisible(false);   // read-only transcript: no blinking caret, still selectable
     transcript_->SetWordWrap(true);
     transcript_->SetText(kGreeting);
+    transcript_->SetBorders(1.0f, Color(200, 200, 200, 255));
     transcript_->layoutItem.SetFlexGrow(1);
     AddChild(transcript_);
 
@@ -135,6 +136,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     input_->SetWordWrap(true);
     input_->SetPlaceholder("Type a message...  (Enter sends, Shift+Enter for a new line)");
     input_->size.height = Dimension::Px(90);
+    input_->SetBorders(1.0f, Color(200, 200, 200, 255));
     input_->layoutItem.SetFlexShrink(0);
     // Enter sends, Shift+Enter starts a new line - the text area hands the key
     // to onBeforeKeyDown before it would insert the line break.
@@ -181,7 +183,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     RebuildEndpointPicker();
 }
 
-void UltraAIChatDialog::RebuildEndpointPicker() {
+void UltraAIChatDialog::RebuildEndpointPicker(const std::string& selectId) {
     chatEndpoints_ = EndpointStore::Instance().ForCapability(AICapability::Chat);
     if (!endpointPicker_) return;
 
@@ -192,11 +194,16 @@ void UltraAIChatDialog::RebuildEndpointPicker() {
         SetStatus("No chat endpoint configured. Click Settings to add one.");
         return;
     }
-    for (const auto& e : chatEndpoints_) {
+    // Keep the caller's endpoint selected (by its stable id) across a rebuild;
+    // fall back to the first when it's empty or no longer in the list.
+    int selectIndex = 0;
+    for (size_t i = 0; i < chatEndpoints_.size(); ++i) {
+        const auto& e = chatEndpoints_[i];
         endpointPicker_->AddItem((e.name.empty() ? e.id : e.name) +
                                  "   (" + e.providerId + ")");
+        if (!selectId.empty() && e.id == selectId) selectIndex = static_cast<int>(i);
     }
-    endpointPicker_->SetSelectedIndex(0, false);
+    endpointPicker_->SetSelectedIndex(selectIndex, false);
     SetStatus("");
 }
 
@@ -260,7 +267,10 @@ void UltraAIChatDialog::OnSend() {
 
     sending_ = true;
     if (sendButton_) sendButton_->SetText("Sending...");
-    SetStatus("Contacting " + endpoint.providerId + "...");
+    // Name the endpoint the user picked (e.g. "ai.ultraos.eu"), not its
+    // provider id — the server being contacted is the endpoint, not "openai".
+    const std::string epLabel = endpoint.name.empty() ? endpoint.id : endpoint.name;
+    SetStatus("Contacting " + epLabel + "...");
 
     TextLLMConfig chatCfg = ToTextLLMConfig(endpoint);
     ChatRequest req;
@@ -399,8 +409,9 @@ void UltraAIChatDialog::OnOpenSettings() {
     auto dlg = std::make_shared<UltraAISettingsDialog>();
     dlg->CreateSettingsDialog(selectId);
     dlg->ShowModal(this);
-    // Reflect any endpoint changes made while the dialog was open.
-    RebuildEndpointPicker();
+    // Reflect any endpoint changes made while the dialog was open, keeping the
+    // endpoint the user had selected rather than snapping back to the first.
+    RebuildEndpointPicker(selectId);
 }
 
 void UltraAIChatDialog::RefreshAttachmentChips() {

@@ -1,7 +1,31 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.7.0
-// Last Modified: 2026-10-05
+// Version: 1.12.0 - SetClearButtonText: the clear button can carry a word
+//                  ("Reset") instead of the cross; TextInputType::Search shows
+//                  the clear button, as its description always said
+// Version: 1.11.0 - TextInputStyle::FromTheme, ApplyTheme
+// Version: 1.10.0
+// Last Modified: 2026-10-15
+// V1.10.0: An input method's composition (pre-edit text) is drawn in the field,
+//   underlined at the caret, instead of in the input method's own window
+//   (DrawsTextComposition, GetCompositionText). It is never part of the text.
+// V1.8.0: SetFormatter fills the placeholder only when the field has none
+//   (it used to overwrite the caller's and leave an empty one empty); the rules
+//   SetInputType adds are replaced when the type changes instead of stacking,
+//   while rules added with AddValidationRule stay; the Currency formatter's
+//   unformat no longer reads front() of an empty string; the builder keeps
+//   float geometry (it stored long) and CreateTextInput, CreatePasswordInput
+//   and CreateRevealablePasswordInput take float x/y/w/h like the others.
+//   A new input type also replaces the formatter (and its placeholder) the
+//   previous type chose - Phone -> Text no longer stays phone-formatted - and
+//   the builder applies a placeholder or formatter only when it was given one,
+//   so a built Phone, Currency or Date field keeps its type's formatting. The
+//   format rules (Email, Phone, Numeric, Range, Pattern) accept an empty field:
+//   only Required says a field must be filled, as in HTML forms.
+// V1.7.1: SetFontSize and SetStyle show the new font: they re-clamp the
+//   horizontal scroll (every character, and the caret, moves with the font),
+//   invalidate the layout and redraw. Before, the field went on drawing the
+//   old size until something else made it repaint.
 // V1.7.0: Describes itself to screen readers as a text field, and in password
 //   mode as a password field (IsAccessiblePassword), so assistive technology
 //   treats the content as private instead of as an unnamed, unknown element.
@@ -20,6 +44,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include <optional>
 #include <string>
 #include <vector>
 #include <functional>
@@ -47,7 +72,7 @@ enum class TextInputType {
     Time,           // Time input
     DateTime,       // Date and time
     URL,            // URL validation
-    Search,         // Search field with clear button
+    Search,         // Search field: shows the clear button (SetShowClearButton)
     Custom          // Custom validation rules
 };
 
@@ -185,8 +210,10 @@ struct TextFormatter {
                 }
             },
             [](const std::string& value) {
+                // An empty field unformats to empty: front() of an empty
+                // string is undefined behaviour.
                 std::string result = value;
-                if (result.front() == '$') result = result.substr(1);
+                if (!result.empty() && result.front() == '$') result = result.substr(1);
                 return result;
             },
             "$0.00",
@@ -234,6 +261,13 @@ struct TextInputStyle {
     Color placeholderColor = Color(150, 150, 150, 255);
     Color selectionColor = Color(0, 120, 215, 100);
     Color caretColor = Colors::Black;
+
+    // Disabled (SetDisabled(true)): the field recedes - a lighter face, a
+    // lighter border and grey text - so a field that cannot be typed into
+    // does not look like one that can. The framework's disabled colours.
+    Color disabledBackgroundColor = Colors::ControlDisabled;
+    Color disabledBorderColor = Colors::ControlDisabledBorder;
+    Color disabledTextColor = Colors::TextDisabled;
     
     // Validation colors
     //Color validBorderColor = Color(76, 175, 80, 255);
@@ -269,6 +303,13 @@ struct TextInputStyle {
     
     // Predefined styles
     static TextInputStyle Default();
+    // The theme's roles: the well behind the text, ink, faint ink for the
+    // placeholder, the control border, the focus ring, the accent behind a
+    // selection, the panel and hairline when disabled, danger when invalid
+    // over a base's own shape (radius, padding, font), or Default()
+    static TextInputStyle FromTheme(const UltraCanvasTheme& theme, const TextInputStyle& base);
+    static TextInputStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+    static TextInputStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     static TextInputStyle Material();
     static TextInputStyle Flat();
     static TextInputStyle Outlined();
@@ -293,13 +334,21 @@ private:
     // ===== CORE PROPERTIES =====
     std::string text;
     std::string placeholderText;
+    bool placeholderFromFormatter = false;   // placeholderText is the formatter's, not the caller's
+    bool formatterFromInputType = false;     // SetInputType chose the formatter, so a new type replaces it
     TextInputType inputType;
     bool readOnly;
     bool passwordMode;
     int maxLength;
     
     // ===== VALIDATION =====
-    std::vector<ValidationRule> validationRules;
+    // Each rule remembers whether SetInputType added it: those are replaced
+    // when the type changes, the caller's own (AddValidationRule) stay.
+    struct RuleEntry {
+        ValidationRule rule;
+        bool addedByInputType = false;
+    };
+    std::vector<RuleEntry> validationRules;
     ValidationResult lastValidationResult;
     bool showValidationState;
     bool validateOnChange;
@@ -345,6 +394,11 @@ private:
     int clearButtonSize = 14;
     Color clearButtonColor = Color(150, 150, 150);
     Color clearButtonHoverColor = Color(200, 50, 50);
+    std::string clearButtonText;   // empty: the cross; else a small button with this word
+    // The clear button is on because the type is Search, not because the
+    // caller asked: leaving Search takes it away again.
+    bool clearButtonFromInputType = false;
+    static constexpr int kClearButtonLabelPadding = 7;   // each side of the word
 
     // ===== PASSWORD REVEAL ("EYE") BUTTON =====
     // Only ever shown for password fields; clicking it flips the mask off so the
@@ -358,6 +412,12 @@ private:
     int passwordToggleSize = 18;
     Color passwordToggleColor = Color(130, 130, 130);
     Color passwordToggleHoverColor = Color(0, 120, 215);
+
+    // ===== INPUT METHOD COMPOSITION =====
+    // The text an input method is composing (TextComposition events) and its
+    // caret, a byte offset into it. Painted at the caret, never in `text`.
+    std::string preeditText;
+    size_t preeditCursor = 0;
     
 public:
     // ===== CONSTRUCTORS =====
@@ -386,17 +446,34 @@ public:
     
     void SetPlaceholder(const std::string& placeholder) {
         placeholderText = placeholder;
+        placeholderFromFormatter = false;   // the caller's: no formatter replaces it
     }
     
     const std::string& GetPlaceholder() const { return placeholderText; }
 
     bool AcceptsFocus() const override { return true; }
 
+    // ===== INPUT METHOD COMPOSITION =====
+    // An input method's composition is shown in the field, underlined, at the
+    // caret (TextComposition events), not in a window of its own. It is not
+    // part of GetText(), fires no onTextChanged and leaves no undo step; the
+    // committed text then arrives as typing. A password field leaves the
+    // composing to the input method's own window: a mask would hide what is
+    // being converted, and showing it in the field would show the secret.
+    bool DrawsTextComposition() const override { return !readOnly && !passwordMode && !IsDisabled(); }
+    // The text being composed ("" when nothing is).
+    const std::string& GetCompositionText() const { return preeditText; }
+
     // ===== ACCESSIBILITY =====
     // A one-line text field to a screen reader, and in password mode a
     // password field - revealed or not, the content is a secret.
     AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TextField; }
     bool IsAccessiblePassword() const override { return passwordMode; }
+    // Named by SetAccessibleName(), else its placeholder; its value is the
+    // text - never in password mode.
+    std::string GetAccessibleName() const override;
+    std::string GetAccessibleValueText() const override;
+    bool SetAccessibleValueText(const std::string& newText) override;
 
     // ===== INPUT TYPE AND BEHAVIOR =====
     void SetInputType(TextInputType type);
@@ -412,10 +489,13 @@ public:
     int GetMaxLength() const { return maxLength; }
     
     // ===== VALIDATION =====
+    // A rule added here stays when SetInputType changes the type; only the
+    // rules a type brought with it are replaced.
     void AddValidationRule(const ValidationRule& rule) {
-        validationRules.push_back(rule);
+        validationRules.push_back({ rule, false });
     }
     
+    // Removes every rule, the caller's and the input type's.
     void ClearValidationRules() {
         validationRules.clear();
     }
@@ -439,8 +519,22 @@ public:
     bool IsShowPlaceholderAlways() const { return showPlaceholderAlways; }
 
     // ===== CLEAR BUTTON =====
-    void SetShowClearButton(bool show) { showClearButton = show; RequestRedraw(); }
+    // TextInputType::Search turns it on; a call here is the caller's own
+    // choice, which a later change of type leaves alone.
+    void SetShowClearButton(bool show) {
+        showClearButton = show;
+        clearButtonFromInputType = false;
+        UpdateScrollOffset();
+        RequestRedraw();
+    }
     bool IsShowClearButton() const { return showClearButton; }
+    // A word on the clear button ("Reset", "Clear") instead of the cross: it
+    // becomes a small button inside the right end of the field, as wide as
+    // the word. It behaves exactly as the cross does - shown while there is
+    // text, and a click empties the field and calls onTextChanged and
+    // onCleared. An empty text puts the cross back.
+    void SetClearButtonText(const std::string& text);
+    const std::string& GetClearButtonText() const { return clearButtonText; }
 
     // ===== PASSWORD REVEAL =====
     // In-field eye button, on by default. Ignored unless the input is in
@@ -460,6 +554,8 @@ public:
     }
     
     // ===== FORMATTING =====
+    // The formatter's placeholder ("(555) 123-4567", "$0.00", "MM/DD/YYYY")
+    // is used only while the field has none; a placeholder already set stays.
     void SetFormatter(const TextFormatter& textFormatter);
     
     const TextFormatter& GetFormatter() const { return formatter; }
@@ -501,9 +597,9 @@ public:
     bool CanRedo() const { return !redoStack.empty(); }
     
     // ===== STYLING =====
-    void SetStyle(const TextInputStyle& inputStyle) { style = inputStyle; }
+    void SetStyle(const TextInputStyle& inputStyle);
     const TextInputStyle& GetStyle() const { return style; }
-    void SetFontSize(float size) { style.fontStyle.fontSize = size; }
+    void SetFontSize(float size);
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -516,6 +612,7 @@ public:
 
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override;
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(TextInputStyle::FromTheme(theme, GetStyle())); }
     
     // ===== EVENT CALLBACKS =====
     std::function<void(const std::string&)> onTextChanged;
@@ -538,6 +635,8 @@ private:
     void SaveState();
     
     void UpdateScrollOffset();
+    // A new font: the scroll is clamped again, the layout invalidated, a redraw.
+    void FontChanged();
 
     float GetCaretXPosition();
     float GetCaretYPosition();
@@ -551,28 +650,11 @@ private:
     Rect2Di GetTextArea() const;
     
     Color GetBackgroundColor() const {
-        return style.backgroundColor;
-    }
-    
-    Color GetBorderColor() const {
-        if (showValidationState) {
-            switch (lastValidationResult.state) {
-                case ValidationState::Valid:
-                    return style.validBorderColor;
-                case ValidationState::Invalid:
-                    return style.invalidBorderColor;
-                case ValidationState::Warning:
-                    return style.warningBorderColor;
-                default:
-                    break;
-            }
-        }
-        
-        return IsFocused() ? style.focusBorderColor : style.borderColor;
+        return IsDisabled() ? style.disabledBackgroundColor : style.backgroundColor;
     }
     
     Color GetTextColor() const {
-        return style.textColor;
+        return IsDisabled() ? style.disabledTextColor : style.textColor;
     }
     
     void RenderText(const Rect2Dd& area, const Color& color, IRenderContext* ctx);
@@ -592,6 +674,10 @@ private:
 
     bool IsClearButtonVisible() const;
     Rect2Di GetClearButtonBounds() const;
+    // The word's font (a little smaller than the field's) and the button's
+    // width: the cross's square, or the word plus its padding.
+    FontStyle GetClearButtonFont() const;
+    int GetClearButtonWidth() const;
     void RenderClearButton(IRenderContext* ctx);
 
     bool IsPasswordToggleVisible() const;
@@ -618,6 +704,16 @@ private:
     bool HandleKeyDown(const UCEvent& event);
     bool HandleFocusGained(const UCEvent& event);
     bool HandleFocusLost(const UCEvent& event);
+    bool HandleComposition(const UCEvent& event);
+    // Drops a composition without committing it (focus lost, read-only).
+    void ClearComposition();
+
+    // GetRenderText() with the composition spliced in at the caret - what the
+    // line shows - and the caret's byte offset in it (inside the composition
+    // while composing). Caret x and the scroll clamp measure these.
+    std::string GetPaintedText() const;
+    size_t GetPaintedCaretOffset() const;
+    size_t GetCompositionRenderOffset() const { return ToRenderOffset(caretPosition); }
 
     // Inserted text is repaired to valid UTF-8 first (utf8_make_valid): a paste,
     // or a keyboard backend without an input method, can deliver bytes that are
@@ -644,6 +740,7 @@ private:
     size_t FindNextWordBoundary(size_t bytePos) const;
 
     void UpdateDisplayText();
+    void CharacterErased();   // after Backspace/Delete took one character
     
     // Placeholder clipboard functions - would need platform-specific implementation
     void CopyToClipboard(const std::string& text);
@@ -677,6 +774,7 @@ inline TextInputStyle TextInputStyle::Flat() {
 inline TextInputStyle TextInputStyle::Outlined() {
     TextInputStyle style;
     style.backgroundColor = Colors::Transparent;
+    style.disabledBackgroundColor = Colors::Transparent;   // no face to grey
     style.borderWidth = 2;
     style.borderRadius = 4;
     return style;
@@ -685,6 +783,7 @@ inline TextInputStyle TextInputStyle::Outlined() {
 inline TextInputStyle TextInputStyle::Underlined() {
     TextInputStyle style;
     style.backgroundColor = Colors::Transparent;
+    style.disabledBackgroundColor = Colors::Transparent;
     style.borderWidth = 0;
     style.borderRadius = 0;
     // Would need special underline rendering
@@ -692,13 +791,14 @@ inline TextInputStyle TextInputStyle::Underlined() {
 }
 
 // ===== FACTORY FUNCTIONS =====
+// All take the identifier first and float geometry, as the constructor does.
 inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
-    const std::string& identifier, int x, int y, int w, int h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     return std::make_shared<UltraCanvasTextInput>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
-    const std::string& identifier, int x, int y, int w, int h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Password);
     return input;
@@ -707,7 +807,7 @@ inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
 // Password input that carries the in-field eye button for showing the typed text.
 // Every password input does now; kept so existing callers still read clearly.
 inline std::shared_ptr<UltraCanvasTextInput> CreateRevealablePasswordInput(
-    const std::string& identifier, int x, int y, int w, int h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreatePasswordInput(identifier, x, y, w, h);
     input->SetShowPasswordToggle(true);
     return input;
@@ -738,20 +838,21 @@ inline std::shared_ptr<UltraCanvasTextInput> CreateNumberInput(
 class TextInputBuilder {
 private:
     std::string identifier = "TextInput";
-    long x = 0, y = 0, w = 200, h = 32;
+    // Float like the element: a long here cut 150.5 down to 150.
+    float x = 0, y = 0, w = 200, h = 32;
     TextInputType type = TextInputType::Text;
-    std::string placeholder;
+    std::optional<std::string> placeholder;   // unset: the type's formatter may give one
     std::string initialText;
     TextInputStyle style = TextInputStyle::Default();
     std::vector<ValidationRule> rules;
-    TextFormatter formatter = TextFormatter::NoFormat();
+    std::optional<TextFormatter> formatter;   // unset: the one the type chose stays
     bool readOnly = false;
     int maxLength = -1;
     bool showPasswordToggle = true;
     
 public:
     TextInputBuilder& SetIdentifier(const std::string& inputId) { identifier = inputId; return *this; }
-    TextInputBuilder& SetPosition(long px, long py) { x = px; y = py; return *this; }
+    TextInputBuilder& SetPosition(float px, float py) { x = px; y = py; return *this; }
     TextInputBuilder& SetSize(float width, float height) { w = width; h = height; return *this; }
     TextInputBuilder& SetType(TextInputType inputType) { type = inputType; return *this; }
     TextInputBuilder& SetPlaceholder(const std::string& text) { placeholder = text; return *this; }
@@ -785,10 +886,12 @@ public:
         auto input = std::make_shared<UltraCanvasTextInput>(identifier, x, y, w, h);
         
         input->SetInputType(type);
-        input->SetPlaceholder(placeholder);
+        if (placeholder) input->SetPlaceholder(*placeholder);
         input->SetText(initialText);
         input->SetStyle(style);
-        input->SetFormatter(formatter);
+        // Only a formatter the builder was given: SetFormatter(NoFormat) here
+        // took the Phone, Currency or Date formatting away from a typed field.
+        if (formatter) input->SetFormatter(*formatter);
         input->SetReadOnly(readOnly);
         input->SetMaxLength(maxLength);
         input->SetShowPasswordToggle(showPasswordToggle);

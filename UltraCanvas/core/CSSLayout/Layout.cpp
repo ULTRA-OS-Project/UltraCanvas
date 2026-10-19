@@ -1,7 +1,8 @@
 // core/CSSLayout/Layout.cpp
 // Chainable setters on struct Layout and struct LayoutItem.
+// Version: 1.3.0 - SetGridJustifyItems
 // Version: 1.2.0 - SetTable / SetTableSpacing (display: table)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -103,6 +104,11 @@ namespace UltraCanvas {
 
         Layout& Layout::SetGridAlignItems(AlignItems ai) {
             asGrid(*this).alignItems = ai;
+            return *this;
+        }
+
+        Layout& Layout::SetGridJustifyItems(JustifyItems ji) {
+            asGrid(*this).justifyItems = ji;
             return *this;
         }
 

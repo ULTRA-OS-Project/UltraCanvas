@@ -2,7 +2,6 @@
 // Where the application keeps its activity store when the user does not
 // say: the platform's per-user data directory, never a cache directory (a
 // cache may be swept; a record of activity may not).
-// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

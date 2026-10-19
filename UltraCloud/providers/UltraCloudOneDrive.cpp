@@ -1,8 +1,9 @@
 // UltraCloud/providers/UltraCloudOneDrive.cpp
-// Version: 0.3.0
-// Last Modified: 2026-09-04
+// Version: 0.4.0 - each further page of a listing is logged
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOneDrive.h>
+#include <UltraCloud/UltraCloudLog.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // NormalizePath / EncodePath
 
 #include "core/UltraCloudInternal.h"
@@ -87,6 +88,7 @@ Result OneDriveProvider::List(const Account&, const Credentials& credentials,
     const std::string folder = NormalizePath(path);
     std::string url = OneDriveItemUrl(folder, "children")
                     + Query({{"$select", "name,size,lastModifiedDateTime,folder,file"}, {"$top", "200"}});
+    int page = 1;
     while (!url.empty()) {
         UltraNetHttpRequest req;
         req.url = url;
@@ -98,6 +100,9 @@ Result OneDriveProvider::List(const Account&, const Credentials& credentials,
         const JSONValue& items = v["value"];
         for (std::size_t i = 0; i < items.GetSize(); ++i) out.push_back(EntryFrom(items[i], folder));
         url = v["@odata.nextLink"].GetString();
+        if (!url.empty())
+            LogToThread(LogKind::Step, "The listing continues - page " + std::to_string(++page) +
+                                       " (" + std::to_string(out.size()) + " entries so far)");
     }
     std::stable_sort(out.begin(), out.end(), [](const Entry& a, const Entry& b) {
         if (a.isDirectory != b.isDirectory) return a.isDirectory;

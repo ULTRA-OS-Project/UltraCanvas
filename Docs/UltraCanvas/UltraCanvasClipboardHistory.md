@@ -1,5 +1,7 @@
 # UltraCanvasClipboardHistory
 
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void SaveAs(int64_t id); void Delete(int64_t id); void Preview(int64_t id); UltraCanvasClipboardRecorder recorder; -->
+
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
 made it. UltraDesktop records into it and shows it in its quick panel
@@ -80,7 +82,7 @@ The same content copied again is not a second entry: it moves to the top
 
 | Call | |
 |---|---|
-| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss) |
+| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit, newestFirst }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss). Pinned entries come first unless `newestFirst` asks for last use alone: `{kinds = {Image}, newestFirst = true, limit = 1}` is "the last image copied" |
 | `Get(id)`, `ReadFormats(id, formats)`, `ReadText(id)` | one entry, its content |
 | `GetStats()` | entries, pinned, bytes, encrypted |
 | `MarkUsed(id)` | it was put back on the clipboard |
@@ -93,15 +95,43 @@ The same content copied again is not a second entry: it moves to the top
 
 `ClipboardHistoryPolicy` holds `maxEntries` (500 unpinned), `maxAgeDays` (30,
 by last use), `maxTotalBytes` (512 MB), `maxEntryBytes` (64 MB; a larger copy
-is not recorded), `recordingPaused`, `imageThumbnails` and
-`excludedApplications` (`Defaults()`: UltraPassword, UltraAuthenticator,
-KeePassXC, Bitwarden, 1Password).
+is not recorded), `recordingPaused`, `imageThumbnails`, `previewStyle` (how
+UltraClipboard previews an image whose thumbnail the pointer rests on:
+`ClipboardPreviewStyle::Modern`, a pane over the right part of the list with
+the viewer's info line, or `Classic`, the picture alone floating over the
+middle of the list), `iconSide` (where a row's action icons stand:
+`ClipboardIconSide::Right`, after the text at the row's right edge, or `Left`,
+between the thumbnail and the text) and `excludedApplications` (`Defaults()`: UltraPassword,
+UltraAuthenticator, KeePassXC, Bitwarden, 1Password).
 
 `EditClipboardText(text, edit)` is the edit dialog's text tools:
 `ClipboardTextEdit::Trim`, `JoinLines`, `Upper`, `Lower`, `Title`,
 `Sentence` (case changes for Latin, Greek and Cyrillic).
 `ClipboardImageFile(format, extension)` gives an image entry as a file another
 program opens (a bare `CF_DIB` gains its BMP file header).
+
+## What a program takes
+
+`PreferredClipboardKinds(categories, mimeTypes)` reads an application's
+desktop entry (`UCDesktopEntry::categories` and `mimeTypes`) and answers the
+kinds of entry it takes when something is pasted into it, most wanted first:
+
+| The entry says | Kinds |
+|---|---|
+| `Graphics`, `RasterGraphics`, `2DGraphics`, `VectorGraphics`, `3DGraphics`, `Photography` (not `Viewer`) | Image, Colour |
+| `FileManager`, or it opens `inode/directory` | Files |
+| `TextEditor`, `IDE`, `Development`, `TerminalEmulator` | Code, Text, Link |
+| `WebBrowser` | Link, Text |
+| no such category, and it opens only `image/*` types / only `text/*` types | Image, Colour / Text, Code, Link |
+| anything else (mail, chat, office, a mix of types) | nothing: the history is offered as it is |
+
+UltraDesktop's quick panel finds the window Super+V was pressed over, its
+entry (`UltraCanvasDesktopShell::MatchApplication`) and these kinds, and lists
+the newest such entries first under "For <program>", the first one chosen. The
+choice stays the person's: they see it before Enter copies it. Swapping what
+the clipboard hands a program while it pastes was considered and left out - a
+program that prefers images when one is offered would paste an old picture
+instead of the text just copied, unannounced.
 
 ## Recording
 
@@ -143,9 +173,14 @@ between them.
 | `<data>/ultraos/clipboard/thumbs/<hash>.png` | image thumbnails |
 | `<config>/ultraos/clipboard.key` | the 256-bit key, owner-only |
 
-`<data>` is `$XDG_DATA_HOME` (`~/.local/share`), `%LOCALAPPDATA%` on Windows,
-`~/Library/Application Support` on macOS; `<config>` is the folder the
-desktop's settings use. The folders are owner-only.
+`<data>` is `$XDG_DATA_HOME` when it is set, on every platform (as for the
+applications' data folders, `UltraCanvasDataFolder.h`), else `~/.local/share`,
+`%LOCALAPPDATA%` on Windows (a machine-local store, so not the applications'
+roaming `%APPDATA%`) and `~/Library/Application Support` on macOS; `<config>`
+is the folder the desktop's settings use (`UltraCanvasDesktopSettingsFolder`:
+`%APPDATA%`, Application Support on macOS, `$XDG_CONFIG_HOME` or `~/.config`;
+on macOS a key kept under `~/.config` by earlier versions is moved there once).
+The folders are owner-only.
 
 With libsodium, titles, previews and payloads are sealed with
 XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the
@@ -168,43 +203,62 @@ dark compact one of the desktop's panel
 (`Docs/Research/UltraClipboard/UltraClipboard-RowAnatomy.svg`):
 
 ```cpp
+auto listView = std::make_shared<UltraCanvasListView>("history");
 auto model = std::make_shared<ClipboardHistoryListModel>();
 auto rows  = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Light());
-list->SetModel(model);
-list->SetDelegate(rows);
-list->SetVariableRowHeights(true);          // headers are lower than rows
+listView->SetModel(model);
+listView->SetDelegate(rows);
+listView->SetVariableRowHeights(true);      // headers are lower than rows
 model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 
 // Raw pointers: a lambda stored in the list must not own the list.
-list->onCellHovered = [rows = rows.get(), view = list.get()](int row, int, const Point2Di& at) {
+listView->onCellHovered = [this, rows = rows.get(), model = model.get(), view = listView.get()](
+                                  int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
+    // The thumbnail's column of an entry row: UltraClipboard opens its hover
+    // preview of an image from here. The list re-reports the hover when it
+    // scrolls under a still pointer, so the preview follows the wheel too.
+    const ClipboardHistoryEntry* entry = model->GetEntry(row);
+    if (entry && rows->IsOverThumbnail(at)) Preview(entry->id);
 };
-list->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
     if (!entry) return;                     // a section header
     switch (rows->ActionAt(row, at)) {
         case ClipboardRowAction::Copy:   Copy(entry->id); break;
         case ClipboardRowAction::Edit:   Edit(entry->id); break;
+        case ClipboardRowAction::SaveAs: SaveAs(entry->id); break;   // only with style.saveAction
         case ClipboardRowAction::Delete: Delete(entry->id); break;
         default: break;
     }
 };
-list->tooltipProvider = [rows = rows.get()](int row, int) {
+listView->tooltipProvider = [rows = rows.get()](int row, int) {
     return ClipboardHistoryRowDelegate::ActionTooltip(rows->GetHoverAction(row));
 };
 ```
 
 - **Sections**: `Flat`; `ByDay` (Pinned, Today, Yesterday, Earlier, with
-  counts); `PinnedAndRecent` (the panel's Pinned and Recent).
+  counts); `PinnedAndRecent` (the panel's Pinned and Recent). A
+  `LeadSection { title, count }` puts the first `count` entries under a title
+  of the caller's above them (the panel's "For UltraPaint").
   `GetEntry(row)` is `nullptr` on a header; `EntryRowFrom(row, step)` skips
   them for Up / Down; `FindRow(id)` keeps a selection across a reload.
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
   swatch, a code tile, a link tile, file sheets with a `+n` badge), the
   title, a meta line (`DescribeClipboardEntry`: "Text · 2 lines · 29
-  characters · UltraMail · 5 min ago") and Copy, Edit and Delete. The light
-  style shows the actions on every row, the compact one on the hovered and
-  selected rows only. `ShowCopied(id)` turns Copy into a check with a
+  characters · UltraMail · 5 min ago") and Copy, Edit and Delete -
+  `ClipboardRowStyle::saveAction` adds Save as between Edit and Delete
+  (UltraClipboard). The actions stand at the row's right edge, or between the
+  thumbnail and the text with `actionsLeftOfText` (`SetActionsLeftOfText`
+  changes it on a delegate in use - UltraClipboard applies the policy's
+  `iconSide` this way); left of the text they keep their place while hidden,
+  so the text does not move. The light style shows the actions on every row,
+  the compact one on the hovered and selected rows only. `ShowCopied(id)` turns Copy into a check with a
   "Copied" pill for a moment; redraw while `IsShowingCopied()`.
+  `IsOverThumbnail(posInCell)` says whether a point of a row is on the
+  thumbnail's column (the tile's width, the row's whole height, so a pointer
+  resting there keeps its answer while the rows scroll under it); the caller
+  checks the row is an entry, not a header.
 - The action glyphs are `media/icons/clipboard/*.svg`, drawn as masks;
   `iconsDir` points elsewhere.
 - Helpers: `FormatClipboardAge`, `FormatClipboardSize`,

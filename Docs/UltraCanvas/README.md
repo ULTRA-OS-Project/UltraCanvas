@@ -148,6 +148,11 @@ make
     the DataFormats section's JSON API (`JSONValue` DOM, strict/lenient
     parsing with error positions, compact/pretty serialization, framework
     type helpers), backed by the vendored yyjson engine.
+-   [UltraCanvasHTMLReader — HTML, CSS and entities, once](UltraCanvasHTMLReader.md) -
+    the HTMLReader module: parser and DOM, CSS parser with selector matching
+    on any tree, the cascade, the DOM→element builder on CSSLayout, the
+    HTML→`UCRichDocument` importer, `ExtractPlainText` and `DecodeEntities`.
+    The one place HTML and CSS are read; see the reuse rule in AGENTS.md.
 -   [Bitmap Handling Architecture](BitmapHandlingArchitecture.md)
 -   [Animated Images (GIF / animated WebP)](UltraCanvasAnimatedImages.md) -
     how animated images decode and play in `UltraCanvasImageElement` and the

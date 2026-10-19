@@ -15,6 +15,7 @@
 #include "UltraAIImageGen.h"
 #include "UltraAIVisionAnalyzer.h"
 #include "UltraAITranslator.h"
+#include "UltraAITextLLMTranslator.h"
 #include "UltraAIVideoGen.h"
 #include "UltraAIMusicGen.h"
 #include "UltraAICodeAssist.h"

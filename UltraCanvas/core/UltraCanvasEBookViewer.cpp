@@ -1,7 +1,8 @@
 // core/UltraCanvasEBookViewer.cpp
 // eBook reading widget: engine chapters → HTML::ElementBuilder → CSSLayout.
+// Version: 2.2.2 - Prev, Next and Theme show flat icons, not "◀" "▶" "☾"
 // Version: 2.2.1 - the system font size (pt) is converted to the builder's CSS px
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEBookViewer.h"
@@ -76,7 +77,7 @@ UltraCanvasEBookViewer::UltraCanvasEBookViewer(const std::string& id,
 }
 
 void UltraCanvasEBookViewer::BuildUI() {
-    layout.SetFlex(CSSLayout::FlexDirection::Column);
+    layout.SetFlex(CSSLayout::FlexDirection::Column).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     // Only the content pane scrolls; the viewer itself and its chrome rows
     // must never sprout their own scrollbars over the toolbar.
@@ -109,22 +110,29 @@ void UltraCanvasEBookViewer::BuildUI() {
         return button;
     };
 
+    // The icon buttons draw their icon as a mask so it takes the button's
+    // text color, tracking the normal/active/disabled state (dark on the
+    // toolbar, light when the contents pane is open). Prev, Next and Theme
+    // used to be "◀", "▶" and "☾", which the bundled UI font lacks: where no
+    // fallback font has them either they showed as hex boxes.
+    auto makeIconButton = [&](const char* name, const char* iconFile, const char* tooltip) {
+        auto button = makeButton(name, "");
+        button->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/" + iconFile));
+        button->SetIconPosition(ButtonIconPosition::Center);
+        button->SetIconSize(18, 18);
+        button->SetUseIconAsMask(true);
+        button->SetIconMaskColor(Colors::Transparent);   // follow the text color
+        button->SetTooltip(tooltip);
+        return button;
+    };
+
     // All controls sit on the left; the chapter title fills the rest.
-    btnPrev = makeButton("_prev", "\xE2\x97\x80");         // ◀
-    btnNext = makeButton("_next", "\xE2\x96\xB6");         // ▶
+    btnPrev = makeIconButton("_prev", "menu/chevron-left.svg", "Previous chapter");
+    btnNext = makeIconButton("_next", "menu/chevron-right.svg", "Next chapter");
     btnFontMinus = makeButton("_fminus", "A-", 40.f);
     btnFontPlus = makeButton("_fplus", "A+", 40.f);
-    btnTheme = makeButton("_theme", "\xE2\x98\xBE");       // ☾
-
-    // The table-of-contents button uses the ordered-list icon. It is drawn as
-    // a mask so it takes the button's text color, tracking the normal/active
-    // state (dark on the toolbar, light when the pane is open).
-    btnToc = makeButton("_toc", "");
-    btnToc->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/list-ordered.svg"));
-    btnToc->SetIconPosition(ButtonIconPosition::Center);
-    btnToc->SetIconSize(18, 18);
-    btnToc->SetUseIconAsMask(true);
-    btnToc->SetIconMaskColor(Colors::Transparent);   // follow the text color
+    btnTheme = makeIconButton("_theme", "menu/moon.svg", "Page colours: normal, sepia, night");
+    btnToc = makeIconButton("_toc", "list-ordered.svg", "Contents");
 
     chapterLabel = std::make_shared<UltraCanvasLabel>(id + "_chapter", "");
     chapterLabel->layoutItem.SetFlexGrow(1.f);
@@ -160,7 +168,7 @@ void UltraCanvasEBookViewer::BuildUI() {
 
     contentPane = bodySplit->AddPane(1.0);
     disableScrollbars(*contentPane);
-    contentPane->layout.SetFlexColumn();
+    contentPane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     contentPane->AddChild(contentScroll);
 
     if (tocVisible) AttachTocPane();
@@ -199,7 +207,7 @@ void UltraCanvasEBookViewer::AttachTocPane() {
     ContainerStyle paneStyle = tocPane->GetContainerStyle();
     paneStyle.autoShowScrollbars = false;   // the ListView scrolls itself
     tocPane->SetContainerStyle(paneStyle);
-    tocPane->layout.SetFlexColumn();
+    tocPane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     tocPane->AddChild(tocList);
     tocList->SetVisible(true);
 

@@ -1,5 +1,36 @@
 # UltraCanvasXAR Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Where the format comes from](#where-the-format-comes-from)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Format Constants](#format-constants)
+  - [Coordinate Helper](#coordinate-helper)
+  - [Key Enumerations](#key-enumerations)
+  - [XARMatrix](#xarmatrix)
+  - [XARDocument](#xardocument)
+  - [How colours resolve](#how-colours-resolve)
+  - [Two attributes that are easy to read wrong](#two-attributes-that-are-easy-to-read-wrong)
+  - [XARNode](#xarnode)
+  - [UltraCanvasXARElement](#ultracanvasxarelement)
+  - [UltraCanvasXARPlugin](#ultracanvasxarplugin)
+  - [XARElementBuilder](#xarelementbuilder)
+- [XAR Converter (`UltraCanvasXARConverter.h`)](#xar-converter-ultracanvasxarconverterh)
+  - [Writing XAR files](#writing-xar-files)
+  - [Filer thumbnails](#filer-thumbnails)
+- [Examples](#examples)
+  - [Example 1: Loading and Displaying a XAR File](#example-1-loading-and-displaying-a-xar-file)
+  - [Example 2: Click-to-Fullscreen Handler with Zoom](#example-2-click-to-fullscreen-handler-with-zoom)
+  - [Example 3: Hover Highlight + Click-to-Open](#example-3-hover-highlight--click-to-open)
+  - [Example 4: Building an Element with `XARElementBuilder`](#example-4-building-an-element-with-xarelementbuilder)
+  - [Example 5: Registering the Plugin and Inspecting the Document](#example-5-registering-the-plugin-and-inspecting-the-document)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
@@ -648,5 +679,5 @@ if (element->LoadFromFile(path)) {
 - `Plugins/Vector/XAR/UltraCanvasXARPlugin.h` — element, plugin, node tree, attribute and builder declarations
 - `Plugins/Vector/UltraCanvasXARConverter.h` — the `VectorConverter::XARConverter` import/export converter, tag tables and conversion utilities
 - [UltraCanvasCDRExamples](UltraCanvasCDRExamples.md) — sibling CorelDRAW vector plugin
-- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG vector graphics plugin
+- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG: showing, rasterizing, reading and writing
 - [UltraCanvasBitmapExamples](UltraCanvasBitmapExamples.md) — Raster image display

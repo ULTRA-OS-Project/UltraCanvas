@@ -86,18 +86,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  workflowInput_;
 };
 ULTRAAI_DECLARE_DIALOG(VisionDialog)
-// Translation: a multi-line source text plus a target-language field.
-class TranslatorDialog : public UltraAIServiceDialog {
-public:
-    TranslatorDialog();
-protected:
-    long BuildForm(long formTop) override;
-    void RunCapability() override;
-private:
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea>   input1_;   // source text (multi-line)
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input2_;   // target language
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input3_;
-};
+// NOTE: Translation no longer lives here — like Chat, it has its own dedicated
+// dialog with an endpoint picker and a Settings button, in
+// UltraAITranslatorDialog.h.
 // Video generation: prompt, size and duration, plus the model (a checkpoint
 // file name for ComfyUI) and a credential for cloud providers.
 class VideoGenDialog : public UltraAIServiceDialog {

@@ -1,0 +1,49 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 1000x700. --><title>Edit states — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)} .l{padding:12px 12px 6px} .k{color:var(--ink)}</style></head>
+<body class="uv">
+<div id="out"></div>
+<script>
+  var U = UltraVideo, out = document.getElementById('out');
+  function main(items, extra) {
+    return { id: 'V1', kind: 'video', name: 'Main track', magnetic: true, items: items };
+  }
+  function base() {
+    return [
+      { name: 'Beach_wide.mp4', start: 0, dur: 4, shots: [0] },
+      { name: 'Forest_walk.mp4', start: 4, dur: 4, shots: [1] },
+      { kind: 'image', name: 'IMG_2041.jpg', start: 8, dur: 3, shots: [2] },
+      { name: 'Interview_A.mov', start: 11, dur: 4.5, shots: [3] }];
+  }
+  function block(label, m) {
+    out.insertAdjacentHTML('beforeend', '<div class="l uv-cap">' + label + '</div><div></div>');
+    m.fps = 25; m.pps = 48; m.duration = 16.5; m.scrollbar = false; m.showBeats = m.showBeats || false;
+    U.timeline(out.lastElementChild, m);
+  }
+  // 1 Reorder
+  var a = base(); a[1].ghost = true; a[1].lift = 6; a[1].start = 9.2; a[2].start = 4; a[3].start = 7;
+  var t1 = main(a); t1.inserts = [{ t: 4 }];
+  block('<b class="k">Reorder</b> · drag a clip along its track; neighbours slide aside, the accent marker shows where it lands', { playhead: 2, tracks: [t1],
+    extra: ['<div class="uv-tip" style="position:absolute;left:' + (4 * 48 + 8) + 'px;top:34px">Move before IMG_2041.jpg</div>'] });
+  // 2 Trim + snap
+  var b = base(); b[1].selected = true; b[1].trim = 'r'; b[1].dur = 3.5; b[2].start = 7.5; b[3].start = 10.5;
+  var t2 = main(b); t2.overflow = [{ from: 7.5, to: 9.8, side: 'r', label: '+2.3 s' }];
+  block('<b class="k">Trim with snapping</b> · the edge snaps to the playhead; magnetic track ripples the clips after it; Alt leaves a gap instead', { playhead: 7.5, snap: 7.5, tracks: [t2],
+    extra: ['<div class="uv-tip uv-tip--readout" style="position:absolute;left:' + (7.5 * 48 + 10) + 'px;top:2px">Out 00:00:03:12 · −00:00:00:12</div>'] });
+  // 3 File drop
+  var t3 = main(base()); t3.drop = true; t3.inserts = [{ t: 8, drop: true }];
+  block('<b class="k">Drop files</b> · from the file manager or the media bin; the cut nearest the pointer is the insertion point', { tracks: [t3],
+    extra: ['<div class="uv-tip" style="position:absolute;left:' + (8 * 48 + 10) + 'px;top:40px">' + U.icon('upload', 'uv-ico--sm') + 'Insert 3 files at 00:00:08:00</div>'] });
+  // 4 Rubber band
+  var d = base(); d[1].selected = true; d[2].selected = true;
+  var ov = { id: 'T1', kind: 'overlay', name: 'Titles', items: [{ name: 'Lower third', start: 5, dur: 3, selected: true }] };
+  block('<b class="k">Rubber-band selection</b> · drag on empty lane space; Shift extends, Ctrl toggles', { tracks: [ov, main(d)], band: [4.6, 10.4, 30, 82] });
+  // 5 Blade
+  var e = base(); e[3].hover = true;
+  block('<b class="k">Blade</b> · a hairline previews the cut under the pointer; S splits at the playhead without changing tool', { playhead: 13, tracks: [main(e)],
+    extra: ['<div style="position:absolute;left:' + (12.6 * 48) + 'px;top:28px;bottom:0;width:1px;background:var(--ink);z-index:8"></div>',
+            '<div class="uv-cursor" style="left:' + (12.6 * 48 + 4) + 'px;top:44px;color:var(--ink)">' + U.icon('blade') + '</div>'] });
+</script>
+</body>
+</html>

@@ -254,7 +254,7 @@ namespace UltraCanvas {
         innerBottom->AddChild(MakeInfoLabel("pcInnerO1", 10, 36, 380, "[info] split created with 2 panes"));
         innerBottom->AddChild(MakeInfoLabel("pcInnerO2", 10, 56, 380, "[info] weights normalized"));
 
-        outerRight->layout.SetFlexColumn();
+        outerRight->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         outerRight->layout.SetFlexGap(0);
         outerRight->AddChild(inner);
         inner->layoutItem.SetFlexGrow(1)

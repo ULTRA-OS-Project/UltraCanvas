@@ -17,6 +17,10 @@ add_executable(UltraClipboard
     ui/ClipboardDialogs.cpp
 )
 
+# One instance per user: a second start hands its request to the running one
+# (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraClipboard)
+
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.
 set_target_properties(UltraClipboard PROPERTIES ENABLE_EXPORTS ON)

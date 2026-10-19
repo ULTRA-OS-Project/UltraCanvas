@@ -1,6 +1,7 @@
 // Tests/EmailCleaner/test_text.cpp
 // The shared normalisation pipeline, tested directly — both message text and
 // rule terms go through it, so its edge cases matter twice.
+// Version: 0.2.0 - HTML through HTML::ExtractPlainText (no StripHtml of its own)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -9,29 +10,41 @@
 
 using namespace EmailCleaner;
 
-TEST(StripHtml_DropsScriptAndStyleContents) {
-    const std::string out = StripHtml("<style>p{color:red}</style>hello"
-                                      "<script>var x = 1;</script>world");
-    REQUIRE(out.find("color") == std::string::npos);
-    REQUIRE(out.find("var x") == std::string::npos);
-    REQUIRE(out.find("hello") != std::string::npos);
-    REQUIRE(out.find("world") != std::string::npos);
+// HTML goes through the HTMLReader module (HTML::ExtractPlainText) inside
+// NormalizeForMatching; these pin what the matcher sees of it.
+TEST(NormalizeForMatching_DropsScriptAndStyleContents) {
+    REQUIRE_EQ(NormalizeForMatching("<style>p{color:red}</style>hello"
+                                    "<script>var x = 1;</script>world"),
+               std::string("hello world"));
 }
 
-TEST(StripHtml_DecodesEntities) {
-    REQUIRE_EQ(StripHtml("a&nbsp;b"), std::string("a b"));
-    REQUIRE_EQ(StripHtml("Tom &amp; Jerry"), std::string("Tom & Jerry"));
-    // An entity we do not know is left as written rather than mangled.
-    REQUIRE_EQ(StripHtml("100&euro;"), std::string("100&euro;"));
+TEST(NormalizeForMatching_InlineMarkupKeepsAWordWhole) {
+    // Camouflage: formatting splits the word, a block does not hide it.
+    REQUIRE_EQ(NormalizeForMatching("<b>via</b>gra"), std::string("viagra"));
+    REQUIRE_EQ(NormalizeForMatching("<span>vi</span><i>ag</i>ra"), std::string("viagra"));
+    REQUIRE_EQ(NormalizeForMatching("<p>free</p><p>money</p>"), std::string("free money"));
 }
 
-TEST(StripHtml_SurvivesMalformedMarkup) {
+TEST(NormalizeForMatching_DecodesEntities) {
+    REQUIRE_EQ(NormalizeForMatching("<p>a&nbsp;b</p>"), std::string("a b"));
+    REQUIRE_EQ(NormalizeForMatching("<p>Tom &amp; Jerry</p>"), std::string("tom & jerry"));
+    REQUIRE_EQ(NormalizeForMatching("<p>d&eacute;j&agrave; &#8364;</p>"),
+               std::string("d\xC3\xA9j\xC3\xA0 \xE2\x82\xAC"));
+    // An entity nobody defines is left as written rather than mangled.
+    REQUIRE_EQ(NormalizeForMatching("<p>x&zzz;</p>"), std::string("x&zzz;"));
+    // Dashes and the ellipsis read as their ASCII spelling, so a rule written
+    // with them matches either way.
+    REQUIRE_EQ(NormalizeForMatching("<p>act now &mdash; today&hellip;</p>"),
+               NormalizeForMatching("act now - today..."));
+}
+
+TEST(NormalizeForMatching_SurvivesMalformedMarkup) {
     // An unterminated tag must not read past the end or throw.
-    REQUIRE(StripHtml("text <b").find("text") != std::string::npos);
-    REQUIRE(StripHtml("<").empty());
-    REQUIRE(StripHtml("").empty());
+    REQUIRE(NormalizeForMatching("text <b").find("text") != std::string::npos);
+    REQUIRE(NormalizeForMatching("<").empty());
+    REQUIRE(NormalizeForMatching("").empty());
     // An unterminated <script> drops the remainder rather than emitting it.
-    REQUIRE(StripHtml("safe<script>alert(1)").find("alert") == std::string::npos);
+    REQUIRE(NormalizeForMatching("safe<script>alert(1)").find("alert") == std::string::npos);
 }
 
 TEST(CollapseObfuscation_NeedsALongEnoughRun) {
@@ -68,7 +81,7 @@ TEST(NormalizeForMatching_FoldsRuleTermsAndTextTheSameWay) {
     REQUIRE_EQ(NormalizeForMatching("no-reply@"), NormalizeForMatching("NO-REPLY@"));
     // The classifier matches a Sender rule against "<display name> <address>",
     // which is what ParseAddress produces — no angle brackets, because those
-    // are markup to StripHtml (see the note in EmailCleanerText.h).
+    // are markup to the HTML reader (see the note in EmailCleanerText.h).
     const std::string term = NormalizeForMatching("no-reply@");
     const std::string text = NormalizeForMatching("Shop no-reply@shop.example");
     REQUIRE(text.find(term) != std::string::npos);

@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasRadialBarChart.cpp
 // Radial bar / radial line ("ray") chart element for UltraCanvas
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-07-28
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasRadialBarChart.h"
 
@@ -49,7 +50,7 @@ namespace UltraCanvas {
 
     void UltraCanvasRadialBarChart::AddSeries(const RadialBarSeries& series) {
         seriesList.push_back(series);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -69,21 +70,21 @@ namespace UltraCanvas {
     void UltraCanvasRadialBarChart::ClearSeries() {
         seriesList.clear();
         hoveredBar = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     RadialBarSeries* UltraCanvasRadialBarChart::GetSeries(size_t index) {
         if (index >= seriesList.size()) return nullptr;
         // Callers may mutate values; relayout on next render.
-        InvalidateLayout();
+        DropLayoutCache();
         return &seriesList[index];
     }
 
     void UltraCanvasRadialBarChart::SetSeriesColor(size_t index, const Color& color) {
         if (index >= seriesList.size()) return;
         seriesList[index].color = color;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -93,25 +94,25 @@ namespace UltraCanvas {
 
     void UltraCanvasRadialBarChart::SetStartAngle(float degrees) {
         startAngleDeg = degrees;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasRadialBarChart::SetSweepAngle(float degrees) {
         sweepAngleDeg = std::max(10.0f, std::min(360.0f, degrees));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasRadialBarChart::SetInnerRadiusFraction(float fraction) {
         innerRadiusFraction = std::max(0.05f, std::min(0.9f, fraction));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasRadialBarChart::SetSeriesGapAngle(float degrees) {
         seriesGapDeg = std::max(0.0f, std::min(30.0f, degrees));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -122,7 +123,7 @@ namespace UltraCanvas {
 
     void UltraCanvasRadialBarChart::SetNormalization(RadialBarNormalization mode) {
         normalization = mode;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -130,19 +131,19 @@ namespace UltraCanvas {
         manualRange = true;
         manualMin = std::min(minValue, maxValue);
         manualMax = std::max(minValue, maxValue);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasRadialBarChart::ClearValueRange() {
         manualRange = false;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasRadialBarChart::SetMinBarLengthFraction(float fraction) {
         minBarLengthFraction = std::max(0.0f, std::min(0.5f, fraction));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -163,7 +164,7 @@ namespace UltraCanvas {
 
     void UltraCanvasRadialBarChart::SetColorPalette(const std::vector<Color>& palette) {
         colorPalette = palette.empty() ? DefaultPalette() : palette;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -261,7 +262,7 @@ namespace UltraCanvas {
         return area;
     }
 
-    void UltraCanvasRadialBarChart::InvalidateLayout() {
+    void UltraCanvasRadialBarChart::DropLayoutCache() {
         layoutValid = false;
     }
 

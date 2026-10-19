@@ -4,8 +4,8 @@
 // library behind a pimpl so consumers never see miniz types.
 // The writer supports the ODF rule that the "mimetype" entry must be the
 // first entry and stored uncompressed.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.2.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -25,9 +25,16 @@ public:
     UCZipPackageReader(const UCZipPackageReader&) = delete;
     UCZipPackageReader& operator=(const UCZipPackageReader&) = delete;
 
-    // Opens a ZIP file from disk. Returns false (see GetLastError) if the
-    // file is missing or not a valid ZIP archive.
+    // Opens a ZIP file from disk; `filePath` is UTF-8 on every platform.
+    // Reads the central directory only, and keeps the file open - shared, so
+    // other programs may still read and write it - until Close(). Returns
+    // false (see GetLastError) if the file cannot be opened or is not a
+    // valid ZIP archive.
     bool Open(const std::string& filePath);
+    // Opens a ZIP archive held in memory - a package decrypted from a
+    // password-protected Office file, say. The reader keeps the bytes until
+    // Close().
+    bool OpenFromMemory(std::vector<uint8_t> data);
     void Close();
     bool IsOpen() const;
 
@@ -59,6 +66,11 @@ public:
 
     // Creates/overwrites the target file.
     bool Open(const std::string& filePath);
+    // Builds the archive in memory instead - to encrypt it before it is
+    // written (a password-protected .xlsx / .docx). TakeBytes() hands it
+    // over after Finalize().
+    bool OpenInMemory();
+    std::vector<uint8_t> TakeBytes();
     bool AddEntry(const std::string& entryName, const std::string& data, bool compress = true);
     bool AddEntry(const std::string& entryName, const void* data, size_t size, bool compress = true);
     // Writes the central directory and closes the file. After Finalize the

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <cstdlib>  // [UltraCanvas local patch] strtod/strtol; libc++ no longer brings it in through <string>
 #include <functional>
 #include <map>
 #include <string>

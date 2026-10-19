@@ -1,8 +1,25 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.7.0
-// Last Modified: 2026-09-09
+// Version: 1.10.0 - one compact toolbar row: flat buttons, 16 px icons, scrolls
+//                   when the window is too narrow; the Details button lives in
+//                   the info bar only
+// Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
+//                  encryption line names the key source the spec defines
+// Version: 1.9.0
+// Last Modified: 2026-10-19
+// V1.9.0: Save image as offers FileLoader's types - every bitmap type this
+//   build writes - instead of six of its own; and another size in a bitmap
+//   type's Settings - the
+//   picture's own, or for an SVG the size it is drawn at, a drawing having no
+//   pixels of its own - and writes with the type's save settings at the size
+//   chosen; a drawing is drawn again at that size, so it stays sharp.
+// V1.8.0: IsPlayingMedia; images are read with UCImage::GetFresh, so a
+//   picture saved over since it was last shown opens as it is now.
+// V1.7.1: Save image as offers a name it can write - an SVG's stem as a PNG
+//   instead of "<name>.svg", which libvips has no writer for - gives a typed
+//   name without a written format ".png", and reports a failed save in a
+//   message rather than only in the info bar.
 // V1.6.0: Vector documents no renderer here can rasterize (Xara, CorelDRAW,
 //   EPS/PostScript) are shown from the preview bitmap they carry inside
 //   themselves, the way a *.ucd container is - so a file manager's detail pane
@@ -40,6 +57,7 @@
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
+#include "UltraCanvasUCDContainer.h"   // a *.ucd's header and thumbnail
 #include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "UltraCanvasVectorPreview.h"   // the readers a registered plugin lends core
 #include "UltraCanvasVectorElement.h"   // the view a drawing is shown in
@@ -93,6 +111,38 @@ static std::string BaseName(const std::string& path) {
     std::error_code ec;
     fs::path p(UltraCanvas::PathFromUtf8(path));
     return PathToUtf8(p.filename());
+}
+
+// ----- Save as -----
+// The formats Save writes are FileLoader's: every bitmap type this build
+// writes (UltraCanvasFileLoader::AddImageSaveTypes / CanSaveImage), PNG
+// first - not a list of the viewer's own. The image writer picks the format
+// from the name's extension.
+static bool HasSaveExtension(const std::string& path) {
+    const std::string ext = LowerExt(BaseName(path));
+    return !ext.empty() && UltraCanvasFileLoader::CanSaveImage(ext);
+}
+
+// The name Save offers for the file being shown: its own name when that is a
+// format Save writes, else its stem as a PNG. An SVG is rasterized for display
+// and cannot be written back as one - libvips has no SVG writer - so offering
+// "drawing.svg" made Save fail on the name it suggested.
+static std::string SaveNameFor(const std::string& path) {
+    if (path.empty()) return "image.png";
+    if (HasSaveExtension(path)) return BaseName(path);
+    const std::string stem = PathToUtf8(PathFromUtf8(path).stem());
+    return (stem.empty() ? std::string("image") : stem) + ".png";
+}
+
+// `path` named so Save can write it: kept when its extension is a format Save
+// writes, else given ".png". Added rather than swapped in, because what follows
+// the last dot is not always a format ("notes.v2"), and a name the user typed
+// is not shortened behind their back.
+static std::string WithSaveExtension(const std::string& path) {
+    if (HasSaveExtension(path)) return path;
+    std::string named = path;
+    if (!named.empty() && named.back() == '.') named.pop_back();
+    return named + ".png";
 }
 
 // ----- Toolbar icons -----
@@ -183,70 +233,27 @@ static bool ReadTextFile(const std::string& path, std::string& out,
     return true;
 }
 
-// ----- UCD v2 CONTAINER HEADER -----
-// Fixed 28-byte header of an UltraCanvas Document container, per
-// Docs/UltraCanvas/UCD-FileFormat-v2.md. The header (and the raw HEIC/PNG
-// preview thumbnail that follows it) is never compressed or encrypted, so a
-// viewer can identify the file and show a preview without the UCD v2 engine.
-struct UCDHeader {
-    bool        valid = false;      // signature matched (0x89 'U' 'C' … \r\n 0x1A)
-    std::string descriptor;         // "UCDoc", "UCForm", "UCVector", …
-    int         versionMajor = 0;
-    int         versionMinor = 0;
-    uint8_t     bodyEncoding = 0;   // 0 binary, 1 XML text, 2 JSON text
-    uint8_t     compression = 0;    // 0 none, 1 deflate, 2 gzip, 3 LZMA
-    uint8_t     encryption = 0;     // 0 none, 1 AES-256-GCM, 2 ChaCha20, 3 SuperVault
-    uint8_t     flags = 0;          // bit0 thumbnail, bit1 PNG (else HEIC),
-                                    // bit2 encrypted, bit3 private
-    uint32_t    thumbnailLength = 0;
-    uint32_t    extensionLength = 0;
-
-    bool HasThumbnail() const { return (flags & 0x01) && thumbnailLength > 0; }
-    bool ThumbnailIsPNG() const { return (flags & 0x02) != 0; }
-    bool IsEncrypted() const { return (flags & 0x04) != 0 || encryption != 0; }
-    bool IsPrivate() const { return (flags & 0x08) != 0; }
+// ----- UCD v2 CONTAINER -----
+// The fixed header of an UltraCanvas Document container and the raw HEIC/PNG
+// preview thumbnail after it (Docs/UltraCanvas/UCD-FileFormat-v2.md), read
+// by the container engine without touching the body: neither is ever
+// compressed or encrypted, so a viewer can identify the file and show a
+// preview of any content type.
+struct UCDPreview {
+    bool                 valid = false;   // a UCD v2 header was read
+    std::string          problem;         // why not, or why the thumbnail is missing
+    UCD::Header          header;
+    std::vector<uint8_t> thumbnail;       // raw HEIC / PNG; empty without one
 };
 
-static uint32_t ReadLE32(const unsigned char* p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-}
-
-static bool ReadUCDHeader(const std::string& path, UCDHeader& out) {
-    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!f) return false;
-    unsigned char h[28];
-    if (!f.read(reinterpret_cast<char*>(h), sizeof(h))) return false;
-    if (h[0] != 0x89 || h[1] != 'U' || h[2] != 'C' ||
-        h[9] != 0x0D || h[10] != 0x0A || h[11] != 0x1A) return false;
-    out.valid = true;
-    out.descriptor.assign(reinterpret_cast<const char*>(h + 1), 8);
-    if (auto z = out.descriptor.find('\0'); z != std::string::npos)
-        out.descriptor.resize(z);
-    out.versionMajor    = h[12];
-    out.versionMinor    = h[13];
-    out.bodyEncoding    = h[14];
-    out.compression     = h[15];
-    out.encryption      = h[16];
-    out.flags           = h[17];
-    out.thumbnailLength = ReadLE32(h + 20);
-    out.extensionLength = ReadLE32(h + 24);
-    return true;
-}
-
-// Extract the raw (HEIC/PNG) preview thumbnail stored directly after the fixed
-// header + header extension. Length-capped so a corrupt header can't allocate
-// wild amounts of memory.
-static bool ReadUCDThumbnail(const std::string& path, const UCDHeader& hdr,
-                             std::vector<uint8_t>& out) {
-    constexpr uint32_t kMaxThumbBytes = 64u * 1024u * 1024u;
-    if (!hdr.valid || !hdr.HasThumbnail() || hdr.IsPrivate() ||
-        hdr.thumbnailLength > kMaxThumbBytes) return false;
-    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!f) return false;
-    f.seekg(28 + (std::streamoff)hdr.extensionLength);
-    out.resize(hdr.thumbnailLength);
-    return f.read(reinterpret_cast<char*>(out.data()), out.size()) ? true : false;
+static UCDPreview ReadUCDPreview(const std::string& path) {
+    UCDPreview p;
+    const bool whole = UCD::ReadHeaderAndThumbnail(path, p.header, p.thumbnail, p.problem);
+    // The header parsed even when the thumbnail could not be read.
+    p.valid = whole || !p.header.descriptor.empty();
+    // A private document shows no preview, even one stored against the rule.
+    if (p.header.IsPrivate()) p.thumbnail.clear();
+    return p;
 }
 
 // Friendly name of the primary content type a UCD descriptor announces.
@@ -255,7 +262,7 @@ static std::string UCDDescriptorName(const std::string& descriptor) {
     if (descriptor == "UCForm")   return "saveable / fillable form";
     if (descriptor == "UCVector") return "vector graphics";
     if (descriptor == "UCWindow") return "window / UI description";
-    if (descriptor == "UCBitmap") return "bitmap graphics";
+    if (descriptor == "UCBitmap") return "bitmap graphics, layered";
     if (descriptor == "UCVideo")  return "video";
     if (descriptor == "UCAudio")  return "audio";
     if (descriptor == "UC3D")     return "3D scene / model";
@@ -265,7 +272,8 @@ static std::string UCDDescriptorName(const std::string& descriptor) {
 // Human-readable summary of a *.ucd file for the details popup (and the text
 // view when the container carries no preview thumbnail).
 static std::string BuildUCDDetailsText(const std::string& path,
-                                       const UCDHeader& hdr, bool thumbShown) {
+                                       const UCDPreview& ucd, bool thumbShown) {
+    const UCD::Header& hdr = ucd.header;
     std::ostringstream os;
     os << "UltraCanvas Document (UCD)\n\n";
     os << "File: " << BaseName(path) << "\n";
@@ -273,37 +281,40 @@ static std::string BuildUCDDetailsText(const std::string& path,
     std::error_code ec;
     auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "Size: " << HumanSize(sz) << "\n";
-    if (!hdr.valid) {
-        os << "\nNot a UCD v2 container (no valid signature).\n"
-              "It may be a UCD v1 XML/JSON document or a different file.\n";
+    if (!ucd.valid) {
+        os << "\nNot a UCD v2 container: " << ucd.problem << ".\n";
         return os.str();
     }
-    os << "Container: UCD v" << hdr.versionMajor << "." << hdr.versionMinor
+    os << "Container: UCD v" << static_cast<int>(hdr.versionMajor) << "."
+       << static_cast<int>(hdr.versionMinor)
        << " (" << hdr.descriptor << " \xE2\x80\x94 "
        << UCDDescriptorName(hdr.descriptor) << ")\n";
     os << "Body encoding: "
        << (hdr.bodyEncoding == 0 ? "binary" :
            hdr.bodyEncoding == 1 ? "XML text (debug)" :
            hdr.bodyEncoding == 2 ? "JSON text (debug)" : "unknown") << "\n";
+    const uint8_t compression = static_cast<uint8_t>(hdr.defaultCompression);
     os << "Compression: "
-       << (hdr.compression == 0 ? "none" :
-           hdr.compression == 1 ? "deflate" :
-           hdr.compression == 2 ? "gzip" :
-           hdr.compression == 3 ? "LZMA" : "unknown") << "\n";
+       << (compression == 0 ? "none" :
+           compression == 1 ? "deflate" :
+           compression == 2 ? "gzip" :
+           compression == 3 ? "LZMA" : "unknown") << "\n";
+    // The cipher is always XChaCha20-Poly1305; byte 16 says where its key
+    // comes from (spec 2.3).
     os << "Encryption: "
-       << (hdr.encryption == 0 ? "none" :
-           hdr.encryption == 1 ? "AES-256-GCM" :
-           hdr.encryption == 2 ? "ChaCha20-Poly1305" :
-           hdr.encryption == 3 ? "SuperVault remote authorization" : "unknown")
+       << (!hdr.IsEncrypted() ? "none" :
+           hdr.keySource == 1 ? "XChaCha20-Poly1305, key from a password (Argon2id)" :
+           hdr.keySource == 2 ? "XChaCha20-Poly1305, key from SuperVault remote authorization" :
+                                "XChaCha20-Poly1305")
        << (hdr.IsPrivate() ? " (private)" : "") << "\n";
     if (hdr.HasThumbnail()) {
-        os << "Thumbnail: " << (hdr.ThumbnailIsPNG() ? "PNG" : "HEIC") << ", "
+        os << "Thumbnail: " << (hdr.ThumbnailIsPng() ? "PNG" : "HEIC") << ", "
            << HumanSize(hdr.thumbnailLength)
            << (thumbShown ? " (shown)" : " (could not be decoded)") << "\n";
     } else {
         os << "Thumbnail: none\n";
     }
-    os << "\nPreview only \xE2\x80\x94 full rendering arrives with the UCD v2 engine.\n";
+    os << "\nPreview only \xE2\x80\x94 the viewer shows the thumbnail the document carries.\n";
     return os.str();
 }
 
@@ -375,7 +386,15 @@ double UltraCanvasMediaSurface::FitScale(double iw, double ih, int rotQ) const {
     bool swap = ((((rotQ % 4) + 4) % 4) % 2) == 1;   // 90° / 270° swap the box
     double effW = swap ? ih : iw;
     double effH = swap ? iw : ih;
-    return std::min(b.width / effW, b.height / effH);
+    const double fit = std::min(b.width / effW, b.height / effH);
+    return fitEnlarges ? fit : std::min(1.0, fit);
+}
+
+void UltraCanvasMediaSurface::SetFitEnlarges(bool enlarges) {
+    if (fitEnlarges == enlarges) return;
+    fitEnlarges = enlarges;
+    RequestRedraw();
+    if (onViewChanged) onViewChanged();
 }
 
 void UltraCanvasMediaSurface::RebuildProcessed() {
@@ -868,19 +887,82 @@ bool UltraCanvasMediaSurface::OnEvent(const UCEvent& event) {
     }
 }
 
+#ifdef HAS_LIBVIPS
+// An SVG the image pipeline rasterized: a drawing, which its loader draws
+// again at any scale. Only one read from a file can be drawn again.
+static bool IsRedrawableDrawing(const vips::VImage& v) {
+    if (vips_image_get_typeof(v.get_image(), "vips-loader") == 0) return false;
+    const char* loader = nullptr;
+    if (vips_image_get_string(v.get_image(), "vips-loader", &loader) != 0 || !loader) return false;
+    const char* file = v.filename();
+    return std::strncmp(loader, "svgload", 7) == 0 && file && *file;
+}
+#endif
+
+FileSavePicture UltraCanvasMediaSurface::GetSavePicture() const {
+    FileSavePicture picture;
+    if (!image || !image->IsValid()) return picture;
+    int w = image->GetWidth();
+    int h = image->GetHeight();
+#ifdef HAS_LIBVIPS
+    // What Save starts from: the size the pipeline reads the file at (an
+    // SVG's is its own size on the page), not the size it is shown at.
+    try {
+        vips::VImage v = image->GetVImage();
+        w = v.width();
+        h = v.height();
+        picture.drawing = IsRedrawableDrawing(v);
+    } catch (...) {
+        // The header did not read: the size the image reported.
+    }
+#endif
+    if ((((rotationQuarters % 4) + 4) % 4) % 2 == 1) std::swap(w, h);
+    picture.width = w;
+    picture.height = h;
+    return picture;
+}
+
 bool UltraCanvasMediaSurface::SaveProcessed(const std::string& path, std::string& error) {
+    return SaveProcessed(path, FileSaveImageSize(), error);
+}
+
+bool UltraCanvasMediaSurface::SaveProcessed(const std::string& path, const FileSaveImageSize& size,
+                                            std::string& error) {
     if (!image || !image->IsValid()) { error = "No image to save"; return false; }
 #ifdef HAS_LIBVIPS
     try {
         vips::VImage v = image->GetVImage();
+        int q = ((rotationQuarters % 4) + 4) % 4;
+        // A drawing has no pixels of its own: drawn again at the size chosen
+        // it stays sharp, where stretching the picture read at its page size
+        // would blur it. The size is the one shown, so a quarter turn swaps
+        // the sides back; drawn at the larger of the two scales, the writer
+        // then only ever shrinks the other side to fit.
+        if (!size.IsOriginal() && v.width() > 0 && v.height() > 0 && IsRedrawableDrawing(v)) {
+            const int w = (q % 2 == 1) ? size.height : size.width;
+            const int h = (q % 2 == 1) ? size.width : size.height;
+            const double scale = std::max(static_cast<double>(w) / v.width(),
+                                          static_cast<double>(h) / v.height());
+            v = vips::VImage::new_from_file(v.filename(), vips::VImage::option()->set("scale", scale));
+        }
         PixelFX::PFXImage p(v);
         p = ApplyColourAdjustments(p, adjust);
-        int q = ((rotationQuarters % 4) + 4) % 4;
         if      (q == 1) p = PixelFX::Resample::Rot(p, PixelFX::Angle::D90);
         else if (q == 2) p = PixelFX::Resample::Rot(p, PixelFX::Angle::D180);
         else if (q == 3) p = PixelFX::Resample::Rot(p, PixelFX::Angle::D270);
         if (flipH) p = PixelFX::Resample::FlipHorizontal(p);
         if (flipV) p = PixelFX::Resample::FlipVertical(p);
+        // At another size, or once the user has stored settings for the
+        // format (the Save dialog's Settings): the image writer's options -
+        // the settings, and the size. Otherwise the writer's own defaults,
+        // as before.
+        UCImageSave::ImageExportOptions options;
+        if ((!size.IsOriginal() || UltraCanvasFileLoader::HasStoredSaveSettings(path)) &&
+            UltraCanvasFileLoader::GetImageExportOptions(path, size, options)) {
+            const std::string err = ExportVImage(p, path, options);
+            if (!err.empty()) { error = err; return false; }
+            return true;
+        }
         if (!PixelFX::FileIO::Save(p, path)) {
             error = PixelFX::GetLastError();
             if (error.empty()) error = "Save failed";
@@ -895,6 +977,7 @@ bool UltraCanvasMediaSurface::SaveProcessed(const std::string& path, std::string
         return false;
     }
 #else
+    (void)size;
     error = "Saving requires libvips support";
     return false;
 #endif
@@ -1002,12 +1085,23 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     breadcrumb->SetVisible(false);   // shown once a folder is known
     AddChild(breadcrumb);
 
-    // ----- TOP TOOLBAR ROW 1: navigation + slideshow -----
-    // Two rows keep every control visible at modest widths (the toolbar widget
-    // does not yet implement overflow handling).
-    toolbar = std::make_shared<UltraCanvasToolbar>("MV_Toolbar", 0, 0, 0, 40);
+    // ----- TOP TOOLBAR: navigation + slideshow, then view + edit -----
+    // One compact row: flat buttons with small icons. A window too narrow for
+    // every control scrolls the row (mouse wheel, edge chevron) instead of
+    // clipping it. Details is not on it - the info bar under the picture
+    // carries that button.
+    toolbar = std::make_shared<UltraCanvasToolbar>("MV_Toolbar", 0, 0, 0, 30);
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    {
+        ToolbarAppearance app = toolbar->GetAppearance();
+        app.style = ToolbarStyle::Flat;
+        app.showIconLabels = false;
+        app.hasShadow = false;
+        app.iconSize = ToolbarIconSize::Small;
+        toolbar->SetAppearance(app);
+    }
+    toolbar->SetOverflowMode(ToolbarOverflowMode::Scroll);
 
     IconOnly(toolbar->AddButton("mv_open", "", ViewerIconPath("folder-open.svg"),
                                 [this] { ShowOpenDialog(); }),
@@ -1051,57 +1145,49 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         dd->SetTooltip("Slideshow transition");
         dd->SetSelectedIndex(1, false);      // Cross fade, the default
     }
-    AddChild(toolbar);
+    toolbar->AddSeparator("mv_sep2");
 
-    // ----- TOP TOOLBAR ROW 2: view + edit -----
-    toolbar2 = std::make_shared<UltraCanvasToolbar>("MV_Toolbar2", 0, 0, 0, 40);
-    toolbar2->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    IconOnly(toolbar2->AddButton("mv_zoomout", "", ViewerIconPath("zoom-out.svg"),
+    IconOnly(toolbar->AddButton("mv_zoomout", "", ViewerIconPath("zoom-out.svg"),
                                  [this] { ZoomOutAction(); }),
              "Zoom out (-)");
-    toolbar2->AddDropdownButton("mv_zoom", "",
+    toolbar->AddDropdownButton("mv_zoom", "",
             { "Fit", "25%", "50%", "75%", "100%", "150%", "200%", "400%" },
             [this](const std::string& s) {
                 if (s == "Fit") ZoomFitAction();
                 else            ZoomPercentAction(std::atof(s.c_str()));
             })->SetTooltip("Zoom level");
-    IconOnly(toolbar2->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
+    IconOnly(toolbar->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
                                  [this] { ZoomInAction(); }),
              "Zoom in (+)");
-    IconOnly(toolbar2->AddButton("mv_fit", "", ViewerIconPath("zoom-fit.svg"),
+    IconOnly(toolbar->AddButton("mv_fit", "", ViewerIconPath("zoom-fit.svg"),
                                  [this] { ZoomFitAction(); }),
              "Fit to window");
-    toolbar2->AddSeparator("mv_sep3");
-    IconOnly(toolbar2->AddButton("mv_rotl", "", ViewerIconPath("rotate-left.svg"),
+    toolbar->AddSeparator("mv_sep3");
+    IconOnly(toolbar->AddButton("mv_rotl", "", ViewerIconPath("rotate-left.svg"),
                                  [this] { if (surface) surface->RotateBy(-1); }),
              "Rotate left");
-    IconOnly(toolbar2->AddButton("mv_rotr", "", ViewerIconPath("rotate-right.svg"),
+    IconOnly(toolbar->AddButton("mv_rotr", "", ViewerIconPath("rotate-right.svg"),
                                  [this] { if (surface) surface->RotateBy(1); }),
              "Rotate right");
-    IconOnly(toolbar2->AddButton("mv_mirh", "", ViewerIconPath("mirror-h.svg"),
+    IconOnly(toolbar->AddButton("mv_mirh", "", ViewerIconPath("mirror-h.svg"),
                                  [this] { if (surface) surface->ToggleFlipHorizontal(); }),
              "Mirror horizontally");
-    IconOnly(toolbar2->AddButton("mv_mirv", "", ViewerIconPath("mirror-v.svg"),
+    IconOnly(toolbar->AddButton("mv_mirv", "", ViewerIconPath("mirror-v.svg"),
                                  [this] { if (surface) surface->ToggleFlipVertical(); }),
              "Mirror vertically");
-    toolbar2->AddSeparator("mv_sep4");
+    toolbar->AddSeparator("mv_sep4");
     // The panel follows the toggle only while the shown file takes colour
     // adjustments (ApplyToolAvailability); the toggle remembers it meanwhile.
-    IconOnly(toolbar2->AddToggleButton("mv_adjust", "", ViewerIconPath("settings-sliders.svg"),
+    IconOnly(toolbar->AddToggleButton("mv_adjust", "", ViewerIconPath("settings-sliders.svg"),
             [this](bool on) { adjustPanelOpen = on; ApplyToolAvailability(); }),
             "Adjustments: gamma, brightness, colour, sharpen");
-    IconOnly(toolbar2->AddButton("mv_curves", "", ViewerIconPath("curves.svg"),
+    IconOnly(toolbar->AddButton("mv_curves", "", ViewerIconPath("curves.svg"),
                                  [this] { ShowCurvesDialog(); }),
              "Curves");
-    IconOnly(toolbar2->AddButton("mv_save", "", ViewerIconPath("save.svg"),
+    IconOnly(toolbar->AddButton("mv_save", "", ViewerIconPath("save.svg"),
                                  [this] { ShowSaveDialog(); }),
              "Save as\xE2\x80\xA6");
-    IconOnly(toolbar2->AddButton("mv_info", "", ViewerIconPath("file-info.svg"),
-                                 [this] { ToggleDetails(); }),
-             "Details");
-    AddChild(toolbar2);
+    AddChild(toolbar);
 
     // ----- ADJUSTMENTS PANEL (hidden until "Adjust" is toggled) -----
     adjustPanel = std::make_shared<UltraCanvasContainer>("MV_Adjust", 0, 0, 0, 84);
@@ -1412,11 +1498,12 @@ bool UltraCanvasMediaViewer::IsDocumentFile(const std::string& path) {
 }
 
 bool UltraCanvasMediaViewer::IsSpreadsheetFile(const std::string& path) {
-    // Spreadsheets open in UltraCanvasSpreadsheet (ODS / CSV / TSV). The engine
-    // is always compiled into the core library, so no backend guard is needed.
-    // (ODT is an OpenDocument *text* document, not a spreadsheet — not handled.)
+    // Spreadsheets open in UltraCanvasSpreadsheet (ODS / XLSX / XLS / CSV / TSV)
+    // - every format its LoadFromFile reads. The engine is always compiled into
+    // the core library, so no backend guard is needed. (ODT is an OpenDocument
+    // *text* document, not a spreadsheet — not handled.)
     std::string e = LowerExt(path);
-    return e == "ods" || e == "csv" || e == "tsv";
+    return e == "ods" || e == "xlsx" || e == "xls" || e == "csv" || e == "tsv";
 }
 
 bool UltraCanvasMediaViewer::GetModelViewPose(ModelViewPose& out) const {
@@ -1719,7 +1806,7 @@ static std::vector<std::string> SupportedOpenExtensions() {
     };
     add(PlainTextExtensions());
     add(EBookExtensions());
-    add({ "pdf", "ods", "csv", "tsv", "ucd" });
+    add({ "pdf", "ods", "xlsx", "xls", "csv", "tsv", "ucd" });
     add({ "ttf", "otf", "ttc", "otc", "pfa", "pfb", "woff", "woff2",
           "pcf", "bdf", "fon", "fnt" });
     add(PreviewableModelExtensions());
@@ -1792,28 +1879,53 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
 
 void UltraCanvasMediaViewer::ShowSaveDialog() {
     if (!tools.save || !surface || !surface->GetImage() || !surface->GetImage()->IsValid()) return;
-    std::string current = GetCurrentPath();
-    std::string defName = current.empty() ? "image.png" : BaseName(current);
 
     FileDialogOptions opts;
     opts.SetTitle("Save image as")
-        .SetDefaultFileName(defName)
-        .AddFilter("PNG image",  std::vector<std::string>{ "png" })
-        .AddFilter("JPEG image", std::vector<std::string>{ "jpg", "jpeg" })
-        .AddFilter("WebP image", std::vector<std::string>{ "webp" })
-        .AddFilter("TIFF image", std::vector<std::string>{ "tiff", "tif" })
-        .AddFilter("AVIF image", std::vector<std::string>{ "avif" })
-        .AddFilter("BMP image",  std::vector<std::string>{ "bmp" })
+        .SetDefaultFileName(SaveNameFor(GetCurrentPath()))
         .SetParentWindow(GetWindow());
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);
+    // The picture's size - or the drawing's, which has none in pixels - so a
+    // bitmap type's Settings offer to write it at another.
+    const FileSavePicture picture = surface->GetSavePicture();
+    if (picture.drawing) opts.SetDrawingSize(picture.width, picture.height);
+    else                 opts.SetImageSize(picture.width, picture.height);
     UltraCanvasFileLoader::SaveFileDialog(opts,
-            [this](DialogResult r, const std::string& path) {
-                if (r != DialogResult::OK || path.empty() || !surface) return;
-                std::string err;
-                if (surface->SaveProcessed(path, err)) {
-                    if (infoLabel) infoLabel->SetText("Saved: " + BaseName(path));
-                } else if (infoLabel) {
-                    infoLabel->SetText("Save failed: " + err);
+            [this](DialogResult r, const std::string& chosen, const FileSaveImageSize& size) {
+                if (r != DialogResult::OK || chosen.empty() || !surface) return;
+                // A failed save says so in a message, not only in the info
+                // bar: the line at the bottom is easily missed, and then the
+                // save looks as if it did nothing at all.
+                auto save = [this, size](const std::string& path) {
+                    std::string err;
+                    if (surface && surface->SaveProcessed(path, size, err)) {
+                        if (infoLabel) {
+                            infoLabel->SetText(size.IsOriginal()
+                                    ? "Saved: " + BaseName(path)
+                                    : "Saved: " + BaseName(path) + " at " + std::to_string(size.width) +
+                                      " x " + std::to_string(size.height) + " px");
+                        }
+                        return;
+                    }
+                    if (infoLabel) infoLabel->SetText("Save failed: " + err);
+                    UltraCanvasDialogManager::ShowError(
+                            "Could not save \"" + BaseName(path) + "\".\n" + err,
+                            "Save image", nullptr, GetWindow());
+                };
+                // The dialog asked before replacing `chosen`; a name given its
+                // extension here is another file, so that one is asked about.
+                const std::string path = WithSaveExtension(chosen);
+                std::error_code ec;
+                if (path != chosen && fs::exists(PathFromUtf8(path), ec)) {
+                    UltraCanvasDialogManager::ShowConfirmation(
+                            "\"" + BaseName(path) + "\" already exists.\n"
+                            "Do you want to replace it?",
+                            "Replace File",
+                            [save, path](bool replace) { if (replace) save(path); },
+                            GetWindow());
+                    return;
                 }
+                save(path);
             });
 }
 
@@ -1860,12 +1972,18 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
 
+void UltraCanvasMediaViewer::SetInfoBarVisible(bool visible) {
+    if (infoBarVisible == visible) return;
+    infoBarVisible = visible;
+    if (bottomBar) bottomBar->SetVisible(visible);
+    RequestRedraw();
+}
+
 void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
     if (topBarsVisible == visible) return;
     topBarsVisible = visible;
-    if (toolbar)  toolbar->SetVisible(visible);
-    if (toolbar2) toolbar2->SetVisible(visible);
-    // The adjustments panel opens through its toolbar2 toggle; it never stays
+    if (toolbar) toolbar->SetVisible(visible);
+    // The adjustments panel opens through its toolbar toggle; it never stays
     // open while the bars are hidden, and comes back with them if the toggle
     // is still on.
     ApplyToolAvailability();
@@ -1929,6 +2047,14 @@ Color UltraCanvasMediaViewer::GetTransparentColor() const {
     return surface ? surface->GetTransparentColor() : Color(255, 255, 255, 255);
 }
 
+void UltraCanvasMediaViewer::SetFitEnlarges(bool enlarges) {
+    if (surface) surface->SetFitEnlarges(enlarges);
+}
+
+bool UltraCanvasMediaViewer::GetFitEnlarges() const {
+    return surface ? surface->GetFitEnlarges() : true;
+}
+
 void UltraCanvasMediaViewer::UpdateBreadcrumb() {
     if (!breadcrumb) return;
     if (currentFolder.empty() || !topBarsVisible) {
@@ -1988,7 +2114,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     }
 #endif
     if (!handled && kind == MediaKind::Sheet && sheetView) {
-        // Spreadsheets (ODS / CSV / TSV) open in the spreadsheet engine.
+        // Spreadsheets (ODS / XLSX / XLS / CSV / TSV) open in the spreadsheet engine.
         ShowView(MediaKind::Sheet);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* sv = static_cast<UltraCanvasSpreadsheet*>(sheetView.get());
@@ -2079,20 +2205,16 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         handled = true;
     }
     if (!handled && kind == MediaKind::UCDoc) {
-        // UltraCanvas Document container. Full rendering arrives with the UCD
-        // v2 engine; until then show the embedded preview thumbnail — stored
-        // raw right after the fixed header exactly so viewers can preview
-        // without parsing the body — or, without one, a header summary in the
-        // text view. The details popup gets the container information either way.
-        UCDHeader hdr;
+        // UltraCanvas Document container: the embedded preview thumbnail -
+        // stored raw right after the fixed header exactly so viewers can
+        // preview without parsing the body - or, without one, a header
+        // summary in the text view. The details popup gets the container
+        // information either way.
+        const UCDPreview ucd = ReadUCDPreview(path);
         std::shared_ptr<UCImage> thumb;
-        if (ReadUCDHeader(path, hdr)) {
-            std::vector<uint8_t> raw;
-            if (ReadUCDThumbnail(path, hdr, raw))
-                thumb = UCImage::LoadFromMemory(raw);
-        }
+        if (!ucd.thumbnail.empty()) thumb = UCImage::LoadFromMemory(ucd.thumbnail);
         bool thumbShown = thumb && thumb->IsValid();
-        ucdDetails = BuildUCDDetailsText(path, hdr, thumbShown);
+        ucdDetails = BuildUCDDetailsText(path, ucd, thumbShown);
         if (thumbShown) {
             ShowView(MediaKind::Image);
             surface->ShowImage(thumb, transition, transitionDurationMs, animated,
@@ -2125,9 +2247,11 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         // (1) The image pipeline, where it rasterizes the format at the size
         // asked for. That is the best picture for svg/svgz and for eps/ps on
         // a build with a PostScript loader, and it comes back as an image.
+        // GetFresh: a drawing saved over since it was last shown is read
+        // again, not served from the path-keyed image cache as it was.
         std::shared_ptr<UCImage> img;
         if (UltraCanvasSupportedFormats::CanImagePipelineLoad(ext))
-            img = UCImage::Get(path);
+            img = UCImage::GetFresh(path);
 
         // (2) The drawing itself. A reader registered through the vector
         // preview seam turns the file into a VectorDocument, which the vector
@@ -2238,7 +2362,10 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!handled) {
         // Image — or a kind whose backend is unavailable, shown best-effort.
         ShowView(MediaKind::Image);
-        auto img = UCImage::Get(path);
+        // GetFresh: the image cache is keyed by path, and a picture edited
+        // and saved since it was last shown must open as it is now - a file
+        // manager's preview pane shows the same file again after every save.
+        auto img = UCImage::GetFresh(path);
         // The adjustments (curves included) carry over to the next bitmap;
         // a drawing shown here (an SVG) takes none of them.
         surface->ShowImage(img, transition, transitionDurationMs, animated,
@@ -2317,20 +2444,22 @@ void UltraCanvasMediaViewer::UpdateToolAvailability() {
 }
 
 void UltraCanvasMediaViewer::ApplyToolAvailability() {
-    if (toolbar2) {
+    if (toolbar) {
         auto show = [this](const char* id, bool on) {
-            if (auto item = toolbar2->GetWidget(id)) item->SetVisible(on);
+            if (auto item = toolbar->GetWidget(id)) item->SetVisible(on);
         };
         for (const char* id : { "mv_zoomout", "mv_zoom", "mv_zoomin", "mv_fit" }) show(id, tools.zoom);
         for (const char* id : { "mv_rotl", "mv_rotr", "mv_mirh", "mv_mirv" })   show(id, tools.transform);
         show("mv_adjust", tools.colour);
         show("mv_curves", tools.colour);
         show("mv_save",   tools.save);
-        // A separator only between two groups that are both up. Details
-        // (always shown) ends the row, so the last one needs only a group
-        // before it.
+        // A separator only between two groups that are both up: the
+        // navigation / slideshow group is always there, the view and edit
+        // groups only for a file that takes them.
+        const bool edit = tools.colour || tools.save;
+        show("mv_sep2", tools.zoom || tools.transform || edit);
         show("mv_sep3", tools.zoom && tools.transform);
-        show("mv_sep4", tools.zoom || tools.transform);
+        show("mv_sep4", (tools.zoom || tools.transform) && edit);
     }
     if (adjustPanel) adjustPanel->SetVisible(adjustPanelOpen && tools.colour && topBarsVisible);
     RequestRedraw();
@@ -2921,6 +3050,16 @@ void UltraCanvasMediaViewer::SetDetailsVisible(bool visible) {
 void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
                                      const CSSLayout::LayoutContext& ctx) {
     UltraCanvasContainer::Arrange(finalRect, ctx);
+    // The zoom the info bar shows is the fit, which the surface's size sets:
+    // after a resize - or the first layout of a viewer that loaded its file
+    // while hidden, a hover preview - it is reported again.
+    if (surface && surface->IsVisible()) {
+        const Size2Df now(surface->GetWidth(), surface->GetHeight());
+        if (now.width != infoBarSurfaceSize.width || now.height != infoBarSurfaceSize.height) {
+            infoBarSurfaceSize = now;
+            UpdateInfoBar();
+        }
+    }
     if (!IsDetailsVisible()) return;
     // Over the active view, inset a little, and no wider than a table of
     // tags and values reads comfortably.
@@ -3065,6 +3204,22 @@ void UltraCanvasMediaViewer::StopPlayback() {
 #ifdef ULTRACANVAS_ENABLE_AUDIO
     if (audioPlayer) static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->Stop();
 #endif
+}
+
+bool UltraCanvasMediaViewer::IsPlayingMedia() const {
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (activeKind == MediaKind::Video && videoPlayer) {
+        auto player = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->GetPlayer();
+        if (player && player->IsPlaying()) return true;
+    }
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (activeKind == MediaKind::Audio && audioPlayer) {
+        auto player = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->GetPlayer();
+        if (player && player->IsPlaying()) return true;
+    }
+#endif
+    return false;
 }
 
 // ===== EVENTS =====

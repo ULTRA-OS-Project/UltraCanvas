@@ -1,7 +1,8 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
-// Spreadsheet file I/O implementation (ODS, XLSX, CSV)
-// Version: 1.0.0
-// Last Modified: 2026-01-09
+// Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
+// dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.0.2
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include <stdexcept>   // predeclare std::runtime_error for libspecific/Cairo/ImageCairo.h
@@ -16,6 +17,7 @@
 #include <iomanip>
 #include <locale>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <cctype>
 #include <ctime>
@@ -232,6 +234,8 @@ class ODSLoader {
 private:
     UltraCanvasSpreadsheet* spreadsheet_;
     mz_zip_archive zip_;
+    // Ours: miniz reads the archive through it but never closes it.
+    std::FILE* file_ = nullptr;
     std::map<std::string, CellStyle> styles_;
     // Number/currency/date/percentage formats keyed by their ODF data-style
     // name (e.g. "N110"), referenced from a cell style's style:data-style-name.
@@ -260,6 +264,7 @@ public:
 
     ~ODSLoader() {
         mz_zip_reader_end(&zip_);
+        if (file_) std::fclose(file_);
     }
 
     const std::string& GetError() const { return error_; }
@@ -268,7 +273,11 @@ public:
         // Open ZIP archive. ODS files are ZIP containers, so a failure here is
         // either a file-access problem (locked / no permission / missing) or the
         // file simply is not a valid OpenDocument archive — tell them which.
-        if (!mz_zip_reader_init_file(&zip_, filePath.c_str(), 0)) {
+        // Opened through OpenFileUtf8, not miniz's own fopen: that converts a
+        // UTF-8 name only under MSVC and 64-bit MinGW, and there opens with
+        // _wfopen_s, which locks other programs out of writing the file.
+        file_ = OpenFileUtf8(filePath, "rb");
+        if (!file_ || !mz_zip_reader_init_cfile(&zip_, file_, 0, 0)) {
             std::string openError = CSVDescribeOpenError(filePath);
             error_ = openError.empty()
                 ? "The file is not a valid OpenDocument spreadsheet (.ods): " + filePath
@@ -1742,7 +1751,7 @@ public:
 // ULTRACANVASSPREADSHEET FILE I/O METHODS
 // ============================================================================
 
-bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std::string& password) {
     lastError_.clear();
 
     // Report file-level problems (missing / locked / no permission) up front so
@@ -1764,7 +1773,9 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
     if (ext == ".ods") {
         return LoadODS(filePath);
     } else if (ext == ".xlsx") {
-        return LoadXLSX(filePath);
+        return LoadXLSX(filePath, password);
+    } else if (ext == ".xls") {
+        return LoadXLS(filePath, password);
     } else if (ext == ".csv") {
         return LoadCSV(filePath);
     } else if (ext == ".tsv") {
@@ -1772,11 +1783,11 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
     }
 
     lastError_ = "Unsupported file type '" + ext +
-                 "'. Supported formats are .ods, .xlsx, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .xls, .csv and .tsv: " + filePath;
     return false;
 }
 
-bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath, const std::string& password) {
     lastError_.clear();
 
     size_t dot = filePath.find_last_of('.');
@@ -1787,16 +1798,26 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
+    // Only an .xlsx can carry a password; saving another format without it
+    // would drop the protection without a word.
+    if (!password.empty() && ext != ".xlsx") {
+        lastError_ = "Only an Excel workbook (.xlsx) can be saved with a password: " + filePath;
+        return false;
+    }
     if (ext == ".ods") {
         return SaveODS(filePath);
     } else if (ext == ".xlsx") {
-        return SaveXLSX(filePath);
+        return SaveXLSX(filePath, password);
     } else if (ext == ".csv") {
         return SaveCSV(filePath);
     } else if (ext == ".tsv") {
         CSVExportOptions tsv;
         tsv.fieldSeparator = '\t';
         return SaveCSVWithOptions(filePath, tsv);  // Current sheet, tab delimited
+    } else if (ext == ".xls") {
+        lastError_ = "Saving as Excel 97-2003 (.xls) is not supported; "
+                     "save as .xlsx or .ods instead: " + filePath;
+        return false;
     }
 
     lastError_ = "Unsupported save format '" + ext +
@@ -1805,10 +1826,12 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
 }
 
 bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     ODSLoader loader(this);
     bool result = loader.Load(filePath);
     if (result) {
+        ClearUndoHistory();   // the loaded document starts a fresh history
         Recalculate();
         // Columns the document did not size get fitted to their content on the
         // next render, once text can be measured with real font metrics.
@@ -1854,6 +1877,7 @@ SpreadsheetSheet* UltraCanvasSpreadsheet::PrepareCSVSheet(int sheetIndex) {
 }
 
 bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
     if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
@@ -1863,6 +1887,7 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
     bool result = CSVLoader::Load(filePath, sheet, CSVImportOptions{}, /*detect*/true, &lastError_);
     if (result) {
         SetActiveSheet(0);
+        ClearUndoHistory();   // the loaded document starts a fresh history
         Recalculate();
         // A CSV carries no column widths at all, so every column is fitted.
         RequestAutoFitForUnsizedColumns();
@@ -1874,6 +1899,7 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
 bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
                                                 const CSVImportOptions& options,
                                                 int sheetIndex) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
     if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
@@ -1881,6 +1907,7 @@ bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
     bool result = CSVLoader::Load(filePath, sheet, options, /*detect*/false, &lastError_);
     if (result) {
         SetActiveSheet(0);
+        ClearUndoHistory();   // the loaded document starts a fresh history
         Recalculate();
         // A CSV carries no column widths at all, so every column is fitted.
         RequestAutoFitForUnsizedColumns();

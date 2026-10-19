@@ -8,6 +8,7 @@
 
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
+#include <locale>
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -3370,6 +3371,7 @@ std::vector<std::string> ExtractStringArray(const std::string& json, const std::
 
 std::string UltraCanvasNodeDiagram::ToJson() const {
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
     out << "{\n";
     
     // Viewport

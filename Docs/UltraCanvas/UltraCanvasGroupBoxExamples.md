@@ -1,5 +1,25 @@
 # UltraCanvasGroupBox Documentation
 
+<!-- doc-check: UltraCanvasRadioGroup foodGroup; -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factory Functions](#factory-functions)
+  - [Key Methods](#key-methods)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic framed group](#basic-framed-group)
+  - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
+  - [Switch-activated section with an info icon](#switch-activated-section-with-an-info-icon)
+  - [Collapsible card](#collapsible-card)
+  - [Sections of a window as cards](#sections-of-a-window-as-cards)
+- [Demo](#demo)
+
 ## Overview
 
 **UltraCanvasGroupBox** is a titled container (a "group box" or "fieldset") that
@@ -8,7 +28,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.0.0
+**Version:** 1.3.0
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -22,8 +42,11 @@ interactive behaviour.
 - **Full Visual Styling**: border colour/width, corner radius, background fill,
   caption font/colour, header background and separator, content padding — all via
   `GroupBoxVisualStyle`.
-- **Style Presets**: `GroupBoxVisualStyle::Default()` and
-  `GroupBoxVisualStyle::Card()` (iOS-like grouped card).
+- **Style Presets**: `GroupBoxVisualStyle::Default()`,
+  `GroupBoxVisualStyle::Card()` (iOS-like grouped card) and
+  `GroupBoxVisualStyle::SectionCard()` (a window section as a white card on
+  the light page of `Colors::SectionPage` - the look UltraMail's panes and
+  UltraPaint's side panel share).
 - **Activator (checkbox or switch)**: an optional checkbox- or switch-style
   toggle in the title bar that enables/disables (greys out) the contained
   children. It can be placed on the **left or right** side of the title bar.
@@ -102,10 +125,20 @@ std::function<void(bool)> onCollapsedChanged;   // new collapsed state
 
 ```cpp
 auto gb = CreateGroupBox("food", 20, 20, 280, 150, "Best Food");
-gb->AddChild(CreateRadio("r1", "Pizza"));
-gb->AddChild(CreateRadio("r2", "Taco"));
-gb->AddChild(CreateRadio("r3", "Burrito"));
-window->AddElement(gb);
+auto pizza   = std::make_shared<UltraCanvasRadio>("r1", "Pizza");
+auto taco    = std::make_shared<UltraCanvasRadio>("r2", "Taco");
+auto burrito = std::make_shared<UltraCanvasRadio>("r3", "Burrito");
+gb->AddChild(pizza);
+gb->AddChild(taco);
+gb->AddChild(burrito);
+window->AddChild(gb);
+
+// The box only frames the radios. One-of-many selection comes from an
+// UltraCanvasRadioGroup that lives as long as they do (e.g. a member of
+// your window class).
+foodGroup.AddRadioButton(pizza);
+foodGroup.AddRadioButton(taco);
+foodGroup.AddRadioButton(burrito);
 ```
 
 ### Checkable group (enables/disables its contents)
@@ -126,7 +159,7 @@ gb->SetFrameStyle(GroupBoxFrameStyle::Header);
 gb->EnableActivatorSwitch(GroupBoxIndicatorSide::Right);  // switch on the right
 gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);         // ⓘ on the left
 gb->SetHelpText("Toggle the switch to enable or disable this section.");
-gb->AddChild(/* ... */);
+gb->AddChild(std::make_shared<UltraCanvasCheckbox>("autosave", "Save automatically"));
 gb->onCheckedChanged = [](bool on) { /* ... */ };
 ```
 
@@ -137,6 +170,38 @@ auto gb = CreateGroupBox("info", 20, 20, 300, 160, "GROUPBOX");
 gb->SetFrameStyle(GroupBoxFrameStyle::Header);
 gb->SetVisualStyle(GroupBoxVisualStyle::Card());
 gb->SetCollapsible(true);
+```
+
+### Sections of a window as cards
+
+`SectionCard()` is one section of a window as a white card: a hairline border,
+8 px corners, the caption in bold grey over a hairline separator, 8 px of
+padding inside. It is drawn for the `Header` frame style and for a page of
+`Colors::SectionPage` around the cards - on a white page a white card shows
+nothing but its hairline. Its colours are compile-time constants beside the
+other UI colours (`Colors::SectionCardBackground`, `SectionCardBorder`,
+`SectionCardCaption`), so a container drawn as a matching card can use them
+too; a list inside a card takes `Colors::ListRowHover`
+and `Colors::ListRowSelected` for its rows (see
+`UltraCanvasListViewExamples.md`). Applications that share them look alike,
+and stay alike when they change; UltraMail and UltraPaint both build their
+cards from them. Change what the content needs, not the look: the caption's
+size to the application's body size, the padding.
+
+```cpp
+auto panel = CreateContainer("sidePanel", 0, 0, 300, 0);
+panel->layout.SetFlexColumn().SetFlexGap(8);
+panel->SetPadding(8);
+panel->SetBackgroundColor(Colors::SectionPage);
+
+auto layers = CreateGroupBox("layers", 0, 0, 268, 0, "Layers");
+layers->SetFrameStyle(GroupBoxFrameStyle::Header);
+GroupBoxVisualStyle card = GroupBoxVisualStyle::SectionCard();
+card.titleFont.fontSize = 9.0f;     // the application's body size
+card.contentPadding = 6.0f;
+layers->SetVisualStyle(card);
+layers->layout.SetFlexColumn().SetFlexGap(4);
+panel->AddChild(layers);
 ```
 
 ## Demo

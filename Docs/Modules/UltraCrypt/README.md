@@ -1,15 +1,15 @@
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.1.0
+**Version:** 0.3.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-08-10
+**Last Modified:** 2026-10-17
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
-authenticated encryption, key derivation and secure random generation are
-implemented, so that no application, plugin or sibling module ever has to
-write its own.
+authenticated encryption, digital signatures, key derivation and secure
+random generation are implemented, so that no application, plugin or sibling
+module ever has to write its own.
 
 It follows the same rules as UltraNet and UltraDatabase — clear structure,
 names understandable from the name itself, `UltraCryptResult` from every
@@ -26,7 +26,9 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation and HKDF-SHA-256/512. (The RFC 4648 Base32/Base64
+Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8) and
+AES-128/192/256-CBC for foreign formats (§5.9).
+(The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
 (`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
@@ -40,12 +42,20 @@ therefore in place.
 **Notes on two of these.** SHA-1 is vendored (~150 lines in
 `UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
 unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
-accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. One caller
+sets `allowLegacy`: the reader of password-protected Office files
+(`UltraCanvasOfficeEncryption.cpp`), because Office 2010 derives its keys with
+SHA-1 - a password hash and key derivation, which SHA-1's collisions do not
+reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
-which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18.
+which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. AES is
+vendored too (`UltraCryptAes.cpp`, ~470 lines), because libsodium has no AES
+block cipher at all: it is bitsliced and constant-time, so the reasoning that
+kept AES-GCM out of this module's own formats (§3.4) — that a table-driven
+software AES leaks its key through the cache — does not apply to it.
 
-**Not yet implemented:** the public-key surface (§2, no consumer). BLAKE3-256,
-once listed as optional, has been dropped altogether (§9).
+**Not yet implemented:** key agreement and X.509 (§2, no consumer).
+BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ---
 
@@ -123,9 +133,9 @@ Two caveats stated plainly:
 ## 2. Scope
 
 **In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
-authenticated encryption (AEAD), password-based and key-derivation functions,
-cryptographically secure random generation, constant-time comparison, and
-secure (zeroizing) memory.
+authenticated encryption (AEAD), digital signatures (Ed25519), password-based
+and key-derivation functions, cryptographically secure random generation,
+constant-time comparison, and secure (zeroizing) memory.
 
 **Out of scope:**
 
@@ -133,9 +143,9 @@ secure (zeroizing) memory.
   UltraCrypt never opens a socket and never validates a certificate.
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Public-key cryptography** (signatures, key agreement, X.509). No consumer
-  needs it yet. The surface is arranged so `UltraCrypt_Sign` /
-  `UltraCrypt_Verify` can be added later without disturbing anything here.
+- **Key agreement and X.509.** No consumer needs them. Signatures, the one
+  public-key operation a signed catalog or update needs, are in (§5.8); the
+  rest can be added the same way without disturbing anything here.
 - **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
   request flow). Those live in their consumers and are built *from* these
   primitives.
@@ -643,9 +653,11 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
 
 ### 5.4 Authenticated encryption (AEAD)
 
-Only AEAD is offered. There is **no raw block-cipher or unauthenticated-mode
-surface** — that omission is deliberate and is what prevents the next
-`UltraCanvasDocument` from appearing.
+AEAD is the only encryption UltraCanvas uses for anything it defines. There is
+**no raw block-cipher surface**, and the one unauthenticated mode — AES-CBC,
+§5.9 — exists solely because formats defined elsewhere require it. That is
+deliberate and is what prevents the next `UltraCanvasDocument` from
+appearing.
 
 ```cpp
 enum class UltraCryptAeadAlgorithm : uint8_t {
@@ -819,6 +831,151 @@ different one.
 
 ---
 
+### 5.8 Digital signatures (Ed25519)
+
+One scheme, Ed25519 (RFC 8032): deterministic, 64-byte detached signatures,
+32-byte public keys, 64-byte secret keys in the backend's form (the 32-byte
+seed with the public key appended). The verifier holds nothing but a public
+key, so a signing key never leaves the machine that signs. This is what a
+signed catalog, manifest or update is checked with.
+
+```cpp
+enum class UltraCryptSignatureAlgorithm : uint8_t { Ed25519 };
+
+size_t UltraCrypt_GetSignaturePublicKeySize(UltraCryptSignatureAlgorithm); // 32
+size_t UltraCrypt_GetSignatureSecretKeySize(UltraCryptSignatureAlgorithm); // 64
+size_t UltraCrypt_GetSignatureSeedSize(UltraCryptSignatureAlgorithm);      // 32
+size_t UltraCrypt_GetSignatureSize(UltraCryptSignatureAlgorithm);          // 64
+bool   UltraCrypt_IsSignatureAvailable(UltraCryptSignatureAlgorithm);
+
+// A fresh pair from the CSPRNG.
+UltraCryptResult UltraCrypt_GenerateSignatureKeyPair(
+        UltraCryptSignatureAlgorithm, std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey);
+
+// The pair a 32-byte seed determines; a seed kept in a vault is the whole
+// signing identity.
+UltraCryptResult UltraCrypt_SignatureKeyPairFromSeed(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& seed,
+        std::vector<uint8_t>& outPublicKey, UltraCryptSecureBuffer& outSecretKey);
+
+// The public key a secret key carries.
+UltraCryptResult UltraCrypt_GetSignaturePublicKey(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& secretKey,
+        std::vector<uint8_t>& outPublicKey);
+
+// Deterministic detached signature over the exact bytes given.
+UltraCryptResult UltraCrypt_Sign(UltraCryptSignatureAlgorithm,
+                                 const UltraCryptSecureBuffer& secretKey,
+                                 const void* data, size_t size,
+                                 std::vector<uint8_t>& outSignature);
+
+// SignatureInvalid when the signature does not match the message and key —
+// one code whether the message, the signature or the key is off.
+UltraCryptResult UltraCrypt_Verify(UltraCryptSignatureAlgorithm,
+                                   const std::vector<uint8_t>& publicKey,
+                                   const void* data, size_t size,
+                                   const std::vector<uint8_t>& signature);
+
+// The same over a file's bytes as they are on disk.
+UltraCryptResult UltraCrypt_SignFile(UltraCryptSignatureAlgorithm,
+                                     const UltraCryptSecureBuffer& secretKey,
+                                     const std::string& filePath,
+                                     std::vector<uint8_t>& outSignature);
+UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm,
+                                       const std::vector<uint8_t>& publicKey,
+                                       const std::string& filePath,
+                                       const std::vector<uint8_t>& signature);
+```
+
+Rules: a key or signature of the wrong length is refused with
+`InvalidKeySize` / `InvalidArgument` before anything is checked; a
+verification failure is `SignatureInvalid` and nothing else, since a verifier
+has no business telling a wrong key from a wrong byte. Signing is
+deterministic, so there is no nonce to store and no entropy failure at
+signing time. Covered by the RFC 8032 §7.1 vectors (TEST 1, 2, 3 and
+SHA(abc)) plus a flipped message bit, a flipped signature bit, a wrong key and
+a file with a byte appended.
+
+*Serves:* UltraStore's signed catalog, and any signed manifest or update.
+
+---
+
+### 5.9 AES-CBC — interop only
+
+Encrypted Office files (ECMA-376 agile encryption), PDF's AESV2 / AESV3,
+OpenSSL's `enc` output and many other formats defined elsewhere are AES in
+CBC mode. libsodium has no AES block cipher (its AES-256-GCM is AES-NI code
+that does not expose one), so UltraCrypt carries its own:
+`core/UltraCrypt/UltraCryptAes.cpp`.
+
+- **Constant-time.** Bitsliced: eight 64-bit planes, each holding one bit of
+  every state byte, through Boyar and Peralta's 113-gate S-box circuit (the
+  one BearSSL's `aes_ct` uses). No table is indexed by a secret byte and no
+  branch depends on one — the cache-timing leak of a table-driven AES is
+  exactly the hazard §3.4 names, and this design does not have it.
+- **Portable.** No AES instructions, no libsodium — it works on every CPU and
+  in a build without a backend (only a generated IV then fails, with the
+  RNG's error).
+- **Speed.** About 15 MB/s encrypting and 23 MB/s decrypting on a current
+  x86-64 core (decryption runs four blocks at once; CBC encryption is a serial
+  chain). Ample for reading a file; not a bulk cipher.
+
+```cpp
+enum class UltraCryptCbcPadding : uint8_t {
+    Pkcs7,   // PKCS #7 / RFC 5652: 1-16 bytes, each the pad length
+    NoPadding // the plaintext is a whole number of blocks (the format pads)
+};
+
+struct UltraCryptCbcParams {
+    // Encrypt: if empty, a fresh random IV is generated and written back here.
+    // Decrypt: must be the IV used at encryption.
+    std::vector<uint8_t> iv;
+    UltraCryptCbcPadding padding = UltraCryptCbcPadding::Pkcs7;
+};
+
+size_t UltraCrypt_GetAesBlockSize();   // 16; also the IV size
+
+UltraCryptResult UltraCrypt_AesCbcEncrypt(const UltraCryptSecureBuffer& key,
+                                          UltraCryptCbcParams& params,
+                                          const void* plaintext, size_t size,
+                                          std::vector<uint8_t>& outCiphertext);
+
+UltraCryptResult UltraCrypt_AesCbcDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptCbcParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+```
+
+The key is 16, 24 or 32 bytes (AES-128 / 192 / 256); anything else is
+`InvalidKeySize`, an IV that is not 16 bytes `InvalidNonceSize`, a ciphertext
+that is not whole blocks `InvalidArgument`. With `Pkcs7`, padding that does
+not check out is `DecryptionFailed` with an empty output; the check runs
+without a branch on the plaintext. `NoPadding` is for formats that pad their own
+way — agile encryption pads each 4096-byte segment to the block and records
+the true length elsewhere.
+
+**Using it safely.** CBC has no integrity. A changed ciphertext decrypts to
+changed plaintext, and a wrong key can — rarely — produce plaintext that ends
+in valid padding, so `DecryptionFailed` is a hint, not proof. Two rules
+follow:
+
+1. **Never for UltraCanvas's own data.** Everything UltraCanvas defines is
+   sealed with XChaCha20-Poly1305 (§5.4).
+2. **Check the format's MAC first.** When a format carries one over the
+   ciphertext (agile encryption's `dataIntegrity` HMAC, an encrypt-then-MAC
+   tag), verify it with `UltraCrypt_Hmac` and `UltraCrypt_ConstantTimeEquals`
+   *before* decrypting, and decrypt nothing that fails. A decrypter that
+   answers "bad padding" to ciphertexts an attacker chose is a padding oracle,
+   and that recovers the plaintext without the key.
+
+*Serves:* reading (and, where a format must be written back, writing)
+password-protected files from other programs. First consumer: the decryptor
+of password-protected `.xlsx` and `.docx` files
+(`UltraCanvas/core/UltraCanvasOfficeEncryption.cpp`, ECMA-376 agile
+encryption), which checks the files' `dataIntegrity` HMAC before it decrypts a
+byte — the rule above, applied. See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -876,10 +1033,11 @@ is part of the deliverable, not a follow-up:
 
 - **Published test vectors, all mandatory** (implemented in
   `Tests/UltraCryptTests.cpp`): FIPS 180-4 (SHA-1 and SHA-2), RFC 2202 / 4231
-  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8439
+  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8032
+  (Ed25519), RFC 8439
   (ChaCha20-Poly1305) plus the XChaCha20-Poly1305 vectors from
   draft-irtf-cfrg-xchacha and libsodium's own suite, NIST CAVP GCM for the
-  interop-only AES path, and RFC 4226 App. D / RFC 6238 App. B once the OTP
+  interop-only AES path, FIPS 197 App. C and SP 800-38A F.2 for AES-CBC, and RFC 4226 App. D / RFC 6238 App. B once the OTP
   engine lands.
 
   **One gap, stated plainly:** RFC 9106's Argon2id vectors use parallelism 4,
@@ -890,7 +1048,10 @@ is part of the deliverable, not a follow-up:
   ignored so a stored parameter set never misdescribes how a key was derived.
 - **Negative tests:** every AEAD open must be exercised with a flipped
   ciphertext bit, a flipped AAD bit, a wrong nonce and a truncated tag, each
-  asserting `AuthenticationFailed` **and** an empty output.
+  asserting `AuthenticationFailed` **and** an empty output. AES-CBC's
+  padding check is exercised with a wrong key, pad bytes of 0, 17 and 255, and
+  padding with one byte off, each asserting `DecryptionFailed` and an empty
+  output.
 - **Round-trip and cross-platform:** a fixture file sealed on one platform must
   open on the other two in CI — this is the guarantee Option B exists to
   provide, so it must be tested, not assumed.
@@ -907,7 +1068,7 @@ is part of the deliverable, not a follow-up:
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
-| **4** | Optional additions as needed: XChaCha20-Poly1305 at volume, public-key surface |
+| **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.

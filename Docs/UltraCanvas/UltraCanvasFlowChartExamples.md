@@ -1,7 +1,39 @@
 # UltraCanvasFlowChart Documentation
 
-**Version:** 2.2.0
+**Version:** 2.2.1
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Node Management](#node-management)
+  - [Connection Management](#connection-management)
+  - [Styling & Theme](#styling--theme)
+  - [Interaction](#interaction)
+  - [Edit Modes](#edit-modes)
+  - [Callbacks](#callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Palette Class](#palette-class)
+- [Data Structures](#data-structures)
+  - [FlowChartNode](#flowchartnode)
+  - [FlowChartConnection](#flowchartconnection)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Pre-built Order Processing Chart](#pre-built-order-processing-chart)
+  - [Toolbar — Switching Edit Mode and Zoom](#toolbar-—-switching-edit-mode-and-zoom)
+  - [Grid + Snap-to-Grid Checkboxes](#grid--snap-to-grid-checkboxes)
+  - [Shape Palette — Click to Place](#shape-palette-—-click-to-place)
+  - [Live Editing of the Selected Node](#live-editing-of-the-selected-node)
+  - [Live Editing of the Selected Connection](#live-editing-of-the-selected-connection)
+  - [Adding a Sticky Note at Runtime](#adding-a-sticky-note-at-runtime)
+  - [Delete Selected and Clear All](#delete-selected-and-clear-all)
+- [Edit Mode Cheat-Sheet](#edit-mode-cheat-sheet)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -117,7 +149,7 @@ std::string GetSelectedNodeId() const;
 void SetZoomLevel(double zoom);
 void SetPanOffset(double x, double y);
 double  GetZoomLevel() const;
-Point2Df GetPanOffset() const;
+Point2Dd GetPanOffset() const;
 
 void SetCreateNodeMode(bool enable);
 void SetPendingNodeShape(FlowChartShape shape);
@@ -128,21 +160,30 @@ EditMode GetEditMode() const;
 
 ### Edit Modes
 
+`EditMode` is nested in the class — outside it, write
+`UltraCanvasFlowChart::EditMode::Select`.
+
 ```cpp
-enum class EditMode { Select, CreateNode, CreateConnection, Pan };
+class UltraCanvasFlowChart : public UltraCanvasUIElement {
+public:
+    enum class EditMode { Select, CreateNode, CreateConnection, Pan };
+};
 ```
 
 ### Callbacks
 
 ```cpp
-std::function<void(const std::string&)>                      onNodeClick;
-std::function<void(const std::string&)>                      onNodeDoubleClick;
-std::function<void(const std::string&, double, double)>      onNodeDragged;
-std::function<void(const std::string&)>                      onConnectionClick;
-std::function<void(const std::string&)>                      onNodeCreated;
-std::function<void(const std::string&)>                      onNodeSelected;
-std::function<void(const std::string&, const std::string&)>  onConnectionCreated;
-std::function<void(EditMode)>                                onEditModeChanged;
+class UltraCanvasFlowChart : public UltraCanvasUIElement {
+public:
+    std::function<void(const std::string&)>                      onNodeClick;
+    std::function<void(const std::string&)>                      onNodeDoubleClick;
+    std::function<void(const std::string&, double, double)>      onNodeDragged;
+    std::function<void(const std::string&)>                      onConnectionClick;
+    std::function<void(const std::string&)>                      onNodeCreated;
+    std::function<void(const std::string&)>                      onNodeSelected;
+    std::function<void(const std::string&, const std::string&)>  onConnectionCreated;
+    std::function<void(EditMode)>                                onEditModeChanged;
+};
 ```
 
 ### Factory Functions
@@ -297,17 +338,21 @@ chart->SetConnectionWidth("c6", 1.5f);
 ### Toolbar — Switching Edit Mode and Zoom
 
 ```cpp
+int btnY = 800, btnX = 30, btnW = 110, btnH = 38, spacing = 15;
+
 auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", btnX, btnY, btnW, btnH);
 btnSelect->SetText("Select");
 btnSelect->SetOnClick([chart]() {
     chart->SetEditMode(UltraCanvasFlowChart::EditMode::Select);
 });
+btnX += btnW + spacing;
 
 auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", btnX, btnY, btnW, btnH);
 btnConnect->SetText("Connect");
 btnConnect->SetOnClick([chart]() {
     chart->SetEditMode(UltraCanvasFlowChart::EditMode::CreateConnection);
 });
+btnX += btnW + spacing + 30;
 
 auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", btnX, btnY, 90, btnH);
 btnZoomIn->SetText("Zoom +");
@@ -315,6 +360,7 @@ btnZoomIn->SetOnClick([chart]() {
     float z = chart->GetZoomLevel() * 1.2f;
     if (z <= 3.0f) chart->SetZoomLevel(z);
 });
+btnX += 90 + spacing;
 
 auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", btnX, btnY, 90, btnH);
 btnZoomOut->SetText("Zoom -");
@@ -322,6 +368,7 @@ btnZoomOut->SetOnClick([chart]() {
     float z = chart->GetZoomLevel() * 0.8f;
     if (z >= 0.3f) chart->SetZoomLevel(z);
 });
+btnX += 90 + spacing;
 
 auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 120, btnH);
 btnReset->SetText("Reset View");
@@ -366,9 +413,16 @@ container->AddChild(palette);
 
 ### Live Editing of the Selected Node
 
-When the chart emits `onNodeSelected`, the demo populates a property editor and writes changes back to the chart:
+When the chart emits `onNodeSelected`, the demo populates a property editor and writes changes back to the chart. `loadNodeIntoEditor` and `kShapeOptions` (an array of `{label, FlowChartShape}` pairs) are the demo's own:
 
 ```cpp
+// The id of the node being edited, and the editor's widgets
+auto selectedNodeId = std::make_shared<std::string>();
+auto ddShape = std::make_shared<UltraCanvasDropdown>("ddShape", 12, 40, 266, 26);
+auto inLabel = std::make_shared<UltraCanvasTextInput>("inLabel", 12, 80, 266, 26);
+auto inW = std::make_shared<UltraCanvasTextInput>("inW", 12, 120, 126, 26);
+auto inH = std::make_shared<UltraCanvasTextInput>("inH", 150, 120, 128, 26);
+
 chart->onNodeSelected = [selectedNodeId, loadNodeIntoEditor]
                        (const std::string& id) {
     *selectedNodeId = id;
@@ -401,6 +455,11 @@ inH->onFocusLost = applyNodeSize;
 ### Live Editing of the Selected Connection
 
 ```cpp
+auto selectedConnId = std::make_shared<std::string>();
+auto inCLabel = std::make_shared<UltraCanvasTextInput>("inCLabel", 12, 40, 266, 26);
+auto ddStyle = std::make_shared<UltraCanvasDropdown>("ddStyle", 12, 80, 266, 26);   // Straight, Orthogonal, Curved
+auto inCWidth = std::make_shared<UltraCanvasTextInput>("inCWidth", 12, 120, 126, 26);
+
 chart->onConnectionClick = [selectedConnId, loadConnIntoEditor]
                           (const std::string& id) {
     *selectedConnId = id;
@@ -429,6 +488,7 @@ inCWidth->onFocusLost = [chart, selectedConnId, inCWidth]() {
 ### Adding a Sticky Note at Runtime
 
 ```cpp
+auto btnAddNote = std::make_shared<UltraCanvasButton>("bAddNote", 30, 800, 120, 38, "Add Note");
 btnAddNote->SetOnClick([chart]() {
     std::string id = "note_" + std::to_string(std::rand() % 100000);
     chart->AddNode(id, FlowChartShape::StickyNote, "Note",
@@ -444,12 +504,16 @@ btnAddNote->SetOnClick([chart]() {
 
 ### Delete Selected and Clear All
 
+`showNoSelection` is the demo's own function that resets the property editor:
+
 ```cpp
+auto btnDelete = std::make_shared<UltraCanvasButton>("bDelete", 30, 800, 110, 38, "Delete");
 btnDelete->SetOnClick([chart, showNoSelection]() {
     chart->DeleteSelected();
     showNoSelection();
 });
 
+auto btnClear = std::make_shared<UltraCanvasButton>("bClear", 155, 800, 110, 38, "Clear All");
 btnClear->SetOnClick([chart, showNoSelection]() {
     chart->Clear();
     showNoSelection();

@@ -240,26 +240,26 @@ namespace UltraCanvas {
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Sidebar())
                 .SetDimensions(10, 10, 44, 189)
-                .AddButton("dashboard", "📊", "", []() {
+                .AddButton("dashboard", "", DemoIconPath("menu/view-type.svg"), []() {
                     debugOutput << "Dashboard clicked" << std::endl;
                 })
-                .AddButton("files", "📁", "", []() {
+                .AddButton("files", "", DemoIconPath("menu/folder.svg"), []() {
                     debugOutput << "Files clicked" << std::endl;
                 })
-                .AddButton("users", "👥", "", []() {
+                .AddButton("users", "", DemoIconPath("menu/users.svg"), []() {
                     debugOutput << "Users clicked" << std::endl;
                 })
                 .AddSeparator()
-                .AddButton("analytics", "📈", "", []() {
+                .AddButton("analytics", "", DemoIconPath("menu/chart.svg"), []() {
                     debugOutput << "Analytics clicked" << std::endl;
                 })
-                .AddButton("reports", "📋", "", []() {
+                .AddButton("reports", "", DemoIconPath("menu/paste.svg"), []() {
                     debugOutput << "Reports clicked" << std::endl;
                 })
                 .Build();
 
         // The buttons are created with auto width, so each one would size to its
-        // emoji glyph and the icons would sit at slightly different distances
+        // icon and the icons would sit at slightly different distances
         // from the toolbar edges. Force a uniform 32x32 square for every button
         // so all icons show with the same margins inside the toolbar.
         for (const char* buttonId : {"dashboard", "files", "users", "analytics", "reports"}) {

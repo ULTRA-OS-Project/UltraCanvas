@@ -9,8 +9,12 @@
 //
 // Distinct from UltraCanvasZoomPanImage (a read-only viewer of a UCImage)
 // and UltraCanvasMediaSurface (the media viewer's display): this one edits.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.2.1 - a document change that moves the view reports it (onViewChanged)
+// Version: 1.2.0 - a resized view keeps the image point at its centre and re-centres an
+//                  image smaller than itself at once (FollowResize)
+// Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
+// Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -59,6 +63,11 @@ public:
     std::shared_ptr<UCRasterDocument> GetDocument() const { return document; }
 
     // ===== VIEW =====
+    // When the element is resized (the window, a split pane), the image
+    // point at the centre of the view stays at its centre, and an image
+    // smaller than the view is centred in it again - from the next frame on,
+    // or the next view call, whichever comes first. A loupe keeps the point
+    // SetLoupeView put at its centre the same way.
     const PaintViewTransform& GetTransform() const { return view; }
     double GetZoom() const { return view.zoom; }
     // 1.0 == 100 %. Zooms about the centre of the view.
@@ -94,6 +103,27 @@ public:
     void SetPanMode(bool enabled) { alwaysPan = enabled; SetMouseCursor(alwaysPan ? UCMouseCursor::Hand : toolCursor); }
     void SetToolCursor(UCMouseCursor cursor) { toolCursor = cursor; if (!alwaysPan) SetMouseCursor(cursor); }
 
+    // ===== LOUPE =====
+    // A second surface on the same document that shows the pixels around a
+    // point magnified - a bitmap editor's magnifying glass beside the editing
+    // view. In loupe mode the host alone sets the view (SetLoupeView) and
+    // nothing else moves it: the view is never clamped or fitted, the
+    // pointer, wheel and keyboard are ignored and the element takes neither
+    // focus nor hit-tests (SetInteractive(false)), so it can lie over the
+    // editing view without taking its events. It listens to the document
+    // like the editing view does (UCRasterDocument::AddListener), so pixels,
+    // selection and layers follow by themselves. onDrawOverlay still runs,
+    // in the loupe's own transform, so a tool's rubber band appears
+    // magnified too.
+    void SetLoupeMode(bool on);
+    bool IsLoupeMode() const { return loupeMode; }
+    // The zoom and the image point shown at the centre of the element.
+    void SetLoupeView(double zoom, double imageX, double imageY);
+    // Two diagonals from the corners to the centre, translucent, that stop
+    // `gap` pixels short of it so the pixel under the pointer stays clear.
+    // On by default in loupe mode; never drawn outside it.
+    void SetLoupeCrosshair(bool show, double gap = 8.0) { loupeCrosshair = show; loupeCrosshairGap = gap; RequestRedraw(); }
+
     // ===== TOOL CALLBACKS (image coordinates) =====
     std::function<void(const PaintPointerEvent&)> onToolPress;
     std::function<void(const PaintPointerEvent&)> onToolDrag;
@@ -105,7 +135,8 @@ public:
     std::function<bool(const UCEvent&)> onToolKey;
     // Draw tool previews in VIEW coordinates after the image and selection.
     std::function<void(IRenderContext*, const PaintViewTransform&)> onDrawOverlay;
-    // Zoom / pan changed (status bar).
+    // The view moved: a zoom, a pan, a resize, or a document change that
+    // kept the canvas in view (the status bar, overlays in view coordinates).
     std::function<void()> onViewChanged;
     // Files dropped onto the surface.
     std::function<void(const std::vector<std::string>&)> onFilesDropped;
@@ -113,7 +144,7 @@ public:
     // ===== ELEMENT =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
-    bool AcceptsFocus() const override { return true; }
+    bool AcceptsFocus() const override { return !loupeMode; }
     // Refresh (the document notifies through its callbacks; a host that
     // edits the document elsewhere calls this).
     void Refresh() { RequestRedraw(); }
@@ -121,18 +152,28 @@ public:
 private:
     PaintPointerEvent MakePointerEvent(const UCEvent& e) const;
     void ClampView();
+    // Brings the view to a new element size: shifts the origin by half the
+    // change, so the image point at the centre stays there. True when it
+    // moved the view (not while a fit is pending: the fit lays the view out
+    // for the new size). Every view call runs it first.
+    bool FollowResize();
     void StartAntsTimer();
     void StopAntsTimer();
     void DrawCheckerboard(IRenderContext* ctx, const Rect2Dd& area);
     void DrawPixelGrid(IRenderContext* ctx, const Rect2Dd& imageArea);
     void DrawSelection(IRenderContext* ctx);
     void DrawBrushCursor(IRenderContext* ctx);
+    void DrawLoupeCrosshair(IRenderContext* ctx);
     void HookDocument();
     void UnhookDocument();
 
     std::shared_ptr<UCRasterDocument> document;
+    UCRasterDocument::ListenerId documentListener = 0;
     PaintViewTransform view;
     bool fitPending = true;
+    // The element size `view` was laid out for (FollowResize).
+    float viewWidth = 0.0f;
+    float viewHeight = 0.0f;
 
     bool showPixelGrid = true;
     double pixelGridThreshold = 8.0;
@@ -144,6 +185,11 @@ private:
     bool cursorSquare = false;
     UCMouseCursor toolCursor = UCMouseCursor::Cross;
 
+    // loupe
+    bool loupeMode = false;
+    bool loupeCrosshair = true;
+    double loupeCrosshairGap = 8.0;
+
     // interaction
     bool alwaysPan = false;
     bool spaceDown = false;
@@ -154,8 +200,10 @@ private:
     Point2Di hoverPointer;
     bool hasHover = false;
 
-    // marching ants
-    TimerId antsTimer = 0;
+    // marching ants: the phase, from the clock every surface showing this
+    // document shares (see StartAntsTimer), and whether this one has joined it
+    bool antsJoined = false;
+    const UCRasterDocument* antsClockKey = nullptr;
     double antsOffset = 0.0;
 };
 

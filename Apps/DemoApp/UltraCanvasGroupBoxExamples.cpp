@@ -120,7 +120,7 @@ namespace UltraCanvas {
             gb->SetHelpText("This card uses the GroupBoxVisualStyle::Card() preset:\n"
                             "filled rounded background, bold header and a separator.");
             gb->AddChild(ContentLabel("gbCard1", "iOS-like grouped card preset."));
-            gb->AddChild(ContentLabel("gbCard2", "Hover the ⓘ icon for help."));
+            gb->AddChild(ContentLabel("gbCard2", "Hover the info icon for help."));
             mainContainer->AddChild(gb);
         }
         rowY += boxH + 20.0f;

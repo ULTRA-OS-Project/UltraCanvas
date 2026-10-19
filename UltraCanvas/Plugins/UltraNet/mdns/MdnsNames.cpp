@@ -1,6 +1,6 @@
 // UltraCanvas/Plugins/UltraNet/mdns/MdnsNames.cpp
 // DNS-SD name and record arithmetic. See MdnsNames.h.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "MdnsNames.h"
@@ -233,6 +233,33 @@ std::string IPv6ToString(const uint8_t bytes[16]) {
     }
     if (out.empty()) out = "::";
     return out;
+}
+
+void AddAddress(std::vector<std::string>& addresses, const std::string& address) {
+    if (address.empty()) return;
+    if (std::find(addresses.begin(), addresses.end(), address) != addresses.end()) return;
+    const bool v6 = address.find(':') != std::string::npos;
+    if (v6) {
+        addresses.push_back(address);
+        return;
+    }
+    // Ahead of the first IPv6 address, behind the IPv4 ones already there.
+    auto firstV6 = std::find_if(addresses.begin(), addresses.end(), [](const std::string& a) {
+        return a.find(':') != std::string::npos;
+    });
+    addresses.insert(firstV6, address);
+}
+
+void MergeAnswer(Attributes& into, const Attributes& from) {
+    for (const auto& [key, values] : from) {
+        if (key == "ip") {
+            std::vector<std::string>& addresses = into["ip"];
+            for (const std::string& address : values) AddAddress(addresses, address);
+            continue;
+        }
+        auto existing = into.find(key);
+        if (existing == into.end() || existing->second.empty()) into[key] = values;
+    }
 }
 
 } // namespace Mdns

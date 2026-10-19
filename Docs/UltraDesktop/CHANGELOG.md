@@ -1,3 +1,135 @@
+#### 2026-10-15 *0.4.1*
+- **No console window flashes up when UltraDesktop starts on Windows.**
+  `UltraDesktop.exe` is a GUI program now, so starting it beside Explorer at
+  sign-in, from the Start menu or from UOS-Settings shows the desktop alone.
+  Beside it, `UltraDesktop.com` is its console companion, which a prompt runs
+  for the bare name: `UltraDesktop --windows` starts the `.exe`, waits for it
+  and returns its exit code, as before (framework changelog:
+  `windows-console-companions`).
+
+#### 2026-10-15 *0.4.0*
+- **UltraDesktop can run instead of Explorer, not only beside it.** On
+  Windows, *UltraDesktop instead of Explorer* (UOS-Settings → Desktop → At
+  sign-in, the settings button's right-click menu, or
+  `--use-instead-of-explorer`) makes it the whole desktop from the next
+  sign-in, started with the new `--shell` (framework changelog:
+  `desktopshell-instead-of-explorer`). As the shell it
+  - shows the programs' tray icons on the info panel, above its services, in
+    their own colours: a click goes to the program, a right click opens its
+    menu, two clicks are a double click, and their balloons become
+    notifications (or a yellow marker and a tooltip where the build has no
+    notification toasts);
+  - offers *Sign out*, *Restart* and *Shut down* on the settings button's
+    right-click menu, each asked first;
+  - opens the Applications window on a tap of the Win key, where the Start
+    menu would open;
+  - covers the other monitors with its wallpaper instead of leaving them
+    black, following monitors plugged in or taken away, and puts back a
+    wallpaper closed with Alt+F4 within a few seconds.
+- **The Applications window lists the Microsoft Store apps** (Calculator,
+  Photos, Settings …) beside the Start menu's programs, with their tile
+  icons, and starts them as the Start menu does.
+- The sign-in starts UltraCanvasShellGuard, which starts UltraDesktop and
+  starts Explorer for the session when UltraDesktop crashes three times in a
+  minute or cannot start - so a broken update never leaves an empty screen.
+- The settings button's menu offers what applies: beside Explorer, instead of
+  it, keeping Explorer beside it again, and the way back.
+  *Switch back to the Windows desktop* as the shell closes UltraDesktop and
+  Explorer starts in its place at once.
+
+#### 2026-10-14 *0.3.2*
+- **The settings file lives in Application Support on macOS.** `desktop.json`
+  was kept in `~/.config/ultraos` there, as on Linux, while every other
+  per-user file of the desktop and its applications is in
+  `~/Library/Application Support`. Its folder is now the framework's desktop
+  settings folder (`UltraCanvasDesktopSettingsFolder`): `%APPDATA%\ultraos`
+  on Windows, `~/Library/Application Support/ultraos` on macOS,
+  `$XDG_CONFIG_HOME` or `~/.config/ultraos` elsewhere, every variable read as
+  UTF-8. On the first start the old macOS folder is moved into place whole,
+  the clipboard history's key with it; Linux and Windows are untouched.
+
+#### 2026-10-14 *0.3.1*
+- **The clipboard quick panel follows UltraClipboard's *Display → Icons*.**
+  Set the icons left of the item text in UltraClipboard's Settings and the
+  panel's Copy / Edit / Delete stand between the thumbnail and the text too;
+  right, as before, is the default. The panel picks the setting up the next
+  time it opens or the history changes (framework changelog:
+  `clipboard-save-as`).
+
+#### 2026-10-14 *0.3.0*
+- **UltraDesktop can take the place of the Windows desktop, and give it
+  back.** On Windows it now has running windows, the Start menu's programs,
+  reserved bars and a screenshot (framework changelog:
+  `desktopshell-windows-backend`). You can switch over in UOS-Settings →
+  Desktop, from the settings button's right-click menu, or with
+  `--use-as-desktop`.
+  - What switching over does: the sign-in starts UltraDesktop, and
+    Explorer's taskbar hides itself. Explorer keeps running underneath.
+  - The way back: the same switch or menu, `--restore-desktop`, or
+    uninstalling. Each removes the start at sign-in and gives the taskbar
+    back the state it had before.
+  - A desktop the sign-in started (`--session`) closes within a second of
+    being switched back.
+  - A trial run started by hand closes from the same menu.
+- **No RAM disc button without a RAM disc.** An empty RAM disc folder leaves
+  the button out. That is the default on Windows, which has no RAM disc of
+  its own; `/dev/shm` stays the default elsewhere.
+
+#### 2026-10-13 *0.2.2*
+- **The Sticker board: files sorted into categories on the desktop.** The
+  pinboard on the right bar shows a Kanban board over the wallpaper with three
+  categories to begin with - Docs, Work, Home. Drop files on a category from
+  the file manager and they join it at once, no question asked; a file
+  dropped again moves to the new category instead of appearing twice. Each
+  file is a card with its name and its type (`pdf`, `folder`, ...), the full
+  path in the tooltip; a double-click opens it with its default application.
+  *+ Add category* adds a category and opens its name for typing. The style
+  picker switches between *Sticky notes*, *Poster*, *Schematic* and *Dark*.
+  Cards are dragged between categories, the board's own *+ Add card* makes
+  a plain note, the panel is dragged by its title and resized by the grip in
+  its corner, and all of it comes back where it was. A new category the
+  board is too wide to show is scrolled into view (framework changelog:
+  `kanban-file-drop`).
+- **The pinboard button opens the Sticker board.** The free notes that
+  button used to show keep a button of their own, a note, right below it;
+  notes already written are where they were.
+
+#### 2026-10-08 *0.2.1*
+- **The clipboard panel offers first what you are pasting into.** Super+V
+  over a paint program puts its newest images (and colours) first, under
+  "For UltraPaint", the first of them chosen: Super+V, Enter, Ctrl+V pastes
+  the last picture even when text was copied after it. A file manager gets
+  files first, an editor, an IDE or a terminal code and text, a browser
+  links. What a program takes comes from its desktop entry's categories and
+  file types; one that says nothing gets the history as before. The bar's
+  button does the same for the window that had the focus before it was
+  clicked (framework changelog: `paste-target`).
+- **Super+V opens the panel every time.** About one press in two the panel
+  opened and shut again at once, and Super+V over the open panel did not
+  close it. The shortcut now acts when its key is let go, once however long
+  it is held (framework changelog: `x11-shortcut-focus`).
+
+#### 2026-10-07 *0.2.0*
+- **Notifications appear on screen.** On ULTRA OS no notification server runs
+  besides UltraMessage, which serves `org.freedesktop.Notifications` itself, so
+  every application's notification - Telegram, the browser, UltraMail's new
+  mail - reached the message feed and nothing drew it. The desktop now draws
+  each one as a toast in the top-right corner, beside the right bar (below the
+  taskbar when it runs along the top): icon, application, summary, body, the
+  notification's own buttons and a close button, newest on top, four at most.
+  - A click on the text does what the notification offers by default (UltraMail
+    opens the mail), a button does what it says, × dismisses; the application
+    is told either way, as any notification server tells it.
+  - A toast goes after 8 seconds (5 for a low-priority one), not while the
+    pointer rests on it; a critical one stays until closed. The feed keeps
+    every notification.
+  - The toasts never take the keyboard focus, and on a desktop with its own
+    notification server (GNOME, Plasma, dunst) the desktop draws nothing, so
+    nothing appears twice.
+  - Built on the framework's new `UltraCanvasNotificationToast` element and
+    host and `WindowType::Notification` (the change pending in
+    `Docs/UltraCanvas/changelog.d/notification-toasts.md`).
+
 #### 2026-10-06 *0.1.4*
 - **A clipboard history that lasts.** Every copy - texts, links, colours,
   code, formatted text, images and files - is recorded into a history on

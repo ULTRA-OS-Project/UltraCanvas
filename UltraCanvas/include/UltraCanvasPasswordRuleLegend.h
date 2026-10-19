@@ -1,7 +1,9 @@
 // include/UltraCanvasPasswordRuleLegend.h
 // Interactive password requirements checklist component
-// Version: 1.2.0
-// Last Modified: 2026-08-31
+// Version: 1.3.0
+// Last Modified: 2026-10-11
+// V1.3.0: tick, cross and circle icons are drawn as shapes, not typed; the
+//   bundled UI font has no "✓" or "✗", which showed as hex boxes on Windows.
 // V1.2.0: GetContentHeight() reports the height the rule list actually paints, so
 //   callers can size the element instead of guessing (a too-short box used to let
 //   the last rules spill over whatever was placed underneath).
@@ -54,7 +56,9 @@ namespace UltraCanvas {
         Color unmetColor = Color(220, 53, 69);      // Red for unmet rules
         Color textColor = Color(60, 60, 60);        // Normal text color
 
-        // Icons (Unicode characters)
+        // Icons. A tick, cross or circle (✓ ✔ ✗ ✘ ✕ × ○ ●) is drawn as a
+        // shape iconSize wide, since the bundled UI font has none of them;
+        // any other string is drawn as text.
         std::string metIcon = "✓";          // Checkmark
         std::string unmetIcon = "✗";        // Cross
         std::string bulletIcon = "•";       // Bullet point

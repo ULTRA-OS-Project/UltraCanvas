@@ -2,8 +2,9 @@
 // Composite UI control wrapping UltraCanvasAudioRecorder, built from child widgets
 // (icon buttons, level meter, label, dropdown, buttons) arranged by a flex row
 // layout so the framework owns alignment/centering.
+// Version: 0.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 0.3.0
-// Last Modified: 2026-06-23
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -50,6 +51,7 @@ public:
     }
 
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        (void)dirtyRect;
         if (!ctx) return;
         if (waveformMode) DrawWaveform(ctx);
         else              DrawMeter(ctx);

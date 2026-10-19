@@ -15,8 +15,15 @@
 // scrolls them with the mouse wheel instead of clipping them, and a chevron
 // at the edge the items continue past says so and scrolls a page when
 // clicked (SetScrollHints).
-// Version: 1.6.0
-// Last Modified: 2026-10-01
+//
+// AddToolGroup puts several tools in one slot - an UltraCanvasToolGroupButton
+// showing one of them, whose bar of all of them folds out while the pointer
+// rests on it - as a paint program's palette groups its selection tools.
+// Version: 1.10.0 - ToolbarAppearance::FromTheme, ApplyTheme
+// Version: 1.9.0 - ToolbarAppearance::IconPixelSize(); buttons use it
+// Version: 1.8.0 - AddToolGroup: several tools sharing one slot, with a fold-out bar
+// Version: 1.7.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +33,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasToolGroupButton.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -121,6 +129,13 @@ namespace UltraCanvas {
         // out icons rather than reusing the background color for the foreground.
         Color disabledForegroundColor = Color(150, 150, 150, 255);
 
+        // The theme's roles: the panel behind the bar, ink, hairline
+        // separators, the hover and pressed fills, faint ink when disabled
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static ToolbarAppearance FromTheme(const UltraCanvasTheme& theme, const ToolbarAppearance& base);
+        static ToolbarAppearance FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ToolbarAppearance()); }
+        static ToolbarAppearance FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
 //        Color hoverForegroundColor = Colors::Black;
 //        Color activeForegroundColor = Colors::Black;
 
@@ -142,6 +157,22 @@ namespace UltraCanvas {
         ToolbarIconSize iconSize = ToolbarIconSize::Medium;
         int customIconWidth = 24;
         int customIconHeight = 24;
+
+        // The pixel size the buttons' icons are drawn at: Small 16, Medium 24,
+        // Large 32, ExtraLarge 48, Huge 64, Custom customIconWidth x
+        // customIconHeight. A line icon is drawn on the pixel grid of one size
+        // and is sharp only at it, so this is the size the icon set was drawn for.
+        Size2Di IconPixelSize() const {
+            switch (iconSize) {
+                case ToolbarIconSize::Small:      return Size2Di(16, 16);
+                case ToolbarIconSize::Large:      return Size2Di(32, 32);
+                case ToolbarIconSize::ExtraLarge: return Size2Di(48, 48);
+                case ToolbarIconSize::Huge:       return Size2Di(64, 64);
+                case ToolbarIconSize::Custom:     return Size2Di(customIconWidth, customIconHeight);
+                case ToolbarIconSize::Medium:
+                default:                          return Size2Di(24, 24);
+            }
+        }
         bool showIconLabels = true;
         bool centerIcons = false;
 
@@ -268,6 +299,10 @@ namespace UltraCanvas {
         Point2Di mousePosition;
 
     public:
+        // ===== ACCESSIBILITY =====
+        // A toolbar; its buttons are reached as its children.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Toolbar; }
+
         UltraCanvasToolbar(const std::string& identifier, float x, float y,
                            float width, float height);
 
@@ -356,6 +391,15 @@ namespace UltraCanvas {
                 const std::string& id, const std::string& text,
                 const std::vector<std::string>& items,
                 std::function<void(const std::string&)> onSelect = nullptr);
+        // Several tools sharing one slot: a toggle button showing one of
+        // them, a bar of all of them folding out beside it while the pointer
+        // rests on it (to the right in a vertical toolbar, below in a
+        // horizontal one). `onSelect` gets the id of the tool picked, by a
+        // click on the slot or in the bar. A group of one item is a plain
+        // toggle button. See UltraCanvasToolGroupButton.h.
+        std::shared_ptr<UltraCanvasToolGroupButton> AddToolGroup(
+                const std::string& id, const std::vector<ToolGroupItem>& items,
+                std::function<void(const std::string&)> onSelect = nullptr);
         std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
         std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
         std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
@@ -373,6 +417,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetAppearance(ToolbarAppearance::FromTheme(theme, GetAppearance())); }
         // The reorder drag watches the window's pointer events (an item's
         // button consumes the press before this container would see it), so
         // the watch is installed when the toolbar reaches a window.
@@ -393,8 +438,11 @@ namespace UltraCanvas {
                    toolbarDragMode == ToolbarDragMode::Both;
         }
         bool IsReorderingItem() const { return reorderActive; }
-        void BeginDrag(const Point2Di& startPos);
-        void UpdateDrag(const Point2Di& currentPos);
+        // Moving the bar itself (ToolbarDragMode::Movable / Both). Positions
+        // are in window coordinates: the bar moves under the pointer, so one
+        // local to it would shift with every step.
+        void BeginDrag(const Point2Di& startPosInWindow);
+        void UpdateDrag(const Point2Di& currentPosInWindow);
         void EndDrag();
 
         // ===== CALLBACKS =====
@@ -408,6 +456,9 @@ namespace UltraCanvas {
     private:
         // Internal helpers
         void CreateLayout();
+        // Whether a press landed on one of the bar's items rather than on the
+        // bar's own surface (a movable bar is dragged by the latter only).
+        bool PressOnItem(const UCEvent& event);
         // The height a horizontal toolbar was constructed with (the width of a
         // vertical one) becomes a FLOOR rather than a fixed size, so a host
         // that guesses low gets a toolbar that still fits its buttons instead
@@ -479,6 +530,8 @@ namespace UltraCanvas {
         UltraCanvasToolbarBuilder& AddDropdownButton(const std::string& id, const std::string& text,
                                                      const std::vector<std::string>& items,
                                                      std::function<void(const std::string&)> onSelect = nullptr);
+        UltraCanvasToolbarBuilder& AddToolGroup(const std::string& id, const std::vector<ToolGroupItem>& items,
+                                                std::function<void(const std::string&)> onSelect = nullptr);
         UltraCanvasToolbarBuilder& AddSeparator(const std::string& id = "");
         UltraCanvasToolbarBuilder& AddSpacer(int size = 8);
         UltraCanvasToolbarBuilder& AddStretch(float stretch = 1.0f);

@@ -2,7 +2,9 @@
 // Builds the runtime supported-format inventory. Sources of truth, per
 // category:
 //   Bitmap       — candidate table probed per-extension against the installed
-//                  libvips build (VipsCanLoad / VipsCanSave).
+//                  libvips build (VipsCanDecode / VipsCanEncode - a loader
+//                  that can decode and a saver that can encode here); ICO and
+//                  QOI through the framework's own libvips plugins.
 //   Vector       — svg/svgz through libvips+librsvg (probed); everything else
 //                  comes from the graphics plugin registry (CDR/XAR/... appear
 //                  once the host application registers the plugin).
@@ -10,7 +12,7 @@
 //   Document     — MuPDF (compile-gated), the built-in ODT/DOCX/DOC engines,
 //                  the Markdown/HTML text path, plus every extension the
 //                  eBook engine registry reports at runtime.
-//   Spreadsheet  — the built-in ODS/XLSX/CSV engines (always compiled in).
+//   Spreadsheet  — the built-in ODS/XLSX/XLS/CSV engines (always compiled in).
 //   Audio, Video — UltraCanvasMediaCodecRegistry, which holds the built-in
 //                  codec matrix (miniaudio, the optional system codec
 //                  libraries, FAAD2/fdk-aac, the platform media plugins, and
@@ -22,14 +24,22 @@
 //                  means UltraCanvasFontFile can read the name records and
 //                  rasterize a specimen, not that the image pipeline decodes
 //                  it (CanImagePipelineLoad stays false for every font).
+//   LayeredImage — UCRasterDocument's own files: the UCD 2.1 layered image
+//                  (no libvips needed) and the UltraPaint project (libvips).
+// Version: 1.4.0 - LayeredImage: *.ucd (UCD 2.1 layered image) and *.ucraster
+// Version: 1.3.0 - a bitmap's canLoad asks whether it can decode (no HEIC
+//                  without libheif's HEVC decoder, no AVIF without its AV1 one)
+// Version: 1.2.0 - a bitmap's canSave asks whether it can encode (no AVIF /
+//                  HEIC without libheif's encoder); ICO and QOI name the
+//                  framework's own plugins
 // Version: 1.1.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasGraphicsPluginSystem.h"
-#include "UltraCanvasImage.h"                 // VipsCanLoad / VipsCanSave
+#include "UltraCanvasImage.h"                 // VipsCanDecode / VipsCanEncode
 #include "Documents/eBook/IEBookEngine.h"     // GetRegisteredEBookExtensions
 #include "Documents/eBook/TXTEngine.h"        // RegisterBuiltinEBookEngines
 
@@ -96,6 +106,11 @@ namespace {
             { "psd",  {},                 "Adobe Photoshop document" },
             { "ico",  {},                 "Windows icon" },
             { "fits", {},                 "Flexible Image Transport System" },
+            // Camera raw: read where libvips' ImageMagick delegate is.
+            { "dng",  {},                 "Digital Negative (camera raw)" },
+            { "cr2",  {},                 "Canon raw" },
+            { "nef",  {},                 "Nikon raw" },
+            { "arw",  {},                 "Sony raw" },
         };
         return candidates;
     }
@@ -127,10 +142,19 @@ namespace {
             f.aliases     = c.aliases;
             f.description = c.description;
             f.category    = MediaFormatCategory::Bitmap;
-            f.canLoad     = VipsCanLoad(dotExt);
-            f.canSave     = VipsCanSave(dotExt);
-            f.provider    = "libvips";
-            if (!f.canLoad && magick) {
+            // A loader that can decode and a saver that can encode here: the
+            // HEIF loader and saver take .heic and .avif wherever libheif is,
+            // but read or write nothing without its HEVC / AV1 codecs.
+            f.canLoad     = VipsCanDecode(dotExt);
+            f.canSave     = VipsCanEncode(dotExt);
+            // ICO and QOI are the framework's own libvips loaders and savers.
+            f.provider    = std::string(c.ext) == "ico" ? "UltraCanvas (VipsIcoPlugin)"
+                          : std::string(c.ext) == "qoi" ? "UltraCanvas (VipsQoiLoader)"
+                          : "libvips";
+            // ImageMagick reads what no dedicated loader claims - not a HEIC
+            // the HEIF loader claims and cannot decode: that loader is the one
+            // libvips picks for the file, and ImageMagick's HEIC is libheif too.
+            if (!f.canLoad && magick && !VipsCanLoad(dotExt)) {
                 f.canLoad = true;
                 f.provider = "libvips (ImageMagick delegate)";
             }
@@ -199,6 +223,11 @@ namespace {
         out.push_back({ "docx", {}, "Word document (OOXML)",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "pptx", { "pptm", "ppsx", "potx" }, "PowerPoint presentation (OOXML)",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in (miniz + tinyxml2)",
+                        "read as an outline: slide titles, text, tables, speaker notes; "
+                        "no layout, pictures or writer" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });
@@ -264,6 +293,10 @@ namespace {
         out.push_back({ "xlsx", {}, "Excel workbook (OOXML)",
                         MediaFormatCategory::Spreadsheet, true, true,
                         "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "xls", {}, "Excel 97-2003 workbook",
+                        MediaFormatCategory::Spreadsheet, true, false,
+                        "built-in .xls reader",
+                        "BIFF8 and Excel 5.0/95; HTML and Excel 2003 XML under the name too" });
         out.push_back({ "csv", {}, "Comma-separated values",
                         MediaFormatCategory::Spreadsheet, true, true,
                         "built-in CSV engine",
@@ -336,6 +369,20 @@ namespace {
         out.push_back({ "bdf", { "pcf", "fnt", "fon" }, "Bitmap font",
                         MediaFormatCategory::Font, true, false,
                         "FreeType", "fixed strikes only - no outlines" });
+    }
+
+    // ---- Layered images: UCRasterDocument's files, which keep each layer,
+    // its blend mode and opacity, and a text layer's words as text. ----
+    void AddLayeredImageFormats(std::vector<MediaFormatInfo>& out) {
+        out.push_back({ "ucd", {}, "UltraCanvas layered image",
+                        MediaFormatCategory::LayeredImage, true, true,
+                        "UltraCanvas (UCRasterDocument)",
+                        "UCD 2.1: layers, blend modes, text layers as text, a thumbnail" });
+#ifdef HAS_LIBVIPS
+        out.push_back({ "ucraster", {}, "UltraPaint project",
+                        MediaFormatCategory::LayeredImage, true, true,
+                        "UltraCanvas (UCRasterDocument)", "" });
+#endif
     }
 
     void AddVideoFormats(std::vector<MediaFormatInfo>& out) {
@@ -446,6 +493,7 @@ namespace {
         AddAudioFormats(out);
         AddVideoFormats(out);
         AddFontFormats(out);
+        AddLayeredImageFormats(out);
         AddRegisteredGraphicsPlugins(out);
         return out;
     }
@@ -524,6 +572,7 @@ namespace {
             case MediaFormatCategory::Audio:       return "Audio";
             case MediaFormatCategory::Video:       return "Video";
             case MediaFormatCategory::Font:        return "Fonts";
+            case MediaFormatCategory::LayeredImage: return "Layered images";
         }
         return "Unknown";
     }

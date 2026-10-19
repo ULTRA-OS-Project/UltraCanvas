@@ -1,10 +1,16 @@
 // Apps/UltraAIApp/UltraAIEndpoints.cpp
+// Version: 0.1.1 - the config folder comes from the framework's settings root
+//                  (UltraCanvasSettingsFolderRoot), every variable read as UTF-8
 // Version: 0.1.0
 
 #include "UltraAIEndpoints.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSettingsFolder.h"   // UltraCanvasSettingsFolderRoot
+
+#include <UltraNet/UltraNetCore.h>       // UltraNetResult, UltraNet init
+#include <UltraNet/UltraNetHttp.h>       // UltraNet_HttpRequest, request/response
 
 #include <algorithm>
 #include <cctype>
@@ -53,34 +59,20 @@ EndpointStore& EndpointStore::Instance() {
     return instance;
 }
 
+// UltraAI under the framework's settings root (UltraCanvasSettingsFolderRoot:
+// %APPDATA%, Application Support, $XDG_CONFIG_HOME or ~/.config), every
+// variable read as UTF-8 since the JSON file helpers open the file with
+// OpenFileUtf8 and the narrow getenv answers in the ANSI code page, which
+// cannot spell a profile folder named in Thai under code page 1252. "UltraAI"
+// in the working directory when the environment names no home.
 std::string EndpointStore::ConfigDir() {
-#if defined(_WIN32)
-    // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8): the
-    // JSON file helpers open it with OpenFileUtf8, and the narrow getenv
-    // answers in the ANSI code page, which cannot spell a profile folder
-    // named in Thai under code page 1252.
-    if (const std::string appdata = UltraCanvas::GetEnvUtf8("APPDATA"); !appdata.empty())
-        return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(appdata) / "UltraAI");
-    return "UltraAI";
-#elif defined(__APPLE__)
-    if (const char* home = std::getenv("HOME"); home && *home)
-        return std::string(home) + "/Library/Application Support/UltraAI";
-    return "UltraAI";
-#else
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-        return std::string(xdg) + "/UltraAI";
-    if (const char* home = std::getenv("HOME"); home && *home)
-        return std::string(home) + "/.config/UltraAI";
-    return "UltraAI";
-#endif
+    const std::filesystem::path root = UltraCanvas::UltraCanvasSettingsFolderRoot();
+    if (root.empty()) return "UltraAI";
+    return UltraCanvas::PathToUtf8(root / "UltraAI");
 }
 
 std::string EndpointStore::ConfigPath() {
-#if defined(_WIN32)
-    return ConfigDir() + "\\endpoints.json";
-#else
-    return ConfigDir() + "/endpoints.json";
-#endif
+    return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(ConfigDir()) / "endpoints.json");
 }
 
 std::vector<Endpoint> EndpointStore::ForCapability(AICapability c) const {
@@ -165,6 +157,23 @@ bool EndpointStore::Load() {
             if (ParseCapability(modes.At(m).GetString(), cap)) e.modes.insert(cap);
         }
 
+        // Models cached from a previous /v1/model/info fetch (optional).
+        const JSONValue& models = obj.Get("models");
+        for (size_t mi = 0; mi < models.GetSize(); ++mi) {
+            const JSONValue& mo = models.At(mi);
+            if (!mo.IsObject()) continue;
+            Endpoint::DiscoveredModel m;
+            m.name = mo.Get("name").GetString();
+            m.task = mo.Get("task").GetString();
+            m.mode = mo.Get("mode").GetString();
+            const JSONValue& langs = mo.Get("supported_languages");
+            for (const auto& member : langs.GetMembers()) {
+                m.supportedLanguages.emplace_back(member.first,
+                                                  member.second.GetString());
+            }
+            if (!m.name.empty()) e.models.push_back(std::move(m));
+        }
+
         if (e.id.empty()) e.id = MakeId(e.name.empty() ? e.providerId : e.name);
         endpoints_.push_back(std::move(e));
     }
@@ -190,6 +199,27 @@ bool EndpointStore::Save() const {
             if (e.modes.count(info.cap)) modes.Append(std::string(info.id));
         }
         obj.Set("modes", std::move(modes));
+
+        // Cache discovered models (and their translation languages) only when
+        // present, so endpoints that were never fetched stay compact.
+        if (!e.models.empty()) {
+            JSONValue models = JSONValue::MakeArray();
+            for (const auto& m : e.models) {
+                JSONValue mo = JSONValue::MakeObject();
+                mo.Set("name", m.name);
+                if (!m.task.empty()) mo.Set("task", m.task);
+                if (!m.mode.empty()) mo.Set("mode", m.mode);
+                if (!m.supportedLanguages.empty()) {
+                    JSONValue langs = JSONValue::MakeObject();
+                    for (const auto& [code, lname] : m.supportedLanguages) {
+                        langs.Set(code, lname);
+                    }
+                    mo.Set("supported_languages", std::move(langs));
+                }
+                models.Append(std::move(mo));
+            }
+            obj.Set("models", std::move(models));
+        }
         arr.Append(std::move(obj));
     }
 
@@ -207,6 +237,72 @@ UltraAI::TextLLMConfig ToTextLLMConfig(const Endpoint& e) {
     cfg.defaultModel   = e.defaultModel;
     cfg.apiKeyVaultRef = e.VaultRef();
     return cfg;
+}
+
+ModelInfoFetch FetchModelInfo(const std::string& baseUrl,
+                              const std::string& apiKey, int timeoutMs) {
+    ModelInfoFetch out;
+
+    std::string base = baseUrl;
+    while (!base.empty() && base.back() == '/') base.pop_back();
+    if (base.empty()) {
+        out.error = "Set a Base URL first (e.g. https://ai.ultraos.eu).";
+        return out;
+    }
+
+    // Same wire shape the adapters use: a GET with the key as a Bearer token.
+    UltraNetHttpRequest req;
+    req.url    = base + "/v1/model/info";
+    req.method = UltraNetHttpMethod::Get;
+    if (!apiKey.empty()) req.headers.Add("Authorization", "Bearer " + apiKey);
+    req.options.timeoutMs = timeoutMs;
+
+    UltraNetResponse resp;
+    UltraNetResult result = UltraNet_HttpRequest(req, resp);
+
+    // A completed HTTP exchange (even a 4xx/5xx) returns true or HttpError; a
+    // real transport failure (DNS, TLS, timeout) is anything else.
+    if (!result && result.code != UltraNetResultCode::HttpError) {
+        out.error = result.message.empty()
+            ? "Could not reach " + req.url : result.message;
+        return out;
+    }
+    if (resp.statusCode >= 400) {
+        const bool auth = resp.statusCode == 401 || resp.statusCode == 403;
+        out.error = "Server returned HTTP " + std::to_string(resp.statusCode) +
+                    (auth ? " — check the API key." : ".");
+        return out;
+    }
+
+    UltraCanvas::JSONParseResult pr;
+    JSONValue root = JSON::Parse(resp.GetBodyAsString(), &pr);
+    if (!pr.success) {
+        out.error = "Could not parse the server response.";
+        return out;
+    }
+    const JSONValue& data = root.Get("data");
+    if (!data.IsArray()) {
+        out.error = "Unexpected response (no \"data\" array).";
+        return out;
+    }
+
+    for (size_t i = 0; i < data.GetSize(); ++i) {
+        const JSONValue& obj = data.At(i);
+        if (!obj.IsObject()) continue;
+        Endpoint::DiscoveredModel m;
+        m.name = obj.Get("model_name").GetString();
+        const JSONValue& mi = obj.Get("model_info");
+        m.task = mi.Get("task").GetString();
+        m.mode = mi.Get("mode").GetString();
+        const JSONValue& langs = mi.Get("supported_languages");
+        for (const auto& member : langs.GetMembers()) {
+            m.supportedLanguages.emplace_back(member.first,
+                                              member.second.GetString());
+        }
+        if (!m.name.empty()) out.models.push_back(std::move(m));
+    }
+    out.ok = true;
+    return out;
 }
 
 } // namespace UltraAIApp

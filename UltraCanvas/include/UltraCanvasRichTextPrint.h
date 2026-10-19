@@ -13,10 +13,12 @@
 // Usage - the PDF and its pages go together, and each printer takes the one
 // it can use:
 //
+// doc-check: std::shared_ptr<UltraCanvasRichTextEdit> richEdit;
+// doc-check: example
 //     std::vector<uint8_t> pdf;
 //     std::string error;
 //     if (richEdit->ExportToPdf(pdf, error)) {
-//         PrintDocumentWithDialog("Letter.docx", pdf, "application/pdf", window,
+//         PrintDocumentWithDialog("Letter.docx", pdf, "application/pdf", window.get(),
 //                                 CreateRichDocumentPrintPages(*richEdit));
 //     }
 //

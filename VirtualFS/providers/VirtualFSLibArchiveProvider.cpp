@@ -1,7 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
-// Version: 1.3.0
-// Last Modified: 2026-09-24
+// Version: 1.3.1
+// Last Modified: 2026-10-06
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -20,6 +20,7 @@ using UltraCanvas::PathToUtf8;
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <sstream>
@@ -1448,16 +1449,29 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesZipFast(
         return VirtualFSResult::NotSupported;
     }
 
+    // Both files are opened here, by their UTF-8 names, and handed to miniz
+    // - never opened by miniz, whose fopen converts a UTF-8 name only under
+    // MSVC and 64-bit MinGW (elsewhere on Windows a Thai or emoji archive
+    // name failed and dropped every delete to the slow generic rewrite) and
+    // there opens with _wfopen_s, which locks other programs out of the
+    // file. miniz never closes a FILE* it is handed, so this function does,
+    // before the caller renames the new archive over the old one.
+    std::FILE* srcFile = UltraCanvas::OpenFileUtf8(pImpl->archivePath, "rb");
+    if (!srcFile) return VirtualFSResult::NotSupported; // generic path retries
     mz_zip_archive src;
     mz_zip_zero_struct(&src);
-    if (!mz_zip_reader_init_file(&src, pImpl->archivePath.c_str(), 0)) {
+    if (!mz_zip_reader_init_cfile(&src, srcFile, 0, 0)) {
+        std::fclose(srcFile);
         return VirtualFSResult::NotSupported; // generic path retries
     }
 
+    std::FILE* dstFile = UltraCanvas::OpenFileUtf8(tempPath, "wb");
     mz_zip_archive dst;
     mz_zip_zero_struct(&dst);
-    if (!mz_zip_writer_init_file_v2(&dst, tempPath.c_str(), 0, 0)) {
+    if (!dstFile || !mz_zip_writer_init_cfile(&dst, dstFile, 0)) {
+        if (dstFile) std::fclose(dstFile);
         mz_zip_reader_end(&src);
+        std::fclose(srcFile);
         return VirtualFSResult::NotSupported;
     }
 
@@ -1507,6 +1521,14 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesZipFast(
 
     mz_zip_writer_end(&dst);
     mz_zip_reader_end(&src);
+    // Closing flushes what is still buffered. A disk that fills up here must
+    // fail the rewrite: miniz closed its own file and ignored the answer, so
+    // a cut-off archive could be renamed over the original.
+    if (std::fclose(dstFile) != 0 && result == VirtualFSResult::Success) {
+        pImpl->lastError = "Failed to write " + tempPath;
+        result = VirtualFSResult::WriteError;
+    }
+    std::fclose(srcFile);
     return result;
 #else
     (void)targets; (void)tempPath; (void)progressCallback;

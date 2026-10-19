@@ -1,10 +1,17 @@
 // Plugins/Charts/UltraCanvasChartElementBase.cpp
 // Base class for all chart elements with common functionality
+// Version: 1.2.2 - a left press or release is taken only when it starts or ends a
+//                  pan; any other goes on to the parent
+// Version: 1.2.1 - the hover ring sits on the point in DataLabel mode
+// Version: 1.2.0 - x-axis zoom and pan that work (charts opt in); the wheel and
+//                  drags are left to the parent when nothing zooms; plot area
+//                  recomputed on every resize
 // Version: 1.1.0
-// Last Modified: 2025-01-27
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
+#include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cmath>
 
@@ -12,6 +19,9 @@ namespace UltraCanvas {
 
     void UltraCanvasChartElementBase::SetDataSource(std::shared_ptr<IChartDataSource> data) {
         dataSource = data;
+        // New data is shown whole: a zoom into the old data means nothing here.
+        xViewStart = 0.0;
+        xViewEnd = 1.0;
         InvalidateCache();
         StartAnimation();
         RequestRedraw();
@@ -43,6 +53,40 @@ namespace UltraCanvas {
             DrawSelectionIndicators(ctx);
         }
 
+    }
+
+    void UltraCanvasChartElementBase::SetBounds(const Rect2Df& b) {
+        Size2Df before = GetSize();
+        UltraCanvasUIElement::SetBounds(b);
+        if (GetSize() != before) InvalidateCache();
+    }
+
+    void UltraCanvasChartElementBase::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        Size2Df before = GetSize();
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+        if (GetSize() != before) InvalidateCache();
+    }
+
+    void UltraCanvasChartElementBase::SetXAxisView(double start, double span) {
+        span = std::clamp(span, 1.0 / kMaxXAxisZoom, 1.0);
+        start = std::clamp(start, 0.0, 1.0 - span);
+        if (span >= 1.0 - 1e-9) {
+            start = 0.0;
+            span = 1.0;
+        }
+        if (start == xViewStart && start + span == xViewEnd) return;
+        xViewStart = start;
+        xViewEnd = start + span;
+        InvalidateCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasChartElementBase::EndPan() {
+        if (!isPanning) return;
+        isPanning = false;
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            app->ReleaseMouse();
+        }
     }
 
     bool UltraCanvasChartElementBase::OnEvent(const UCEvent& event) {
@@ -199,12 +243,9 @@ namespace UltraCanvas {
 //    }
 
     double UltraCanvasChartElementBase::GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) {
-        // Default implementation for line, scatter, area charts
-        if (totalPoints == 1) {
-            return cachedPlotArea.x + cachedPlotArea.width / 2;
-        } else {
-            return cachedPlotArea.x + (dataIndex * cachedPlotArea.width / (totalPoints - 1));
-        }
+        // Default implementation for line, scatter, area charts: under the
+        // point, as GetDataPointScreenPosition places it
+        return IndexToScreenX(dataIndex, totalPoints);
     }
 
     void UltraCanvasChartElementBase::RenderAxisLabels(IRenderContext* ctx) {
@@ -222,14 +263,17 @@ namespace UltraCanvas {
             // draw labels at evenly spaced positions matching the data points
 
             // Determine number of labels to show based on available space
+            // (the points in view, when zoomed)
             int maxLabels = 12;
-            int labelStep = std::max(1, static_cast<int>(dataPointCount) / maxLabels);
+            double pointsInView = static_cast<double>(dataPointCount) * (xViewEnd - xViewStart);
+            int labelStep = std::max(1, static_cast<int>(pointsInView) / maxLabels);
 
             for (size_t i = 0; i < dataPointCount; i += labelStep) {
-                auto point = dataSource->GetPoint(i);
-
                 // Calculate X position - must match GetDataPointScreenPosition logic
                 double x = GetXAxisLabelPosition(i, dataPointCount);
+                if (!IsScreenXInView(x)) continue;
+
+                auto point = dataSource->GetPoint(i);
 
                 double tickY = cachedPlotArea.y + cachedPlotArea.height;
 
@@ -411,10 +455,11 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::DrawSelectionIndicators(IRenderContext* ctx) {
         if (hoveredPointIndex == SIZE_MAX || !dataSource) return;
 
+        // Where the point is drawn: by its index in DataLabel mode, by its x
+        // value otherwise. Not drawn for a point the zoom has scrolled away.
         auto point = dataSource->GetPoint(hoveredPointIndex);
-        ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-
-        auto screenPos = transform.DataToScreen(point.x, point.y);
+        Point2Dd screenPos = GetDataPointScreenPosition(hoveredPointIndex, point);
+        if (!IsScreenXInView(screenPos.x)) return;
         float indicatorSize = 8.0f;
 
         // Use existing IRenderContext drawing functions
@@ -443,45 +488,72 @@ namespace UltraCanvas {
         Point2Di mousePos(event.pointer.x, event.pointer.y);
         lastMousePos = mousePos;
 
-        // Call derived class for chart-specific handling
-        bool handled = HandleChartMouseMove(mousePos);
-
-        // Handle pan if enabled
-        if (isDragging && enablePan) {
-            // Implement panning logic
-            handled = true;
+        // A drag that started on a zoomed plot moves the view, by as many
+        // data units as the pointer moved across the plot.
+        if (isPanning && isDragging && cachedPlotArea.width > 0) {
+            double span = xViewEnd - xViewStart;
+            double shift = (mousePos.x - panStartPointerX) / cachedPlotArea.width * span;
+            SetXAxisView(panStartViewStart - shift, span);
+            return true;
         }
 
-        return handled;
+        // Call derived class for chart-specific handling. A drag that pans
+        // nothing is not taken: it is the parent's to use.
+        return HandleChartMouseMove(mousePos);
     }
 
     bool UltraCanvasChartElementBase::HandleMouseDown(const UCEvent& event) {
         if (event.button == UCMouseButton::Left) { // Left mouse button
             isDragging = true;
             lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
-            return true;
+            if (enablePan && SupportsXAxisZoom() && IsZoomed() &&
+                cachedPlotArea.Contains(event.pointer.x, event.pointer.y)) {
+                isPanning = true;
+                panStartPointerX = event.pointer.x;
+                panStartViewStart = xViewStart;
+                // The drag goes on reaching the chart when it leaves it
+                if (auto* app = UltraCanvasApplication::GetInstance()) {
+                    app->CaptureMouse(this);
+                }
+                return true;
+            }
         }
+        // A press that starts no pan is not the chart's: it goes on to the
+        // parent (a scrolling or draggable container), as an unused wheel
+        // turn does. A subclass that reacts to clicks handles them first.
         return false;
     }
 
     bool UltraCanvasChartElementBase::HandleMouseUp(const UCEvent& event) {
-        if (event.button == UCMouseButton::Left) {
-            isDragging = false;
-            return true;
-        }
-        return false;
+        if (event.button != UCMouseButton::Left) return false;
+        const bool endsPan = isPanning;
+        isDragging = false;
+        EndPan();
+        return endsPan;
     }
 
     bool UltraCanvasChartElementBase::HandleMouseWheel(const UCEvent& event) {
-        if (enableZoom) {
-            float zoomDelta = event.wheelDelta > 0 ? 1.1f : 0.9f;
-            zoomLevel *= zoomDelta;
-            zoomLevel = std::clamp(zoomLevel, 0.1f, 10.0f);
-            InvalidateCache();
-            RequestRedraw();
-            return true;
-        }
-        return false;
+        // A wheel turn the chart does nothing with is left to the parent, so
+        // a scrolling container around the chart still scrolls.
+        if (!enableZoom || !SupportsXAxisZoom() || !dataSource || event.wheelDelta == 0) return false;
+
+        UpdateRenderingCache();
+        if (cachedPlotArea.width <= 0 ||
+            !cachedPlotArea.Contains(event.pointer.x, event.pointer.y)) return false;
+        bool zoomable = useIndexBasedPositioning ? dataSource->GetPointCount() >= 2
+                                                 : cachedDataBounds.GetXRange() > 0;
+        if (!zoomable) return false;
+
+        // Wheel up zooms in, down out, keeping the value under the pointer
+        // under the pointer.
+        double span = xViewEnd - xViewStart;
+        double factor = event.wheelDelta > 0 ? 1.0 / 1.25 : 1.25;
+        double newSpan = std::clamp(span * factor, 1.0 / kMaxXAxisZoom, 1.0);
+        if (std::abs(newSpan - span) < 1e-12) return false;   // fully in or fully out already
+
+        double anchor = xViewStart + (event.pointer.x - cachedPlotArea.x) / cachedPlotArea.width * span;
+        SetXAxisView(anchor - (anchor - xViewStart) * newSpan / span, newSpan);
+        return true;
     }
 
     void UltraCanvasChartElementBase::HideTooltip() {

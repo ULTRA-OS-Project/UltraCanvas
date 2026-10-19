@@ -1347,10 +1347,10 @@ void UltraCanvasClassDiagram::RenderEdgeLabels(IRenderContext* ctx,
     }
     if (relationship.nameDirection == UMLReadingDirection::SourceToTarget &&
         !relationship.name.empty()) {
-        centreText += " ▸";
+        centreText += " \xE2\x80\xBA";   // › (the UI font has no "▸")
     } else if (relationship.nameDirection == UMLReadingDirection::TargetToSource &&
                !relationship.name.empty()) {
-        centreText = "◂ " + centreText;
+        centreText = "\xE2\x80\xB9 " + centreText;   // ‹ (the UI font has no "◂")
     }
     if (!centreText.empty()) {
         DrawLabelChip(ctx, centreText,

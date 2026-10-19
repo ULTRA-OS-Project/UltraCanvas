@@ -738,7 +738,7 @@ only the resulting invocations.
 |---|---|---|
 | **0** | This document; `Masterfile_modules.md` §13 | — |
 | **1 — Channel** | `UltraMessage` target: types, envelope, wire format, local-socket transport with broker election on Linux/macOS/Windows, `Connect`/`Post`/`PostRecorded`/`Request`/`Reply`/`Subscribe`, UI-thread delivery, `AddFdWatch` path on Linux, journal on UltraDatabase with FTS, `Query`/`MarkRead`/`Dismiss`, schema registry with the well-known topics, `ultramsg` CLI, `Tests/UltraMessage` (two-process tests through the CLI, single-process tests through an in-process broker) | UltraDatabase, UltraCanvasJSON |
-| **2 — Feed** | Adapters: freedesktop-notifications (server + monitor mode) *built*, ultramail (UltraMail publishes) *built*, windows-notification-listener *built*, apple-mail, telegram; `UltraCanvasMessageCenter` element *built*; DemoApp page *built*; `Docs/Modules/UltraMessage/README.md` *written* | Phase 1, UltraNet, UltraVault |
+| **2 — Feed** | Adapters: freedesktop-notifications (server + monitor mode) *built*, ultramail (UltraMail publishes, and notifies of new mail) *built*, windows-notification-listener *built*, apple-mail, telegram; presenters - an application's `system.notification` on screen through the platform's notification service: freedesktop-presenter *built*, windows-presenter *built*, macos-presenter *built*; the toast host for where UltraMessage is the notification server (`UltraCanvasNotificationToastHost`, in the ULTRA OS desktop) *built*; `UltraCanvasMessageCenter` element *built*; DemoApp page *built*; `Docs/Modules/UltraMessage/README.md` *written* | Phase 1, UltraNet, UltraVault |
 | **3 — Commands** | `RegisterCommand`/`ListCommands`/`Invoke`, dictionaries as manifests, consent store and prompt, the `app.command.echo` topic and the recorder role, dbus-export + dbus-invoke, apple-events-invoke + apple-events-export, copydata; UltraFiler/UltraViewer/UltraMail register their first verbs (`open`, `export`, `send`) | Phase 1. Built when UltraScript or an AI agent needs it, never ahead of Phase 2 |
 | **4** | Android listener, WASM transport, apple-messages, matrix, imap-idle, com-automation; at-rest journal encryption | Phases 2–3 |
 
@@ -764,7 +764,11 @@ module exists; Phase 3 is the hook UltraScript's cross-application scripting
 3. **Should ULTRA OS's shell own `org.freedesktop.Notifications` outright?**
    Yes is proposed: it makes the feed complete and lets the message centre
    *be* the notification UI. It also means the shell must render toasts,
-   which is new work outside this module.
+   which is new work outside this module. *Built:* the shell's toasts are
+   `UltraCanvasNotificationToastHost` (`include/Plugins/UltraMessage/`),
+   hosted by the ULTRA OS desktop; it draws every notification that carries
+   no `displayed`, which is all of them where UltraMessage serves the name,
+   and none on a desktop with its own server.
 4. **Mirroring notifications into `messaging.message`.** Recovering sender
    and conversation from a toast's summary/body is heuristic per app. The
    alternative is to show `system.notification` rows only for apps without a

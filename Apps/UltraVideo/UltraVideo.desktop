@@ -1,0 +1,25 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraVideo. It puts the editor in the
+# application menu and registers it for its own projects (.ultravideo) and
+# for the video, pictures and sound it edits, so a file opened from a filer
+# arrives as an argument (%F), the same path main() takes for
+# `UltraVideo trip.ultravideo` or `UltraVideo clip.mp4 photo.jpg`.
+#
+# `Icon=UltraVideo` is an icon *name*, resolved through the installed icon
+# themes; the install rules put media/appicon/UltraVideo.png and .svg where
+# the lookup lands on them. Installed to share/applications; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraVideo
+GenericName=Video Editor
+Comment=Cut, join and grade video, pan over photos, add music and titles, and export
+Exec=UltraVideo %F
+TryExec=UltraVideo
+Icon=UltraVideo
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraVideo
+Categories=AudioVideo;Video;AudioVideoEditing;
+Keywords=video;editor;timeline;slideshow;music;export;mp4;
+MimeType=application/x-ultravideo;video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;image/jpeg;image/png;image/webp;image/heif;image/heic;audio/mpeg;audio/x-wav;audio/flac;audio/ogg;audio/mp4;

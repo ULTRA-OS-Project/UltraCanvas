@@ -1,6 +1,11 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.21.0 - nesting depth capped (kMaxTreeDepth); flex and grid properties: display, the flex shorthand, alignment,
+//                  gaps, grid templates (repeat, minmax, auto-fill, areas), grid lines
+// Version: 1.20.0 - the newline right after <pre> / <listing> / <textarea>
+// Version: 1.19.0 - foreign content: inline <svg> / <math> keep their vocabulary's case
+// Version: 1.18.0 - the selector matcher on a tree that is not the DOM (an SVG-shaped one)
 // Version: 1.17.0 - the !important cascade: inline !important beats a style
 //                  sheet's !important (a newsletter's white button text)
 // Version: 1.16.0 - merged with main's 1.4.0-1.7.0
@@ -24,7 +29,7 @@
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -96,6 +101,25 @@ static void TestParserBasics() {
         CHECK(b != nullptr);
         if (b) CHECK_EQ(b->TextContent(), std::string("bold"));
     }
+}
+
+// The newline right after <pre> / <listing> / <textarea> is not content, as
+// in HTML's tree builder; a second one, or one after a child's start tag, is.
+static void TestParserPreNewline() {
+    Parser parser;
+    auto preText = [&](const std::string& html, const char* tag = "pre") {
+        Document doc = parser.Parse(html);
+        Node* element = doc.root ? doc.root->FindFirst(tag) : nullptr;
+        return element ? element->TextContent() : std::string("<no element>");
+    };
+    CHECK_EQ(preText("<pre>\nline one\nline two</pre>"), std::string("line one\nline two"));
+    CHECK_EQ(preText("<pre>\r\nline</pre>"), std::string("line"));
+    CHECK_EQ(preText("<pre>\n\nafter a blank line</pre>"), std::string("\nafter a blank line"));
+    CHECK_EQ(preText("<pre>no newline</pre>"), std::string("no newline"));
+    CHECK_EQ(preText("<pre><code>\nkept</code></pre>"), std::string("\nkept"));
+    CHECK_EQ(preText("<listing>\nlisted</listing>", "listing"), std::string("listed"));
+    CHECK_EQ(preText("<textarea>\ntyped</textarea>", "textarea"), std::string("typed"));
+    CHECK_EQ(preText("<div>\nkept</div>", "div"), std::string("\nkept"));
 }
 
 static void TestParserFragmentAndRecovery() {
@@ -190,11 +214,146 @@ static void TestParserUnquotedAttributes() {
     }
 }
 
+// Inline <svg> and <math> in a page are foreign content: their names keep the
+// case their vocabulary spells them in, whatever case the source used (the
+// standard's adjustment tables), and HTML resumes inside foreignObject and
+// the MathML text elements. A CSS type selector, lower-cased by the parser,
+// still matches them; an attribute is found by either spelling.
+static void TestParserForeignContent() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<p>a <svg viewbox=\"0 0 2 2\" preserveAspectRatio=\"none\" xmlns:xlink=\"x\">"
+        "<defs><lineargradient id=\"g\" gradientunits=\"userSpaceOnUse\"><stop offset=\"0\"/>"
+        "</linearGradient></defs>"
+        "<foreignObject><DIV CLASS=\"x\">t</DIV></foreignObject><text>T</text></svg> b</p>"
+        "<math><mi>x</mi><annotation-xml><DIV>h</DIV></annotation-xml>"
+        "<semantics definitionurl=\"u\"/></math>");
+    Node* p = doc.Body()->FindFirst("p");
+    CHECK(p != nullptr);
+    Node* svg = p ? p->FindFirst("svg") : nullptr;
+    CHECK(svg != nullptr);
+    if (!svg) return;
+
+    // The <svg> element's own attributes are already SVG's.
+    bool storedAsViewBox = false;
+    for (const auto& [name, value] : svg->attributes) storedAsViewBox = storedAsViewBox || name == "viewBox";
+    CHECK(storedAsViewBox);
+    CHECK(svg->HasAttribute("viewBox"));
+    CHECK(svg->HasAttribute("viewbox"));                 // found by either spelling
+    CHECK_EQ(svg->GetAttribute("viewbox"), std::string("0 0 2 2"));
+    CHECK(svg->HasAttribute("preserveAspectRatio"));
+    CHECK(svg->HasAttribute("xmlns:xlink"));
+
+    // A lower-cased source name is put back in its vocabulary's case, and the
+    // end tag written in that case closes it.
+    Node* grad = svg->FindFirst("linearGradient");
+    CHECK(grad != nullptr);
+    if (grad) {
+        CHECK_EQ(grad->GetAttribute("gradientUnits"), std::string("userSpaceOnUse"));
+        CHECK(grad->children.size() == 1 && grad->children[0]->IsElement("stop"));
+        CHECK(grad->parent && grad->parent->IsElement("defs"));
+    }
+    CHECK(svg->FindFirst("text") != nullptr);
+
+    // HTML again inside foreignObject: lower-cased as HTML is.
+    Node* fo = svg->FindFirst("foreignObject");
+    CHECK(fo != nullptr);
+    CHECK(fo && fo->children.size() == 1 && fo->children[0]->IsElement("div") &&
+          fo->children[0]->HasClass("x"));
+
+    // After </svg> the text belongs to the paragraph again.
+    CHECK(p && !p->children.empty() && p->children.back()->IsText() &&
+          p->children.back()->text.find('b') != std::string::npos);
+
+    // MathML: its one adjusted attribute, and HTML inside annotation-xml.
+    Node* math = doc.Body()->FindFirst("math");
+    CHECK(math != nullptr);
+    if (math) {
+        Node* ann = math->FindFirst("annotation-xml");
+        CHECK(ann && ann->children.size() == 1 && ann->children[0]->IsElement("div"));
+        Node* sem = math->FindFirst("semantics");
+        CHECK(sem && sem->HasAttribute("definitionURL"));
+    }
+
+    // Selectors, lower-cased by the CSS parser, match the foreign names.
+    StyleSheet sheet;
+    sheet.ParseAppend("linearGradient stop { stop-color: red } svg[viewBox='0 0 2 2'] { x: 1 } "
+                      "lineargradient { y: 2 } foreignObject div.x { z: 3 }");
+    CHECK(grad && Matches(sheet.rules[0].selectors[0], *grad->children[0]));
+    CHECK(Matches(sheet.rules[1].selectors[0], *svg));
+    CHECK(grad && Matches(sheet.rules[2].selectors[0], *grad));
+    CHECK(fo && Matches(sheet.rules[3].selectors[0], *fo->children[0]));
+    CHECK(!Matches(sheet.rules[3].selectors[0], *svg));
+}
+
 static void TestExtractPlainText() {
     std::string text = ExtractPlainText(
         "<html><head><style>p{color:red}</style></head>"
         "<body><h1>Head</h1><p>One &amp; two</p></body></html>");
     CHECK_EQ(text, std::string("Head One & two"));
+    // An inline element keeps a word whole, as on screen; a block, <br> or
+    // picture separates words.
+    CHECK_EQ(ExtractPlainText("wor<b>ld</b> <span>and</span><a href=x>more</a>"),
+             std::string("world andmore"));
+    CHECK_EQ(ExtractPlainText("<B>via</B>gra"), std::string("viagra"));
+    CHECK_EQ(ExtractPlainText("one<br>two<div>three</div>four<img src=x>five"),
+             std::string("one two three four five"));
+    // A no-break space is a space.
+    CHECK_EQ(ExtractPlainText("a&nbsp;b \xC2\xA0 c"), std::string("a b c"));
+    // Where a <style> or <script> was, words stay apart.
+    CHECK_EQ(ExtractPlainText("<style>p{}</style>hello<script>x()</script>world"),
+             std::string("hello world"));
+
+    // The text of a parsed element, by the same rules.
+    Parser parser;
+    Document doc = parser.Parse("<a href=x>www.pay<b>pal</b>.com</a>"
+                                "<a href=y><table><tr><td>Click</td><td>here&nbsp;&amp; now</td></tr></table></a>");
+    std::vector<Node*> anchors;
+    doc.root->ForEachElement([&](Node& n) { if (n.IsElement("a")) anchors.push_back(&n); return true; });
+    CHECK(anchors.size() == 2);
+    if (anchors.size() == 2) {
+        CHECK_EQ(ExtractPlainText(*anchors[0]), std::string("www.paypal.com"));
+        CHECK_EQ(ExtractPlainText(*anchors[1]), std::string("Click here & now"));
+    }
+}
+
+// PlainTextLayout::Lines: the text as a reader sees it, line by line - what an
+// HTML mail shows as plain text and quotes in a reply.
+static void TestExtractPlainTextLines() {
+    auto lines = [](const std::string& html) {
+        return ExtractPlainText(html, PlainTextLayout::Lines);
+    };
+    // Paragraphs a blank line apart, blocks on lines of their own.
+    CHECK_EQ(lines("<html><head><title>T</title><style>p{color:red}</style></head>"
+                   "<body><h1>Head</h1><p>One &amp; two</p><div>a</div><div>b</div></body></html>"),
+             std::string("Head\n\nOne & two\n\na\nb"));
+    // <br> is a line break, two a blank line.
+    CHECK_EQ(lines("Hi,<br><br>see you<br>Anna"), std::string("Hi,\n\nsee you\nAnna"));
+    // Whitespace between inline elements stays one space; runs collapse.
+    CHECK_EQ(lines("<p>Hello <b>big</b>   <i>world</i>\n  again</p>"),
+             std::string("Hello big world again"));
+    // Table rows on lines, their cells a tab apart.
+    CHECK_EQ(lines("<table><tr><td>Name</td><td>Anna</td></tr>"
+                   "<tr><th>City</th><td>Berlin</td></tr></table>"),
+             std::string("Name\tAnna\nCity\tBerlin"));
+    // Lists: "- " and numbers, from the start attribute.
+    CHECK_EQ(lines("<ul><li>one</li><li>two</li></ul><ol start=\"3\"><li>third</li><li>fourth</li></ol>"),
+             std::string("- one\n- two\n3. third\n4. fourth"));
+    // <pre> as written.
+    CHECK_EQ(lines("<p>Code:</p><pre>a  b\n  c</pre><p>end</p>"),
+             std::string("Code:\n\na  b\n  c\n\nend"));
+    // What is not shown: a mail's hidden preheader, the hidden attribute,
+    // scripts. A no-break space is a space.
+    CHECK_EQ(lines("<div style=\"display: none; max-height:0\">Preview text</div>"
+                   "<span style=\"visibility:hidden\">x</span><p hidden>gone</p>"
+                   "<script>var a = 1;</script><p>Body&nbsp;text &#8211; &eacute;t&eacute;</p>"),
+             std::string("Body text \xE2\x80\x93 \xC3\xA9t\xC3\xA9"));
+    // A layout table of a mail: blocks inside cells, no stray blank lines.
+    CHECK_EQ(lines("<table><tr><td><p>Dear Anna,</p><p>your order shipped.</p></td></tr>"
+                   "<tr><td>&nbsp;</td></tr><tr><td><p>Thanks</p></td></tr></table>"),
+             std::string("Dear Anna,\n\nyour order shipped.\n\nThanks"));
+    // The default is still one line.
+    CHECK_EQ(ExtractPlainText("<p>a</p><p>b</p>"), std::string("a b"));
 }
 
 // ============================================================================
@@ -338,6 +497,40 @@ static void TestStyleSheetParsing() {
 
     auto decls = StyleSheet::ParseDeclarationList("color: blue; ; margin-top:2px");
     CHECK_EQ(decls.size(), size_t(2));
+}
+
+static void TestStyleImports() {
+    // The forms @import takes, at the head of a sheet.
+    auto imports = StyleSheet::ParseImports(
+        "@charset \"utf-8\";\n"
+        "/* a comment */ @import url(\"a.css\");\n"
+        "@import 'b.css' screen and (max-width: 600px);\n"
+        "@IMPORT url(c.css) print;\n"
+        "@layer base;\n"
+        "@import url( 'd.css' ) layer(base) supports(display: grid) ;\n"
+        "@import \"e\\\"q.css\";\n"
+        "@import nonsense;\n"
+        "p { color: red }\n"
+        "@import url(late.css);\n");
+    CHECK_EQ(imports.size(), size_t(5));
+    if (imports.size() == 5) {
+        CHECK(imports[0].href == "a.css" && imports[0].media.empty());
+        CHECK(imports[1].href == "b.css" && imports[1].media == "screen and (max-width: 600px)");
+        CHECK(imports[2].href == "c.css" && imports[2].media == "print");
+        CHECK(imports[3].href == "d.css" && imports[3].media.empty());   // layer() / supports() dropped
+        CHECK(imports[4].href == "e\"q.css");
+    }
+    // After the first rule, @import is ignored (CSS); a block @layer ends them too.
+    CHECK(StyleSheet::ParseImports("p{} @import 'x.css';").empty());
+    CHECK(StyleSheet::ParseImports("@layer a { p{} } @import 'x.css';").empty());
+    CHECK(StyleSheet::ParseImports("<!-- @import 'x.css'; -->").size() == 1);
+    CHECK(StyleSheet::ParseImports("@import url(x.css").empty());      // no ';'
+    CHECK(StyleSheet::ParseImports("").empty());
+
+    // ParseAppend skips the @import rules themselves.
+    StyleSheet sheet;
+    sheet.ParseAppend("@import 'x.css'; p { color: red }");
+    CHECK_EQ(sheet.rules.size(), size_t(1));
 }
 
 // ============================================================================
@@ -1079,16 +1272,372 @@ static void TestQuirksAndLineHeight() {
     }
 }
 
+// ============================================================================
+// SELECTOR MATCHING ON ANOTHER TREE
+// ============================================================================
+//
+// The matcher is written against a Traits type, not the HTML DOM, so the
+// Vector plugin's SVG reader (tinyxml2 elements, camelCase names kept as
+// written) matches through the same code as the resolver. This tree stands
+// in for such a reader: it keeps its names in their original case and
+// resolves type selectors case-insensitively, the way an SVG vocabulary
+// (linearGradient) must against the parser's lower-cased selectors.
+
+namespace {
+
+struct XmlLikeElement {
+    std::string name;
+    std::vector<std::pair<std::string, std::string>> attributes;
+    std::string text;
+    std::vector<XmlLikeElement*> children;
+    XmlLikeElement* parent = nullptr;
+
+    XmlLikeElement(std::string n, std::vector<std::pair<std::string, std::string>> a = {})
+        : name(std::move(n)), attributes(std::move(a)) {}
+    XmlLikeElement& Add(XmlLikeElement& child) {
+        child.parent = this;
+        children.push_back(&child);
+        return child;
+    }
+    const std::string* Attribute(const std::string& lowerName) const {
+        for (const auto& [k, v] : attributes) {
+            if (LowerAscii(k) == lowerName) return &v;
+        }
+        return nullptr;
+    }
+    static std::string LowerAscii(std::string s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    }
+};
+
+struct XmlLikeTraits {
+    using Element = XmlLikeElement;
+    static bool TagIs(const Element& e, const std::string& lowerTag) {
+        return XmlLikeElement::LowerAscii(e.name) == lowerTag;
+    }
+    static bool IdIs(const Element& e, const std::string& id) {
+        const std::string* v = e.Attribute("id");
+        return v && *v == id;
+    }
+    static bool HasClass(const Element& e, const std::string& name) {
+        const std::string* v = e.Attribute("class");
+        if (!v) return false;
+        size_t pos = 0;
+        while (pos < v->size()) {
+            while (pos < v->size() && std::isspace(static_cast<unsigned char>((*v)[pos]))) ++pos;
+            size_t end = pos;
+            while (end < v->size() && !std::isspace(static_cast<unsigned char>((*v)[end]))) ++end;
+            if (end > pos && v->compare(pos, end - pos, name) == 0 && end - pos == name.size()) return true;
+            pos = end;
+        }
+        return false;
+    }
+    static bool GetAttribute(const Element& e, const std::string& lowerName, std::string& value) {
+        const std::string* v = e.Attribute(lowerName);
+        if (!v) return false;
+        value = *v;
+        return true;
+    }
+    static bool IsLink(const Element& e) { return TagIs(e, "a") && e.Attribute("href"); }
+    static bool IsRoot(const Element& e) { return e.parent == nullptr; }
+    static bool IsEmpty(const Element& e) { return e.children.empty() && e.text.empty(); }
+    static bool SiblingPosition(const Element& e, bool ofType, int& index, int& count) {
+        if (!e.parent) return false;
+        index = 0;
+        count = 0;
+        for (const Element* sib : e.parent->children) {
+            if (ofType && sib->name != e.name) continue;
+            ++count;
+            if (sib == &e) index = count;
+        }
+        return index > 0;
+    }
+    static const Element* Parent(const Element& e) { return e.parent; }
+};
+
+} // namespace
+
+static void TestSelectorMatchingOnForeignTree() {
+    // <svg><defs><linearGradient id="g" class="warm"><stop/><stop class="Hot"/></linearGradient></defs>
+    //      <g class="row"><rect class="box" rx="4"/><rect class="box"/><circle data-Kind="A-B"/></g>
+    //      <rect class="box"/></svg>
+    XmlLikeElement svg("svg", {{"viewBox", "0 0 10 10"}});
+    XmlLikeElement defs("defs");
+    XmlLikeElement grad("linearGradient", {{"id", "g"}, {"class", "warm"}});
+    XmlLikeElement stop1("stop");
+    XmlLikeElement stop2("stop", {{"class", "Hot"}});
+    XmlLikeElement g("g", {{"class", "row"}});
+    XmlLikeElement r1("rect", {{"class", "box"}, {"rx", "4"}});
+    XmlLikeElement r2("rect", {{"class", "box"}});
+    XmlLikeElement c("circle", {{"data-Kind", "A-B"}});
+    XmlLikeElement r3("rect", {{"class", "box"}});
+    svg.Add(defs).Add(grad);
+    grad.Add(stop1);
+    grad.Add(stop2);
+    svg.Add(g);
+    g.Add(r1);
+    g.Add(r2);
+    g.Add(c);
+    svg.Add(r3);
+
+    StyleSheet sheet;
+    sheet.ParseAppend(
+        "linearGradient stop { stop-color: red }\n"          // camelCase type, descendant
+        "#g .Hot { stop-color: blue }\n"                       // id, then a class with its case
+        ".hot { stop-color: green }\n"                         // the class in another case: no
+        "g rect:first-of-type[rx] { fill: yellow }\n"        // ancestor, nth-of-type, attribute present
+        "rect.box:last-child { fill: black }\n"
+        "svg > rect { stroke: gray }\n"                      // `>` reads as a descendant: both rects
+        "[data-kind|=A] { opacity: 0.5 }\n"                  // lower-cased attribute name, |=
+        "[viewbox] { x: 1 }\n"
+        ":root { y: 2 }\n"
+        "stop:empty { z: 3 }\n"
+        ".box { fill: white }\n"
+        ".box.box { fill: silver }\n");                      // more specific, earlier in source: still wins
+
+    auto declared = [&](const XmlLikeElement& e, const std::string& prop) -> std::string {
+        std::string value;
+        for (const Rule* rule : MatchingRules<XmlLikeTraits>(sheet, e)) {
+            for (const auto& d : rule->declarations) {
+                if (d.property == prop) value = d.value;
+            }
+        }
+        return value;
+    };
+
+    CHECK_EQ(declared(stop1, "stop-color"), std::string("red"));
+    CHECK_EQ(declared(stop2, "stop-color"), std::string("blue"));   // #g .Hot beats the type rule; .hot never matched
+    CHECK_EQ(declared(r1, "fill"), std::string("yellow"));          // first rect of its type in <g>, with rx
+    CHECK_EQ(declared(r2, "fill"), std::string("silver"));          // .box.box (0,2,0) over .box (0,1,0)
+    CHECK_EQ(declared(r3, "fill"), std::string("black"));           // last child of <svg>
+    CHECK_EQ(declared(r1, "stroke"), std::string("gray"));          // svg > rect, read as svg rect
+    CHECK_EQ(declared(c, "opacity"), std::string("0.5"));
+    CHECK_EQ(declared(svg, "x"), std::string("1"));
+    CHECK_EQ(declared(svg, "y"), std::string("2"));
+    CHECK_EQ(declared(g, "y"), std::string(""));
+    CHECK_EQ(declared(stop1, "z"), std::string("3"));
+    CHECK_EQ(declared(grad, "z"), std::string(""));
+
+    // The pieces on their own.
+    AttributeSelector words;
+    words.op = '~';
+    words.value = "b";
+    CHECK(AttributeValueMatches(words, "a b c"));
+    CHECK(!AttributeValueMatches(words, "a bb c"));
+    words.op = '^';
+    words.value = "";
+    CHECK(!AttributeValueMatches(words, "anything"));   // an empty prefix matches nothing, as in CSS
+    PseudoClass odd;
+    odd.a = 2;
+    odd.b = 1;
+    CHECK(NthPositionMatches(odd, 3, 5));
+    CHECK(!NthPositionMatches(odd, 4, 5));
+    odd.fromEnd = true;
+    CHECK(!NthPositionMatches(odd, 4, 5));   // 4 of 5 is the 2nd from the end: even
+    CHECK(NthPositionMatches(odd, 3, 5));    // 3 of 5 is the 3rd from the end
+    CHECK(!NthPositionMatches(odd, 0, 5));
+
+    // And the DOM's own traits answer the same questions.
+    Parser parser;
+    Document doc = parser.Parse("<ul><li>a</li><li class=\"X\">b</li></ul>");
+    Node* second = doc.Body()->FindFirst("ul")->children[1].get();
+    StyleSheet domSheet;
+    domSheet.ParseAppend("li:last-child.X { color: red } li.x { color: blue }");
+    const auto rules = MatchingRules<NodeSelectorTraits>(domSheet, *second);
+    CHECK_EQ(rules.size(), size_t(1));
+    CHECK(rules.size() == 1 && rules[0]->declarations[0].value == "red");
+    CHECK(Matches(domSheet.rules[0].selectors[0], *second));
+    CHECK(!Matches(domSheet.rules[1].selectors[0], *second));
+}
+
+static void TestParserDepthLimit() {
+    std::printf("nesting depth is capped\n");
+    // Ten thousand nested elements: kept, and the text at the bottom too,
+    // but no deeper than kMaxTreeDepth (+ html and body) - every reader of
+    // the tree recurses, and this used to overflow the stack.
+    std::string html;
+    for (int i = 0; i < 10000; ++i) html += (i % 2) ? "<span>" : "<div>";
+    html += "bottom";
+    Parser parser;
+    Document doc = parser.Parse(html);
+    std::function<size_t(const Node&)> depth = [&](const Node& n) -> size_t {
+        size_t deepest = 0;
+        for (const auto& c : n.children) deepest = std::max(deepest, depth(*c));
+        return deepest + 1;
+    };
+    CHECK(doc.root != nullptr);
+    if (!doc.root) return;
+    CHECK(depth(*doc.root) <= kMaxTreeDepth + 3);
+    CHECK(doc.CountElements() >= 10000);
+    CHECK(doc.root->TextContent().find("bottom") != std::string::npos);
+    StyleResolver resolver;
+    resolver.Resolve(doc);                                    // does not overflow
+    CHECK(!parser.Errors().empty());
+}
+
+// ============================================================================
+// FLEX AND GRID
+// ============================================================================
+
+// The computed style of the element with id `id` in `html`.
+static ComputedStyle StyleById(const std::string& html, const std::string& id) {
+    Parser parser;
+    Document doc = parser.Parse(html);
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    resolver.Resolve(doc);
+    Node* node = doc.GetElementById(id);
+    return node ? resolver.StyleOf(node) : ComputedStyle{};
+}
+
+static void TestFlexProperties() {
+    std::printf("flex properties\n");
+    ComputedStyle s = StyleById("<div id='c' style='display:flex;flex-flow:column wrap;"
+                                "justify-content:space-between;align-items:safe center;gap:4px 8px'></div>", "c");
+    CHECK(s.display == DisplayMode::Block);
+    CHECK(s.layoutMode == BoxLayoutMode::Flex);
+    CHECK(s.flexDirection == FlexDirectionMode::Column);
+    CHECK(s.flexWrap == FlexWrapMode::Wrap);
+    CHECK(s.justifyContent == BoxAlignMode::SpaceBetween);
+    CHECK(s.alignItems == BoxAlignMode::Center);
+    CHECK(Near(s.rowGapPx, 4.f) && Near(s.columnGapPx, 8.f));
+
+    s = StyleById("<span id='c' style='display:inline-flex'></span>", "c");
+    CHECK(s.display == DisplayMode::InlineBlock && s.layoutMode == BoxLayoutMode::Flex);
+    s = StyleById("<div id='c' style='display:flex;display:block'></div>", "c");
+    CHECK(s.layoutMode == BoxLayoutMode::Flow);
+    s = StyleById("<div id='c' style='display:flex;display:bogus'></div>", "c");
+    CHECK(s.layoutMode == BoxLayoutMode::Flex);              // an invalid value is ignored
+
+    // The flex shorthand: one number, numbers and a basis, keywords. A bare
+    // 0 is a number (CssLength reads it as 0px).
+    s = StyleById("<i id='i' style='flex:1'></i>", "i");
+    CHECK(Near(s.flexGrow, 1.f) && Near(s.flexShrink, 1.f) && s.flexBasisPx && Near(*s.flexBasisPx, 0.f));
+    s = StyleById("<i id='i' style='flex:0 0 150px'></i>", "i");
+    CHECK(Near(s.flexGrow, 0.f) && Near(s.flexShrink, 0.f) && s.flexBasisPx && Near(*s.flexBasisPx, 150.f));
+    s = StyleById("<i id='i' style='flex:2 30%'></i>", "i");
+    CHECK(Near(s.flexGrow, 2.f) && Near(s.flexShrink, 1.f) && s.flexBasisPercent && Near(*s.flexBasisPercent, 30.f));
+    s = StyleById("<i id='i' style='flex:none'></i>", "i");
+    CHECK(Near(s.flexGrow, 0.f) && Near(s.flexShrink, 0.f) && !s.flexBasisPx && !s.flexBasisPercent);
+    s = StyleById("<i id='i' style='flex:auto'></i>", "i");
+    CHECK(Near(s.flexGrow, 1.f) && !s.flexBasisPx);
+    s = StyleById("<i id='i' style='flex:1;flex:1px 2px'></i>", "i");     // two bases: ignored
+    CHECK(Near(s.flexGrow, 1.f) && s.flexBasisPx && Near(*s.flexBasisPx, 0.f));
+    s = StyleById("<i id='i' style='flex-grow:3;flex-shrink:0;flex-basis:2em;order:-2;align-self:end'></i>", "i");
+    CHECK(Near(s.flexGrow, 3.f) && Near(s.flexShrink, 0.f));
+    CHECK(s.flexBasisPx && Near(*s.flexBasisPx, 32.f));
+    CHECK(s.order == -2);
+    CHECK(s.alignSelf == BoxAlignMode::End);
+    s = StyleById("<i id='i' style='flex-grow:-1;order:1.5;order:99999999'></i>", "i");
+    CHECK(Near(s.flexGrow, 0.f));                             // negative: invalid
+    CHECK(s.order == kMaxGridLines);                          // 1.5 ignored, huge capped
+
+    s = StyleById("<div id='c' style='place-items:end center;place-content:space-around'></div>", "c");
+    CHECK(s.alignItems == BoxAlignMode::End && s.justifyItems == BoxAlignMode::Center);
+    CHECK(s.alignContent == BoxAlignMode::SpaceAround && s.justifyContent == BoxAlignMode::SpaceAround);
+}
+
+static void TestGridProperties() {
+    std::printf("grid properties\n");
+    using K = GridTrackBound::Kind;
+    ComputedStyle s = StyleById(
+        "<div id='g' style='display:grid;grid-template-columns:[full] 100px repeat(2, 1fr) minmax(50px, 25%) "
+        "fit-content(80px) [end];grid-template-rows:auto min-content;row-gap:3px'></div>", "g");
+    CHECK(s.layoutMode == BoxLayoutMode::Grid);
+    CHECK_EQ(s.gridColumns.tracks.size(), static_cast<size_t>(5));
+    if (s.gridColumns.tracks.size() == 5) {
+        CHECK(s.gridColumns.tracks[0].max.kind == K::Px && Near(s.gridColumns.tracks[0].max.value, 100.f));
+        CHECK(s.gridColumns.tracks[1].max.kind == K::Fr && s.gridColumns.tracks[2].max.kind == K::Fr);
+        CHECK(s.gridColumns.tracks[3].IsMinMax());
+        CHECK(s.gridColumns.tracks[3].min.kind == K::Px && s.gridColumns.tracks[3].max.kind == K::Percent);
+        CHECK(s.gridColumns.tracks[4].max.kind == K::FitContent && Near(s.gridColumns.tracks[4].max.value, 80.f));
+    }
+    CHECK_EQ(s.gridRows.tracks.size(), static_cast<size_t>(2));
+    CHECK(Near(s.rowGapPx, 3.f) && Near(s.columnGapPx, 0.f));
+
+    s = StyleById("<div id='g' style='grid-template-columns:200px repeat(auto-fit, minmax(10em, 1fr))'></div>", "g");
+    CHECK_EQ(s.gridColumns.tracks.size(), static_cast<size_t>(1));
+    CHECK_EQ(s.gridColumns.autoRepeat.size(), static_cast<size_t>(1));
+    CHECK_EQ(s.gridColumns.autoRepeatAt, static_cast<size_t>(1));
+    CHECK(s.gridColumns.autoFit);
+    if (!s.gridColumns.autoRepeat.empty()) CHECK(Near(s.gridColumns.autoRepeat[0].min.value, 160.f));
+
+    // Invalid lists leave the template as it was: minmax with an fr minimum,
+    // two auto repeats, a zero count, subgrid, garbage.
+    for (const char* bad : { "minmax(1fr, 100px)", "repeat(auto-fill, 1px) repeat(auto-fit, 1px)",
+                             "repeat(0, 1px)", "subgrid", "10px banana", "repeat(2,)", "1fr)" }) {
+        s = StyleById(std::string("<div id='g' style='grid-template-columns:30px;grid-template-columns:") +
+                      bad + "'></div>", "g");
+        CHECK(s.gridColumns.tracks.size() == 1 && s.gridColumns.autoRepeat.empty());
+    }
+    // A huge repeat is capped.
+    s = StyleById("<div id='g' style='grid-template-columns:repeat(99999999, 1px 2px)'></div>", "g");
+    CHECK_EQ(s.gridColumns.tracks.size(), static_cast<size_t>(kMaxGridLines));
+
+    s = StyleById("<div id='g' style='grid-template:auto 1fr / 100px 1fr'></div>", "g");
+    CHECK(s.gridRows.tracks.size() == 2 && s.gridColumns.tracks.size() == 2);
+
+    s = StyleById("<div id='g' style=\"grid-template-areas:'head head' 'side main' '. foot'\"></div>", "g");
+    CHECK_EQ(s.gridAreas.size(), static_cast<size_t>(3));
+    if (s.gridAreas.size() == 3) {
+        CHECK(s.gridAreas[0][1] == "head" && s.gridAreas[1][0] == "side");
+        CHECK(s.gridAreas[2][0].empty());                     // "." is no area
+    }
+    s = StyleById("<div id='g' style=\"grid-template-areas:'a b' 'c'\"></div>", "g");
+    CHECK(s.gridAreas.empty());                               // rows of unequal length
+
+    s = StyleById("<div id='g' style='grid-auto-flow:column dense'></div>", "g");
+    CHECK(s.gridAutoFlowColumn);
+}
+
+static void TestGridLines() {
+    std::printf("grid lines\n");
+    using K = GridLineSpec::Kind;
+    ComputedStyle s = StyleById("<i id='i' style='grid-column:1 / -1;grid-row:span 2'></i>", "i");
+    CHECK(s.gridColumnStart.kind == K::Line && s.gridColumnStart.value == 1);
+    CHECK(s.gridColumnEnd.kind == K::Line && s.gridColumnEnd.value == -1);
+    CHECK(s.gridRowStart.kind == K::Span && s.gridRowStart.value == 2);
+    CHECK(s.gridRowEnd.kind == K::Auto);
+
+    s = StyleById("<i id='i' style='grid-area:main'></i>", "i");
+    CHECK(s.gridRowStart.kind == K::Name && s.gridRowStart.name == "main");
+    CHECK(s.gridColumnStart.kind == K::Name && s.gridRowEnd.kind == K::Name && s.gridColumnEnd.kind == K::Name);
+    s = StyleById("<i id='i' style='grid-area:2 / 3 / 4'></i>", "i");
+    CHECK(s.gridRowStart.value == 2 && s.gridColumnStart.value == 3 && s.gridRowEnd.value == 4);
+    CHECK(s.gridColumnEnd.kind == K::Auto);
+    s = StyleById("<i id='i' style='grid-column:side'></i>", "i");
+    CHECK(s.gridColumnStart.kind == K::Name && s.gridColumnEnd.kind == K::Name);   // both ends
+    s = StyleById("<i id='i' style='grid-column-start:2;grid-column-end:span 3;grid-row-start:3 name'></i>", "i");
+    CHECK(s.gridColumnStart.value == 2 && s.gridColumnEnd.kind == K::Span && s.gridColumnEnd.value == 3);
+    CHECK(s.gridRowStart.kind == K::Line && s.gridRowStart.value == 3);
+
+    // Capped and invalid lines.
+    s = StyleById("<i id='i' style='grid-column:99999 / span 99999'></i>", "i");
+    CHECK(s.gridColumnStart.value == kMaxGridLines && s.gridColumnEnd.value == kMaxGridLines);
+    s = StyleById("<i id='i' style='grid-column:2;grid-column:0'></i>", "i");
+    CHECK(s.gridColumnStart.value == 2);                      // line 0 does not exist
+    s = StyleById("<i id='i' style='grid-column:2;grid-column:1 / 2 / 3'></i>", "i");
+    CHECK(s.gridColumnStart.value == 2);
+    s = StyleById("<i id='i' style='grid-row:2;grid-row:span -1'></i>", "i");
+    CHECK(s.gridRowStart.value == 2);
+}
+
 int main() {
+    TestSelectorMatchingOnForeignTree();
     TestParserBasics();
     TestParserFragmentAndRecovery();
+    TestParserPreNewline();
     TestParserXhtmlAndEntities();
     TestParserUnquotedAttributes();
+    TestParserForeignContent();
     TestExtractPlainText();
+    TestExtractPlainTextLines();
     TestCssColor();
     TestCssLength();
     TestCssNumbersIgnoreLocale();
     TestStyleSheetParsing();
+    TestStyleImports();
     TestStyleResolution();
     TestReadingModeOverride();
     TestHtml4Entities();
@@ -1105,6 +1654,10 @@ int main() {
     TestImageBorders();
     TestBorderSides();
     TestQuirksAndLineHeight();
+    TestParserDepthLimit();
+    TestFlexProperties();
+    TestGridProperties();
+    TestGridLines();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

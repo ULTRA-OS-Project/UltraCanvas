@@ -1,8 +1,11 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-02 - GetRequiredWidth (the width the widest row on show needs)
+// Last Modified: 2026-10-15 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)
+//                (2026-10-13: keys read UCKeys and work once the tree is focused; focus ring)
+//                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -98,8 +101,8 @@ namespace UltraCanvas {
     }
 
     bool TreeNode::IsVisible() const {
-        if (!data.visible) return false;
-        if (!parent) return true; // Root is always visible if data.visible is true
+        if (!IsShown()) return false;
+        if (!parent) return true; // The root is visible whenever it is shown
 
         return parent->IsVisible() && parent->IsExpanded();
     }
@@ -109,7 +112,7 @@ namespace UltraCanvas {
 
         int count = 0;
         for (const auto &child: children) {
-            if (child->data.visible) {
+            if (child->IsShown()) {
                 count++;
                 count += child->GetVisibleChildCount();
             }
@@ -121,7 +124,7 @@ namespace UltraCanvas {
         std::vector<TreeNode *> visible;
         if (state == TreeNodeState::Expanded) {
             for (auto &child: children) {
-                if (child->data.visible) {
+                if (child->IsShown()) {
                     visible.push_back(child.get());
                     auto childVisible = child->GetVisibleChildren();
                     visible.insert(visible.end(), childVisible.begin(), childVisible.end());
@@ -518,6 +521,78 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== FILTER =====
+    void UltraCanvasTreeView::SetFilterText(const std::string &text) {
+        if (text.empty() && filterText.empty()) return;
+        const bool starting = filterText.empty();
+        filterText = text;
+        filterMatchCount = 0;
+        if (!rootNode) {
+            RequestRedraw();
+            return;
+        }
+
+        if (filterText.empty()) {
+            EndFilter(rootNode.get());
+            // The row picked while filtering stays in view: open the way to it.
+            // A hidden root is never expanded, so the walk stops below it.
+            if (TreeNode *selected = GetFirstSelectedNode()) {
+                for (TreeNode *p = selected->parent; p && (rootVisible || p != rootNode.get()); p = p->parent) {
+                    p->Expand();
+                }
+                UpdateScrollbars();
+                ScrollTo(selected);
+            }
+        } else {
+            if (starting) SaveExpansionBeforeFilter(rootNode.get());
+            bool anyMatch = false;
+            for (auto &child: rootNode->children) {
+                if (FilterSubtree(child.get(), false)) anyMatch = true;
+            }
+            // The root is the frame, not a row to match: "Ultra" in its title
+            // would otherwise keep every row on show. A hidden root's state is
+            // never touched.
+            if (rootVisible) {
+                rootNode->hiddenByFilter = false;
+                if (anyMatch) rootNode->Expand();
+                else if (!rootNode->expandedBeforeFilter) rootNode->Collapse();
+            }
+            // The rows on show are new ones; start at the first.
+            scrollAnim.Cancel();
+            scrollOffsetY = 0;
+        }
+        UpdateScrollbars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SaveExpansionBeforeFilter(TreeNode *node) {
+        node->expandedBeforeFilter = node->IsExpanded();
+        for (auto &child: node->children) SaveExpansionBeforeFilter(child.get());
+    }
+
+    bool UltraCanvasTreeView::FilterSubtree(TreeNode *node, bool ancestorMatches) {
+        // A row the application hid neither counts nor opens the way to itself.
+        const bool matches = node->data.visible && utf8_find(node->data.text, filterText, 0, false) >= 0;
+        if (matches) ++filterMatchCount;
+        bool matchBelow = false;
+        for (auto &child: node->children) {
+            if (FilterSubtree(child.get(), ancestorMatches || matches)) matchBelow = true;
+        }
+        // Open the way to a match; any other node is as it was before the
+        // filter, so a narrower text closes again what a wider one opened.
+        if (matchBelow || node->expandedBeforeFilter) node->Expand();
+        else node->Collapse();
+        node->hiddenByFilter = !(matches || matchBelow || ancestorMatches);
+        return node->data.visible && (matches || matchBelow);
+    }
+
+    void UltraCanvasTreeView::EndFilter(TreeNode *node) {
+        node->hiddenByFilter = false;
+        if (node->expandedBeforeFilter) node->Expand();
+        else node->Collapse();
+        for (auto &child: node->children) EndFilter(child.get());
+    }
+
     void UltraCanvasTreeView::SetSelectionMode(TreeSelectionMode mode) {
         selectionMode = mode;
         if (mode == TreeSelectionMode::NoSelection) {
@@ -570,6 +645,36 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTreeView::ScrollToSelection() {
+        TreeNode *node = GetFirstSelectedNode();
+        if (!node || !rootNode || rowHeight <= 0) return;
+
+        // A row under a collapsed parent has no place on screen yet: open the
+        // chain of parents above it, outermost first.
+        std::vector<TreeNode *> collapsed;
+        for (TreeNode *p = node->parent; p; p = p->parent) {
+            if (p == rootNode.get() && !rootVisible) break;   // a hidden root shows its children anyway
+            if (!p->IsExpanded()) collapsed.push_back(p);
+        }
+        for (auto it = collapsed.rbegin(); it != collapsed.rend(); ++it) ExpandNode(*it);
+
+        int nodeY = FindShownNodeY(node);
+        if (nodeY < 0) return;   // filtered out or hidden: nothing to scroll to
+
+        // Centre the row in the visible area below the header band.
+        int viewHeight = GetHeight() - GetHeaderHeight();
+        int target = std::clamp(nodeY - (viewHeight - rowHeight) / 2, 0, std::max(0, maxScrollY));
+        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
+            // Animated like ScrollToTop(); onScrollChange writes scrollOffsetY back.
+            verticalScrollbar->SmoothScrollTo(target);
+        } else {
+            scrollAnim.Cancel();
+            scrollOffsetY = target;
+            ClampScrollOffset();
+        }
+        RequestRedraw();
+    }
+
     // ===== MEASURING =====
 
     int UltraCanvasTreeView::GetRequiredWidth(IRenderContext *ctx) {
@@ -583,7 +688,7 @@ namespace UltraCanvas {
         ctx->PushState();
         ctx->SetFontSize(fontSize);
         std::function<void(TreeNode*, int)> measure = [&](TreeNode *node, int level) {
-            if (!node || !node->data.visible) return;
+            if (!node || !node->IsShown()) return;
             int textX = GetRowOriginX(origin, level) + (showExpandButtons ? kExpanderSlot : 0)
                         + (showCheckboxes ? kCheckboxSlot : 0) + textPadding;
             if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty())
@@ -618,6 +723,13 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTreeView::SetShowScrollToSelectionButton(bool show) {
+        if (showScrollToSelectionButton == show) return;
+        showScrollToSelectionButton = show;
+        if (!show) scrollToSelectionHovered = false;
+        RequestRedraw();
+    }
+
     bool UltraCanvasTreeView::IsScrollToTopButtonActive() const {
         if (!showScrollToTopButton || !rootNode || rowHeight <= 0) return false;
         if (maxScrollY <= 0) return false;
@@ -633,36 +745,90 @@ namespace UltraCanvas {
         return hiddenRows > scrollToTopStyle.minHiddenRows;
     }
 
-    Rect2Di UltraCanvasTreeView::GetScrollToTopButtonRect() const {
-        if (!IsScrollToTopButtonActive()) return Rect2Di(0, 0, 0, 0);
+    bool UltraCanvasTreeView::IsScrollToSelectionButtonActive() const {
+        if (!showScrollToSelectionButton || !rootNode || rowHeight <= 0) return false;
+        const TreeNode *node = GetFirstSelectedNode();
+        if (!node || !node->IsShown()) return false;
 
+        // The row must be reachable: every parent on show (a collapsed one is
+        // fine - ScrollToSelection() opens it).
+        for (const TreeNode *p = node->parent; p; p = p->parent) {
+            if (p == rootNode.get() && !rootVisible) break;
+            if (!p->IsShown()) return false;
+        }
+        if (node == rootNode.get() && !rootVisible) return false;
+
+        int nodeY = FindShownNodeY(node);
+        if (nodeY < 0) return true;   // under a collapsed parent
+
+        // Hidden as soon as the whole row is inside the visible area.
+        int viewHeight = static_cast<int>(GetHeight()) - GetHeaderHeight();
+        bool fullyVisible = nodeY >= scrollOffsetY && nodeY + rowHeight <= scrollOffsetY + viewHeight;
+        if (fullyVisible) return false;
+        return GetFloatingButtonSlotRect(1).width > 0;
+    }
+
+    Rect2Di UltraCanvasTreeView::GetFloatingButtonSlotRect(int slot) const {
         Rect2Di contentRect = GetLocalContentRect();
         const int size = std::max(8, scrollToTopStyle.size);
         const int margin = std::max(0, scrollToTopStyle.margin);
-        const int headerHeight = GetHeaderHeight();
 
         // Keep clear of the vertical scrollbar so the two never overlap.
         int x = contentRect.Right() - GetVerticalScrollbarWidth() - margin - size;
         x = std::max(contentRect.x, x);
 
-        // Resting place: bottom-right corner of the content area.
-        int bottom = contentRect.Bottom() - margin;
-
-        // As the view approaches the end of the list, slide the button up so the
-        // final keepClearRows rows stay fully readable. totalHeight is recovered
-        // from the scroll geometry (maxScrollY == totalHeight - viewHeight).
-        int keepClearRows = std::max(0, scrollToTopStyle.keepClearRows);
-        if (keepClearRows > 0) {
-            int viewHeight = static_cast<int>(GetHeight()) - headerHeight;
-            int totalHeight = maxScrollY + viewHeight;
-            int tailTop = contentRect.y + headerHeight + totalHeight
-                          - keepClearRows * rowHeight - scrollOffsetY;
-            bottom = std::min(bottom, tailTop);
+        // Slot 0 rests in the bottom-right corner; each further slot stacks
+        // one button (plus a margin) higher. A slot that would reach into the
+        // header band does not fit, and comes back empty.
+        int top = contentRect.Bottom() - margin - size - slot * (size + margin);
+        if (top < contentRect.y + GetHeaderHeight() + margin) {
+            if (slot > 0) return Rect2Di(0, 0, 0, 0);
+            top = contentRect.y + GetHeaderHeight() + margin;
         }
-
-        // Never let the dodge push the button off the top of the content area.
-        int top = std::max(contentRect.y + headerHeight + margin, bottom - size);
         return Rect2Di(x, top, size, size);
+    }
+
+    Rect2Di UltraCanvasTreeView::GetScrollToTopButtonRect() const {
+        if (!IsScrollToTopButtonActive()) return Rect2Di(0, 0, 0, 0);
+        return GetFloatingButtonSlotRect(0);
+    }
+
+    Rect2Di UltraCanvasTreeView::GetScrollToSelectionButtonRect() const {
+        if (!IsScrollToSelectionButtonActive()) return Rect2Di(0, 0, 0, 0);
+        return GetFloatingButtonSlotRect(1);
+    }
+
+    int UltraCanvasTreeView::FindShownNodeY(const TreeNode *node) const {
+        if (!rootNode || !node) return -1;
+
+        int currentY = 0;
+        std::function<bool(const TreeNode *)> walk = [&](const TreeNode *current) -> bool {
+            if (current == node) return true;
+            currentY += rowHeight;
+            if (current->IsExpanded()) {
+                for (auto &child: current->children) {
+                    if (child->IsShown() && walk(child.get())) return true;
+                }
+            }
+            return false;
+        };
+
+        if (rootVisible) {
+            if (rootNode->IsShown() && walk(rootNode.get())) return currentY;
+        } else {
+            for (auto &child: rootNode->children) {
+                if (child->IsShown() && walk(child.get())) return currentY;
+            }
+        }
+        return -1;
+    }
+
+    void UltraCanvasTreeView::RenderFloatingButtonFrame(IRenderContext *ctx, const Rect2Di &r, bool hovered) {
+        const TreeScrollToTopStyle &s = scrollToTopStyle;
+        float radius = std::min(s.cornerRadius, r.width * 0.5f);
+        ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
+                                 hovered ? s.hoverBackground : s.background,
+                                 1.0f, s.borderColor, radius);
     }
 
     void UltraCanvasTreeView::RenderScrollToTopButton(IRenderContext *ctx) {
@@ -670,10 +836,7 @@ namespace UltraCanvas {
         if (r.width <= 0 || r.height <= 0) return;
 
         const TreeScrollToTopStyle &s = scrollToTopStyle;
-        float radius = std::min(s.cornerRadius, r.width * 0.5f);
-        ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
-                                 scrollToTopHovered ? s.hoverBackground : s.background,
-                                 1.0f, s.borderColor, radius);
+        RenderFloatingButtonFrame(ctx, r, scrollToTopHovered);
 
         // Glyph: a short bar ("the top") with an arrow pointing up at it.
         double cx = r.x + r.width * 0.5;
@@ -697,6 +860,35 @@ namespace UltraCanvas {
                                  s.arrowColor);
     }
 
+    void UltraCanvasTreeView::RenderScrollToSelectionButton(IRenderContext *ctx) {
+        Rect2Di r = GetScrollToSelectionButtonRect();
+        if (r.width <= 0 || r.height <= 0) return;
+
+        const TreeScrollToTopStyle &s = scrollToTopStyle;
+        RenderFloatingButtonFrame(ctx, r, scrollToSelectionHovered);
+
+        // Glyph: a dot ("the selected entry") on the left with an arrow coming
+        // from the right and pointing at it.
+        double cy = r.y + r.height * 0.5;
+        double dotRadius = std::max(1.5, r.width * 0.10);
+        ctx->DrawFilledCircle(Point2Dd(r.x + r.width * 0.26, cy), static_cast<float>(dotRadius), s.arrowColor);
+
+        double headTip = r.x + r.width * 0.42;
+        double headBase = r.x + r.width * 0.60;
+        double halfHeight = r.height * 0.20;
+        ctx->PushState();
+        ctx->SetFillPaint(s.arrowColor);
+        ctx->FillLinePath({Point2Dd(headTip, cy),
+                           Point2Dd(headBase, cy - halfHeight),
+                           Point2Dd(headBase, cy + halfHeight)});
+        ctx->PopState();
+
+        double stemHeight = std::max(2.0, r.height * 0.11);
+        ctx->DrawFilledRectangle(Rect2Dd(headBase - 1, cy - stemHeight * 0.5,
+                                         r.x + r.width * 0.80 - headBase + 1, stemHeight),
+                                 s.arrowColor);
+    }
+
     bool UltraCanvasTreeView::HandleScrollToTopButtonEvent(const UCEvent &event) {
         bool isPointerEvent = event.type == UCEventType::MouseMove ||
                               event.type == UCEventType::MouseDown ||
@@ -705,37 +897,37 @@ namespace UltraCanvas {
                               event.type == UCEventType::MouseLeave;
         if (!isPointerEvent) return false;
 
-        if (!IsScrollToTopButtonActive() || event.type == UCEventType::MouseLeave) {
-            if (scrollToTopHovered) {
-                scrollToTopHovered = false;
-                RequestRedraw();
+        bool leaving = event.type == UCEventType::MouseLeave;
+        Rect2Di topRect = leaving ? Rect2Di(0, 0, 0, 0) : GetScrollToTopButtonRect();
+        Rect2Di selRect = leaving ? Rect2Di(0, 0, 0, 0) : GetScrollToSelectionButtonRect();
+        bool overTop = topRect.width > 0 && topRect.Contains(event.pointer);
+        bool overSel = selRect.width > 0 && selRect.Contains(event.pointer);
+
+        if (overTop != scrollToTopHovered || overSel != scrollToSelectionHovered) {
+            bool wasOverButton = scrollToTopHovered || scrollToSelectionHovered;
+            bool overButton = overTop || overSel;
+            scrollToTopHovered = overTop;
+            scrollToSelectionHovered = overSel;
+            // The row under a button must not keep its hover highlight while
+            // the pointer is really over the button.
+            if (overButton && hoveredNode) {
+                hoveredNode->hovered = false;
+                hoveredNode = nullptr;
             }
-            return false;
-        }
-
-        bool inside = GetScrollToTopButtonRect().Contains(event.pointer);
-
-        if (event.type == UCEventType::MouseMove) {
-            if (inside != scrollToTopHovered) {
-                scrollToTopHovered = inside;
-                // The row under the button must not keep its hover highlight
-                // while the pointer is really over the button.
-                if (inside && hoveredNode) {
-                    hoveredNode->hovered = false;
-                    hoveredNode = nullptr;
-                }
-                SetMouseCursor(inside ? UCMouseCursor::Hand : UCMouseCursor::Default);
-                RequestRedraw();
+            if (!leaving && overButton != wasOverButton) {
+                SetMouseCursor(overButton ? UCMouseCursor::Hand : UCMouseCursor::Default);
             }
-            return inside;
+            RequestRedraw();
         }
+        if (event.type == UCEventType::MouseMove || leaving) return overTop || overSel;
 
-        if (!inside) return false;
+        if (!overTop && !overSel) return false;
 
-        // Swallow every button event over the glyph so the row underneath is
+        // Swallow every button event over a glyph so the row underneath is
         // neither selected nor toggled; MouseDown does the actual scrolling.
         if (event.type == UCEventType::MouseDown) {
-            ScrollToTop();
+            if (overSel) ScrollToSelection();
+            else ScrollToTop();
         }
         return true;
     }
@@ -754,8 +946,8 @@ namespace UltraCanvas {
             }
         }
 
-        // The floating scroll-to-top button sits on top of the rows, so it gets
-        // first refusal on pointer events inside its rect.
+        // The floating scroll buttons sit on top of the rows, so they get first
+        // refusal on pointer events inside their rects.
         if (HandleScrollToTopButtonEvent(event)) {
             return true;
         }
@@ -777,8 +969,7 @@ namespace UltraCanvas {
                 return HandleMouseWheel(event);
                 break;
             case UCEventType::KeyDown:
-                HandleKeyDown(event);
-                break;
+                return HandleKeyDown(event);
             case UCEventType::DragEnter:
             case UCEventType::DragOver:
                 return HandleDragOver(event);
@@ -877,7 +1068,9 @@ namespace UltraCanvas {
             ctx->PopState();
         }
 
-        // Floating "move to the top" button, drawn over everything else.
+        // Floating "go to selection" / "move to the top" buttons, drawn over
+        // everything else.
+        RenderScrollToSelectionButton(ctx);
         RenderScrollToTopButton(ctx);
     }
 
@@ -935,7 +1128,7 @@ namespace UltraCanvas {
         // maxScrollY at 0 so the scrollbar and wheel scrolling never engaged.
         int count = 0;
         for (const auto &child : rootNode->children) {
-            if (child->data.visible) {
+            if (child->IsShown()) {
                 count++;
                 count += child->GetVisibleChildCount();
             }
@@ -957,7 +1150,7 @@ namespace UltraCanvas {
 
             if (current->IsExpanded()) {
                 for (auto &child: current->children) {
-                    if (child->data.visible && findNodeY(child.get(), currentY)) {
+                    if (child->IsShown() && findNodeY(child.get(), currentY)) {
                         return true;
                     }
                 }
@@ -971,7 +1164,7 @@ namespace UltraCanvas {
             findNodeY(rootNode.get(), currentY);
         } else {
             for (auto &child: rootNode->children) {
-                if (child->data.visible && findNodeY(child.get(), currentY)) break;
+                if (child->IsShown() && findNodeY(child.get(), currentY)) break;
             }
         }
         return y;
@@ -998,7 +1191,7 @@ namespace UltraCanvas {
 
             if (current->IsExpanded()) {
                 for (auto &child: current->children) {
-                    if (child->data.visible) {
+                    if (child->IsShown()) {
                         TreeNode *found = findNode(child.get());
                         if (found) return found;
                     }
@@ -1010,7 +1203,7 @@ namespace UltraCanvas {
 
         if (rootVisible) return findNode(rootNode.get());
         for (auto &child: rootNode->children) {
-            if (!child->data.visible) continue;
+            if (!child->IsShown()) continue;
             if (TreeNode *found = findNode(child.get())) return found;
         }
         return nullptr;
@@ -1050,13 +1243,13 @@ namespace UltraCanvas {
         // keeps the trunk running down to the next sibling.
         TreeNode *lastVisible = nullptr;
         for (auto &child: node->children) {
-            if (child->data.visible) lastVisible = child.get();
+            if (child->IsShown()) lastVisible = child.get();
         }
         if (!lastVisible) return;
 
         pipes.push_back(false);
         for (auto &child: node->children) {
-            if (!child->data.visible) continue;
+            if (!child->IsShown()) continue;
             pipes.back() = (child.get() != lastVisible);
             RenderNode(ctx, child.get(), currentY, level + 1, contentRect, pipes);
         }
@@ -1065,7 +1258,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTreeView::RenderNode(IRenderContext *ctx, TreeNode *node, int &currentY, int level,
                                          const Rect2Di &contentRect, std::vector<bool> &pipes) {
-        if (!node || !node->data.visible) return;
+        if (!node || !node->IsShown()) return;
 
         const int nodeY = currentY;
         currentY += rowHeight;
@@ -1102,6 +1295,25 @@ namespace UltraCanvas {
 
             if (bgColor != backgroundColor) {
                 ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight), bgColor);
+            }
+
+            // The focus ring: a dashed one-pixel outline round the row the keys
+            // continue from, only while the tree holds the keyboard focus - so
+            // a focused row is told from one that is merely selected, and a
+            // selected tree that lost the focus shows no ring. Drawn over the
+            // background and under the lines, icon and label. The automatic
+            // colour contrasts with the row it sits on: white on the selection
+            // background (the text there is black, so the blue would vanish),
+            // the selection colour on any other row.
+            if (node == focusedNode && IsFocused()) {
+                const Color ring = focusRingColor.a > 0 ? focusRingColor
+                                 : (bgColor == selectionColor ? Colors::White : selectionColor);
+                ctx->PushState();
+                ctx->SetLineDash(UCDashPattern({2.0, 2.0}));
+                ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 2, nodeY + 1, nodeWidth - 4, rowHeight - 2),
+                                         Colors::Transparent, 1.0f, ring);
+                ctx->SetLineDash(UCDashPattern::EMPTY);
+                ctx->PopState();
             }
 
             const bool hasExpander = showExpandButtons && node->HasChildren();
@@ -1357,6 +1569,10 @@ namespace UltraCanvas {
             return onNodeRightClicked != nullptr;
         }
 
+        // A click gives the tree the keyboard focus, so the arrow keys continue
+        // from the row it lands on - the list view does the same.
+        SetFocus(true);
+
 //        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
 
         // Check if clicking on scrollbar
@@ -1500,34 +1716,80 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasTreeView::HandleKeyDown(const UCEvent &event) {
-        if (!focusedNode) return;
+    // Keys arrive here only while the tree holds the window's focus (the
+    // application sends keyboard events to the focused element), which a click
+    // on the tree or a Tab gives it. The keys are read from the platform
+    // independent virtualKey: nativeKeyCode is the backend's own code, and
+    // the Windows virtual-key numbers this once compared against matched
+    // nothing on Linux or macOS. Returns true for a key the tree acted on, so
+    // a scrolling container above it does not scroll on the same arrow.
+    bool UltraCanvasTreeView::HandleKeyDown(const UCEvent &event) {
+        if (!rootNode) return false;
 
-        switch (event.nativeKeyCode) {
-            case 38: // Up arrow
-                NavigateUp();
-                break;
-            case 40: // Down arrow
-                NavigateDown();
-                break;
-            case 37: // Left arrow
-                if (focusedNode->IsExpanded()) {
-                    CollapseNode(focusedNode);
-                } else if (focusedNode->parent) {
-                    SelectNode(focusedNode->parent);
-                    focusedNode = focusedNode->parent;
+        // No row yet (the tree was reached by Tab, or the row it had was
+        // removed): the first key into the tree picks an end to start from.
+        if (!focusedNode) {
+            switch (event.virtualKey) {
+                case UCKeys::Down:
+                case UCKeys::Right:
+                case UCKeys::PageDown:
+                case UCKeys::Home: {
+                    TreeNode *first = GetFirstVisibleNode();
+                    while (IsSteppedOverByKeys(first)) first = GetNextVisibleNode(first);
+                    if (!first) return false;
+                    MoveFocusTo(first);
+                    return true;
                 }
-                break;
-            case 39: // Right arrow
+                case UCKeys::Up:
+                case UCKeys::PageUp:
+                case UCKeys::End: {
+                    TreeNode *last = GetLastVisibleNode();
+                    while (IsSteppedOverByKeys(last)) last = GetPreviousVisibleNode(last);
+                    if (!last) return false;
+                    MoveFocusTo(last);
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        }
+
+        switch (event.virtualKey) {
+            case UCKeys::Up:
+                NavigateUp();
+                return true;
+            case UCKeys::Down:
+                NavigateDown();
+                return true;
+            case UCKeys::PageUp:
+                NavigatePageUp();
+                return true;
+            case UCKeys::PageDown:
+                NavigatePageDown();
+                return true;
+            case UCKeys::Left:
+                if (focusedNode->IsExpanded() && focusedNode->HasChildren()) {
+                    CollapseNode(focusedNode);
+                } else if (focusedNode->parent &&
+                           (rootVisible || focusedNode->parent != rootNode.get())) {
+                    // The hidden root is not a row, so the top level has no
+                    // parent to go to.
+                    MoveFocusTo(focusedNode->parent);
+                }
+                return true;
+            case UCKeys::Right:
                 if (focusedNode->HasChildren()) {
                     if (!focusedNode->IsExpanded()) {
                         ExpandNode(focusedNode);
+                        if (showFirstChildOnExpand) {
+                            ExpandFirstChildNode(focusedNode);
+                        }
                     } else {
                         NavigateDown();
                     }
                 }
-                break;
-            case 13: // Enter
+                return true;
+            case UCKeys::Enter:
                 if (focusedNode->HasChildren()) {
                     ToggleNode(focusedNode);
                 }
@@ -1537,9 +1799,8 @@ namespace UltraCanvas {
                 if (showFirstChildOnExpand && focusedNode->IsExpanded()) {
                     ExpandFirstChildNode(focusedNode);
                 }
-
-                break;
-            case 32: // Space
+                return true;
+            case UCKeys::Space:
                 // With check flags on, the space bar is the keyboard equivalent of
                 // clicking the box - the row is already focused, so selecting it
                 // again would do nothing visible.
@@ -1548,25 +1809,23 @@ namespace UltraCanvas {
                 } else {
                     SelectNode(focusedNode, event.ctrl && selectionMode == TreeSelectionMode::Multiple);
                 }
-                break;
-            case 36: // Home
-                if (rootNode) {
-                    SelectNode(rootNode.get());
-                    focusedNode = rootNode.get();
-                    ScrollTo(focusedNode);
-                }
-                break;
-            case 35: // End
-            {
-                TreeNode *lastVisible = GetLastVisibleNode();
-                if (lastVisible) {
-                    SelectNode(lastVisible);
-                    focusedNode = lastVisible;
-                    ScrollTo(focusedNode);
-                }
+                return true;
+            case UCKeys::Home: {
+                TreeNode *first = GetFirstVisibleNode();
+                while (IsSteppedOverByKeys(first)) first = GetNextVisibleNode(first);
+                if (first) MoveFocusTo(first);
+                return true;
             }
+            case UCKeys::End: {
+                TreeNode *last = GetLastVisibleNode();
+                while (IsSteppedOverByKeys(last)) last = GetPreviousVisibleNode(last);
+                if (last) MoveFocusTo(last);
+                return true;
+            }
+            default:
                 break;
         }
+        return false;
     }
 
     // With "jump to first entry" on, an open heading is never the row left
@@ -1579,22 +1838,25 @@ namespace UltraCanvas {
                node->HasChildren() && node->IsExpanded();
     }
 
+    void UltraCanvasTreeView::MoveFocusTo(TreeNode *node) {
+        if (!node) return;
+        SelectNode(node);
+        focusedNode = node;
+        ScrollTo(focusedNode);
+        if (autoExpandSelectedNode && !focusedNode->children.empty() && !focusedNode->IsExpanded()) {
+            ExpandNode(focusedNode);
+            if (showFirstChildOnExpand) {
+                ExpandFirstChildNode(focusedNode);
+            }
+        }
+    }
+
     void UltraCanvasTreeView::NavigateUp() {
         if (!focusedNode) return;
 
         TreeNode *prevNode = GetPreviousVisibleNode(focusedNode);
         while (IsSteppedOverByKeys(prevNode)) prevNode = GetPreviousVisibleNode(prevNode);
-        if (prevNode) {
-            SelectNode(prevNode);
-            focusedNode = prevNode;
-            ScrollTo(focusedNode);
-            if (autoExpandSelectedNode && !focusedNode->children.empty() && !focusedNode->IsExpanded()) {
-                ExpandNode(focusedNode);
-                if (showFirstChildOnExpand) {
-                    ExpandFirstChildNode(focusedNode);
-                }
-            }
-        }
+        MoveFocusTo(prevNode);
     }
 
     void UltraCanvasTreeView::NavigateDown() {
@@ -1602,42 +1864,78 @@ namespace UltraCanvas {
 
         TreeNode *nextNode = GetNextVisibleNode(focusedNode);
         while (IsSteppedOverByKeys(nextNode)) nextNode = GetNextVisibleNode(nextNode);
-        if (nextNode) {
-            SelectNode(nextNode);
-            focusedNode = nextNode;
-            ScrollTo(focusedNode);
-            if (autoExpandSelectedNode && !focusedNode->children.empty() && !focusedNode->IsExpanded()) {
-                ExpandNode(focusedNode);
-                if (showFirstChildOnExpand) {
-                    ExpandFirstChildNode(focusedNode);
-                }
+        MoveFocusTo(nextNode);
+    }
+
+    void UltraCanvasTreeView::NavigatePageUp() {
+        if (!focusedNode) return;
+
+        std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
+        auto it = std::find(visibleNodes.begin(), visibleNodes.end(), focusedNode);
+        if (it == visibleNodes.end()) return;
+        const int rowsPerPage = std::max(1, (static_cast<int>(GetHeight()) - GetHeaderHeight()) / std::max(1, rowHeight));
+        int index = static_cast<int>(it - visibleNodes.begin());
+        // Already on the first row: nothing above to go to.
+        if (index == 0) return;
+        index = std::max(0, index - rowsPerPage);
+        // A page that lands on an open heading under "jump to first entry"
+        // continues to the row above it, the way Up would; the first row has
+        // nothing above, so from there it is the row below instead.
+        while (index > 0 && IsSteppedOverByKeys(visibleNodes[index])) --index;
+        while (index < static_cast<int>(visibleNodes.size()) && IsSteppedOverByKeys(visibleNodes[index])) ++index;
+        if (index < static_cast<int>(visibleNodes.size())) MoveFocusTo(visibleNodes[index]);
+    }
+
+    void UltraCanvasTreeView::NavigatePageDown() {
+        if (!focusedNode) return;
+
+        std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
+        auto it = std::find(visibleNodes.begin(), visibleNodes.end(), focusedNode);
+        if (it == visibleNodes.end()) return;
+        const int rowsPerPage = std::max(1, (static_cast<int>(GetHeight()) - GetHeaderHeight()) / std::max(1, rowHeight));
+        const int last = static_cast<int>(visibleNodes.size()) - 1;
+        int index = static_cast<int>(it - visibleNodes.begin());
+        if (index >= last) return;
+        index = std::min(last, index + rowsPerPage);
+        while (index < last && IsSteppedOverByKeys(visibleNodes[index])) ++index;
+        while (index >= 0 && IsSteppedOverByKeys(visibleNodes[index])) --index;
+        if (index >= 0) MoveFocusTo(visibleNodes[index]);
+    }
+
+    std::vector<TreeNode *> UltraCanvasTreeView::GetVisibleNodeList() {
+        std::vector<TreeNode *> visibleNodes;
+        if (!rootNode) return visibleNodes;
+        if (rootVisible) {
+            BuildVisibleNodeList(rootNode.get(), visibleNodes);
+        } else {
+            // The hidden root is not a row: Up from the first top-level row
+            // stays there instead of selecting a row nobody can see.
+            for (auto &child: rootNode->children) {
+                BuildVisibleNodeList(child.get(), visibleNodes);
             }
         }
+        return visibleNodes;
     }
 
     TreeNode *UltraCanvasTreeView::GetPreviousVisibleNode(TreeNode *current) {
         if (!current || !rootNode) return nullptr;
 
-        // Build list of all visible nodes
-        std::vector<TreeNode *> visibleNodes;
-        BuildVisibleNodeList(rootNode.get(), visibleNodes);
-
-        // Find current node and return previous
+        std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
         for (size_t i = 1; i < visibleNodes.size(); i++) {
             if (visibleNodes[i] == current) {
                 return visibleNodes[i - 1];
             }
         }
-
         return nullptr;
     }
 
+    TreeNode *UltraCanvasTreeView::GetFirstVisibleNode() {
+        std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
+        return visibleNodes.empty() ? nullptr : visibleNodes.front();
+    }
+
     TreeNode *UltraCanvasTreeView::GetLastVisibleNode() {
-        if (!rootNode) return nullptr;
-
-        std::vector<TreeNode *> visibleNodes;
-        BuildVisibleNodeList(rootNode.get(), visibleNodes);
-
+        std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
         return visibleNodes.empty() ? nullptr : visibleNodes.back();
     }
 
@@ -1663,22 +1961,17 @@ namespace UltraCanvas {
     TreeNode *UltraCanvasTreeView::GetNextVisibleNode(TreeNode *current) {
         if (!current || !rootNode) return nullptr;
 
-        // Build list of all visible nodes
-        std::vector<TreeNode *> visibleNodes;
-        BuildVisibleNodeList(rootNode.get(), visibleNodes);
-
-        // Find current node and return next
-        for (size_t i = 0; i < visibleNodes.size() - 1; i++) {
+        std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
+        for (size_t i = 0; i + 1 < visibleNodes.size(); i++) {
             if (visibleNodes[i] == current) {
                 return visibleNodes[i + 1];
             }
         }
-
         return nullptr;
     }
 
     void UltraCanvasTreeView::BuildVisibleNodeList(TreeNode *node, std::vector<TreeNode *> &list) {
-        if (!node || !node->data.visible) return;
+        if (!node || !node->IsShown()) return;
 
         list.push_back(node);
 
@@ -1694,9 +1987,12 @@ namespace UltraCanvas {
         // Per-node opt-out: nodes that carry their own content (e.g. an overview page)
         // keep the selection on themselves instead of jumping to the first child.
         if (!node->data.showFirstChildOnExpand) return;
-        SelectNode(node->FirstChild(), false);
+        // The first row on show: under a filter the first child may be hidden.
+        TreeNode *first = node->FirstShownChild();
+        if (!first) return;
+        SelectNode(first, false);
         // The row the jump selects is the one the arrow keys continue from.
-        focusedNode = node->FirstChild();
+        focusedNode = first;
     }
 
     void UltraCanvasTreeView::SetWindow(UltraCanvasWindowBase *win) {

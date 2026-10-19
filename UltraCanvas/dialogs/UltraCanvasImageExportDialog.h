@@ -1,8 +1,9 @@
 // dialogs/UltraCanvasImageExportDialog.h
 // Bitmap file save dialog: name, format, size, depth, transparency, the
 // format's own knobs, and what to do with the metadata.
-// Version: 3.0.0
-// Last Modified: 2026-09-13
+// Version: 3.1.0 - opens on the user's save settings per format and stores them
+//                 on Save; the file name picks the format; colour depth applies
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 //
 // LAYOUT: every captioned row of the dialog - the common ones and the
@@ -15,6 +16,13 @@
 //
 // Format-specific rows live in that same grid and are shown a set at a time
 // (formatRows); hidden rows are display:none, so they cost no space.
+//
+// SAVE SETTINGS: every format's knobs open on the save settings the user
+// chose for that format (UltraCanvasFileLoader::GetImageExportOptions - the
+// Save dialog's Settings button edits the same values), and Save stores what
+// the dialog was left on back there (SetImageExportOptions), so the two never
+// disagree. The size is the picture's, for this export only, and is not
+// stored. A file name with a format's extension picks that format.
 
 #pragma once
 
@@ -286,6 +294,23 @@ namespace UltraCanvas {
         void HideAllFormatOptions();
 
         void ApplyOptionsFromUI();
+        // Every format's options from its save settings
+        // (UltraCanvasFileLoader::GetImageExportOptions), and the
+        // transparency each one keeps.
+        void LoadSavedFormatOptions();
+        // Sets every format control from `options` - the per-format rows,
+        // the quality slider, the colour depth and transparency - without
+        // which a control shows its construction default whatever the
+        // options say.
+        void SyncControlsFromOptions();
+        // The colour depth of `currentFormat` in `options`, and setting it.
+        UCImageSave::ColorDepth CurrentColorDepth() const;
+        void SetCurrentColorDepth(UCImageSave::ColorDepth depth);
+        // The format chosen in the list, the file name or SetFormat: shows
+        // its rows, its transparency and quality.
+        void SelectFormat(UCImageSaveFormat format);
+        // Transparency each format keeps, from its save settings.
+        std::map<UCImageSaveFormat, bool> savedTransparency;
         size_t EstimateFileSize();
         std::string FormatFileSize(size_t bytes);
 
@@ -306,9 +331,14 @@ namespace UltraCanvas {
         void SetFormat(UCImageSaveFormat format);
         UCImageSaveFormat GetFormat() const;
 
+        // A name ending in the extension of a format the dialog offers
+        // ("photo.jpg") also chooses that format.
         void SetFileName(const std::string& name);
         std::string GetFileName() const;
 
+        // The size the image is written at. A size not in the picture's
+        // proportions turns "Keep proportions" off, so it is written at
+        // exactly that size.
         void SetTargetSize(int width, int height);
 
         // ===== STYLE =====

@@ -1,5 +1,7 @@
 # UltraCanvasFilerWidget
 
+<!-- doc-check: struct RemoteDrives { bool List(const std::string& path, std::vector<FilerEntry>& out, std::string& error); std::string ListingStatus(const std::string& path); bool QueueDelete(const std::vector<FilerEntry>& entries, std::string& error); bool QueueRename(const std::string& path, const std::string& newName, std::string& error); bool QueueMakeDirectory(const std::string& folderPath, const std::string& name, std::string& error); bool QueueUpload(const std::string& folderPath, const std::vector<std::string>& localFiles, std::string& error); bool QueueDownload(const std::string& folderPath, const std::vector<std::string>& remoteFiles, std::string& error); }; std::shared_ptr<RemoteDrives> drives; std::string utf8Path; FileFilter filter; std::unordered_set<std::string> favorites; size_t entryIndex; std::string UserHomeDir(); void OpenInNewTab(const std::string& path); void StartSubfolderScan(const std::string& query); -->
+
 The Filer folder widget displays the content of one folder. It is self-rendered
 (like `UltraCanvasAlbum`), so folders with thousands of entries stay cheap: rows,
 tiles, treemap cells, the hover icon menu and the scrollbar are all painted
@@ -24,6 +26,85 @@ A second factory overload sets the folder immediately:
 ```cpp
 auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 600);
 ```
+
+## Contents
+
+- [View types](#view-types)
+- [Scroll position across a resize](#scroll-position-across-a-resize)
+- [Empty display](#empty-display)
+- [Sorting](#sorting)
+- [Resizable columns](#resizable-columns)
+- [Long names](#long-names)
+- [File extensions](#file-extensions)
+- [File icons](#file-icons)
+- [Name tooltips](#name-tooltips)
+- [Context menu](#context-menu)
+- [Programs inside archives](#programs-inside-archives)
+- [Selective previews](#selective-previews)
+  - [Per-format switches (the list of files)](#per-format-switches-the-list-of-files)
+  - [Embedded preview bitmaps](#embedded-preview-bitmaps)
+  - [E-book covers](#e-book-covers)
+  - [File types the FileLoader knows](#file-types-the-fileloader-knows)
+  - [Native application icons](#native-application-icons)
+  - [Thumbnail memory](#thumbnail-memory)
+  - [Thumbnails between runs](#thumbnails-between-runs)
+- [Shortcuts](#shortcuts)
+  - [Windows shortcuts (.lnk)](#windows-shortcuts-lnk)
+  - [Desktop entries (.desktop)](#desktop-entries-desktop)
+  - [macOS shortcuts and application bundles](#macos-shortcuts-and-application-bundles)
+  - [What the host sees](#what-the-host-sees)
+- [Selection info bar](#selection-info-bar)
+- [Files in use](#files-in-use)
+- [Remote folders](#remote-folders)
+  - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
+  - [Changing a remote folder](#changing-a-remote-folder)
+- [Folder listing prefetch](#folder-listing-prefetch)
+- [Retiring a display](#retiring-a-display)
+- [Hidden entries](#hidden-entries)
+- [Hidden-items notice](#hidden-items-notice)
+- [Hiding Details columns](#hiding-details-columns)
+- [Entry filter](#entry-filter)
+- [Ignored names](#ignored-names)
+- [Curated home folder](#curated-home-folder)
+- [Entry names](#entry-names)
+  - [Names in every script, and names that are not UTF-8](#names-in-every-script-and-names-that-are-not-utf-8)
+- [File type colours](#file-type-colours)
+  - [Programs are not libraries](#programs-are-not-libraries)
+  - [Caption ink](#caption-ink)
+  - [What the extension cannot say](#what-the-extension-cannot-say)
+- [Folder icons](#folder-icons)
+- [Favorite mark](#favorite-mark)
+- [Folder previews](#folder-previews)
+- [Selection access](#selection-access)
+- [Hover icon menu](#hover-icon-menu)
+  - [The hover follows the cursor, not the content](#the-hover-follows-the-cursor-not-the-content)
+- [File operations](#file-operations)
+  - [Delete: to the Trash, or permanently](#delete-to-the-trash-or-permanently)
+  - [Progress window (copy / move / delete)](#progress-window-copy--move--delete)
+  - [Activating files — running applications](#activating-files-—-running-applications)
+  - [Launch feedback — the busy pointer](#launch-feedback-—-the-busy-pointer)
+  - [Delete problems (locked / failing entries)](#delete-problems-locked--failing-entries)
+  - [Selection after a delete](#selection-after-a-delete)
+- [Watching the shown folder](#watching-the-shown-folder)
+- [Compressing and extracting](#compressing-and-extracting)
+- [Clipboard interop with other programs](#clipboard-interop-with-other-programs)
+  - [The operation dialog](#the-operation-dialog)
+  - [Name conflicts](#name-conflicts)
+  - [The summary at the end](#the-summary-at-the-end)
+- [Drag & drop](#drag--drop)
+  - [Drops from elsewhere](#drops-from-elsewhere)
+  - [Drag overlay](#drag-overlay)
+- [Keyboard](#keyboard)
+- [Directory scanning](#directory-scanning)
+- [Folder modifications](#folder-modifications)
+  - [Finished copies and moves](#finished-copies-and-moves)
+- [File list (search results)](#file-list-search-results)
+  - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
+- [Name filter (filter-as-you-type)](#name-filter-filter-as-you-type)
+- [File type filter (load / save dialogs)](#file-type-filter-load--save-dialogs)
+- [Callbacks](#callbacks)
+- [Styling](#styling)
+- [Demo](#demo)
 
 ## View types
 
@@ -297,6 +378,22 @@ theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
 other Display switches use, so an application persists it from one place
 (UltraFiler: `Settings > Display > File icons`).
 
+A host element that shows a file **type** the way the listing does asks the
+widget to draw it: `DrawTypeIcon(ctx, path, isFolder, rect)` draws the icon
+this display gives the type of `path` - a name or a whole path, which need not
+exist - under the current style, and never a thumbnail, since there may be no
+file to take one from. The file dialog's Save icon
+([`UltraCanvasFileDragIcon`](UltraCanvasFileDialog.md#the-file-icon)) is drawn
+this way, so it matches the listing beside it. `GetTypeColors(path, isFolder,
+fill, ink)` gives the colours the display uses for that type - the band of its
+glyph and the ink for text on it - for a host that draws the type its own way
+in the listing's colours (the Save dialog's big type logo).
+
+<!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
+```cpp
+filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
+```
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -356,6 +453,7 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Dataset     >  Size / Edit date / Creation date / Attributes /
                                  Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
+                  Folder previews (checkbox: pictures peeking out of a folder)
                   Info-Bar (checkbox: the selection info bar)
                   Hidden files (checkbox: hidden entries, and the full listing
                              of a curated home folder — see below)
@@ -364,6 +462,15 @@ Settings
 
 Notes:
 
+- **Icons.** Every entry of the menu and of its *Display* submenu carries an
+  icon from `media/icons/menu/` (copy, cut, paste, delete, ...), found
+  through `GetResourcesDir()`, so the labels line up behind one icon column.
+  The entries of *Display > Type* carry the same `media/icons/view-*.svg`
+  glyphs as UltraFiler's view selector. The checkbox entries of *Display*
+  show their tick and their icon side by side (see *Icon and Indicator
+  Columns* in [UltraCanvasMenuExamples.md](UltraCanvasMenuExamples.md)); the
+  tick is drawn round or square by `MenuStyle::checkboxShape`, which a host
+  sets for all its menus with `SetDefaultMenuCheckboxShape` (UltraFiler: round).
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
@@ -539,8 +646,8 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **epub shows its cover**, the way Finder shows a folder of books — see [E-book covers](#e-book-covers); mobi / prc / azw / azw3 keep their glyph |
-| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
 | `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. Its Detail view opens the glyph browser ([`UltraCanvasFontViewer`](UltraCanvasFontViewer.md)) — every glyph in the file, scrolling, with a picker for the ranges it covers. woff / woff2 report as unsupported for thumbnails unless the installed FreeType was built with zlib / Brotli |
@@ -636,10 +743,10 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 honestly: false for audio (nothing reads cover art), for the vector formats
 with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
-reader here unpacks (xls, mobi, prc, azw, azw3, fb2.zip) — those last
-ones are refused by the text-preview extractor too, so the tile keeps its type
-glyph instead of drawing a "page" holding the file's ZIP magic. An epub's text
-is not read either, but its cover is, so epub reports true in every build.
+reader here unpacks (fb2.zip) — those are refused by the text-preview
+extractor too, so the tile keeps its type glyph instead of drawing a "page"
+holding the file's ZIP magic. An e-book's text (epub, mobi, prc, azw, azw3) is
+not read either, but its cover is, so those report true in every build.
 
 `onDisplayFormatsChanged` fires after any of the four sets changes, whoever
 changed it (the Display menu included) — that is where an application saves
@@ -680,19 +787,20 @@ formats a detail pane as well as a tile.
 
 ### E-book covers
 
-An `.epub` tile shows the book's cover, as Finder does: a folder of books reads
-as a shelf instead of a wall of identical purple "EPUB" sheets. The cover is
-read on the thumbnail workers by `EPUBEngine::ReadCoverImageFromFile`
-(`Plugins/Documents/eBook/EPUBEngine.h`, built into every build), which opens
-the archive's central directory and reads three entries —
-`META-INF/container.xml`, the package document and the cover image — and no
-chapter, so a 300 MB illustrated book costs what a novel does. The image is
-then decoded like any other picture and its outermost pixels are darkened a
-little, which gives a white cover an edge against the white tile and leaves a
-dark one as it is.
+An e-book tile — `.epub`, and the Mobipocket / Kindle `.mobi`, `.prc`, `.azw`
+and `.azw3` — shows the book's cover, as Finder does: a folder of books reads
+as a shelf instead of a wall of identical purple type sheets. The cover is read
+on the thumbnail workers by the engine's own cover reader (both built into
+every build), which reads only what leads to the cover, never a chapter, so a
+300 MB illustrated book costs what a novel does. The image is then decoded like
+any other picture and its outermost pixels are darkened a little, which gives a
+white cover an edge against the white tile and leaves a dark one as it is.
 
-The cover is the one the book declares, tried in this order, the first that
-names a file actually in the archive winning:
+**EPUB** — `EPUBEngine::ReadCoverImageFromFile`
+(`Plugins/Documents/eBook/EPUBEngine.h`) opens the archive's central directory
+and reads three entries: `META-INF/container.xml`, the package document and the
+cover image. The cover is the one the book declares, tried in this order, the
+first that names a file actually in the archive winning:
 
 1. EPUB 3 — the manifest item with `properties="cover-image"`;
 2. EPUB 2 — `<meta name="cover" content="…">`, which names the item's id (or,
@@ -707,20 +815,33 @@ picture on that page is the cover (`<img src>`, or SVG `<image xlink:href>`).
 A book that declares none of these keeps the glyph; the first picture inside
 the book is not assumed to be its cover.
 
+**Mobipocket / Kindle** — `MOBIEngine::ReadCoverImageFromFile`
+(`Plugins/Documents/eBook/MOBIEngine.h`) reads the database's record list,
+record 0 (whose EXTH block names the cover) and the cover record. The cover is
+the EXTH 201 image, else the first picture of the book's image records — the
+same picture the engine reports once the book is loaded, a Kindle book having
+no other way to declare one. Neither the text nor its compression is touched,
+so a **DRM-protected** `.azw` or a HUFF/CDIC-compressed book shows its cover
+too: Mobipocket DRM encrypts the text records only. A PalmDOC `.prc` without
+pictures keeps the glyph.
+
 ```cpp
-std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);
-if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG
+#include "Plugins/Documents/eBook/EPUBEngine.h"
+#include "Plugins/Documents/eBook/MOBIEngine.h"
+
+std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);  // or MOBIEngine::
+if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG/BMP
 ```
 
-It never throws and returns an empty vector for a book without a cover, a
-damaged archive or a file that is not an EPUB at all. The same rules decide
+Both never throw and return an empty vector for a book without a cover, a
+damaged file or one that is not of their format at all. The same rules decide
 `IEBookEngine::GetCoverImage()` and `EBookMetadata::hasCover` for a book the
 viewer has open. Covers are cached like every other thumbnail — in memory and,
 when `ThumbnailDiskCache` is on, on disk — so a library is read once, and a
 folder of books shows covers peeking out of its icon under Display > Folder
 previews. Display > Thumbnails > Docs turns them off with the other documents,
-and `SetThumbnailFormatEnabled("epub", false)` (UltraFiler: Settings > Display >
-Thumbnails) turns off only them.
+and `SetThumbnailFormatEnabled("epub", false)` (or `"mobi"`, `"azw3"`, ... —
+UltraFiler: Settings > Display > Thumbnails) turns off one format's.
 
 ### File types the FileLoader knows
 
@@ -821,6 +942,18 @@ upgraded must not come from yesterday.
 entry records its source's size and modification time, and a mismatch is a
 miss — the entry is deleted and the tile decodes the file as it now is. So
 editing a picture shows the edit.
+
+"Made from" means the file as it was **before** the thumbnail was drawn. The
+worker stamps the source ahead of the decode (`ThumbnailDiskCache::StampSource`)
+and hands that stamp to `ThumbnailDiskCache::Store`, which stores nothing when
+the file no longer matches it. Before 2026-10-09 the entry was stamped
+when it was written, so a thumbnail of the old content — a save landing
+mid-decode, or the shared image cache serving the picture as it was before the
+save — was recorded as the valid answer for the new file, and every later run
+showed the old picture. The decode itself reads images with
+`UCImage::GetFresh()`, which checks the shared cache against the file and reads
+a file that changed since it was cached again; plain `UCImage::Get()` never
+looks at the disk.
 
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
@@ -994,6 +1127,20 @@ painting its tile when the Length / Dimensions dataset fields are enabled —
 never opens the file on the UI thread; the detail appears with the next
 posted repaint, typically within a frame or two.
 
+The info bar and the hidden-items notice above it take the bottom of the
+display, and both come and go - with the folder, with what it hides, with
+Display > Info-Bar - without a callback. A host that floats an element over
+the display's bottom corner keeps clear of them with
+`GetBottomStripsHeight()` (pixels, 0 while neither is up), asked each time it
+places the element:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasButton> cornerButton; -->
+```cpp
+const Rect2Df area = filer->GetBounds();
+const float y = area.y + area.height - filer->GetBottomStripsHeight() - 10 - 30;
+cornerButton->SetBounds(area.x + 10, y, 30, 30);   // 10 px from the corner, above the strips
+```
+
 ## Files in use
 
 `SetShowLockState(bool)` (default **on**) marks files another program is
@@ -1106,19 +1253,29 @@ slow drive never holds the UI thread.
 
 ```cpp
 filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueDelete(victims, error);   // queued, not yet done
+};
 filer->remoteRename = [drives](const std::string& path,
                                const std::string& newName,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueRename(path, newName, error);
+};
 filer->remoteMakeDirectory = [drives](const std::string& folderPath,
                                       const std::string& name,
-                                      std::string& error) { … };
+                                      std::string& error) {
+    return drives->QueueMakeDirectory(folderPath, name, error);
+};
 filer->remoteUpload = [drives](const std::string& folderPath,
                                const std::vector<std::string>& localFiles,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueUpload(folderPath, localFiles, error);
+};
 filer->remoteDownload = [drives](const std::string& folderPath,
                                  const std::vector<std::string>& remoteFiles,
-                                 std::string& error) { … };
+                                 std::string& error) {
+    return drives->QueueDownload(folderPath, remoteFiles, error);
+};
 ```
 
 - `remoteUpload` is what a **drop onto a remote folder** shown in the widget
@@ -1175,6 +1332,12 @@ filer->remoteDownload = [drives](const std::string& folderPath,
 - **`listingIsRealDirectory` stays false** for a remote listing, which turns
   off the features that read the local filesystem per entry: the folder
   previews and the in-use (lock) column.
+- **Nothing on a remote path is read in the background.** Thumbnails, text and
+  folder previews, media probes, folder statistics and the folder prefetch
+  skip every path `isRemotePath` claims: no decoder can open
+  `ultracloud://...`, and a video grab would wait out its timeout before
+  giving up. A thumbnail the host supplies as a local file
+  (`FilerEntry::thumbnailPath`) is still shown.
 
 UltraFiler's remote drives are built on these two hooks; see
 `Apps/UltraFiler/UltraFilerRemoteDrives.h`.
@@ -1204,6 +1367,31 @@ spinning disks.
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
+
+## Retiring a display
+
+The destructor waits for every background worker the widget started -
+thumbnails, previews, media probes, folder statistics, prefetch, the folder
+watch, a running file operation or archive job. One busy with a slow file
+holds whichever thread destroys the widget for as long. A host that drops a
+display while its UI runs - UltraFiler closing a tab - retires it instead:
+
+```cpp
+// The tab closes: tell the workers to stop, keep the widget.
+filer->RequestBackgroundStop();   // never blocks
+retired.push_back(filer);
+
+// Later, from a timer: destroy what has nothing left to wait for.
+std::erase_if(retired, [](const auto& f) { return f->BackgroundStopped(); });
+```
+
+- **`RequestBackgroundStop()`** is the destructor's teardown without its
+  waits: the timers are stopped, every worker queue is cleared and its worker
+  told to end, and a file operation or archive job still running is stopped
+  as its own Cancel would stop it, with nothing reported back.
+- **`BackgroundStopped()`** is true once every worker thread the widget
+  started has returned; the destructor's joins are then instant.
+- A retired widget is not shown or used again.
 
 ## Hidden entries
 
@@ -1669,7 +1857,9 @@ UltraFiler does that when a tile of its History view is activated.
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
 Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
-item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
+item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
+turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
+`FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
 so no icon assets are required.
 
 A button acts on the hovered entry — or on the **whole selection** when the
@@ -1723,9 +1913,9 @@ filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go 
 filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
-                              // a taken name asks Replace (red) / Cancel with the
-                              // two entries side by side
+filer->StartRename(entryIndex);  // inline rename editor (Enter commits, Esc cancels);
+                                 // a taken name asks Replace (red) / Cancel with the
+                                 // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();           // into sibling folders; a taken folder
@@ -2258,8 +2448,10 @@ Drops run through the same machinery as Paste, so a name that already exists the
 raises the [conflict dialog](#name-conflicts) and a failing entry the retry
 dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
 folder simply ends the drag. Escape abandons the drag without moving anything.
-Files dropped **into** the view from other widgets or applications are copied
-the same way, conflict dialog included.
+Files dropped **into** the view from other applications are copied the same
+way, conflict dialog included — into the folder under the pointer, or, over
+empty space, into the folder the view shows (see
+[Drops from elsewhere](#drops-from-elsewhere)).
 
 A drag is the one file operation that can be started by accident — a press that
 wandered a few pixels — and it is carried out before it is noticed, so the drop
@@ -2281,9 +2473,12 @@ into "Archive"?` with *From*, *Into* and *Size* as its facts and the entries
 listed under them — and it offers **both verbs as buttons**: the one the
 gesture asked for is the coloured default, the other sits beside it, so a drop
 made with the wrong modifier is put right here instead of by a second drag;
-Cancel abandons the drop. Nothing is touched until it is answered. Files
-arriving from another program (or another pane of the same window) are copies,
-so only a mode that covers copies asks about those. A move asked for by **Cut
+Cancel abandons the drop. Nothing is touched until it is answered. The view
+the files land in asks, under its own mode. Files arriving from another
+program are copies, so only a mode that covers copies asks about those; files
+dragged across from another file display of the same window are moved or
+copied as a drop on a folder of their own display would be, and asked about
+accordingly. A move asked for by **Cut
 and Paste** — Ctrl+X, Ctrl+V, or `PasteFilesInto()` with `cut` — asks the same
 question when the mode covers moves: it changes where the files live just the
 same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
@@ -2292,11 +2487,26 @@ is carried out rather than lost.
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
 [drag overlay](#drag-overlay) for that, because an element cannot paint outside
-its own bounds — and releasing over another element offers it the files as a
-`Drop` event, exactly like a drop arriving from another application. That is
-how a file reaches a second Filer pane, a folder tree or any other drop-aware
-widget of the same window; a release over something that does not take the drop
-just ends the drag.
+its own bounds. The element under the cursor is told about the drag the way a
+drag from another application tells it: `DragEnter` when the cursor reaches
+it, `DragOver` on every move (both carrying the dragged paths in
+`droppedFiles`) and `DragLeave` when the cursor moves on or the drag ends —
+so a folder tree highlights the row a drop would land on. Releasing over an
+element offers it the files as a `Drop` event, exactly like a drop arriving
+from another application; that is how a file reaches a folder tree or any
+other drop-aware widget of the same window. A release over something that does
+not take the drop just ends the drag.
+
+**Another file display of the same window** — the second pane of a split view
+— takes the files where they were released: into the folder under the cursor,
+or, over its empty space, into the folder it shows. It is the same gesture as a
+drop on a folder of the display the drag started in, so it follows the same
+rule: a **move** by default (`SetDropOnFolderCopies(true)`: a copy), **Ctrl**
+copies, **Shift** moves, and the drop confirmation of the display the files
+land in asks first when it covers that verb. While the drag is over it, that
+display frames the folder the files would land in — the folder's entry, or the
+whole display when it is its own folder — exactly as a drag from another
+application is framed (see [Drops from elsewhere](#drops-from-elsewhere)).
 
 **Leaving the window** hands the same set over to the native OS drag (XDND on
 Linux, OLE `DoDragDrop` on Windows), so it can be dropped on any other
@@ -2309,16 +2519,49 @@ On a platform with no native drag implementation (currently macOS) the
 window-wide drag simply keeps running instead of being dropped, so the gesture
 is never lost — it just cannot reach another application there.
 
+### Drops from elsewhere
+
+A drag that started outside the view — in another application, or in another
+element of the window — shows where it would land while it is over the view:
+the folder under the pointer is framed like the drop target of the view's own
+drag, and over empty space the whole view is framed, because the drop then
+lands in the folder it shows. A folder that is one of the dragged entries is
+never the target. `GetIncomingDropFolder()` says which folder that is right
+now, and is empty while no such drag is over the view:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; -->
+```cpp
+// A host's status line, while files are dragged over the display.
+std::string into = filer->GetIncomingDropFolder();
+if (!into.empty()) statusLabel->SetText("Drop to put the files into " + into);
+```
+
+A drop on a folder of a **remote** drive goes through `remoteUpload` with that
+folder, and a drive's entries dropped on a local folder through
+`remoteDownload`, exactly as a drop on the folder the view shows does.
+
 ### Drag overlay
 
 The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
 window-level hook for content that has to be visible above every element:
 
 ```cpp
-window->SetDragOverlay(this, badgeRectInWindowCoords,
-        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
-...
-window->ClearDragOverlay(this);   // when the gesture ends
+// The element running the gesture owns the overlay (the filer does this on
+// every mouse move of an item drag).
+class DragSource : public UltraCanvasUIElement {
+public:
+    void UpdateBadge(const Rect2Di& badgeRectInWindowCoords) {
+        if (auto* window = GetWindow())
+            window->SetDragOverlay(this, badgeRectInWindowCoords,
+                    [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+    }
+    void HideBadge() {   // when the gesture ends
+        if (auto* window = GetWindow()) window->ClearDragOverlay(this);
+    }
+
+private:
+    void DrawBadge(IRenderContext* ctx, const Rect2Di& rect);
+};
 ```
 
 Setting it again moves it (both the rectangle it leaves and the one it enters
@@ -2454,6 +2697,38 @@ filer->onFolderModified = [this](const std::string& folder) {
 };
 ```
 
+### Finished copies and moves
+
+`onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
+has ended - walked to its end or cancelled from the progress window - after its
+windows are closed and the folders refreshed. `FilerTransferResult` counts the
+entries the user chose (a folder is one item however much it holds): `items`,
+`files`, `folders`, `skipped`, `firstName` when one entry went, `destination`,
+`moved` and `cancelled`, plus `message`, the same as one sentence for a status
+line - `"report.pdf" moved to "alt"`, `3 files copied to "alt"`,
+`Copy cancelled - 2 of 5 items copied to "alt"`. A cut pasted back into its own
+folder reports nothing. Skipped entries still get the summary window as well.
+
+The progress window over a copy or move opens once the operation has run for
+`SetProgressWindowDelay()` milliseconds (2000 by default); one that finishes
+sooner shows only the busy pointer, so the status line is where it is
+confirmed.
+
+```cpp
+filer->onTransferFinished = [this](const FilerTransferResult& r) {
+    statusBar->ShowFor(r.message, std::chrono::seconds(6));
+};
+```
+
+A delete reports the same way through `onDeleteFinished(result)`, with a
+`FilerDeleteResult`: `items`, `files`, `folders`, `skipped`, `firstName`,
+`toTrash`, `trashName` (`TrashDisplayName()`), `cancelled` and `message` -
+`"report.pdf" moved to the Trash`, `3 files deleted`,
+`3 of 5 items moved to the Recycle Bin (2 left)`,
+`Delete cancelled - 2 of 5 items deleted`. Entries removed inside an archive
+and by the administrator helper count with the rest; a delete on a remote
+drive is the host's (`remoteDelete`) and is not reported here.
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -2490,7 +2765,7 @@ lets you name it — e.g. `"Open path (in new tab)"`. The item calls
 ```cpp
 filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
 filer->onOpenPath = [this](const FilerEntry& e) {
-    OpenInNewTab(std::filesystem::path(e.path).parent_path().string());
+    OpenInNewTab(PathToUtf8(PathFromUtf8(e.path).parent_path()));
 };
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
@@ -2542,8 +2817,9 @@ When the filter hides every entry the widget shows "No matches for "…"", and
 a host can center an escalation button under that notice:
 
 ```cpp
-filer->SetFilterEmptyAction("Scan sub folder", [this]() {
-    StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
+// A raw pointer: the filer owns this callback, so a shared_ptr would keep it alive.
+filer->SetFilterEmptyAction("Scan sub folder", [this, view = filer.get()]() {
+    StartSubfolderScan(view->GetNameFilter());   // e.g. AppendToFileList(batch)
 });
 ```
 
@@ -2608,6 +2884,8 @@ reports what the system hides, not what the host asked for.
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
+| `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
+| `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |

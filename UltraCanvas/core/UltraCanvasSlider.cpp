@@ -1,7 +1,10 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
-// Version: 1.2.0
-// Last Modified: 2026-07-10
+// Version: 1.5.1 - the two key switches say the keys they ignore (default; -Wswitch)
+// Version: 1.5.0 - slider.handle, slider.handle-border
+// Version: 1.4.0 - SliderVisualStyle::FromTheme
+// Version: 1.3.0
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -68,8 +71,25 @@ namespace UltraCanvas {
             } else if (onValueChanged) {
                 onValueChanged(currentValue);
             }
+            NotifyAccessibility(AccessibilityEventType::ValueChanged);
             RequestRedraw();
         }
+    }
+
+    bool UltraCanvasSlider::GetAccessibleRange(AccessibleRange& range) const {
+        if (isRangeMode) return false;
+        range.value = currentValue;
+        range.minimum = minValue;
+        range.maximum = maxValue;
+        range.step = step;
+        range.readOnly = IsDisabled();
+        return true;
+    }
+
+    bool UltraCanvasSlider::SetAccessibleValue(double value) {
+        if (isRangeMode || IsDisabled()) return false;
+        SetValue(static_cast<float>(value));
+        return true;
     }
 
     void UltraCanvasSlider::SetRangeMode(bool enabled) {
@@ -886,6 +906,9 @@ namespace UltraCanvas {
                     activeHandle = (activeHandle == RangeHandle::Lower) ? RangeHandle::Upper : RangeHandle::Lower;
                     RequestRedraw();
                     return true;
+
+                default:
+                    break;
             }
         } else {
             // Single handle mode - standard behavior
@@ -915,6 +938,9 @@ namespace UltraCanvas {
                 case UCKeys::PageDown:
                     SetValue(currentValue - increment * 10);
                     return true;
+
+                default:
+                    break;
             }
         }
 
@@ -945,5 +971,24 @@ namespace UltraCanvas {
         } else {
             SetValue(newValue);
         }
+    }
+
+    SliderVisualStyle SliderVisualStyle::FromTheme(const UltraCanvasTheme& theme, const SliderVisualStyle& base) {
+        SliderVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.trackColor = r.pressed;
+        s.activeTrackColor = r.accent;
+        s.disabledTrackColor = r.line;
+        s.disabledActiveTrackColor = r.inkFaint;
+        s.rangeTrackColor = r.accent.WithAlpha(180);
+        // the element's own roles, for a design whose handle is not a raised surface
+        s.handleColor = theme.Role("slider.handle", r.raised);
+        s.handleBorderColor = theme.Role("slider.handle-border", r.lineStrong);
+        s.handleHoverColor = r.hover;
+        s.handlePressedColor = r.pressed;
+        s.handleDisabledColor = r.panel;
+        s.textColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        return s;
     }
 } // namespace UltraCanvas

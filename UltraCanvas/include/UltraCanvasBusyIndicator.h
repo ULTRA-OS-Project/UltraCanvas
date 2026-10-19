@@ -12,8 +12,8 @@
 // For a known fraction use UltraCanvasGaugeDiagramElement (GaugeMode::LinearBar)
 // or UltraCanvasProgressDialog; this element has no value.
 //
-// Version: 1.2.0
-// Last Modified: 2026-10-04
+// Version: 1.3.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -78,6 +78,10 @@ namespace UltraCanvas {
 // ===== BUSY INDICATOR COMPONENT =====
     class UltraCanvasBusyIndicator : public UltraCanvasUIElement {
     public:
+        // ===== ACCESSIBILITY =====
+        // An indeterminate progress bar (no value); name it after what it waits for.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::ProgressBar; }
+
         UltraCanvasBusyIndicator(const std::string& identifier, float x, float y, float w, float h);
         ~UltraCanvasBusyIndicator() override;
 

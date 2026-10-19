@@ -1,7 +1,9 @@
 // Apps/Texter/UltraCanvasSearchBar.cpp
 // Inline search and replace bar implementation
+// Version: 1.4.1 - the settings and history menus open anchored to their buttons:
+//                  above them when the bar is at the foot of the window
 // Version: 1.4.0
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSearchBar.h"
@@ -358,10 +360,8 @@ namespace UltraCanvas {
         settingsButton->onClick = [this]() {
             auto* win = GetWindow();
             if (!win || !settingsMenu) return;
-            settingsMenu->OpenMenu(
-                Point2Di(settingsButton->GetXInWindow(),
-                settingsButton->GetYInWindow() + settingsButton->GetHeight() + 1),
-                *win, PopupElementSettings());
+            settingsMenu->OpenMenuAnchored(settingsButton->GetBoundsInWindow(), *win,
+                                           PopupElementSettings(), 1);
         };
 
         // ✕ Close
@@ -619,8 +619,7 @@ namespace UltraCanvas {
         if (!icon) return;
 
         //win->AddChild(menu);
-        menu->OpenMenu(Point2D(icon->GetXInWindow(), 
-                     icon->GetYInWindow() + icon->GetHeight() + 1), *win, PopupElementSettings());
+        menu->OpenMenuAnchored(icon->GetBoundsInWindow(), *win, PopupElementSettings(), 1);
     }
 
     void UltraCanvasSearchBar::AddToHistory(std::vector<std::string>& history, const std::string& text) {

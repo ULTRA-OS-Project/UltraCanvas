@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- A small WordPress export (WXR 1.2) for the importer's tests: a site with
+     two pages (one the front page), a post, a draft, an attachment, a main
+     menu with a nested item and a footer menu. The bodies use the block
+     editor's markers; the draft is classic content with a shortcode. -->
+<rss version="2.0"
+	xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"
+	xmlns:content="http://purl.org/rss/1.0/modules/content/"
+	xmlns:wfw="http://wellformedweb.org/CommentAPI/"
+	xmlns:dc="http://purl.org/dc/elements/1.1/"
+	xmlns:wp="http://wordpress.org/export/1.2/"
+>
+<channel>
+	<title>ULTRA OS &amp; Friends</title>
+	<link>https://example.org</link>
+	<description>Europe&#8217;s open source operating system</description>
+	<pubDate>Mon, 12 Oct 2026 10:00:00 +0000</pubDate>
+	<language>en-US</language>
+	<wp:wxr_version>1.2</wp:wxr_version>
+	<wp:base_site_url>https://example.org</wp:base_site_url>
+	<wp:base_blog_url>https://example.org</wp:base_blog_url>
+	<wp:author><wp:author_id>1</wp:author_id><wp:author_login><![CDATA[stefan]]></wp:author_login><wp:author_email><![CDATA[stefan@example.org]]></wp:author_email><wp:author_display_name><![CDATA[Stefan]]></wp:author_display_name></wp:author>
+	<wp:term><wp:term_id>5</wp:term_id><wp:term_taxonomy><![CDATA[nav_menu]]></wp:term_taxonomy><wp:term_slug><![CDATA[main-menu]]></wp:term_slug><wp:term_name><![CDATA[Main Menu]]></wp:term_name></wp:term>
+	<wp:term><wp:term_id>6</wp:term_id><wp:term_taxonomy><![CDATA[nav_menu]]></wp:term_taxonomy><wp:term_slug><![CDATA[footer-menu]]></wp:term_slug><wp:term_name><![CDATA[Footer]]></wp:term_name></wp:term>
+	<generator>https://wordpress.org/?v=6.7</generator>
+
+	<item>
+		<title><![CDATA[Home]]></title>
+		<link>https://example.org/</link>
+		<pubDate>Mon, 01 Sep 2026 09:00:00 +0000</pubDate>
+		<dc:creator><![CDATA[stefan]]></dc:creator>
+		<description></description>
+		<content:encoded><![CDATA[<!-- wp:cover {"url":"https://example.org/wp-content/uploads/2026/09/hero.jpg","id":40} -->
+<div class="wp-block-cover"><img class="wp-block-cover__image-background" src="https://example.org/wp-content/uploads/2026/09/hero.jpg"/><div class="wp-block-cover__inner-container"><!-- wp:heading {"level":1} -->
+<h1 class="wp-block-heading">It&#8217;s time to build on what we&#8217;ve learned</h1>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Unlike fragmented solutions, ULTRA OS unifies desktop and mobile.</p>
+<!-- /wp:paragraph --></div></div>
+<!-- /wp:cover -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">What ULTRA OS is</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>A next-generation operating system project.<br>Open source, for everyone.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Our goal is a compelling alternative.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Read <a href="https://example.org/the-plan/">the plan</a> for the details.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":41,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://example.org/wp-content/uploads/2026/09/desktop-1024x576.png" alt="The desktop" class="wp-image-41"/><figcaption class="wp-element-caption">The ULTRA OS desktop</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:quote -->
+<blockquote class="wp-block-quote"><!-- wp:paragraph -->
+<p>Build on what we have learned.</p>
+<!-- /wp:paragraph --><cite>The team</cite></blockquote>
+<!-- /wp:quote -->
+
+<!-- wp:buttons -->
+<div class="wp-block-buttons"><!-- wp:button -->
+<div class="wp-block-button"><a class="wp-block-button__link wp-element-button" href="https://example.org/the-plan/">Learn more</a></div>
+<!-- /wp:button -->
+
+<!-- wp:button -->
+<div class="wp-block-button"><a class="wp-block-button__link wp-element-button" href="https://github.com/ULTRA-OS-Project">GitHub</a></div>
+<!-- /wp:button --></div>
+<!-- /wp:buttons -->
+
+<!-- wp:columns -->
+<div class="wp-block-columns"><!-- wp:column -->
+<div class="wp-block-column"><!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">Desktop</h3>
+<!-- /wp:heading --></div>
+<!-- /wp:column -->
+
+<!-- wp:column -->
+<div class="wp-block-column"><!-- wp:paragraph -->
+<p>First.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Second, with <em>emphasis</em>.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:column --></div>
+<!-- /wp:columns -->
+
+<!-- wp:list -->
+<ul class="wp-block-list"><!-- wp:list-item -->
+<li>One</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>Two</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:spacer {"height":"80px"} -->
+<div style="height:80px" aria-hidden="true" class="wp-block-spacer"></div>
+<!-- /wp:spacer -->
+
+<!-- wp:some-plugin/carousel {"ids":[1,2]} -->
+<div class="carousel"><p>Slides</p></div>
+<!-- /wp:some-plugin/carousel -->]]></content:encoded>
+		<excerpt:encoded><![CDATA[The <b>front</b> page of ULTRA OS.]]></excerpt:encoded>
+		<wp:post_id>10</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-01 09:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[home]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[page]]></wp:post_type>
+	</item>
+	<item>
+		<title><![CDATA[The development plan]]></title>
+		<link>https://example.org/the-plan/</link>
+		<pubDate>Tue, 02 Sep 2026 09:00:00 +0000</pubDate>
+		<dc:creator><![CDATA[stefan]]></dc:creator>
+		<content:encoded><![CDATA[<!-- wp:paragraph -->
+<p>The framework first, then the applications.</p>
+<!-- /wp:paragraph -->]]></content:encoded>
+		<excerpt:encoded><![CDATA[]]></excerpt:encoded>
+		<wp:post_id>11</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-02 09:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[the-plan]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>1</wp:menu_order>
+		<wp:post_type><![CDATA[page]]></wp:post_type>
+	</item>
+	<item>
+		<title><![CDATA[Release 0.9]]></title>
+		<link>https://example.org/2026/10/05/release-0-9/</link>
+		<pubDate>Sun, 05 Oct 2026 12:00:00 +0000</pubDate>
+		<dc:creator><![CDATA[stefan]]></dc:creator>
+		<content:encoded><![CDATA[<!-- wp:paragraph -->
+<p>Version 0.9 is out.</p>
+<!-- /wp:paragraph -->]]></content:encoded>
+		<excerpt:encoded><![CDATA[Version 0.9 is out.]]></excerpt:encoded>
+		<wp:post_id>12</wp:post_id>
+		<wp:post_date><![CDATA[2026-10-05 12:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[release-0-9]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[post]]></wp:post_type>
+	</item>
+	<item>
+		<title><![CDATA[Notes]]></title>
+		<link>https://example.org/?p=13</link>
+		<pubDate>Mon, 06 Oct 2026 12:00:00 +0000</pubDate>
+		<dc:creator><![CDATA[stefan]]></dc:creator>
+		<content:encoded><![CDATA[<p>Classic content with a <strong>strong</strong> word.</p>
+[caption id="attachment_41" align="alignnone" width="300"]<img src="https://example.org/wp-content/uploads/2026/09/desktop-300x169.png" alt="" /> A caption[/caption]
+[gallery ids="40,41"]]]></content:encoded>
+		<excerpt:encoded><![CDATA[]]></excerpt:encoded>
+		<wp:post_id>13</wp:post_id>
+		<wp:post_date><![CDATA[2026-10-06 12:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[]]></wp:post_name>
+		<wp:status><![CDATA[draft]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[post]]></wp:post_type>
+	</item>
+	<item>
+		<title><![CDATA[hero]]></title>
+		<link>https://example.org/home/hero/</link>
+		<pubDate>Mon, 01 Sep 2026 08:00:00 +0000</pubDate>
+		<dc:creator><![CDATA[stefan]]></dc:creator>
+		<content:encoded><![CDATA[]]></content:encoded>
+		<wp:post_id>40</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-01 08:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[hero]]></wp:post_name>
+		<wp:status><![CDATA[inherit]]></wp:status>
+		<wp:post_parent>10</wp:post_parent>
+		<wp:post_type><![CDATA[attachment]]></wp:post_type>
+		<wp:attachment_url><![CDATA[https://example.org/wp-content/uploads/2026/09/hero.jpg]]></wp:attachment_url>
+	</item>
+	<item>
+		<title><![CDATA[desktop]]></title>
+		<link>https://example.org/home/desktop/</link>
+		<pubDate>Mon, 01 Sep 2026 08:00:00 +0000</pubDate>
+		<dc:creator><![CDATA[stefan]]></dc:creator>
+		<content:encoded><![CDATA[]]></content:encoded>
+		<wp:post_id>41</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-01 08:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[desktop]]></wp:post_name>
+		<wp:status><![CDATA[inherit]]></wp:status>
+		<wp:post_parent>10</wp:post_parent>
+		<wp:post_type><![CDATA[attachment]]></wp:post_type>
+		<wp:attachment_url><![CDATA[https://example.org/wp-content/uploads/2026/09/desktop.png]]></wp:attachment_url>
+	</item>
+	<item>
+		<title><![CDATA[Home]]></title>
+		<link>https://example.org/?p=50</link>
+		<wp:post_id>50</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-03 09:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[50]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>1</wp:menu_order>
+		<wp:post_type><![CDATA[nav_menu_item]]></wp:post_type>
+		<category domain="nav_menu" nicename="main-menu"><![CDATA[Main Menu]]></category>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_type]]></wp:meta_key><wp:meta_value><![CDATA[post_type]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_menu_item_parent]]></wp:meta_key><wp:meta_value><![CDATA[0]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_object_id]]></wp:meta_key><wp:meta_value><![CDATA[10]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_object]]></wp:meta_key><wp:meta_value><![CDATA[page]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_url]]></wp:meta_key><wp:meta_value><![CDATA[]]></wp:meta_value></wp:postmeta>
+	</item>
+	<item>
+		<title><![CDATA[Details]]></title>
+		<link>https://example.org/?p=51</link>
+		<wp:post_id>51</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-03 09:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[51]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>2</wp:menu_order>
+		<wp:post_type><![CDATA[nav_menu_item]]></wp:post_type>
+		<category domain="nav_menu" nicename="main-menu"><![CDATA[Main Menu]]></category>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_type]]></wp:meta_key><wp:meta_value><![CDATA[custom]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_menu_item_parent]]></wp:meta_key><wp:meta_value><![CDATA[0]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_object_id]]></wp:meta_key><wp:meta_value><![CDATA[51]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_url]]></wp:meta_key><wp:meta_value><![CDATA[#]]></wp:meta_value></wp:postmeta>
+	</item>
+	<item>
+		<title><![CDATA[]]></title>
+		<link>https://example.org/?p=52</link>
+		<wp:post_id>52</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-03 09:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[52]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>3</wp:menu_order>
+		<wp:post_type><![CDATA[nav_menu_item]]></wp:post_type>
+		<category domain="nav_menu" nicename="main-menu"><![CDATA[Main Menu]]></category>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_type]]></wp:meta_key><wp:meta_value><![CDATA[post_type]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_menu_item_parent]]></wp:meta_key><wp:meta_value><![CDATA[51]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_object_id]]></wp:meta_key><wp:meta_value><![CDATA[11]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_object]]></wp:meta_key><wp:meta_value><![CDATA[page]]></wp:meta_value></wp:postmeta>
+	</item>
+	<item>
+		<title><![CDATA[GitHub]]></title>
+		<link>https://example.org/?p=53</link>
+		<wp:post_id>53</wp:post_id>
+		<wp:post_date><![CDATA[2026-09-03 09:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[53]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>1</wp:menu_order>
+		<wp:post_type><![CDATA[nav_menu_item]]></wp:post_type>
+		<category domain="nav_menu" nicename="footer-menu"><![CDATA[Footer]]></category>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_type]]></wp:meta_key><wp:meta_value><![CDATA[custom]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_menu_item_parent]]></wp:meta_key><wp:meta_value><![CDATA[0]]></wp:meta_value></wp:postmeta>
+		<wp:postmeta><wp:meta_key><![CDATA[_menu_item_url]]></wp:meta_key><wp:meta_value><![CDATA[https://github.com/ULTRA-OS-Project]]></wp:meta_value></wp:postmeta>
+	</item>
+</channel>
+</rss>

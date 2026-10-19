@@ -18,6 +18,8 @@ set(ULTRACLEANER_ENGINE_SOURCES
     engine/UltraCleanerScanner.cpp
     engine/UltraCleanerRemover.cpp
     engine/UltraCleanerVolumes.cpp
+    engine/UltraCleanerRegistry.cpp
+    engine/UltraCleanerRegistryWindows.cpp
 )
 
 add_library(UltraCleanerEngine STATIC ${ULTRACLEANER_ENGINE_SOURCES})
@@ -33,11 +35,12 @@ target_include_directories(UltraCleanerEngine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/include)
 
 # The trash goes through the shell on Windows (SHFileOperationW /
-# SHEmptyRecycleBinW / SHQueryRecycleBinW); everywhere else the engine is
-# pure std::filesystem. Older GCC/Clang runtimes keep <filesystem> in a
+# SHEmptyRecycleBinW / SHQueryRecycleBinW) and the registry cleaner through
+# advapi32 (RegDeleteTreeW and the rest); everywhere else the engine is pure
+# std::filesystem. Older GCC/Clang runtimes keep <filesystem> in a
 # separate library.
 if(WIN32)
-    target_link_libraries(UltraCleanerEngine PUBLIC shell32)
+    target_link_libraries(UltraCleanerEngine PUBLIC shell32 advapi32)
     # Same hygiene the core library applies: keep windows.h from defining
     # min/max macros, and from dragging in headers the engine never uses.
     # The engine does not link UltraCanvas, so it does not inherit these.
@@ -90,7 +93,10 @@ add_executable(UltraCleaner
     ui/UltraCleanerCategoryPanel.cpp
     ui/UltraCleanerAlbumView.cpp
     ui/UltraCleanerHomeView.cpp
+    ui/UltraCleanerRegistryView.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraCleaner)
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.

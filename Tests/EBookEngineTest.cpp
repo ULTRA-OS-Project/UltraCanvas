@@ -3,8 +3,9 @@
 // in memory (miniz writer for the EPUB, a hand-assembled PDB for the MOBI)
 // and exercises metadata, spine, TOC, resources, cover, text extraction,
 // search, and the engine registry - plus the EPUB cover rules and the
-// cover-only file reader a file manager's thumbnails use.
-// Version: 1.1.0
+// cover-only file readers (EPUB, MOBI / Kindle) a file manager's thumbnails
+// use.
+// Version: 1.2.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
@@ -752,12 +753,24 @@ static void PutBE16At(std::vector<uint8_t>& v, size_t at, uint16_t x) {
     v[at + 1] = static_cast<uint8_t>(x & 0xFF);
 }
 
-// Assemble a minimal but valid MOBI6 file: PDB header + 3 records
-// (record 0 with PalmDOC/MOBI/EXTH headers, one ASCII text record, one image).
-// `text` is the book's HTML; ASCII HTML decodes to itself under PalmDOC (all
-// bytes are 0x20..0x7E literals), so compression=2 exercises the decompressor
-// without needing a compressor here.
-static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
+// What a synthetic MOBI6 file carries besides its text. The defaults are the
+// test book: one 10-byte PNG, declared the cover by EXTH 201.
+struct MobiOptions {
+    std::vector<std::vector<uint8_t>> images = {
+        {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'i', 'm'}};
+    uint32_t coverOffset = 0;            // EXTH 201; 0xFFFFFFFF = no record
+    uint16_t compression = 2;            // PalmDOC
+    uint16_t encryption = 0;             // 2 = Mobipocket DRM
+    std::vector<std::vector<uint8_t>> trailing;   // FLIS / FCIS / ...
+};
+
+// Assemble a minimal but valid MOBI6 file: PDB header + records (record 0
+// with PalmDOC/MOBI/EXTH headers, one ASCII text record, then the images and
+// any trailing records). `text` is the book's HTML; ASCII HTML decodes to
+// itself under PalmDOC (all bytes are 0x20..0x7E literals), so
+// compression=2 exercises the decompressor without needing a compressor here.
+static std::vector<uint8_t> MakeMOBI6(const std::string& text,
+                                      const MobiOptions& options = {}) {
     // --- MOBI header (232 bytes) --- (field offsets relative to "MOBI")
     std::vector<uint8_t> mobi(232, 0);
     std::memcpy(&mobi[0], "MOBI", 4);
@@ -782,11 +795,14 @@ static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
     addExth(104, "978-0-00-000000-0");
     addExth(106, "2021");
     addExth(524, "en");
+    uint32_t exthCount = 5;
     // Cover offset (type 201): BE32 = 0 → first image record is the cover.
-    PutBE32(exthRecs, 201);
-    PutBE32(exthRecs, 12);
-    PutBE32(exthRecs, 0);
-    uint32_t exthCount = 6;
+    if (options.coverOffset != 0xFFFFFFFF) {
+        PutBE32(exthRecs, 201);
+        PutBE32(exthRecs, 12);
+        PutBE32(exthRecs, options.coverOffset);
+        ++exthCount;
+    }
 
     std::vector<uint8_t> exth;
     exth.insert(exth.end(), {'E', 'X', 'T', 'H'});
@@ -799,12 +815,13 @@ static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
 
     // --- record 0 = PalmDOC(16) + MOBI(232) + EXTH + fullName ---
     std::vector<uint8_t> rec0;
-    PutBE16(rec0, 2);                                   // compression = PalmDOC
+    PutBE16(rec0, options.compression);                 // 2 = PalmDOC
     PutBE16(rec0, 0);                                   // unused
     PutBE32(rec0, static_cast<uint32_t>(text.size()));  // text length
     PutBE16(rec0, 1);                                   // text record count
     PutBE16(rec0, 4096);                               // record size
-    PutBE32(rec0, 0);                                   // encryption + unused
+    PutBE16(rec0, options.encryption);                  // encryption
+    PutBE16(rec0, 0);                                   // unused
 
     uint32_t fullNameOffset = static_cast<uint32_t>(16 + mobi.size() + exth.size());
     SetBE32(mobi, 68, fullNameOffset);
@@ -815,17 +832,17 @@ static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
     rec0.insert(rec0.end(), fullName.begin(), fullName.end());
 
     std::vector<uint8_t> rec1(text.begin(), text.end());
-    std::vector<uint8_t> rec2 = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'i', 'm'};
 
-    std::vector<std::vector<uint8_t>> recs = {rec0, rec1, rec2};
+    std::vector<std::vector<uint8_t>> recs = {rec0, rec1};
+    recs.insert(recs.end(), options.images.begin(), options.images.end());
+    recs.insert(recs.end(), options.trailing.begin(), options.trailing.end());
 
     // --- PDB header (78 bytes) + record list ---
     std::vector<uint8_t> file(78, 0);
     std::memcpy(&file[0], "TestBook", 8);
     std::memcpy(&file[60], "BOOK", 4);
     std::memcpy(&file[64], "MOBI", 4);
-    file[76] = 0;
-    file[77] = static_cast<uint8_t>(recs.size());   // record count = 3
+    PutBE16At(file, 76, static_cast<uint16_t>(recs.size()));   // record count
 
     size_t listSize = recs.size() * 8;
     size_t dataStart = 78 + listSize;
@@ -1104,6 +1121,160 @@ static void TestKF8() {
     CHECK(!engine.IsLoaded());
 }
 
+// ============================================================================
+// MOBI / KINDLE COVER
+// ============================================================================
+// The file reader must give the picture the loaded engine gives (EXTH 201,
+// else the first image of the run), reading only record 0 and the cover -
+// and must give it for DRM and HUFF/CDIC books too, whose text the engine
+// refuses but whose images are stored plainly.
+
+static std::vector<uint8_t> Picture(const char* kind, const std::string& tag) {
+    std::vector<uint8_t> bytes;
+    if (std::strcmp(kind, "jpeg") == 0) bytes = {0xFF, 0xD8, 0xFF, 0xE0};
+    else bytes = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    bytes.insert(bytes.end(), tag.begin(), tag.end());
+    return bytes;
+}
+
+static std::vector<uint8_t> Record(const std::string& s) {
+    return std::vector<uint8_t>(s.begin(), s.end());
+}
+
+static const std::string kKindleText =
+    "<html><body><h1>One</h1><p>Text.</p></body></html>";
+
+// Writes `book` to a file, reads its cover back through the file reader and
+// says whether that is `expected` - and, when the engine can load the book,
+// also what the loaded engine reports as the cover.
+static bool KindleCoverIs(const std::vector<uint8_t>& book,
+                          const std::vector<uint8_t>& expected,
+                          bool engineLoads = true) {
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "ebook-kindle-cover-test.mobi";
+    std::FILE* f = OpenFileUtf8(PathToUtf8(path), "wb");
+    if (!f) return false;
+    std::fwrite(book.data(), 1, book.size(), f);
+    std::fclose(f);
+    const std::vector<uint8_t> fromFile =
+        MOBIEngine::ReadCoverImageFromFile(PathToUtf8(path));
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+
+    MOBIEngine engine;
+    const bool loaded = engine.LoadFromMemory(book);
+    if (loaded != engineLoads) return false;
+    if (loaded && engine.GetCoverImage() != fromFile) return false;
+    return fromFile == expected;
+}
+
+static void TestMOBICoverFromFile() {
+    const auto logo = Picture("png", "publisher logo");
+    const auto cover = Picture("jpeg", "the cover");
+    const auto map = Picture("png", "a map");
+    const auto resc = Record("RESC not a picture");
+
+    // The test book: EXTH 201 = image 0.
+    CHECK(KindleCoverIs(MakeTestMOBI(), Picture("png", "im")));
+
+    // EXTH 201 naming the third record of the run, past a logo and a record
+    // that is no picture.
+    MobiOptions declared;
+    declared.images = {logo, resc, cover, map};
+    declared.coverOffset = 2;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, declared), cover));
+
+    // No EXTH 201: the first picture of the run, skipping what is none.
+    MobiOptions undeclared;
+    undeclared.images = {resc, cover, map};
+    undeclared.coverOffset = 0xFFFFFFFF;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, undeclared), cover));
+
+    // EXTH 201 naming a record that is no picture: the first picture.
+    MobiOptions notAPicture;
+    notAPicture.images = {cover, resc, map};
+    notAPicture.coverOffset = 1;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, notAPicture), cover));
+
+    // EXTH 201 naming a record past the trailing FLIS, which ends the run:
+    // the first picture.
+    MobiOptions pastTheRun;
+    pastTheRun.images = {cover};
+    pastTheRun.trailing = {Record("FLIS"), map};
+    pastTheRun.coverOffset = 2;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, pastTheRun), cover));
+
+    // EXTH 201 far past the end of the file.
+    MobiOptions pastTheEnd;
+    pastTheEnd.images = {cover, map};
+    pastTheEnd.coverOffset = 4000;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, pastTheEnd), cover));
+
+    // A book with no picture at all.
+    MobiOptions noPictures;
+    noPictures.images = {resc};
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, noPictures), {}));
+
+    // DRM and HUFF/CDIC: the engine refuses the text (and says why), the
+    // cover is read all the same.
+    MobiOptions drm;
+    drm.images = {logo, cover};
+    drm.coverOffset = 1;
+    drm.encryption = 2;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, drm), cover, /*engineLoads=*/false));
+    {
+        MOBIEngine engine;
+        CHECK(!engine.LoadFromMemory(MakeMOBI6(kKindleText, drm)));
+        CHECK(engine.GetLastError().find("DRM") != std::string::npos);
+    }
+    MobiOptions huff = drm;
+    huff.encryption = 0;
+    huff.compression = 17480;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, huff), cover, /*engineLoads=*/false));
+
+    // KF8 (AZW3): the same picture the loaded engine reports.
+    {
+        MOBIEngine engine;
+        CHECK(engine.LoadFromMemory(MakeTestKF8()));
+        CHECK(!engine.GetCoverImage().empty());
+        CHECK(KindleCoverIs(MakeTestKF8(), engine.GetCoverImage()));
+    }
+
+    // A Thai-and-emoji file name.
+    const std::filesystem::path named = std::filesystem::temp_directory_path() /
+        PathFromUtf8("\xE0\xB8\xAB\xE0\xB8\x99\xE0\xB8\xB1\xE0\xB8\x87\xE0\xB8\xAA\xE0\xB8\xB7\xE0\xB8\xAD "
+                     "\xF0\x9F\x93\x9A kindle.azw3");
+    const std::vector<uint8_t> book = MakeMOBI6(kKindleText, declared);
+    if (std::FILE* f = OpenFileUtf8(PathToUtf8(named), "wb")) {
+        std::fwrite(book.data(), 1, book.size(), f);
+        std::fclose(f);
+    }
+    CHECK(MOBIEngine::ReadCoverImageFromFile(PathToUtf8(named)) == cover);
+
+    // Not a book, a cut-off one, and none at all: no cover, no throw.
+    const std::filesystem::path junk =
+        std::filesystem::temp_directory_path() / "ebook-kindle-junk.mobi";
+    if (std::FILE* f = OpenFileUtf8(PathToUtf8(junk), "wb")) {
+        std::vector<uint8_t> zeros(200, 0);
+        std::fwrite(zeros.data(), 1, zeros.size(), f);
+        std::fclose(f);
+    }
+    CHECK(MOBIEngine::ReadCoverImageFromFile(PathToUtf8(junk)).empty());
+    const std::filesystem::path cut =
+        std::filesystem::temp_directory_path() / "ebook-kindle-cut.mobi";
+    if (std::FILE* f = OpenFileUtf8(PathToUtf8(cut), "wb")) {
+        std::fwrite(book.data(), 1, 100, f);   // header and part of the list
+        std::fclose(f);
+    }
+    CHECK(MOBIEngine::ReadCoverImageFromFile(PathToUtf8(cut)).empty());
+    CHECK(MOBIEngine::ReadCoverImageFromFile(
+        PathToUtf8(std::filesystem::temp_directory_path() / "ebook-kindle-missing.mobi")).empty());
+    CHECK(MOBIEngine::ReadCoverImageFromFile("").empty());
+
+    std::error_code ec;
+    for (const auto& p : {named, junk, cut}) std::filesystem::remove(p, ec);
+}
+
 static void TestMOBIErrors() {
     MOBIEngine engine;
     std::vector<uint8_t> junk(200, 0);
@@ -1207,6 +1378,7 @@ int main() {
     TestMOBIDropCapsAndToc();
     TestKF8();
     TestMOBIErrors();
+    TestMOBICoverFromFile();
     TestTXT();
     TestRegistry();
 

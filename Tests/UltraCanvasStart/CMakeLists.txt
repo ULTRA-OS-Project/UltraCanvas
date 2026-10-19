@@ -11,6 +11,7 @@ add_executable(UltraCanvasStartEngineTests
     test_packages.cpp
     test_plan.cpp
     test_project.cpp
+    test_guide.cpp
 )
 target_compile_features(UltraCanvasStartEngineTests PRIVATE cxx_std_20)
 target_include_directories(UltraCanvasStartEngineTests PRIVATE

@@ -48,10 +48,13 @@ void TestResolutionOrder() {
               std::string("llama-cpp"));
     EXPECT_EQ(ResolveProviderId("textllm", {"qwen", "llama-cpp"}),
               std::string("llama-cpp"));
-    // Local-first is per capability, but any local provider still beats the
-    // mock where the capability has no preference list of its own.
-    EXPECT_EQ(ResolveProviderId("translator", {"mock", "llama-cpp"}),
+    // The translator prefers the local text LLMs it translates through.
+    EXPECT_EQ(ResolveProviderId("translator", {"mock", "qwen", "llama-cpp"}),
               std::string("llama-cpp"));
+    // Any local provider still beats the mock where the capability has no
+    // preference list of its own.
+    EXPECT_EQ(ResolveProviderId("musicgen", {"mock", "comfyui"}),
+              std::string("comfyui"));
     EXPECT_EQ(ResolveProviderId("speechtotext",
                                 {"mock", "whisper-cpp", "deepgram"}),
               std::string("whisper-cpp"));

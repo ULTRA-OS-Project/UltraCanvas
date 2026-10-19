@@ -1,0 +1,18 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 900x380. --><title>Context menu — preview</title></head>
+<body class="uv uv-frame">
+<div class="uv-row" style="align-items:flex-start;gap:24px" id="r"></div>
+<script>
+  var I = UltraVideo.icon;
+  function it(ic, label, kbd, cls) { return '<div class="uv-menu__item ' + (cls || '') + '">' + (ic ? I(ic) : '<span style="width:16px"></span>') + '<span class="uv-menu__label">' + label + '</span>' + (kbd ? '<span class="uv-kbd">' + kbd + '</span>' : '') + '</div>'; }
+  var sep = '<div class="uv-menu__sep"></div>';
+  document.getElementById('r').innerHTML =
+    '<div class="uv-menu"><div class="uv-menu__head">Forest_walk.mp4</div>' + it('split', 'Split at playhead', 'S') + it('duplicate', 'Duplicate', 'Ctrl+D', 'is-hover') + it('speed', 'Speed and duration…', 'Ctrl+R') + it('speakerOff', 'Mute clip', 'Shift+M') + sep +
+    it('transition', 'Add transition', '›') + it('fx', 'Effects', '›') + it('marker', 'Add marker', 'M') + sep + it('', 'Reveal in media bin', 'F') + sep +
+    it('trash', 'Ripple delete', 'Del', 'uv-menu__item--danger') + it('', 'Delete, leave gap', 'Shift+Del', 'uv-menu__item--danger') + '</div>' +
+    '<div class="uv-menu"><div class="uv-menu__head">Transition · Cross dissolve</div>' + it('transition', 'Change type', '›', 'is-hover') + it('', 'Length 0.5 s', '') + it('', 'Length 1.0 s', '') + it('', 'Length 2.0 s (max)', '', 'is-disabled') + sep +
+    it('trash', 'Remove (back to cut)', 'Del', 'uv-menu__item--danger') + '</div>';
+</script>
+</body>
+</html>

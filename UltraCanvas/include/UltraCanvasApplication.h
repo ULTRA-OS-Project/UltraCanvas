@@ -1,7 +1,11 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
+// Version: 1.8.1 - IsKeyPressed checks the key code against the table (KeyStateCount)
+// Version: 1.8.0 - keys aimed at a blocked window go to the modal
+// Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-08-03
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,14 +35,26 @@
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
 
-    // Bundled DejaVu font registration tables. Defined in UltraCanvasApplication.cpp.
+    // The bundled fonts' file names (the Ubuntu and Ubuntu Mono families), in
+    // GetBundledFontsDir(). Defined in UltraCanvasApplication.cpp.
     extern const char* const kEmbeddedAllFonts[];
     extern const size_t kEmbeddedAllFontsCount;
     extern const char* const kEmbeddedMonoFonts[];
     extern const size_t kEmbeddedMonoFontsCount;
 
-    // Returns absolute path to media/fonts/dejavu/ in the resources dir.
+    // The folder of the fonts the framework ships: media/fonts/ in the
+    // resources dir (GetResourcesDir), absolute and ending in a separator, so
+    // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
+
+    // Every font family this process can set text in: the fonts installed on
+    // the system (TrueType, OpenType, Type 1, ...) with the bundled ones and
+    // any added with RegisterFontFile, as the text engine sees them (Pango:
+    // fontconfig on Linux and Windows, CoreText on macOS). Scalable families
+    // only - a family that has bitmaps alone cannot be drawn at any size -
+    // sorted regardless of case, each name once. For a font picker; it is
+    // asked afresh on every call, so a font installed meanwhile is in it.
+    std::vector<std::string> GetInstalledFontFamilies();
 
     // Pins hinting / antialias / autohint / lcdfilter defaults for the bundled
     // DejaVu families so system fontconfig (which differs between MSYS2 and
@@ -60,7 +76,43 @@ namespace UltraCanvas {
     // has its own fonts.conf. No-op on macOS (CoreText) and whenever a usable
     // config already exists, so a normal Linux desktop is unaffected. Called
     // first thing by UltraCanvasApplicationBase::Initialize().
+    //
+    // On Windows that config names C:\Windows\Fonts and the user's font
+    // folder, and with a cold font cache - the first start on a computer, or
+    // after Windows changed its fonts - fontconfig opens every font file in
+    // them before the first text can be laid out: many seconds in which no
+    // window could appear. So there, when the bundled fonts are present,
+    // fontconfig starts with them alone (fonts-startup.conf) and the system
+    // fonts are scanned on a thread of their own (fonts.conf, the full set);
+    // see AdoptSystemFontsWithin.
     void SetupBundledFontconfig();
+
+    // The system fonts' scan that SetupBundledFontconfig started, called by
+    // the platform's LoadBundledFontsNative: waits up to `waitMs` for it and,
+    // when it has ended, makes the full set the current one and returns true
+    // - with a warm font cache the scan ends well within the wait and the
+    // application starts exactly as it did with one config. False while the
+    // scan still runs: the application starts with the bundled fonts, and
+    // when the scan ends every window is switched to the full set on the UI
+    // thread (fonts, Pango's font map, the text caches, a new layout).
+    // True wherever no scan was started (every other platform, a system
+    // fonts.conf, no bundled fonts).
+    bool AdoptSystemFontsWithin(int waitMs);
+
+    // How the system fonts' background scan went, for a start-up report.
+    struct SystemFontScanStatus {
+        bool   started = false;         // a scan was started (Windows, generated config)
+        bool   finished = false;        // it has ended
+        bool   succeeded = false;       // ... with a usable font set
+        bool   adoptedAtStart = false;  // its set was current before the first window
+        double ms = 0;                  // how long it took, once finished
+    };
+    SystemFontScanStatus GetSystemFontScanStatus();
+
+    // Called on the UI thread after the windows were switched to the system
+    // fonts that a scan still running at the start brought later (not when
+    // they were adopted at the start). For a start-up trace.
+    void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler);
 
     // Tells the text stack that the set of available fonts just changed.
     // A font file added after start-up is invisible to Pango until this is
@@ -79,6 +131,13 @@ namespace UltraCanvas {
     enum class FdWatchType { Read, Write };
     using FdWatchId = std::uint64_t;
 
+    // One step of UltraCanvasApplicationBase::Initialize() and how long it
+    // took (see GetStartupTimings).
+    struct StartupStageTiming {
+        std::string stage;
+        double ms = 0;
+    };
+
     class UltraCanvasApplicationBase {
     friend UltraCanvasWindowBase;
     protected:
@@ -86,6 +145,7 @@ namespace UltraCanvas {
         bool volatile initialized = false;
         std::string appName;
         std::string defaultWindowIconPath;
+        std::vector<StartupStageTiming> startupTimings;
 
         std::deque<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
@@ -117,6 +177,7 @@ namespace UltraCanvas {
         void FireFdWatch(FdWatchId id);
 
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
+        int themeHandler = 0;   // UltraCanvasTheme change handler, installed by Initialize
         std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
 
         // Non-owning references to transient UI state. Stored as weak_ptr so a
@@ -180,8 +241,11 @@ namespace UltraCanvas {
         mutable std::mutex registeredFontsMutex_;
         std::vector<std::string> registeredFontFiles_;
 
-        // Keyboard state
-        bool keyStates[256];
+        // Keyboard state: one entry per key code below KeyStateCount. The
+        // platforms make a UCKeys out of any key code they are given, so every
+        // index into it is checked against the bound, not trusted.
+        static constexpr int KeyStateCount = 256;
+        bool keyStates[KeyStateCount];
         bool shiftHeld = false;
         bool ctrlHeld = false;
         bool altHeld = false;
@@ -211,7 +275,9 @@ namespace UltraCanvas {
         void UnregisterWindow(UltraCanvasWindowBase* window);
 
         // Modal window management
-        bool HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow);
+        // True when the event is swallowed; a key aimed at a blocked window is
+        // redirected to the modal (targetWindow changed) and not swallowed
+        bool HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow*& targetWindow);
         bool HasActiveModalWindow();
         UltraCanvasWindowBase* GetCurrentModalWindow();
         void RegisterModalWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
@@ -223,6 +289,15 @@ namespace UltraCanvas {
         // orphaned modal child would keep swallowing the whole application's
         // input while its parent is already gone.
         void CloseChildWindows(UltraCanvasWindowBase* parent);
+
+        // Whether closing `window` leaves the application without a window, so
+        // that Run() returns and the process ends: every other window is
+        // already closing, or is a child of `window` (its config parentWindow,
+        // at any depth), which CloseChildWindows takes down with it. An
+        // application that has something to lose by quitting - an upload still
+        // running - asks in that window's onWindowClosing when this is true,
+        // and lets any other window close as it always did.
+        bool ClosingEndsApplication(UltraCanvasWindowBase* window);
 
         void ProcessEvents();
         bool PopEvent(UCEvent& event);
@@ -251,7 +326,11 @@ namespace UltraCanvas {
         static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
         static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
-        bool IsKeyPressed(UCKeys keyCode) { return keyStates[keyCode]; }
+        // False for a key code outside the table rather than a read past its end.
+        bool IsKeyPressed(UCKeys keyCode) const {
+            const int key = static_cast<int>(keyCode);
+            return key >= 0 && key < KeyStateCount && keyStates[key];
+        }
         // Keys the application currently believes are held down. Modal dialogs
         // snapshot this on open so a key that was already down when they
         // appeared cannot act as input to them.
@@ -356,6 +435,12 @@ namespace UltraCanvas {
         // calling Run(). Assumes Initialize() succeeded and the app is running.
         void RunOnce();
         bool Initialize(const std::string& app);
+        // How long each step of Initialize() took, in the order they ran:
+        // fontconfig, the image subsystem, the native backend, the bundled
+        // fonts, the clipboard and the default icon. For an application that
+        // starts slowly, to tell the framework's share of the wait from its
+        // own; the same numbers go to debugOutput.
+        const std::vector<StartupStageTiming>& GetStartupTimings() const { return startupTimings; }
         bool RequestExit();
         virtual void Exit();
         // The one call a signal handler may make. RequestExit() logs and runs

@@ -8,8 +8,9 @@
 //
 // Usage: VectorFormatsPluginTest [basename]
 // Exit code is the number of failed checks.
+// Version: 1.1.1 - XAR reading is expected only when the XAR plugin is built
 // Version: 1.1.0
-// Last Modified: 2026-09-16
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
@@ -212,6 +213,13 @@ int main(int argc, char** argv) {
 #else
         Check(!has(readable, "cdr"), ".cdr is not readable without the CDR plugin");
 #endif
+        // XAR is read through the XAR plugin's parser; without it the
+        // converter only writes.
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
+        Check(has(readable, "xar"), ".xar is readable when the XAR plugin is built");
+#else
+        Check(!has(readable, "xar"), ".xar is not readable without the XAR plugin");
+#endif
     }
 
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
@@ -301,10 +309,16 @@ int main(int argc, char** argv) {
     // viewer's preview pane and the Filer's thumbnails stay blind to every
     // format core cannot read itself - which is every one of them.
     {
-        for (const char* ext : {"dxf", "dwg", "dwt", "dws", "sv$", "xar", "emf", "wmf"}) {
+        for (const char* ext : {"dxf", "dwg", "dwt", "dws", "sv$", "emf", "wmf"}) {
             Check(CanPreviewVectorExtension(ext),
                   std::string("preview seam reads ") + ext);
         }
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
+        Check(CanPreviewVectorExtension("xar"), "preview seam reads xar");
+#else
+        Check(!CanPreviewVectorExtension("xar"),
+              "preview seam does not claim xar without the XAR plugin");
+#endif
         Check(!CanPreviewVectorExtension("png"), "preview seam declines png");
         auto seamExts = PreviewableVectorExtensions();
         Check(std::find(seamExts.begin(), seamExts.end(), "dwg") != seamExts.end(),
@@ -364,7 +378,10 @@ int main(int argc, char** argv) {
     }
 
     // ===== Load back through the registry (formats with readers) =====
-    std::vector<std::string> loadable = {"svg", "xar", "emf", "wmf", "dxf"};
+    std::vector<std::string> loadable = {"svg", "emf", "wmf", "dxf"};
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
+    loadable.push_back("xar");
+#endif
     if (haveDwgTool) loadable.push_back("dwg");
     for (const std::string& ext : loadable) {
         std::string path = base + "." + ext;

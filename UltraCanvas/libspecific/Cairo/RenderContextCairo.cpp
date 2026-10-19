@@ -1,5 +1,12 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.16 - SetAlpha fades fills, strokes and text too, not only images: a
+//                  colour's alpha is scaled by it, and a pattern (gradient) is
+//                  painted through a group laid down at it
+// Version: 1.0.15 - CompositeToSurfaceWithOpacity: the OVER composite painted at an
+//                  alpha, so transparent pixels keep the destination through a fade
+// Version: 1.0.14 - FlushToSurfaceWithOpacity: the flush's SOURCE copy painted at an
+//                  alpha, which cairo applies as a mix with the destination
 // Version: 1.0.13 - borders drawn as filled wedges of the border ring: sides meet on
 //                  the corner's diagonal (mitred), each in its own colour, and rounded
 //                  corners are shared the same way; dashed sides stay strokes
@@ -7,7 +14,7 @@
 //                  or solid on its own (a dashed side took the previous colour and
 //                  passed its dash on to the sides after it)
 // Version: 1.0.11 - A non-invertible matrix is refused instead of killing the context
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -188,13 +195,17 @@ namespace UltraCanvas {
     }
 
     // ===== TEXT SURFACE CACHING IMPLEMENTATION =====
-    void ApplySourceToCairo(cairo_t* cairo, const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
+    // `alpha` scales a colour's own alpha: the context's global alpha
+    // (SetAlpha). A pattern is set as it is - its alpha is not one number to
+    // scale - and faded by the caller through a group (BeginAlphaGroup).
+    void ApplySourceToCairo(cairo_t* cairo, const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern,
+                            double alpha) {
         if (sourceColor.a > 0) {
             cairo_set_source_rgba(cairo,
                                   (float)sourceColor.r / 255.0f,
                                   (float)sourceColor.g / 255.0f,
                                   (float)sourceColor.b / 255.0f,
-                                  (float)sourceColor.a / 255.0f);
+                                  (float)sourceColor.a / 255.0f * std::clamp(alpha, 0.0, 1.0));
         } else if (sourcePattern != nullptr) {
             auto handle = static_cast<cairo_pattern_t*>(sourcePattern->GetHandle());
             if (handle) {
@@ -943,9 +954,12 @@ namespace UltraCanvas {
     void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) {
         auto extents = layout.GetLayoutExtents();
 //        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
+        const bool group = BeginAlphaGroup(currentState.textSourceColor, currentState.textSourcePattern);
         cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
-        ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
+        ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern,
+                           currentState.globalAlpha);
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
+        EndAlphaGroup(group);
         // Drop the current point set by cairo_move_to; otherwise a following
         // cairo_arc-based primitive connects it to the arc with a stray line.
         cairo_new_path(cairo);
@@ -958,7 +972,7 @@ namespace UltraCanvas {
         }
         auto layout = GetOrCreateTextLayout(text, {0, 0}, false);
         if (layout) {
-            ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
+            // The source itself is set by DrawTextLayout.
             DrawTextLayout(*layout, pos);
         } else {
             debugOutput << "RenderContextCairo::DrawText: No text layout" << std::endl;
@@ -1083,17 +1097,16 @@ namespace UltraCanvas {
                 return nullptr;
             }
 
-            // Use system default font if family is empty
-            const char *fontFamily;
-            if (style.fontFamily.empty()) {
-                std::string resolvedFamily;
+            // Use system default font if family is empty. The resolved name
+            // lives in this scope until Pango has copied it: it used to be a
+            // string local to the `if`, handed on as a pointer that dangled
+            // by the time pango_font_description_set_family read it.
+            std::string fontFamily = style.fontFamily;
+            if (fontFamily.empty()) {
                 auto* app = UltraCanvasApplication::GetInstance();
-                resolvedFamily = app ? app->GetSystemFontStyle().fontFamily : "Sans";
-                fontFamily = resolvedFamily.c_str();
-            } else {
-                fontFamily = style.fontFamily.c_str();
+                fontFamily = app ? app->GetSystemFontStyle().fontFamily : "Sans";
             }
-            pango_font_description_set_family(desc, fontFamily);
+            pango_font_description_set_family(desc, fontFamily.c_str());
 
             // Ensure reasonable font size
             double fontSize = (style.fontSize > 0) ? style.fontSize : 12.0;
@@ -1781,7 +1794,22 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
-        ApplySourceToCairo(cairo, sourceColor, sourcePattern);
+        ApplySourceToCairo(cairo, sourceColor, sourcePattern, currentState.globalAlpha);
+    }
+
+    bool RenderContextCairo::BeginAlphaGroup(const Color& sourceColor,
+                                             const std::shared_ptr<IPaintPattern>& sourcePattern) {
+        // A colour takes the alpha itself (ApplySourceToCairo); only a
+        // pattern under a global alpha below one needs the group.
+        if (sourceColor.a > 0 || !sourcePattern || currentState.globalAlpha >= 1.0) return false;
+        cairo_push_group(cairo);
+        return true;
+    }
+
+    void RenderContextCairo::EndAlphaGroup(bool opened) {
+        if (!opened) return;
+        cairo_pop_group_to_source(cairo);
+        cairo_paint_with_alpha(cairo, std::clamp(currentState.globalAlpha, 0.0, 1.0));
     }
 
     void RenderContextCairo::SetStrokeWidth(double width) {
@@ -1872,6 +1900,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::FillText(const std::string& text, double x, double y) {
+        const bool group = BeginAlphaGroup(currentState.fillSourceColor, currentState.fillSourcePattern);
         ApplyFillSource();
         cairo_select_font_face(cairo, currentState.fontStyle.fontFamily.c_str(),
                                currentState.fontStyle.fontSlant == FontSlant::Oblique ? CAIRO_FONT_SLANT_OBLIQUE : (currentState.fontStyle.fontSlant == FontSlant::Italic ? CAIRO_FONT_SLANT_ITALIC : CAIRO_FONT_SLANT_NORMAL),
@@ -1879,12 +1908,14 @@ namespace UltraCanvas {
 
         cairo_move_to(cairo, x, y);
         cairo_show_text(cairo, text.c_str());
+        EndAlphaGroup(group);
         // cairo_show_text leaves the current point at the end of the text;
         // drop it so the next cairo_arc-based primitive doesn't connect to it.
         cairo_new_path(cairo);
     }
 
     void RenderContextCairo::StrokeText(const std::string& text, double x, double y) {
+        const bool group = BeginAlphaGroup(currentState.strokeSourceColor, currentState.strokeSourcePattern);
         ApplyStrokeSource();
         cairo_select_font_face(cairo, currentState.fontStyle.fontFamily.c_str(),
                                currentState.fontStyle.fontSlant == FontSlant::Oblique ? CAIRO_FONT_SLANT_OBLIQUE : (currentState.fontStyle.fontSlant == FontSlant::Italic ? CAIRO_FONT_SLANT_ITALIC : CAIRO_FONT_SLANT_NORMAL),
@@ -1892,6 +1923,7 @@ namespace UltraCanvas {
         cairo_move_to(cairo, x, y);
         cairo_text_path(cairo, text.c_str());
         cairo_stroke(cairo);
+        EndAlphaGroup(group);
     }
 
     void DrawPixmapOrMask(cairo_t* cairo, UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode, double alpha, bool drawMasked, const Color& c, bool smooth = true) {
@@ -2119,8 +2151,10 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::FillPathPreserve() {
+        const bool group = BeginAlphaGroup(currentState.fillSourceColor, currentState.fillSourcePattern);
         ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
         cairo_fill_preserve(cairo);
+        EndAlphaGroup(group);
     }
 
     void RenderContextCairo::SetFillRule(FillRule rule) {
@@ -2129,18 +2163,24 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::StrokePathPreserve() {
+        const bool group = BeginAlphaGroup(currentState.strokeSourceColor, currentState.strokeSourcePattern);
         ApplySource(currentState.strokeSourceColor, currentState.strokeSourcePattern);
         cairo_stroke_preserve(cairo);
+        EndAlphaGroup(group);
     }
 
     void RenderContextCairo::Stroke() {
+        const bool group = BeginAlphaGroup(currentState.strokeSourceColor, currentState.strokeSourcePattern);
         ApplySource(currentState.strokeSourceColor, currentState.strokeSourcePattern);
         cairo_stroke(cairo);
+        EndAlphaGroup(group);
     }
 
     void RenderContextCairo::Fill() {
+        const bool group = BeginAlphaGroup(currentState.fillSourceColor, currentState.fillSourcePattern);
         ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
         cairo_fill(cairo);
+        EndAlphaGroup(group);
     }
 
     void RenderContextCairo::FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) {
@@ -2163,6 +2203,36 @@ namespace UltraCanvas {
         cairo_destroy(toCtx);
     }
 
+    void RenderContextCairo::FlushToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
+                                                       double opacity) {
+        // Fully opaque is the plain flush, bit for bit; fully transparent
+        // changes nothing.
+        if (opacity >= 1.0) {
+            FlushToSurface(flushToSurface, pos);
+            return;
+        }
+        if (!(opacity > 0.0)) return;
+        cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
+        if (!toCtx) {
+            debugOutput << "RenderContextCairo::FlushToSurfaceWithOpacity can't create context for flushToSurface" << std::endl;
+            return;
+        }
+        cairo_surface_flush(surface);
+        if (pos.x != 0 || pos.y != 0) {
+            cairo_translate(toCtx, pos.x, pos.y);
+        }
+        cairo_rectangle(toCtx, 0, 0, surfaceSize.width, surfaceSize.height);
+        cairo_clip(toCtx);
+        cairo_set_source_surface(toCtx, surface, 0, 0);
+        // SOURCE, as FlushToSurface: cairo applies a paint's alpha to SOURCE
+        // as a mix, dest + (source - dest) * alpha, so the fade ends on
+        // exactly the pixels the plain flush writes - transparent ones too.
+        cairo_set_operator(toCtx, CAIRO_OPERATOR_SOURCE);
+        cairo_paint_with_alpha(toCtx, opacity);
+        cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
+        cairo_destroy(toCtx);
+    }
+
     void RenderContextCairo::CompositeToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) {
         // Alpha-blend the surface over the destination (OVER, not SOURCE)
         cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
@@ -2179,6 +2249,34 @@ namespace UltraCanvas {
         cairo_set_source_surface(toCtx, surface, 0, 0);
         cairo_set_operator(toCtx, CAIRO_OPERATOR_OVER);
         cairo_paint(toCtx);
+        cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
+        cairo_destroy(toCtx);
+    }
+
+    void RenderContextCairo::CompositeToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
+                                                           double opacity) {
+        if (opacity >= 1.0) {
+            CompositeToSurface(flushToSurface, pos);
+            return;
+        }
+        if (!(opacity > 0.0)) return;
+        cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
+        if (!toCtx) {
+            debugOutput << "RenderContextCairo::CompositeToSurfaceWithOpacity can't create context for flushToSurface" << std::endl;
+            return;
+        }
+        cairo_surface_flush(surface);
+        if (pos.x != 0 || pos.y != 0) {
+            cairo_translate(toCtx, pos.x, pos.y);
+        }
+        cairo_rectangle(toCtx, 0, 0, surfaceSize.width, surfaceSize.height);
+        cairo_clip(toCtx);
+        cairo_set_source_surface(toCtx, surface, 0, 0);
+        // OVER at an alpha: an opaque pixel is mixed with the destination by
+        // `opacity`, exactly as FlushToSurfaceWithOpacity mixes it, and a
+        // transparent one leaves the destination as it is.
+        cairo_set_operator(toCtx, CAIRO_OPERATOR_OVER);
+        cairo_paint_with_alpha(toCtx, opacity);
         cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
         cairo_destroy(toCtx);
     }

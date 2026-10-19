@@ -1,5 +1,7 @@
 # UltraCanvas Raster Editing: PaintSurface, RasterDocument, Brush Engine
 
+<!-- doc-check: void RebuildLayerPanel(); void UpdateUndoButtons(); std::shared_ptr<UCRasterLayer> layer; std::shared_ptr<UltraCanvasPaintSurface> surface; std::shared_ptr<UltraCanvasRichTextEdit> editor; int layerIndex; -->
+
 ## Overview
 
 The **raster-editing layer** is what a bitmap editor needs on top of the
@@ -15,12 +17,13 @@ them back. The first application built on it is **UltraPaint**
 |---|---|---|
 | `UCRasterLayer` | One straight-RGBA 8-bit pixel buffer with name / visibility / lock / opacity / blend mode; blend arithmetic; compositing onto a premultiplied pixmap; PixelFX round trip | `include/UltraCanvasRasterLayer.h`, `core/UltraCanvasRasterLayer.cpp` |
 | `UCRasterSelection` | Soft coverage mask (0..255 per pixel): rectangle, ellipse, polygon, arbitrary mask; replace / add / subtract / intersect; feather, grow, shrink, invert; marching-ants outline | `include/UltraCanvasRasterSelection.h`, `core/UltraCanvasRasterSelection.cpp` |
-| `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
+| `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered files: UCD layered images (`.ucd`) and `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
+| `RasterTextContent`, `RenderTextLayer` | Text layers: words kept as a rich document in a box on the canvas (`UCRasterLayer::text`), drawn into the layer through the WYSIWYG element that also edits them on the canvas, editable until the layer is merged or rasterized | `include/UltraCanvasRasterText.h`, `core/UltraCanvasRasterText.cpp` |
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-06
+**Version**: 1.1.0 - text layers
+**Last Modified**: 2026-10-15
 **Author**: UltraCanvas Framework
 
 None of the model classes touch a window; `UltraCanvasPaintSurface` is the
@@ -42,6 +45,9 @@ save it with no display at all.
   use the separable W3C / Photoshop formulas on straight RGB, then the usual
   alpha "over". `RasterBlendPixel()` exposes the same arithmetic to the brush
   engine so a brush painting in Multiply matches a layer set to Multiply.
+  `RasterReplacePixel()` is the other way to put a colour down: it moves the
+  pixel toward the colour, alpha included, so a transparent colour clears it
+  where "over" would leave it as it was.
 
 ## The document
 
@@ -69,9 +75,39 @@ doc->ApplyFilter("Colour to Alpha", [](const PixelFX::PFXImage& img) {
 
 doc->Undo();
 std::string err;
-doc->SaveToFile("out.png", err);               // flattened, format by extension
+doc->SaveToFile("out.png", err);               // flattened, format by extension, with the
+                                               // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
+doc->SaveToFile("work.ucd", err);              // layers kept, as a UCD layered image
 ```
+
+### Layered files
+
+Two formats keep the layers - names, visibility, lock, opacity, blend mode -
+and a text layer's words as text; `SaveToFile` / `LoadFromFile` pick them by
+extension (`IsProjectFile` is true for both, `IsUCDFile` for the first):
+
+- **`.ucd`, a UCD layered image** (`SaveUCD` / `LoadUCD`): the UltraCanvas
+  Document container, revision 2.1, descriptor `UCBitmap`
+  (`Docs/UltraCanvas/UCD-FileFormat-v2.md`, section 4.7). A `LAYR` section
+  holds the stack; each layer's pixels are a raw RGBA `BMAP` (deflated); each
+  text layer's words are a `UCTF` text frame - the box, the default font, size
+  and colour, and the rich text as an OpenDocument text. A PNG thumbnail of
+  the composite (256 px on the longer side) sits right after the header, so a
+  file manager or viewer shows the picture without decoding a layer
+  (`ExtractEmbeddedPreviewBytes`, the media viewer). Needs no libvips. A
+  `UCBitmap` file without a stack opens as one layer; a text frame this cannot
+  read leaves its layer the bitmap it shows.
+- **`.ucraster`, an UltraPaint project** (`SaveProject` / `LoadProject`,
+  libvips): a ZIP of `document.json`, one PNG per layer and an OpenDocument
+  text per text layer.
+
+Both are in FileLoader's inventory as `MediaFormatCategory::LayeredImage`, so
+an editor's Open and Save As take them from there
+(`AddLoadTypes(..., {MediaFormatCategory::LayeredImage})`,
+`AddSaveTypes(opts, MediaFormatCategory::LayeredImage)`). The container
+itself - header, thumbnail, sections, compression - is
+`UltraCanvasUCDContainer.h` (`Docs/UltraCanvas/UltraCanvasUCDContainer.md`).
 
 ### Undo
 
@@ -107,9 +143,27 @@ rather than installing a mask of the wrong shape.
 | `onSelectionChanged()` | the selection changed, including when a canvas-geometry change dropped it |
 | `onStateChanged()` | modified flag or undo / redo availability changed |
 
-`UltraCanvasPaintSurface::SetDocument()` installs the first three; a host
-that needs them too chains its own handler after the surface's (see
-`UltraPaintWindow::SetDocument`).
+Those four are single slots, for the one-observer case. Several observers -
+an editing view, a magnifying glass on the same document, the window's
+panels - each add a **listener** of their own and remove it when they let
+the document go, so none has to chain itself behind another's slot:
+
+```cpp
+UCRasterDocument::Listener l;
+l.pixelsChanged    = [&](const Rect2Di& r) { view->InvalidateRect(r); };
+l.structureChanged = [&]() { RebuildLayerPanel(); };
+l.selectionChanged = [&]() { /* ... */ };
+l.stateChanged     = [&]() { UpdateUndoButtons(); };
+const UCRasterDocument::ListenerId id = doc->AddListener(std::move(l));
+// ...
+doc->RemoveListener(id);    // an id that is not listening is ignored
+```
+
+Every notification fires the slot first, then every listener, on the list
+as it was when the notification began - a callback may remove its own
+listener. `UltraCanvasPaintSurface::SetDocument()` adds the surface's
+listener and `SetDocument(nullptr)` or the surface's destruction removes
+it; `UltraPaintWindow::SetDocument` adds the window's beside it.
 
 ## The brush engine
 
@@ -143,14 +197,154 @@ stroke.End();
 
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
-anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
-global, optionally sampling a merged layer), `MagicWandMask` (the same
+anti-aliasing through `FillCoverage`; open, it is a polyline whose joins are
+painted once), `DrawCurve` (a cubic Bezier curve; `FlattenCubicBezier` gives
+its points for a preview), `DrawArrow` (a shaft with a filled head at the
+tip, or at both ends, in one pass; `ArrowShape` gives its geometry),
+`FloodFill` (tolerance, contiguous or
+global, optionally sampling a merged layer; `FillCompositing::Replace` sets
+the region to the colour, alpha included, where the default `Blend` paints
+over it - the way to fill with transparency), `MagicWandMask` (the same
 region test as a coverage map for `UCRasterSelection::SetMask`),
 `FillGradient` (linear / radial / reflected, interpolated in premultiplied
-space), `StampMask` (a coverage map in a colour — what the text tool uses
-with a `PixelFX::Generate::Text` mask), `SampleColour`.
+space), `StampMask` (a coverage map in a colour, such as a
+`PixelFX::Generate::Text` mask), `SampleColour`.
 
 None of this needs libvips.
+
+## Text layers
+
+A bitmap editor's text should stay text until the user says otherwise: the
+words re-editable, the font, size and colour changeable, the box movable -
+and only then pixels. A **text layer** is a `UCRasterLayer` that carries the
+words it shows, `UCRasterLayer::text`, a `RasterTextContent`:
+
+| Field | What it is |
+|---|---|
+| `document` | the words, as a `UCRichDocument`: runs with their own font, size, colour, bold / italic / underline; paragraphs with their alignment. Shared and immutable - an edit makes a new one |
+| `x`, `y`, `width` | the box on the canvas, in pixels: its corner and the width the lines wrap at |
+| `height` | what the text took when it was last laid out (`RenderTextLayer` fills it in) |
+| `fontFamily`, `fontSizePx`, `colour` | what a run without a font, size or colour of its own is set in |
+
+The layer's pixels are a rendering of that, so everything that only reads
+pixels - compositing, blend modes, opacity, `Flatten`, saving a PNG -
+works on a text layer unchanged.
+
+### Drawing one
+
+`RenderTextLayer` (`UltraCanvasRasterText.h`) lays the words out and draws
+them into a new canvas-sized layer:
+
+```cpp
+#include "UltraCanvasRasterText.h"
+#include "UltraCanvasRasterDocument.h"
+
+auto doc = std::make_shared<UCRasterDocument>(1024, 768, RasterPixel(255, 255, 255, 255));
+
+auto words = std::make_shared<UCRichDocument>();
+RichDocBlock paragraph;
+RichTextRun run;
+run.text = "Hello";
+run.bold = true;
+paragraph.runs.push_back(run);
+paragraph.align = RichTextAlign::Center;
+words->blocks.push_back(paragraph);
+
+RasterTextContent text;
+text.document = words;
+text.x = 40;
+text.y = 30;
+text.width = 400;                      // the lines wrap at 400 px, centred in them
+text.fontFamily = "Sans";
+text.fontSizePx = 48;
+text.colour = RasterPixel(20, 20, 20, 255);
+
+std::string error;
+if (auto layer = RenderTextLayer(text, doc->GetWidth(), doc->GetHeight(), error)) {
+    doc->AddLayer(layer, -1, "Text");  // above the active layer, one undo step
+}
+```
+
+It draws through `UltraCanvasRichTextEdit` - the framework's WYSIWYG element
+- offscreen at 1:1, with the style `TextLayerEditStyle` gives it (no
+background, border, padding or scrolling; the content's default font, size
+and colour). The box's corner is put on whole pixels. The layer's copy of the
+document has its paragraph spacing **stated** (the gaps it was laid out with,
+written out), so it reads back from a file laid out exactly the same.
+
+### Editing one on the canvas
+
+Because the renderer *is* the editing element, the element can edit the
+words on the canvas and show exactly what the layer will hold. It lays text
+out in its own document space and draws its zoom as a scale, so an editor at
+the canvas's zoom puts every glyph where the layer's pixels will be - at any
+zoom (`SetZoomRange` lifts its 0.25-5 limit for this):
+
+```cpp
+#include "UltraCanvasRasterText.h"
+#include "UltraCanvasPaintSurface.h"
+
+auto doc = surface->GetDocument();
+PrepareTextLayerEditor(*editor, *layer->text, surface->GetZoom());
+editor->SetDocument(std::make_shared<UCRichDocument>(*layer->text->document));
+doc->SetInPlaceEditLayer(layer);       // its own pixels would show under the editor
+// Place the editor over the box: its corner at surface->ImageToView(box.x, box.y),
+// box.width * zoom wide, at least editor->GetContentHeight() * zoom tall.
+
+// ... the user types; then, to commit:
+RasterTextContent edited = *layer->text;
+edited.document = std::make_shared<UCRichDocument>(*editor->GetDocument());
+doc->SetInPlaceEditLayer(nullptr);
+std::string error;
+if (auto redrawn = RenderTextLayerLike(*layer, edited, error)) {
+    doc->ReplaceLayer(layerIndex, redrawn, "Edit Text");   // one undo step
+}
+```
+
+`SetInPlaceEditLayer` leaves the layer out of the composite the views show
+(not out of `Flatten` or saving) while the host draws it itself.
+`RenderTextLayerLike` keeps the old layer's name, visibility, lock, opacity
+and blend mode. UltraPaint's Text tool is this, with the editor in a frame the
+size of the canvas so it is cut off where the box runs past the view.
+
+### When it stops being text
+
+A text layer stays text through everything that keeps its pixels as the text
+draws them, and becomes a bitmap at the first change that does not:
+
+| Stays text | Becomes a bitmap (the text is taken off) |
+|---|---|
+| attributes (name, opacity, blend, visibility, lock), moving it in the stack, `DuplicateLayer` | a pixel edit on it - `BeginEdit` / `EndEdit`, `RecordEdit`, `ApplyFilter`, `FillSelection`, `DeleteSelection` - whose **undo makes it text again** |
+| `ResizeCanvas` and `CropTo` - the box moves with the pixels | `MergeLayerDown` (onto or into it), `FlattenImage` |
+| `ReplaceLayer` with a layer drawn again (`RenderTextLayerLike`) | `ScaleImage`, `FlipHorizontal` / `FlipVertical`, `Rotate90` / `Rotate180` |
+| | `RasterizeLayer(index)` - the explicit way, one undo step |
+
+`CopySelection` hands out pixels, never a text layer. A pixel edit takes the
+text off in place and keeps it in its undo entry
+(`RasterUndoEntry::textBefore`); an edit that changes nothing, or is
+cancelled, leaves the text where it was. An editor asks before a tool paints
+on a text layer; the model does not rely on it.
+
+### In a project
+
+`SaveProject` keeps a text layer as text: its PNG as for any layer, its box
+and default font in `document.json`, and the words beside the PNG as
+`layers/<n>.odt` - an OpenDocument text, which keeps every run's font, size
+and colour and the paragraphs' alignment and spacing, and which any word
+processor opens. `LoadProject` shows the PNG (so a font missing on another
+machine changes nothing until the text is edited) and makes the layer text
+again; a project whose text cannot be read still opens, with the layer as
+the bitmap it shows.
+
+### The fonts on offer
+
+`GetInstalledFontFamilies()` (`UltraCanvasApplication.h`) lists every
+font family this process can set text in - the system's installed fonts
+(TrueType, OpenType, Type 1) with the bundled and registered ones, as the
+text engine sees them, scalable only, sorted regardless of case. UltraPaint's
+Text tool offers all of them, and the dropdown's type-ahead
+([`UltraCanvasDropDownExamples.md`](UltraCanvasDropDownExamples.md)) makes a
+long list quick to pick from.
 
 ## The element
 
@@ -177,10 +371,21 @@ over the canvas. The surface handles what every tool shares:
   200 % (see `IRenderContext::SetImageSmoothing`) so pixels read as pixels.
 - **Pan** with the middle button or Space+drag; `SetPanMode(true)` makes
   every drag a pan (a Pan tool).
+- **Resizing** (the window, a split pane) keeps the view on what it showed:
+  the image point at the centre of the view stays at its centre, at the same
+  zoom, and an image smaller than the view is centred in it again. It
+  happens in the frame that shows the new size - or at the next view call
+  (`SetZoom`, `ScrollToImagePoint`, ...) if that comes first - and
+  `onViewChanged` reports it, so overlays placed in view coordinates (an
+  editor over a text layer, the status bar's zoom) follow. A document change
+  that comes first (a layer added, the canvas resized) brings the view to the
+  new size itself and reports it the same way.
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
-  a selection exists), and a **brush cursor** circle / square of
+  a selection exists - one clock per document, shared by every surface
+  showing it, so a loupe's ants march in step with the editing view's), and
+  a **brush cursor** circle / square of
   `SetCursorRadius()`.
 - Keyboard events go to `onToolKey` first, then to the zoom keys.
 - Dropped files arrive through `onFilesDropped`.
@@ -188,6 +393,48 @@ over the canvas. The surface handles what every tool shares:
 It is distinct from `UltraCanvasZoomPanImage` (a read-only viewer of a
 `UCImage`) and `UltraCanvasMediaSurface` (the media viewer's display): this
 one edits, and its picture is the document's live composite.
+
+### Loupe mode: a magnifying glass on the same document
+
+A second surface on the same document can show the pixels around a point
+magnified - the magnifying glass a bitmap editor keeps beside its editing
+view while a tool places things to the pixel. In loupe mode the host alone
+sets the view and nothing else moves it: the view is never clamped to the
+element or fitted on the first frame, the pointer, wheel and keyboard are
+ignored, and the element takes neither focus nor hit-tests
+(`SetInteractive(false)`), so it can lie over the editing view - an
+absolutely positioned child with `OverlayZOrder::Overlays` - without taking
+its events.
+
+```cpp
+auto loupe = CreatePaintSurface("loupe");
+loupe->SetLoupeMode(true);
+loupe->SetDocument(doc);
+loupe->onDrawOverlay = surface->onDrawOverlay;   // the tool's rubber band, magnified too
+surface->onToolHover = [&](const PaintPointerEvent& e) {
+    // three times the editing view's zoom, the pointer's pixel at the centre
+    loupe->SetLoupeView(surface->GetZoom() * 3.0, e.x, e.y);
+};
+loupe->SetLoupeCrosshair(true, 8.0);   // the default: two diagonals, 8 px clear of the centre
+```
+
+- `SetLoupeView(zoom, imageX, imageY)` puts that image point at the centre
+  of the element at that zoom (clamped to the surface's own 1 %..12800 %);
+  it stays at the centre when the loupe is resized.
+- The **crosshair** is two translucent diagonals from the corners that stop
+  `gap` pixels short of the centre, so the pixel under the pointer stays
+  clear; a light line under a dark one reads on dark and light pixels alike.
+  `SetLoupeCrosshair(false)` hides it; it is never drawn outside loupe mode.
+- A loupe listens to the document like the editing view does
+  (`UCRasterDocument::AddListener`), so pixels, the selection and its
+  marching ants (in step with the editing view's, on the one clock both
+  share), and the layers follow by themselves.
+- The checkerboard, the pixel grid from 8x and `onDrawOverlay` work as in
+  the editing view, in the loupe's own transform.
+
+UltraPaint shows one in a corner of the canvas while the rectangle selection
+is active (Settings > Display > Mouse pointer magnification glass: size and
+2x / 3x / 4x) and moves it to another corner when the pointer comes near it.
 
 ## `IRenderContext::SetImageSmoothing`
 
@@ -198,10 +445,14 @@ backend: `CAIRO_FILTER_NEAREST`). Default on; the surface turns it off above
 
 ## Building without libvips
 
-The layer, selection, document, brush engine and surface compile without
+libvips is part of UltraCanvas on every platform; the one build without it is
+a single-threaded WebAssembly program, where it cannot run. There the layer,
+selection, document, brush engine and surface compile without
 `HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
-`ApplyFilter` / `PreviewFilter`, file load / save and `.ucraster` projects;
-`ScaleImage` falls back to the layer's bilinear resample.
+`ApplyFilter` / `PreviewFilter`, file load / save and layered files (`.ucd`, `.ucraster`);
+`ScaleImage` falls back to the layer's bilinear resample. Text layers are
+drawn without libvips (through the render context); only keeping them in a
+project needs it, as every project does.
 
 ## Tests
 
@@ -209,8 +460,19 @@ The layer, selection, document, brush engine and surface compile without
 `RasterEditingTest`) covers the layer and blend arithmetic, the selection
 shapes and set algebra, strokes (opacity cap, erase, selection clipping, the
 one-pixel pencil), shapes / fills / gradients / wand, document undo / redo
-across pixel and structural edits, selection-aware `ApplyFilter`, the
-PNG and `.ucraster` round trips, and saving back over the file a document was
+across pixel and structural edits, selection-aware `ApplyFilter`, text
+layers (drawn inside their box in their runs' colours; the editor at 1:1
+drawing exactly the layer's pixels; staying text through attribute edits,
+canvas resizes and crops and becoming bitmaps through pixel edits, merges,
+flips, rotations and scaling, with undo making them text again; a project
+round trip that draws again to the same pixels), the installed font list, the
+surface's view through a resize (an image smaller than the view centred
+again in the next frame, a larger one keeping its centre point, zooming about
+the pointer between a resize and the frame, and a loupe keeping its point), the
+PNG, `.ucraster` and `.ucd` round trips (every layer attribute, the text
+layers' words, the thumbnail's size, a single-image `UCBitmap`, a text frame it
+cannot read, a later revision's extra layer field, a v1 file and a document
+with no image refused), and saving back over the file a document was
 opened from -- that the image survives the round trip, that the temporary
 file the save goes through leaves no trace, and that neither a save nor an export
 which fails inside the encoder leaves a mark on the file that was already

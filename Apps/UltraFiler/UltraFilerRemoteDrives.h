@@ -22,11 +22,17 @@
 // On an FTP drive the cache also works ahead and outlives the session. When a
 // folder the user opened arrives, its subfolders are queued as background
 // listings behind everything the user asks for, so opening one of them next
-// is a cache hit rather than a login. And the listings are written to disk
+// is a cache hit rather than a request. And the listings are written to disk
 // when the window closes and read back at start-up: a folder opened in an
 // earlier session is shown at once from what it held then, while the server
-// is asked again behind it. The rules and the file are in
-// UltraFilerRemoteCache.h.
+// is asked again behind it - when it is opened, not ahead of time. The rules
+// and the file are in UltraFilerRemoteCache.h.
+//
+// The jobs run one after another on one worker thread, and UltraNet keeps the
+// FTP connection a job leaves open for the next (UltraNet_FtpCloseIdleConnections):
+// a folder and its subfolders fetched ahead are one login, not one each. The
+// worker lets the connection go once the drive has been quiet for
+// kRemoteConnectionIdleClose.
 //
 // A file shown in the preview pane is fetched too, on any drive: the media
 // viewer reads local files, so RequestPreviewCopy downloads a picture, a
@@ -36,11 +42,35 @@
 //
 // Every job is also a session in the connection log (ConnectionLog(),
 // UltraFilerConnectionLog.h): on an FTP or SFTP drive each step UltraNet
-// takes - resolving, connecting, every command and reply - is recorded there
-// and reported to the status line as it happens (RemoteActivity::step), and
-// a failure keeps its codes and diagnostics for the log window.
-// Version: 1.6.0
-// Last Modified: 2026-10-04
+// takes - resolving, connecting, every command and reply - and on a cloud
+// drive each request UltraCloud sends with the service's answer, a renewed
+// sign-in and the pages of a long listing (UltraCloudLog.h). Each is recorded
+// there and reported to the status line as it happens
+// (RemoteActivity::step), and a failure keeps its codes and diagnostics for
+// the log window. A sign-in from the add-drive dialog is a session too
+// (RemoteSignInLog), and a cloud service that limits requests is waited out
+// and asked again (kRemoteRateLimitMaxWaitSeconds). The uploads and
+// downloads not finished yet are listed for the window's question before it
+// quits (PendingTransfers), and Stop() calls the running one off rather than
+// waiting for it. A preview copy being downloaded gives way to any request
+// of the user's and is fetched again after it.
+//
+// On an FTP or SFTP drive an upload goes to a hidden part name and is
+// renamed into place once complete, and what one that did not finish left
+// is removed by the next request to the drive - UltraCloud does both
+// (UltraCloudUploads.h), and its steps are in the connection log with the
+// rest. An upload can be given a name of its own (Upload's `remoteName`),
+// which is how the window's "Keep both" puts one beside a file of the same
+// name, and CachedListing answers what the window needs to ask about one.
+// Version: 1.11.0 - PendingTransfers; Stop() calls a running transfer off;
+//                   an upload under a name of its own; CachedListing,
+//                   Revalidate
+// Version: 1.10.0 - a preview copy being downloaded is called off when the
+//                  user asks the drive for anything else (and fetched again
+//                  after it), when the selection moves on, and when the
+//                  window closes
+// Version: 1.9.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -65,7 +95,7 @@
 // Forward-declared, not included: the add-account dialog needs the service to
 // store into, and that is the only thing about UltraCloud that has to escape
 // this class. A pointer to an incomplete type costs no include.
-namespace UltraCloud { class CloudService; }
+namespace UltraCloud { class CloudService; struct Result; }
 
 namespace UltraCanvas {
 
@@ -81,6 +111,10 @@ struct RemoteDrive {
     // Whether opening a folder fetches its subfolders ahead and the listings
     // are kept between runs (RemoteProviderPrefetches: FTP only).
     bool prefetches = false;
+    // The provider's ProviderCapabilities::partialUploadsRemain: an upload
+    // stopped part way leaves what it sent, which UltraCloud removes the
+    // next time the drive is used (FTP and SFTP).
+    bool partialUploadsRemain = false;
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -145,6 +179,61 @@ struct RemoteActivity {
     bool IsTransfer() const {
         return kind == Kind::Uploading || kind == Kind::Downloading;
     }
+};
+
+class UltraFilerRemoteDrives;
+
+// An upload or a download the drives were asked for and have not finished:
+// the one under way, or one waiting its turn behind it (PendingTransfers).
+struct RemoteTransfer {
+    bool upload = true;     // false: a download
+    bool running = false;   // false: queued, not started yet
+    std::string name;       // the file's name
+    std::string drive;      // the drive's name, as the folder tree shows it
+    // An upload to a drive that keeps what a stopped one sent
+    // (RemoteDrive::partialUploadsRemain): removed the next time the drive
+    // is used.
+    bool cleanedUpIfStopped = false;
+};
+
+// The add-drive dialog's sign-ins still running, shared between the drives
+// and each RemoteSignInLog: UltraFilerRemoteDrives::Stop() sets `stopping`,
+// which calls them off, and waits a moment for `running` to come down.
+struct RemoteSignInTracker {
+    std::atomic<bool> stopping{false};
+    std::mutex mutex;
+    std::condition_variable ended;
+    int running = 0;   // under mutex
+};
+
+// The add-drive dialog's sign-in, recorded in the connection log as a session
+// of its own ("Add drive"), so a sign-in that fails there can be read step by
+// step like any job the worker runs. Made on the UI thread
+// (UltraFilerRemoteDrives::MakeSignInLog) and handed to the dialog's watch
+// (UltraCloud::AddAccountWatch): Begin and End are called on the dialog's
+// sign-in thread, around each sign-in. Begin sets that thread's log sinks -
+// UltraCloud's, and UltraNet's FTP log for an FTP drive - and End puts them
+// back and closes the session. The session is written on the UI thread, where
+// each line is posted, and only while the drives still exist.
+//
+// Closing the window calls a running sign-in off (Cancelled, which the
+// dialog's watch asks) - a browser sign-in nobody will finish does not hold
+// its thread for minutes, and stores no account - and Stop() waits a moment
+// for it to end. What it runs on is its own: the dialog's thread holds the
+// shared service (Service()), and through it the account and secret stores,
+// so a sign-in that outlasts the wait uses nothing that is gone.
+class RemoteSignInLog {
+public:
+    void Begin(const std::string& providerId, const std::string& driveName,
+               const std::string& server);
+    void End(const UltraCloud::Result& result);
+    // Whether the drives are shutting down; any thread.
+    bool Cancelled() const;
+
+private:
+    friend class UltraFilerRemoteDrives;
+    struct State;
+    std::shared_ptr<State> state_;
 };
 
 class UltraFilerRemoteDrives {
@@ -230,14 +319,30 @@ public:
     bool CanUpload(const std::string& path) const;
 
     // Queues the upload of one local file into the remote folder `remoteFolder`
-    // (an ultracloud:// folder path) under the file's own name, and answers at
-    // once; onOperationFinished fires for that folder when the server has
-    // taken it or refused it. Returns false with a message for what can be
-    // refused outright: a path that is not a remote path, a drive that is
-    // gone or cannot take uploads, a local path that is not a file (folders
-    // are not uploaded - a transfer of a tree is not one provider verb).
+    // (an ultracloud:// folder path) under the file's own name - or under
+    // `remoteName` when one is given, a bare name - and answers at once;
+    // onOperationFinished fires for that folder when the server has taken it
+    // or refused it. A file already there under that name is replaced: the
+    // caller asks first (UltraFilerWindow's name-conflict question). Returns
+    // false with a message for what can be refused outright: a path that is
+    // not a remote path, a drive that is gone or cannot take uploads, a local
+    // path that is not a file (folders are not uploaded - a transfer of a
+    // tree is not one provider verb), a name that is really a path.
     bool Upload(const std::string& remoteFolder, const std::string& localFile,
-                std::string& error);
+                std::string& error, const std::string& remoteName = std::string());
+
+    // What the cache holds for the folder `path` - fetched in this run, or
+    // kept from the last one - without queueing anything. False when it
+    // holds nothing for it (never fetched, still on its way, or failed).
+    bool CachedListing(const std::string& path, std::vector<FilerEntry>& out) const;
+
+    // Asks the server for the folder `path` again while the display goes on
+    // showing what the cache has (a Ready listing becomes Stale until the
+    // answer is in), and onListingArrived fires for it then. A fetch already
+    // on its way is joined rather than repeated. For a caller that must know
+    // what is there now, not when it was last looked at - the window, before
+    // an upload could replace a file that appeared since.
+    void Revalidate(const std::string& path);
 
     // Queues the download of the remote file `remoteFile` into the local
     // folder `localFolder`, under its own name, and answers at once;
@@ -307,6 +412,10 @@ public:
     // burst are one call - so a handler can afford to read the whole log.
     std::function<void()> onConnectionLogChanged;
 
+    // A recorder for the add-drive dialog's sign-ins (RemoteSignInLog). Call
+    // on the UI thread; the dialog's sign-in thread uses what it returns.
+    std::shared_ptr<RemoteSignInLog> MakeSignInLog();
+
     // How many subfolder listings are waiting to be fetched ahead. Tests and
     // diagnostics; the UI does not show it - prefetching is meant to be
     // invisible.
@@ -319,12 +428,24 @@ public:
 
     // The service the shared add-account dialog stores into. Null until
     // Reload() has opened the account store, and always null in a build
-    // without UltraCloud.
-    UltraCloud::CloudService* Service();
+    // without UltraCloud. Shared: it keeps its stores alive, so the dialog's
+    // sign-in thread can hold it for as long as it runs, after this object
+    // is gone if need be.
+    std::shared_ptr<UltraCloud::CloudService> Service();
 
-    // Joins the worker, then writes the prefetching drives' listings to disk
-    // for the next run. Must run before the owner is destroyed - the worker
-    // posts into it. Idempotent.
+    // The uploads and downloads under way or waiting, the running one first;
+    // empty when there are none. What a window asks about before it quits:
+    // Stop() ends the running one part way and drops the rest. Preview copies
+    // are not among them - nobody asked for those. Any thread.
+    std::vector<RemoteTransfer> PendingTransfers() const;
+
+    // Stops the worker: the jobs still queued are dropped, and a transfer
+    // under way is called off where it is (UltraNet_SetThreadAbortCheck), so
+    // the join takes a second, not as long as a large upload has left to go.
+    // Then calls off a sign-in the add-drive dialog is still running and
+    // waits up to two seconds for it to end (RemoteSignInLog), and writes
+    // the prefetching drives' listings to disk for the next run. Must run
+    // before the owner is destroyed - the worker posts into it. Idempotent.
     void Stop();
 
     // Where the listings are kept between runs: remote-listings.cache in
@@ -368,6 +489,8 @@ private:
         // onPreviewCopyReady rather than onOperationFinished.
         bool isPreview = false;
         std::string previewTarget;
+        // An Upload under a name other than the local file's (Keep both).
+        std::string remoteName;
     };
 
     // How one job ended, for the connection log: the message the window is
@@ -387,6 +510,9 @@ private:
     // Tells the UI thread the log changed, unless a notice is already on its
     // way.
     void NotifyLogChanged();
+    friend class RemoteSignInLog;   // writes its sessions on the UI thread
+    std::shared_ptr<RemoteSignInTracker> signIns_ =
+            std::make_shared<RemoteSignInTracker>();
     // Posts one activity report to the UI thread. `force` sends it even when
     // the thinning interval has not elapsed - used for the first and last
     // report of a job, which are the two nobody may miss.
@@ -440,7 +566,9 @@ private:
     // Old copies are swept once per run, before the first is asked for.
     bool previewCacheSwept_ = false;
     // Subfolders waiting to be fetched ahead, newest folder's first, and the
-    // same paths as a set so a folder is never queued twice. Taken by the
+    // same paths as a set so a folder is never queued twice. Only folders not
+    // in the cache at all: a listing kept from the last run is checked when
+    // its folder is opened. Taken by the
     // worker only when queue_ is empty: a prefetch never makes the user wait
     // for more than the one already on the wire.
     std::deque<std::string> prefetchQueue_;
@@ -456,9 +584,37 @@ private:
     // ... and the step its connection is at (RemoteActivity::step), for the
     // same notice.
     std::string activeJobStep_;
+    // The upload or download the worker is carrying out, for
+    // PendingTransfers; activeIsTransfer_ is false for any other job.
+    // Written by the worker under the lock.
+    bool activeIsTransfer_ = false;
+    RemoteTransfer activeTransfer_;
+    // `job` as PendingTransfers lists it; false for a job that is not an
+    // upload or a download the user asked for. Called with the lock held.
+    bool DescribeTransferLocked(const Job& job, RemoteTransfer& out) const;
+    // A preview copy being downloaded can be called off (UltraNet's
+    // UltraNet_SetThreadFtpCancel, asked as its bytes move): the path it is
+    // for and the flag the worker's transfer asks, both set by the worker
+    // under the lock for the length of the job (no flag between jobs). The
+    // flag says why, which decides what becomes of the copy.
+    enum PreviewCancel : int {
+        PreviewKeep = 0,       // go on
+        PreviewYield = 1,      // the user asked for something else: run that
+                               // first, then fetch the copy again
+        PreviewSuperseded = 2, // the selection moved on: drop it
+        PreviewShutdown = 3    // the window is closing
+    };
+    std::string activePreviewPath_;
+    std::shared_ptr<std::atomic<int>> activePreviewCancel_;
+    // Calls the running preview copy off for `why`, unless an earlier reason
+    // already did. Under the lock.
+    void CancelActivePreviewLocked(PreviewCancel why);
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
+    // Set by Stop(), read by the worker's abort check on every progress
+    // callback of the transfer it is running - without the lock.
+    std::atomic<bool> stopping_{false};
     // The local paths downloads have been promised but not yet written. A
     // queued download has nothing on the disk to collide with, so without
     // this every file of one name queued together would be given that same

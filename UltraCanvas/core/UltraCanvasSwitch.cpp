@@ -1,5 +1,7 @@
 // UltraCanvasSwitch.cpp
 // Toggle switch rendering with optional orientation, thumb icons, and state labels.
+// Version: 1.5.0 - switch.thumb, switch.thumb-border
+// Version: 1.4.0 - SwitchVisualStyle::FromTheme
 // Version: 1.3.0
 // Last Modified: 2026-08-04
 // Author: UltraCanvas Framework
@@ -423,4 +425,29 @@ namespace UltraCanvas {
         return sw;
     }
 
+
+    SwitchVisualStyle SwitchVisualStyle::FromTheme(const UltraCanvasTheme& theme, const SwitchVisualStyle& base) {
+        SwitchVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.base.textColor = r.ink;
+        s.base.textHoverColor = r.ink;
+        s.base.textDisabledColor = r.inkFaint;
+        s.base.focusRingColor = r.focus.WithAlpha(128);
+        s.trackOffColor = r.pressed;
+        s.trackOnColor = r.accent;
+        s.trackBorderColor = r.lineStrong;
+        s.trackDisabledColor = r.panel;
+        // the element's own roles, for a design whose thumb is not a raised surface
+        s.thumbColor = theme.Role("switch.thumb", r.raised);
+        s.thumbBorderColor = theme.Role("switch.thumb-border", r.lineStrong);
+        s.thumbDisabledColor = r.panel;
+        s.thumbIconOnColor = r.accent;
+        s.thumbIconOffColor = r.inkMuted;
+        s.onTextColor = r.onAccent;
+        s.offTextColor = r.inkMuted;
+        s.sideLabelActiveColor = r.ink;
+        s.sideLabelInactiveColor = r.inkFaint;
+        s.sideLabelDisabledColor = r.inkFaint;
+        return s;
+    }
 } // namespace UltraCanvas

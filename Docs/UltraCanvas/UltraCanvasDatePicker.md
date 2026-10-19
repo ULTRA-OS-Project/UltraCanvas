@@ -1,9 +1,25 @@
 # UltraCanvas Date Picker & Calendar
 
+<!-- doc-check: std::shared_ptr<UltraCanvasCalendarView> calendar; -->
+
 `UltraCanvasDatePicker.h` provides date-selection widgets for UltraCanvas. The
 design brief was *good usability above all*, so this document first surveys the
 common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
+
+## Contents
+
+- [1. Selection philosophies surveyed](#1-selection-philosophies-surveyed)
+  - [Key usability findings baked into this widget](#key-usability-findings-baked-into-this-widget)
+- [2. The two widgets](#2-the-two-widgets)
+- [3. `UCDate`](#3-ucdate)
+- [4. `UltraCanvasDatePicker` (dropdown + text entry)](#4-ultracanvasdatepicker-dropdown--text-entry)
+- [5. `UltraCanvasCalendarView` (inline)](#5-ultracanvascalendarview-inline)
+- [6. Date range picking & blocked dates](#6-date-range-picking--blocked-dates)
+  - [Blocking dates from selection](#blocking-dates-from-selection)
+- [6b. Multi-month blocks & scroll navigation](#6b-multi-month-blocks--scroll-navigation)
+- [7. Keyboard reference (day grid)](#7-keyboard-reference-day-grid)
+- [8. Demo](#8-demo)
 
 ## 1. Selection philosophies surveyed
 
@@ -164,7 +180,7 @@ Every calendar supports an explicit set of **blocked / unavailable dates**, in
 addition to `SetMinDate`/`SetMaxDate` and the arbitrary `SetDateEnabledPredicate`:
 
 ```cpp
-calendar->SetBlockedDates({ ... });          // replace the whole set
+calendar->SetBlockedDates({ UCDate(2026, 12, 24), UCDate(2026, 12, 25) });   // replace the whole set
 calendar->AddBlockedDate(UCDate(2026, 7, 4));
 calendar->BlockDateRange(start, end);        // e.g. an existing reservation
 calendar->ClearBlockedDates();

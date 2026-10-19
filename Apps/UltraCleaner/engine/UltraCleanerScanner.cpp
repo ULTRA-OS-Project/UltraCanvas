@@ -43,6 +43,17 @@ bool NoteUnreadableRoot(const std::string& root, ScanReport& report) {
     return false;
 }
 
+// Counts `count` locations the system refused to `rule` (BlockedAccessAdvice
+// tells the user what lifts it), naming the rule once.
+void NoteBlocked(const CleanRule& rule, size_t count, ScanReport& report) {
+    if (count == 0) return;
+    report.blockedPaths += count;
+    if (std::find(report.blockedRules.begin(), report.blockedRules.end(),
+                  rule.title) == report.blockedRules.end()) {
+        report.blockedRules.push_back(rule.title);
+    }
+}
+
 int64_t NowSeconds() {
     using namespace std::chrono;
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
@@ -96,12 +107,12 @@ int64_t LastWriteSeconds(const std::string& path) {
            epochOffset;
 }
 
-std::vector<std::string> ResolveRuleRoots(const CleanRule& rule) {
+std::vector<std::string> ResolveRuleRoots(const CleanRule& rule, size_t* refused) {
     std::vector<std::string> resolved;
     for (const auto& pattern : rule.roots) {
         const std::string expanded = ExpandTokens(pattern);
         if (expanded.empty()) continue;              // token unknown here
-        for (auto& path : ExpandWildcardDirectories(expanded)) {
+        for (auto& path : ExpandWildcardDirectories(expanded, refused)) {
             if (std::find(resolved.begin(), resolved.end(), path) == resolved.end()) {
                 resolved.push_back(std::move(path));
             }
@@ -144,11 +155,15 @@ ScanReport Scanner::Scan(const std::vector<CleanRule>& rules,
     ScanReport report;
     PathGuard guard;
     std::vector<std::vector<std::string>> rootsPerRule;
+    std::vector<size_t> refusedPerRule;
     rootsPerRule.reserve(selected.size());
+    refusedPerRule.reserve(selected.size());
     for (const auto* rule : selected) {
-        auto roots = ResolveRuleRoots(*rule);
+        size_t refused = 0;
+        auto roots = ResolveRuleRoots(*rule, &refused);
         for (const auto& root : roots) guard.AllowRoot(root);
         rootsPerRule.push_back(std::move(roots));
+        refusedPerRule.push_back(refused);
     }
     report.allowedRoots = guard.AllowedRoots();
 
@@ -164,8 +179,17 @@ ScanReport Scanner::Scan(const std::vector<CleanRule>& rules,
         if (rule.mode == RuleMode::WindowsRecycleBin) {
             ScanRecycleBin(rule, report);
         } else {
+            // Counted when the rule runs, not when its roots were resolved,
+            // so a cancelled scan reports only what it actually tried.
+            NoteBlocked(rule, refusedPerRule[index], report);
             for (const auto& root : rootsPerRule[index]) {
                 if (cancelRequested_) break;
+                // A root the system will not list is counted here: the walks
+                // below skip a refused directory as if it were empty.
+                if (IsRefusedBySystem(root)) {
+                    NoteBlocked(rule, 1, report);
+                    continue;
+                }
                 switch (rule.mode) {
                     case RuleMode::ClearDirectoryContents:
                         ScanClearContents(rule, root, guard, report);

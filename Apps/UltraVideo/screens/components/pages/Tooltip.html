@@ -1,0 +1,16 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 900x96. --><title>Tooltip — preview</title></head>
+<body class="uv uv-frame">
+<div class="uv-col">
+  <div class="uv-row" id="r"></div>
+  <div class="uv-cap">Help tooltip after 500 ms hover · readout follows the pointer during scrub, trim and move, no delay</div>
+</div>
+<script>
+  var I = UltraVideo.icon;
+  document.getElementById('r').innerHTML = '<span class="uv-tip">Blade <span class="uv-kbd">B</span></span>' +
+    '<span class="uv-tip">' + I('fx', 'uv-ico--sm') + 'Colour grade · Warm film</span>' +
+    '<span class="uv-tip uv-tip--readout">00:00:13:12</span><span class="uv-tip uv-tip--readout">−00:00:00:12</span><span class="uv-tip uv-tip--readout">Speed 1.50×</span>';
+</script>
+</body>
+</html>

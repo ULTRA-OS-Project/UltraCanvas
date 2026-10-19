@@ -1,11 +1,26 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.10.0 - search matches marked in the line layouts and on the scrollbar,
+//                 re-found after edits (deferred in large documents)
+// Version: 3.9.1 - onFocusGained / onFocusLost fired after the area's own focus handling
+// Version: 3.9.0 - ApplyTheme
+// Version: 3.8.0 - an input method's composition is laid out in the caret's line
+//                 at the caret, underlined, with the caret inside it; the view
+//                 follows that caret. Composing over a selection replaces it;
+//                 committed text, an empty composition or losing the focus
+//                 ends it. It never enters the text, callbacks or undo stack.
+// Version: 3.7.5 - scrolling down to the caret puts a whole line at the top of
+//                 the view, not the tail of one (consoles that append); a line
+//                 ending at the viewport's top edge is not drawn
+// Version: 3.7.4 - list bullets "•" "◦" "▪" are drawn as shapes; an image placeholder
+//                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
@@ -64,6 +79,7 @@ namespace UltraCanvas {
 // Destructor
     UltraCanvasTextArea::~UltraCanvasTextArea() {
         UltraCanvasCaret::GetInstance().Hide(this);
+        CancelSearchHighlightRecompute();
         // Clear the liveness flag first, so a notifier already running on the
         // worker thread drops its repaint instead of touching a dying element,
         // then drop the queued job and any undelivered result: the service keys
@@ -247,6 +263,8 @@ namespace UltraCanvas {
         // Full text replacement: invalidate the layout cache + MD index.
         SetCursorPosition({0, 0});
         currentLine.reset();
+        rawBlockLines.clear();
+        rawBlockStart = -1;
         selectionStart = LineColumnIndex::INVALID;
         selectionEnd   = LineColumnIndex::INVALID;
         isNeedRebuildLineLayouts = true;
@@ -1115,8 +1133,9 @@ namespace UltraCanvas {
                 if (!ll) continue;
                 int lineTop    = ll->bounds.y;
                 int lineBottom = lineTop + ll->bounds.height;
-                if (lineBottom < viewportTop)  continue;
-                if (lineTop    > viewportBottom) break;
+                // A line that ends at the viewport's top has no visible pixel.
+                if (lineBottom <= viewportTop) continue;
+                if (lineTop    >= viewportBottom) break;
 
                 RenderLineLayout(ctx, ll);
             }
@@ -1128,7 +1147,7 @@ namespace UltraCanvas {
             // Grey hint drawn over the (empty) text area, whether focused or not,
             // so an empty composer still prompts the user. Mirrors the TextInput
             // placeholder using the same render-context text API.
-            if (!placeholderText.empty() && GetText().empty()) {
+            if (!placeholderText.empty() && GetText().empty() && preeditText.empty()) {
                 ctx->PushState();
                 ctx->ClipRect(visibleTextArea);
                 ctx->SetFontStyle(style.fontStyle);
@@ -1328,6 +1347,8 @@ namespace UltraCanvas {
 
             context->SetFillPaint(style.scrollbarColor);
             FillScrollbarRect(context, Rect2Dd(scrollbarX + in, thumbY + in, sbw - 2 * in, thumbHeight - 2 * in));
+
+            DrawScrollbarSearchMarks(context, scrollbarX, bounds.y, sbw, scrollbarHeight);
         }
 
         if (IsNeedHorizontalScrollbar()) {
@@ -1353,6 +1374,67 @@ namespace UltraCanvas {
 
             context->SetFillPaint(style.scrollbarColor);
             FillScrollbarRect(context, Rect2Dd(thumbX + in, scrollbarY + in, thumbWidth - 2 * in, sbw - 2 * in));
+        }
+    }
+
+    void UltraCanvasTextArea::DrawScrollbarSearchMarks(IRenderContext* context, int trackX, int trackY,
+                                                       int trackWidth, int trackHeight) {
+        if (searchHighlights.empty() || trackHeight <= 0) return;
+        const bool hex = editingMode == TextAreaEditingMode::Hex;
+        const int markHeight = 2;
+        const int inset = std::max(1, trackWidth / 4);
+        const double contentHeight = hex ? std::max(1, hexTotalRows)
+                                         : std::max(1.0f, GetContentHeight());
+
+        // Where a document position sits along the track: hex by row, text by
+        // the top of its line, so wrapped lines take the room they take on screen.
+        auto trackOffset = [&](int lineOrRow) -> int {
+            double top;
+            if (hex) {
+                top = lineOrRow;
+            } else if (lineOrRow >= 0 && lineOrRow < static_cast<int>(lineLayouts.size()) &&
+                       lineLayouts[lineOrRow]) {
+                top = lineLayouts[lineOrRow]->bounds.y;
+            } else {
+                top = lineOrRow * std::max(1.0f, computedLineHeight);
+            }
+            return trackY + static_cast<int>(top / contentHeight * (trackHeight - markHeight));
+        };
+        auto drawMark = [&](int y) {
+            context->FillRectangle(Rect2Dd(trackX + inset, y, trackWidth - 2 * inset, markHeight));
+        };
+
+        // Matches come in document order, so a tick on the same pixel row as
+        // the last one adds nothing and is skipped.
+        context->SetFillPaint(style.searchHighlightColor.WithAlpha(255));
+        int lastY = -1;
+        if (hex) {
+            const int bytesPerRow = std::max(1, hexBytesPerRow);
+            for (const auto& [matchStart, matchEnd] : searchHighlights) {
+                int y = trackOffset(matchStart / bytesPerRow);
+                if (y != lastY) drawMark(y);
+                lastY = y;
+            }
+        } else {
+            for (const auto& seg : searchHighlightSegments) {
+                int y = trackOffset(seg.lineIndex);
+                if (y != lastY) drawMark(y);
+                lastY = y;
+            }
+        }
+
+        // The current match (the selection) in the selection colour, on top.
+        int currentLineOrRow = -1;
+        if (hex) {
+            if (hexSelectionStart >= 0 && hexSelectionEnd > hexSelectionStart) {
+                currentLineOrRow = hexSelectionStart / std::max(1, hexBytesPerRow);
+            }
+        } else if (HasSelection()) {
+            currentLineOrRow = std::min(selectionStart.lineIndex, selectionEnd.lineIndex);
+        }
+        if (currentLineOrRow >= 0) {
+            context->SetFillPaint(style.selectionColor.WithAlpha(255));
+            drawMark(trackOffset(currentLineOrRow));
         }
     }
 
@@ -1390,6 +1472,11 @@ namespace UltraCanvas {
         // returning false leaves them to the hosting widget.
         if (displayOnly && event.IsKeyboardEvent()) return false;
 
+        // Typed (committed) text ends any composition: it is what the input
+        // method composed, and is inserted as typing.
+        if (event.type == UCEventType::KeyDown && !preeditText.empty() && !event.text.empty())
+            ClearComposition();
+
         // The host sees the key first (onBeforeKeyDown in the header).
         if (event.type == UCEventType::KeyDown && onBeforeKeyDown && onBeforeKeyDown(event))
             return true;
@@ -1419,10 +1506,13 @@ namespace UltraCanvas {
                 case UCEventType::FocusGained:
                     // The render pass claims the shared caret with the current rect
                     RequestRedraw();
+                    if (onFocusGained) onFocusGained();
                     return true;
                 case UCEventType::FocusLost:
                     UltraCanvasCaret::GetInstance().Hide(this);
+                    ClearComposition();
                     RequestRedraw();
+                    if (onFocusLost) onFocusLost();
                     return true;
                 default:
                     return false;
@@ -1442,21 +1532,71 @@ namespace UltraCanvas {
                 return HandleKeyDown(event);
             case UCEventType::MouseWheel:
                 return HandleMouseWheel(event);
+            case UCEventType::TextComposition:
+                return HandleComposition(event);
             case UCEventType::FocusGained:
                 // The render pass claims the shared caret with the current rect
                 RequestRedraw();
+                if (onFocusGained) onFocusGained();
                 return true;
             case UCEventType::FocusLost:
                 UltraCanvasCaret::GetInstance().Hide(this);
+                // A composition belongs to the focused area; leaving drops it
+                // (the input method commits or abandons it on its own side).
+                ClearComposition();
                 // Return the in-edit line to its formatted MD layout while the widget is idle
                 // (or discard the stash if the line was modified). On focus regain, the swap
                 // re-runs via ReconcileLayoutState.
                 currentLine.reset();
+                rawBlockLines.clear();
+                rawBlockStart = -1;
                 RequestRedraw();
+                if (onFocusLost) onFocusLost();
                 return true;
             default:
                 return false;
         }
+    }
+
+    bool UltraCanvasTextArea::HandleComposition(const UCEvent& event) {
+        if (!DrawsTextComposition()) return false;
+
+        // The composition goes into the caret's line, so a line break (or any
+        // other control character) in it shows as a space - byte for byte, so
+        // the caret offset still fits.
+        std::string composing = utf8_make_valid(event.text);
+        for (char& c : composing) {
+            const unsigned char uc = static_cast<unsigned char>(c);
+            if (uc < 32 || uc == 127) c = ' ';
+        }
+
+        // Composing over a selection replaces it, as typing would. That is a
+        // real edit (an undo step, a change report); the composition is not.
+        const bool starting = preeditText.empty() && !composing.empty();
+        if (starting && HasSelection()) {
+            DeleteSelection();
+        }
+
+        preeditText = composing;
+        const size_t cursor = event.compositionCursor < 0
+                ? preeditText.size()
+                : std::min(static_cast<size_t>(event.compositionCursor), preeditText.size());
+        preeditCursor = static_cast<int>(utf8_align_boundary(preeditText, cursor));
+        if (preeditText.empty()) compositionColumn = -1;
+
+        UltraCanvasCaret::GetInstance().ResetBlink(this);
+        isCursorMoved = true;   // the view follows the caret inside it
+        RequestRedraw();
+        return true;
+    }
+
+    void UltraCanvasTextArea::ClearComposition() {
+        if (preeditText.empty()) return;
+        preeditText.clear();
+        preeditCursor = 0;
+        compositionColumn = -1;
+        isCursorMoved = true;
+        RequestRedraw();
     }
 
     bool UltraCanvasTextArea::HandleMouseDown(const UCEvent& event) {
@@ -2002,7 +2142,24 @@ namespace UltraCanvas {
         if (cursorContentTop < verticalScrollOffset) {
             verticalScrollOffset = cursorContentTop;
         } else if (cursorContentBottom > verticalScrollOffset + visibleTextArea.height) {
-            verticalScrollOffset = cursorContentBottom - visibleTextArea.height;
+            // Scrolling down to the caret - what every append to a console does -
+            // puts a whole line at the top of the view rather than the tail of
+            // one: the lowest line top at or past the minimal offset, as long as
+            // the caret's line still fits. The gap this leaves at the bottom is
+            // less than a line.
+            const float minimal = static_cast<float>(cursorContentBottom) - visibleTextArea.height;
+            // The caret's line itself is a candidate (its top is known); the
+            // lines above it come from the layout cache.
+            float aligned = static_cast<float>(cursorContentTop) >= minimal
+                                ? static_cast<float>(cursorContentTop) : -1.0f;
+            for (int li = cursorPosition.lineIndex - 1; li >= 0 && li < static_cast<int>(lineLayouts.size()); --li) {
+                const LineLayoutBase* layout = GetActualLineLayout(li);
+                if (!layout) break;
+                const float top = layout->bounds.y;
+                if (top < minimal) break;
+                aligned = top;
+            }
+            verticalScrollOffset = aligned >= 0.0f ? aligned : minimal;
         }
         if (verticalScrollOffset < 0) verticalScrollOffset = 0;
 
@@ -2010,15 +2167,21 @@ namespace UltraCanvas {
         if (!wordWrap) {
             int line = cursorPosition.lineIndex;
             int col  = cursorPosition.columnIndex;
-            if (col > 0 && line < static_cast<int>(lines.size())) {
+            // A composition's caret can be off column 0 while the caret is on it.
+            const bool composing = !preeditText.empty();
+            if ((col > 0 || composing) && line < static_cast<int>(lines.size())) {
                 float visibleWidth = visibleTextArea.width;
                 if (cursorX < horizontalScrollOffset) {
                     horizontalScrollOffset = cursorX;
                 } else if (cursorX > horizontalScrollOffset + visibleWidth) {
                     horizontalScrollOffset = cursorX - visibleWidth;
                 }
-                if (maxLineWidth > visibleWidth) {
-                    horizontalScrollOffset = std::min(horizontalScrollOffset, static_cast<float>(maxLineWidth) - visibleWidth);
+                // The line being composed into is wider than its text by the
+                // composition, which no other line's width accounts for.
+                float widest = static_cast<float>(maxLineWidth);
+                if (composing && currentLine) widest = std::max(widest, currentLine->bounds.width + 2.0f);
+                if (widest > visibleWidth) {
+                    horizontalScrollOffset = std::min(horizontalScrollOffset, widest - visibleWidth);
                 }
             } else {
                 horizontalScrollOffset = 0;
@@ -2294,13 +2457,25 @@ namespace UltraCanvas {
         if (lineIndex < a.lineIndex || lineIndex > b.lineIndex) return;
         if (a.lineIndex == b.lineIndex && a.columnIndex == b.columnIndex) return;
 
-        int realLineCpCount = GetLineVisibleLength(lineIndex);
         int startCp = (lineIndex == a.lineIndex) ? a.columnIndex : 0;
-        int endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : realLineCpCount;
+        int endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : GetLineVisibleLength(lineIndex);
+        ApplyLineBackgroundRange(ll, lineIndex, startCp, endCp, style.selectionColor);
+    }
 
+    void UltraCanvasTextArea::ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex) {
+        if (!ll || !ll->layout || searchHighlightSegments.empty()) return;
+        auto it = std::lower_bound(searchHighlightSegments.begin(), searchHighlightSegments.end(), lineIndex,
+            [](const SearchHighlightSegment& seg, int line) { return seg.lineIndex < line; });
+        for (; it != searchHighlightSegments.end() && it->lineIndex == lineIndex; ++it) {
+            ApplyLineBackgroundRange(ll, lineIndex, it->startCp, it->endCp, style.searchHighlightColor);
+        }
+    }
+
+    void UltraCanvasTextArea::ApplyLineBackgroundRange(LineLayoutBase* ll, int /*lineIndex*/,
+                                                       int startCp, int endCp, const Color& color) {
         // Translate from real-line codepoints to layout-text codepoints. The end snaps
-        // backward so a selection ending at a trailing marker doesn't visually grow over
-        // it; the start snaps forward so a selection starting at a leading marker doesn't
+        // backward so a range ending at a trailing marker doesn't visually grow over
+        // it; the start snaps forward so a range starting at a leading marker doesn't
         // visually grow into it either.
         startCp = SourceCpToVisibleCp(ll->cpMap, startCp, /*snapForward=*/true);
         endCp   = SourceCpToVisibleCp(ll->cpMap, endCp,   /*snapForward=*/false);
@@ -2313,10 +2488,9 @@ namespace UltraCanvas {
         int startByte = static_cast<int>(utf8_cp_to_byte(layoutText, startCp));
         int endByte   = static_cast<int>(utf8_cp_to_byte(layoutText, endCp));
 
-        auto bgAttr = TextAttributeFactory::CreateBackground(style.selectionColor);
+        auto bgAttr = TextAttributeFactory::CreateBackground(color);
         bgAttr->SetRange(startByte, endByte);
         ll->layout->ChangeAttribute(std::move(bgAttr));
-        //debugOutput << "Layout attrs: " << ll->layout->GetAttributesAsString() << " ltype: " << ll->layoutType << " str:" << layoutText << " startbyte:" << startByte << " endbyte:" << endByte << std::endl;
     }
 
     // BuildLineLayout removed in Step 8b — the single layout cache is populated by
@@ -2332,6 +2506,11 @@ namespace UltraCanvas {
         for (const auto& l : lines) total += l.size();
         textContent.reserve(total);
         for (const auto& l : lines) textContent.append(l);
+        // Match positions shift with the edit; find them again in the new text.
+        if (!searchHighlightText.empty()) {
+            if (textContent.size() > searchHighlightDeferBytes) ScheduleSearchHighlightRecompute();
+            else RecomputeSearchHighlights();
+        }
         isNeedRebuildLineLayouts = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
@@ -2634,6 +2813,7 @@ namespace UltraCanvas {
         style.lineNumbersColor = {80, 80, 80, 255};           // Dimmer — less visual noise in dark mode
         style.lineNumbersBackgroundColor = {35, 35, 35, 255}; // Dark gutter background
         style.selectionColor = {60, 90, 150, 100};
+        style.searchHighlightColor = {160, 120, 0, 140};
         style.cursorColor = {255, 255, 255, 255};
         style.scrollbarTrackColor = {50, 50, 50, 255};
         style.scrollbarColor = {100, 100, 100, 255};
@@ -2661,6 +2841,7 @@ namespace UltraCanvas {
         style.fontColor = {0, 0, 0, 255};
         style.borderColor = {200, 200, 200, 255};
         style.selectionColor = {51, 153, 255, 100};
+        style.searchHighlightColor = {255, 200, 0, 110};
         style.cursorColor = {0, 0, 0, 255};
         style.currentLineColor = {240, 240, 240, 255};
         style.lineNumbersColor = {128, 128, 128, 255};
@@ -2906,41 +3087,124 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::HighlightMatches(const std::string& searchText) {
-        searchHighlights.clear();
-        if (searchText.empty()) {
-            RequestRedraw();
-            return;
-        }
+        HighlightMatches(searchText, lastSearchCaseSensitive);
+    }
 
-        if (editingMode == TextAreaEditingMode::Hex) {
-            std::string haystack(hexBuffer.begin(), hexBuffer.end());
-            std::string needle = searchText;
-            if (!lastSearchCaseSensitive) {
-                std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
-                std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
-            }
-            int searchLen = static_cast<int>(searchText.size());
-            size_t pos = 0;
-            while ((pos = haystack.find(needle, pos)) != std::string::npos) {
-                searchHighlights.push_back({static_cast<int>(pos), static_cast<int>(pos) + searchLen});
-                pos += searchLen;
-            }
-            RequestRedraw();
-            return;
-        }
-
-        int searchLen = utf8_length(searchText);
-        const std::vector<int> matches = utf8_find_all(textContent, searchText, lastSearchCaseSensitive);
-        searchHighlights.reserve(matches.size());
-        for (int pos : matches) {
-            searchHighlights.push_back({pos, pos + searchLen});
-        }
+    void UltraCanvasTextArea::HighlightMatches(const std::string& searchText, bool caseSensitive) {
+        searchHighlightText = searchText;
+        searchHighlightCaseSensitive = caseSensitive;
+        RecomputeSearchHighlights();
         RequestRedraw();
     }
 
     void UltraCanvasTextArea::ClearHighlights() {
-        searchHighlights.clear();
+        searchHighlightText.clear();
+        RecomputeSearchHighlights();
         RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::ScheduleSearchHighlightRecompute() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) {
+            RecomputeSearchHighlights();
+            return;
+        }
+        // Each keystroke pushes the search back; the marks stay where they
+        // were until typing pauses.
+        CancelSearchHighlightRecompute();
+        searchHighlightTimer = app->StartTimer(searchHighlightDeferMs, false, [this](TimerId) {
+            searchHighlightTimer = InvalidTimerId;
+            RecomputeSearchHighlights();
+            RequestRedraw();
+        });
+    }
+
+    void UltraCanvasTextArea::CancelSearchHighlightRecompute() {
+        if (searchHighlightTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(searchHighlightTimer);
+        searchHighlightTimer = InvalidTimerId;
+    }
+
+    void UltraCanvasTextArea::RecomputeSearchHighlights() {
+        CancelSearchHighlightRecompute();
+        std::vector<SearchHighlightSegment> oldSegments = std::move(searchHighlightSegments);
+        searchHighlightSegments.clear();
+        searchHighlights.clear();
+
+        if (!searchHighlightText.empty()) {
+            if (editingMode == TextAreaEditingMode::Hex) {
+                std::string haystack(hexBuffer.begin(), hexBuffer.end());
+                std::string needle = searchHighlightText;
+                if (!searchHighlightCaseSensitive) {
+                    std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                    std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+                }
+                int searchLen = static_cast<int>(needle.size());
+                size_t pos = 0;
+                while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+                    searchHighlights.push_back({static_cast<int>(pos), static_cast<int>(pos) + searchLen});
+                    pos += searchLen;
+                }
+            } else {
+                int searchLen = utf8_length(searchHighlightText);
+                const std::vector<int> matches =
+                    utf8_find_all(textContent, searchHighlightText, searchHighlightCaseSensitive);
+                searchHighlights.reserve(matches.size());
+                for (int pos : matches) {
+                    searchHighlights.push_back({pos, pos + searchLen});
+                }
+                BuildSearchHighlightSegments();
+            }
+        }
+
+        // The marks live in the line layouts: rebuild the lines that gained or
+        // lost one. Both lists are sorted by line, so one merge walk finds them.
+        auto sameSegment = [](const SearchHighlightSegment& x, const SearchHighlightSegment& y) {
+            return x.lineIndex == y.lineIndex && x.startCp == y.startCp && x.endCp == y.endCp;
+        };
+        auto invalidate = [this](int line) {
+            if (line >= 0 && line < static_cast<int>(lineLayouts.size())) lineLayouts[line].reset();
+        };
+        size_t a = 0, b = 0;
+        const auto& newSegments = searchHighlightSegments;
+        while (a < oldSegments.size() || b < newSegments.size()) {
+            if (b >= newSegments.size() ||
+                (a < oldSegments.size() && oldSegments[a].lineIndex < newSegments[b].lineIndex)) {
+                invalidate(oldSegments[a++].lineIndex);
+            } else if (a >= oldSegments.size() || newSegments[b].lineIndex < oldSegments[a].lineIndex) {
+                invalidate(newSegments[b++].lineIndex);
+            } else {
+                if (!sameSegment(oldSegments[a], newSegments[b])) invalidate(newSegments[b].lineIndex);
+                a++; b++;
+            }
+        }
+        isNeedRecalculateVisibleArea = true;
+    }
+
+    // Splits searchHighlights (document codepoints, ascending) into per-line
+    // codepoint ranges in one walk over the lines.
+    void UltraCanvasTextArea::BuildSearchHighlightSegments() {
+        const int lineCount = static_cast<int>(lines.size());
+        int line = 0;
+        int lineStart = 0;   // document codepoint where `line` begins
+        for (const auto& [matchStart, matchEnd] : searchHighlights) {
+            while (line < lineCount) {
+                int lineEnd = lineStart + GetLineVisibleLength(line);
+                int nextStart = lineEnd + (LineHasNewline(line) ? 1 : 0);
+                if (matchStart >= nextStart && line + 1 < lineCount) {
+                    lineStart = nextStart;
+                    line++;
+                    continue;
+                }
+                int from = std::max(matchStart, lineStart) - lineStart;
+                int to   = std::min(matchEnd, lineEnd) - lineStart;
+                if (to > from) searchHighlightSegments.push_back({line, from, to});
+                // A match running past this line (a term with a newline) goes on.
+                if (matchEnd <= nextStart || line + 1 >= lineCount) break;
+                lineStart = nextStart;
+                line++;
+            }
+        }
     }
 
 // ===== BOOKMARKS =====
@@ -3185,6 +3449,7 @@ namespace UltraCanvas {
         if (editingMode == mode) return;
 
         TextAreaEditingMode oldMode = editingMode;
+        ClearComposition();   // the line it was composed into is laid out anew
 
         // Leaving hex mode: convert buffer back to text
         if (oldMode == TextAreaEditingMode::Hex && mode != TextAreaEditingMode::Hex) {
@@ -3272,6 +3537,11 @@ namespace UltraCanvas {
         // non-plain `line` would still work.
         int layoutCol = std::max(0, std::min(SourceCpToVisibleCp(line->cpMap, idx.columnIndex),
                                              layoutCpCount));
+        // While composing, the caret is in the composition.
+        if (!preeditText.empty() && line == currentLine.get() && compositionColumn >= 0
+            && idx.lineIndex == cursorPosition.lineIndex && idx.columnIndex == cursorPosition.columnIndex) {
+            layoutCol = std::min(compositionColumn + utf8_byte_to_cp(preeditText, preeditCursor), layoutCpCount);
+        }
         int byteIndex = static_cast<int>(utf8_cp_to_byte(layoutText, layoutCol));
 
         Rect2Di cursorRect = line->layout->GetCursorPos(byteIndex).strongPos;
@@ -3306,6 +3576,14 @@ namespace UltraCanvas {
 
             std::string layoutText = ll->layout->GetText();
             int layoutCp = utf8_byte_to_cp(layoutText, hit.index) + hit.trailing;
+            // A hit on a composition is a hit at the caret it sits at; the
+            // text after it is that much further along in the layout.
+            if (!preeditText.empty() && ll == currentLine.get() && compositionColumn >= 0) {
+                const int preCp = utf8_length(preeditText);
+                if (layoutCp >= compositionColumn + preCp) layoutCp -= preCp;
+                else if (layoutCp > compositionColumn) layoutCp = compositionColumn;
+                return {i, layoutCp};
+            }
             return {i, VisibleCpToSourceCp(ll->cpMap, layoutCp)};
         }
         // Past the last line — land at the end of the document.
@@ -3319,6 +3597,10 @@ namespace UltraCanvas {
     LineLayoutBase* UltraCanvasTextArea::GetActualLineLayout(int idx) {
         if (currentLine && cursorPosition.lineIndex == idx) {
             return currentLine.get();
+        }
+        if (rawBlockStart >= 0 && idx >= rawBlockStart &&
+            idx - rawBlockStart < (int)rawBlockLines.size() && rawBlockLines[idx - rawBlockStart]) {
+            return rawBlockLines[idx - rawBlockStart].get();
         }
         // Layouts are built through the render context, and an element that is
         // not in a window yet has none (a ScrollTo() or a cursor query straight
@@ -3407,11 +3689,12 @@ namespace UltraCanvas {
 
         if (cursorPosition.lineIndex >= 0 &&
             !(isReadOnly && editingMode == TextAreaEditingMode::MarkdownHybrid)) {
-            currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex);
+            currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex, /*withComposition=*/true);
             currentLine->logicalLineNumber = lineLayouts[cursorPosition.lineIndex]->logicalLineNumber;
         } else {
             currentLine.reset();
         }
+        UpdateRawMathBlockLines(ctx);
 
         if (groupStart >= 0) tableSpans.push_back({groupStart, (int)lines.size() - 1});
 
@@ -3427,12 +3710,52 @@ namespace UltraCanvas {
             if (!lineLayouts[i]) continue;
 
             lineLayouts[i]->bounds.y = prevLineBottomPos;
+            LineLayoutBase* actual = lineLayouts[i].get();
             if (currentLine && cursorPosition.lineIndex == i) {
-                currentLine->bounds.y = prevLineBottomPos;
-                prevLineBottomPos += currentLine->bounds.height;
-            } else {
-                prevLineBottomPos += lineLayouts[i]->bounds.height;
+                actual = currentLine.get();
+            } else if (rawBlockStart >= 0 && i >= rawBlockStart &&
+                       i - rawBlockStart < (int)rawBlockLines.size() && rawBlockLines[i - rawBlockStart]) {
+                actual = rawBlockLines[i - rawBlockStart].get();
             }
+            actual->bounds.y = prevLineBottomPos;
+            prevLineBottomPos += actual->bounds.height;
+        }
+    }
+
+    void UltraCanvasTextArea::UpdateRawMathBlockLines(IRenderContext* ctx) {
+        rawBlockLines.clear();
+        rawBlockStart = -1;
+        const int cur = cursorPosition.lineIndex;
+        if (!currentLine || editingMode != TextAreaEditingMode::MarkdownHybrid ||
+            cur < 0 || cur >= (int)lineLayouts.size()) return;
+
+        // Opening fence and source lines are MathBlockCollapsed, the closing fence MathBlock.
+        auto mathType = [&](int k) -> int {   // 0 none, 1 collapsed, 2 closing fence
+            auto* m = (k >= 0 && k < (int)lineLayouts.size())
+                      ? dynamic_cast<MathBlockLayout*>(lineLayouts[k].get()) : nullptr;
+            if (!m) return 0;
+            return m->layoutType == LineLayoutType::MathBlock ? 2 : 1;
+        };
+        if (mathType(cur) == 0) return;
+
+        // A block never starts with its closing fence, so walking up over collapsed lines
+        // stops at the previous block's closing fence or at a non-math line.
+        int first = cur;
+        while (mathType(first - 1) == 1) first--;
+        int last = cur;
+        if (mathType(cur) == 1) {
+            while (mathType(last + 1) == 1) last++;
+            if (mathType(last + 1) == 2) last++;
+        }
+        if (first == last) return;
+
+        rawBlockStart = first;
+        rawBlockLines.resize(last - first + 1);
+        for (int k = first; k <= last; k++) {
+            if (k == cur) continue;
+            auto ll = MakePlainLineLayout(ctx, k, /*withComposition=*/false);
+            ll->logicalLineNumber = lineLayouts[k]->logicalLineNumber;
+            rawBlockLines[k - first] = std::move(ll);
         }
     }
 
@@ -3446,17 +3769,46 @@ namespace UltraCanvas {
         }
     }
 
-    std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakePlainLineLayout(IRenderContext* ctx, int lineIndex) {
+    std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakePlainLineLayout(IRenderContext* ctx, int lineIndex,
+                                                                            bool withComposition) {
         auto ll = std::make_unique<LineLayoutBase>();
         // Content without the trailing \n — Pango must never see the line terminator,
         // or it would generate a phantom wrapped line under the segment.
         std::string txt = GetLineContent(lineIndex);
+        int txtCp = utf8_length(txt);
+
+        // The caret's line shows an input method's composition at the caret:
+        // laid out with it spliced in, underlined. The source line itself is
+        // untouched; the cpMap skips the composition, so every source column
+        // after the caret lands past it.
+        const bool composing = withComposition && !preeditText.empty()
+                               && lineIndex == cursorPosition.lineIndex;
+        int compositionCp = 0;
+        int compositionByte = 0;
+        int compositionBytes = 0;
+        std::string layoutText = txt;
+        if (composing) {
+            compositionCp = std::clamp(cursorPosition.columnIndex, 0, txtCp);
+            compositionByte = static_cast<int>(utf8_cp_to_byte(txt, compositionCp));
+            compositionBytes = static_cast<int>(preeditText.size());
+            layoutText.insert(static_cast<size_t>(compositionByte), preeditText);
+            compositionColumn = compositionCp;
+        }
 
         ll->layoutType = LineLayoutType::PlainLine;
-        ll->layout = ctx->CreateTextLayout(txt, false);
-        // Identity cpMap: layout text is the source line verbatim, no markup stripped.
-        int txtCp = utf8_length(txt);
-        ll->cpMap = {{0, 0}, {txtCp, txtCp}};
+        ll->layout = ctx->CreateTextLayout(layoutText, false);
+        if (composing) {
+            const int preCp = utf8_length(preeditText);
+            // {0,0} .. {col,col} is the text before it, {col+pre,col} on the
+            // text after it; the composition between maps to no source column.
+            ll->cpMap = {{0, 0}};
+            if (compositionCp > 0) ll->cpMap.push_back({compositionCp, compositionCp});
+            ll->cpMap.push_back({compositionCp + preCp, compositionCp});
+            if (compositionCp < txtCp) ll->cpMap.push_back({txtCp + preCp, txtCp});
+        } else {
+            // Identity cpMap: layout text is the source line verbatim, no markup stripped.
+            ll->cpMap = {{0, 0}, {txtCp, txtCp}};
+        }
         ll->layout->SetFontStyle(style.fontStyle);
         //ll->layout->SetLineSpacing(style.lineHeight);
         if (wordWrap && visibleTextArea.width > 0) {
@@ -3471,11 +3823,8 @@ namespace UltraCanvas {
             ll->syntaxExit = state;
 
             int currentByte = 0;
-            for (const auto& token : tokens) {
-                int startByte = currentByte;
-                int endByte = currentByte + static_cast<int>(token.text.size());
-                const TokenStyle& tokenStyle = GetStyleForTokenType(token.type);
-
+            auto applyTokenStyle = [&](const TokenStyle& tokenStyle, int startByte, int endByte) {
+                if (startByte >= endByte) return;
                 auto fgAttr = TextAttributeFactory::CreateForeground(tokenStyle.color);
                 fgAttr->SetRange(startByte, endByte);
                 ll->layout->InsertAttribute(std::move(fgAttr));
@@ -3495,9 +3844,30 @@ namespace UltraCanvas {
                     uAttr->SetRange(startByte, endByte);
                     ll->layout->InsertAttribute(std::move(uAttr));
                 }
+            };
+            for (const auto& token : tokens) {
+                int startByte = currentByte;
+                int endByte = currentByte + static_cast<int>(token.text.size());
+                const TokenStyle& tokenStyle = GetStyleForTokenType(token.type);
+                if (!composing || endByte <= compositionByte) {
+                    applyTokenStyle(tokenStyle, startByte, endByte);
+                } else if (startByte >= compositionByte) {
+                    // Past the composition: its offsets move along by its length.
+                    applyTokenStyle(tokenStyle, startByte + compositionBytes, endByte + compositionBytes);
+                } else {
+                    // A token the composition splits keeps its style on both sides.
+                    applyTokenStyle(tokenStyle, startByte, compositionByte);
+                    applyTokenStyle(tokenStyle, compositionByte + compositionBytes, endByte + compositionBytes);
+                }
                 currentByte = endByte;
             }
         }
+        if (composing) {
+            auto uAttr = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
+            uAttr->SetRange(compositionByte, compositionByte + compositionBytes);
+            ll->layout->InsertAttribute(std::move(uAttr));
+        }
+        ApplyLineSearchHighlights(ll.get(), lineIndex);
         ApplyLineSelectionBackground(ll.get(), lineIndex);
 
         ll->bounds.width = ll->layout->GetLayoutWidth();
@@ -3519,6 +3889,7 @@ namespace UltraCanvas {
 
         if (editingMode == TextAreaEditingMode::MarkdownHybrid) {
             auto md = MakeMarkdownLineLayout(ctx, lineIndex);
+            ApplyLineSearchHighlights(md.get(), lineIndex);
             ApplyLineSelectionBackground(md.get(), lineIndex);
             return md;
         }
@@ -3641,12 +4012,17 @@ namespace UltraCanvas {
                                          static_cast<int>(bullets.size()) - 1);
                 const std::string& bullet = bullets[bulletIdx];
                 int markerX = posOrigin.x + (depth - 1) * listIndentPx;
-                ctx->PushState();
-                ctx->SetFontStyle(style.fontStyle);
-                ctx->SetTextPaint(markerColor);
-                ctx->DrawText(bullet, Point2Dd(static_cast<float>(markerX),
-                                               static_cast<float>(posOrigin.y)));
-                ctx->PopState();
+                const Point2Dd markerPos(static_cast<float>(markerX), static_cast<float>(posOrigin.y));
+                // The standard bullets are drawn: the bundled UI font has no
+                // "◦" or "▪", which showed as hex boxes where no fallback font
+                // has them either. Any other bullet string is drawn as text.
+                if (!DrawBulletMark(ctx, bullet, markerPos, style.fontStyle, markerColor)) {
+                    ctx->PushState();
+                    ctx->SetFontStyle(style.fontStyle);
+                    ctx->SetTextPaint(markerColor);
+                    ctx->DrawText(bullet, markerPos);
+                    ctx->PopState();
+                }
                 drawLayout();
                 return;
             }
@@ -3762,8 +4138,8 @@ namespace UltraCanvas {
                                              1.0f, markdownStyle.imagePlaceholderBorderColor);
                     std::string label = !il->altText.empty()
                             ? il->altText
-                            : ((il->isRemote ? std::string("\xF0\x9F\x8C\x90 ")    // 🌐
-                                             : std::string("\xE2\x9A\xA0 "))       // ⚠
+                            : ((il->isRemote ? std::string("Remote image: ")
+                                             : std::string("Missing image: "))
                                + il->sourceUrl);
                     ctx->PushState();
                     ctx->SetFontStyle(style.fontStyle);
@@ -3815,6 +4191,26 @@ namespace UltraCanvas {
         style.fontColor = color;
         isNeedRecalculateVisibleArea = true;
         isNeedRebuildLineLayouts = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::ApplyTheme(const UltraCanvasTheme& theme) {
+        // the token colours of the light or dark preset, the surfaces and
+        // ink from the roles
+        if (theme.dark) ApplyDarkTheme(); else ApplyLightTheme();
+        const ThemeRoles& r = theme.roles;
+        backgroundColor = r.well;
+        style.fontColor = r.ink;
+        style.borderColor = r.lineStrong;
+        style.currentLineColor = r.hover;
+        style.lineNumbersColor = r.inkFaint;
+        style.lineNumbersBackgroundColor = r.panel;
+        style.selectionColor = r.accent.WithAlpha(100);
+        style.cursorColor = r.ink;
+        style.placeholderColor = r.inkFaint;
+        style.scrollbarTrackColor = r.panel;
+        style.scrollbarColor = r.lineStrong;
+        style.tokenStyles.defaultStyle.color = r.ink;
         RequestRedraw();
     }
 } // namespace UltraCanvas

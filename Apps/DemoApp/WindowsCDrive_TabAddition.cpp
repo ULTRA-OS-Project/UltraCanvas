@@ -235,8 +235,8 @@ diagramBuilder.AddItem(
     "Radial tree visualization for file systems and storage devices with Gource-style layout",
     ImplementationStatus::FullyImplemented,
     [this]() { return CreateGourceTreeExamples(); },
-    "Examples/UltraCanvasGourceTreeExamples.cpp",
-    "Docs/UltraCanvasGourceTree.md"
+    "DemoApp/UltraCanvasGourceTreeExamples.cpp",
+    "Docs/UltraCanvas/UltraCanvasGourceTreeExamples.md"
 )
 .AddVariant("gourcetree", "Project Structure")
 .AddVariant("gourcetree", "Storage Device")

@@ -1,0 +1,19 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraSocial. `Icon=UltraSocial` is resolved
+# through the icon themes; the install rules put media/appicon/UltraSocial.png
+# and .svg into share/icons/hicolor.
+#
+# No MimeType= and no %U in Exec: UltraSocial's main() takes no arguments.
+Type=Application
+Version=1.5
+Name=UltraSocial
+GenericName=Social Media Poster
+Comment=Write a post once and publish it to all your social networks
+Exec=UltraSocial
+TryExec=UltraSocial
+Icon=UltraSocial
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraSocial
+Categories=Network;
+Keywords=social;post;mastodon;bluesky;telegram;reddit;x;twitter;linkedin;facebook;schedule;

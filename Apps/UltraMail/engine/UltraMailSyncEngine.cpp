@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.5.0 - CreateFolder / DeleteFolder
 // Version: 0.4.0 - the verified sender domain is stored with the verdict;
 //                  RescanStaleVerdicts after each sync of a folder
 // Version: 0.3.0 - SyncFolders keeps the server's separator and drops the folders
@@ -179,6 +180,39 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
             fs::remove_all(PathFromUtf8(BodyPath(accountId, s.name, 0)).parent_path(), ec);
             out.stats.foldersRemoved++;
         }
+    }
+    return out;
+}
+
+SyncOutcome SyncEngine::CreateFolder(const std::string& accountId, const std::string& folder,
+                                     const std::string& serverUrl,
+                                     const UltraNetMailOptions& options) {
+    if (folder.empty()) return SyncOutcome::Fail("The folder has no name.");
+    UltraNetResult r = mailbox_.CreateFolder(serverUrl, folder, options);
+    if (!r) return SyncOutcome::Fail(r);
+    // The list names it now, with the attributes and separator the server
+    // gave it; a list that cannot be read leaves it for the next sync.
+    SyncOutcome listed = SyncFolders(accountId, serverUrl, options);
+    return listed.ok ? listed : SyncOutcome{};
+}
+
+SyncOutcome SyncEngine::DeleteFolder(const std::string& accountId, const std::string& folder,
+                                     const std::string& serverUrl,
+                                     const UltraNetMailOptions& options) {
+    if (folder.empty() || folder == "INBOX")
+        return SyncOutcome::Fail("The inbox cannot be deleted.");
+    UltraNetResult r = mailbox_.DeleteFolder(serverUrl, folder, options);
+    if (!r) return SyncOutcome::Fail(r);
+    SyncOutcome out;
+    if (store_.RemoveFolder(accountId, folder)) {
+        std::error_code ec;
+        fs::remove_all(PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path(), ec);
+        out.stats.foldersRemoved = 1;
+    }
+    SyncOutcome listed = SyncFolders(accountId, serverUrl, options);
+    if (listed.ok) {
+        listed.stats.foldersRemoved += out.stats.foldersRemoved;
+        return listed;
     }
     return out;
 }
@@ -456,6 +490,7 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     security.reason = report.Summary();
     security.verifiedDomain = report.verifiedDomain;
     security.verifiedBy     = report.verifiedBy;
+    security.findings       = report.Codes();
     security.attachments = MimeCodec::CountAttachments(raw);   // the list's paperclip
     store_.SetSecurity(accountId, folder, uid, security);
     return path;
@@ -481,6 +516,7 @@ int SyncEngine::RescanStaleVerdicts(const std::string& accountId, const std::str
         security.reason = report.Summary();
         security.verifiedDomain = report.verifiedDomain;
         security.verifiedBy     = report.verifiedBy;
+        security.findings       = report.Codes();
         // attachments stays -1: the count already stored is kept.
         if (store_.SetSecurity(accountId, folder, uid, security)) ++rescanned;
     }

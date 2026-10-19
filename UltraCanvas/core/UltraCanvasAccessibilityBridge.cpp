@@ -1,8 +1,8 @@
 // core/UltraCanvasAccessibilityBridge.cpp
 // The tree, ids, geometry and text helpers the platform accessibility bridges
 // share (see UltraCanvasAccessibilityBridge.h).
-// Version: 1.0.0
-// Last Modified: 2026-10-01
+// Version: 1.1.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAccessibilityBridge.h"
@@ -177,6 +177,45 @@ void IdMap::Clear() {
 }
 
 // ===== TEXT =====
+
+namespace {
+
+// A text field's value as read-only text for the bridges.
+class ValueText final : public IAccessibleText {
+public:
+    void Reset(const std::string& value) { text = value; }
+    std::string GetAccessibleText() const override { return text; }
+    int GetCharacterCount() const override { return UltraCanvasAccessibility::CharacterCount(text); }
+    int GetCaretOffset() const override { return GetCharacterCount(); }
+    bool SetCaretOffset(int) override { return false; }
+    bool GetSelection(int& start, int& end) const override {
+        start = end = GetCaretOffset();
+        return false;
+    }
+    bool SetSelection(int, int) override { return false; }
+    Rect2Df GetCharacterBounds(int) const override { return Rect2Df(0, 0, 0, 0); }
+    int GetOffsetAtPoint(const Point2Df&) const override { return -1; }
+    AccessibleTextAttributes GetAttributesAt(int, int& runStart, int& runEnd) const override {
+        runStart = 0;
+        runEnd = GetCharacterCount();
+        return {};
+    }
+
+private:
+    std::string text;
+};
+
+} // namespace
+
+IAccessibleText* TextInterface(UltraCanvasUIElement* element) {
+    if (!element || element->IsAccessiblePassword()) return nullptr;
+    if (IAccessibleText* own = element->GetAccessibleTextInterface()) return own;
+    const AccessibleRole role = element->GetAccessibleRole();
+    if (role != AccessibleRole::TextField && role != AccessibleRole::ComboBox) return nullptr;
+    static ValueText view;
+    view.Reset(element->GetAccessibleValueText());
+    return &view;
+}
 
 std::string Substring(const std::string& utf8, int start, int end) {
     const int count = UltraCanvasAccessibility::CharacterCount(utf8);

@@ -16,14 +16,19 @@
 // What still holds from the old rule: a bookkeeping file never appears
 // because somebody opened a window. Opening does not create
 // (`Store::Open`); only the setup form does, and only when asked.
-// Version: 0.2.0
+//
+// One window per user: a second start of the window brings the running one
+// forward and ends (UltraCanvasSingleInstance.h). Commands are not affected.
+// Version: 0.2.2 - one UltraFIBU window per user: a second start brings the
+//                  running window forward instead of opening another copy
+// Version: 0.2.1
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUApp.h"
 #include "UltraFIBUStart.h"
-#include "UltraFIBUKonsole.h"
 #include "UltraFIBUCli.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"   // GetResourcesDir, NormalizePath
 
 #include <cstdio>
@@ -52,15 +57,24 @@ int main(int argc, char** argv) {
 
     const std::string datenbank = argc > 1 ? argv[1] : std::string();
 
+    // One window per user, decided after the commands above (they never
+    // claim) and before anything is opened. A second start brings the running
+    // window forward and ends.
+    using UltraCanvas::UltraCanvasSingleInstance;
+    UltraCanvasSingleInstance instanz("org.ultraos.ultrafibu", "UltraFIBU");
+    const UltraCanvasSingleInstance::Start anlauf = instanz.Claim();
+    if (anlauf == UltraCanvasSingleInstance::Start::HandedOff)
+        return EXIT_SUCCESS;
+
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("UltraFIBU")) {
         std::printf("Fehler: Die Anwendung konnte nicht gestartet werden "
                     "(kein Display?).\n");
         return EXIT_FAILURE;
     }
-    // Only once the window can come up: until here, what goes wrong is
-    // printed, and needs the console to be read.
-    UltraFIBU::KonsoleFreigebenWennEigene();
+    // Another copy holds the lock but did not answer: say so, end.
+    if (anlauf == UltraCanvasSingleInstance::Start::AlreadyRunning)
+        return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraFIBU");
 
     // One icon, everywhere the app is drawn: the window and the taskbar entry
     // that follows it read this file; the .ico embedded in the Windows binary
@@ -99,7 +113,9 @@ int main(int argc, char** argv) {
     } else {
         const std::string fehler = oeffne(datenbank);
         if (fehler.empty()) {
+            instanz.ListenRaise();   // a later start brings the window forward
             app.Run();
+            instanz.Close();         // before the windows go
             return EXIT_SUCCESS;
         }
         // An existing bookkeeping that would not open - written by a newer
@@ -109,6 +125,8 @@ int main(int argc, char** argv) {
 
     start.onDateiGewaehlt = oeffne;
     start.Bauen(hinweis, datenbank)->Show();
+    instanz.ListenRaise();   // a later start brings the window forward
     app.Run();
+    instanz.Close();         // before the windows go
     return EXIT_SUCCESS;
 }

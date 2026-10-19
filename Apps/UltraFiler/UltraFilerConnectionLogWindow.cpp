@@ -8,6 +8,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraFilerConnectionLogWindow.h"
+#include "UltraFilerTabStripStyle.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
@@ -179,6 +180,10 @@ void UltraFilerConnectionLogWindow::RenderActiveTab() {
             }
         });
     }
+}
+
+void UltraFilerConnectionLogWindow::SetTabStripStyle(FilerTabStripStyle style) {
+    if (tabs) ApplyFilerTabStripStyle(*tabs, style);
 }
 
 std::shared_ptr<UltraFilerConnectionLogWindow> ShowConnectionLogWindow(

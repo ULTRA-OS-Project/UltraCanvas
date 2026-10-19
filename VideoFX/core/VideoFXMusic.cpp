@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXMusic.cpp
 // Background music arithmetic: envelope, ducking, slideshow length.
-// Version: 0.4.1
-// Last Modified: 2026-10-02
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "VideoFXMusic.h"
@@ -24,6 +24,9 @@ bool ValidateMusic(const VideoFXMusic& m, std::string& error) {
         error = "Music fades must be 0..600 seconds";
         return false;
     }
+    if (!InRange(m.crossfade, 0.0, 30.0)) { error = "Music crossfade must be 0..30 seconds"; return false; }
+    for (const std::string& song : m.playlist)
+        if (song.empty()) { error = "A song in the music playlist has no path"; return false; }
     if (!InRange(m.duckingLevel, 0.0, 1.0)) { error = "Music ducking level must be 0..1"; return false; }
     if (!InRange(m.duckingThresholdDb, -90.0, 0.0)) {
         error = "Music ducking threshold must be -90..0 dBFS";
@@ -36,6 +39,40 @@ bool ValidateMusic(const VideoFXMusic& m, std::string& error) {
         return false;
     }
     return true;
+}
+
+bool ValidateAudioClip(const VideoFXAudioClip& c, std::string& error) {
+    if (c.path.empty()) { error = "An audio clip has no file"; return false; }
+    if (!InRange(c.at, 0.0, 86400.0)) { error = "An audio clip's time must be 0..24 hours"; return false; }
+    if (!InRange(c.start, 0.0, 1e6)) { error = "An audio clip's start must be >= 0"; return false; }
+    if (!(c.end == 0.0 || (std::isfinite(c.end) && c.end > c.start))) {
+        error = "An audio clip's end must lie after its start (or be 0: to the file's end)";
+        return false;
+    }
+    if (!InRange(c.volume, 0.0, 4.0)) { error = "An audio clip's volume must be 0..4"; return false; }
+    if (!InRange(c.fadeIn, 0.0, 600.0) || !InRange(c.fadeOut, 0.0, 600.0)) {
+        error = "An audio clip's fades must be 0..600 seconds";
+        return false;
+    }
+    return true;
+}
+
+double AudioClipGain(const VideoFXAudioClip& c, double t, double length) {
+    if (t < 0.0 || (length > 0.0 && t > length)) return 0.0;
+    double fadeIn = c.fadeIn, fadeOut = c.fadeOut;
+    if (length > 0.0 && fadeIn + fadeOut > length) {
+        fadeIn = std::min(fadeIn, length / 2.0);
+        fadeOut = std::min(fadeOut, length / 2.0);
+    }
+    double g = c.volume;
+    if (fadeIn > 0.0) g *= std::clamp(t / fadeIn, 0.0, 1.0);
+    if (fadeOut > 0.0 && length > 0.0) g *= std::clamp((length - t) / fadeOut, 0.0, 1.0);
+    return g;
+}
+
+double AudioClipSeconds(const VideoFXAudioClip& c, double fileSeconds) {
+    if (c.end > 0.0) return std::max(0.0, (fileSeconds > 0.0 ? std::min(c.end, fileSeconds) : c.end) - c.start);
+    return fileSeconds > 0.0 ? std::max(0.0, fileSeconds - c.start) : 0.0;
 }
 
 double MusicEnvelope(const VideoFXMusic& m, double t, double total) {
@@ -61,6 +98,32 @@ double MusicDucker::Update(double rms, double seconds) {
     const double tau = target < gain ? attack : release;
     gain += (target - gain) * (1.0 - std::exp(-seconds / tau));
     return gain;
+}
+
+double CrossfadeSeconds(double crossfade, double first, double second) {
+    double c = std::max(0.0, crossfade);
+    if (first > 0.0) c = std::min(c, first / 2.0);
+    if (second > 0.0) c = std::min(c, second / 2.0);
+    return c;
+}
+
+double PlaylistSeconds(const std::vector<double>& lengths, double crossfade, double start) {
+    if (lengths.empty()) return 0.0;
+    std::vector<double> played = lengths;
+    played.front() -= std::max(0.0, start);
+    double total = 0.0;
+    for (size_t i = 0; i < played.size(); ++i) {
+        if (!(played[i] > 0.0)) return 0.0;
+        total += played[i];
+        if (i + 1 < played.size()) total -= CrossfadeSeconds(crossfade, played[i], played[i + 1]);
+    }
+    return total;
+}
+
+void CrossfadeGains(double x, double& outgoing, double& incoming) {
+    const double t = std::clamp(x, 0.0, 1.0) * 1.5707963267948966;   // pi / 2
+    outgoing = std::cos(t);
+    incoming = std::sin(t);
 }
 
 double SlideshowSecondsForMusic(double musicSeconds, size_t images, double transition) {

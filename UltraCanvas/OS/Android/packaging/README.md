@@ -1,14 +1,16 @@
 # Packaging an UltraCanvas app as an APK
 
-**Status: scaffolding, not a working build.** The manifest is complete and
-every attribute in it is load-bearing (each is annotated with what breaks
-without it). Everything else here — `vcpkg.json`, `build.gradle.template`, and
-`scripts/android-bootstrap-sysroot.sh` — has **never been run**, because
-UltraCanvas needs cairo, pango, glib, harfbuzz, fontconfig, freetype and
-tinyxml2 cross-compiled for `arm64-v8a`, and no such sysroot exists yet.
-Until one does, the native library cannot link and no APK can be produced.
+**Status: the sysroot builds; no APK has been built yet.** The manifest is
+complete and every attribute in it is load-bearing (each is annotated with
+what breaks without it). `vcpkg.json` and
+`scripts/android-bootstrap-sysroot.sh` cross-compile cairo, pango, glib,
+harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips for `arm64-v8a`:
+`.github/workflows/android-build.yml` runs them on every pull request that
+touches the Android build, and compiles the core library against the result.
+`build.gradle.template` has never been run, so no app has been linked against
+that library and no APK has been produced.
 
-## Building the sysroot (untested)
+## Building the sysroot
 
 `vcpkg.json` + `scripts/android-bootstrap-sysroot.sh` implement the route
 [`AndroidPortInvestigation.md` §4](../../../../Docs/UltraCanvas/AndroidPortInvestigation.md)
@@ -18,28 +20,36 @@ declarative dependency list fails in obvious ways (a port exists or it doesn't)
 rather than in subtle ones:
 
 ```sh
-export ANDROID_NDK_HOME=/path/to/android-ndk-r26
-export VCPKG_ROOT=/path/to/vcpkg          # bootstrapped
+export ANDROID_NDK_HOME=/path/to/android-ndk      # r25 or later
 scripts/android-bootstrap-sysroot.sh --with-net   # --with-net is optional
 ```
 
-It prints the exact `cmake` invocation to use afterwards, including the
-`PKG_CONFIG_LIBDIR` that stops pkg-config falling back to the host's
-`/usr/lib/pkgconfig` and silently linking desktop libraries into an Android
-build.
+Without `VCPKG_ROOT`, the script checks out vcpkg at the commit
+`scripts/macos-deps.sh` pins, so Android and macOS build the same library
+versions. libvips comes from the macOS overlay port
+(`vcpkg-configuration.json`), which adds the GIF and Netpbm loaders vcpkg's
+own port leaves out.
 
-**Expect to iterate.** The script's header lists the likely failure points in
-order: ports without arm64-android support (pango and cairo are the ones to
-watch), glib's cross-build (the investigation calls it "the heaviest pain point
-after GTK"), and pkg-config files with hardcoded host paths. None of those mean
-the approach is wrong; they mean it needs a run on a machine with an NDK.
+The sysroot goes to `~/.cache/ultracanvas/android-sysroot` unless
+`UC_ANDROID_SYSROOT` names another directory. It must be outside the source
+tree: the core library exports the sysroot's lib directory, and CMake refuses
+to export one from inside the source tree.
+
+The script prints the exact `cmake` invocation to use afterwards. It uses the
+NDK's toolchain file, and sets the `PKG_CONFIG_LIBDIR` that stops pkg-config
+falling back to the host's `/usr/lib/pkgconfig` and silently linking desktop
+libraries into an Android build.
+
+**What CI covers:** `arm64-v8a`, without `--with-net`. The other ABIs and the
+`net` feature (OpenSSL, c-ares, curl) have not been run yet. The likely
+failure there is a port that has no support for that triplet.
 
 ## What already works without packaging
 
 Everything in `OS/Android/` is compiled in CI against the real NDK
 (`scripts/android-syntax-check.sh`), and the Java against `android.jar`
 (`scripts/android-java-check.sh`). So the code is type-checked continuously —
-but **none of it has run on a device**, and it cannot until the sysroot exists.
+but **none of it has run on a device**, and it cannot until an APK is built.
 Treat every runtime behaviour described in the backend README as designed and
 reviewed, not as observed.
 
@@ -76,8 +86,7 @@ at runtime goes in `src/main/assets/`, and the backend unpacks it to
 Android arm points, so path-based loading keeps working unchanged.
 
 Keep `assets/` small: everything there is copied into the app's private storage
-on first launch, so it costs install size **and** disk. This is another reason
-the Android build defaults libvips off.
+on first launch, so it costs install size **and** disk.
 
 ## Signing
 

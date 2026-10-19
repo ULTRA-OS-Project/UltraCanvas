@@ -1,8 +1,15 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
-// Version: 0.1.0
+// Version: 0.1.7 - an installed MSYS2 is updated before pacman installs
+// Version: 0.1.6 - Windows without MSYS2: winget sets it up before pacman installs
+// Version: 0.1.5 - a check switched off on the Tools step is not installed
+// Version: 0.1.4 - the SDK step names the download page and the Unpack button
+// Version: 0.1.3 - the steps, not the pages, in the plan's wording
+// Version: 0.1.2 - the plan and the report name the chosen assistant
+// Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartPlan.h"
 
+#include "StartGuide.h"
 #include "StartPackages.h"
 #include "StartProject.h"
 #include "StartSdk.h"
@@ -27,32 +34,33 @@ PackageManager DefaultManagerFor(Platform platform) {
 } // namespace
 
 std::vector<std::string> PlatformNotes(const SystemProfile& profile, Platform target) {
+    // One action or one fact per note, in Markdown: commands in backticks,
+    // addresses bare (the pages link them, the report prints them plain).
     std::vector<std::string> notes;
     const bool local = target == profile.platform;
     switch (target) {
         case Platform::MacOS:
-            notes.push_back("Install the Xcode command line tools first: xcode-select --install");
+            notes.push_back("Install the Xcode command line tools first: `xcode-select --install`");
             if (!local || profile.packageManagerPath.empty()) {
-                notes.push_back("Homebrew installs the libraries: https://brew.sh (one command in Terminal)");
+                notes.push_back("Homebrew installs the libraries: one command in Terminal from https://brew.sh");
             }
-            notes.push_back("Build with cmake -G Xcode or the default generator; package with package-macos.sh");
+            notes.push_back("Build with `cmake -G Xcode` or the default generator");
+            notes.push_back("Package with `package-macos.sh`");
             break;
         case Platform::Windows:
-            notes.push_back("The build runs inside MSYS2 (https://www.msys2.org), in the CLANG64 shell "
-                            "(CLANGARM64 on an ARM machine), not in Visual Studio");
+            notes.push_back("The build runs inside MSYS2, in the **CLANG64** shell (**CLANGARM64** on an ARM machine), not in Visual Studio");
             if (local && profile.msysPrefix.empty()) {
-                notes.push_back("MSYS2 was not found; install it to C:\\msys64, open the CLANG64 shell, "
-                                "run pacman -Syu and start UltraCanvasStart again");
+                notes.push_back("MSYS2 was not found: the Tools step's Install sets it up with `winget install MSYS2.MSYS2`, "
+                                "or install it yourself from https://www.msys2.org to `C:\\msys64`");
             }
-            notes.push_back("build-win.cmd at the repository root configures and builds; "
-                            "package-win.sh makes the standalone zip");
+            notes.push_back("`build-win.cmd` at the repository root configures and builds");
+            notes.push_back("`package-win.sh` makes the standalone zip");
             break;
         case Platform::Linux:
             if (local && profile.packageManager == PackageManager::None) {
-                notes.push_back("No apt, dnf, pacman or zypper was found; install the packages "
-                                "named below with your distribution's tool");
+                notes.push_back("No apt, dnf, pacman or zypper was found: install the packages named below with your distribution's tool");
             }
-            notes.push_back("A C++20 compiler: clang 14+ or GCC 11+. CI builds with clang.");
+            notes.push_back("A C++20 compiler: `clang` 14 or newer, or `gcc` 11 or newer (CI builds with clang)");
             break;
         default:
             break;
@@ -81,7 +89,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         // Only what the checks say is missing, plus the ones that cannot be
         // checked (the manager skips installed ones anyway).
         for (const auto& check : checks) {
-            if (check.packageName.empty()) continue;
+            if (check.packageName.empty() || choices.Skips(check.dependencyId)) continue;
             const bool wanted = !check.checked || !check.present || !check.versionOk;
             if (wanted && std::find(packages.begin(), packages.end(), check.packageName) == packages.end()) {
                 packages.push_back(check.packageName);
@@ -94,9 +102,18 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
             for (auto& p : packages) p = Msys2PackageForArchitecture(p, arch);
         }
     }
+    // Windows without MSYS2: set it up first, then its pacman at the place
+    // winget puts it.
+    const bool setUpMsys2 = local && target == Platform::Windows && profile.msysPrefix.empty() && !packages.empty();
+    if (setUpMsys2) {
+        for (auto& step : Msys2SetupSteps(kMsys2DefaultRoot)) plan.steps.push_back(std::move(step));
+    } else if (local && target == Platform::Windows && !packages.empty()) {
+        for (auto& step : Msys2UpdateSteps(profile.msysPrefix)) plan.steps.push_back(std::move(step));
+    }
     if (!packages.empty()) {
         std::string program;
         if (local) program = profile.packageManagerPath;
+        if (setUpMsys2) program = std::string(kMsys2DefaultRoot) + "/usr/bin/pacman.exe";
         PlanStep install = InstallStep(manager, packages, program);
         if (manager == PackageManager::Msys2Pacman) {
             install.description += " (run in the MSYS2 CLANG64 shell)";
@@ -112,8 +129,9 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.kind = StepKind::Download;
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
-                               ": download the artifact from " + SdkDownloadPage() +
-                               " (or the release asset of the same name) and unpack it next to the project";
+                               ": download " + SdkArchiveName(target, version, arch) + " from " +
+                               SdkDownloadPage() + " (also on " + SdkReleasePage(version) +
+                               "), then the Framework step's Unpack button unpacks it";
         plan.steps.push_back(download);
     }
     if (choices.cloneFramework || !choices.useSdk) {
@@ -128,7 +146,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         scaffold.kind = StepKind::Scaffold;
         scaffold.title = "Create the " + IdentifierFrom(choices.appName) + " project";
         scaffold.description = "CMakeLists.txt, main.cpp, CMakePresets.json, README.md" +
-                               std::string(choices.useAi ? " and CLAUDE.md" : "") + " in " +
+                               std::string(choices.useAi ? " and " + AssistantInstructionFile(choices.assistant) : "") + " in " +
                                (choices.projectFolder.empty() ? std::string("the chosen folder")
                                                               : choices.projectFolder);
         plan.steps.push_back(scaffold);
@@ -138,12 +156,15 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
     if (choices.useAi) {
         PlanStep ai;
         ai.kind = StepKind::Manual;
-        ai.title = choices.cloudOnly ? "Connect Claude Code to the repository on GitHub"
-                                     : "Install Claude Code and open the project with it";
+        const std::string name = AssistantName(choices.assistant);
+        ai.title = choices.cloudOnly ? "Connect " + name + " to the repository on GitHub"
+                                     : (choices.assistant == Assistant::Other
+                                            ? "Point the assistant at the project"
+                                            : "Install " + name + " and open the project with it");
         ai.description = choices.cloudOnly
             ? "No compiler here: GitHub Actions builds. Follow Docs/GettingStarted-Cloud.md; "
-              "the AI page has the checklist."
-            : "The AI page has the install command and the first prompt to give it.";
+              "the Features step has the checklist."
+            : "The Features step has the install command; the Done page has the first prompt to give it.";
         plan.steps.push_back(ai);
     }
     return plan;
@@ -186,7 +207,9 @@ std::string RenderReport(const Plan& plan) {
     out += "\n";
     out += std::string("  Framework: ") + (plan.choices.useSdk ? "prebuilt SDK" : "built from source") +
            (plan.choices.cloneFramework ? ", repository cloned" : "") + "\n";
-    out += std::string("  AI assistant: ") + (plan.choices.useAi ? (plan.choices.cloudOnly ? "Claude Code via GitHub, no local compiler" : "Claude Code locally") : "no") + "\n";
+    out += std::string("  AI assistant: ") + (plan.choices.useAi
+               ? AssistantName(plan.choices.assistant) + (plan.choices.cloudOnly ? " via GitHub, no local compiler" : " locally")
+               : "no") + "\n";
     out += "  Application: " + plan.choices.appName +
            (plan.choices.projectFolder.empty() ? "" : " in " + plan.choices.projectFolder) + "\n\n";
 
@@ -201,7 +224,10 @@ std::string RenderReport(const Plan& plan) {
                 std::string line = std::string("    [") + mark + "] " + c->title;
                 if (!c->version.empty()) line += "  " + c->version;
                 if (!c->present || !c->versionOk || !c->checked) line += "  (" + c->detail + ")";
-                if (!c->packageName.empty() && (!c->present || !c->versionOk)) line += "  -> " + c->packageName;
+                if (!c->packageName.empty() && (!c->present || !c->versionOk || !c->checked)) {
+                    line += plan.choices.Skips(c->dependencyId) ? "  (switched off, not installed)"
+                                                                : "  -> " + c->packageName;
+                }
                 out += line + "\n";
             }
         }
@@ -217,7 +243,7 @@ std::string RenderReport(const Plan& plan) {
     }
     if (!plan.notes.empty()) {
         out += "\nNotes\n";
-        for (const auto& note : plan.notes) out += "  * " + note + "\n";
+        for (const auto& note : plan.notes) out += "  * " + PlainText(note) + "\n";
     }
     return out;
 }

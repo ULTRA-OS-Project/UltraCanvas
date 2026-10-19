@@ -6,8 +6,11 @@
 // generic thumbnail fallback for a plugin that supplied only a decoder.
 // Uses a synthetic in-process codec, so it needs no media assets and no
 // platform video backend. Exits non-zero on any failure.
-// Version: 1.0.0
-// Last Modified: 2026-09-07
+// Also: the platform backend starts and stops at once, many times over,
+// without hanging - its stop used to be lost when it came before the backend's
+// event loop had begun to run, and the process then hung at exit.
+// Version: 1.1.0 - the backend's start / stop race (TestBackendStopsRightAfterStart)
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/libspecific/Video/VideoCodecPlugin.h"
@@ -18,8 +21,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include "UltraCanvasPathUtf8.h"
@@ -295,6 +301,46 @@ void TestUnregisterDropsDecodingButNotRecognition() {
     std::remove(path.c_str());
 }
 
+void TestBackendStopsRightAfterStart() {
+    std::printf("The platform backend, started and stopped at once\n");
+    // The GStreamer backend runs an event loop on a thread of its own. A stop
+    // that came before that loop had begun to run was lost, the loop then ran
+    // for ever and the stop waited for it: the process hung, typically at exit
+    // (a static destructor stops the backend), more often the busier the
+    // machine. Starting and stopping back to back hits that window almost
+    // every time. A watchdog fails the test instead of letting it hang.
+    IVideoBackend* backend = GetVideoBackend();
+    Check(backend != nullptr, "there is a video backend");
+    if (!backend) return;
+
+    std::mutex m;
+    std::condition_variable cv;
+    bool finished = false;
+    std::thread watchdog([&] {
+        std::unique_lock<std::mutex> lock(m);
+        if (!cv.wait_for(lock, std::chrono::seconds(30), [&] { return finished; })) {
+            std::printf("  FAIL the backend did not stop within 30 s of a start\n");
+            std::fflush(stdout);
+            std::_Exit(1);
+        }
+    });
+
+    constexpr int kRounds = 200;
+    int started = 0;
+    for (int i = 0; i < kRounds; ++i) {
+        if (backend->Initialize()) ++started;
+        backend->Shutdown();
+    }
+    {
+        std::lock_guard<std::mutex> lock(m);
+        finished = true;
+    }
+    cv.notify_one();
+    watchdog.join();
+    Check(true, std::to_string(kRounds) + " starts and stops, none hung (" + backend->GetName() +
+                    (started ? "" : ", which never started here") + ")");
+}
+
 } // namespace
 
 int main() {
@@ -306,6 +352,7 @@ int main() {
     TestThumbnailFallsBackToTheDecoder();
     TestDedicatedThumbnailGrabberWins();
     TestUnregisterDropsDecodingButNotRecognition();
+    TestBackendStopsRightAfterStart();
 
     if (failures == 0) {
         std::printf("=== all checks passed ===\n");

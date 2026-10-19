@@ -1929,7 +1929,7 @@ namespace UltraCanvas {
             };
 
             auto sep = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_sep", 0, 0, 10, 10);
-            sep->SetText("\xE2\x86\x92"); // → (UTF-8)
+            sep->SetText("\xE2\x80\x93"); // – (en dash; the bundled UI font has no "→")
             sep->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             sep->SetTextColor(Color(120, 120, 120, 255));
             sepLabel = sep;

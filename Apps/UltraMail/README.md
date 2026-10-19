@@ -36,7 +36,12 @@ and **UltraDatabase** (local store) modules.
 > the exception: right after boot that is the network not being up yet, so it
 > is retried every minute and reported
 > only once the account has stayed unreachable for ten minutes
-> (`OfflineGrace` in `UltraMailSyncScheduler.h`). A **connection pill** at
+> (`OfflineGrace` in `UltraMailSyncScheduler.h`). And when UltraMail starts,
+> or the computer wakes, more than ten minutes after it last reached a mail
+> server (remembered in `last-connected` in the data folder), the computer was
+> most likely switched off: for two minutes (*Settings > Mail > Connection*) no
+> failure of a background check raises an alert, whatever its reason, and the
+> accounts held back are checked again afterwards (`SwitchOnQuiet`). A **connection pill** at
 > the right end of the status line shows the selected account's last contact
 > with its server (Not checked / Checking… / Connected / Offline / Failed);
 > its tooltip has the server, the times and the reason.
@@ -44,7 +49,9 @@ and **UltraDatabase** (local store) modules.
 > service's icon for a known sender, otherwise the sender's initial, framed in
 > the colour of the verdict (contact / business contact / new / advertisement /
 > spam / scam) — and each downloaded body is **scanned for phishing markers**
-> once, where it is cached, with the verdict kept in the local store. See
+> and for the patterns of known scams (romance scams, advance-fee letters,
+> cryptocurrency scams) once, where it is cached, with the verdict kept in the
+> local store; any mail about cryptocurrency gets a word of caution. See
 > [`Docs/UltraMail/SenderBadges.md`](../../Docs/UltraMail/SenderBadges.md).
 > HTML message bodies are **rendered natively** in the preview through the
 > HTMLReader element builder over the UltraCanvas **CSSLayout** engine (block +
@@ -75,12 +82,16 @@ Apps/UltraMail/
                                   .eml body cache, two-sided flag changes;
                                   RefreshFolder also reconciles with the
                                   server's list and fetches what an earlier
-                                  sync missed (by UID, blank rows, bodies)
+                                  sync missed (by UID, blank rows, bodies);
+                                  CreateFolder / DeleteFolder (IMAP CREATE /
+                                  DELETE, then the folder list again)
     UltraMailMessageSort.{h,cpp}  the message list's order (sender, kind of
                                   sender, subject without Re:/Fwd:, date)
     UltraMailFolderNames.{h,cpp}  how a folder name reads: its levels by the
                                   server's separator ("INBOX.Drafts" -> Drafts),
-                                  decoded from modified UTF-7
+                                  decoded from modified UTF-7; NewFolderName
+                                  (a typed name placed and encoded, or why
+                                  not) and CanDeleteFolder
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
                                   Mozilla-autoconfig XML (over UltraNet HTTP);
                                   ForAccount (stored settings, else presets)
@@ -89,8 +100,9 @@ Apps/UltraMail/
                                   framework's UltraVault::DeviceKeyVault with
                                   UltraMail's profile (ultramail.vault,
                                   device.key, keys mail.ultramail.<account>)
-    UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail): provider table, app
-                                  registration (env / oauth.ini), sign-in +
+    UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail, Outlook, Yahoo): provider
+                                  table, the sign-in service, app registration
+                                  (env / oauth.ini), sign-in +
                                   token refresh, credentials for IMAP/SMTP
     UltraMailComposer.{h,cpp}     Draft model + Reply/Forward/New builders
                                   (Re:/Fwd:, quoting, threading headers)
@@ -113,9 +125,25 @@ Apps/UltraMail/
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
                                   the SyncEngine, sync + background-thread variants
     UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now);
-                                  OfflineGrace holds back a not-yet-online failure
+                                  OfflineGrace holds back a not-yet-online failure;
+                                  SwitchOnQuiet holds back every failure alert for
+                                  a while after the computer was switched on
     UltraMailContactCollector.{h,cpp} auto-add mail senders/recipients to the
                                   address book (Other section) if new
+    UltraMailFeedPublisher.{h,cpp} UltraMail on UltraMessage: new mail to the
+                                  desktop feed (mail.message), and Notify - the
+                                  new-mail notification on screen, its click
+    UltraMailNewMail.{h,cpp}      which stored mail is news (above the inbox's
+                                  highest UID before the sync) and the
+                                  notification's words
+    UltraMailResultText.{h,cpp}   a failed network operation in words: the alert's
+                                  sentence per result code, naming what was talked
+                                  to (the mail server unless the caller says), and
+                                  the details line (FriendlyMessage, DetailLine)
+    UltraMailOneTimeCode.{h,cpp}  the one-time codes in a message (a sign-in
+                                  code), in any language: by their shape, and
+                                  the word for "code" beside them or in the
+                                  subject; the reading pane's copy buttons
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up;
                                   shows the start page or the account view
@@ -124,17 +152,24 @@ Apps/UltraMail/
                                   account" button, nothing else (no account yet)
     UltraMailAccountBar.{h,cpp}   one account: summary strip (provider initial ·
                                   name · New today / Unread / Waiting for reply
-                                  badges); several: a clickable tile per account
+                                  badges); several: a clickable tile per account,
+                                  dragged sideways into another order (the
+                                  tiles are an UltraCanvasToolbar's items)
     UltraMailMailView.{h,cpp}     split pane: "Inbox" group box with the message
                                   list (From · sender badge · Subject · Date,
                                   sorted by the header clicked) | "Message"
-                                  group box with the preview
+                                  group box with the preview; the folder
+                                  tree's right-click menu (Add folder…,
+                                  Delete folder…)
     UltraMailMessagePreview.{h,cpp} message details: headers, Reply, body (HTML via
                                   HTMLReader/CSSLayout, text in a read-only area),
-                                  attachment strip
+                                  attachment strip; the text selectable and
+                                  copyable (header and body, right-click Copy /
+                                  Select All), a copy button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
-    UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
-                                  (Open / Save As…) opens content in UltraCanvasMediaViewer
+    UltraMailAttachmentStrip.{h,cpp} attachment chips (paperclip, name, size); a click
+                                  opens the Open / Save As… menu, a double-click
+                                  opens content in UltraCanvasMediaViewer
     UltraMailOutboxView.{h,cpp}   the Outbox window (toolbar "Outbox (N)"): the
                                   waiting messages (To · Subject · From · Tries
                                   · Status) with Send now, Edit… and Delete
@@ -157,9 +192,11 @@ Apps/UltraMail/
                                   HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
-                                  UltraFiler): Mail > New mail, Reading >
+                                  UltraFiler): Mail > New mail / Connection,
+                                  Reading >
                                   Layout / Messages, Privacy > Images /
-                                  Sender icons
+                                  Sender icons, Display > Links /
+                                  Notifications / Treeview
     UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
@@ -176,6 +213,13 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   every few seconds and the scheduler starts the accounts that are due, so a
   new choice applies at once; an account still syncing from the last check is
   not synced a second time beside it.
+- *Mail > Connection* — how long alerts about failed mail checks wait after the
+  computer was switched on: not at all, 30 seconds, 1, 2 (the default), 3, 5 or
+  10 minutes. It applies when UltraMail starts, or the computer wakes, and its
+  last connection to a mail server is more than ten minutes old; a failed
+  background check then shows on the status line and in the connection pill
+  only, and the account is checked again when the time is up. Update always
+  reports at once.
 - *Reading > Layout* — a message opens beside the list or in its place.
 - *Reading > Messages* — HTML mail formatted or as plain text (nothing
   fetched); the message text size (11 / 12 / 14 / 16 px).
@@ -189,13 +233,36 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   and whether other senders get their website's icon (the home page of the
   domain they write from is read for its icon, only for mail that passed the
   scam check). Icons are fetched in the background for the rows on screen.
+- *Display > Notifications* — whether new mail puts a notification on the
+  screen (on by default).
+- *Display > Treeview* — what the folder tree lists: **Show current email
+  account** (the account chosen in the account bar; a click on another tile
+  shows that one's folders) or **Show all email accounts** (the default),
+  one below the other in the account bar's order.
 
 An account's servers and sign-in stay in its own *Account Settings*.
 
+**Folders and accounts:** a right-click on a row of the folder tree offers
+*Add folder…* and *Delete folder…*. On a folder, *Add folder…* makes one
+inside it; on the account row or its inbox, at the top of the account - below
+`INBOX` on a server that keeps every folder there (Courier-style
+`INBOX.Drafts`). The name may hold any letter (it goes to the server in
+IMAP's modified UTF-7) but not the server's separator, `*`, `%` or a control
+character, and not the name of a folder already there. *Delete folder…* asks
+first, then removes the folder and all the mail in it from the server; it is
+greyed, with the reason, for the inbox, a folder with a role (Sent, Drafts,
+Trash, Junk, Archive) and a folder with folders inside it. With several
+accounts, a tile of the account bar dragged sideways takes another place;
+the order is kept (`account_order` in `preferences.ini`) and the folder tree
+follows it.
+
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one
-chip per part. Double-clicking a chip — or the right-click **Open** — writes
-the bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
+chip per part: the paperclip, the file name and its size. A click on a chip
+opens its menu (**Open**, **Save As…**) under the chip - above it at the foot
+of the window - and a second click closes it again; a right-click opens the
+same menu at the pointer. Double-clicking a chip — or **Open** — writes the
+bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
 PDF, text, audio/video, …). Try it: run with `ULTRAMAIL_DEMO_MAIL=1`, which
 seeds a demo inbox (two messages dated today, one with an attachment) so the
 whole main window can be exercised without a live sync.
@@ -224,6 +291,9 @@ under the body show what is attached). "Attach cloud link…" goes through the
 account (the default is preselected), browse it or upload the file into the
 current folder, and the share link lands in the body. Run with
 `ULTRAMAIL_DEMO_CLOUD=1` for a demo account with files and an open composer.
+An upload keeps running when the compose window closes; closing UltraMail's
+last window while one runs asks *An upload is still running — quit anyway?*
+first, since quitting stops it.
 
 **Account setup:** the wizard collects name / email / password; on submit,
 `AutoDiscovery` resolves the incoming (IMAP) and outgoing (SMTP) servers from
@@ -241,61 +311,104 @@ are unknown. The password (or OAuth token set) is stored in the
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
 
-**OAuth2 sign-in (Gmail, Outlook / Microsoft 365):** Google and Microsoft
-reject the account password over IMAP and SMTP, so those accounts sign in
-through the browser instead: leave the password empty in the wizard and
-UltraMail opens the provider's consent page (OAuth2 authorization code + PKCE
-through UltraNet's OAuth2 client, the redirect caught on an ephemeral loopback
-port, the typed address passed as `login_hint`). The tokens land in the vault;
-every IMAP/SMTP session then uses XOAUTH2 with a fresh bearer token, refreshed
-through the provider when the previous one expired. A typed password still
-works the classic way (an *app password*).
+**OAuth2 sign-in (Gmail, Outlook / Microsoft 365, Yahoo):** Google and
+Microsoft reject the account password over IMAP and SMTP, so those accounts
+sign in through the browser instead: leave the password empty in the wizard
+and UltraMail opens the provider's consent page (OAuth2 authorization code +
+PKCE, the typed address passed as `login_hint`). The tokens land in the
+vault; every IMAP/SMTP session then uses XOAUTH2 with a fresh bearer token,
+refreshed through the provider when the previous one expired. A typed
+password still works the classic way where the provider takes one (an *app
+password*, Yahoo and iCloud).
 
-The sign-in runs as an OAuth *client* that the provider must know. Register one
-per provider once and give it to UltraMail through `oauth.ini` in the data
-folder (`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on
-Windows):
+The sign-in runs through the **ULTRA OS sign-in service** at
+`https://oauth-callback.ultraos.eu`
+([`Server/OAuthCallback`](../../Server/OAuthCallback/README.md), a FastAPI
+application): the service holds the OAuth client registrations and their
+secrets, so UltraMail ships none, and it is the public https address the
+providers redirect the browser to - which Yahoo insists on, so Yahoo
+redirects like everyone else instead of showing a code to paste. UltraMail
+asks the service to start a sign-in (sending only the PKCE challenge), opens
+the consent URL it answers with, collects the authorization code from it
+once the provider has redirected there, and exchanges the code - and later
+refreshes the token - through the service, which adds the registration. The
+PKCE verifier never leaves UltraMail (`UltraNet/UltraNetOAuth2Service.h` is
+the client side). The service's address is built into UltraNet
+(`ULTRANET_OAUTH_SERVICE_URL` in `UltraCanvas/CMakeLists.txt`, one setting
+for the process that the composer's Google Drive, OneDrive and Dropbox
+sign-ins read too) and overridden by `ULTRAMAIL_OAUTH_SERVICE_URL` in the
+environment or `[service] url =` in `oauth.ini` in the data folder
+(`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on Windows,
+`~/Library/Application Support/UltraMail/` on macOS); `off` turns it off.
 
-```ini
-[google]
-client_id     = 1234567890-abc.apps.googleusercontent.com
-client_secret = GOCSPX-…
+An installation can still sign in to a provider **directly**, with an OAuth
+client of its own, which bypasses the service for that provider: `[google]`
+/ `[microsoft]` / `[yahoo]` sections with `client_id` (and `client_secret`)
+in `oauth.ini`, or `ULTRAMAIL_<PROVIDER>_CLIENT_ID` / `_CLIENT_SECRET` in the
+environment (an optional `…_REDIRECT_URI` overrides the provider's loopback
+default), or `OAuthApps::Set("google", app)` in code. The redirect is then
+caught on an ephemeral loopback port (Google `http://127.0.0.1:<port>/callback`,
+Microsoft `http://127.0.0.1:<port>/`), and Yahoo - which forces https
+redirects - takes the out-of-band route with a code the user pastes in.
+`OAuthApps` is UltraMail's profile of UltraNet's process-wide OAuth2 app
+registry (`UltraNetOAuth2Apps.h`) — the `ULTRAMAIL_` prefix and the
+`oauth.ini` in the data folder — so the same registration serves UltraCloud's
+Google Drive and OneDrive sign-ins in the composer's cloud picker. When
+neither the service nor a client is configured the wizard says so and asks
+for an app password instead. The provider registrations, for the service
+and for a client of your own, are described in
+[`Docs/UltraMail/AccountSetup.md`](../../Docs/UltraMail/AccountSetup.md),
+section 3.
 
-[microsoft]
-client_id     = 00000000-1111-2222-3333-444444444444
+## Timing trace: where the start and an account switch spend their time
+
+UltraMail writes what it is doing, step by step and with its times, to
+`trace.log` in the data folder (`%APPDATA%\UltraMail\trace.log` on Windows,
+`~/.local/share/UltraMail/trace.log` on Linux,
+`~/Library/Application Support/UltraMail/trace.log` on macOS), which is emptied at each
+start, and to the console it was started from. Windows Release builds open no
+console window of their own; started from a command prompt they write into
+it, and Debug builds keep their console window. Every line carries the time of day, the seconds since the
+process started and the thread (`ui`, or `w<n>` for a worker):
+
+```
+[UltraMail 17:46:02.118 +   0.412 s ui] UltraMail 0.10.35 starting; the process started 412 ms before main() ...
+[UltraMail 17:46:02.118 +   0.412 s ui] > Startup: framework initialisation (fonts, images, windowing)
+[UltraMail 17:46:11.630 +   9.924 s ui] < Startup: framework initialisation (fonts, images, windowing): 9.51 s
+[UltraMail 17:46:11.630 +   9.924 s ui]   framework step bundled and system fonts: 9.38 s
+...
+[UltraMail 17:46:12.940 +  11.234 s ui] Frame 1 of the main window: 310 ms (layout 120 ms, painting 180 ms in 1 area(s), compositing 10 ms) - on screen 11.23 s after the process started
+...
+[UltraMail 17:47:30.004 +  88.298 s ui] > Switch to account work
+[UltraMail 17:47:30.006 +  88.300 s ui]   < Status line: 0.1 ms
+...
+[UltraMail 17:47:40.004 +  98.298 s w2] ! UI thread blocked 1.00 s so far, in: Refresh > Read the address book (sender badges)
 ```
 
-or through the environment: `ULTRAMAIL_GOOGLE_CLIENT_ID` /
-`ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID` (an optional
-`…_REDIRECT_URI` overrides the provider's default). In code:
-`OAuthApps::Set("google", app)`. Until a client is configured the wizard says
-so and asks for an app password instead. `OAuthApps` is UltraMail's profile
-of UltraNet's process-wide OAuth2 app registry (`UltraNetOAuth2Apps.h`) — the
-`ULTRAMAIL_` prefix, the `oauth.ini` in the data folder and the baked-in
-client — so the same registration serves UltraCloud's Google Drive and
-OneDrive sign-ins in the composer's cloud picker.
+- **The start:** the time before `main()` (loading the program and its
+  libraries), the framework's initialisation with each of its steps (fonts,
+  images, the windowing backend, the clipboard), whether Windows' system
+  fonts were ready or are still being scanned in the background (and when
+  they arrive), opening the mailbox,
+  building and filling the window with the list and the selected message,
+  the first frames with their layout and painting times, each timed from the
+  start of the process - and then what follows once the window is on screen
+  ("After the window is on screen": the mail plug-ins, the vault, the cloud
+  accounts, the cache pruning, the first check).
+- **An account switch:** each step of the click on a tile (the folder tree,
+  each query of the store, the rows, the list, the reading pane's message),
+  the next frames timed from the click, and the inbox update from the server -
+  on its worker (sign-in, the fetch, what it brought) and back on the UI
+  thread.
+- **The mail checks:** one block per check on its worker; the work it causes
+  on the UI thread only when that took 50 ms or more.
+- **The watchdog** asks the UI thread to answer four times a second. When it
+  does not, a `!` line says for how long, and in which of the steps above the
+  UI thread is - or that it is in none, which is the framework's own work: an
+  event, a timer, layout or painting. Every slow frame (100 ms or more) is
+  reported too.
 
-*Google:* in the [Google Cloud console](https://console.cloud.google.com/)
-create a project, open *APIs & Services → OAuth consent screen* and configure
-it (External; add your own address under *Test users* while the app is in
-testing mode — the `https://mail.google.com/` scope is restricted, so an
-unverified app only serves its test users). Then *Credentials → Create
-credentials → OAuth client ID*, application type **Desktop app**; note the
-client id and secret. The redirect is `http://127.0.0.1:<port>/callback`
-(desktop clients accept any loopback port).
-
-*Microsoft:* in the [Microsoft Entra admin
-center](https://entra.microsoft.com/) open *App registrations → New
-registration*; supported account types **Accounts in any organizational
-directory and personal Microsoft accounts** (for outlook.com / hotmail.com as
-well as Microsoft 365). Under *Authentication* add the platform **Mobile and
-desktop applications** with the redirect URI `http://127.0.0.1` and enable
-**Allow public client flows**; no secret is needed. Under *API permissions*
-add the delegated *Office 365 Exchange Online* permissions
-`IMAP.AccessAsUser.All` and `SMTP.Send` (plus `offline_access`). Note the
-*Application (client) ID*. The redirect is `http://127.0.0.1:<port>/` —
-Microsoft ignores the port of a loopback URI. For a Microsoft 365 tenant the
-admin must leave IMAP and *Authenticated SMTP* enabled for the mailbox.
+`ULTRAMAIL_TRACE=0` turns it off.
 
 ## What the engine provides now
 

@@ -60,6 +60,10 @@ if(VIRTUALFS_USE_LIBARCHIVE)
     if(LIBARCHIVE_FOUND)
         message(STATUS "Found libarchive: ${LIBARCHIVE_LIBRARIES}")
         list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_LIBARCHIVE)
+    elseif(EMSCRIPTEN)
+        # Never in the wasm sysroot (UltraCanvas/OS/WASM/build-wasm-sysroot.sh
+        # does not build it), so this is the expected state, not a warning.
+        message(STATUS "libarchive: not in the wasm sysroot - multi-format support disabled")
     else()
         message(WARNING "libarchive not found - multi-format support disabled")
     endif()
@@ -174,6 +178,12 @@ if(LIBARCHIVE_FOUND AND EXISTS "${VIRTUALFS_MINIZ_DIR}/miniz.c")
     enable_language(C)
     message(STATUS "Found miniz: ${VIRTUALFS_MINIZ_DIR} (ZIP delete fast path enabled)")
     list(APPEND VIRTUALFS_SOURCES "${VIRTUALFS_MINIZ_DIR}/miniz.c")
+    # glibc's 64-bit file calls for miniz, as UltraCanvas/CMakeLists.txt
+    # explains: without them it warns (#pragma message) on every Linux build.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set_property(SOURCE "${VIRTUALFS_MINIZ_DIR}/miniz.c"
+                     APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+    endif()
     list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_MINIZ)
     set(VIRTUALFS_MINIZ_FOUND TRUE)
 endif()

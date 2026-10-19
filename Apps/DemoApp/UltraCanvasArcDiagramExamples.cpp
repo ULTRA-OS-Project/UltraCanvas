@@ -213,7 +213,7 @@ namespace UltraCanvas {
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
             std::ostringstream ss;
-            ss << e.sourceId << " → " << e.targetId << "  weight: " << e.weight;
+            ss << e.sourceId << " -> " << e.targetId << "  weight: " << e.weight;
             statusLabel->SetText(ss.str());
         };
 
@@ -315,7 +315,7 @@ namespace UltraCanvas {
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
             std::ostringstream ss;
-            ss << e.sourceId << " → " << e.targetId << "  flow: " << static_cast<int>(e.weight);
+            ss << e.sourceId << " -> " << e.targetId << "  flow: " << static_cast<int>(e.weight);
             statusLabel->SetText(ss.str());
         };
 
@@ -419,7 +419,7 @@ namespace UltraCanvas {
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
             std::string side = (e.side == ArcEdgeType::Above) ? "known" : "novel";
-            statusLabel->SetText(e.sourceId + " ↔ " + e.targetId + "  (" + side + " base pair)");
+            statusLabel->SetText(e.sourceId + " - " + e.targetId + "  (" + side + " base pair)");
         };
 
         tab->AddChild(diagram);
@@ -454,7 +454,9 @@ namespace UltraCanvas {
                                                  .value = CSSLayout::Dimension::Px(44)},  // subtitle (room for 2 lines)
                         CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
                                                  .value = CSSLayout::Dimension::Fr(1)}})   // tabs fill
-                .SetGridGap(6);
+                .SetGridGap(6)
+                .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
         auto title = std::make_shared<UltraCanvasLabel>("ArcTitle");
         title->SetText("Arc Diagram");

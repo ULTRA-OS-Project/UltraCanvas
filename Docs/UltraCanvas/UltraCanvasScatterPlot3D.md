@@ -1,5 +1,7 @@
 # UltraCanvasScatterPlot3D Documentation
 
+<!-- doc-check: double SampleParameter(int i); double Noise(); bool IsOutlier(int i); -->
+
 ## Overview
 
 `UltraCanvasScatterPlot3DElement` renders an (x, y, z) point cloud inside a

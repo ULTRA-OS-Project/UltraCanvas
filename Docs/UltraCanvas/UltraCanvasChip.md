@@ -1,5 +1,19 @@
 # UltraCanvas Chip & Tag Input Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [UltraCanvasChip](#ultracanvaschip)
+  - [Features](#features)
+  - [Quick Start](#quick-start)
+  - [Key API](#key-api)
+- [UltraCanvasTagInput](#ultracanvastaginput)
+  - [Features](#features-1)
+  - [Quick Start](#quick-start-1)
+  - [Key API](#key-api-1)
+  - [Keyboard](#keyboard)
+- [Notes](#notes)
+
 ## Overview
 
 `UltraCanvasChip.h` provides two related controls:
@@ -75,7 +89,12 @@ size it yourself).
 ### Features
 - ✅ Add tags by typing + **Enter** or **comma**
 - ✅ Remove via each chip's **×**, or **Backspace** on the empty field
-- ✅ Chips **wrap across multiple rows**; the field **auto-grows** its height
+- ✅ Chips **wrap across multiple rows**; the field **auto-grows** its height,
+  in a flex layout too (the growth sets its `size.height` and re-runs the
+  layout, so the `CreateTagInput` height is only where it starts)
+- ✅ Made **without a height** (`CreateTagInput(id, x, y, w)`), the field starts
+  as tall as one row of chips (`OneRowHeight()`: chip height plus the padding
+  above and below, 40 px by default), so it does not jump on its first frame
 - ✅ **Max-tag** limit and optional **no-duplicates**
 - ✅ Custom **validator** to accept/reject candidate tags
 - ✅ Placeholder text; `onTagsChanged` / `onTagAdded` / `onTagRemoved`
@@ -104,7 +123,8 @@ bool HasTag(const std::string&) const;
 void SetPlaceholder(const std::string&);
 void SetAllowDuplicates(bool);
 void SetMaxTags(int);                   // 0 = unlimited
-void SetAutoHeight(bool);               // grow to fit rows (default true)
+void SetAutoHeight(bool);               // grow to fit rows, in a layout too (default true)
+float OneRowHeight() const;             // the height with one row of chips (the default)
 const std::string& GetInputText() const;
 
 std::function<void(const std::vector<std::string>&)> onTagsChanged;

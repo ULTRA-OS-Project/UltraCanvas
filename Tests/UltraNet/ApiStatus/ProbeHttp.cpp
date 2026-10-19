@@ -464,15 +464,8 @@ ULTRANET_PROBE_NAMED(kArea, "UltraNetHttpOptions::maxReceiveSize", maxReceiveSiz
 }
 
 ULTRANET_PROBE_NAMED(kArea, "UltraNetHttpOptions::outputFilePath", outputFilePath) {
-    // The field is declared on UltraNetHttpOptions, but the sync/async request
-    // paths never read it: only UltraNet_HttpDownloadFile writes to disk, and
-    // it takes its own localPath argument.
     LoopbackServer& server = Loopback();
-    if (!server.Running()) {
-        return NotImplemented("declared on UltraNetHttpOptions but not consulted "
-                              "by ConfigureEasyHandle; use "
-                              "UltraNet_HttpDownloadFile instead");
-    }
+    if (!server.Running()) return NoOrigin(server, "the output file");
 
     const std::filesystem::path out = ScratchDir() / "outputFilePath.bin";
     std::error_code ec;
@@ -486,12 +479,147 @@ ULTRANET_PROBE_NAMED(kArea, "UltraNetHttpOptions::outputFilePath", outputFilePat
     std::filesystem::remove(out, ec);
 
     PROBE_EXPECT_MSG(static_cast<bool>(r), r.message);
-    if (wroteFile) {
-        return Working("body streamed to the configured output file");
+    PROBE_EXPECT_MSG(wroteFile, "the request succeeded but nothing was written "
+                                "to outputFilePath");
+    PROBE_EXPECT_MSG(resp.body.empty(), "the body came back in response.body as well");
+    return Working("body streamed to the configured output file; response.body "
+                   "left empty");
+}
+
+ULTRANET_PROBE_NAMED(kArea, "UltraNetHttpOptions::resumeOutputFile / resumeFromOffset",
+                     resumeDownload) {
+    LoopbackServer& server = Loopback();
+    if (!server.Running()) return NoOrigin(server, "a resumed download");
+
+    const std::filesystem::path out = ScratchDir() / "resume.bin";
+    std::error_code ec;
+    {
+        // The first 1000 bytes of the ramp, as a download cut short would leave.
+        std::ofstream partial(out, std::ios::binary | std::ios::trunc);
+        for (int i = 0; i < 1000; ++i) partial.put(static_cast<char>(i & 0xff));
     }
-    return NotImplemented("option ignored: the request succeeded but nothing "
-                          "was written to outputFilePath (the body came back in "
-                          "response.body instead). Use UltraNet_HttpDownloadFile.");
+    UltraNetHttpOptions opt;
+    opt.outputFilePath   = out.string();
+    opt.resumeOutputFile = true;
+    UltraNetResponse resp;
+    const UltraNetResult r = UltraNet_HttpGet(server.Url("/range/4096"), resp, opt);
+    PROBE_EXPECT_MSG(static_cast<bool>(r), r.message);
+    PROBE_EXPECT(resp.statusCode == 206);
+    PROBE_EXPECT(std::filesystem::file_size(out) == 4096);
+    {
+        std::ifstream in(out, std::ios::binary);
+        std::vector<char> all((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+        bool ramp = all.size() == 4096;
+        for (std::size_t i = 0; ramp && i < all.size(); ++i) {
+            ramp = all[i] == static_cast<char>(i & 0xff);
+        }
+        PROBE_EXPECT_MSG(ramp, "the resumed file is not the byte-exact ramp");
+    }
+
+    // The same file again: already complete, reported as success with 416.
+    UltraNetResponse again;
+    const UltraNetResult r2 = UltraNet_HttpGet(server.Url("/range/4096"), again, opt);
+    PROBE_EXPECT_MSG(static_cast<bool>(r2), r2.message);
+    PROBE_EXPECT(again.statusCode == 416);
+    PROBE_EXPECT(std::filesystem::file_size(out) == 4096);
+
+    // A server that ignores the range answers 200: the file starts over.
+    const UltraNetResult r3 = UltraNet_HttpGet(server.Url("/bytes/2048"), again, opt);
+    PROBE_EXPECT_MSG(static_cast<bool>(r3), r3.message);
+    PROBE_EXPECT(again.statusCode == 200);
+    PROBE_EXPECT(std::filesystem::file_size(out) == 2048);
+    std::filesystem::remove(out, ec);
+
+    // resumeFromOffset on a plain request: the tail comes back as the body.
+    UltraNetHttpOptions tail;
+    tail.resumeFromOffset = 4000;
+    UltraNetResponse tailResp;
+    const UltraNetResult r4 = UltraNet_HttpGet(server.Url("/range/4096"), tailResp, tail);
+    PROBE_EXPECT_MSG(static_cast<bool>(r4), r4.message);
+    PROBE_EXPECT(tailResp.statusCode == 206);
+    PROBE_EXPECT(tailResp.body.size() == 96);
+    return Working("a 1000-byte partial file completed with a 206 to the exact "
+                   "4096-byte ramp; a complete file is 416 reported as success; "
+                   "a server ignoring the range starts the file over with 200; "
+                   "resumeFromOffset returns the tail");
+}
+
+ULTRANET_PROBE_NAMED(kArea, "UltraNetHttpOptions::httpsOnlyRedirects", httpsOnlyRedirects) {
+    LoopbackServer& server = Loopback();
+    if (!server.Running()) return NoOrigin(server, "the https-only redirect rule");
+
+    UltraNetHttpOptions strict;
+    strict.httpsOnlyRedirects = true;
+    UltraNetResponse refused;
+    const UltraNetResult r1 = UltraNet_HttpGet(server.Url("/redirect-http"), refused, strict);
+    PROBE_EXPECT_MSG(!r1, "a redirect to http:// was followed despite httpsOnlyRedirects");
+    PROBE_EXPECT(r1.code == UltraNetResultCode::RedirectRefused);
+    PROBE_EXPECT(refused.statusCode == 302);
+
+    UltraNetHttpOptions lax;
+    UltraNetResponse followed;
+    const UltraNetResult r2 = UltraNet_HttpGet(server.Url("/redirect-http"), followed, lax);
+    PROBE_EXPECT_MSG(static_cast<bool>(r2), r2.message);
+    PROBE_EXPECT(followed.statusCode == 200);
+    return Working("a 302 to an http:// URL is RedirectRefused with the 302 kept "
+                   "under httpsOnlyRedirects, and followed without it");
+}
+
+ULTRANET_PROBE_NAMED(kArea, "UltraNetHttpRequest::onHeaders", onHeaders) {
+    LoopbackServer& server = Loopback();
+    if (!server.Running()) return NoOrigin(server, "the header callback");
+
+    int fired = 0;
+    int64_t lengthSeen = -2;
+    std::size_t bodyAtHeaders = 1;
+    UltraNetHttpRequest req;
+    req.url = server.Url("/redirect");   // the 302 being followed must not fire it
+    req.onHeaders = [&](const UltraNetResponse& head) {
+        ++fired;
+        lengthSeen = head.contentLength;
+        bodyAtHeaders = head.body.size();
+        return true;
+    };
+    UltraNetResponse resp;
+    const UltraNetResult r = UltraNet_HttpRequest(req, resp);
+    PROBE_EXPECT_MSG(static_cast<bool>(r), r.message);
+    PROBE_EXPECT_MSG(fired == 1, "onHeaders fired " + std::to_string(fired) + " times");
+    PROBE_EXPECT(lengthSeen == static_cast<int64_t>(resp.body.size()));
+    PROBE_EXPECT(bodyAtHeaders == 0);
+
+    UltraNetHttpRequest veto;
+    veto.url = server.Url("/bytes/65536");
+    veto.onHeaders = [](const UltraNetResponse&) { return false; };
+    UltraNetResponse vetoed;
+    const UltraNetResult v = UltraNet_HttpRequest(veto, vetoed);
+    PROBE_EXPECT_MSG(!v, "a vetoed transfer succeeded");
+    PROBE_EXPECT(v.code == UltraNetResultCode::Cancelled);
+    PROBE_EXPECT(vetoed.body.empty());
+    return Working("fired once for the final response with the headers in and "
+                   "no body yet, not for the 302 on the way; returning false "
+                   "ended a 64 KiB transfer as Cancelled with nothing read");
+}
+
+ULTRANET_PROBE_NAMED(kArea, "UltraNetHttpOptions::stallTimeoutMs", stallTimeoutMs) {
+    LoopbackServer& server = Loopback();
+    if (!server.Running()) return NoOrigin(server, "the stall timeout");
+
+    UltraNetHttpOptions opt;
+    opt.timeoutMs      = -1;
+    opt.stallTimeoutMs = 1000;
+    UltraNetResponse resp;
+    const auto start = std::chrono::steady_clock::now();
+    const UltraNetResult r = UltraNet_HttpGet(server.Url("/stall"), resp, opt);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+    PROBE_EXPECT_MSG(!r, "a transfer that sent nothing for 20 s succeeded");
+    PROBE_EXPECT(r.code == UltraNetResultCode::Timeout);
+    PROBE_EXPECT_MSG(took < std::chrono::seconds(8),
+                     "the stall took " + std::to_string(took.count()) + " ms to end");
+    return Working("a transfer stalled after its headers ended with Timeout after " +
+                   std::to_string(took.count()) + " ms under a 1 s stall limit and "
+                   "no whole-transfer limit");
 }
 
 ULTRANET_PROBE_NAMED(kArea, "UltraNetResponse::tlsInfo", responseTlsInfo) {

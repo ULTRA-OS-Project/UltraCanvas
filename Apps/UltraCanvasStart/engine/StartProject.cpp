@@ -1,4 +1,8 @@
 // Apps/UltraCanvasStart/engine/StartProject.cpp
+// Version: 0.1.2 - main.cpp calls the framework's CreateWindow(config), not a
+//                  method of the application (which has none); the skeleton
+//                  builds against the SDK again
+// Version: 0.1.1 - the instruction file is the chosen assistant's
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartProject.h"
@@ -81,7 +85,9 @@ std::string ProjectMainCpp(const ProjectOptions& options) {
     text += "    config.title  = \"" + options.appName + "\";\n";
     text += "    config.width  = 640;\n";
     text += "    config.height = 400;\n";
-    text += "    auto window = app.CreateWindow(config);\n";
+    text += "    // CreateWindow is the framework's function (UltraCanvasWindow.h);\n";
+    text += "    // the application object has no such method.\n";
+    text += "    auto window = CreateWindow(config);\n";
     text += "    if (!window) return 1;\n\n";
     text += "    auto label = CreateLabel(\"greeting\", 20, 20, 400, 28, \"Hello from " + app + "\");\n";
     text += "    window->AddChild(label);\n\n";
@@ -121,10 +127,10 @@ std::string ProjectPresets(const ProjectOptions& options) {
     return text;
 }
 
-std::string ProjectClaudeMd(const ProjectOptions& options) {
+std::string ProjectAssistantMd(const ProjectOptions& options) {
     const std::string app = IdentifierFrom(options.appName);
     std::string text;
-    text += "# CLAUDE.md\n\n";
+    text += "# " + AssistantInstructionFile(options.assistant) + "\n\n";
     text += app + " is an UltraCanvas application. The framework's conventions apply here:\n\n";
     text += "- Read the framework's `AGENTS.md` and `Docs/GettingStarted.md` first";
     if (options.useSdk) {
@@ -144,6 +150,12 @@ std::string ProjectClaudeMd(const ProjectOptions& options) {
             "  a `shared_ptr`.\n";
     text += "- Build: `cmake --preset default && cmake --build --preset default`.\n";
     return text;
+}
+
+std::string ProjectClaudeMd(const ProjectOptions& options) {
+    ProjectOptions claude = options;
+    claude.assistant = Assistant::ClaudeCode;
+    return ProjectAssistantMd(claude);
 }
 
 std::string ProjectReadme(const ProjectOptions& options) {
@@ -186,7 +198,8 @@ ProjectResult ScaffoldProject(const ProjectOptions& options, bool overwrite) {
         { "CMakePresets.json", ProjectPresets(options) },
         { "README.md",         ProjectReadme(options) },
     };
-    if (options.withAiNotes) files.push_back({ "CLAUDE.md", ProjectClaudeMd(options) });
+    const std::string instructionFile = AssistantInstructionFile(options.assistant);
+    if (options.withAiNotes) files.push_back({ instructionFile.c_str(), ProjectAssistantMd(options) });
 
     for (const auto& file : files) {
         const fs::path path = folder / file.name;

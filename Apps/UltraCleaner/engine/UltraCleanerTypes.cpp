@@ -166,4 +166,39 @@ std::string FormatByteSize(uint64_t bytes) {
     return buffer;
 }
 
+std::string BlockedAccessAdvice(const ScanReport& report) {
+    if (report.blockedPaths == 0) return "";
+
+    std::string where = std::to_string(report.blockedPaths) +
+                        (report.blockedPaths == 1 ? " location" : " locations");
+    if (!report.blockedRules.empty()) {
+        where += " (";
+        for (size_t i = 0; i < report.blockedRules.size(); ++i) {
+            if (i > 0) where += ", ";
+            where += report.blockedRules[i];
+        }
+        where += ")";
+    }
+
+    if (CurrentPlatform() == CleanerPlatform::MacOS) {
+        // The grant goes to whatever macOS holds responsible for the
+        // process: the app, or Terminal when UltraCleaner was started from
+        // it. Full Disk Access covers both the privacy-protected folders and
+        // other apps' containers; macOS applies it from the next launch.
+        return "macOS kept UltraCleaner out of " + where +
+               ". To clean them too, turn UltraCleaner on under System "
+               "Settings › Privacy & Security › Full Disk Access (or Terminal, "
+               "when you start UltraCleaner from it), then reopen it and scan "
+               "again.";
+    }
+    return "The system refused access to " + where + ".";
+}
+
+std::string BlockedAccessSettingsUrl() {
+    if (CurrentPlatform() == CleanerPlatform::MacOS) {
+        return "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
+    }
+    return "";
+}
+
 } // namespace UltraCleaner

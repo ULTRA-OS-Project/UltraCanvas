@@ -13,6 +13,5 @@
 UltraCanvasUIElement          # the root base class every element derives from
 UltraCanvasLabeledToggleBase  # base class: UltraCanvasCheckbox / Radio / Switch derive from it
 UltraCanvasWindowBase         # a window, not an element placed in one
-UltraCanvasTemplate           # the skeleton new elements are copied from
 UltraCanvasMediaSurface       # internal surface of UltraCanvasMediaViewer, which is catalogued
 UltraCanvasLaTeXViewImpl      # on-demand module implementation of UltraCanvasLaTeXView

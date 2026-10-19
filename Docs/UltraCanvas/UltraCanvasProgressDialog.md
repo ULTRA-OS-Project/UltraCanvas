@@ -14,7 +14,7 @@ numbers in from the UI thread as they arrive — which is what keeps the ring
 animating and the Cancel button responsive.
 
 ```cpp
-auto dlg = UltraCanvasProgressDialog::Show(window, "Compressing",
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Compressing",
                                            "Creating \"photos.zip\"",
                                            [&]() { job.cancel = true; });
 // ... on the UI thread, as the worker reports:
@@ -55,7 +55,7 @@ struct Job {
 };
 auto job = std::make_shared<Job>();
 
-auto dlg = UltraCanvasProgressDialog::Show(window, "Extracting",
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Extracting",
         "Unpacking \"backup.tar.gz\"",
         [job]() { job->cancelled.store(true); });
 

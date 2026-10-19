@@ -1,7 +1,8 @@
 // include/CSSLayout/LayoutUtils.h
 // Shared helpers: dimension resolution, edge resolution, constraint clamping.
+// Version: 1.1.0 - hasSetSize, auditKeptSize (stretch only over an automatic size)
 // Version: 1.0.0
-// Last Modified: 2026-05-27
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -35,6 +36,19 @@ namespace UltraCanvas {
                                  bool isWidth,
                                  std::optional<float> parentExtent,
                                  const LayoutContext& ctx);
+
+        // A width or height the element was given, which stretch must not
+        // override: anything other than auto or a negative length. CSS rejects
+        // a negative width or height as invalid, so it computes to auto; here
+        // it is the "not set" -1, or a size computed before the window had one.
+        bool hasSetSize(const Dimension& dim);
+
+        // ULTRACANVAS_LAYOUT_AUDIT=1 in the environment: says once per
+        // element and axis, on stderr, that its container asked for stretch
+        // but the element keeps a size of its own - the way to find a size
+        // that was only ever given because a constructor wanted one.
+        void auditKeptSize(const Element& element, const char* axis, float setSize,
+                           float stretchSize);
 
         // Convert specified width/height (content-box semantics) into the actual
         // outer extent when BoxSizing == BorderBox vs. ContentBox.

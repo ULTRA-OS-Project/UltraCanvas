@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
+// Version: 0.6.0 - the autoconfig requests carry the domain only, not the
+//                  reader's e-mail address
 // Version: 0.5.0 - ICloudSetupGuide, OffersICloudSetupGuide
 // Version: 0.4.0 - IncomingMailboxChanged
 // Version: 0.3.0 - ServerNameProblem
@@ -303,7 +305,11 @@ DiscoveryResult AutoDiscovery::FromPresets(const std::string& email) {
     if (is({"outlook.com", "hotmail.com", "live.com", "msn.com", "office365.com"}))
         return MakePreset("Outlook", email, "outlook.office365.com", 993,
                           "smtp.office365.com", 587, MailSecurity::StartTls, /*oauth=*/true);
-    if (is({"yahoo.com", "yahoo.de", "ymail.com"}))
+    // Yahoo's mail domains as Thunderbird's ISPDB lists them (not yahoo.co.jp:
+    // Yahoo! Japan is a separate service).
+    if (is({"yahoo.com", "yahoo.de", "ymail.com", "rocketmail.com", "myyahoo.com",
+            "yahoo.co.uk", "yahoo.fr", "yahoo.it", "yahoo.es", "yahoo.ca",
+            "yahoo.com.au", "yahoo.co.in", "yahoo.com.br", "yahoo.com.mx"}))
         return MakePreset("Yahoo", email, "imap.mail.yahoo.com", 993,
                           "smtp.mail.yahoo.com", 465, MailSecurity::SslTls, /*oauth=*/true);
     if (is({"icloud.com", "me.com", "mac.com"}))
@@ -353,9 +359,15 @@ DiscoveryResult AutoDiscovery::Discover(const std::string& email) {
 
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
+    // The requests name the domain only. The autoconfig format allows an
+    // `?emailaddress=` parameter, which Thunderbird sends, but a server does
+    // not need it: a per-user value in the document is a placeholder
+    // (%EMAILADDRESS%, %EMAILLOCALPART%) that ParseAutoconfig fills in here.
+    // Sending the address would hand the reader's full address to the
+    // domain's web server at setup; the domain it already knows.
     const std::vector<std::string> urls = {
-        "https://autoconfig." + domain + "/mail/config-v1.1.xml?emailaddress=" + email,
-        "https://" + domain + "/.well-known/autoconfig/mail/config-v1.1.xml?emailaddress=" + email,
+        "https://autoconfig." + domain + "/mail/config-v1.1.xml",
+        "https://" + domain + "/.well-known/autoconfig/mail/config-v1.1.xml",
         "https://autoconfig.thunderbird.net/v1.1/" + domain,
     };
     for (const auto& url : urls) {

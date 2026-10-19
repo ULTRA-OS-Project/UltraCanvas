@@ -33,6 +33,12 @@ on:
       - 'cmake/UltraCanvasVersion.cmake'
       - 'scripts/check_changelog.py'
       - '.github/workflows/changelog.yml'
+      # The Windows resource files carry a literal copy of two products'
+      # versions, and the check refuses one that is behind its changelog.
+      - 'Apps/Texter/UltraTexter.rc'
+      - 'Apps/Texter/UltraTexter.manifest'
+      - 'Apps/UltraFiler/UltraFiler.rc'
+      - 'Apps/UltraFiler/UltraFiler.manifest'
   pull_request:
     # Stacked pull requests. `branches` filters the BASE branch here - the
     # branch the pull request TARGETS - so `main` alone meant a pull request
@@ -56,6 +62,12 @@ on:
       - 'cmake/UltraCanvasVersion.cmake'
       - 'scripts/check_changelog.py'
       - '.github/workflows/changelog.yml'
+      # The Windows resource files carry a literal copy of two products'
+      # versions, and the check refuses one that is behind its changelog.
+      - 'Apps/Texter/UltraTexter.rc'
+      - 'Apps/Texter/UltraTexter.manifest'
+      - 'Apps/UltraFiler/UltraFiler.rc'
+      - 'Apps/UltraFiler/UltraFiler.manifest'
   workflow_dispatch:
 
 concurrency:

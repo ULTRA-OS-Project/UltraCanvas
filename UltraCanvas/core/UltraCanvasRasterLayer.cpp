@@ -1,9 +1,10 @@
 // core/UltraCanvasRasterLayer.cpp
 // Straight-RGBA raster layer: pixel storage, whole-layer edits, blend
 // arithmetic, compositing onto a premultiplied ARGB32 pixmap buffer and the
-// PixelFX (libvips) round trip.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// PixelFX (libvips) round trip. A text layer's text follows a crop or a
+// canvas resize and is taken off by geometry that resamples or mirrors.
+// Version: 1.1.0 - text layers
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterLayer.h"
@@ -112,6 +113,25 @@ RasterPixel RasterBlendPixel(const RasterPixel& src, const RasterPixel& dst,
                        static_cast<uint8_t>(std::clamp(std::lround(oa * 255.0f), 0L, 255L)));
 }
 
+RasterPixel RasterReplacePixel(const RasterPixel& src, const RasterPixel& dst, float coverage) {
+    const float c = std::clamp(coverage, 0.0f, 1.0f);
+    if (c <= 0.0f) return dst;
+    // A pixel left with no alpha is stored as (0, 0, 0, 0), as a new
+    // transparent layer is, so a later fill or wand from it matches both.
+    if (c >= 1.0f) return src.a ? src : RasterPixel(0, 0, 0, 0);
+    const float sa = src.a / 255.0f, da = dst.a / 255.0f;
+    const float oa = da + (sa - da) * c;
+    if (oa * 255.0f < 0.5f) return RasterPixel(0, 0, 0, 0);
+    // Interpolate premultiplied so the colour of a transparent end does not
+    // tint the other.
+    auto ch = [&](uint8_t s, uint8_t d) -> uint8_t {
+        const float v = (d * da + (s * sa - d * da) * c) / oa;
+        return static_cast<uint8_t>(std::clamp(std::lround(v), 0L, 255L));
+    };
+    return RasterPixel(ch(src.r, dst.r), ch(src.g, dst.g), ch(src.b, dst.b),
+                       static_cast<uint8_t>(std::clamp(std::lround(oa * 255.0f), 0L, 255L)));
+}
+
 // ===========================================================================
 // LAYER
 // ===========================================================================
@@ -203,6 +223,7 @@ std::shared_ptr<UCRasterLayer> UCRasterLayer::CropCopy(const Rect2Di& rIn) const
     const Rect2Di r = ClipRect(rIn);
     auto out = std::make_shared<UCRasterLayer>(std::max(0, r.width), std::max(0, r.height), name);
     out->visible = visible; out->locked = locked; out->opacity = opacity; out->blendMode = blendMode;
+    if (text) out->text = text->MovedBy(-r.x, -r.y);
     if (r.width > 0) out->CopyRectFrom(*this, r, 0, 0);
     return out;
 }
@@ -215,9 +236,11 @@ void UCRasterLayer::ResizeCanvas(int newWidth, int newHeight, int offsetX, int o
     UCRasterLayer next(std::max(0, newWidth), std::max(0, newHeight), name);
     next.CopyFrom(*this, offsetX, offsetY);
     width = next.width; height = next.height; pixels.swap(next.pixels);
+    if (text) text = text->MovedBy(offsetX, offsetY);
 }
 
 void UCRasterLayer::FlipHorizontal() {
+    text.reset();
     for (int y = 0; y < height; ++y) {
         uint32_t* row = reinterpret_cast<uint32_t*>(Row(y));
         std::reverse(row, row + width);
@@ -225,6 +248,7 @@ void UCRasterLayer::FlipHorizontal() {
 }
 
 void UCRasterLayer::FlipVertical() {
+    text.reset();
     const size_t stride = static_cast<size_t>(width) * 4;
     std::vector<uint8_t> tmp(stride);
     for (int y = 0; y < height / 2; ++y) {
@@ -237,6 +261,7 @@ void UCRasterLayer::FlipVertical() {
 }
 
 void UCRasterLayer::Rotate90(bool clockwise) {
+    text.reset();
     UCRasterLayer next(height, width, name);
     for (int y = 0; y < height; ++y) {
         const uint8_t* s = Row(y);
@@ -257,6 +282,7 @@ void UCRasterLayer::Rotate180() {
 
 void UCRasterLayer::ResampleBilinear(int newWidth, int newHeight) {
     newWidth = std::max(1, newWidth); newHeight = std::max(1, newHeight);
+    text.reset();
     if (!IsValid()) { *this = UCRasterLayer(newWidth, newHeight, name); return; }
     UCRasterLayer next(newWidth, newHeight, name);
     const double sx = static_cast<double>(width) / newWidth;
@@ -407,6 +433,7 @@ bool UCRasterLayer::FromPixelFX(const PixelFX::PFXImage& imgIn) {
         width = w; height = h;
         pixels.assign(static_cast<uint8_t*>(data), static_cast<uint8_t*>(data) + need);
         g_free(data);
+        text.reset();
         return true;
     } catch (...) {
         return false;

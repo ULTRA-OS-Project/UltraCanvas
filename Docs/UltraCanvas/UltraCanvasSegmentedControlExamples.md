@@ -1,10 +1,43 @@
 # UltraCanvasSegmentedControl Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Functions](#factory-functions)
+  - [Segment Management](#segment-management)
+  - [Segment Properties](#segment-properties)
+  - [Selection — Single Mode](#selection-—-single-mode)
+  - [Selection — Multiple / Toggle Modes](#selection-—-multiple--toggle-modes)
+  - [Selection Mode](#selection-mode)
+  - [Styling](#styling)
+- [Enumerations](#enumerations)
+  - [SegmentWidthMode](#segmentwidthmode)
+  - [SegmentSelectionMode](#segmentselectionmode)
+- [SegmentedControlStyle Structure](#segmentedcontrolstyle-structure)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Usage Examples](#usage-examples)
+  - [Basic Bordered Style (Single Selection)](#basic-bordered-style-single-selection)
+  - [iOS-Style (Modern Preset)](#ios-style-modern-preset)
+  - [Flat Style (Spaced Segments)](#flat-style-spaced-segments)
+  - [Bar Style with Custom Colors](#bar-style-with-custom-colors)
+  - [Toggle Mode (Text Formatting Toolbar)](#toggle-mode-text-formatting-toolbar)
+  - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
+  - [Disabled Segments](#disabled-segments)
+  - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
+  - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
+- [Keyboard Navigation](#keyboard-navigation)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -31,16 +64,16 @@
 ### Constructor
 
 ```cpp
-UltraCanvasSegmentedControl(const std::string& identifier = "SegmentedControl",
-                            long x = 0, long y = 0,
-                            long w = 300, long h = 32);
+UltraCanvasSegmentedControl(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasSegmentedControl(const std::string& identifier, float w, float h);
+explicit UltraCanvasSegmentedControl(const std::string& identifier);
 ```
 
 ### Factory Functions
 
 ```cpp
 std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
-    const std::string& identifier, long x, long y, long w, long h);
+    const std::string& identifier, float x, float y, float w, float h);
 
 std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
     const std::string& identifier, const Rect2Di& bounds);
@@ -69,6 +102,9 @@ void SetSegmentIcon(int index, const std::string& iconPath);
 void SetSegmentEnabled(int index, bool enabled);
 bool IsSegmentEnabled(int index) const;
 void SetSegmentWidth(int index, float width);    // Used with SegmentWidthMode::Custom
+// One segment's text colour while it is not selected; selected, it takes
+// selectedTextColor. Colors::Transparent restores the style's colours.
+void SetSegmentTextColor(int index, const Color& color);
 ```
 
 ### Selection — Single Mode
@@ -339,6 +375,21 @@ disabledControl->SetSegmentEnabled(1, false);
 disabledControl->SetSegmentEnabled(3, false);
 disabledControl->SetSelectedIndex(0);
 // Keyboard navigation automatically skips disabled segments.
+```
+
+### A Segment in Its Own Colour
+
+One option set apart from the rest - a choice that leaves something out, in
+red. The colour applies while the segment is not selected; selected, it reads
+`selectedTextColor` like every other segment.
+
+```cpp
+auto assistant = CreateSegmentedControl("assistant", 50, 700, 600, 32);
+assistant->AddSegment("None");
+assistant->AddSegment("Claude Code");
+assistant->AddSegment("Codex");
+assistant->SetSegmentTextColor(0, Color(200, 30, 30));
+assistant->SetSelectedIndex(1);
 ```
 
 ### Variable-Length Segments with a Custom Theme

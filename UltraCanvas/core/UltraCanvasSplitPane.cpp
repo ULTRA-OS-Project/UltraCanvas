@@ -1,5 +1,6 @@
 // core/UltraCanvasSplitPane.cpp
 // Split pane container that divides content into N draggable panes along one axis
+// Version: 1.4.0 - SplitPaneStyle::FromTheme
 // Version: 1.3.0 - Arrange places the panes once (no block-layout pass first, which
 //                 reset the scroll position of everything in them on a resize)
 // Last Modified: 2026-10-04
@@ -1013,4 +1014,13 @@ namespace UltraCanvas {
         if (onSplitterDragEnd) onSplitterDragEnd(splitterIndex);
     }
 
+
+    SplitPaneStyle SplitPaneStyle::FromTheme(const UltraCanvasTheme& theme, const SplitPaneStyle& base) {
+        SplitPaneStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.splitterColor = r.ground;
+        s.splitterHoverColor = r.lineStrong;
+        s.splitterActiveColor = r.accent;
+        return s;
+    }
 } // namespace UltraCanvas

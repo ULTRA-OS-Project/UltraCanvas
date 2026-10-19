@@ -2,8 +2,9 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.7.0
-// Last Modified: 2026-08-11
+// Version: 1.10.0 - AlbumConfig::FromTheme, ApplyTheme
+// Version: 1.9.0
+// Last Modified: 2026-10-10
 // V1.7.0: Automatic video poster frames (AlbumConfig::videoPosterFrames, on by
 //   default) — a Video item with no thumbnailPath now has its cover extracted
 //   from the clip itself on a background thread and cached in memory, so video
@@ -43,6 +44,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasImageFileWatch.h"
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -284,6 +286,14 @@ namespace UltraCanvas {
         bool  allowSelection = false;
         Color selectionColor = Color(0, 122, 224, 255);
 
+        // The theme's roles over a config's own layout (the sizes, the mode,
+        // the gaps stay): the panel behind the grid, the raised surface for a
+        // tile, hairlines, ink and muted ink for the captions, the accent for
+        // links and the selection
+        static AlbumConfig FromTheme(const UltraCanvasTheme& theme, const AlbumConfig& base);
+        static AlbumConfig FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, AlbumConfig()); }
+        static AlbumConfig FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
         // ----- Hover -----
         bool  hoverScrim   = true;         // darken a tile slightly on hover
         bool  hoverZoom    = false;        // subtle image zoom on hover (Crop/Zoom)
@@ -401,12 +411,19 @@ namespace UltraCanvas {
         std::function<void(size_t)> onLinkClicked;        // subtitle link row clicked
         std::function<void(size_t)> onItemActivated;      // double-click: open / play
         std::function<void(size_t, size_t)> onItemsReordered;  // (from, to) — edit modes
+        // A tile dragged out of the album (edit modes): the album's own
+        // reorder ends and the app may carry the item elsewhere - a media
+        // bin's file onto a timeline, say - following the pointer from
+        // `windowPos` (window-relative) with the window's mouse events.
+        std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;
         std::function<void(size_t)> onItemRemoved;        // after RemoveItem
         std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+        // The theme's colours over the album's own layout: the panel and raised surfaces, hairlines, ink, the accent
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetConfig(AlbumConfig::FromTheme(theme, GetConfig())); }
 
     private:
         // ===== STATE =====
@@ -652,6 +669,23 @@ namespace UltraCanvas {
         void TriggerAction(int actionIndex, size_t itemIndex);
         void ToggleSelection(size_t itemIndex);
         void FinishDrag();
+        void DragOut(const Point2Di& windowPos);   // hand a dragged tile to onItemDraggedOut
+
+        // ===== PICTURES SAVED OVER =====
+        // The still images the paint in progress drew (DrawImageInRect) and
+        // the version of each file drawn, handed to imageFileWatch when it
+        // ends: a worker checks those files, and a picture saved over is
+        // dropped from the image cache and the album repaints with what the
+        // file holds now. Never a stat here on the paint path. Declared last
+        // so it is destroyed first: its worker is joined before any other
+        // member goes.
+        std::vector<UltraCanvasImageFileWatch::DrawnImage> drawnImages;
+        UltraCanvasImageFileWatch imageFileWatch{[this]() {
+            // A new picture can have a new shape, which the aspect-driven
+            // layouts (Justified / Masonry) are built from.
+            InvalidateAlbumLayout();
+            RequestRedraw();
+        }};
     };
 
     // ===== FACTORY =====

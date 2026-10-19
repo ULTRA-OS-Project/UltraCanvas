@@ -1,8 +1,14 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-07-02 - DropdownSelect event.targetElement set via weak_from_this()
+// Last Modified: 2026-10-15 - type-ahead (HandleTypeAhead), from the dropdown and from its open list
+// Last Modified: 2026-10-15 - takes the keyboard focus (AcceptsFocus, a click focuses it)
+// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item (onItemActivated)
+// Last Modified: 2026-10-15 - DropdownItem::tooltip answers the list's ToolTipRole
+// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: the icon alone on the button
+// Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
+#include <cctype>
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
@@ -23,6 +29,7 @@ namespace UltraCanvas {
 
         if (role == ListDataRole::DisplayRole)    return item.text;
         if (role == ListDataRole::DecorationRole) return item.iconPath;
+        if (role == ListDataRole::ToolTipRole)    return item.tooltip;
         if (role == DropdownValueRole)            return item.value;
         if (role == DropdownEnabledRole)          return item.enabled ? 1 : 0;
         if (role == DropdownSeparatorRole)        return item.separator ? 1 : 0;
@@ -240,6 +247,7 @@ namespace UltraCanvas {
         if (index >= -1 && index < (int)items.size()) {
             if (selectedIndex != index) {
                 selectedIndex = index;
+                NotifyAccessibility(AccessibilityEventType::ValueChanged);
 
                 if (index >= 0 && runNotifications) {
                     if (onSelectionChanged) {
@@ -428,6 +436,7 @@ namespace UltraCanvas {
     void UltraCanvasDropdown::OpenDropdown() {
         if (!isPopup && !items.empty() && window) {
             dropdownOpen = true;
+            typeAheadPrefix.clear();   // each opening is typed into afresh
             dropdownModel->DataChanged();
             CalculateAndSetPopupSize();
 
@@ -566,6 +575,10 @@ namespace UltraCanvas {
         dropdownModel->SetItems(&items);
         popupListView->SetModel(dropdownModel);
         popupListView->SetShowHeader(false);
+        // The dropdown keeps the keyboard focus while its list is open: a
+        // click on a row would otherwise move it to the list, which then
+        // closes and leaves the focus on nothing visible.
+        popupListView->SetAcceptsFocus(false);
 
         dropdownDelegate = std::make_shared<DropdownItemDelegate>();
         dropdownDelegate->SetStyle(&style);
@@ -578,18 +591,28 @@ namespace UltraCanvas {
         ApplyStyleToListView();
     }
 
-    void UltraCanvasDropdown::WireListViewCallbacks() {
-        popupListView->onItemClicked = [this](int row) {
-            if (row < 0 || row >= (int)items.size()) return;
-            if (items[row].separator || !items[row].enabled) return;
+    void UltraCanvasDropdown::ChooseRow(int row) {
+        if (row < 0 || row >= (int)items.size()) return;
+        if (items[row].separator || !items[row].enabled) return;
 
-            if (multiSelectEnabled) {
-                SetItemSelected(row, !IsItemSelected(row));
-            } else {
-                SetSelectedIndex(row);
-                CloseDropdown();
-            }
-        };
+        if (multiSelectEnabled) {
+            SetItemSelected(row, !IsItemSelected(row));
+        } else {
+            SetSelectedIndex(row);
+            CloseDropdown();
+        }
+    }
+
+    void UltraCanvasDropdown::WireListViewCallbacks() {
+        popupListView->onItemClicked = [this](int row) { ChooseRow(row); };
+        // Return (or Space) on the highlighted row. The dropdown does not take
+        // the keyboard focus, so while the list is open the window hands the
+        // keys to the list itself; without this the arrow keys moved the
+        // highlight and Return chose nothing.
+        popupListView->onItemActivated = [this](int row) { ChooseRow(row); };
+        // A dropdown left out of the focus (SetAcceptsFocus(false)) leaves
+        // the keys to its open list: the letters go to type-ahead from there.
+        popupListView->onKeyDown = [this](const UCEvent& event) { return dropdownOpen && HandleTypeAhead(event); };
 
         popupListView->onItemHovered = [this](int row) {
             if (row >= 0 && row < (int)items.size() && onItemHovered) {
@@ -682,41 +705,46 @@ namespace UltraCanvas {
 
         // Get display text
         std::string displayText = GetDisplayText();
+        // The selected item's icon (single selection only).
+        std::string iconPath;
+        if (!multiSelectEnabled && selectedIndex >= 0 && selectedIndex < (int)items.size()) {
+            iconPath = items[selectedIndex].iconPath;
+        }
+        const bool showText = style.buttonShowsText && !displayText.empty();
 
-        if (!displayText.empty()) {
+        if (showText || !iconPath.empty()) {
             ctx->PushState();
             int arrowSpace = static_cast<int>(style.arrowSize * 2 + 2);
             ctx->ClipRect(Rect2Di(buttonRect.x + 1, buttonRect.y,
                                   buttonRect.width - arrowSpace - 1, buttonRect.height));
 
-            ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
-            ctx->SetTextPaint(textColor);
-
-            Size2Di textSize = ctx->GetTextLineDimensions(displayText);
-
             int textX = buttonRect.x + (int)style.paddingLeft;
-            int textY = buttonRect.y + (buttonRect.height - textSize.height) / 2;
-
-            // Render icon if single selection and item has icon
-            if (!multiSelectEnabled && selectedIndex >= 0 && selectedIndex < (int)items.size()) {
-                const auto& item = items[selectedIndex];
-                if (!item.iconPath.empty()) {
-                    Rect2Di iconRect(
-                        textX,
-                        buttonRect.y + (buttonRect.height - (int)style.iconSize) / 2,
-                        (int)style.iconSize,
-                        (int)style.iconSize
-                    );
-                    auto icon = UCImage::Get(item.iconPath);
-                    if (icon && icon->IsValid()) {
-                        ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
-                    }
-                    textX += (int)(style.iconSize + style.iconPadding);
+            if (!iconPath.empty()) {
+                // Icon-only: centred in the space left of the arrow.
+                const int iconX = showText
+                    ? textX
+                    : buttonRect.x + (buttonRect.width - arrowSpace - (int)style.iconSize) / 2;
+                Rect2Di iconRect(
+                    iconX,
+                    buttonRect.y + (buttonRect.height - (int)style.iconSize) / 2,
+                    (int)style.iconSize,
+                    (int)style.iconSize
+                );
+                auto icon = UCImage::Get(iconPath);
+                if (icon && icon->IsValid()) {
+                    ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
                 }
+                textX += (int)(style.iconSize + style.iconPadding);
             }
 
-            ctx->DrawText(displayText, Point2Di(textX, textY));
+            if (showText) {
+                ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+                ctx->SetFontSize(style.fontSize);
+                ctx->SetTextPaint(textColor);
+                Size2Di textSize = ctx->GetTextLineDimensions(displayText);
+                int textY = buttonRect.y + (buttonRect.height - textSize.height) / 2;
+                ctx->DrawText(displayText, Point2Di(textX, textY));
+            }
             ctx->PopState();
         }
 
@@ -788,6 +816,9 @@ namespace UltraCanvas {
 
         if (buttonRect.Contains(event.pointer)) {
             buttonPressed = true;
+            // A click gives the keyboard focus, as on a button: the keys then
+            // work the list it opens, and Tab goes on from here.
+            SetFocus(true);
             if (dropdownOpen) {
                 CloseDropdown();
             } else {
@@ -841,17 +872,7 @@ namespace UltraCanvas {
             case UCKeys::Return: {
                 // Get the focused row from the ListView's selection
                 auto* sel = popupListView->GetSelection();
-                int focusedRow = sel ? sel->GetCurrentRow() : -1;
-
-                if (focusedRow >= 0 && focusedRow < (int)items.size() &&
-                    !items[focusedRow].separator && items[focusedRow].enabled) {
-                    if (multiSelectEnabled) {
-                        SetItemSelected(focusedRow, !IsItemSelected(focusedRow));
-                    } else {
-                        SetSelectedIndex(focusedRow);
-                        CloseDropdown();
-                    }
-                }
+                ChooseRow(sel ? sel->GetCurrentRow() : -1);
                 return true;
             }
 
@@ -865,15 +886,63 @@ namespace UltraCanvas {
                     }
                     return true;
                 }
-                return false;
+                // A space in the middle of a name being typed ("liberation s").
+                return HandleTypeAhead(event);
 
             case UCKeys::Escape:
                 CloseDropdown();
                 return true;
 
             default:
-                return false;
+                return HandleTypeAhead(event);
         }
+    }
+
+    // Letters typed with the list open go to the first item whose text starts
+    // with them, regardless of case - the way a list of every installed font
+    // is browsed. Letters typed within a second of each other build one
+    // prefix ("Lib" for Liberation Sans), spaces included once it has begun
+    // ("liberation s"); the same letter again steps on to the next item
+    // starting with it. Return then chooses it.
+    bool UltraCanvasDropdown::HandleTypeAhead(const UCEvent& event) {
+        if (event.ctrl || event.alt || event.meta) return false;
+        std::string typed = event.text;
+        if (typed.empty() && static_cast<unsigned char>(event.character) >= 32 && event.character != 127)
+            typed = std::string(1, event.character);
+        // Only what prints: Return, Tab and Backspace arrive with their
+        // control character as text too.
+        if (typed.empty()) return false;
+        if (std::any_of(typed.begin(), typed.end(), [](unsigned char c) { return c < 32 || c == 127; })) return false;
+        const auto now = std::chrono::steady_clock::now();
+        const bool fresh = typeAheadPrefix.empty() || now - typeAheadTime > std::chrono::seconds(1);
+        // A space carries on a name being typed; on its own it is the list's
+        // (it toggles an item of a multi-selection).
+        if (typed == " " && fresh) return false;
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return s;
+        };
+        if (fresh) typeAheadPrefix.clear();
+        typeAheadTime = now;
+        // One letter repeated steps through the items starting with it.
+        const std::string add = lower(typed);
+        const bool repeat = typeAheadPrefix == add;
+        if (!repeat) typeAheadPrefix += add;
+
+        auto* sel = popupListView ? popupListView->GetSelection() : nullptr;
+        const int count = static_cast<int>(items.size());
+        const int current = sel ? sel->GetCurrentRow() : selectedIndex;
+        const int start = repeat || typeAheadPrefix.size() == add.size() ? current + 1 : std::max(0, current);
+        for (int n = 0; n < count; ++n) {
+            const int row = ((start + n) % count + count) % count;
+            const DropdownItem& item = items[static_cast<size_t>(row)];
+            if (item.separator || !item.enabled) continue;
+            if (lower(item.text).compare(0, typeAheadPrefix.size(), typeAheadPrefix) != 0) continue;
+            if (popupListView) popupListView->SetFocusedRow(row);
+            else if (sel) sel->Select(row);
+            return true;
+        }
+        return true;   // typed into the list; nothing starts with it
     }
 
     void UltraCanvasDropdown::HandleFocusLost() {
@@ -882,4 +951,25 @@ namespace UltraCanvas {
         }
     }
 
+
+    DropdownStyle DropdownStyle::FromTheme(const UltraCanvasTheme& theme, const DropdownStyle& base) {
+        DropdownStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.normalColor = r.raised;
+        s.hoverColor = r.hover;
+        s.pressedColor = r.pressed;
+        s.disabledColor = r.panel;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.normalTextColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        s.listBackgroundColor = r.raised;
+        s.listBorderColor = r.line;
+        s.itemHoverColor = r.hover;
+        s.itemSelectedColor = r.accentSoft;
+        s.checkboxBorderColor = r.lineStrong;
+        s.checkboxCheckedColor = r.accent;
+        s.checkmarkColor = r.onAccent;
+        return s;
+    }
 } // namespace UltraCanvas

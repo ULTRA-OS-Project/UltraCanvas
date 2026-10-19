@@ -1,10 +1,15 @@
 // core/HTMLReader/HTMLRichDocumentImporter.cpp
 // HTML → UCRichDocument. See the header for what is mapped and what is not.
+// Version: 1.2.0 - Word's list paragraphs (mso-list) are list items, their typed
+//                  label the marker; every newline of a <pre> counts (the parser
+//                  drops the one right after the start tag)
+// Version: 1.1.0 - dir="rtl" paragraphs; preAsCodeBlock; skipWordListLabels
 // Version: 1.0.1 - a cell border is the widest of its four sides
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLRichDocumentImporter.h"
+#include "HTMLReader/CSSStyleSheet.h"
 #include "HTMLReader/HTMLParser.h"
 #include "HTMLReader/HTMLStyleResolver.h"
 #include "UltraCanvasTextUtils.h"   // Base64Decode
@@ -144,6 +149,163 @@ std::string SafeLink(const std::string& href) {
     return target;
 }
 
+// Whether the element's text runs right to left: the dir attribute on it or
+// the nearest element around it that has one.
+bool RightToLeft(const Node& node) {
+    for (const Node* at = &node; at; at = at->parent) {
+        if (at->IsElement() && at->HasAttribute("dir")) {
+            return LowerAscii(TrimAscii(at->GetAttribute("dir"))) == "rtl";
+        }
+    }
+    return false;
+}
+
+// A list label Word types out before an item: <span style="mso-list:Ignore">.
+bool IsWordListLabel(const Node& node) {
+    const std::string style = node.GetAttribute("style");
+    if (style.empty()) return false;
+    for (const HTML::Declaration& declaration : HTML::StyleSheet::ParseDeclarationList(style)) {
+        if (declaration.property == "mso-list" && LowerAscii(declaration.value) == "ignore") return true;
+    }
+    return false;
+}
+
+// The level (from 1) of a paragraph Word made a list item of - its style has
+// mso-list: l<list> level<n> lfo<n> - or 0 for any other element.
+int WordListLevel(const Node& node) {
+    const std::string style = node.GetAttribute("style");
+    if (style.empty()) return 0;
+    for (const HTML::Declaration& declaration : HTML::StyleSheet::ParseDeclarationList(style)) {
+        if (declaration.property != "mso-list") continue;
+        const std::string value = LowerAscii(declaration.value);
+        const size_t at = value.find("level");
+        if (at == std::string::npos) return 0;
+        const int level = std::atoi(value.c_str() + at + 5);
+        return level > 0 ? std::min(level, 9) : 0;
+    }
+    return 0;
+}
+
+// The label Word typed out in a list paragraph, or null.
+const Node* FindWordListLabel(const Node& node) {
+    for (const auto& child : node.children) {
+        if (!child->IsElement()) continue;
+        if (IsWordListLabel(*child)) return child.get();
+        if (const Node* label = FindWordListLabel(*child)) return label;
+    }
+    return nullptr;
+}
+
+// What a Word list label says about its list.
+struct WordLabel {
+    bool ordered = false;
+    RichNumberFormat format = RichNumberFormat::Decimal;
+    int number = 0;
+    std::string bullet;   // "" = the default bullet
+};
+
+// "iv" -> 4; 0 when the letters are no Roman numeral.
+int RomanValue(const std::string& lower) {
+    static const std::string kSymbols = "ivxlcdm";
+    static const int kValues[] = {1, 5, 10, 50, 100, 500, 1000};
+    int total = 0;
+    for (size_t i = 0; i < lower.size(); ++i) {
+        const size_t symbol = kSymbols.find(lower[i]);
+        if (symbol == std::string::npos) return 0;
+        const size_t next = i + 1 < lower.size() ? kSymbols.find(lower[i + 1]) : std::string::npos;
+        if (next != std::string::npos && kValues[next] > kValues[symbol]) total -= kValues[symbol];
+        else total += kValues[symbol];
+    }
+    return total > 0 && total < 4000 ? total : 0;
+}
+
+// "c" -> 3, "bb" -> 28 (Word repeats the letter past z); 0 otherwise.
+int LetterValue(const std::string& lower) {
+    if (lower.empty() || lower.size() > 4) return 0;
+    for (char c : lower) {
+        if (c != lower[0] || c < 'a' || c > 'z') return 0;
+    }
+    return static_cast<int>(lower.size() - 1) * 26 + (lower[0] - 'a' + 1);
+}
+
+// White space and no-break spaces off both ends.
+std::string TrimSpaces(std::string text) {
+    for (;;) {
+        if (!text.empty() && IsSpace(text.back())) text.pop_back();
+        else if (text.size() >= 2 && text.compare(text.size() - 2, 2, "\xC2\xA0") == 0) text.resize(text.size() - 2);
+        else break;
+    }
+    size_t start = 0;
+    for (;;) {
+        if (start < text.size() && IsSpace(text[start])) ++start;
+        else if (text.compare(start, 2, "\xC2\xA0") == 0) start += 2;
+        else break;
+    }
+    return text.substr(start);
+}
+
+// Reads a label - "1.", "a)", "(iv)", "1.2.", "·", "o" - into a list's kind.
+// `previous` is the item before at the same level, when there is one: a lone
+// "i" after "h." is a letter, not a Roman one.
+WordLabel ReadWordLabel(const std::string& labelText, const RichDocBlock* previous) {
+    const std::string text = TrimSpaces(labelText);
+    WordLabel label;
+    std::string core = text;
+    bool punctuated = false;
+    if (!core.empty() && core.front() == '(') { core.erase(0, 1); punctuated = true; }
+    while (!core.empty() && (core.back() == '.' || core.back() == ')' || core.back() == ':')) {
+        core.pop_back();
+        punctuated = true;
+    }
+    // A multilevel number ("1.2") counts by its last part.
+    if (const size_t dot = core.rfind('.'); dot != std::string::npos) core.erase(0, dot + 1);
+
+    const bool digits = !core.empty() && core.size() <= 6
+        && std::all_of(core.begin(), core.end(), [](char c) { return c >= '0' && c <= '9'; });
+    const bool lower = !core.empty() && std::all_of(core.begin(), core.end(), [](char c) { return c >= 'a' && c <= 'z'; });
+    const bool upper = !core.empty() && std::all_of(core.begin(), core.end(), [](char c) { return c >= 'A' && c <= 'Z'; });
+    if (digits) {
+        label.ordered = true;
+        label.number = std::atoi(core.c_str());
+        return label;
+    }
+    if (punctuated && (lower || upper)) {
+        const std::string folded = LowerAscii(core);
+        const int roman = RomanValue(folded);
+        const int letter = LetterValue(folded);
+        const RichNumberFormat before = previous && previous->orderedList
+            ? previous->numberFormat : RichNumberFormat::Decimal;
+        const bool afterLetters = before == RichNumberFormat::LowerLetter || before == RichNumberFormat::UpperLetter;
+        const bool afterRoman = before == RichNumberFormat::LowerRoman || before == RichNumberFormat::UpperRoman;
+        // What can only be a Roman numeral ("iv") is one. What can be either
+        // goes on as the list began ("i." after "h." is a letter); starting
+        // a list, i, v, x and "ii", "iii" are Roman, c, d, l and m letters.
+        bool asRoman = false;
+        if (roman > 0 && letter == 0) asRoman = true;
+        else if (roman > 0 && afterLetters) asRoman = false;
+        else if (roman > 0 && afterRoman) asRoman = true;
+        else if (roman > 0) asRoman = folded.size() > 1 || folded == "i" || folded == "v" || folded == "x";
+        if (asRoman || letter > 0) {
+            label.ordered = true;
+            label.number = asRoman ? roman : letter;
+            label.format = asRoman ? (lower ? RichNumberFormat::LowerRoman : RichNumberFormat::UpperRoman)
+                                   : (lower ? RichNumberFormat::LowerLetter : RichNumberFormat::UpperLetter);
+            return label;
+        }
+    }
+    // A bullet. Word writes its own in symbol fonts: "o" in Courier New is a
+    // circle and "§" in Wingdings a square; the Symbol font's "·" and
+    // anything else unknown is the plain bullet.
+    if (text == "o") {
+        label.bullet = "\xE2\x97\xA6";   // ◦
+    } else if (text == "\xC2\xA7") {
+        label.bullet = "\xE2\x96\xAA";   // ▪
+    } else if (text == "-" || text == "\xE2\x80\x93" || text == "\xE2\x80\x94") {
+        label.bullet = "\xE2\x80\x93";   // –
+    }
+    return label;
+}
+
 // True when `text` holds anything but white space (no-break spaces count as
 // white space here: an "empty" mail paragraph is often just &nbsp;).
 bool HasVisibleText(const std::string& text) {
@@ -181,6 +343,7 @@ public:
         Context context;
         context.quoteLevel = std::max(0, opts_.quoteLevel);
         proto_.quoteLevel = context.quoteLevel;
+        proto_.rightToLeft = RightToLeft(*body);
         WalkChildren(*body, context);
         FinishParagraph();
         TrimEmptyEdges();
@@ -196,6 +359,8 @@ private:
         bool subscript = false;
         bool superscript = false;
         bool pre = false;
+        bool codeBlock = false;   // the runs of a code block: no formatting of their own
+        bool wordListItem = false; // inside a Word list paragraph: its label is the marker
     };
 
     // What the next paragraph opened becomes.
@@ -207,7 +372,11 @@ private:
         RichNumberFormat numberFormat = RichNumberFormat::Decimal;
         std::string bullet;
         int listStart = 0;
+        // The number a Word list item shows (its typed label), 0 when none:
+        // given to the item only where the model would count another one.
+        int wordNumber = 0;
         RichTextAlign align = RichTextAlign::Default;
+        bool rightToLeft = false;
         int quoteLevel = 0;
         float indentPx = 0.0f;
         std::string background;
@@ -284,10 +453,16 @@ private:
             block.leftIndentPt = std::min(proto_.indentPx, kMaxIndentPx) * kPxToPt;
         }
         block.align = proto_.align;
+        block.rightToLeft = proto_.rightToLeft;
         block.quoteLevel = proto_.quoteLevel;
         block.paragraphBackground = proto_.background;
         PushBlock(std::move(block));
         openBlock_ = static_cast<int>(doc_.blocks.size()) - 1;
+        if (proto_.wordNumber > 0 && doc_.blocks.back().orderedList
+            && RichDocOrderedItemNumber(doc_.blocks, doc_.blocks.size() - 1) != proto_.wordNumber) {
+            doc_.blocks.back().listStartNumber = proto_.wordNumber;
+        }
+        proto_.wordNumber = 0;
         lineHasContent_ = false;
         lastWasSpace_ = true;
     }
@@ -381,6 +556,12 @@ private:
                 run.fontSizePt = std::round(style.fontSizePx * kPxToPt * 2.0f) / 2.0f;
             }
         }
+        if (context.codeBlock) {
+            // The block is in the view's code style already.
+            run.code = false;
+            run.fontFamily.clear();
+            run.fontSizePt = 0.0f;
+        }
         return run;
     }
 
@@ -398,11 +579,14 @@ private:
                 if (c == '\r') continue;
                 if (c == '\n') {
                     flush();
-                    // The line break right after <pre> is not content.
-                    if (lineHasContent_ || pendingBreaks_ > 0) ++pendingBreaks_;
+                    // Every line feed is a line: the parser has already
+                    // dropped the one right after <pre>'s start tag, which
+                    // is all HTML drops.
+                    ++pendingBreaks_;
                     continue;
                 }
-                segment.push_back(c == '\t' ? ' ' : c);
+                // A tab is a space in text, but indents a code block's line.
+                segment.push_back(c == '\t' && !context.codeBlock ? ' ' : c);
             }
             flush();
             lastWasSpace_ = false;
@@ -453,6 +637,8 @@ private:
         if (tag == "img") { Image(node, style, context); return; }
         if (tag == "hr") { Rule(); return; }
         if (tag == "input" || tag == "select" || tag == "textarea" || tag == "script") return;
+        if ((opts_.skipWordListLabels || context.wordListItem) && IsWordListLabel(node)) return;
+        if (tag == "pre" && opts_.preAsCodeBlock && !InLineMode()) { CodeBlock(node, style, context); return; }
         if (tag == "table" || style.display == DisplayMode::Table) { Table(node, style, context); return; }
         if (tag == "ul" || tag == "ol") { List(node, style, context); return; }
         if (tag == "li" && !lists_.empty() && !cellRuns_) { ListItem(node, style, context); return; }
@@ -495,12 +681,62 @@ private:
             proto_.headingLevel = node.tag[1] - '0';
         }
         proto_.align = AlignOf(style.textAlign);
+        proto_.rightToLeft = RightToLeft(node);
         proto_.quoteLevel = inner.quoteLevel;
         proto_.indentPx = inner.indentPx;
         if (ownBackground && !quote && opts_.keepColors && style.backgroundColor
             && style.backgroundColor->a > 0) {
             proto_.background = HexColor(*style.backgroundColor);
         }
+        // A paragraph Word made a list item of (not a numbered heading,
+        // which stays a heading): its typed label becomes the item's marker.
+        const int wordLevel = proto_.type == RichBlockType::Paragraph && !quote ? WordListLevel(node) : 0;
+        if (wordLevel > 0) {
+            const Node* labelNode = FindWordListLabel(node);
+            const WordLabel label = ReadWordLabel(labelNode ? labelNode->TextContent() : std::string(),
+                                                  PreviousItemAt(wordLevel - 1));
+            proto_.type = RichBlockType::ListItem;
+            proto_.listLevel = wordLevel - 1;
+            proto_.ordered = label.ordered;
+            proto_.numberFormat = label.format;
+            proto_.bullet = label.bullet;
+            proto_.wordNumber = label.number;
+            inner.wordListItem = true;
+        }
+        const size_t blocksBefore = doc_.blocks.size();
+        WalkChildren(node, inner);
+        // An item with nothing in it still has its marker.
+        if (wordLevel > 0 && doc_.blocks.size() == blocksBefore && openBlock_ < 0 && pendingBreaks_ == 0) {
+            OpenParagraph();
+        }
+        FinishParagraph();
+        gapPx_ = std::max(gapPx_, style.marginBottom);
+        proto_ = saved;
+    }
+
+    // The list item before the next block at `level`, as the model groups
+    // items: deeper ones are skipped, anything else ends the search.
+    const RichDocBlock* PreviousItemAt(int level) const {
+        for (size_t i = doc_.blocks.size(); i-- > firstBlock_;) {
+            const RichDocBlock& block = doc_.blocks[i];
+            if (block.type != RichBlockType::ListItem || block.listLevel < level) return nullptr;
+            if (block.listLevel == level) return &block;
+        }
+        return nullptr;
+    }
+
+    // <pre> with preAsCodeBlock: one code block of its lines.
+    void CodeBlock(Node& node, const ComputedStyle& style, const Context& context) {
+        FinishParagraph();
+        gapPx_ = std::max(gapPx_, style.marginTop);
+        const Proto saved = proto_;
+        proto_ = Proto{};
+        proto_.type = RichBlockType::CodeBlock;
+        proto_.quoteLevel = context.quoteLevel;
+        proto_.indentPx = context.indentPx;
+        Context inner = context;
+        inner.pre = true;
+        inner.codeBlock = true;
         WalkChildren(node, inner);
         FinishParagraph();
         gapPx_ = std::max(gapPx_, style.marginBottom);
@@ -593,6 +829,7 @@ private:
         }
         list.first = false;
         proto_.align = AlignOf(style.textAlign);
+        proto_.rightToLeft = RightToLeft(node);
         proto_.quoteLevel = context.quoteLevel;
 
         const size_t blocksBefore = doc_.blocks.size();

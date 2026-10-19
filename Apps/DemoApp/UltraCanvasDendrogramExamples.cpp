@@ -634,7 +634,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid)
     d->SetStyle(s);
 
     auto bar = MakeControlBar(uid, d,
-        "Rate Gradient | Blue→Red | DblClick=collapse | Ctrl+drag=move");
+        "Rate Gradient | Blue to Red | DblClick=collapse | Ctrl+drag=move");
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     outer->AddChild(bar);
 

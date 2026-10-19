@@ -7,8 +7,9 @@
 // category belongs to. A format the file manager can open but cannot list is
 // a format whose thumbnail nobody can switch on - which is how audio files
 // were missing from both lists.
-// Version: 1.1.0
-// Last Modified: 2026-10-06
+// Version: 1.3.1 - layered images are filed as bitmaps
+// Version: 1.3.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -49,6 +50,7 @@ std::set<FilerPreviewType> KindsFor(MediaFormatCategory category) {
         case MediaFormatCategory::Audio:   return {FilerPreviewType::Audio};
         case MediaFormatCategory::Video:   return {FilerPreviewType::Videos};
         case MediaFormatCategory::Font:    return {FilerPreviewType::Fonts};
+        case MediaFormatCategory::LayeredImage: return {FilerPreviewType::Bitmaps};
     }
     return {};
 }
@@ -107,7 +109,8 @@ int main(int argc, char** argv) {
                                   MediaFormatCategory::Document,
                                   MediaFormatCategory::Spreadsheet,
                                   MediaFormatCategory::Audio,
-                                  MediaFormatCategory::Video}) {
+                                  MediaFormatCategory::Video,
+                                  MediaFormatCategory::LayeredImage}) {
         Check(!KindsFor(c).empty(),
               std::string(UltraCanvasSupportedFormats::GetCategoryName(c)) +
                       " maps to a preview kind");
@@ -139,24 +142,29 @@ int main(int argc, char** argv) {
         Check(!f.thumbnailSupported,
               f.extension + ": no thumbnail producer is advertised");
     }
-    // The container formats no reader unpacks must not advertise a page
-    // preview either.
-    for (const char* ext : {"mobi", "azw3", "xls"}) {
+    // Every spreadsheet format has a reader for its preview page - .xls too
+    // since the legacy workbook reader (UltraCanvasSpreadsheetXls.h).
+    for (const char* ext : {"xls", "xlsx", "ods"}) {
         auto it = byExtension.find(ext);
-        if (it == byExtension.end()) continue;   // not in this build's tables
-        Check(!it->second.thumbnailSupported,
-              std::string(ext) + ": no page preview is advertised (no reader)");
+        Check(it != byExtension.end(), std::string(ext) + ": listed");
+        if (it != byExtension.end()) {
+            Check(it->second.kind == FilerPreviewType::Spreadsheets,
+                  std::string(ext) + ": filed under Spreadsheets");
+            Check(it->second.thumbnailSupported,
+                  std::string(ext) + ": a page preview is advertised");
+        }
     }
-    // An EPUB's text is not read either, but its cover is: the EPUB engine
-    // is built into every build, so the switch always does something.
-    {
-        auto it = byExtension.find("epub");
-        Check(it != byExtension.end(), "epub: listed");
+    // An e-book's text is not read either, but its cover is: the EPUB and
+    // MOBI engines are built into every build, so the switch always does
+    // something.
+    for (const char* ext : {"epub", "mobi", "prc", "azw", "azw3"}) {
+        auto it = byExtension.find(ext);
+        Check(it != byExtension.end(), std::string(ext) + ": listed");
         if (it != byExtension.end()) {
             Check(it->second.kind == FilerPreviewType::Docs,
-                  "epub: filed under Docs");
+                  std::string(ext) + ": filed under Docs");
             Check(it->second.thumbnailSupported,
-                  "epub: a thumbnail (the cover) is advertised");
+                  std::string(ext) + ": a thumbnail (the cover) is advertised");
         }
     }
     for (const char* ext : {"txt", "md", "csv", "html"}) {

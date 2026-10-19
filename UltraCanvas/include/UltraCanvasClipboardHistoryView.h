@@ -1,7 +1,7 @@
 // include/UltraCanvasClipboardHistoryView.h
 // A clipboard history in an UltraCanvasListView: the list model (entries,
 // optionally under section headers) and the row painter (thumbnail, title,
-// meta line, Copy / Edit / Delete). UltraDesktop's quick panel and the
+// meta line, Copy / Edit / Delete, and Save as where the style asks for it). UltraDesktop's quick panel and the
 // UltraClipboard application use the same two, in a dark compact style and a
 // light regular one (Docs/Research/UltraClipboard/UltraClipboard-RowAnatomy.svg).
 //
@@ -17,8 +17,9 @@
 // The actions are painted into the row, as UltraMail's contact list paints its
 // bin, and hit-tested through onCellClicked; the keyboard reaches them too
 // (Enter copies, F2 edits, Delete deletes - the window handles those keys).
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.2.0 - ClipboardRowAction::SaveAs, shown with ClipboardRowStyle::saveAction;
+//                  the icons left of the text (ClipboardRowStyle::actionsLeftOfText)
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -44,7 +45,17 @@ public:
     // sections: Pinned / Today / Yesterday / Earlier headers (the
     // application); compact: Pinned / Recent (the desktop's panel).
     enum class Sections { Flat, ByDay, PinnedAndRecent };
-    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections);
+    // A section above the others: the first `count` entries under `title`
+    // ("FOR ULTRAPAINT"), whatever their own section would be. The desktop's
+    // quick panel puts what the window being pasted into takes there.
+    struct LeadSection {
+        std::string title;
+        size_t count = 0;
+    };
+    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections, const LeadSection& lead);
+    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections) {
+        SetEntries(std::move(entries), sections, LeadSection{});
+    }
 
     int GetRowCount() const override { return static_cast<int>(rows.size()); }
     int GetColumnCount() const override { return 1; }
@@ -64,7 +75,7 @@ private:
     size_t entryCount = 0;
 };
 
-enum class ClipboardRowAction { NoAction, Copy, Edit, Delete };
+enum class ClipboardRowAction { NoAction, Copy, Edit, SaveAs, Delete };
 
 struct ClipboardRowStyle {
     bool compact = false;             // 48 px rows, 32 px thumbnails, actions only on the active row
@@ -74,6 +85,8 @@ struct ClipboardRowStyle {
     int padding = 16;
     int actionSize = 32;              // hit target
     int actionGlyph = 18;
+    bool saveAction = false;          // a Save as button between Edit and Delete (UltraClipboard)
+    bool actionsLeftOfText = false;   // the icons between the thumbnail and the text, not at the right edge
     float titleSize = 10.5f;
     float metaSize = 9.0f;
     float headerSize = 8.0f;
@@ -119,13 +132,21 @@ public:
     bool SetHover(int row, const Point2Di& posInCell);
     // The action under the pointer on `row`, NoAction elsewhere: for the tooltip.
     ClipboardRowAction GetHoverAction(int row) const { return row == hoverRow ? hoverAction : ClipboardRowAction::NoAction; }
+    // Whether a point in a row (posInCell, as above) is on the thumbnail's
+    // column - the tile's width, the row's whole height - so a pointer
+    // resting there keeps its answer while the rows scroll under it. The
+    // caller checks the row is an entry (GetEntry), not a header. UltraClipboard
+    // opens its hover preview of an image from here.
+    bool IsOverThumbnail(const Point2Di& posInCell) const;
     // The Copy glyph shows a check for a moment after a copy.
     void ShowCopied(int64_t entryId);
     bool IsShowingCopied() const;
-    // "Copy  Enter", "Edit  F2", "Delete  Del".
+    // "Copy  (Enter)", "Edit  (F2)", "Save as  (Ctrl+S)", "Delete  (Del)".
     static std::string ActionTooltip(ClipboardRowAction action);
 
     const ClipboardRowStyle& Style() const { return style; }
+    // ClipboardHistoryPolicy::iconSide, applied: the list wants a redraw after.
+    void SetActionsLeftOfText(bool left) { style.actionsLeftOfText = left; }
     // Folder of the action glyphs; defaults to <resources>/media/icons/clipboard/.
     std::string iconsDir;
 
@@ -137,6 +158,7 @@ private:
     int64_t copiedId = 0;
     std::chrono::steady_clock::time_point copiedAt{};
 
+    std::vector<ClipboardRowAction> Actions() const;   // left to right
     bool ActionsVisible(const ListItemStyleOption& option) const;
     double ActionsLeft(int width) const;
     void PaintThumbnail(IRenderContext* ctx, const ClipboardHistoryEntry& entry, const Rect2Dd& tile) const;

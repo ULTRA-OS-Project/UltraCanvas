@@ -4,7 +4,13 @@
 // give right now, and the note under them says what the size means on this
 // platform (reserved up front on macOS and with ImDisk, a ceiling shared by
 // all discs on Linux, not memory at all on Windows without ImDisk).
-// Version: 1.0.0
+//
+// What the dialog shows about the machine - the memory free now and a name
+// no disc uses yet - is gathered by the caller (RamDiskDialogFacts) and
+// handed in, not read here: reading it means a hardware-information capture
+// and a pass over the mounted discs, which the window does on a worker
+// thread before opening the dialog, so the UI thread never waits on either.
+// Version: 1.1.0 - the facts about the machine come from the caller
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,11 +27,20 @@
 
 namespace UltraCanvas {
 
+// What the dialog needs to know about the machine, read off the UI thread.
+struct RamDiskDialogFacts {
+    // Most a new disc can hold (UltraFilerRamDisks::LargestPossibleBytes);
+    // 0 when it could not be read, and every size is then offered.
+    uint64_t largestBytes = 0;
+    // The name offered in the name field (UltraFilerRamDisks::SuggestName).
+    std::string suggestedName;
+};
+
 class UltraFilerRamDiskDialog : public UltraCanvasModalDialog {
 public:
     UltraFilerRamDiskDialog() = default;
 
-    void Initialize();
+    void Initialize(const RamDiskDialogFacts& facts);
 
     // Invoked on Create with a valid name and the chosen size in bytes.
     std::function<void(const std::string& name, uint64_t sizeBytes)> onCreate;
@@ -46,9 +61,15 @@ private:
     std::vector<uint64_t>                 sizes_;   // per dropdown row
 };
 
-// Build and show the dialog; onCreate fires only on Create.
+// Build and show the dialog; onCreate fires only on Create. `facts` is
+// what GatherRamDiskDialogFacts answers - call that on a worker thread.
 std::shared_ptr<UltraFilerRamDiskDialog> ShowRamDiskDialog(
+    const RamDiskDialogFacts& facts,
     std::function<void(const std::string& name, uint64_t sizeBytes)> onCreate,
     UltraCanvasWindowBase* parent);
+
+// Reads what the dialog shows about the machine. Safe on any thread; meant
+// for a worker, since it captures hardware information and lists the discs.
+RamDiskDialogFacts GatherRamDiskDialogFacts();
 
 }  // namespace UltraCanvas

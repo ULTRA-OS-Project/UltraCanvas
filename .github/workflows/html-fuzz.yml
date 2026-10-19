@@ -1,0 +1,96 @@
+name: HTML fuzz
+
+# Fuzzes the HTMLReader's parser and CSS (Tests/Fuzz) with libFuzzer under
+# AddressSanitizer and UndefinedBehaviorSanitizer, for a few minutes per
+# target, whenever the reader or its fuzz targets change - and longer once a
+# week. Everything UltraMail and the eBook viewer render goes through this
+# code, and none of what they render is trusted. A crash uploads the input
+# that caused it as an artifact; reproduce with
+#   build-fuzz/bin/HTMLParserFuzzer <crash-file>
+# See Tests/Fuzz/README.md.
+#
+# The standalone Tests/Fuzz project needs no dependency but clang, so this
+# job does not build the rest of the framework. The builder-and-layout smoke
+# run (HTMLBuilderFuzzSmoke) needs the full library and runs in build.yml's
+# ctest instead.
+
+# Trigger policy matches build.yml / win32-names.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this twice
+# per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/core/HTMLReader/**'
+      - 'UltraCanvas/include/HTMLReader/**'
+      - 'UltraCanvas/core/UltraCanvasTextUtils.cpp'
+      - 'Tests/Fuzz/**'
+      - 'Tests/HTMLReaderCoreSources.cmake'
+      - '.github/workflows/html-fuzz.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  schedule:
+    - cron: '17 3 * * 0'      # Sundays: a longer run over the whole corpus
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: HTMLParser
+            corpus: html
+            max_len: 65536
+          - target: CSS
+            corpus: css
+            max_len: 16384
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install clang and its libFuzzer runtime
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install clang libclang-rt-dev ninja-build
+
+      - name: Build the fuzz targets
+        run: |
+          cmake -S Tests/Fuzz -B build-fuzz -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DULTRACANVAS_BUILD_FUZZERS=ON
+          cmake --build build-fuzz
+
+      - name: Smoke run (the ctest one)
+        run: |
+          build-fuzz/bin/${{ matrix.target }}FuzzSmoke -runs=3000 \
+            -dict=Tests/Fuzz/${{ matrix.corpus }}.dict Tests/Fuzz/corpus/${{ matrix.corpus }}
+
+      - name: Fuzz
+        run: |
+          SECONDS_TO_RUN=240
+          if [ "${{ github.event_name }}" = "schedule" ]; then SECONDS_TO_RUN=2400; fi
+          mkdir -p work artifacts
+          cp Tests/Fuzz/corpus/${{ matrix.corpus }}/* work/
+          build-fuzz/bin/${{ matrix.target }}Fuzzer work \
+            -dict=Tests/Fuzz/${{ matrix.corpus }}.dict \
+            -max_len=${{ matrix.max_len }} -timeout=10 -rss_limit_mb=2048 \
+            -max_total_time=$SECONDS_TO_RUN -print_final_stats=1 \
+            -artifact_prefix=artifacts/
+
+      - name: Upload the crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-fuzz-artifacts
+          path: artifacts/
+          if-no-files-found: ignore

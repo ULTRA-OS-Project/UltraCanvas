@@ -10,8 +10,8 @@
 //
 // Unlike the Linux back end this gives an exactly sized volume, because the
 // device is created with a fixed block count.
-// Version: 1.1.0 - PlatformMaxNameLength
-// Last Modified: 2026-10-05
+// Version: 1.2.0 - PlatformPreferredBacking; create reads the kept answer
+// Last Modified: 2026-10-13
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -88,7 +88,10 @@ bool HaveTool(const char* tool) {
 VirtualFSResult PlatformCreate(const std::string& name,
                                uint64_t sizeBytes,
                                VirtualFSRamDisk& outDisk) {
-    if (!HaveTool("hdiutil") || !HaveTool("diskutil")) {
+    // The once-per-process answer (VirtualFS_GetPreferredRamDiskBacking),
+    // not HaveTool() again: that runs two shells, and the caller has
+    // usually asked already to decide whether to offer a disc at all.
+    if (VirtualFS_GetPreferredRamDiskBacking() != VirtualFSRamDiskBacking::HdiUtil) {
         return VirtualFSResult::NotSupported;
     }
 
@@ -193,12 +196,12 @@ std::size_t PlatformMaxNameLength() {
     return kMaxNameLength;
 }
 
-} // namespace RamDiskDetail
-
-VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking() {
-    return (RamDiskDetail::HaveTool("hdiutil") && RamDiskDetail::HaveTool("diskutil"))
+// Two shells (`command -v`), so the core asks once and keeps the answer.
+VirtualFSRamDiskBacking PlatformPreferredBacking() {
+    return (HaveTool("hdiutil") && HaveTool("diskutil"))
                ? VirtualFSRamDiskBacking::HdiUtil
                : VirtualFSRamDiskBacking::None;
 }
 
+} // namespace RamDiskDetail
 } // namespace VirtualFS

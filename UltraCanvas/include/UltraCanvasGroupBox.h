@@ -5,8 +5,11 @@
 // titled frame, an optional activator (checkbox or switch, on either side of
 // the title bar) that enables/disables the contents, an optional info icon
 // with help text, and optional collapsible behaviour.
-// Version: 1.1.0
-// Last Modified: 2026-06-15
+// Version: 1.3.0 - GroupBoxVisualStyle::SectionCard(): one section of a window as a white
+//                  card on the light Colors::SectionPage (UltraMail's panes, UltraPaint's
+//                  side panel), shared instead of copied per app
+// Version: 1.2.0
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -83,11 +86,28 @@ namespace UltraCanvas {
         static GroupBoxVisualStyle Default();
         // iOS-like grouped card: filled rounded background, bold header, separator.
         static GroupBoxVisualStyle Card();
+        // One section of a window as a white card - UltraMail's folder,
+        // message-list and message panes, UltraPaint's side panel: a hairline
+        // border, 8 px corners and the caption in bold grey over a hairline
+        // separator. Meant for GroupBoxFrameStyle::Header, on a page of
+        // Colors::SectionPage; its colours are the Colors::SectionCard* ones,
+        // and a list on it takes Colors::ListRowHover / ListRowSelected. The
+        // caption is 11 px: an application with another body size sets
+        // titleFont.fontSize to it, and contentPadding to what its content
+        // wants (8 px here).
+        static GroupBoxVisualStyle SectionCard();
     };
 
 // ===== GROUP BOX =====
     class UltraCanvasGroupBox : public UltraCanvasContainer {
     public:
+        // ===== ACCESSIBILITY =====
+        // A group named by its title.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Group; }
+        std::string GetAccessibleName() const override {
+            return GetAccessibleNameOverride().empty() ? title : GetAccessibleNameOverride();
+        }
+
         // ===== CONSTRUCTORS =====
         UltraCanvasGroupBox(const std::string& identifier, float x, float y, float w, float h,
                             const std::string& title = "");

@@ -4,8 +4,8 @@
 // its nodes, screen geometry, and the difference between two versions of a
 // text. Applications do not use this header; elements describe themselves
 // through UltraCanvasAccessibility.h.
-// Version: 1.0.0
-// Last Modified: 2026-10-01
+// Version: 1.1.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,6 +91,13 @@ private:
 };
 
 // ===== TEXT =====
+// The text a screen reader reads from an element: its own IAccessibleText,
+// else - for a text field or combo box that only reports a value text - a
+// read-only view of that value (caret at its end). Null for a password field
+// and for elements without text. The view is shared: valid until the next
+// call, which is all a bridge's single request needs.
+IAccessibleText* TextInterface(UltraCanvasUIElement* element);
+
 // The text in [start, end) (characters; end < 0 = to the end).
 std::string Substring(const std::string& utf8, int start, int end);
 

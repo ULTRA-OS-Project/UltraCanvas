@@ -44,6 +44,9 @@ Only minimal, clearly-marked changes (search for `[UltraCanvas local patch]`):
 
 - `lib/utils/utils.cpp` — `defaultLocale()` falls back gracefully when
   `en_US.UTF-8` is unavailable on the host instead of throwing.
+- `lib/utils/string_utils.h` — includes `<cstdlib>` for `strtod`/`strtol`;
+  the upstream header relied on `<string>` bringing it in, which libc++
+  (MSYS2 CLANG64, 2026-10-09) no longer does.
 
 ## Font
 

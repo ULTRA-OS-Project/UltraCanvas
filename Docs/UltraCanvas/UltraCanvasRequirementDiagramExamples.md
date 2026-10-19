@@ -1,5 +1,58 @@
 # UltraCanvasRequirementDiagram Documentation
 
+<!-- doc-check: std::vector<RequirementNode> LoadNodes(); std::vector<RequirementRelation> LoadRelations(); -->
+
+## Contents
+
+- [Overview](#overview)
+  - [Model and view](#model-and-view)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Nodes](#nodes)
+  - [Adding nodes](#adding-nodes)
+  - [Node kinds and default shapes](#node-kinds-and-default-shapes)
+  - [Requirement specialisations](#requirement-specialisations)
+  - [Detail levels](#detail-levels)
+- [Compartment templates](#compartment-templates)
+- [Relationships](#relationships)
+  - [Notation](#notation)
+  - [Hiding a relationship](#hiding-a-relationship)
+  - [Routing](#routing)
+- [Model queries and integrity](#model-queries-and-integrity)
+  - [Building a whole diagram at once](#building-a-whole-diagram-at-once)
+- [Layout](#layout)
+- [Callouts](#callouts)
+- [Categories, colours and the legend](#categories-colours-and-the-legend)
+- [Palettes and style](#palettes-and-style)
+- [Title banner](#title-banner)
+- [Viewport and interaction](#viewport-and-interaction)
+  - [Selection API](#selection-api)
+  - [Callbacks](#callbacks)
+- [Endpoint semantics](#endpoint-semantics)
+- [Hierarchical id numbering](#hierarchical-id-numbering)
+- [Compartment notation](#compartment-notation)
+- [Coverage analysis](#coverage-analysis)
+- [Trace highlighting and filters](#trace-highlighting-and-filters)
+- [Expand / collapse](#expand--collapse)
+- [Layout modes and routing](#layout-modes-and-routing)
+- [Editing](#editing)
+- [Diagram frame](#diagram-frame)
+- [Copy semantics](#copy-semantics)
+- [Search](#search)
+- [Traceability matrix](#traceability-matrix)
+- [Package regions, overlays and decorations](#package-regions-overlays-and-decorations)
+- [Force-directed layout](#force-directed-layout)
+- [Serialization](#serialization)
+  - [Mermaid](#mermaid)
+  - [CSV](#csv)
+  - [ReqIF](#reqif)
+- [Complete example — HybridSUV requirement tree](#complete-example-—-hybridsuv-requirement-tree)
+- [Live demo](#live-demo)
+- [Notes and limitations](#notes-and-limitations)
+- [Related Documentation](#related-documentation)
+
 ## Overview
 
 **UltraCanvasRequirementDiagram** renders a SysML **requirement diagram**
@@ -18,7 +71,7 @@ separately.
 **Header:** `include/Plugins/Diagrams/UltraCanvasRequirementDiagram.h`
 **Model header:** `include/Plugins/Diagrams/UltraCanvasRequirementModel.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 3.0.0
+**Version:** 3.0.1
 
 Research write-up and the full phased feature list:
 [`UltraCanvasRequirementDiagramProposal.md`](UltraCanvasRequirementDiagramProposal.md).
@@ -222,6 +275,7 @@ tpl.AddCustomRow("allocatedTo", "allocatedTo");     // customProperties key
 tpl.SetPropertyFormat(RequirementPropertyFormat::KeyEqualsQuotedValue);
 req->SetNodeTemplate(tpl);
 
+RequirementNodeTemplate specialTemplate = RequirementNodeTemplate::Standard();
 req->SetNodeTemplate("UR1.2", specialTemplate);     // per-node override
 ```
 
@@ -762,7 +816,7 @@ are anchors.
 
 ```cpp
 const std::string json = req->ToJson(/*pretty*/ true);
-SaveToFile("requirements.json", json);
+std::ofstream("requirements.json") << json;
 
 UltraCanvasRequirementDiagram loaded("req", 0, 0, 900, 600);
 if (!loaded.FromJson(json)) { /* malformed input */ }

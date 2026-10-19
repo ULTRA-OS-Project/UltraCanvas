@@ -1,7 +1,9 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.8.0 - Wheel delta normalized to +/-1 per notch
-// Last Modified: 2026-07-20
+// Version: 1.10.0 - a held key is one press, its repeats, and one release: detectable
+//                   auto-repeat, and the fake releases dropped where the server lacks it
+// Version: 1.9.0 - Property events of a clipboard copy sent in pieces go to the clipboard
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxAccessibility.h"
@@ -20,6 +22,7 @@
 #include <clocale>  // For setlocale
 #include <fontconfig/fontconfig.h>
 #include "UltraCanvasDebug.h"
+#include <X11/XKBlib.h>   // XkbSetDetectableAutoRepeat
 
 namespace UltraCanvas {
     UltraCanvasLinuxApplication* UltraCanvasLinuxApplication::instance = nullptr;
@@ -146,6 +149,13 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvas: Cannot connect to X server" << std::endl;
             return false;
         }
+
+        // A held key: one KeyPress per repeat and one KeyRelease when it is
+        // let go, as on Windows and macOS. X11's default sends a release
+        // before every repeat, so a key-up handler ran once per repeat.
+        Bool autoRepeatSupported = False;
+        XkbSetDetectableAutoRepeat(display, True, &autoRepeatSupported);
+        detectableAutoRepeat = autoRepeatSupported == True;
 
         // Get display information
         screen = DefaultScreen(display);
@@ -380,7 +390,18 @@ namespace UltraCanvas {
 
 // ===== EVENT PROCESSING =====
 
+    bool UltraCanvasLinuxApplication::IsAutoRepeatRelease(const XEvent& xEvent) {
+        if (detectableAutoRepeat) return false;
+        if (XEventsQueued(display, QueuedAfterReading) == 0) return false;
+        XEvent next;
+        XPeekEvent(display, &next);
+        return next.type == KeyPress && next.xkey.window == xEvent.xkey.window &&
+               next.xkey.keycode == xEvent.xkey.keycode && next.xkey.time == xEvent.xkey.time;
+    }
+
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {
+        // The release half of an auto-repeat is no release at all.
+        if (xEvent.type == KeyRelease && IsAutoRepeatRelease(xEvent)) return;
         // Find the window that owns this event
         if (xEvent.type == SelectionRequest || xEvent.type == SelectionNotify || xEvent.type == SelectionClear) {
             // An active XDnD source drag owns XdndSelection: it answers the
@@ -398,6 +419,10 @@ namespace UltraCanvas {
                 }
             }
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
+        } else if (xEvent.type == PropertyNotify &&
+                   UltraCanvasLinuxClipboard::ProcessClipboardPropertyEvent(xEvent)) {
+            // A piece of a clipboard copy sent or received in pieces (INCR)
+            return;
         } else {
             auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
 
@@ -701,7 +726,14 @@ namespace UltraCanvas {
             }
 
             case FocusIn: {
-                //debugOutput << "focus xwindow=" << xEvent.xany.window << std::endl;
+                // A keyboard grab starting or ending (a global shortcut held
+                // down, a window manager's key binding) moves the focus away
+                // and back for its own duration; the window keeps it. A real
+                // change during a grab arrives as NotifyWhileGrabbed.
+                if (xEvent.xfocus.mode == NotifyGrab || xEvent.xfocus.mode == NotifyUngrab) {
+                    event.type = UCEventType::Unknown;
+                    break;
+                }
                 event.type = UCEventType::WindowFocus;
                 
                 // Set XIC focus when window gains focus
@@ -715,7 +747,14 @@ namespace UltraCanvas {
             }
 
             case FocusOut: {
-                //debugOutput << "blur xwindow=" << xEvent.xany.window << std::endl;
+                // See FocusIn: the grab's own focus changes are not a blur.
+                // A popup that closes when its window loses the focus (the
+                // desktop's clipboard panel) shut whenever Super+V was
+                // pressed over it.
+                if (xEvent.xfocus.mode == NotifyGrab || xEvent.xfocus.mode == NotifyUngrab) {
+                    event.type = UCEventType::Unknown;
+                    break;
+                }
                 event.type = UCEventType::WindowBlur;
                 
                 // Unset XIC focus when window loses focus

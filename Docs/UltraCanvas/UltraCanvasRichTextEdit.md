@@ -1,5 +1,7 @@
 # UltraCanvasRichTextEdit
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); std::vector<uint8_t> BytesFor(const std::string& src); bool ShowMyOwnMenu(const UCEvent& event); -->
+
 The WYSIWYG editing element: the caret sits in rendered text, and **bold is a
 state of the selection** rather than two asterisks in a buffer.
 
@@ -7,6 +9,48 @@ state of the selection** rather than two asterisks in a buffer.
 - Editing core (UI-free): `UltraCanvas/include/UltraCanvasRichDocumentEditor.h`
 - Document model: `UltraCanvas/include/UltraCanvasRichDocument.h`
 - Design notes: [`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md)
+
+## Contents
+
+- [When to use it (and when not to)](#when-to-use-it-and-when-not-to)
+- [Three layers](#three-layers)
+- [Minimal use](#minimal-use)
+- [Opening and saving documents](#opening-and-saving-documents)
+  - [From HTML, and back](#from-html-and-back)
+  - [Quote levels](#quote-levels)
+- [Building the toolbar](#building-the-toolbar)
+- [The editing surface](#the-editing-surface)
+  - [Character formatting](#character-formatting)
+  - [Paragraph formatting](#paragraph-formatting)
+  - [Named styles](#named-styles)
+  - [Contents, captions, bookmarks and cross-references](#contents-captions-bookmarks-and-cross-references)
+  - [Comments](#comments)
+  - [Tracked changes](#tracked-changes)
+  - [Tables](#tables)
+  - [Pictures: selecting, resizing, alt text](#pictures-selecting-resizing-alt-text)
+  - [Floating pictures](#floating-pictures)
+  - [Check lists](#check-lists)
+  - [Formulas](#formulas)
+  - [Structure](#structure)
+- [Keyboard](#keyboard)
+- [Autoformat as you type](#autoformat-as-you-type)
+- [Input methods](#input-methods)
+- [Right-to-left text](#right-to-left-text)
+- [Fonts for other scripts](#fonts-for-other-scripts)
+- [Accessibility](#accessibility)
+- [Drag and drop](#drag-and-drop)
+- [Find and replace](#find-and-replace)
+- [Spell checking](#spell-checking)
+- [Undo](#undo)
+- [Clipboard](#clipboard)
+- [Style](#style)
+- [Paragraph layout from documents](#paragraph-layout-from-documents)
+- [Read-only rendering](#read-only-rendering)
+- [Page view](#page-view)
+- [PDF and printing](#pdf-and-printing)
+- [Zoom and scrolling sideways](#zoom-and-scrolling-sideways)
+- [What is not implemented yet](#what-is-not-implemented-yet)
+- [Related](#related)
 
 ## When to use it (and when not to)
 
@@ -51,7 +95,7 @@ changes underneath it. That same string is what the element hands to
 #include "UltraCanvasRichTextEdit.h"
 
 auto editor = CreateRichTextEdit("editor", 0, 0, 800, 600);
-window->AddElement(editor);
+window->AddChild(editor);
 
 editor->SetMarkdown("# Report\n\nSome **bold** text and a [link](https://example.com).\n");
 editor->onDocumentChanged = [editor]() {
@@ -68,7 +112,6 @@ the result over.
 
 ```cpp
 #include "UltraCanvasFileLoader.h"
-#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 std::string error;
 if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
@@ -77,8 +120,10 @@ if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
     ShowError(error);
 }
 
-// Saving: the element hands back the same document, edits included.
-UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
+// Saving: the element hands back the same document, edits included. The
+// Save dialog's types are AddTextDocumentSaveTypes (ODT, DOCX), its Open
+// dialog's AddTextDocumentLoadTypes.
+UltraCanvasFileLoader::SaveTextDocument(*editor->GetDocument(), savePath, error);
 ```
 
 Because the element shares ownership of the document (`std::shared_ptr`), an
@@ -139,8 +184,9 @@ toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
 selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
-the reader produced, hands it to the element, and hands the same object back to
-`UCWordDocumentIO::Save` — no conversion in either direction. See
+`UltraCanvasFileLoader::LoadTextDocument` produced, hands it to the element, and
+hands the same object back to `SaveTextDocument` — no conversion in either
+direction. See
 `Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
 `SaveRichDocumentAs`) for a worked integration, including how the element is
 swapped into an existing tab layout and how a shared formatting toolbar drives
@@ -215,11 +261,18 @@ editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
+
+RichCharFormatDelta exactly;     // set, rather than flip: a checkbox's state
+exactly.setBold = true;
+exactly.bold = false;
+editor->ApplyCharFormat(exactly);
 ```
 
 With a selection these apply to it. With a collapsed caret they **arm** the
 format for the next typed character — pressing Bold and carrying on typing does
-what a word processor does.
+what a word processor does. `ApplyCharFormat` sets what the delta names to
+the value given, where the toggles flip it - the call for a panel of
+checkboxes, which knows what it wants rather than what the text has.
 
 ### Paragraph formatting
 
@@ -405,7 +458,8 @@ what a menu should ask to decide whether to offer the item:
 if (editor->IsCaretInTable()) {
     int rows = 0, columns = 0, row = 0, column = 0;
     editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
-    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+    MenuItemData split = MenuItemData::Action("Split Cell", [editor]() { editor->SplitCurrentCell(); });
+    split.enabled = editor->CanSplitCurrentCell();            // greyed out when nothing is merged
 }
 ```
 
@@ -467,7 +521,7 @@ if (editor->HasSelectedImage()) {
 }
 editor->SelectImage(RichDocPosition(imageBlock, 0));
 // Editing core: pictures are addressed by where they sit.
-edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+editor->GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
 
 ### Floating pictures
@@ -609,7 +663,12 @@ composition as `UCEventType::TextComposition` (`event.text`,
 `event.compositionCursor`) to an element whose `DrawsTextComposition()` is
 true: on X11 through an on-the-spot input context used while such an element
 has focus (other widgets keep the input method's own window), on Windows
-through the IMM composition string. `GetCompositionText()` reads it.
+through the IMM composition string, on macOS through the window's
+`NSTextInputClient` marked text (keys go through the input method only while
+such an element has focus), and in the browser (WebAssembly) through a
+transparent `<textarea>` that takes the keyboard while such an element has
+focus and whose `compositionupdate` / `compositionend` events are forwarded.
+`GetCompositionText()` reads it.
 
 ## Right-to-left text
 
@@ -647,9 +706,9 @@ character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
 selection changes and focus are announced to listeners, and the platform
 bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
-Automation on Windows (Narrator, NVDA, JAWS) - see
-[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
-is no macOS bridge yet.
+Automation on Windows (Narrator, NVDA, JAWS) and NSAccessibility on macOS
+(VoiceOver) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges).
 
 ## Drag and drop
 
@@ -744,10 +803,15 @@ copy/paste **inside the application loses nothing** (between two documents the
 pictures come along; notes, comments and bookmarks stay behind).
 
 A paste from another application uses its HTML when it offers some
-(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
-tables, rules, links, inlined pictures and character formatting from tags and
-CSS, Word's list-number spans and conditional comments dropped), and its plain
-text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UCRichDocument::FromHTML`, which reads it through the HTMLReader's
+`ImportHTMLToRichDocument` - the page's style sheets and inline CSS through
+the same cascade a mail is shown with: paragraphs, headings, lists, quotes as
+a quote level, `<pre>` as a code block, tables, rules, links, right-to-left
+paragraphs, inlined pictures (a picture the clipboard only links to becomes
+its alt text) and character formatting; Word's list paragraphs as list items,
+its typed-out labels and conditional comments dropped, a no-break space pasted
+as a space), and its
+plain text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
 (`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
 converted), `HTML Format` on Windows; other platforms fall back to plain text.
 
@@ -968,6 +1032,7 @@ back. `ExportToPdf` is built on the same three.
 ```cpp
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
 ```
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
@@ -977,16 +1042,26 @@ scrollbar appears - drag it, Shift+wheel, or let the caret take the view
 along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
 it. UltraTexter's zoom box sets a word-processing tab's zoom.
 
+The text is laid out in document space and the zoom only scales the drawing,
+so the same words at another zoom wrap and sit exactly as they do at 100 %.
+That is what lets the element edit text lying on a zoomable canvas: a bitmap
+editor's text layer is drawn by this element at 1:1, and edited on the
+canvas by it at the canvas's zoom, with every glyph where the layer's pixels
+will be ([text layers](UltraCanvasPaintSurface.md#text-layers)).
+`SetZoomRange` widens the 0.25-5 range to whatever the canvas allows.
+
 ## What is not implemented yet
 
 Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
-  Automation) have one; VoiceOver does not see the element yet.
+- **Screen readers on Windows and macOS are untested.** The UI Automation
+  and NSAccessibility bridges compile but have not yet been run against
+  Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
-  next to the caret.
+  next to the caret, on X11 and Windows. On macOS and in the browser it opens
+  at the caret (where the composition starts).
 
 ## Related
 

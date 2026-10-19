@@ -1,10 +1,20 @@
 // core/UltraCanvasNewDocumentDialog.cpp
 // New Document dialog implementation - FIXED version with deferred initialization
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.1.2 - drawn again under the CSS layout: the fields are pinned where
+//                 the dialog draws around them (they were stacked at its
+//                 corner), and the container no longer paints a background
+//                 over the title and list. Text is centred on the rows it
+//                 belongs to: the list's names sat 18 px low, across the next
+//                 row; "File name:" was at the dialog's own window offset and
+//                 the "Will create:" preview below the dialog
+// Version: 1.1.1 - the close cross, document icon and tick are drawn, not typed
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNewDocumentDialog.h"
+#include "UltraCanvasConfig.h"        // GetResourcesDir
+#include "UltraCanvasDrawnMarks.h"
+#include "UltraCanvasUtils.h"         // NormalizePath
 #include <algorithm>
 #include <cctype>
 
@@ -17,7 +27,9 @@ namespace UltraCanvas {
             float x, float y, float width, float height)
             : UltraCanvasContainer(identifier, x, y, width, height)
     {
-        SetBackgroundColor(style.backgroundColor);
+        // No container background: Render paints the dialog's own, under the
+        // title and list it draws; the container's, painted after that, hid
+        // them all.
         SetupComponents();
         SetupLayout();
         LoadDefaultDocumentTypes();
@@ -72,28 +84,21 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasNewDocumentDialog::SetupLayout() {
-        int padding = style.padding;
-        int width = GetWidth();
-        int height = GetHeight();
-
-        Rect2Di filterBounds = GetFilterInputBounds();
-        filterInput->SetBounds(filterBounds);
-
-        Rect2Di fileNameBounds = GetFileNameInputBounds();
-        fileNameInput->SetBounds(fileNameBounds);
-
-        Rect2Di createBounds = GetCreateButtonBounds();
-        Rect2Di cancelBounds = GetCancelButtonBounds();
-        createButton->SetBounds(createBounds);
-        cancelButton->SetBounds(cancelBounds);
+        // Each field is pinned where the dialog draws around it. The CSS
+        // layout places a child by its position and size, so bounds set
+        // alone lasted only until the first layout pass, which stacked the
+        // fields at the dialog's top-left corner.
+        auto place = [](UltraCanvasUIElement& child, const Rect2Di& r) {
+            child.SetElementAbsolutePosition(Point2Df(r.x, r.y));
+            child.SetElementSize(Size2Df(r.width, r.height));
+        };
+        place(*filterInput, GetFilterInputBounds());
+        place(*fileNameInput, GetFileNameInputBounds());
+        place(*createButton, GetCreateButtonBounds());
+        place(*cancelButton, GetCancelButtonBounds());
 
         Rect2Di listBounds = GetDocumentListBounds();
-        listScrollbar->SetBounds(Rect2Di(
-                listBounds.x + listBounds.width - 14,
-                listBounds.y,
-                14,
-                listBounds.height
-        ));
+        place(*listScrollbar, Rect2Di(listBounds.x + listBounds.width - 14, listBounds.y, 14, listBounds.height));
 
         maxVisibleItems = listBounds.height / style.itemHeight;
     }
@@ -404,26 +409,35 @@ namespace UltraCanvas {
     void UltraCanvasNewDocumentDialog::RenderTitle(IRenderContext* ctx) {
         Rect2Di titleBounds = GetTitleBounds();
 
-        ctx->SetFontFace("sans-serif", FontWeight::Bold, FontSlant::Normal);
-        ctx->SetFontSize(style.titleFontSize);
+        FontStyle titleFont;
+        titleFont.fontFamily = "sans-serif";
+        titleFont.fontSize = style.titleFontSize;
+        titleFont.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(titleFont);
         ctx->SetTextPaint(style.titleColor);
-        ctx->DrawText("Create New Document", Point2Di(titleBounds.x, titleBounds.y + 20));
+        ctx->DrawText("Create New Document",
+                      Point2Di(titleBounds.x, ctx->TextTopCentredOnCaps(Rect2Dd(titleBounds), titleFont)));
 
-        int closeX = titleBounds.x + titleBounds.width - 20;
-        int closeY = titleBounds.y + 5;
-
-        ctx->SetFontSize(14);
-        ctx->SetTextPaint(Color(150, 150, 150));
-        ctx->DrawText("✕", Point2Di(closeX, closeY + 14));
+        // The close mark is drawn, level with the title: the bundled UI font
+        // has no "✕", and where no fallback font has one either it showed as
+        // a hex box. HandleMouseDown takes the click around it.
+        DrawCrossMark(ctx, Point2Dd(titleBounds.x + titleBounds.width - 14,
+                                    titleBounds.y + titleBounds.height / 2.0),
+                      14, Color(150, 150, 150));
     }
 
     void UltraCanvasNewDocumentDialog::RenderFilterInput(IRenderContext* ctx) {
         Rect2Di filterBounds = GetFilterInputBounds();
 
-        ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(12);
+        // In the 20 px between the title's band and the field, clear of the
+        // field's border (drawn 16 px up, its descenders touched it).
+        FontStyle labelFont;
+        labelFont.fontFamily = "sans-serif";
+        labelFont.fontSize = 12;
+        ctx->SetFontStyle(labelFont);
         ctx->SetTextPaint(style.itemTextColor);
-        ctx->DrawText("Document type:", Point2Di(filterBounds.x, filterBounds.y - 16));
+        const Rect2Dd labelRow(filterBounds.x, filterBounds.y - 20, filterBounds.width, 18);
+        ctx->DrawText("Document type:", Point2Di(filterBounds.x, ctx->TextTopCentredOnCaps(labelRow, labelFont)));
     }
 
     void UltraCanvasNewDocumentDialog::RenderDocumentList(IRenderContext* ctx) {
@@ -461,7 +475,8 @@ namespace UltraCanvas {
         if (!filterText.empty()) {
             countText += " (filtered)";
         }
-        ctx->DrawText(countText, Point2Di(listBounds.x + 4, listBounds.y + listBounds.height + 12));
+        // Just under the list, clear of the file name field 16 px below it.
+        ctx->DrawText(countText, Point2Di(listBounds.x + 4, listBounds.y + listBounds.height + 2));
     }
 
     void UltraCanvasNewDocumentDialog::RenderListItem(
@@ -480,46 +495,62 @@ namespace UltraCanvas {
             ctx->FillRectangle(itemBounds);
         }
 
+        // Everything in the row is centred on it: the name's capitals and
+        // the marks beside it.
+        FontStyle itemFont;
+        itemFont.fontFamily = "sans-serif";
+        itemFont.fontSize = style.itemFontSize;
+        const Rect2Dd row(itemBounds);
+        const int textTop = ctx->TextTopCentredOnCaps(row, itemFont);
+        const double rowCentre = row.y + row.height / 2.0;
+
+        // A document icon, tinted: the bundled UI font has no "📄".
         int iconX = itemBounds.x + 8;
-        int iconY = itemBounds.y + (style.itemHeight - 16) / 2;
-        ctx->SetFontSize(14);
-        ctx->SetTextPaint(Color(100, 130, 180));
-        ctx->DrawText("📄", Point2Di(iconX, iconY + 14));
+        ctx->DrawMask(Color(100, 130, 180), NormalizePath(GetResourcesDir() + "media/icons/menu/file-icons.svg"),
+                      Rect2Dd(iconX, rowCentre - 8, 16, 16), ImageFitMode::Contain);
 
         int textX = iconX + 24;
         ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(style.itemFontSize);
         ctx->SetTextPaint(style.itemTextColor);
-        ctx->DrawText(docType.GetDisplayName(), Point2Di(textX, itemBounds.y + 18));
+        ctx->DrawText(docType.GetDisplayName(), Point2Di(textX, textTop));
 
         if (!docType.category.empty()) {
-            ctx->SetFontSize(10);
+            FontStyle categoryFont = itemFont;
+            categoryFont.fontSize = 10;
+            ctx->SetFontStyle(categoryFont);
             ctx->SetTextPaint(style.categoryTextColor);
             Size2Di catSize = ctx->GetTextLineDimensions(docType.category);
+            // Left of the selection tick's column, so the tick never covers it.
             ctx->DrawText(docType.category,
-                          Point2Di(itemBounds.x + itemBounds.width - catSize.width - 8, itemBounds.y + 17));
+                          Point2Di(itemBounds.x + itemBounds.width - catSize.width - 30,
+                                   ctx->TextTopCentredOnCaps(row, categoryFont)));
         }
 
         if (isSelected) {
-            ctx->SetTextPaint(Color(66, 133, 244));
-            ctx->DrawText("✓", Point2Di(itemBounds.x + itemBounds.width - 24, itemBounds.y + 18));
+            DrawTickMark(ctx, Point2Dd(itemBounds.x + itemBounds.width - 18, rowCentre), 14, Color(66, 133, 244));
         }
     }
 
     void UltraCanvasNewDocumentDialog::RenderFileNameInput(IRenderContext* ctx) {
         Rect2Di bounds = GetFileNameInputBounds();
 
-        ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(12);
+        // The label sits left of the field, level with it; the preview under
+        // the field. Both are in the dialog's own coordinates, as the field
+        // is: finalBounds is where the dialog is in its window.
+        FontStyle labelFont;
+        labelFont.fontFamily = "sans-serif";
+        labelFont.fontSize = 12;
+        ctx->SetFontStyle(labelFont);
         ctx->SetTextPaint(style.itemTextColor);
-        ctx->DrawText("File name:", Point2Di(style.padding, finalBounds.y + 8));
+        ctx->DrawText("File name:", Point2Di(style.padding, ctx->TextTopCentredOnCaps(Rect2Dd(bounds), labelFont)));
 
         const DocumentTypeInfo* selected = GetSelectedType();
         if (selected) {
             ctx->SetFontSize(10);
             ctx->SetTextPaint(Color(100, 100, 100));
             std::string preview = "Will create: " + GetFullFileName();
-            ctx->DrawText(preview, Point2Di(finalBounds.x, finalBounds.y + finalBounds.height + 4));
+            ctx->DrawText(preview, Point2Di(bounds.x, bounds.y + bounds.height + 4));
         }
     }
 
@@ -615,10 +646,11 @@ namespace UltraCanvas {
         Rect2Di listBounds = GetDocumentListBounds();
 
         Rect2Di titleBounds = GetTitleBounds();
+        // Around the close mark, centred in the title's band.
         int closeX = titleBounds.x + titleBounds.width - 24;
         int closeY = titleBounds.y;
         if (event.pointer.x >= closeX && event.pointer.x <= closeX + 20 &&
-            event.pointer.y >= closeY && event.pointer.y <= closeY + 24) {
+            event.pointer.y >= closeY && event.pointer.y <= closeY + titleBounds.height) {
             OnCancelClicked();
             return true;
         }

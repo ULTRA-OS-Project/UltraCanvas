@@ -3,6 +3,8 @@
 // behind every "the action can't be completed because the file is open in
 // another program" a file manager runs into.
 //
+// doc-check: std::string path;
+// doc-check: example
 //   FileLockInfo info = ProbeFileLock(path);
 //   if (info.state == FileLockState::Locked) { /* cannot be replaced now */ }
 //

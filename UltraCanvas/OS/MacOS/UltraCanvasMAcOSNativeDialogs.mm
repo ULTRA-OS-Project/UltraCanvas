@@ -392,16 +392,23 @@ std::string UltraCanvasNativeDialogs::SaveFile(const FileDialogOptions& options)
         }
 
         // Set file type filters
-        if (!options.filters.empty()) {
-            NSMutableArray<NSString*>* allowedTypes = [NSMutableArray array];
-
-            for (const auto& filter : options.filters) {
-                NSArray<NSString*>* extensions = ParseExtensions(filter);
-                [allowedTypes addObjectsFromArray:extensions];
-            }
-
-            if ([allowedTypes count] > 0) {
-                [panel setAllowedFileTypes:allowedTypes];
+        NSMutableArray<NSString*>* allowedTypes = [NSMutableArray array];
+        for (const auto& filter : options.filters) {
+            NSArray<NSString*>* extensions = ParseExtensions(filter);
+            [allowedTypes addObjectsFromArray:extensions];
+        }
+        if ([allowedTypes count] > 0) {
+            [panel setAllowedFileTypes:allowedTypes];
+        } else {
+            // No type names an extension (no filters, or All files only):
+            // the caller's default extension goes on a name without one
+            // (FileDialogOptions::defaultExtension). Other extensions stay
+            // allowed, and the panel asks about replacing the final name.
+            std::string extension = options.defaultExtension;
+            while (!extension.empty() && extension.front() == '.') extension.erase(0, 1);
+            if (!extension.empty()) {
+                [panel setAllowedFileTypes:@[ToNSString(extension)]];
+                [panel setAllowsOtherFileTypes:YES];
             }
         }
 

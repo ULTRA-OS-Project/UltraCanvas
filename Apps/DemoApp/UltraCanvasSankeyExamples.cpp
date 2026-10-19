@@ -693,7 +693,7 @@ namespace UltraCanvas {
                     targetInput->SetText("");
                     valueInput->SetText("");
 
-                    statusLabel->SetText("Added link: " + source + " → " + target + " (" + valueStr + ")");
+                    statusLabel->SetText("Added link: " + source + " -> " + target + " (" + valueStr + ")");
                 } catch (...) {
                     statusLabel->SetText("Invalid value entered!");
                 }

@@ -37,6 +37,8 @@ namespace UltraCanvas {
         // application shares the global folder whatever this says.
         LastFolderScope scope = LastFolderScope::Individual;
         std::string lastFolder;   // UTF-8; the application's own last folder
+
+        bool operator==(const FileDialogAppSettings&) const = default;
     };
 
     struct FileDialogSettings {
@@ -67,12 +69,18 @@ namespace UltraCanvas {
         // the application's own, whichever its scope says.
         void SetLastFolderFor(const std::string& appName, const std::string& folder);
 
+        bool operator==(const FileDialogSettings&) const = default;
+
         // ----- persistence -----
         static std::filesystem::path FilePath();
+        // Reads the file; a missing file is the defaults. A file that is
+        // there but cannot be read is reported on the debug stream, once.
         static FileDialogSettings Load();
         bool Save() const;
         // Re-read, change, write back. Returns false when the file could not
-        // be written.
+        // be written. A change that leaves the settings as they were writes
+        // nothing: every file dialog closes through here, and most closes
+        // change nothing.
         static bool Update(const std::function<void(FileDialogSettings&)>& change);
     };
 

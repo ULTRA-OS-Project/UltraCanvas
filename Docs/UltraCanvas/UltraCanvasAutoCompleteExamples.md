@@ -1,10 +1,36 @@
 # UltraCanvasAutoComplete Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [AutoCompleteItem Structure](#autocompleteitem-structure)
+  - [Item Management (Static Mode)](#item-management-static-mode)
+  - [Selected Item](#selected-item)
+  - [Popup State](#popup-state)
+  - [Styling](#styling)
+  - [Behavior](#behavior)
+- [AutoCompleteStyle Structure](#autocompletestyle-structure)
+- [Events and Callbacks](#events-and-callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic Static AutoComplete](#basic-static-autocomplete)
+  - [Display Text vs. Programmatic Value (Country Codes)](#display-text-vs-programmatic-value-country-codes)
+  - [Dynamic Suggestion Provider](#dynamic-suggestion-provider)
+  - [Large List with Automatic Scrollbar](#large-list-with-automatic-scrollbar)
+  - [Listening to Popup and Text Events](#listening-to-popup-and-text-events)
+  - [Custom Popup Style](#custom-popup-style)
+- [Behavior Notes](#behavior-notes)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasAutoComplete** is a text input control with a popup suggestion list. It inherits from `UltraCanvasTextInput` and uses an internal `UltraCanvasListView` to display filtered suggestions as the user types. Items can be supplied as a static list or generated on demand through a dynamic suggestion provider callback.
 
-**Version:** 4.0.0
+**Version:** 4.0.1
 **Header:** `include/UltraCanvasAutoComplete.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasTextInput`
@@ -31,14 +57,16 @@
 
 ```cpp
 UltraCanvasAutoComplete(const std::string& identifier,
-                        long x, long y, long w, long h = 28);
+                        float x, float y, float w, float h);
+UltraCanvasAutoComplete(const std::string& identifier, float w, float h);   // position -1, -1
+explicit UltraCanvasAutoComplete(const std::string& identifier);            // size -1, -1 (layout decides)
 ```
 
 ### Factory Function
 
 ```cpp
 std::shared_ptr<UltraCanvasAutoComplete> CreateAutoComplete(
-    const std::string& identifier, long x, long y, long w, long h = 28);
+    const std::string& identifier, float x, float y, float w, float h = 28);
 ```
 
 ### AutoCompleteItem Structure

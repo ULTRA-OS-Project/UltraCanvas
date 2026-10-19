@@ -163,6 +163,30 @@ public:
             for (const auto& pr : it->second) onFlags(pr.first, pr.second, /*flagsKnown=*/true);
         return UltraNetResult::Ok();
     }
+    // CREATE / DELETE change the folder list the next LIST serves; a refusal
+    // (set `refuseFolderOps`) changes nothing, as on a server that says NO.
+    std::vector<std::string> created, deleted;
+    bool refuseFolderOps = false;
+    UltraNetResult CreateFolder(const std::string&, const std::string& folder,
+                                const UltraNetMailOptions&) override {
+        if (refuseFolderOps)
+            return UltraNetResult::Error(UltraNetResultCode::Unknown, "NO [ALREADYEXISTS]");
+        created.push_back(folder);
+        UltraNetMailFolder f; f.name = folder; f.delimiter = "/";
+        folders.push_back(f);
+        return UltraNetResult::Ok();
+    }
+    UltraNetResult DeleteFolder(const std::string&, const std::string& folder,
+                                const UltraNetMailOptions&) override {
+        if (refuseFolderOps)
+            return UltraNetResult::Error(UltraNetResultCode::Unknown, "NO [INUSE]");
+        deleted.push_back(folder);
+        folders.erase(std::remove_if(folders.begin(), folders.end(),
+                                     [&](const UltraNetMailFolder& f) { return f.name == folder; }),
+                      folders.end());
+        envelopes.erase(folder);
+        return UltraNetResult::Ok();
+    }
 };
 
 UltraNetMailFolder MakeFolder(const std::string& name, const std::string& role) {
@@ -964,4 +988,59 @@ TEST(folder_still_listed_drops_a_folder_deleted_on_the_server) {
     fx.fake.listFoldersFails = true;
     REQUIRE(engine.FolderStillListed("erika", "Investor", "imaps://x/", opts));
     REQUIRE(engine.FolderStillListed("erika", "INBOX", "imaps://x/", opts));
+}
+
+// Add folder: CREATE on the server, then the list read again so the folder
+// is in the store (and the tree) at once; a refusal stores nothing.
+TEST(create_folder_makes_it_on_the_server_and_lists_it) {
+    Fixture fx("folder-create");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+
+    REQUIRE(engine.CreateFolder("erika", "B&APw-cher", "imaps://x/", opts).ok);
+    REQUIRE_EQ(fx.fake.created.size(), (size_t)1);
+    REQUIRE_EQ(fx.fake.created[0], std::string("B&APw-cher"));
+    REQUIRE(HasFolder(fx.store, "B&APw-cher"));
+
+    fx.fake.refuseFolderOps = true;
+    SyncOutcome r = engine.CreateFolder("erika", "Other", "imaps://x/", opts);
+    REQUIRE(!r.ok);
+    REQUIRE(r.message.find("ALREADYEXISTS") != std::string::npos);
+    REQUIRE(!HasFolder(fx.store, "Other"));
+    REQUIRE(!engine.CreateFolder("erika", "", "imaps://x/", opts).ok);
+}
+
+// Delete folder: DELETE on the server, then the folder leaves the store with
+// its mail and cached bodies. The inbox is never asked for, and a refusal
+// keeps everything.
+TEST(delete_folder_drops_it_with_its_mail_and_bodies) {
+    Fixture fx("folder-delete");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    fx.fake.folders.push_back(MakeFolder("Projects", ""));
+    fx.fake.envelopes["Projects"] = {
+        Env(1, "Ann <ann@x.com>", {"erika@example.com"}, "Plan", UltraNetMailFlags::Seen) };
+    fx.fake.bodies["Projects/1"] = BuildRaw("Ann <ann@x.com>", "Plan", "the plan");
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    engine.SyncMessages("erika", "Projects", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(fs::exists(engine.BodyPath("erika", "Projects", 1)));
+
+    fx.fake.refuseFolderOps = true;
+    REQUIRE(!engine.DeleteFolder("erika", "Projects", "imaps://x/", opts).ok);
+    REQUIRE(HasFolder(fx.store, "Projects"));
+    REQUIRE_EQ(CountIn(fx.store, "Projects"), (size_t)1);
+    fx.fake.refuseFolderOps = false;
+
+    SyncOutcome r = engine.DeleteFolder("erika", "Projects", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.foldersRemoved, 1);
+    REQUIRE_EQ(fx.fake.deleted.size(), (size_t)1);
+    REQUIRE(!HasFolder(fx.store, "Projects"));
+    REQUIRE_EQ(CountIn(fx.store, "Projects"), (size_t)0);
+    REQUIRE(!fs::exists(engine.BodyPath("erika", "Projects", 1)));
+
+    REQUIRE(!engine.DeleteFolder("erika", "INBOX", "imaps://x/", opts).ok);
+    REQUIRE_EQ(fx.fake.deleted.size(), (size_t)1);
+    REQUIRE(HasFolder(fx.store, "INBOX"));
 }

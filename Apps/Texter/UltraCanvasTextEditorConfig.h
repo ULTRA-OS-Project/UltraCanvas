@@ -1,7 +1,9 @@
 // Apps/Texter/UltraCanvasTextEditorConfig.h
 // Persistent configuration file manager for UltraTexter
+// Version: 1.0.5 - the folder comes from the framework's settings root
+//                  (UltraCanvasSettingsFolderRoot), every variable read as UTF-8
 // Version: 1.0.4
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -16,6 +18,7 @@
 #include <functional>
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
+#include "UltraCanvasSettingsFolder.h"   // UltraCanvasSettingsFolderRoot
 
 namespace UltraCanvas {
 
@@ -36,42 +39,16 @@ namespace UltraCanvas {
 
         // ===== CONFIG DIRECTORY =====
 
-        /// Get the platform-specific config directory
+        /// Get the platform-specific config directory: UltraTexter under the
+        /// framework's settings root (UltraCanvasSettingsFolderRoot - %APPDATA%,
+        /// Application Support, $XDG_CONFIG_HOME or ~/.config), every variable
+        /// read as UTF-8 since every file below is opened through PathFromUtf8.
+        /// "UltraTexter" in the working directory when the environment names no
+        /// home.
         static std::string GetConfigDirectory() {
-            std::string dir;
-
-#if defined(_WIN32) || defined(_WIN64)
-            // UTF-8 from the wide environment: every file below is opened
-            // through PathFromUtf8, and getenv would answer in the ANSI code
-            // page, missing a profile folder named outside it.
-            const std::string appdata = GetEnvUtf8("APPDATA");
-            if (!appdata.empty()) {
-                dir = appdata + "\\UltraTexter";
-            } else {
-                dir = "UltraTexter";
-            }
-#elif defined(__APPLE__)
-            const char* home = std::getenv("HOME");
-            if (home) {
-                dir = std::string(home) + "/Library/Application Support/UltraTexter";
-            } else {
-                dir = "UltraTexter";
-            }
-#else
-            // Linux / Unix
-            const char* xdgConfig = std::getenv("XDG_CONFIG_HOME");
-            if (xdgConfig) {
-                dir = std::string(xdgConfig) + "/UltraTexter";
-            } else {
-                const char* home = std::getenv("HOME");
-                if (home) {
-                    dir = std::string(home) + "/.config/UltraTexter";
-                } else {
-                    dir = "UltraTexter";
-                }
-            }
-#endif
-            return dir;
+            const std::filesystem::path root = UltraCanvasSettingsFolderRoot();
+            if (root.empty()) return "UltraTexter";
+            return PathToUtf8(root / "UltraTexter");
         }
 
         /// Ensure the config directory exists

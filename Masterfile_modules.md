@@ -328,6 +328,111 @@ the backing implementation can be replaced without affecting callers.
   structure is derived from, and what is deliberately out of scope (B-rep
   solids: STEP, IGES, ACIS, DWG `3DSOLID`).
 
+**HTMLReader section** — the framework's one implementation of reading HTML
+and CSS, under `UltraCanvas/{include,core}/HTMLReader/`, always built, in
+`namespace UltraCanvas::HTML`. HTML, CSS and HTML entities are read through
+it and nowhere else (AGENTS.md, *Core conventions*; `scripts/check_html_reuse.py`
+blocks a new tag stripper, entity table, `style=""` splitter or selector
+matcher). Used by the eBook viewer and engines, UltraMail, the Vector
+plugin's SVG reader and UltraWeb's web pages. Doc:
+`Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
+
+- **HTMLParser / HTMLDocument** (`HTMLReader/HTMLParser.h`,
+  `HTMLReader/HTMLDocument.h`) — `Parser::Parse(html)` → `Document`
+  (tolerant HTML/XHTML: unclosed elements, void and self-closing tags,
+  comments, CDATA, doctype and `quirksMode`, entities, raw-text `<style>` /
+  `<script>`; `Errors()` lists repairs; inside an inline `<svg>` / `<math>`
+  the names keep their vocabulary's case, `linearGradient`, `viewBox`).
+  `Node` (one struct per node; HTML tag and attribute names lower-case,
+  attribute lookup exact then case-insensitive) with `GetAttribute`, `HasClass`,
+  `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
+  `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
+  `styleSheetLinks`. Elements nest at most `kMaxTreeDepth` (128) deep,
+  deeper ones are kept as leaves (a hostile mail's nesting cannot overflow
+  the stack). Helpers without a DOM: `DecodeEntities` (every HTML 4
+  entity and numeric references), `ExtractPlainText(html, layout)` (tags
+  gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
+  default - whitespace and no-break spaces collapsed, an inline element such
+  as `<b>` keeping a word whole, a block separating words -
+  `PlainTextLayout::Lines` keeps the text's line structure - paragraphs,
+  `<br>`, table rows and cells, list items, `<pre>` - and leaves out hidden
+  content; `ExtractPlainText(const Node&)` the single line for a parsed
+  element).
+- **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
+  (rules with specificity and source order, `@media` against
+  `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
+  `MediaMatches`; `CssColor::Parse`, `CssLength::Parse` / `ToPx`; selectors:
+  type, class, id, attribute (`[a]`, `=`, `~=`, `^=`, `$=`, `*=`, `|=`, `i`),
+  `:link`, the structural pseudo-classes, descendant chains (`>` read as
+  descendant). **Selector matching for any tree**: `SelectorMatches<Traits>`,
+  `CompoundMatches<Traits>`, `MatchingRules<Traits>` (the matching rules in
+  cascade order) over a Traits type the tree supplies (ten static members:
+  `TagIs`, `IdIs`, `HasClass`, `GetAttribute`, `IsLink`, `IsRoot`,
+  `IsEmpty`, `SiblingPosition`, `Parent`); `AttributeValueMatches`,
+  `NthPositionMatches` are the tree-independent halves.
+- **HTMLStyleResolver** (`HTMLReader/HTMLStyleResolver.h`) — the cascade for a
+  document: `StyleResolver::AddStyleSheet` / `SetMediaWidth` /
+  `Resolve(document, ResolverOptions)` / `StyleOf(node)` → `ComputedStyle`
+  (display, inherited text properties, margins, padding, borders per side,
+  backgrounds, sizes in px or percent, floats, `box-sizing`, `overflow`,
+  `object-fit`, flex and grid - `layoutMode`, the flex / grid container and
+  item fields, `GridTemplate`, `GridTrackSpec`, `GridLineSpec`, capped at
+  `kMaxGridLines` - links); user-agent defaults and the presentational
+  attributes mail uses. `NodeSelectorTraits` is the DOM's view for the
+  matcher; `Matches(selector, node)` the stand-alone test.
+- **HTMLElementBuilder** (`HTMLReader/HTMLElementBuilder.h`) —
+  `ElementBuilder::Build(html, BuildOptions)` / `BuildDocument(document,
+  options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
+  `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
+  (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`,
+  `selectableText` (every label joins one `UltraCanvasTextSelection`,
+  `BuildResult::textSelection`: the page's text selects and copies as in a
+  browser). Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
+  engine, `display: flex` / `grid` the CSSLayout flex and grid engines
+  (child elements are items, text between them anonymous items); the tree's
+  own scrollbars are off, the host scrolls. Fuzz targets for the parser, the
+  CSS and the builder with the layout: `Tests/Fuzz` (ctest smoke runs,
+  libFuzzer with `ULTRACANVAS_BUILD_FUZZERS`).
+- **HTMLPageLoader** (`HTMLReader/HTMLPageLoader.h`) - `PageLoader(PageLoaderServices,
+  PageLoaderLimits)`: `Load(url, onReady)` → `LoadedPage` (kind Html / Text /
+  Image / Other / Error, final URL, base, charset, the parsed `Document`,
+  warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
+  (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
+  caller passes in, so it is framework-independent; linked style sheets and
+  their `@import`s load before a page is ready;
+  mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
+  `EscapeText` (`HTMLDocument.h`) is DecodeEntities' inverse.
+- **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
+  page from a URL: `SetServices`, `SetScheduler`, `SetBuildOptions`,
+  `Navigate`, `Reload`, `Stop`, `GoBack` / `GoForward` (scroll positions kept),
+  `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
+  `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
+  `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
+  JavaScript (`<noscript>` shown). Forms the reader fills in and sends
+  (`SetInteractiveForms`, `SubmitForm`: GET as a navigation, POST through
+  `PageLoader::LoadPost`), what was typed kept across a rebuild.
+- **HTMLForms** (`HTMLReader/HTMLForms.h`) - `FormSubmission` (action, method,
+  enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
+  `ContentType`) and `FormController`, one per `<form>` built with
+  `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`; file inputs (`SetFiles`,
+  `BuildOptions::onChooseFiles`, multipart file parts in
+  `FormSubmission::files`) and `ActivateControl` for a `<label>`'s click.
+- **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
+  `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
+  HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
+  options)` → `UCRichDocument` through the same parser and cascade
+  (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
+  `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
+  `dir="rtl"` makes right-to-left paragraphs, and Word's list paragraphs
+  (`mso-list`) list items, their typed labels the markers. `UCRichDocument::FromHTML`
+  (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
+
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
   for a file, and detached launching. Core worker/cache in
@@ -411,6 +516,36 @@ the backing implementation can be replaced without affecting callers.
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
 
+- **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
+  copy of an application per user. `InstanceLock::Acquire(path)` answers
+  `Acquired`, `HeldElsewhere` (another copy runs), `Failed` or `Unsupported`;
+  the operating system drops the lock when the process ends, so a crash never
+  leaves a stale one. Backends: `OS/Linux/UltraCanvasLinuxInstanceLock.cpp`
+  and `OS/MacOS/UltraCanvasMacOSInstanceLock.cpp` (`flock`),
+  `OS/MSWindows/UltraCanvasWindowsInstanceLock.cpp` (`LockFileEx`); Android and
+  WebAssembly get the `Unsupported` fallback in
+  `core/UltraCanvasInstanceLock.cpp` (`ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK`
+  unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
+  `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
+
+- **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
+  copy of an application per user, built on UltraCanvasInstanceLock: a second
+  start asks the running copy over UltraMessage (`<appId>.show`) to come
+  forward - or hands it its files to open - and quits. `Claim()`,
+  `ListenRaise()` / `ListenOpen(openPaths)` with `MakeOpenRequest(paths)` /
+  `Listen(handler)`,
+  `Close()`, `BringToFront()`, `RunAlreadyRunningAlert()`. Not in the core
+  library: `ultracanvas_single_instance(<target>)`
+  (`cmake/UltraCanvasSingleInstance.cmake`) compiles
+  `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
+  UltraMessage where present. Used by the single-window applications (UltraMail,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
+  UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
+  the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
+  ArtCreator, UltraVideo, AnchorPoint). See
+  `Docs/UltraCanvas/UltraCanvasSingleInstance.md`.
+
 - **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
   run": what it takes to start a program that is inside an archive, whose
   virtual path no system can execute. The run folders and the rule for which
@@ -465,8 +600,9 @@ the backing implementation can be replaced without affecting callers.
   safe on background threads. Public surface:
   - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
   - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
-    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
-    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Categories,
+    StartupWMClass, Terminal / NoDisplay / Hidden) plus `program`, the
+    executable it resolves to on this
     machine. False for a file with no `[Desktop Entry]` group, so a file that
     merely ends in `.desktop` is never mistaken for one.
   - `FindDesktopIconFile` — an icon *name* resolved to an image file through
@@ -510,6 +646,65 @@ the backing implementation can be replaced without affecting callers.
     (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
     false rather than guessing.
   See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasCompoundFile** (`UltraCanvasCompoundFile.h`) — read-only OLE2
+  compound files ([MS-CFB]), the container of the legacy Office formats
+  (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
+  every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
+  `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
+  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
+  storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
+  the password-protected Office files.
+  See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
+  password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
+  AES-CBC, SHA-512/256 and Office 2010's SHA-1; Office 2007's standard
+  encryption, AES-ECB with no integrity check), decrypted back into their ZIP
+  package with UltraCrypt, and written: `EncryptOfficePackage` /
+  `EncryptOfficePackageToFile` (AES-256, SHA-512, the DataSpaces storage, in a
+  compound file `UCCompoundFileWriter` builds).
+  In `core/UltraCanvasOfficeEncryption.cpp`; the integrity HMAC is checked
+  before anything is decrypted. `DecryptOfficePackage` / `DecryptOfficePackageFile`
+  (`OfficeDecryptStatus`: Decrypted, NotEncrypted, PasswordRequired,
+  WrongPassword, Tampered, Unsupported, Damaged, NoCryptoBackend),
+  `CheckOfficePassword` (the verifier only), `IsEncryptedOfficePackage`. Used by
+  `UltraCanvasSpreadsheet::LoadXLSX` / `LoadXLS` / `LoadFromFile`,
+  `UCWordDocumentIO::Load` / `LoadDocx` (each with an optional password) and
+  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
+  by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
+  `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
+  `RequestNewDocumentPassword` to ask for a new one.
+  See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
+  decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
+  `PptxPresentation` → `PptxSlide` (title, hidden, notes) → `PptxShape`
+  (title / subtitle / body / text / table / picture, EMU place) →
+  `PptxParagraph` (level, bullet, numbered) → `PptxRun`. `ReadPptxPresentation`
+  (path, optional password - protected decks decrypt through
+  UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
+  `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
+  outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
+  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
+
+- **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
+  workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
+  tables and Excel 2003 XML files saved under the name, read into a UI-free
+  model (`XlsWorkbook` → `XlsSheet` → `XlsCell`, `XlsCellFormat`, `XlsFont`,
+  `XlsDefinedName`). Formulas are translated into the spreadsheet engine's
+  syntax and every formula cell keeps Excel's cached result. In
+  `core/UltraCanvasSpreadsheetXls.cpp`; `UltraCanvasSpreadsheet::LoadXLS`
+  (`core/UltraCanvasSpreadsheetXlsIO.cpp`, called by `LoadFromFile`) builds a
+  sheet from it, and the file display previews from it. Public surface:
+  `DetectXlsFileKind`, `ReadXlsWorkbook(path, out, error, XlsReadOptions)`,
+  `ReadXlsWorkbookFromMemory`, `XlsCellText`, `XlsErrorText` /
+  `XlsErrorType`, and `ExcelNumberFormatCategory` (shared with the `.xlsx`
+  loader). Read only: there is no `.xls` writer.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md`.
 
 - **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
   other two desktops keep their applications' faces in, read without either
@@ -577,8 +772,11 @@ the backing implementation can be replaced without affecting callers.
   `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
-  `RefreshFontConfiguration()` so the new family resolves in the next layout.
-  Process-private and permanent: there is no unregister.
+  `RefreshFontConfiguration()` so the new family resolves in the next layout,
+  and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
+  layout and a full repaint, popups too; also run when the Windows system
+  fonts arrive after a cold start). Process-private and permanent: there is
+  no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
@@ -636,8 +834,15 @@ the backing implementation can be replaced without affecting callers.
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` behind the internal
-  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
+  (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
+  hooks, `RegisterHotKey`, the Start menu) in
+  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
+  `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
+  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  Windows also the standalone **UltraCanvasShellGuard** program
+  (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
+  instead of Explorer. Public surface:
   - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
     resolved through the icon themes, desktop, pid, active, minimized,
     skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
@@ -645,16 +850,34 @@ the backing implementation can be replaced without affecting callers.
   - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
-  - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
-    screen's edges, `_NET_WM_STRUT_PARTIAL`, so maximised windows stop short
-    of a desktop's bars), `CaptureScreen` (PNG), `DefaultScreenshotPath`
+  - `GetScreenSize`, `ListScreens` (`DesktopScreenInfo` per monitor, the
+    primary first: `EnumDisplayMonitors` / RandR; a `WindowType::Desktop`
+    window goes on one through `WindowConfig::desktopArea`),
+    `ReserveScreenEdges` (a window's strips along the
+    screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
+    so maximised windows stop short of a desktop's bars), `CaptureScreen`
+    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
     (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
-    (next to this executable first, then `PATH`).
+    icons resolved; the Start menu's program shortcuts on Windows, launched
+    by opening the shortcut, and the Microsoft Store applications by
+    `appUserModelId`, started through `IApplicationActivationManager`), `MatchApplication` (a window's entry, by
+    `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
+    `FindProgram` (next to this executable first, then `PATH`).
+  - `CanReplaceSystemDesktop` / `GetSystemDesktopReplacement` /
+    `IsSystemDesktopReplaced` / `ReplaceSystemDesktop` / `RestoreSystemDesktop`
+    / `IsSystemDesktopRunning` - a program (UltraDesktop) in place of the
+    system's desktop at sign-in, `DesktopReplacement::Beside` or `Instead`,
+    and the way back (Windows: beside, the user's Run key and Explorer's
+    taskbar on auto-hide, its previous state restored; instead, the account's
+    Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
+    crashing desktop and starts Explorer for the session when it cannot run;
+    elsewhere the session decides and the calls say so).
+  - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
+    (Windows `ExitWindowsEx`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -664,7 +887,14 @@ the backing implementation can be replaced without affecting callers.
   - `UltraCanvasGlobalShortcut` - `Start("Super+V", onPressed, &error)` /
     `Stop()` (joins) / `IsRunning`: a key combination that reaches this
     program from any window (X11 `XGrabKey` on its own connection and
-    thread; fails with a reason elsewhere and when another program holds it).
+    thread, Windows `RegisterHotKey` on its own thread; fails with a reason
+    elsewhere and when another program holds it). `"Super"` alone is a tap
+    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+  - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
+    `Click(id, TrayClick)`: the notification area for a desktop that is the
+    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
+    taskbar runs, and on X11).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -693,7 +923,9 @@ the backing implementation can be replaced without affecting callers.
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
     / Delete hit-tested with `ActionAt`.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
-    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`,
+    `PreferredClipboardKinds` (what a program takes when pasted into, from
+    its desktop entry's categories and MIME types).
   See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
@@ -711,7 +943,18 @@ the backing implementation can be replaced without affecting callers.
   bar with the mouse wheel, with a chevron over the edge the items continue
   past that scrolls a page when clicked (`SetScrollHints`).
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
-  the screen-sized window at the bottom of the stack a desktop draws into.
+  the screen-sized window at the bottom of the stack a desktop draws into;
+  `WindowConfig::desktopArea` puts one on another monitor.
+
+- **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
+  tools sharing one slot of a palette or toolbar: the slot shows one of them,
+  a bar of the whole group folds out beside it while the pointer rests on it
+  (`SetFoldOutDelay`, `SetFoldOutSide`, `OpenFoldOut` / `CloseFoldOut`), and a
+  click there picks a tool (`onItemSelected`). `SetItems` / `AddItem`,
+  `SetCurrentItem` (the tool in use, set without firing), `GetSlotItem`,
+  `SetSlotShowsLastPicked` (adaptive: the tool last picked; static: always
+  the first). `UltraCanvasToolbar::AddToolGroup` adds one with the toolbar's
+  button look. See `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`.
 
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
@@ -927,7 +1170,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
   BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
   `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
-  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths,
+  `RasterReplacePixel` the replace-with-alpha one.
 - **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
   SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
   (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
@@ -939,14 +1183,26 @@ engine; these classes hold the pixels being edited and hand them to it.
   ApplyFilterToLayer/PreviewFilter` (selection-aware PixelFX ops),
   `CopySelection/CopySelectionMerged/DeleteSelection/FillSelection`,
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
-  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
+  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
+  `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
-  notifications.
+  notifications (single slots) and `AddListener/RemoveListener` for several
+  observers of one document.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
-  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/DrawCurve/DrawArrow/
+  FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
+  with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
+  Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
+- **UCD container** (`UltraCanvasUCDContainer.{h,cpp}`, namespace `UCD`) — the
+  UltraCanvas Document v2 container (`Docs/UltraCanvas/UCD-FileFormat-v2.md`):
+  `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
+  `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
+  `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
+  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
@@ -995,6 +1251,13 @@ engine; these classes hold the pixels being edited and hand them to it.
   context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
+- **UltraCanvasDrawnMarks** (`UltraCanvasDrawnMarks.h`) — marks drawn as
+  shapes for self-rendered elements, in place of symbol characters the
+  bundled UI font lacks (which show as hex boxes on Windows):
+  `DrawTickMark`, `DrawCrossMark`, `DrawSortTriangle`, and `DrawBulletMark` /
+  `IsDrawnBullet` for the list bullets "•", "◦", "▪". Used by the password
+  rule legend, the Markdown and rich-text lists, the Filer's details header
+  and the new-document dialog. Doc: `Docs/UltraCanvas/UltraCanvasDrawnMarks.md`.
 - **IRenderContext compositing and geometry** (`UltraCanvasRenderContext.h`,
   doc `Docs/UltraCanvas/UltraCanvasRenderContext.md`) — `SetBlendMode` /
   `GetBlendMode` (the 16 PDF / CSS modes), groups `BeginGroup` /
@@ -1015,12 +1278,21 @@ engine; these classes hold the pixels being edited and hand them to it.
   `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
-  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
-  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
-  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
-  the Text pattern), sharing the tree, ids, geometry and text diffing in
-  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
+  `GetAccessibleTextInterface` and, since 1.2, `GetAccessibleDescription`,
+  `GetAccessibleToggleState`, `GetAccessibleRange` / `SetAccessibleValue`,
+  `GetAccessibleValueText` / `SetAccessibleValueText` and
+  `GetAccessibleActionName` / `DoAccessibleAction`, with
+  `SetAccessibleName` / `SetAccessibleDescription` overrides on every
+  element. The common widgets implement it (button, checkbox, radio, switch,
+  label, text input, dropdown, slider, spinner, busy indicator, group box,
+  tabbed container, toolbar, list and tree view, image, menu), as does
+  `UltraCanvasRichTextEdit`. Platform bridges: AT-SPI on Linux
+  (`OS/Linux/UltraCanvasLinuxAccessibility`, GIO D-Bus, tested end to end by
+  `Tests/AtspiBridgeTest`), UI Automation on Windows
+  (`OS/MSWindows/UltraCanvasWindowsAccessibility`: Text, Invoke, Toggle,
+  SelectionItem, RangeValue and Value patterns) and NSAccessibility on macOS
+  (`OS/MacOS/UltraCanvasMacOSAccessibility`, VoiceOver), sharing the tree, ids,
+  geometry and text diffing in `UltraCanvasAccessibilityBridge.h`. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
@@ -1051,7 +1323,11 @@ engine; these classes hold the pixels being edited and hand them to it.
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
 image / video / music generation, translation, code assist). See
-`Docs/Modules/UltraAI/README.md`.
+`Docs/Modules/UltraAI/README.md`. Translation (`ITranslator`) is served
+through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
+`BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
+`ParseDetectionReply`), registered under each text-LLM provider's id;
+`Docs/Modules/UltraAI/Adapters.md` has the option keys.
 
 ### **3. FileLoader**
 
@@ -1073,6 +1349,32 @@ folder - shared by all applications or per application) is
 file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
 settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
 folder scope. Every write goes through `FileDialogSettings::Update()`.
+
+Save settings - how each format is written (JPEG quality, PNG compression,
+TIFF codec ...) - are described per format (`UltraCanvasFileSaveSettings.h`:
+`FileSaveFormat`, `FileSaveSettingSpec`, `FileSaveSettings`) and kept for every
+application in `SaveSettings.conf` in the same folder.
+`UltraCanvasFileLoader::HasSaveSettings` / `FindSaveFormat` /
+`GetSaveSettings` / `HasStoredSaveSettings` / `SetSaveSettings` /
+`ResetSaveSettings` / `RegisterSaveFormat` / `ShowSaveSettingsDialog` /
+`GetImageExportOptions` are the surface; the framework Save dialog's Settings
+button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
+folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
+picture's size for one save (`FileSaveImageSize`, offered when the caller
+passes `FileDialogOptions::SetImageSize`, or `SetDrawingSize` for a drawing,
+which has no pixel size and is drawn sharp at any) comes back through the
+`SaveFileDialog` overload that reports it, never stored. The media viewer's
+Save image as (UltraViewer) offers it and draws an SVG again at the size
+chosen.
+
+A dialog's file types come from the format inventory, never an application's
+own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
+type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
+(one Save filter per type it writes, the proposed name's type first),
+`AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+codec an application brings joins them through `RegisterMediaCodec`, as
+UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 
 ### **4. Plug-ins for File Types**
 
@@ -1103,8 +1405,16 @@ future.
 **Available Functions (Core, Tier 1):**
 - `UltraNet_HttpGet`, `UltraNet_HttpPost`, `UltraNet_HttpPut`,
   `UltraNet_HttpDelete`, `UltraNet_HttpHead`, `UltraNet_HttpPatch`
-- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync`
-- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
+- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
+  cut off after its status line carries `UltraNetResponse::transferError`,
+  `IsComplete()` and `exceededReceiveLimit`)
+- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`; any request writes
+  its body to a file through `UltraNetHttpOptions::outputFilePath`, resumes a
+  partial one with `resumeOutputFile` (`resumeFromOffset` for a caller's own
+  partial copy), follows redirects to https:// only with
+  `httpsOnlyRedirects`, has no whole-transfer timeout but a `stallTimeoutMs`
+  when it writes a file, and sees the final response's headers before the
+  body through `UltraNetHttpRequest::onHeaders`, which can veto the body
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
@@ -1112,7 +1422,8 @@ future.
   `UltraNet_FtpRemoveDirectory`; the session log of every call
   (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
-  their codes, the error with libcurl's number)
+  their codes, the error with libcurl's number); connections kept open
+  between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
@@ -1131,7 +1442,23 @@ future.
   plus the prefixes modules add) > INI file > baked-in default, then the
   alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
   are profiles of it, so a Google client registered once serves Gmail and
-  Google Drive
+  Google Drive; `UltraNet_OAuth2SignInServiceUrl`,
+  `UltraNet_OAuth2SetSignInService`, `UltraNet_OAuth2SetBuiltInSignInService`,
+  `UltraNet_OAuth2SignInServiceEnvName` — the sign-in service's address
+  through the same tiers (Set > `<PREFIX>OAUTH_SERVICE_URL` > the INI file's
+  `[service] url` > the `ULTRANET_OAUTH_SERVICE_URL` build option), which a
+  provider without a client of its own signs in through
+- `UltraNet_OAuth2ServiceUrl`, `UltraNet_OAuth2ServiceBegin`,
+  `UltraNet_OAuth2ServiceWaitForCode`, `UltraNet_OAuth2ServiceExchangeCode`,
+  `UltraNet_OAuth2ServiceRefresh`, `UltraNet_OAuth2ServiceProviders`,
+  `UltraNet_OAuth2AuthorizeViaService`, `UltraNet_OAuth2ServiceParseSession`,
+  `UltraNet_OAuth2ServiceParseStatus` — the client of an OAuth2 *sign-in
+  service* (`UltraNetOAuth2Service.h`; `Server/OAuthCallback` is the
+  service): the service holds the client registrations and is the https
+  address the providers redirect to, the application sends only the PKCE
+  challenge and collects the code, and the exchange and the refresh go
+  through the service, which adds the secret. UltraMail signs in through
+  `https://oauth-callback.ultraos.eu` this way
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -1141,9 +1468,12 @@ future.
   `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
   `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
-- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
-  `UltraNet_UrlDecode`
-- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
+- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_ResolveUrl` (RFC 3986
+  reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
+- `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
+  where the build has it; what mail bodies and web pages are read with)
+- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`,
+  `UltraNet_PauseRequest`, `UltraNet_ResumeRequest`, `UltraNet_IsRequestPaused`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
@@ -1165,7 +1495,8 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
 worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
-`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNet_GetTransferStats`, `UltraNet_PauseRequest` /
+`UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
 on libcurl. Remaining gaps are per-function and environment-dependent —
@@ -1217,11 +1548,17 @@ Store, and any other UltraCanvas-based application that needs local or
 networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
-rollout is SQLite core + registry + query/transaction/migration API
-(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
-remaining drivers and at-rest encryption (Stage 3).
+**Implementation status (this branch):** Stage 1 implemented, and the
+PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
+parameterized queries, prepared statements, transactions and versioned
+migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
+`Tests/UltraDatabase`); the PostgreSQL driver
+(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
+found, verifies TLS by default and reads its password from UltraVault, and
+UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
+networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
+queries, pooling, streaming cursors and at-rest encryption. Details in
+`Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
 
@@ -1295,9 +1632,9 @@ compatibility routing are planned for Stages 2-3. See
 ### **8. UltraCrypt**
 
 Cryptographic services — the single place where hashing, message
-authentication, authenticated encryption, key derivation and secure random
-generation are implemented, so no application, plugin or sibling module has
-to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
+authentication, authenticated encryption, digital signatures, key derivation
+and secure random generation are implemented, so no application, plugin or
+sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
 Scope is **data at rest and data integrity**. Transport security stays in
@@ -1309,8 +1646,9 @@ UltraCrypt elements must comply with the same rules as UltraNet and
 UltraDatabase:
 - Clear structure; call names understandable by their names
 - New algorithms use the same function and type naming patterns
-- **AEAD only** — no raw block-cipher or unauthenticated-mode surface is
-  exposed, so a caller cannot accidentally ship unauthenticated ciphertext
+- **AEAD for everything UltraCanvas defines** — no raw block-cipher surface;
+  the one unauthenticated mode, AES-CBC, is interop-only, for formats defined
+  elsewhere that require it
 - Nonces are generated by the module by default; reuse must be opted into
 - The CSPRNG never falls back to a PRNG — entropy failure is an error
 - Secrets travel in `UltraCryptSecureBuffer` (move-only, zeroized on
@@ -1330,8 +1668,15 @@ backing library is never visible in a public header.
 - `UltraCrypt_AeadSeal`, `UltraCrypt_AeadOpen`, `UltraCrypt_GetKeySize`,
   `UltraCrypt_GetNonceSize`, `UltraCrypt_GetTagSize`,
   `UltraCrypt_IsAeadAvailable`
+- `UltraCrypt_AesCbcEncrypt`, `UltraCrypt_AesCbcDecrypt`,
+  `UltraCrypt_GetAesBlockSize` (AES-128/192/256-CBC, interop only;
+  constant-time portable software, independent of libsodium)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`
+- `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
+  `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
+  `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
+  and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -1528,9 +1873,10 @@ the OAuth client id is configuration in UltraNet's shared app registry —
 `SetOAuthApp`, `ULTRACLOUD_<PROVIDER>_CLIENT_ID`, or the client UltraMail
 registered, since `googledrive` falls back to `google` and `onedrive` to
 `microsoft`), FTP / FTPS / SFTP over UltraNet's FTP
-surface (the one provider that can also delete and rename, so a file manager
-can carry an FTP server as a drive; no share links, and SFTP authenticates
-with a password only), and an in-memory demo provider. Providers
+surface (delete and rename too, so a file manager can carry an FTP server
+as a drive; no share links; SFTP signs in with a password or a private
+key), WebDAV and Nextcloud delete and rename as well (DELETE, MOVE), and an
+in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
@@ -1712,16 +2058,28 @@ the Linux `freedesktop-notifications` adapter
 `windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
 C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
 the shared chat / mail mirrors with category guessing from the application's
-identity, UltraMail publishing new mail as `mail.message`
-(`Apps/UltraMail/engine/UltraMailFeedPublisher`), and the desktop message
+identity, the presenters that put an application's `system.notification` on
+screen through the platform's own notification service and report its click
+back (`freedesktop-presenter`: `Notify` to the desktop's server;
+`windows-presenter`: notification-area balloons, shown as toasts;
+`macos-presenter`: Notification Center from an application bundle, osascript
+outside one), the toast
+host that draws the notifications nothing else draws - where UltraMessage
+itself serves `org.freedesktop.Notifications`, as on ULTRA OS - in
+`WindowType::Notification` windows (`UltraCanvasNotificationToast` /
+`UltraCanvasNotificationToastHost`, `include/Plugins/UltraMessage/`, hosted by
+the ULTRA OS desktop; every notification says what shows it in `displayed`), UltraMail
+publishing new mail as `mail.message` and notifying of it on screen
+(`Apps/UltraMail/engine/UltraMailFeedPublisher`, `UltraMailNewMail`), and the desktop message
 centre as one element (`UltraCanvasMessageCenter`, target `UltraMessageCenter`,
 `UltraCanvas/include/Plugins/UltraMessage/`: sections, sources, filters,
 search, detail and actions on the feed; `Docs/UltraCanvas/UltraCanvasMessageCenter.md`,
-a DemoApp page). Tests in `Tests/UltraMessage` (34 cases, in-tree and
-standalone, the adapter ones on a private D-Bus session; 5 for the element
-in-tree). Not yet: the `AddFdWatch` event-loop path (a reader thread serves
-every endpoint), an FTS5 index (text search is a LIKE), automatic reconnection
-after the hosting broker exits, and the macOS and Telegram adapters. See
+a DemoApp page). Tests in `Tests/UltraMessage` (41 cases, in-tree and
+standalone, the adapter and presenter ones on a private D-Bus session; 11 for
+the message centre and the toasts in-tree). Not yet: the `AddFdWatch` event-loop path (a reader
+thread serves every endpoint), an FTS5 index (text search is a LIKE),
+automatic reconnection after the hosting broker exits, and the macOS and
+Telegram adapters. See
 `Docs/Modules/UltraMessage/README.md`.
 
 ---
@@ -1881,44 +2239,85 @@ target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
 core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
 `UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
 headless and has no UltraCanvas UI dependency; applications call it from a
-worker thread or through `VideoFXExportJob`.
+worker thread or through `VideoFXExportJob`. It is a shared library of its
+own (`libVideoFX.so` / `.dylib` / `.dll`, `VIDEOFX_BUILD_SHARED`, default ON
+except on Android), not absorbed into the UltraCanvas core, so FFmpeg is
+loaded only by applications that do video.
 
 Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
 libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
 FFmpeg header or type appears in a public header. FFmpeg is optional at build
 time: without it the same API links from a stub whose calls return
-`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
+`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 9.x.
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
-(picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom and one-call slideshows,
-background music (fades, looping, ducking under the segments' own sound),
+(picture via xfade, sound cross-faded), text, image and video overlays
+(picture-in-picture) on the output frame, still images with sub-pixel pan and zoom (keeping faces in shot -
+given, or found by the built-in detector) and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound,
+song lists crossfading into each other), beat detection and slideshows
+changing on the beat, project files (`.vfxproj`, JSON, media paths relative
+to the project, missing media reported), waveforms (loudness envelopes
+for timelines and players), a preview (any frame of a timeline rendered
+as the export would make it, for an editor's viewer), proxy media (small
+stand-ins for large clips, made once into a cache folder and switched in
+for previews and drafts), hardware encoders by choice (software, any that
+works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
+Foundation, each tried on the machine before it is used), free audio clips
+(voice-overs and sound effects at given times, the music ducking under
+voice-overs),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
-command-line tool. Planned: picture-in-picture, keyframed parameters,
-several free audio tracks, hardware encoders beyond the platform ones picked
-automatically (VideoToolbox, Media Foundation), project files.
+command-line tool. Planned: keyframed parameters.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
   `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
-  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay` (an image
+  or video overlay's own colour and detail `effects`),
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
-  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`
+  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
+  `VideoFXAudioClip` (`VideoFXExportSettings::audioClips`; `Sound`, `VoiceOver`),
+  `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
+  `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
+  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
+  `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
+  (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
+  `VideoFXPictureReader`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
-  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
+  `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
+  reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
+  types the host application reads for the engine)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
-  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
+  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
+  `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
+  the shape `UltraCanvasWaveformElement` takes)
+- Preview: `VideoFXPreview` (`Open`, `Close`, `IsOpen`, `GetDuration`,
+  `GetWidth`, `GetHeight`, `GetFrameRate`, `SegmentAt`, `RenderFrame`: the
+  output frame at a timeline time, with the segment's effects, overlays
+  and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
+  in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
+  settings before it is rendered)
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
-  `VideoFX_GenerateTestClip`
+  `VideoFX_DetectBeats`, `VideoFX_DetectFaces`, `VideoFX_GenerateTestClip`
+- Project files: `VideoFX_SaveProject`, `VideoFX_LoadProject`,
+  `VideoFX_ProjectToJson`, `VideoFX_ProjectFromJson`,
+  `VideoFX_RenderProject`, `kVideoFXProjectFormatVersion`
+- Proxy media: `VideoFX_GetDefaultProxyDirectory`, `VideoFX_ProxyPath`,
+  `VideoFX_HasProxy`, `VideoFX_CreateProxy`, `VideoFX_CreateProxies`,
+  `VideoFX_UseProxies`, `VideoFX_ClearProxies`
+- Encoders: `VideoFX_IsVideoEncoderAvailable(codec, acceleration)`,
+  `VideoFX_ListVideoEncoders`, `VideoFX_ChooseVideoEncoder`,
+  `VideoFX_AccelerationName`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -1938,10 +2337,26 @@ automatically (VideoToolbox, Media Foundation), project files.
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  FindVideoEncoder, VideoEncoderCandidates, AccelerationOfEncoder,
+  EncoderWorks, NeedsHardwareFrames, SetUpHardwareFrames,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
-  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
-  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
+  MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
+  CrossfadeGains, ValidateAudioClip, AudioClipGain, AudioClipSeconds, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
+  TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
+  FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
+  DetectFaces, ProjectToJsonText, ProjectFromJsonText, SaveProjectFile,
+  LoadProjectFile, ProjectMedia, UserCacheDir, DefaultProxyDirectory,
+  ProxyDirectory, ValidateProxySettings, ProxyFileName, ProxyPathFor,
+  IsProxyFileName, ProxyableClips, ScaleCrop, CreateProxy, CreateProxies,
+  UseProxies, ClearProxies}` (`core/VideoFXProxy.h` - no FFmpeg dependency of
+  its own, it makes proxies through the public API;
+  `core/VideoFXProject.h` - on the vendored
+  nlohmann/json, no FFmpeg dependency; `core/VideoFXFaces.h` - the cascade compiled in as
+  `core/VideoFXFaceCascade.inc`, generated by `scripts/generate_face_cascade.py`
+  from `UltraCanvas/third_party/opencv_haarcascade/`)
+  (`core/VideoFXKenBurns.h`, `core/VideoFXMusic.h` and `core/VideoFXBeats.h`
+  have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
@@ -1949,3 +2364,47 @@ Rules: every blocking call returns `VideoFXResult`, with the reason in
 `VideoFX_GetLastError()`; effects are typed values, never filter strings from
 the caller; numbers in filter text are dot-decimal whatever the locale; paths
 are UTF-8; a failed or cancelled export leaves no partial file behind.
+
+---
+
+### **17. WasmHost**
+
+Runs WebAssembly modules for UltraCanvas applications: compile (binary or
+WebAssembly text), link the host functions an application offers,
+instantiate with WASI preview 1 and nothing granted, call exports - with a
+memory cap per instance and a time limit per call. Sources under
+`UltraCanvas/{include,core}/WasmHost/`, target `WasmHost`, header
+`<WasmHost/UltraCanvasWasmHost.h>`, `namespace UltraCanvas`. First user:
+UltraWeb (`Docs/UltraWeb/UltraWeb.md`, plan in
+`Docs/UltraWeb/UltraWebProposal.md`).
+
+**A wrapped engine.** The engine is wasmtime 49.0.2 through its prebuilt C
+API (`cmake/UltraCanvasWasmtime.cmake` downloads and hash-checks it, or takes
+`ULTRACANVAS_WASMTIME_DIR`), linked privately: no wasmtime header or type
+reaches a caller, so the engine can be replaced (WAMR is the measured
+fallback). UI-free and thread-agnostic; an instance belongs to the thread
+that created it.
+
+**Implementation status:** Phase 1 started. On by default on Linux and on
+Windows (`ULTRACANVAS_ENABLE_WASM_HOST`). The MSYS2 CLANG64 / CLANGARM64
+builds (the `gnullvm` ABI), for which wasmtime publishes no library, compile
+its C API from the source release with Cargo (the native
+`mingw-w64-clang-*-rust`; `ULTRACANVAS_WASMTIME_FROM_SOURCE=ON` forces that
+path anywhere). Off, or without a library and a Rust toolchain, the library
+builds without an engine and every call says so.
+
+- Types: `UltraCanvasWasmInstance`, `WasmImport`, `WasmHostFunction`,
+  `WasmCaller` (guest memory, `Trap`), `WasmValue`, `WasmValueType`,
+  `WasmLimits` (`memoryBytes`, `callTimeoutMs`), `WasmStatus`
+  (`ok`, `trapped`, `interrupted`, `message`)
+- `UltraCanvasWasmInstance::Create`, `HasFunction`, `Call`, `IsUsable`
+- `UltraCanvasWasm_IsAvailable`, `UltraCanvasWasm_EngineDescription`,
+  `UltraCanvasWasm_WatToWasm`
+- Helpers: `WasmI32`, `WasmF64`
+
+Rules: every failure - a trap, a C++ exception thrown by a host function, a
+call running past its limit, malformed input - ends in a `WasmStatus`, never
+a crash or a hang of the host; after a trap or an interruption an instance
+refuses further calls; host functions are registered through the unchecked
+host-function API (measured at 7 ns per empty call against 82 ns for the
+checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.

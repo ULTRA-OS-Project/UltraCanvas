@@ -1,6 +1,7 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.4.0 - Delete and Rename, so a WebDAV server is a drive and a publish target that can prune
+// Version: 0.3.0 - WebDavErrorMessage: the <s:message> of an error body
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudWebDav.h>
 
@@ -15,6 +16,7 @@
 #include <string>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+#include "../../UltraCanvas/include/HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities
 
 namespace UltraCloud {
 
@@ -107,15 +109,16 @@ std::string Trim(const std::string& s) {
     return s.substr(a, b - a + 1);
 }
 
-std::string DecodeEntities(std::string s) {
-    auto rep = [&s](const char* from, const char* to) {
-        for (std::size_t p; (p = s.find(from)) != std::string::npos;) s.replace(p, std::strlen(from), to);
-    };
-    rep("&amp;", "&"); rep("&lt;", "<"); rep("&gt;", ">"); rep("&quot;", "\""); rep("&apos;", "'");
-    return s;
-}
-
 } // namespace
+
+std::string WebDavErrorMessage(const std::string& xml) {
+    const std::string lower = Lower(xml);
+    std::size_t es, ee;
+    if (!FindElement(lower, "error", 0, lower.size(), es, ee)) return "";
+    std::size_t ms, me;
+    if (!FindElement(lower, "message", es, ee, ms, me)) return "";
+    return UltraCanvas::HTML::DecodeEntities(Trim(xml.substr(ms, me - ms)));
+}
 
 std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& folderPath) {
     std::vector<Entry> out;
@@ -131,7 +134,7 @@ std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& f
 
         std::size_t hs, he;
         if (!FindElement(lower, "href", rs, re, hs, he)) continue;
-        std::string href = DecodeEntities(Trim(xml.substr(hs, he - hs)));
+        std::string href = UltraCanvas::HTML::DecodeEntities(Trim(xml.substr(hs, he - hs)));
         // Strip scheme/host: keep the path part, decoded.
         if (auto p = href.find("://"); p != std::string::npos) {
             auto slash = href.find('/', p + 3);
@@ -185,6 +188,7 @@ std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& f
 ProviderCapabilities WebDavProvider::Capabilities() const {
     ProviderCapabilities c;
     c.browse = true; c.upload = true;
+    c.modify = true;                 // DELETE and MOVE are plain WebDAV
     c.shareLinks = true;             // only with a public base URL; see CreateShareLink
     c.needsServerUrl = true;
     return c;
@@ -249,6 +253,40 @@ Result WebDavProvider::Upload(const Account& account, const Credentials& credent
     UltraNetResponse resp;
     UltraNetResult net = Send(credentials, req, resp);
     return FromHttp(net, resp, "upload " + remotePath);
+}
+
+Result WebDavProvider::Delete(const Account& account, const Credentials& credentials,
+                              const std::string& path, bool isDirectory) {
+    const std::string normalized = NormalizePath(path);
+    if (normalized == "/")
+        return Result::Error(ResultCode::InvalidArgument, "refusing to delete the root");
+    UltraNetHttpRequest req;
+    req.url = DavUrl(account, normalized);
+    if (isDirectory) req.url.push_back('/');
+    req.method = UltraNetHttpMethod::Custom;
+    req.customMethod = "DELETE";
+    UltraNetResponse resp;
+    UltraNetResult net = Send(credentials, req, resp);
+    return FromHttp(net, resp, "delete " + normalized);
+}
+
+Result WebDavProvider::Rename(const Account& account, const Credentials& credentials,
+                              const std::string& path, const std::string& newName) {
+    const std::string normalized = NormalizePath(path);
+    if (normalized == "/")
+        return Result::Error(ResultCode::InvalidArgument, "refusing to rename the root");
+    if (newName.empty() || newName.find('/') != std::string::npos)
+        return Result::Error(ResultCode::InvalidArgument, "a new name, not a path");
+    const std::string folder = normalized.substr(0, normalized.rfind('/'));
+    UltraNetHttpRequest req;
+    req.url = DavUrl(account, normalized);
+    req.method = UltraNetHttpMethod::Custom;
+    req.customMethod = "MOVE";
+    req.headers.Set("Destination", DavUrl(account, folder + "/" + newName));
+    req.headers.Set("Overwrite", "F");
+    UltraNetResponse resp;
+    UltraNetResult net = Send(credentials, req, resp);
+    return FromHttp(net, resp, "rename " + normalized);
 }
 
 Result WebDavProvider::Download(const Account& account, const Credentials& credentials,

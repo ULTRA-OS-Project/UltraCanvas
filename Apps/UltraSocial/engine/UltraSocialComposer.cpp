@@ -2,6 +2,7 @@
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialComposer.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include <filesystem>
 #include <system_error>
@@ -135,7 +136,7 @@ std::vector<std::string> ValidateAdaptedPost(const AdaptedPost& post,
     }
     for (const auto& m : post.media) {
         std::error_code ec;
-        auto size = std::filesystem::file_size(m.filePath, ec);
+        auto size = std::filesystem::file_size(UltraCanvas::PathFromUtf8(m.filePath), ec);
         if (ec) {
             problems.push_back("media file not readable: " + m.filePath);
             continue;

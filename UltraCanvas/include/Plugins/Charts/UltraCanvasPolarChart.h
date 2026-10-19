@@ -1,8 +1,9 @@
 // include/Plugins/Charts/UltraCanvasPolarChart.h
 // Comprehensive polar chart element: scatter, line, spline, area and column
 // series plotted on a configurable angle/radius coordinate system
+// Version: 1.1.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.1.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-08
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
@@ -462,7 +463,14 @@ namespace UltraCanvas {
         double legendBandSize = 0.0;   // measured thickness of the legend band
 
         // ----- Layout helpers -----
-        void InvalidateLayout();
+    public:
+        // The framework's invalidation - a new size, visibility, style - drops
+        // the chart's own layout cache and lets the layout engine re-measure.
+        // A cache-only InvalidateLayout() overrode the engine's and kept the
+        // change from reaching the parent.
+        void InvalidateLayout() override { DropLayoutCache(); UltraCanvasChartElementBase::InvalidateLayout(); }
+    private:
+        void DropLayoutCache();
         void EnsureLayout(IRenderContext* ctx);
         void RebuildLayout();
         void ComputeRadialRange();

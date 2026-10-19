@@ -1,11 +1,12 @@
 // core/UltraCanvasStepper.cpp
 // Platform-independent stepper / wizard-progress control implementation.
-// Version: 1.0.1
-// Last Modified: 2026-07-11
+// Version: 1.0.2 - the completed marker's check is a stroked path, not a glyph
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasStepper.h"
 #include "UltraCanvasApplication.h"
+#include <algorithm>
 #include <string>
 
 namespace UltraCanvas {
@@ -292,11 +293,13 @@ namespace UltraCanvas {
         std::string glyph;
         std::string number = std::to_string(index + 1);
         bool hasBorder = false;
+        bool drawCheck = false;
 
         switch (state) {
             case StepState::Completed:
                 fill = style.completedColor; glyphColor = style.completedGlyphColor;
-                glyph = style.completedShowsCheck ? "\xE2\x9C\x93" : number;   // ✓
+                drawCheck = style.completedShowsCheck;
+                glyph = number;
                 break;
             case StepState::Active:
                 fill = style.activeColor; glyphColor = style.activeGlyphColor; glyph = number;
@@ -325,6 +328,24 @@ namespace UltraCanvas {
             ctx->SetStrokePaint(style.activeColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawCircle(center, radius + 2.0f);
+        }
+
+        // The check is drawn, not typed: the bundled UI font has no "✓", and
+        // where no fallback font has one either it showed as a hex box.
+        if (drawCheck) {
+            const double s = style.markerSize;
+            ctx->PushState();
+            ctx->SetStrokePaint(glyphColor);
+            ctx->SetStrokeWidth(std::max(1.5, s * 0.09));
+            ctx->SetLineCap(LineCap::Round);
+            ctx->SetLineJoin(LineJoin::Round);
+            ctx->ClearPath();
+            ctx->MoveTo(center.x - s * 0.19, center.y + s * 0.01);
+            ctx->LineTo(center.x - s * 0.06, center.y + s * 0.14);
+            ctx->LineTo(center.x + s * 0.20, center.y - s * 0.12);
+            ctx->Stroke();
+            ctx->PopState();
+            return;
         }
 
         // Glyph.

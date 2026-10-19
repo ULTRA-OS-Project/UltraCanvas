@@ -8,8 +8,8 @@
 //
 // Usage: VectorModelTest
 // Exit code is the number of failed checks.
-// Version: 1.1.0
-// Last Modified: 2026-09-15
+// Version: 1.2.0 - width profiles along straight segments
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
@@ -635,6 +635,32 @@ int main() {
         Check(thickEnd.a == 255, "a width profile is full width at its start");
         Check(thinEnd.a == 0, "a width profile tapers to nothing at its end");
         Check(Near(ts.WidthAt(0.5f), 10.0, 1e-5), "WidthAt interpolates the profile");
+
+        // A peak half-way along a straight two-point line: the band was built
+        // at the line's two points only, so it came out at the end widths.
+        StrokeData peak;
+        peak.Fill = Color(0, 0, 0, 255);
+        peak.Width = 10;
+        peak.WidthProfile = {{0.0f, 0.2f}, {0.5f, 2.0f}, {1.0f, 0.2f}};
+        const Rect2Dd peakBand = VariableWidthOutline(ParsePathString("M 10 50 L 190 50"), peak).GetBounds();
+        Check(Near(peakBand.height, 20.0, 1e-3), "a mid-way peak widens a straight two-point line to 2 x Width");
+        VectorDocument pdoc;
+        auto player = MakeDoc(pdoc, 200, 100);
+        auto peaked = std::make_shared<VectorLine>();
+        peaked->Start = Point2Dd(10, 50);
+        peaked->End = Point2Dd(190, 50);
+        peaked->Style.Stroke = peak;
+        player->AddChild(peaked);
+        Check(RenderAndSample(pdoc, 200, 100, 100, 58).a == 255, "the peak is drawn at the middle of the line");
+        Check(RenderAndSample(pdoc, 200, 100, 14, 58).a == 0, "the line stays thin near its end");
+        // A closed shape's band is still an outer and an inner ring.
+        auto ringBox = std::make_shared<VectorRect>();
+        ringBox->Bounds = Rect2Dd{20, 20, 60, 40};
+        PathData ringOutline;
+        BuildOutlinePath(*ringBox, ringOutline);
+        size_t rings = 0;
+        for (const auto& c : VariableWidthOutline(ringOutline, peak).commands) rings += c.Type == PathCommandType::MoveTo;
+        Check(rings == 2, "a profiled closed shape is still two rings");
 
         // A brush: stamps along the path replace the stroke.
         VectorDocument bdoc;

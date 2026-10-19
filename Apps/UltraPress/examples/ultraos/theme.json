@@ -1,0 +1,12 @@
+{
+  "name": "ultraos",
+  "colors": {
+    "accent": "#a90707",
+    "ink": "#202020",
+    "paper": "#ffffff",
+    "paperSoft": "#efefef",
+    "night": "#0d0c22",
+    "nightSoft": "#18193f"
+  },
+  "fontFamily": "Ubuntu"
+}

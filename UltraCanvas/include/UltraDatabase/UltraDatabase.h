@@ -5,6 +5,7 @@
 // transactions and versioned migrations, backed by the bundled SQLite
 // driver (with PostgreSQL / MySQL / ... as pluggable drivers).
 //
+// doc-check: example
 //   #include <UltraDatabase/UltraDatabase.h>
 //
 //   UltraDbConnectionConfig cfg;

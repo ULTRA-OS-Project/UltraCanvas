@@ -1,0 +1,21 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 640x330. --><title>Track header — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)} .g{display:grid;grid-template-columns:200px 1fr;align-items:stretch} .d{display:flex;align-items:center;padding:0 12px;border-bottom:1px solid var(--line)}</style></head>
+<body class="uv">
+<div class="g" id="g"></div>
+<script>
+  var U = UltraVideo, rows = [
+    [{ id: 'T1', kind: 'overlay', name: 'Titles' }, 28, 'Overlay lane: show/hide, lock'],
+    [{ id: 'V2', kind: 'video', name: 'Overlay video', magnetic: false, hover: true }, 48, 'Free video track, hovered: magnet off'],
+    [{ id: 'V1', kind: 'video', name: 'Main track', magnetic: true, selected: true }, 64, 'Main track, selected and targeted: magnet on'],
+    [{ id: 'V3', kind: 'video', name: 'Picture in picture', magnetic: false, hidden: true }, 48, 'Hidden track: eye-off shown in danger'],
+    [{ id: 'A1', kind: 'audio', name: 'Music', muted: true }, 48, 'Muted: crossed speaker in danger'],
+    [{ id: 'A2', kind: 'audio', name: 'Voice-over', locked: true }, 48, 'Locked: lock in accent, lane hatched'],
+    [{ id: 'A3', kind: 'audio', name: 'Collapsed' }, 24, 'Collapsed to track-h-min']
+  ], h = '';
+  rows.forEach(function (r) { h += U.trackHeader(r[0], r[1]) + '<div class="d uv-cap" style="height:' + r[1] + 'px">' + r[2] + '</div>'; });
+  document.getElementById('g').innerHTML = h;
+</script>
+</body>
+</html>

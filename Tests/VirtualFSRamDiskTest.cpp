@@ -23,6 +23,7 @@
 #include "VirtualFS/VirtualFS.h"
 #include "VirtualFS/VirtualFSRamDisk.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -61,6 +62,23 @@ int main() {
                 VirtualFS_IsTrueRamDiskAvailable() ? "yes" : "no");
 
     VirtualFS_Initialize();
+
+    // --- 0. The backing is asked once and kept -----------------------------
+    // The probe launches a shell on Windows and macOS; the second answer must
+    // be the kept one, and agree with the first.
+    {
+        const VirtualFSRamDiskBacking first = VirtualFS_GetPreferredRamDiskBacking();
+        const auto started = std::chrono::steady_clock::now();
+        const VirtualFSRamDiskBacking again = VirtualFS_GetPreferredRamDiskBacking();
+        const auto took = std::chrono::steady_clock::now() - started;
+        CHECK(again == first, "preferred backing is the same when asked again");
+        CHECK(took < std::chrono::milliseconds(50),
+              "preferred backing answers from the kept answer, not a new probe");
+        CHECK(VirtualFS_IsTrueRamDiskAvailable() ==
+                  (first != VirtualFSRamDiskBacking::None &&
+                   first != VirtualFSRamDiskBacking::DiskFallback),
+              "true-RAM availability follows the kept backing");
+    }
 
     // --- 1. Create ---------------------------------------------------------
     VirtualFSRamDisk disk;

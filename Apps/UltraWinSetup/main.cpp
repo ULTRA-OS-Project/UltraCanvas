@@ -12,6 +12,7 @@
 #include "UltraWin/UltraWin.h"
 
 #include <cstdio>
+#include <cstdlib>   // std::atoi
 #include <cstring>
 #include <string>
 #include <thread>

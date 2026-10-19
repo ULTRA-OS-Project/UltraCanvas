@@ -12,8 +12,9 @@
 // form (storage sync, fetch, file picking, image and font loading) the
 // method returns at once and reports through a callback later, from the
 // main thread, between animation frames; the callback may touch UI elements.
+// Version: 2.1.0 - the History API: PushUrl, ReplaceUrl, GetPath, SetOnNavigate
 // Version: 2.0.0
-// Last Modified: 2026-09-07
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -159,8 +160,21 @@ public:
     static bool HasQueryParameter(const std::string& name);
     static std::vector<std::pair<std::string, std::string>> GetAllQueryParameters();
     static std::string GetHash();                                     // includes the '#'
-    static void Navigate(const std::string& url);
+    static std::string GetPath();                                     // window.location.pathname
+    static void Navigate(const std::string& url);                     // leaves the page
     static void Reload();
+
+    // The History API, for an application that shows several pages from one
+    // module: change the address bar without leaving the page (PushUrl adds a
+    // history entry the back button returns to, ReplaceUrl rewrites the
+    // current one), and hear the back and forward buttons. The callback is
+    // called with the new URL on every `popstate` - a hash change included -
+    // on the main thread; PushUrl / ReplaceUrl do not call it. One callback
+    // at a time; an empty one stops listening.
+    using NavigateCallback = std::function<void(const std::string& url)>;
+    static void PushUrl(const std::string& url);
+    static void ReplaceUrl(const std::string& url);
+    static void SetOnNavigate(NavigateCallback callback);
 };
 
 } // namespace UltraCanvas

@@ -7,13 +7,24 @@
 // <g> elements, transforms stay matrix attributes, gradients keep all their
 // stops in <defs>, text keeps its spans, and nothing is flattened. The
 // importer parses with tinyxml2 and leans on the storage utilities
-// (ParsePathString, ParseColorString, ParseTransformString).
+// (ParsePathString, ParseColorString, ParseTransformString), and applies
+// <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.5.1 - <style> sheets match through the HTMLReader's selector
+//                  matcher (HTML::MatchingRules over SelectorTraits); the copy
+//                  of it that lived here is gone
+// Version: 1.5.0 - width profiles and brushes exported as the shapes they draw,
+//                  with the data the reader rebuilds the stroke from
+// Version: 1.4.0 - line-gallery arrowheads exported as <marker>s and read back
+// Version: 1.3.0 - <marker>: marker-start/-mid/-end drawn as grouped shapes
+// Version: 1.2.0 - <style> sheets: class/id/type/descendant selectors cascade
+//                  with presentation attributes and style="" (SVG 2 order)
 // Version: 1.1.0
-// Last Modified: 2026-09-26
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "HTMLReader/CSSStyleSheet.h"   // HTML::StyleSheet: <style> parsing
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic
 #include "UltraCanvasFileLoader.h"   // LoadFile: inflates .svgz
 
@@ -79,6 +90,31 @@ std::string XmlEscape(const std::string& s) {
 }
 
 bool NearlyOne(float v) { return std::fabs(v - 1.0f) < 1e-4f; }
+
+// The line gallery's arrowheads by the name the writer tags its <marker>s
+// with (data-ultracanvas-arrowhead), so the reader gives them back as
+// arrowheads rather than as shapes. File-format names, fixed: not the
+// editor's labels.
+struct ArrowheadName {
+    ArrowheadKind Kind;
+    const char* Name;
+};
+constexpr ArrowheadName kArrowheadNames[] = {
+    {ArrowheadKind::Triangle, "triangle"},         {ArrowheadKind::OpenArrow, "open-arrow"},
+    {ArrowheadKind::Circle, "circle"},             {ArrowheadKind::Square, "square"},
+    {ArrowheadKind::Diamond, "diamond"},           {ArrowheadKind::Bar, "bar"},
+    {ArrowheadKind::StraightArrow, "straight-arrow"}, {ArrowheadKind::AngledArrow, "angled-arrow"},
+    {ArrowheadKind::RoundedArrow, "rounded-arrow"}, {ArrowheadKind::Spot, "spot"},
+    {ArrowheadKind::SolidDiamond, "solid-diamond"}, {ArrowheadKind::Feather, "feather"},
+    {ArrowheadKind::Feather2, "feather2"},         {ArrowheadKind::HollowDiamond, "hollow-diamond"},
+};
+
+const char* ArrowheadNameOf(ArrowheadKind kind) {
+    for (const auto& n : kArrowheadNames) {
+        if (n.Kind == kind) return n.Name;
+    }
+    return nullptr;
+}
 
 // ===== WRITER =====
 
@@ -161,6 +197,10 @@ private:
     std::ostringstream defs;
     int depth = 1;
     int nextDefId = 1;
+    // Arrowhead markers already written, by kind, scale, end, width and colour.
+    std::map<std::string, std::string> arrowheadMarkers;
+    // Brush stamps already written into <defs>.
+    std::map<const VectorGroup*, std::string> stampDefinitions;
 
     std::string NL() const { return opts.Minify ? "" : "\n"; }
     std::string Ind(int level) const {
@@ -292,6 +332,35 @@ private:
         return "";
     }
 
+    // The stroke's presentation properties, name and value, in the order the
+    // attributes are written. `paintOut` / `alphaOut` receive the paint and
+    // its colour's alpha, for a caller drawing in the stroke's paint.
+    std::vector<std::pair<std::string, std::string>> StrokeProps(const VectorStyle& s, std::string* paintOut = nullptr,
+                                                                 float* alphaOut = nullptr) {
+        std::vector<std::pair<std::string, std::string>> p;
+        const StrokeData& st = *s.Stroke;
+        float alpha = 1.0f;
+        const std::string v = PaintValue(st.Fill, &alpha);
+        if (paintOut) *paintOut = v;
+        if (alphaOut) *alphaOut = alpha;
+        if (!v.empty()) p.emplace_back("stroke", v);
+        p.emplace_back("stroke-width", Num(st.Width));
+        if (st.LineCap == StrokeLineCap::Round) p.emplace_back("stroke-linecap", "round");
+        else if (st.LineCap == StrokeLineCap::Square) p.emplace_back("stroke-linecap", "square");
+        if (st.LineJoin == StrokeLineJoin::Round) p.emplace_back("stroke-linejoin", "round");
+        else if (st.LineJoin == StrokeLineJoin::Bevel) p.emplace_back("stroke-linejoin", "bevel");
+        if (std::fabs(st.MiterLimit - 4.0f) > 1e-4f) p.emplace_back("stroke-miterlimit", Num(st.MiterLimit));
+        if (!st.DashArray.empty()) {
+            std::string dash;
+            for (size_t i = 0; i < st.DashArray.size(); ++i) dash += (i ? " " : "") + Num(st.DashArray[i]);
+            p.emplace_back("stroke-dasharray", dash);
+            if (std::fabs(st.DashOffset) > 1e-9) p.emplace_back("stroke-dashoffset", Num(st.DashOffset));
+        }
+        const float so = alpha * st.Opacity * s.StrokeOpacity;
+        if (!NearlyOne(so)) p.emplace_back("stroke-opacity", Num(so));
+        return p;
+    }
+
     // `shape` marks a geometric element: with no fill in the model it has
     // no fill at all, which SVG must be told (its default is black).
     std::string StyleAttrs(const VectorStyle& s, bool shape = false) {
@@ -307,29 +376,7 @@ private:
             if (!NearlyOne(s.FillOpacity)) a << " fill-opacity=\"" << Num(s.FillOpacity) << "\"";
         }
         if (s.Stroke) {
-            const StrokeData& st = *s.Stroke;
-            float alpha = 1.0f;
-            std::string v = PaintValue(st.Fill, &alpha);
-            if (!v.empty()) a << " stroke=\"" << v << "\"";
-            a << " stroke-width=\"" << Num(st.Width) << "\"";
-            if (st.LineCap == StrokeLineCap::Round) a << " stroke-linecap=\"round\"";
-            else if (st.LineCap == StrokeLineCap::Square) a << " stroke-linecap=\"square\"";
-            if (st.LineJoin == StrokeLineJoin::Round) a << " stroke-linejoin=\"round\"";
-            else if (st.LineJoin == StrokeLineJoin::Bevel) a << " stroke-linejoin=\"bevel\"";
-            if (std::fabs(st.MiterLimit - 4.0f) > 1e-4f)
-                a << " stroke-miterlimit=\"" << Num(st.MiterLimit) << "\"";
-            if (!st.DashArray.empty()) {
-                a << " stroke-dasharray=\"";
-                for (size_t i = 0; i < st.DashArray.size(); ++i) {
-                    if (i) a << " ";
-                    a << Num(st.DashArray[i]);
-                }
-                a << "\"";
-                if (std::fabs(st.DashOffset) > 1e-9)
-                    a << " stroke-dashoffset=\"" << Num(st.DashOffset) << "\"";
-            }
-            float so = alpha * st.Opacity * s.StrokeOpacity;
-            if (!NearlyOne(so)) a << " stroke-opacity=\"" << Num(so) << "\"";
+            for (const auto& [name, value] : StrokeProps(s)) a << " " << name << "=\"" << value << "\"";
         }
         if (!NearlyOne(s.Opacity)) a << " opacity=\"" << Num(s.Opacity) << "\"";
         if (!s.Visible || !s.Display) a << " display=\"none\"";
@@ -361,7 +408,242 @@ private:
                            e.Type == VectorElementType::Polygon ||
                            e.Type == VectorElementType::Path;
         a << StyleAttrs(e.Style, shape);
+        if (e.Type == VectorElementType::Line || e.Type == VectorElementType::Polyline ||
+            e.Type == VectorElementType::Path)
+            a << ArrowheadAttrs(e);
         return a.str();
+    }
+
+    // ===== ARROWHEADS =====
+
+    // The line gallery's arrowheads as SVG markers, so every SVG reader draws
+    // them: marker-start / marker-end on the line, each pointing at a
+    // <marker> whose content is the very outline the renderer fills or
+    // strokes (ArrowheadOutline). The renderer draws them only on a path whose
+    // first and last subpaths are open, and so does this.
+    std::string ArrowheadAttrs(const VectorElement& e) {
+        std::string startId, endId, a;
+        ArrowheadMarkers(e, startId, endId);
+        if (!startId.empty()) a += " marker-start=\"url(#" + startId + ")\"";
+        if (!endId.empty()) a += " marker-end=\"url(#" + endId + ")\"";
+        return a;
+    }
+
+    // The <marker> ids for the element's arrowheads; empty where it has none.
+    void ArrowheadMarkers(const VectorElement& e, std::string& startId, std::string& endId) {
+        const VectorStyle& s = e.Style;
+        if (!s.Stroke || !s.Stroke->HasArrowheads() || s.Stroke->Width <= 0 ||
+            std::holds_alternative<std::monostate>(s.Stroke->Fill))
+            return;
+        PathData outline;
+        Point2Dd start, startDir, end, endDir;
+        if (!BuildOutlinePath(e, outline) || !PathEndpoints(outline, start, startDir, end, endDir)) return;
+        if (s.Stroke->StartArrow.IsSet())
+            startId = ArrowheadMarker(s.Stroke->StartArrow, true, *s.Stroke, s.StrokeOpacity);
+        if (s.Stroke->EndArrow.IsSet())
+            endId = ArrowheadMarker(s.Stroke->EndArrow, false, *s.Stroke, s.StrokeOpacity);
+    }
+
+    // ===== WIDTH PROFILES AND BRUSHES =====
+
+    // SVG has neither a variable-width stroke nor a brush, so a shape with
+    // either is written as what the renderer draws: a group holding the shape
+    // with its fill and no stroke, then the band a width profile makes
+    // (filled even-odd in the stroke's paint) or the brush's stamps (<use>s
+    // of the stamp, written once in <defs>), then the arrowheads on top. The
+    // group carries what draws them - the stroke as a style declaration list
+    // (data-ultracanvas-stroke), the profile and the brush - so the reader
+    // gives the shape back with its stroke, while any other reader draws the
+    // shapes. A profile wins over a brush, as in the renderer.
+    static bool HasGalleryStroke(const VectorElement& e) {
+        switch (e.Type) {
+            case VectorElementType::Rectangle: case VectorElementType::RoundedRectangle:
+            case VectorElementType::Circle: case VectorElementType::Ellipse:
+            case VectorElementType::Line: case VectorElementType::Polyline:
+            case VectorElementType::Polygon: case VectorElementType::Path:
+                break;
+            default:
+                return false;
+        }
+        const VectorStyle& s = e.Style;
+        return s.Stroke && s.Stroke->Width > 0 && !std::holds_alternative<std::monostate>(s.Stroke->Fill) &&
+               (s.Stroke->HasWidthProfile() || s.Stroke->HasBrush());
+    }
+
+    // A matrix as an SVG transform, dot-decimal.
+    static std::string MatrixValue(const Matrix3x3& m) {
+        return "matrix(" + Num(m.m[0][0]) + " " + Num(m.m[1][0]) + " " + Num(m.m[0][1]) + " " +
+               Num(m.m[1][1]) + " " + Num(m.m[0][2]) + " " + Num(m.m[1][2]) + ")";
+    }
+
+    // The brush's stamp in <defs>, written once however many lines use it.
+    std::string StampDefinition(const VectorGroup& stamp) {
+        auto it = stampDefinitions.find(&stamp);
+        if (it != stampDefinitions.end()) return it->second;
+        const std::string id = "ucstamp" + std::to_string(nextDefId++);
+        std::ostringstream s;   // gradients the stamp registers land in <defs> before it
+        const int savedDepth = depth;
+        depth = 2;
+        WriteElement(s, stamp, id);
+        depth = savedDepth;
+        defs << s.str();
+        stampDefinitions.emplace(&stamp, id);
+        return id;
+    }
+
+    void WriteLineGallery(std::ostringstream& out, const VectorElement& e, const std::string& forcedId) {
+        const VectorStyle& style = e.Style;
+        const StrokeData& st = *style.Stroke;
+        PathData outline;
+        if (!BuildOutlinePath(e, outline)) return;
+        std::string outlineD = SerializePathData(outline);
+        while (!outlineD.empty() && outlineD.back() == ' ') outlineD.pop_back();
+
+        // The group: the element's place and presence, and what its stroke is.
+        std::ostringstream a;
+        const std::string& id = forcedId.empty() ? e.Id : forcedId;
+        if (!id.empty()) a << " id=\"" << XmlEscape(id) << "\"";
+        if (!e.Classes.empty()) {
+            a << " class=\"";
+            for (size_t i = 0; i < e.Classes.size(); ++i) a << (i ? " " : "") << XmlEscape(e.Classes[i]);
+            a << "\"";
+        }
+        if (e.Transform) {
+            const std::string t = MatrixValue(*e.Transform);
+            a << " transform=\"" << t << "\"";
+        }
+        if (!NearlyOne(style.Opacity)) a << " opacity=\"" << Num(style.Opacity) << "\"";
+        if (!style.Visible || !style.Display) a << " display=\"none\"";
+        std::string paint;
+        float alpha = 1.0f;
+        std::string declarations;
+        for (const auto& [name, value] : StrokeProps(style, &paint, &alpha)) declarations += name + ": " + value + "; ";
+        std::string startId, endId;
+        ArrowheadMarkers(e, startId, endId);
+        if (!startId.empty()) declarations += "marker-start: url(#" + startId + "); ";
+        if (!endId.empty()) declarations += "marker-end: url(#" + endId + "); ";
+        while (!declarations.empty() && declarations.back() == ' ') declarations.pop_back();
+        a << " data-ultracanvas-stroke=\"" << XmlEscape(declarations) << "\"";
+        if (st.HasWidthProfile()) {
+            a << " data-ultracanvas-width-profile=\"";
+            for (size_t i = 0; i < st.WidthProfile.size(); ++i)
+                a << (i ? " " : "") << Num(st.WidthProfile[i].T) << " " << Num(st.WidthProfile[i].Factor);
+            a << "\"";
+        }
+        std::string stampId;
+        if (st.HasBrush()) {
+            stampId = StampDefinition(*st.Brush->Stamp);
+            a << " data-ultracanvas-brush=\"" << stampId << " " << Num(st.Brush->Spacing) << " "
+              << Num(st.Brush->Scale) << " " << (st.Brush->Rotate ? 1 : 0) << "\"";
+        }
+        OpenTag(out, "g", a.str(), false);
+        ++depth;
+
+        // The shape with its fill, told it has no stroke (an ancestor's
+        // would otherwise apply).
+        auto bare = e.Clone();
+        bare->Id.clear();
+        bare->Classes.clear();
+        bare->Transform.reset();
+        bare->Style.Opacity = 1.0f;
+        bare->Style.Visible = bare->Style.Display = true;
+        StrokeData none;
+        none.Fill = std::monostate{};
+        bare->Style.Stroke = none;
+        WriteElement(out, *bare);
+
+        // What the renderer draws in place of the stroke.
+        const float o = alpha * st.Opacity * style.StrokeOpacity;
+        if (st.HasWidthProfile()) {
+            const PathData band = VariableWidthOutline(outline, st);
+            std::string d = SerializePathData(band);
+            while (!d.empty() && d.back() == ' ') d.pop_back();
+            if (!d.empty() && !paint.empty()) {
+                std::string attrs = " d=\"" + d + "\" fill=\"" + paint + "\" fill-rule=\"evenodd\"";
+                if (!NearlyOne(o)) attrs += " fill-opacity=\"" + Num(o) + "\"";
+                OpenTag(out, "path", attrs, true);
+            }
+        } else if (!stampId.empty()) {
+            OpenTag(out, "g", "", false);
+            ++depth;
+            for (const auto& sub : FlattenPathData(outline)) {
+                for (const Matrix3x3& m : BrushStampPlacements(sub.Points, st))
+                    OpenTag(out, "use", " href=\"#" + stampId + "\" transform=\"" + MatrixValue(m) + "\"", true);
+            }
+            --depth;
+            CloseTag(out, "g");
+        }
+
+        // The arrowheads, over the band or the stamps.
+        if (!startId.empty() || !endId.empty()) {
+            std::string attrs = " d=\"" + outlineD + "\" fill=\"none\" stroke=\"none\"";
+            if (!startId.empty()) attrs += " marker-start=\"url(#" + startId + ")\"";
+            if (!endId.empty()) attrs += " marker-end=\"url(#" + endId + ")\"";
+            OpenTag(out, "path", attrs, true);
+        }
+        --depth;
+        CloseTag(out, "g");
+    }
+
+    // The <marker> for one arrowhead. It is drawn in the line's own units
+    // (markerUnits="userSpaceOnUse": the arrowhead is sized from the line
+    // width, with the renderer's 0.5 floor, not simply scaled by it) with
+    // its tip on the vertex. orient="auto" turns +x along the path, so an end
+    // arrowhead points along +x and a start one along -x: the renderer points
+    // both away from the line, and SVG 1.1 readers know no
+    // auto-start-reverse. The viewBox covers the outline, so a reader that
+    // clips to the marker's viewport loses nothing either.
+    std::string ArrowheadMarker(const ArrowheadData& arrow, bool atStart, const StrokeData& stroke,
+                                float strokeOpacity) {
+        const char* name = ArrowheadNameOf(arrow.Kind);
+        if (!name) return {};
+        bool stroked = false;
+        const PathData outline = ArrowheadOutline(arrow, Point2Dd(0, 0), Point2Dd(atStart ? -1 : 1, 0),
+                                                  stroke.Width, stroked);
+        if (outline.commands.empty()) return {};
+
+        // The same arrowhead in the same colour is written once.
+        const Color* colour = std::get_if<Color>(&stroke.Fill);
+        const float opacity = stroke.Opacity * strokeOpacity;
+        std::string key;
+        if (colour) {
+            key = std::string(name) + "|" + Num(arrow.Scale) + "|" + (atStart ? "s" : "e") + "|" +
+                  Num(stroke.Width) + "|" + HexColor(*colour) + "|" + std::to_string(colour->a) + "|" + Num(opacity);
+            auto it = arrowheadMarkers.find(key);
+            if (it != arrowheadMarkers.end()) return it->second;
+        }
+        float alpha = 1.0f;
+        const std::string paint = PaintValue(stroke.Fill, &alpha);
+        if (paint.empty() || paint == "none") return {};
+
+        const Rect2Dd box = outline.GetBounds();
+        const double pad = std::max(0.5 * stroke.Width, 1e-3);   // a stroked outline's half width
+        const Rect2Dd view{box.x - pad, box.y - pad, box.width + 2 * pad, box.height + 2 * pad};
+        const std::string id = "arrow" + std::to_string(nextDefId++);
+        std::ostringstream m;
+        m << Ind(2) << "<marker id=\"" << id << "\" data-ultracanvas-arrowhead=\"" << name << "\""
+          << " data-ultracanvas-scale=\"" << Num(arrow.Scale) << "\""
+          << " data-ultracanvas-end=\"" << (atStart ? "start" : "end") << "\""
+          << " markerUnits=\"userSpaceOnUse\" orient=\"auto\" overflow=\"visible\""
+          << " viewBox=\"" << Num(view.x) << " " << Num(view.y) << " " << Num(view.width) << " "
+          << Num(view.height) << "\" markerWidth=\"" << Num(view.width) << "\" markerHeight=\""
+          << Num(view.height) << "\" refX=\"0\" refY=\"0\">" << NL();
+        std::string d = SerializePathData(outline);
+        while (!d.empty() && d.back() == ' ') d.pop_back();
+        const float o = alpha * opacity;
+        m << Ind(3) << "<path d=\"" << d << "\"";
+        if (stroked) {
+            m << " fill=\"none\" stroke=\"" << paint << "\" stroke-width=\"" << Num(stroke.Width) << "\""
+              << " stroke-linecap=\"round\" stroke-linejoin=\"round\"";
+            if (!NearlyOne(o)) m << " stroke-opacity=\"" << Num(o) << "\"";
+        } else {
+            m << " fill=\"" << paint << "\"";
+            if (!NearlyOne(o)) m << " fill-opacity=\"" << Num(o) << "\"";
+        }
+        m << "/>" << NL() << Ind(2) << "</marker>" << NL();
+        defs << m.str();
+        if (!key.empty()) arrowheadMarkers.emplace(key, id);
+        return id;
     }
 
     // ===== TEXT =====
@@ -431,6 +713,10 @@ private:
 
     void WriteElement(std::ostringstream& out, const VectorElement& e,
                       const std::string& forcedId = "") {
+        if (HasGalleryStroke(e)) {
+            WriteLineGallery(out, e, forcedId);
+            return;
+        }
         switch (e.Type) {
             case VectorElementType::Rectangle:
             case VectorElementType::RoundedRectangle: {
@@ -614,9 +900,21 @@ public:
         doc->Size = Size2Dd{w, h};
         if (hasViewBox) doc->ViewBox = Rect2Dd{vb[0], vb[1], vb[2], vb[3]};
 
-        // Definitions pre-pass: gradients can be referenced before (or after)
-        // their definition, so collect them document-wide first.
+        // Style sheets first: every property read below, gradient stops
+        // included, goes through them. The cache is keyed by element
+        // address, which a second document could reuse.
+        styleSheet.Clear();
+        sheetValues.clear();
+        if (w > 0) styleSheet.SetMediaWidth(static_cast<float>(w));
+        CollectStyleSheets(svg);
+
+        // Definitions pre-pass: gradients and markers can be referenced
+        // before (or after) their definition, so collect them document-wide
+        // first.
         CollectGradients(svg);
+        markers.clear();
+        markerClips.clear();
+        CollectMarkers(svg);
 
         // When every drawable at the top level is a <g>, treat each as a
         // layer (the shape this exporter and layered editors like Inkscape
@@ -741,7 +1039,7 @@ public:
         const char* n = StripNs(e->Name());
         return std::strcmp(n, "defs") == 0 || std::strcmp(n, "title") == 0 ||
                std::strcmp(n, "desc") == 0 || std::strcmp(n, "style") == 0 ||
-               std::strcmp(n, "metadata") == 0 ||
+               std::strcmp(n, "metadata") == 0 || std::strcmp(n, "marker") == 0 ||
                std::strcmp(n, "linearGradient") == 0 ||
                std::strcmp(n, "radialGradient") == 0;
     }
@@ -749,7 +1047,10 @@ public:
 private:
     std::function<void(const std::string&)> warn;
     std::map<std::string, GradientData> gradients;
-    bool warnedCss = false;
+    // Every <style> in the document, and what it gives each element (worked
+    // out on the element's first property read).
+    HTML::StyleSheet styleSheet;
+    std::map<const tinyxml2::XMLElement*, std::map<std::string, HTML::Declaration>> sheetValues;
     // Maps viewBox units onto the page (identity when they coincide).
     Matrix3x3 viewBoxMatrix = Matrix3x3::Identity();
     // SVG images inside SVG images: how deep this reader is, and how many it
@@ -759,6 +1060,15 @@ private:
     // Elements that say stroke="none" themselves: they must not inherit a
     // group's stroke, and an unset Stroke cannot tell the two apart.
     std::set<const VectorElement*> strokeNone;
+    // <marker> elements by id; the ones being drawn right now (a marker whose
+    // content uses itself would never end); the viewport clip made for each;
+    // what context-fill / context-stroke stand for while one is drawn; and
+    // how deep in <clipPath> content the reader is (no markers there).
+    std::map<std::string, const tinyxml2::XMLElement*> markers;
+    std::set<const tinyxml2::XMLElement*> expandingMarkers;
+    std::map<const tinyxml2::XMLElement*, std::string> markerClips;
+    std::optional<FillData> contextFill, contextStroke;
+    int clipDepth = 0;
 
     static const char* StripNs(const char* name) {
         const char* colon = std::strchr(name, ':');
@@ -795,30 +1105,142 @@ private:
         return ParseLength(e->Attribute(name), fallback);
     }
 
-    // Presentation attribute or `style="…"` property (style wins, per CSS).
-    static std::string Prop(const tinyxml2::XMLElement* e, const char* name) {
+    // x, y, width, height, rx, ry, cx, cy and r are properties in SVG 2, so a
+    // style sheet can set them too (`.card { rx: 8 }`).
+    double GeometryLength(const tinyxml2::XMLElement* e, const char* name, double fallback) {
+        const std::string v = Prop(e, name);
+        return ParseLength(v.empty() ? nullptr : v.c_str(), fallback);
+    }
+
+    // A property of `e` by the CSS cascade SVG 2 specifies: the presentation
+    // attribute is weakest, then the <style> sheets, then style="…"; an
+    // !important declaration beats every normal one, and an !important
+    // style="…" beats an !important sheet.
+    std::string Prop(const tinyxml2::XMLElement* e, const char* name) {
         std::string result;
         if (const char* a = e->Attribute(name)) result = a;
+        const HTML::Declaration* sheet = nullptr;
+        if (!styleSheet.rules.empty()) {
+            const auto& values = SheetValues(e);
+            auto it = values.find(name);
+            if (it != values.end()) sheet = &it->second;
+        }
+        std::vector<HTML::Declaration> inlineDecls;
+        const HTML::Declaration* inl = nullptr;
         if (const char* styleAttr = e->Attribute("style")) {
-            std::string s = styleAttr;
-            std::istringstream iss(s);
-            std::string decl;
-            while (std::getline(iss, decl, ';')) {
-                size_t colon = decl.find(':');
-                if (colon == std::string::npos) continue;
-                std::string key = decl.substr(0, colon);
-                key.erase(0, key.find_first_not_of(" \t"));
-                key.erase(key.find_last_not_of(" \t") + 1);
-                if (key == name) {
-                    std::string value = decl.substr(colon + 1);
-                    value.erase(0, value.find_first_not_of(" \t"));
-                    value.erase(value.find_last_not_of(" \t") + 1);
-                    result = value;
+            inlineDecls = HTML::StyleSheet::ParseDeclarationList(styleAttr);
+            for (const auto& d : inlineDecls) {
+                if (d.property == name && (d.important || !inl || !inl->important)) inl = &d;
+            }
+        }
+        if (sheet && !sheet->important) result = sheet->value;
+        if (inl && !inl->important) result = inl->value;
+        if (sheet && sheet->important) result = sheet->value;
+        if (inl && inl->important) result = inl->value;
+        return result;
+    }
+
+    // ===== CSS =====
+
+    // The <style> elements, wherever they are (editors write them at the top,
+    // hand-written files often inside <defs>), in document order so that of
+    // two equally specific rules the later wins.
+    void CollectStyleSheets(const tinyxml2::XMLElement* e) {
+        if (std::strcmp(StripNs(e->Name()), "style") == 0) {
+            const char* type = e->Attribute("type");
+            if (type && *type && !std::strstr(type, "css")) return;
+            const char* media = e->Attribute("media");
+            if (media && !HTML::StyleSheet::MediaMatches(media, styleSheet.GetMediaWidth())) return;
+            std::string css;   // the text and CDATA sections, in order
+            for (const tinyxml2::XMLNode* n = e->FirstChild(); n; n = n->NextSibling()) {
+                if (const tinyxml2::XMLText* t = n->ToText()) css += t->Value();
+            }
+            styleSheet.ParseAppend(css);
+            return;
+        }
+        for (const tinyxml2::XMLElement* child = e->FirstChildElement();
+             child; child = child->NextSiblingElement()) {
+            CollectStyleSheets(child);
+        }
+    }
+
+    // What the sheets say about `e`: matching rules in specificity, then
+    // source order, the !important declarations after all the normal ones.
+    const std::map<std::string, HTML::Declaration>& SheetValues(const tinyxml2::XMLElement* e) {
+        auto [it, inserted] = sheetValues.try_emplace(e);
+        if (!inserted) return it->second;
+        const std::vector<const HTML::Rule*> rules = HTML::MatchingRules<SelectorTraits>(styleSheet, *e);
+        for (bool important : {false, true}) {
+            for (const HTML::Rule* rule : rules) {
+                for (const auto& d : rule->declarations) {
+                    if (d.important == important) it->second[d.property] = d;
                 }
             }
         }
-        return result;
+        return it->second;
     }
+
+    static std::string Lower(std::string s) {
+        for (char& ch : s) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        return s;
+    }
+
+    // The tinyxml2 tree as the HTMLReader's selector matcher sees it
+    // (CSSStyleSheet.h, "Matching"), so a <style> sheet matches here exactly
+    // as it does in the HTML style resolver. The parser lower-cases type
+    // selectors and attribute names; SVG's are camelCase (linearGradient,
+    // viewBox), so those compare case-insensitively.
+    struct SelectorTraits {
+        using Element = tinyxml2::XMLElement;
+        static bool TagIs(const Element& e, const std::string& tag) { return Lower(StripNs(e.Name())) == tag; }
+        static bool IdIs(const Element& e, const std::string& id) {
+            const char* value = e.Attribute("id");
+            return value && id == value;
+        }
+        static bool HasClass(const Element& e, const std::string& name) {
+            const char* cls = e.Attribute("class");
+            if (!cls) return false;
+            std::istringstream words(cls);
+            std::string word;
+            while (words >> word) {
+                if (word == name) return true;
+            }
+            return false;
+        }
+        static bool GetAttribute(const Element& e, const std::string& name, std::string& value) {
+            for (const tinyxml2::XMLAttribute* a = e.FirstAttribute(); a; a = a->Next()) {
+                if (Lower(a->Name()) == name) {
+                    value = a->Value();
+                    return true;
+                }
+            }
+            return false;
+        }
+        static bool IsLink(const Element& e) {
+            return std::strcmp(StripNs(e.Name()), "a") == 0 && (e.Attribute("href") || e.Attribute("xlink:href"));
+        }
+        static bool IsRoot(const Element& e) { return e.Parent() && e.Parent()->ToDocument(); }
+        static bool IsEmpty(const Element& e) {
+            for (const tinyxml2::XMLNode* n = e.FirstChild(); n; n = n->NextSibling()) {
+                if (n->ToElement() || (n->ToText() && *n->Value())) return false;
+            }
+            return true;
+        }
+        static bool SiblingPosition(const Element& e, bool ofType, int& index, int& count) {
+            const tinyxml2::XMLNode* parent = e.Parent();
+            if (!parent) return false;
+            index = 0;
+            count = 0;
+            for (const tinyxml2::XMLElement* sib = parent->FirstChildElement(); sib; sib = sib->NextSiblingElement()) {
+                if (ofType && std::strcmp(sib->Name(), e.Name()) != 0) continue;
+                ++count;
+                if (sib == &e) index = count;
+            }
+            return index > 0;
+        }
+        // The document above the root <svg> ends the walk.
+        static const Element* Parent(const Element& e) { return e.Parent() ? e.Parent()->ToElement() : nullptr; }
+    };
 
     // ===== GRADIENTS =====
 
@@ -915,6 +1337,9 @@ private:
     std::optional<FillData> ParsePaint(const std::string& v) {
         if (v.empty() || v == "inherit") return std::nullopt;
         if (v == "none" || v == "transparent") return FillData(std::monostate{});
+        // SVG 2: inside a marker, the paint of the shape it is drawn on.
+        if (v == "context-fill") return contextFill ? *contextFill : FillData(std::monostate{});
+        if (v == "context-stroke") return contextStroke ? *contextStroke : FillData(std::monostate{});
         if (v.rfind("url(#", 0) == 0) {
             size_t end = v.find(')');
             std::string id = v.substr(5, end == std::string::npos ? std::string::npos
@@ -934,6 +1359,35 @@ private:
         return static_cast<float>(std::max(0.0, std::min(1.0, d)));
     }
 
+    // A stroke from its presentation properties, `prop` answering each by
+    // name; false when there is none ("none", "inherit" or unset).
+    bool ParseStroke(const std::function<std::string(const char*)>& prop, StrokeData& st) {
+        const std::string strokeVal = prop("stroke");
+        if (strokeVal.empty() || strokeVal == "none" || strokeVal == "inherit") return false;
+        if (auto p = ParsePaint(strokeVal)) st.Fill = *p;
+        const std::string sw = prop("stroke-width");
+        if (!sw.empty()) st.Width = static_cast<float>(ParseLength(sw.c_str(), 1.0));
+        const std::string cap = prop("stroke-linecap");
+        if (cap == "round") st.LineCap = StrokeLineCap::Round;
+        else if (cap == "square") st.LineCap = StrokeLineCap::Square;
+        const std::string join = prop("stroke-linejoin");
+        if (join == "round") st.LineJoin = StrokeLineJoin::Round;
+        else if (join == "bevel") st.LineJoin = StrokeLineJoin::Bevel;
+        const std::string ml = prop("stroke-miterlimit");
+        if (!ml.empty()) TryParseFloat(ml, st.MiterLimit);
+        std::string dash = prop("stroke-dasharray");
+        if (!dash.empty() && dash != "none") {
+            for (char& ch : dash) if (ch == ',') ch = ' ';
+            std::istringstream iss(dash);
+            double d;
+            while (iss >> d) st.DashArray.push_back(d);
+        }
+        const std::string doff = prop("stroke-dashoffset");
+        if (!doff.empty()) TryParseFloat(doff, st.DashOffset);
+        st.Opacity = ParseOpacity(prop("stroke-opacity"), 1.0f);
+        return true;
+    }
+
     void ApplyStyle(const tinyxml2::XMLElement* e, VectorElement& out) {
         if (const char* id = e->Attribute("id")) out.Id = id;
         if (const char* cls = e->Attribute("class")) {
@@ -948,30 +1402,9 @@ private:
 
         VectorStyle& s = out.Style;
         if (auto f = ParsePaint(Prop(e, "fill"))) s.Fill = *f;
-        std::string strokeVal = Prop(e, "stroke");
-        if (!strokeVal.empty() && strokeVal != "none" && strokeVal != "inherit") {
-            StrokeData st;
-            if (auto p = ParsePaint(strokeVal)) st.Fill = *p;
-            std::string sw = Prop(e, "stroke-width");
-            if (!sw.empty()) st.Width = static_cast<float>(ParseLength(sw.c_str(), 1.0));
-            std::string cap = Prop(e, "stroke-linecap");
-            if (cap == "round") st.LineCap = StrokeLineCap::Round;
-            else if (cap == "square") st.LineCap = StrokeLineCap::Square;
-            std::string join = Prop(e, "stroke-linejoin");
-            if (join == "round") st.LineJoin = StrokeLineJoin::Round;
-            else if (join == "bevel") st.LineJoin = StrokeLineJoin::Bevel;
-            std::string ml = Prop(e, "stroke-miterlimit");
-            if (!ml.empty()) TryParseFloat(ml, st.MiterLimit);
-            std::string dash = Prop(e, "stroke-dasharray");
-            if (!dash.empty() && dash != "none") {
-                for (char& ch : dash) if (ch == ',') ch = ' ';
-                std::istringstream iss(dash);
-                double d;
-                while (iss >> d) st.DashArray.push_back(d);
-            }
-            std::string doff = Prop(e, "stroke-dashoffset");
-            if (!doff.empty()) TryParseFloat(doff, st.DashOffset);
-            st.Opacity = ParseOpacity(Prop(e, "stroke-opacity"), 1.0f);
+        const std::string strokeVal = Prop(e, "stroke");
+        StrokeData st;
+        if (ParseStroke([&](const char* name) { return Prop(e, name); }, st)) {
             s.Stroke = st;
         } else if (strokeVal == "none") {
             s.Stroke.reset();
@@ -1129,6 +1562,511 @@ private:
         return out;
     }
 
+    // ===== MARKERS =====
+
+    // Nothing in the model draws a <marker> by reference, so marker-start,
+    // -mid and -end are drawn here: each marker's content is read again as
+    // shapes at every vertex it applies to, placed, turned and scaled as SVG 2
+    // says, and the shape and its markers become one group, so an arrow is
+    // one object to select and move. `context-fill` / `context-stroke` in the
+    // content take the shape's paint.
+
+    void CollectMarkers(const tinyxml2::XMLElement* e) {
+        if (std::strcmp(StripNs(e->Name()), "marker") == 0) {
+            if (const char* id = e->Attribute("id")) markers.emplace(id, e);
+        }
+        for (const tinyxml2::XMLElement* child = e->FirstChildElement();
+             child; child = child->NextSiblingElement()) {
+            CollectMarkers(child);
+        }
+    }
+
+    // An inherited property (the marker properties, stroke-width, fill and
+    // stroke all are): the element's own value, or its nearest ancestor's.
+    std::string InheritedProp(const tinyxml2::XMLElement* e, const char* name) {
+        for (const tinyxml2::XMLElement* at = e; at;
+             at = at->Parent() ? at->Parent()->ToElement() : nullptr) {
+            std::string v = Prop(at, name);
+            if (!v.empty() && v != "inherit") return v;
+        }
+        return {};
+    }
+
+    // The <marker> a `url(#id)` value names; null for "none" or a missing id.
+    const tinyxml2::XMLElement* MarkerReference(const std::string& v) {
+        if (v.rfind("url(", 0) != 0) return nullptr;
+        std::string id = v.substr(4, v.find(')') == std::string::npos ? std::string::npos : v.find(')') - 4);
+        id.erase(std::remove(id.begin(), id.end(), '"'), id.end());
+        id.erase(std::remove(id.begin(), id.end(), '\''), id.end());
+        if (id.empty() || id[0] != '#') return nullptr;
+        auto it = markers.find(id.substr(1));
+        return it == markers.end() ? nullptr : it->second;
+    }
+
+    // An angle with its unit (deg by default, rad, grad, turn) in degrees.
+    static double ParseAngle(const std::string& s) {
+        const char* begin = s.c_str();
+        while (*begin && std::isspace(static_cast<unsigned char>(*begin))) ++begin;
+        double v = 0;
+        const char* end = ParseFloatClassic(begin, begin + std::strlen(begin), v);
+        if (end == begin) return 0;
+        if (std::strncmp(end, "rad", 3) == 0) v *= 180.0 / M_PI;
+        else if (std::strncmp(end, "grad", 4) == 0) v *= 0.9;
+        else if (std::strncmp(end, "turn", 4) == 0) v *= 360.0;
+        return v;
+    }
+
+    // One segment of a path: where it ends, and its direction as it leaves
+    // the previous vertex and as it arrives at this one.
+    struct PathSegment {
+        Point2Dd End, DirStart, DirEnd;
+    };
+    struct PathSubpath {
+        Point2Dd Start;
+        std::vector<PathSegment> Segments;
+        bool Closed = false;
+    };
+
+    // The first of the candidate directions that has a length.
+    static Point2Dd FirstDirection(std::initializer_list<Point2Dd> candidates) {
+        for (const Point2Dd& d : candidates) {
+            if (d.x != 0 || d.y != 0) return d;
+        }
+        return Point2Dd(0, 0);
+    }
+
+    // The directions an elliptical arc leaves `p0` and arrives at `p1` in,
+    // through its centre parameterisation (SVG implementation notes B.2.4).
+    static void ArcDirections(const Point2Dd& p0, double rx, double ry, double phiDeg, bool large,
+                              bool sweep, const Point2Dd& p1, Point2Dd& d0, Point2Dd& d1) {
+        rx = std::fabs(rx);
+        ry = std::fabs(ry);
+        if (rx == 0 || ry == 0 || p0 == p1) {   // drawn as a straight line
+            d0 = d1 = p1 - p0;
+            return;
+        }
+        const double phi = phiDeg * M_PI / 180.0, cs = std::cos(phi), sn = std::sin(phi);
+        const double hx = (p0.x - p1.x) / 2, hy = (p0.y - p1.y) / 2;
+        const double x1 = cs * hx + sn * hy, y1 = -sn * hx + cs * hy;
+        const double lambda = x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry);
+        if (lambda > 1) {
+            rx *= std::sqrt(lambda);
+            ry *= std::sqrt(lambda);
+        }
+        const double num = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1;
+        const double den = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+        double k = den > 0 ? std::sqrt(std::max(0.0, num / den)) : 0;
+        if (large == sweep) k = -k;
+        const double cx = k * rx * y1 / ry, cy = -k * ry * x1 / rx;
+        const double t0 = std::atan2((y1 - cy) / ry, (x1 - cx) / rx);
+        const double t1 = std::atan2((-y1 - cy) / ry, (-x1 - cx) / rx);
+        auto tangent = [&](double t) {
+            double dx = -rx * std::sin(t), dy = ry * std::cos(t);
+            if (!sweep) {
+                dx = -dx;
+                dy = -dy;
+            }
+            return Point2Dd(cs * dx - sn * dy, sn * dx + cs * dy);
+        };
+        d0 = tangent(t0);
+        d1 = tangent(t1);
+    }
+
+    // The path's subpaths in absolute coordinates, every command kind
+    // reduced to its end point and the directions at its two ends.
+    static std::vector<PathSubpath> PathSubpaths(const PathData& path) {
+        std::vector<PathSubpath> out;
+        Point2Dd cur(0, 0), start(0, 0), lastCubic(0, 0), lastQuad(0, 0);
+        bool cubicBefore = false, quadBefore = false;
+        auto segment = [&](const Point2Dd& end, const Point2Dd& d0, const Point2Dd& d1) {
+            if (out.empty() || out.back().Closed) out.push_back({cur, {}, false});   // no moveto after Z
+            out.back().Segments.push_back({end, d0, d1});
+            cur = end;
+        };
+        for (const PathCommand& c : path.commands) {
+            const std::vector<float>& p = c.Parameters;
+            auto at = [&](size_t i) {
+                return c.Relative ? Point2Dd(cur.x + p[i], cur.y + p[i + 1]) : Point2Dd(p[i], p[i + 1]);
+            };
+            size_t arity = 2;
+            switch (c.Type) {
+                case PathCommandType::HorizontalLineTo: case PathCommandType::VerticalLineTo: arity = 1; break;
+                case PathCommandType::CurveTo: arity = 6; break;
+                case PathCommandType::SmoothCurveTo: case PathCommandType::QuadraticTo: arity = 4; break;
+                case PathCommandType::ArcTo: arity = 7; break;
+                case PathCommandType::ClosePath: arity = 0; break;
+                default: break;
+            }
+            if (c.Type == PathCommandType::ClosePath) {
+                if (!out.empty() && !out.back().Closed) {
+                    segment(start, start - cur, start - cur);
+                    out.back().Closed = true;
+                }
+                cur = start;
+                cubicBefore = quadBefore = false;
+                continue;
+            }
+            for (size_t i = 0; i + arity <= p.size(); i += arity) {
+                bool cubic = false, quad = false;
+                switch (c.Type) {
+                    case PathCommandType::MoveTo:
+                        if (i == 0) {   // later pairs are implicit linetos
+                            cur = start = at(0);
+                            out.push_back({cur, {}, false});
+                        } else {
+                            const Point2Dd end = at(i);
+                            segment(end, end - cur, end - cur);
+                        }
+                        break;
+                    case PathCommandType::LineTo: {
+                        const Point2Dd end = at(i);
+                        segment(end, end - cur, end - cur);
+                        break;
+                    }
+                    case PathCommandType::HorizontalLineTo: {
+                        const Point2Dd end(c.Relative ? cur.x + p[i] : p[i], cur.y);
+                        segment(end, end - cur, end - cur);
+                        break;
+                    }
+                    case PathCommandType::VerticalLineTo: {
+                        const Point2Dd end(cur.x, c.Relative ? cur.y + p[i] : p[i]);
+                        segment(end, end - cur, end - cur);
+                        break;
+                    }
+                    case PathCommandType::CurveTo:
+                    case PathCommandType::SmoothCurveTo: {
+                        const bool smooth = c.Type == PathCommandType::SmoothCurveTo;
+                        const Point2Dd c1 = smooth ? (cubicBefore ? cur * 2.0f - lastCubic : cur) : at(i);
+                        const Point2Dd c2 = at(smooth ? i : i + 2), end = at(smooth ? i + 2 : i + 4);
+                        segment(end, FirstDirection({c1 - cur, c2 - cur, end - cur}),
+                                FirstDirection({end - c2, end - c1, end - cur}));
+                        lastCubic = c2;
+                        cubic = true;
+                        break;
+                    }
+                    case PathCommandType::QuadraticTo:
+                    case PathCommandType::SmoothQuadraticTo: {
+                        const bool smooth = c.Type == PathCommandType::SmoothQuadraticTo;
+                        const Point2Dd q = smooth ? (quadBefore ? cur * 2.0f - lastQuad : cur) : at(i);
+                        const Point2Dd end = at(smooth ? i : i + 2);
+                        segment(end, FirstDirection({q - cur, end - cur}), FirstDirection({end - q, end - cur}));
+                        lastQuad = q;
+                        quad = true;
+                        break;
+                    }
+                    case PathCommandType::ArcTo: {
+                        const Point2Dd end = at(i + 5);
+                        Point2Dd d0, d1;
+                        ArcDirections(cur, p[i], p[i + 1], p[i + 2], p[i + 3] != 0, p[i + 4] != 0, end, d0, d1);
+                        segment(end, d0, d1);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                cubicBefore = cubic;
+                quadBefore = quad;
+            }
+        }
+        return out;
+    }
+
+    struct MarkerVertex {
+        Point2Dd At;
+        double Angle = 0;   // degrees: where orient="auto" turns the marker
+    };
+
+    // The direction half-way between the incoming and outgoing ones; at an
+    // open end, the one there is.
+    static double BisectorDegrees(const Point2Dd* in, const Point2Dd* out) {
+        auto usable = [](const Point2Dd* d) { return d && (d->x != 0 || d->y != 0); };
+        double a = 0;
+        if (usable(in) && usable(out)) {
+            const double i = std::atan2(in->y, in->x);
+            double o = std::atan2(out->y, out->x);
+            if (o - i > M_PI) o -= 2 * M_PI;
+            else if (i - o > M_PI) o += 2 * M_PI;
+            a = (i + o) / 2;
+        } else if (usable(in)) {
+            a = std::atan2(in->y, in->x);
+        } else if (usable(out)) {
+            a = std::atan2(out->y, out->x);
+        }
+        return a * 180.0 / M_PI;
+    }
+
+    // SVG 2's path vertices: each subpath's start and every segment's end
+    // (a closepath's at the subpath's start), the first carrying
+    // marker-start, the last marker-end, the rest marker-mid. A closed
+    // subpath's ends turn to the bisector of its first and last segments.
+    static std::vector<MarkerVertex> MarkerVertices(const PathData& path) {
+        std::vector<MarkerVertex> out;
+        for (const PathSubpath& sp : PathSubpaths(path)) {
+            const size_t n = sp.Segments.size();
+            for (size_t i = 0; i <= n; ++i) {
+                const Point2Dd* in = i > 0 ? &sp.Segments[i - 1].DirEnd
+                                           : (sp.Closed && n ? &sp.Segments[n - 1].DirEnd : nullptr);
+                const Point2Dd* dirOut = i < n ? &sp.Segments[i].DirStart
+                                               : (sp.Closed && n ? &sp.Segments[0].DirStart : nullptr);
+                out.push_back({i == 0 ? sp.Start : sp.Segments[i - 1].End, BisectorDegrees(in, dirOut)});
+            }
+        }
+        return out;
+    }
+
+    // The clip a marker's viewport makes, in its content's coordinates -
+    // the same for every place the marker is drawn, so made once.
+    std::string MarkerClip(const tinyxml2::XMLElement* m, const Rect2Dd& viewport, VectorDocument& doc) {
+        auto it = markerClips.find(m);
+        if (it != markerClips.end()) return it->second;
+        auto clip = std::make_shared<VectorClipPath>();
+        clip->Id = "svgmarker" + std::to_string(markerClips.size() + 1) + "-viewport";
+        auto box = std::make_shared<VectorRect>();
+        box->Bounds = viewport;
+        clip->Data.Elements.push_back(box);
+        doc.AddDefinition(clip->Id, clip);
+        markerClips.emplace(m, clip->Id);
+        return clip->Id;
+    }
+
+    // One drawing of marker `m` at `v`: its content as a group, mapped from
+    // the marker's viewBox onto markerWidth x markerHeight, scaled by the
+    // stroke width (markerUnits="strokeWidth", the default), turned by
+    // `orient`, with (refX, refY) on the vertex.
+    std::shared_ptr<VectorGroup> MarkerInstance(const tinyxml2::XMLElement* m, const MarkerVertex& v, bool start,
+                                                double strokeWidth, const std::optional<FillData>& fill,
+                                                const std::optional<FillData>& stroke, VectorDocument& doc) {
+        if (expandingMarkers.count(m)) return nullptr;
+        const double mw = LengthAttr(m, "markerWidth", 3), mh = LengthAttr(m, "markerHeight", 3);
+        if (mw <= 0 || mh <= 0) return nullptr;   // a zero-sized viewport draws nothing
+
+        double angle = 0;
+        const std::string orient = Prop(m, "orient");
+        if (orient == "auto") angle = v.Angle;
+        else if (orient == "auto-start-reverse") angle = start ? v.Angle + 180 : v.Angle;
+        else if (!orient.empty()) angle = ParseAngle(orient);
+        const double units = Prop(m, "markerUnits") == "userSpaceOnUse" ? 1.0 : strokeWidth;
+
+        double sx = 1, sy = 1;
+        Rect2Dd viewport{0, 0, mw, mh};   // in content coordinates
+        double vb[4] = {0, 0, 0, 0};
+        if (const char* attr = m->Attribute("viewBox")) {
+            std::string list = attr;
+            for (char& ch : list) if (ch == ',') ch = ' ';
+            std::istringstream iss(list);
+            iss.imbue(std::locale::classic());
+            if (iss >> vb[0] >> vb[1] >> vb[2] >> vb[3] && vb[2] > 0 && vb[3] > 0) {
+                sx = mw / vb[2];
+                sy = mh / vb[3];
+                double tx = 0, ty = 0;
+                const char* par = m->Attribute("preserveAspectRatio");
+                const std::string align = par ? par : "xMidYMid meet";
+                if (align.rfind("none", 0) != 0) {
+                    const double k = align.find("slice") != std::string::npos ? std::max(sx, sy) : std::min(sx, sy);
+                    tx = (mw - vb[2] * k) * (align.find("xMin") != std::string::npos ? 0.0
+                                             : align.find("xMax") != std::string::npos ? 1.0 : 0.5);
+                    ty = (mh - vb[3] * k) * (align.find("YMin") != std::string::npos ? 0.0
+                                             : align.find("YMax") != std::string::npos ? 1.0 : 0.5);
+                    sx = sy = k;
+                }
+                viewport = Rect2Dd{vb[0] - tx / sx, vb[1] - ty / sy, mw / sx, mh / sy};
+            }
+        }
+
+        // The content inherits from the marker, not from the shape it is on.
+        auto inst = std::make_shared<VectorGroup>();
+        ApplyStyle(m, *inst);
+        inst->Id.clear();
+        inst->Classes.clear();
+        inst->Transform.reset();
+        inst->Style.Display = true;   // display does not apply to <marker>
+        if (!inst->Style.Fill) inst->Style.Fill = Color(0, 0, 0, 255);
+        if (!inst->Style.Stroke) strokeNone.insert(inst.get());
+
+        expandingMarkers.insert(m);
+        const auto outerFill = contextFill, outerStroke = contextStroke;
+        contextFill = fill;
+        contextStroke = stroke;
+        for (const tinyxml2::XMLElement* child = m->FirstChildElement();
+             child; child = child->NextSiblingElement()) {
+            ParseNode(child, doc, inst.get());
+        }
+        contextFill = outerFill;
+        contextStroke = outerStroke;
+        expandingMarkers.erase(m);
+        if (inst->Children.empty()) return nullptr;
+
+        // overflow is hidden on a marker unless it says otherwise; a clip is
+        // only made when the content actually reaches past the viewport.
+        const std::string overflow = Prop(m, "overflow");
+        if (overflow != "visible" && overflow != "auto") {
+            const Rect2Dd box = inst->GetBoundingBox();
+            const double eps = 1e-6 * std::max(viewport.width, viewport.height);
+            if (box.x < viewport.x - eps || box.y < viewport.y - eps ||
+                box.x + box.width > viewport.x + viewport.width + eps ||
+                box.y + box.height > viewport.y + viewport.height + eps) {
+                inst->Style.ClipPath = MarkerClip(m, viewport, doc);
+            }
+        }
+        inst->Transform = Matrix3x3::Translate(v.At.x, v.At.y) * Matrix3x3::RotateDegrees(angle) *
+                          Matrix3x3::Scale(units * sx, units * sy) *
+                          Matrix3x3::Translate(-LengthAttr(m, "refX", 0), -LengthAttr(m, "refY", 0));
+        return inst;
+    }
+
+    // A <marker> the writer made for a line-gallery arrowhead at this end
+    // (data-ultracanvas-arrowhead / -scale / -end), read into `out`.
+    static bool GalleryArrowhead(const tinyxml2::XMLElement* m, bool atStart, ArrowheadData& out) {
+        if (!m) return false;
+        const char* name = m->Attribute("data-ultracanvas-arrowhead");
+        const char* end = m->Attribute("data-ultracanvas-end");
+        if (!name || !end || std::strcmp(end, atStart ? "start" : "end") != 0) return false;
+        for (const auto& n : kArrowheadNames) {
+            if (std::strcmp(n.Name, name) != 0) continue;
+            ArrowheadData arrow;
+            arrow.Kind = n.Kind;
+            if (const char* scale = m->Attribute("data-ultracanvas-scale")) {
+                float v = 1.0f;
+                if (TryParseFloat(scale, v) && v > 0) arrow.Scale = v;
+            }
+            out = arrow;
+            return true;
+        }
+        return false;
+    }
+
+    // `shape` with the markers its marker properties ask for, as a group
+    // (the shape first, then marker-start, the marker-mids and marker-end,
+    // which is SVG's drawing order) - or `shape` itself when there are none.
+    std::shared_ptr<VectorElement> WithMarkers(const tinyxml2::XMLElement* e,
+                                               std::shared_ptr<VectorElement> shape, VectorDocument& doc) {
+        if (markers.empty() || clipDepth > 0) return shape;
+        const std::string all = InheritedProp(e, "marker");   // the CSS shorthand
+        const tinyxml2::XMLElement* refs[3] = {nullptr, nullptr, nullptr};
+        const char* names[3] = {"marker-start", "marker-mid", "marker-end"};
+        bool any = false;
+        for (int i = 0; i < 3; ++i) {
+            const std::string v = InheritedProp(e, names[i]);
+            refs[i] = MarkerReference(v.empty() ? all : v);
+            any = any || refs[i];
+        }
+        if (!any) return shape;
+        PathData outline;
+        if (!BuildOutlinePath(*shape, outline)) return shape;
+
+        // This writer's own arrowheads come back as what they were: the line
+        // gallery's StartArrow / EndArrow on the stroke, editable as such.
+        // Only where the renderer would draw them (the path's ends open) and
+        // only in the slot each was written for.
+        Point2Dd start, startDir, end, endDir;
+        if (shape->Style.Stroke && PathEndpoints(outline, start, startDir, end, endDir)) {
+            if (GalleryArrowhead(refs[0], true, shape->Style.Stroke->StartArrow)) refs[0] = nullptr;
+            if (GalleryArrowhead(refs[2], false, shape->Style.Stroke->EndArrow)) refs[2] = nullptr;
+            if (!refs[0] && !refs[1] && !refs[2]) return shape;
+        }
+        const std::vector<MarkerVertex> vertices = MarkerVertices(outline);
+        if (vertices.empty()) return shape;
+
+        const std::string sw = InheritedProp(e, "stroke-width");
+        const double strokeWidth = sw.empty() ? 1.0 : ParseLength(sw.c_str(), 1.0);
+        const std::string fillVal = InheritedProp(e, "fill"), strokeVal = InheritedProp(e, "stroke");
+        const std::optional<FillData> fill = fillVal.empty() ? FillData(Color(0, 0, 0, 255)) : ParsePaint(fillVal);
+        const std::optional<FillData> stroke = strokeVal.empty() ? FillData(std::monostate{}) : ParsePaint(strokeVal);
+
+        std::vector<std::shared_ptr<VectorGroup>> drawn;
+        auto place = [&](const tinyxml2::XMLElement* m, const MarkerVertex& v, bool start) {
+            if (!m) return;
+            if (auto inst = MarkerInstance(m, v, start, strokeWidth, fill, stroke, doc)) drawn.push_back(inst);
+        };
+        place(refs[0], vertices.front(), true);
+        for (size_t i = 1; i + 1 < vertices.size(); ++i) place(refs[1], vertices[i], false);
+        place(refs[2], vertices.back(), false);
+        if (drawn.empty()) return shape;
+
+        // What applies to the element as a whole moves to the group: its
+        // place, opacity, clip and whether it shows.
+        auto group = std::make_shared<VectorGroup>();
+        group->Transform = shape->Transform;
+        shape->Transform.reset();
+        group->Style.Opacity = shape->Style.Opacity;
+        shape->Style.Opacity = 1.0f;
+        group->Style.ClipPath = shape->Style.ClipPath;
+        shape->Style.ClipPath.reset();
+        group->Style.Display = shape->Style.Display;
+        shape->Style.Display = true;
+        group->AddChild(shape);
+        for (auto& inst : drawn) group->AddChild(inst);
+        return group;
+    }
+
+    // ===== WIDTH PROFILES AND BRUSHES =====
+
+    // A shape the writer drew as its width profile or brush: the group's
+    // first child is the shape, and its stroke comes back from the group's
+    // data - the stroke's properties, the profile, and the brush with its
+    // stamp taken back out of <defs>. What the group draws besides is the
+    // stroke's picture and is left out. Null when the data does not hold
+    // together (a stamp that is not there), so the group is read as drawn.
+    std::shared_ptr<VectorElement> RebuildLineGallery(const tinyxml2::XMLElement* g, const char* strokeDecl,
+                                                      VectorDocument& doc) {
+        const tinyxml2::XMLElement* first = g->FirstChildElement();
+        if (!first) return nullptr;
+        std::map<std::string, std::string> props;
+        for (const auto& d : HTML::StyleSheet::ParseDeclarationList(strokeDecl)) props[d.property] = d.value;
+        auto prop = [&](const char* n) {
+            auto it = props.find(n);
+            return it == props.end() ? std::string() : it->second;
+        };
+        StrokeData st;
+        if (!ParseStroke(prop, st)) return nullptr;
+        GalleryArrowhead(MarkerReference(prop("marker-start")), true, st.StartArrow);
+        GalleryArrowhead(MarkerReference(prop("marker-end")), false, st.EndArrow);
+        if (const char* p = g->Attribute("data-ultracanvas-width-profile")) {
+            std::istringstream iss(p);
+            std::string t, f;
+            while (iss >> t >> f) {
+                WidthSample w;
+                if (TryParseFloat(t, w.T) && TryParseFloat(f, w.Factor)) st.WidthProfile.push_back(w);
+            }
+        }
+        std::string stampId;
+        if (const char* b = g->Attribute("data-ultracanvas-brush")) {
+            std::istringstream iss(b);
+            std::string spacing, scale, rotate;
+            iss >> stampId >> spacing >> scale >> rotate;
+            auto stamp = std::dynamic_pointer_cast<VectorGroup>(doc.GetDefinition(stampId));
+            if (!stamp) return nullptr;
+            BrushData brush;
+            brush.Stamp = stamp;
+            TryParseFloat(spacing, brush.Spacing);
+            TryParseFloat(scale, brush.Scale);
+            brush.Rotate = rotate != "0";
+            st.Brush = brush;
+        }
+
+        auto shape = ParseShape(first, doc);
+        if (!shape) return nullptr;
+        if (!stampId.empty()) {
+            // The stamp lives in the stroke now, not among the definitions;
+            // its unpainted parts are black, as in <defs>.
+            doc.Definitions.erase(stampId);
+            st.Brush->Stamp->Id.clear();
+            ResolveInheritedPaint(*st.Brush->Stamp, FillData(Color(0, 0, 0, 255)), std::nullopt);
+        }
+        shape->Style.Stroke = st;
+        // The group's own place and presence are the shape's.
+        auto frame = std::make_shared<VectorGroup>();
+        ApplyStyle(g, *frame);
+        strokeNone.erase(frame.get());
+        shape->Id = frame->Id;
+        shape->Classes = frame->Classes;
+        shape->Transform = frame->Transform;
+        shape->Style.Opacity = frame->Style.Opacity;
+        shape->Style.Visible = frame->Style.Visible;
+        shape->Style.Display = frame->Style.Display;
+        return shape;
+    }
+
     // ===== ELEMENTS =====
 
     void ParseNode(const tinyxml2::XMLElement* e, VectorDocument& doc,
@@ -1146,8 +2084,10 @@ private:
                  child; child = child->NextSiblingElement()) {
                 const char* childName = StripNs(child->Name());
                 if (std::strcmp(childName, "linearGradient") == 0 ||
-                    std::strcmp(childName, "radialGradient") == 0) {
-                    continue;   // collected in the pre-pass
+                    std::strcmp(childName, "radialGradient") == 0 ||
+                    std::strcmp(childName, "style") == 0 ||
+                    std::strcmp(childName, "marker") == 0) {
+                    continue;   // collected in the pre-passes
                 }
                 auto el = ParseShape(child, doc);
                 if (el && !el->Id.empty()) doc.AddDefinition(el->Id, el);
@@ -1162,18 +2102,12 @@ private:
             if (const char* t = e->GetText()) doc.Description = t;
             return;
         }
-        if (std::strcmp(name, "style") == 0) {
-            if (!warnedCss) {
-                warnedCss = true;
-                warn("SVG import: CSS stylesheets are not supported; only "
-                     "presentation attributes and inline style apply");
-            }
-            return;
-        }
-        if (std::strcmp(name, "linearGradient") == 0 ||
+        if (std::strcmp(name, "style") == 0 ||
+            std::strcmp(name, "marker") == 0 ||
+            std::strcmp(name, "linearGradient") == 0 ||
             std::strcmp(name, "radialGradient") == 0 ||
             std::strcmp(name, "metadata") == 0) {
-            return;   // gradients were collected in the pre-pass
+            return;   // style sheets, markers and gradients were collected in the pre-passes
         }
 
         auto el = ParseShape(e, doc);
@@ -1186,10 +2120,10 @@ private:
 
         if (std::strcmp(name, "rect") == 0) {
             auto r = std::make_shared<VectorRect>();
-            r->Bounds = Rect2Dd{LengthAttr(e, "x", 0), LengthAttr(e, "y", 0),
-                                LengthAttr(e, "width", 0), LengthAttr(e, "height", 0)};
-            r->RadiusX = static_cast<float>(LengthAttr(e, "rx", 0));
-            r->RadiusY = static_cast<float>(LengthAttr(e, "ry", r->RadiusX));
+            r->Bounds = Rect2Dd{GeometryLength(e, "x", 0), GeometryLength(e, "y", 0),
+                                GeometryLength(e, "width", 0), GeometryLength(e, "height", 0)};
+            r->RadiusX = static_cast<float>(GeometryLength(e, "rx", 0));
+            r->RadiusY = static_cast<float>(GeometryLength(e, "ry", r->RadiusX));
             if (r->RadiusX <= 0 && r->RadiusY > 0) r->RadiusX = r->RadiusY;
             if (r->RadiusX > 0) r->Type = VectorElementType::RoundedRectangle;
             ApplyStyle(e, *r);
@@ -1197,16 +2131,16 @@ private:
         }
         if (std::strcmp(name, "circle") == 0) {
             auto c = std::make_shared<VectorCircle>();
-            c->Center = Point2Dd(LengthAttr(e, "cx", 0), LengthAttr(e, "cy", 0));
-            c->Radius = static_cast<float>(LengthAttr(e, "r", 0));
+            c->Center = Point2Dd(GeometryLength(e, "cx", 0), GeometryLength(e, "cy", 0));
+            c->Radius = static_cast<float>(GeometryLength(e, "r", 0));
             ApplyStyle(e, *c);
             return c;
         }
         if (std::strcmp(name, "ellipse") == 0) {
             auto el = std::make_shared<VectorEllipse>();
-            el->Center = Point2Dd(LengthAttr(e, "cx", 0), LengthAttr(e, "cy", 0));
-            el->RadiusX = static_cast<float>(LengthAttr(e, "rx", 0));
-            el->RadiusY = static_cast<float>(LengthAttr(e, "ry", 0));
+            el->Center = Point2Dd(GeometryLength(e, "cx", 0), GeometryLength(e, "cy", 0));
+            el->RadiusX = static_cast<float>(GeometryLength(e, "rx", 0));
+            el->RadiusY = static_cast<float>(GeometryLength(e, "ry", 0));
             ApplyStyle(e, *el);
             return el;
         }
@@ -1215,7 +2149,7 @@ private:
             ln->Start = Point2Dd(LengthAttr(e, "x1", 0), LengthAttr(e, "y1", 0));
             ln->End = Point2Dd(LengthAttr(e, "x2", 0), LengthAttr(e, "y2", 0));
             ApplyStyle(e, *ln);
-            return ln;
+            return WithMarkers(e, ln, doc);
         }
         if (std::strcmp(name, "polyline") == 0 || std::strcmp(name, "polygon") == 0) {
             std::vector<Point2Dd> pts;
@@ -1230,23 +2164,26 @@ private:
                 auto pl = std::make_shared<VectorPolyline>();
                 pl->Points = std::move(pts);
                 ApplyStyle(e, *pl);
-                return pl;
+                return WithMarkers(e, pl, doc);
             }
             auto pg = std::make_shared<VectorPolygon>();
             pg->Points = std::move(pts);
             ApplyStyle(e, *pg);
-            return pg;
+            return WithMarkers(e, pg, doc);
         }
         if (std::strcmp(name, "path") == 0) {
             auto p = std::make_shared<VectorPath>();
             if (const char* d = e->Attribute("d")) p->Path = ParsePathString(d);
             ApplyStyle(e, *p);
-            return p;
+            return WithMarkers(e, p, doc);
         }
         if (std::strcmp(name, "text") == 0) {
             return ParseText(e);
         }
         if (std::strcmp(name, "g") == 0 || std::strcmp(name, "a") == 0) {
+            if (const char* stroke = e->Attribute("data-ultracanvas-stroke")) {
+                if (auto shape = RebuildLineGallery(e, stroke, doc)) return shape;
+            }
             auto g = std::make_shared<VectorGroup>();
             ApplyStyle(e, *g);
             for (const tinyxml2::XMLElement* child = e->FirstChildElement();
@@ -1284,6 +2221,7 @@ private:
             auto clip = std::make_shared<VectorClipPath>();
             if (const char* id = e->Attribute("id")) clip->Id = id;
             if (Prop(e, "clip-rule") == "evenodd") clip->Data.ClipRule = VectorStorage::FillRule::EvenOdd;
+            ++clipDepth;   // a clip is the shapes' geometry; markers take no part
             for (const tinyxml2::XMLElement* child = e->FirstChildElement();
                  child; child = child->NextSiblingElement()) {
                 auto el = ParseShape(child, doc);
@@ -1292,6 +2230,7 @@ private:
                 if (Prop(child, "clip-rule") == "evenodd") clip->Data.ClipRule = VectorStorage::FillRule::EvenOdd;
                 clip->Data.Elements.push_back(el);
             }
+            --clipDepth;
             return clip;
         }
 

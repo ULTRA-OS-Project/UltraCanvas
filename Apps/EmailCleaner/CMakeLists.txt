@@ -66,6 +66,8 @@ set(EMAILCLEANER_UI_SOURCES
 )
 
 add_executable(EmailCleaner main.cpp ${EMAILCLEANER_UI_SOURCES})
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(EmailCleaner)
 # Plugins (the IMAP DSO the account sync loads) resolve symbols back from the
 # executable at runtime.
 set_target_properties(EmailCleaner PROPERTIES ENABLE_EXPORTS ON)

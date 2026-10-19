@@ -1,3 +1,739 @@
+#### 2026-10-17 *0.10.60*
+- **An *Attach cloud link* upload to an FTP or SFTP account no longer leaves
+  half a file behind.** Such a server writes an upload into the file as it
+  arrives, so quitting UltraMail during one - or a connection that broke -
+  left the part already sent on the server under the file's full name, and
+  an upload that replaced a file had destroyed the old one with its first
+  byte. The upload now goes to a hidden part name (`.report.pdf.part`) and
+  is renamed into place once complete, and what one that did not finish
+  left is removed the next time UltraMail uses that account - even when
+  UltraMail was quit, or ended, during the upload. The quit question says
+  so: *What was sent is removed from Studio FTP the next time UltraMail uses
+  it.* UltraCloud does this for every application (framework changelog:
+  `ftp-uploads-in-place`).
+
+#### 2026-10-17 *0.10.59*
+- **Closing a compose window during a cloud upload no longer risks a
+  crash.** *Attach cloud link* uploads a file, lists folders and makes the
+  link on threads of their own, and its *Add account…* waits for the browser
+  sign-in; each of them used the application's cloud service through a
+  plain pointer, so one still running when the window - or UltraMail - closed
+  could use it after it was freed. UltraMail now keeps its cloud accounts,
+  their secrets and the service in shared ownership, and hands the picker
+  the shared service, which every one of those threads holds until it ends
+  (`ShowCloudLinkPicker`'s new shared form, see the framework changelog).
+- **Quitting during a cloud upload asks first.** Closing UltraMail's last
+  window ended an upload *Attach cloud link* was still running - the file
+  never arrived, and nothing said so. That close now asks *An upload is
+  still running — quit anyway?*, naming the file and the cloud account it
+  goes to; *Keep UltraMail open* (the default, and what Return gives) leaves
+  everything as it was, *Quit anyway* closes. Closing a window that is not
+  the last asks nothing - the upload carries on behind the windows still
+  open. Downloads are asked about the same way. The framework side is
+  `CloudService::TransfersInProgress` (see the framework changelog).
+
+#### 2026-10-16 *0.10.58*
+- **An unreachable sign-in service is worded like every other failure.**
+  When a browser sign-in could not reach the sign-in service, the alert
+  repeated UltraNet's raw message; it now leads with the same sentence
+  `FriendlyMessage` gives for *the sign-in service* (*The sign-in service
+  could not be found. Check your internet connection.*), then the service's
+  address and its `/healthz` check. A refusal from the provider, and a
+  sign-in straight to a provider with a client of its own, keep the
+  framework's own reason - the service was not at fault there.
+
+#### 2026-10-15 *0.10.57*
+- **A failure names the server it talked to.** The sentence an alert leads
+  with for a failed network operation (`FriendlyMessage`) said *the mail
+  server* for every result code, whatever had been talked to, so a
+  one-click unsubscribe that could not reach the list's web server was
+  worded as a mail-server problem with advice about the account's server
+  address. The caller now names what it talked to - the mail server unless
+  it says otherwise - and the account advice (the password, the address and
+  port on the settings page) goes with the mail server only: *The sender's
+  unsubscribe server could not be found. Check your internet connection.*
+  An HTTP-level refusal says its status (*… answered with an error (HTTP
+  503).*). The helpers moved from the alert layer into the engine
+  (`UltraMailResultText.h`), where the tests read them.
+
+#### 2026-10-15 *0.10.56*
+- **The cards and list rows are the framework's.** The page, the white cards
+  and their captions (the Folders, message list and Message panes) are drawn
+  from the framework's `GroupBoxVisualStyle::SectionCard()` preset and its
+  `Colors::SectionPage` / `SectionCard*` colours, and the rows' hover and
+  selected tints are `Colors::ListRowHover` / `ListRowSelected`, instead of
+  UltraMail's own copies of the same values. UltraPaint's side panel uses
+  them too, so the two keep looking alike. No visible change (framework
+  changelog: `section-card-and-light-picker`).
+
+#### 2026-10-15 *0.10.55*
+- **A browser sign-in that fails before the browser opens says what
+  failed.** When the sign-in service could not be reached - its name did not
+  resolve, a proxy blocked it, the service was down - the alert said *The
+  mail server could not be found*, the wording for an IMAP server, and
+  dropped the real reason. It now gives the sign-in's own reason (*The
+  sign-in service did not answer: could not resolve host …*, or the
+  provider's refusal) and, for a service out of reach, the service's address
+  and its `/healthz` page to try. The timing trace (`trace.log`) says which
+  way every sign-in and token refresh goes - *through the sign-in service
+  https://…* or *directly, with this installation's own client (oauth.ini or
+  the environment)* - so an `oauth.ini` that still carries a `[google]`
+  client, which makes Google sign in directly and bypass the service, is
+  found in one look. Section 6 of `Docs/UltraMail/AccountSetup.md` has the
+  row.
+
+#### 2026-10-15 *0.10.54*
+- **No connection alert while a computer that was just switched on is still
+  getting online.** UltraMail now remembers when it last reached a mail
+  server (`last-connected` in the data folder, written at most once a
+  minute). When it starts, or the computer wakes, and that was more than ten
+  minutes ago, the computer was most likely switched off - and right after it
+  is switched on, the network is often not up yet. For the two minutes that
+  follow, a background mail check (or a folder opened) that fails raises no
+  alert, *whatever the reason*: the failure shows on the status line, and the
+  connection pill's tooltip says the computer was probably just switched on.
+  When the time is up, the accounts held back are checked once more, and only
+  what still fails then is reported.
+  - Until now only "the server could not be reached at all" was held back
+    (for ten minutes, which stays as it was). A network that is only half up
+    also breaks a connection off in the TLS handshake or in the middle of a
+    read - on Windows a certificate revocation check that cannot get out yet
+    can fail the handshake - and a clock not yet set after boot can make a good
+    certificate look expired; each of those raised *"New mail could not be
+    fetched"* at once.
+  - *Settings > Mail > Connection* sets how long: not at all, 30 seconds, 1,
+    2 (the default), 3, 5 or 10 minutes (`switch_on_quiet_sec` in
+    `preferences.ini`). Update in the toolbar always reports at once.
+  - A restart of UltraMail on a computer that was online a moment ago is not
+    a switch-on: there is nothing held back then. A missing or unreadable
+    `last-connected` file counts as switched off, the safe side.
+  - The timing trace says when the period began, and why.
+
+#### 2026-10-15 *0.10.53*
+- **The browser sign-in goes through the ULTRA OS sign-in service, and
+  UltraMail carries no OAuth secret any more.** Gmail, Outlook / Microsoft
+  365 and Yahoo sign in through `https://oauth-callback.ultraos.eu`
+  (`Server/OAuthCallback`, a small FastAPI application behind nginx): the
+  service holds the providers' OAuth client registrations - the client id
+  and the secret, which used to be baked into every build - and is the
+  public https address the providers send the browser back to. UltraMail
+  asks the service to start the sign-in (sending only the PKCE challenge),
+  opens the consent page, collects the authorization code from the service
+  once the provider has redirected there, and exchanges it - and later
+  refreshes the token - through the service. The PKCE verifier never leaves
+  UltraMail, so the code is useless to anyone else; the service stores
+  nothing. What changes for the user:
+  - **Yahoo signs in like everyone else.** Yahoo insists on an https
+    redirect, which a desktop program cannot be, so the sign-in used to end
+    on a code to copy out of the browser and paste into a dialog. Now
+    Yahoo's page sends the browser to the service, which says *Signed in
+    with Yahoo*, and the dialog is gone. (The app password stays the
+    recommended way in until Yahoo grants the client its Mail permission.)
+  - **The baked-in client is gone.** `ULTRAMAIL_GOOGLE_CLIENT_ID` and the
+    other configure-time credentials, their XOR obfuscation and
+    `scripts/generate_oauth_defaults.py` are removed; the service's address
+    is built into the framework's UltraNet instead
+    (`ULTRANET_OAUTH_SERVICE_URL`, default the public service,
+    `cmake/oauth.local.cmake` may set it, empty = none), one setting for the
+    process. `package-linux.sh` passes no credentials any more.
+  - **The composer's cloud links sign in the same way.** *Attach cloud
+    link…* with Google Drive, OneDrive or Dropbox goes through the service
+    too (UltraCloud), so those accounts need no client of their own either;
+    before, a build without a baked-in client could not sign in to them at
+    all.
+  - **An installation can point elsewhere, or sign in directly.**
+    `[service] url = …` in `oauth.ini` or `ULTRAMAIL_OAUTH_SERVICE_URL`
+    names another service, `off` turns it off; a client of the
+    installation's own (`[google] client_id = …`, `ULTRAMAIL_*_CLIENT_ID`)
+    still works as before and bypasses the service for that provider -
+    with Yahoo's pasted code in that case. The hint that said "no OAuth
+    client is configured" now says the service is off, and what to set.
+  - **A sign-in from an earlier build cannot be refreshed through the
+    service**, because its refresh token belongs to the old client. The
+    next refresh fails with *The sign-in has expired; sign in again*, and
+    *Sign in with …* on the account's settings page signs in anew.
+  Framework: the client side is UltraNet's (`UltraNetOAuth2Service.h`,
+  framework changelog `oauth2-sign-in-service`). The privacy notice
+  (`Docs/Legal/Privacy/UltraMail.md`) names the service as a recipient of
+  the sign-in's authorization code and refresh traffic.
+
+#### 2026-10-13 *0.10.52*
+- **The data folder is `~/Library/Application Support/UltraMail` on macOS.**
+  macOS was treated like Linux, so the mailbox database, the credential vault
+  and the preferences went to `~/.local/share/UltraMail` - while UltraSocial
+  and the desktop's clipboard history already kept theirs in Application
+  Support, the place the platform means for them. The rule is now the
+  framework's one rule (`UltraCanvasDataFolder.h`, shared with UltraPassword,
+  UltraAuthenticator, UltraSocial and EmailCleaner), which
+  `engine/UltraMailPaths.h` applies: `%APPDATA%\UltraMail` on Windows,
+  Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share`
+  elsewhere, and `$XDG_DATA_HOME` wins everywhere when it is set. On the first
+  start a folder an earlier version left in `~/.local/share` on macOS is moved
+  into place whole, vault included, so the accounts, the mail and the saved
+  passwords open as before; the move is noted in the timing trace. Linux and
+  Windows installations are untouched.
+
+#### 2026-10-12 *0.10.51*
+- **One UltraMail at a time.** Starting UltraMail while it is already
+  running no longer opens a second copy - two copies on the one mailbox
+  synced the same accounts twice, wrote the database from two processes and
+  could send the outbox twice. The second start brings the running window
+  forward (restored if it was minimised; an open dialog comes forward with
+  it) and quits. A copy that is still starting is waited for for up to ten
+  seconds; one that does not answer at all is reported with *"UltraMail is
+  already running"* instead of a silent exit. Decided by the framework's new
+  single-instance helper (`UltraCanvasSingleInstance`) and its lock on
+  `instance.lock` in the data folder (framework changelog: `instance-lock`),
+  which the system releases when UltraMail ends - a crash
+  never stops the next start. The request to come forward travels over
+  UltraMessage (`org.ultraos.ultramail.show`); the timing trace says which
+  way a start went.
+
+#### 2026-10-11 *0.10.50*
+- **An attachment's menu no longer covers the chip.** At the foot of the
+  window a click on an attachment chip opens its Open / Save As menu above
+  the chip. The chip worked out where from a menu height of two rows, which
+  left out the menu's panel padding and border, so the menu came down over
+  the top of the chip - where the second click of a double-click landed on
+  *Open*. The chip now hands its bounds to the framework's new
+  `OpenMenuAnchored` (framework changelog: `menu-anchors-symbolic-icons`),
+  which measures the menu and ends it just above the chip; the preview's
+  More menu opens the same way. The menus' line icons also follow the theme
+  now: painted in the entry's text colour, light on a dark menu.
+
+#### 2026-10-11 *0.10.49*
+- **Privacy by default.** The two sender-icon downloads (*Settings → Privacy →
+  Sender icons*: the icons of known services, the website icons of other
+  senders) are **off** on a fresh install, and *Restore default* turns them
+  off. Each download tells a third party's web server the reader's IP
+  address; a new installation now contacts nobody but the reader's own mail
+  server until the reader decides otherwise. An existing `preferences.ini`
+  keeps whatever it says.
+- **The autoconfig lookup sends the domain only.** Adding an account at a
+  domain outside the preset table asked `autoconfig.<domain>` and
+  `<domain>/.well-known/autoconfig/` with `?emailaddress=<the full address>`,
+  as Thunderbird does. The address is not needed - a per-user value in the
+  published settings is a `%EMAILADDRESS%` placeholder UltraMail fills in on
+  the machine - so it is no longer sent. The Thunderbird database always
+  received the domain only.
+- The privacy declaration for UltraMail (English and German) lives in
+  `Docs/Legal/Privacy/`; `Docs/UltraMail/AccountSetup.md`,
+  `SenderBadges.md` and `Concept.md` (open question 4, resolved) describe the
+  two data flows.
+
+#### 2026-10-10 *0.10.48*
+- **Attachment chips show the paperclip.** The chips under a message showed a
+  type emoji (a page for a PDF, a picture for an image), which a font without
+  colour emoji - the usual case on Linux and Windows - drew as a box of
+  lines. They now show the paperclip the message list marks mail with
+  attachments with.
+- **One click on an attachment opens its menu.** A click on a chip opens
+  *Open* and *Save As…* under it - above it, at the foot of the window -
+  and a second click closes the menu again. A double-click still opens the
+  attachment straight away, and a right-click opens the same menu at the
+  pointer.
+- **HTML mail keeps the spacing its sender gave it.** Receipts and invoices
+  from Stripe (Anthropic's, among many others) lost every gap they make with
+  spacer cells - above the header, inside the cards, between the rows - and
+  their amount touched the line above it, so the text looked too large for
+  the mail. The sizes were right; the space around them was missing. The
+  mail is now laid out as a browser lays it out. Framework change - see
+  `Docs/UltraCanvas/changelog.d/html-mail-spacer-cells.md`.
+
+#### 2026-10-09 *0.10.47*
+- **Add and delete folders from the folder tree.** A right-click on a row of
+  the tree offers *Add folder…* and *Delete folder…*.
+  - *Add folder…* asks for the name. On a folder, the new one goes inside
+    it. On the account row or its inbox, it goes at the top of the account,
+    or below `INBOX` on a server that keeps every folder there
+    (Courier-style `INBOX.Drafts`). Any letter can be used: the name goes to
+    the server in IMAP's modified UTF-7, so "Bücher" arrives as
+    `B&APw-cher`. A name holding the server's separator, `*`, `%` or a
+    control character, or one a folder there already has, is refused with
+    the reason, and the box opens again with what was typed. The new folder
+    is in the tree as soon as the server has made it.
+  - *Delete folder…* asks first ("…and all the mail in it from the server?
+    This cannot be undone."), then deletes the folder on the server and
+    drops it here with its mail and downloaded bodies. It is greyed, with
+    the reason as its tooltip, for the inbox, a folder with a role (Sent,
+    Drafts, Trash, Junk, Archive) and a folder with folders inside it. If
+    the folder was on screen, the inbox is shown instead.
+  - `SyncEngine::CreateFolder` / `DeleteFolder`, and `NewFolderName` /
+    `CanDeleteFolder` in `UltraMailFolderNames`. They run on IMAP `CREATE` /
+    `DELETE` from the IMAP plug-in (framework changelog, "Mailbox plug-ins
+    can make and delete folders").
+- **Settings > Display > Treeview: the current account, or all.** *Show
+  current email account* lists only the account chosen in the account bar,
+  and a click on another tile shows that one's folders. *Show all email
+  accounts*, the default, lists every account, one below the other, as
+  before (`folder_tree_content` in `preferences.ini`).
+- **Drag the account tiles into another order.** With several accounts, a
+  tile of the account bar dragged sideways moves past the others, as a
+  toolbar button does. The tiles are now the items of an `UltraCanvasToolbar`
+  with item reordering on. The order is kept (`account_order` in
+  `preferences.ini`), and the folder tree lists the accounts in it. An
+  account added later comes after the others. A click still selects the
+  account, and a drag never starts before the pointer has moved 6 px.
+- Tests: `test_foldernames.cpp`, `test_syncengine.cpp`, `test_preferences.cpp`,
+  `AccountBarClickTest.cpp` (a tile dragged past the next one), and the new
+  `FolderTreeTest.cpp` (the menu's entries, and the tree with the current
+  account only), which runs under Xvfb like the account bar's.
+
+#### 2026-10-09 *0.10.46*
+- **Settings > Warnings > Trusted & blocked shows every entry.** A list
+  with more addresses than one row holds hid the rest: the field wrapped
+  them onto a second row but stayed one row tall, so the third blocked
+  address could not be seen or removed. The field grows to fit now - a fix
+  in the framework's tag field (`UltraCanvasTagInput`), which also shows
+  every trusted website and sender on *Privacy > Images*.
+- **A settings page taller than the window scrolls.** With the lists
+  growing, a long list of trusted websites and senders pushed the notes off
+  the foot of *Privacy > Images* with no way to reach them. Every page now
+  shows a vertical scrollbar when it needs one, as UltraFiler's long pages
+  do; a page that fits looks as before.
+- **The page's name fits the settings tree.** "Trusted and blocked senders"
+  was cut off to "Trusted and blocked se..."; the tree says *Trusted &
+  blocked*, and the page keeps its full title.
+
+#### 2026-10-09 *0.10.45*
+- **Yahoo accounts can sign in with an app password again.** The browser
+  sign-in only works once Yahoo grants UltraMail's OAuth client Mail access,
+  which Yahoo now does per app through a commercial application, not in the
+  developer console. Until then Yahoo users had no way in, because the
+  password field was hidden for Yahoo. It is back. The wizard asks for an app
+  password first (Account security > Generate app password), and the browser
+  sign-in stays available by leaving it empty. The server settings page has
+  the password field for Yahoo too (`ProviderAcceptsPassword`). Test:
+  `test_oauth.cpp`.
+- **A password typed on the server settings page replaces a browser
+  sign-in.** The account kept using its stored OAuth tokens, which take
+  precedence over a password, so switching an account from the browser
+  sign-in to an app password had no effect. Saving a new password now removes
+  the tokens.
+- **Yahoo sign-in checked against Thunderbird's.** Thunderbird signs in to
+  Yahoo with the same endpoints, PKCE (S256) and IMAP/SMTP servers as
+  UltraMail, but redirects to `https://127.0.0.1` instead of using the
+  out-of-band code page. UltraMail now handles that kind of redirect too: a
+  Yahoo client registered with an https redirect (`redirect_uri` in
+  `oauth_clients.ini`) takes the paste-back sign-in rather than the loopback
+  listener, which only speaks plain HTTP. The code dialog accepts either the
+  code or the whole address the browser landed on, and takes the `code`
+  parameter from it (`ExtractOAuthCode`, `OAuthUsesPastedCode`).
+- **More Yahoo addresses are recognised.** `rocketmail.com`, `myyahoo.com`
+  and Yahoo's country domains (`yahoo.co.uk`, `yahoo.fr`, `yahoo.it`,
+  `yahoo.es`, `yahoo.ca`, `yahoo.com.au`, `yahoo.co.in`, `yahoo.com.br`,
+  `yahoo.com.mx`) now get the Yahoo servers and the browser sign-in. Before,
+  only `yahoo.com`, `yahoo.de` and `ymail.com` did. Tests: `test_oauth.cpp`,
+  `test_discovery.cpp`.
+
+#### 2026-10-09 *0.10.44*
+- **The Date column is as wide as its dates.** It was a fixed 88 px, about
+  twice what "Oct 07" needs. It is now the widest date in the list - in
+  bold, as unread mail shows it, so reading a message never moves the
+  column - plus the 6 px gap before the text, so the subject gets the rest.
+  It is never narrower than its header needs for the caption and the sort
+  triangle, measured as the caption reads, so a longer caption in another
+  language fits too; the month names are measured as well, as `strftime`
+  writes them in the system's language. A folder with mail from earlier
+  years widens it for "Jan 14, 2025", and narrows it again once that mail
+  is gone. A column border dragged by hand keeps its width, as before.
+  (`UltraCanvasListView::MeasureHeaderWidth` / `MeasureColumnTextWidth`, new
+  in the framework.)
+- **HTML mail: pictures keep their shape** - LinkedIn's header icons were
+  drawn twice as wide, its logo squeezed, and the picture in its footer hung
+  out over the text below. Fixed in the framework's HTML reader and table
+  layout (framework changelog, "A picture in an HTML mail is no longer
+  stretched out of shape").
+
+#### 2026-10-09 *0.10.43*
+- **Trust or block a sender from their menu.** A right-click on a sender - a
+  row of the message list, or the name or badge above the message - now
+  offers *Always trust this sender*, *Block this sender* and *Block
+  everything from example.com* beside the address book and spam items, and
+  the same menu undoes each (*Stop trusting*, *Unblock*). The whole-domain
+  block is not offered for a mailbox provider such as gmail.com, which would
+  block everyone who writes from it.
+  - **Blocked:** the sender's mail is marked as spam (`blocked-sender`, 30
+    points - the orange frame), and the strip above the message says *"You
+    blocked this sender"* and how to undo it. Nothing is moved or deleted;
+    *Mark as spam* still moves a message to the junk folder. A blocked
+    domain blocks its subdomains too.
+  - **Trusted:** the guessed warnings stop for that address - romance and
+    advance-fee letters, the crypto caution, spam markers, a brand's name in
+    a domain - and its pictures load like a contact's. What catches a lie
+    still counts: a link that hides where it goes, a forged sender address
+    (`auth-failure`), a program dressed as a document, a request for a
+    wallet's recovery phrase.
+  - An address is on one list or the other: trusting a blocked address
+    unblocks it. A trusted address under a blocked domain stays trusted.
+  - The sender's mail in the list on screen is checked again at once, off
+    the UI thread, with the open message; the stored verdicts elsewhere are
+    marked stale (`LocalStore::MarkSenderVerdictsStale`) and follow with the
+    mail check.
+  - *Settings > Warnings > Trusted and blocked senders* lists both, to edit
+    by hand (a domain typed as `example.com` is kept as `@example.com`);
+    `preferences.ini` keeps them as `trusted_senders` and `blocked_senders`.
+  - Tests: matching addresses and domains, the entries a list accepts, a
+    blocked sender's verdict, a trusted sender keeping only the findings
+    that catch a lie, and only that sender's stored verdicts going stale.
+
+#### 2026-10-09 *0.10.42*
+- **Romance scams are flagged.** A love letter from a stranger - "Where are
+  you my dear?", a nurse from Russia who found your profile on a dating site,
+  "it is destiny", two photos attached, "I shall await your earliest
+  response" - passed the scan as clean: it has no links that lie and asks for
+  no password. Its pattern does it now (`romance-scam`). The scan counts
+  kinds of signs, each once: pet names, talk of love or attraction, an offer
+  of sex or a meeting, a self-introduction (name, age, divorced, "Im lawyer",
+  "I live in Russia"), how they came to write (your profile, a dating site,
+  destiny, "are you real?"), a site to sign up on or be "verified" at ("they
+  never charge you, they just check you have no criminal history"), guilt or
+  pressure ("don't upset Shui98 or make her bored"), a pretended
+  acquaintance, assurances of being real ("I am for real", a "scan
+  passport"), photos, a push to write back, a request for money (Western
+  Union, the rent, a laptop for the webcam, crypto) and a hardship story. A
+  **photo** - attached, or in the body - counts as a sign of its own, since
+  these letters nearly always carry one, and so does a **free mailbox**.
+  - It needs something romantic *and* something only a stranger writes, so a
+    partner's "my dear, here are the holiday photos, write back" stays
+    clean; never for a proven brand's mail, a newsletter from a domain of its
+    own, a job application or a mail over 60 000 characters. Three signs make
+    the message suspicious, five a scam.
+  - The reading pane says *"Warning: This is likely a romance scam² email!"*
+    with a footnote on what romance scams are after, and that a reverse image
+    search often finds the photo under another name.
+  - Tests: ten letters one reader received between 2011 and 2019, as sent,
+    plus the mail that must stay quiet.
+- **Cryptocurrency.** Any mail about crypto (bitcoin, BTC, USDT, a wallet, a
+  seed phrase …) gets an orange *"Caution: this message is about
+  cryptocurrency"* strip above the body - a crypto payment cannot be called
+  back, no genuine service asks for a recovery phrase, no genuine investment
+  guarantees a profit - whoever sent it (`crypto-content`, 10 points, none
+  from a proven exchange). Three patterns are scams outright: asking for a
+  wallet's recovery phrase or private key (`crypto-wallet-secret`, 50 - not a
+  sentence warning never to give it), a wallet address to pay into
+  (`crypto-payment-demand`, 40: the "I recorded you through your camera"
+  blackmail, fake invoices) and promised profit (`crypto-investment-lure`,
+  35: "guaranteed returns", "30% daily", a "trading platform"). Apple's
+  AirDrop is not a crypto airdrop, and a token inside a link is not a wallet
+  address.
+- **More advance-fee letters are caught.** The "abandoned baggage" letter
+  from an airport's "baggage dispute" office - $7.5 million, "your own share",
+  "50% by 50%", "God fearing" - matched none of the rule's ingredients and
+  passed as clean; money nobody claimed, the share-and-blessing phrases and
+  the FBI's "ATM card for scam victims" are ingredients now.
+- **"Write to me at this other address."** A new sign, 15 points
+  (`reply-elsewhere`): the text asks for answers at a free mailbox other than
+  the one it came from ("Please find my contact email address for us to
+  proceed: (l.byrne96@yahoo.com)") - how advance-fee and romance letters move
+  to an address their provider has not closed yet.
+- **A sender address dressed up as a brand's is flagged.** Yana's letter
+  came from `uncollatednessi.faceebookinbox.biz` - Facebook with a doubled
+  "e" - and nothing looked at the sender's domain itself, only at its display
+  name and subject. Now it does (`sender-domain-lookalike`, 45-50 points, a
+  scam on its own), in three ways and only on a domain that is none of the
+  brand's own: the brand's name padded with the words phishing pads it with
+  ("paypal-secure-login.com", "appleidverify.com": secure, login, verify,
+  account, support, inbox …); the name misspelt with look-alike characters
+  ("amaz0n", "paypa1", "rnicrosoft"), a doubled letter ("paypall",
+  "faceebook") or, for names of eight letters or more, one letter added,
+  dropped, changed or swapped ("facebok"); and a brand's own domain in front
+  of a foreign one ("paypal.com.account-check.ru"). A name beside an ordinary
+  word is no claim - "applewood-estates.com", "amazonas-reisen.de",
+  "paypal-community.com" - and neither is a server called Hermes
+  ("hermes.uni-example.de") or the bare name under another suffix
+  ("paypal.xyz"), which the brand table leaves unclaimed on purpose. The
+  reading pane tells it as phishing (`BrandImitatedByDomain`).
+- **Brand names in the letters of another script.** "pаypal.com" with a
+  Cyrillic "а" reads exactly like PayPal's domain and travels as
+  `xn--pypal-4ve.com`; only links in such a domain were noticed (as a
+  punycode host), never a sender. Punycode labels are decoded now
+  (`DomainToUnicode`, RFC 3492) and every letter of another script that
+  looks like a Latin one - Cyrillic, Greek, accented and full-width letters
+  - is read as that Latin letter; a domain whose reading is a brand's own,
+  or its name bare or padded with any word, is flagged as written to deceive
+  (the reason says "reads \"pаypal.com\" - PayPal's name written with
+  Cyrillic letters that look like Latin ones"). Real words in other scripts
+  stay clean ("münchen.de", "москва.рф", "東京.jp"), and so does a mailbox
+  provider's name ("gmаil.com" names no brand).
+- **The links are checked the same way.** A button that goes to
+  "faceebook-login.com", "paypa1.com", "paypal-secure-login.com" or the
+  Cyrillic "pаypal.com" is flagged with its label and its host
+  (`link-domain-lookalike`, 40-50 points, a scam on its own; once per host,
+  the sender's own domain being the sender rule's). The older checks of link
+  hosts stay. On a newsletter of 200 links to 60 sites the scan takes about
+  2 ms longer.
+- **A real name is padded with phishing words only.** The look-alike check
+  read "mail", "app", "online", "care", "my" and other ordinary words as
+  padding, so a brand's own second domain that the brand table does not
+  list, or a business named after its trade - "zoomcare.com" (a clinic),
+  "cdn.discordapp.com" - would have been called an imitation; with links
+  checked, that would have reached every newsletter. Those words now pad
+  only a misspelt or foreign-lettered name ("faceboookmail.com"), which no
+  brand does to itself.
+- **Letters in the FBI's, Interpol's or the IMF's name.** The FBI letter was
+  caught only by its money story. Now a message that presents itself as a
+  government agency or an international organisation - the FBI, Interpol, the
+  IMF, the United Nations, the World Bank, Europol, the Department of Justice,
+  the US Treasury, the Federal Reserve, the Secret Service, the IRS, the BKA,
+  the Bundespolizei, Scotland Yard, the Central Bank of Nigeria … - but was
+  sent from an address that is not a government one is flagged
+  (`government-impersonation`): 45 when the sender's name or domain says so
+  ("FBI <director@fbi-atm-center.example>"), 30 when the subject or text
+  speaks in its name about your money, a case or an arrest ("we the
+  International Monetary Fund … your compensation"). A government address
+  (.gov, .mil, .int, gov.uk, gouv.fr, bund.de, admin.ch, europa.eu …) or an
+  agency's own domain (imf.org, un.org, bka.de) never is, nor is a news item
+  that mentions the FBI or a newsletter from a domain of its own; "Souza &
+  Cia" is a company, not the CIA.
+- **Settings > Warnings > Spam/scam warnings.** One switch per kind of
+  warning: phishing, romance scams, advance-fee letters, letters in an
+  agency's name, cryptocurrency scams, the caution on any mail about
+  cryptocurrency, dangerous attachments, and spam as the mail server marked
+  it - all on. A kind switched off is not looked for: its findings are
+  dropped and add nothing to the score, so its messages are labelled as if
+  the check did not exist. Mail already checked is checked again with the
+  new choice - the open message at once, the rest in the background with
+  each mail check, starting with one right away (`ThreatScanOptions`,
+  `LocalStore::MarkVerdictsStale`; `warn_*` in `preferences.ini`). "Warn about
+  all" restores the defaults.
+- **A sender menu in the reading pane.** A right-click on the sender's
+  name or badge above the message offered only Copy and Select All; the
+  contact and spam items were in the message list's menu alone. It opens the
+  sender's menu now, with the address as its title: Copy address, Show only
+  mail from this sender (Show all messages while that filter is on), Add to
+  contact group, Add to contacts - or Edit contact for an address already in
+  the address book - and Mark as spam (Not spam in the junk folder), with
+  Copy and Select All below when the click was on the name. The list's menu
+  and this one share the address-book items (`MailView::SenderMenuItems`,
+  `MessagePreview::senderMenuItems`). Test: `MessagePreviewLayoutTest`.
+- **The Russian, Ukrainian and Belarusian mailbox providers** (i.ua,
+  ukr.net, bk.ru, list.ru, inbox.ru, rambler.ru, yandex, tut.by …) and
+  foxmail.com are free mailboxes, as gmail.com is.
+- The verdict keeps the codes of its findings (`MessageSecurity::findings`,
+  schema 11), which is how the reading pane knows which scam it is; stored
+  verdicts are scanned again by the new rules (`kThreatRulesRevision`). A
+  scam's badge tooltip says "scam or phishing markers" rather than phishing
+  alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`,
+  `test_preferences.cpp`.
+
+#### 2026-10-08 *0.10.41*
+- **The scam check's pictures come from the parsed page.** The check that
+  catches a mail dressed in a well-known brand's pictures while its links go
+  elsewhere found those pictures by searching the HTML for `src=`,
+  `background=` and `url(`: a web font, a style rule that matches nothing,
+  and an address written in a comment, a script or the text all counted as
+  pictures the mail shows. They now come from the page as the framework's
+  HTML reader parses it - `<img>`, `<input type="image">`, `background`
+  attributes, and the background images its CSS gives each element, through
+  the same cascade the message is shown with.
+
+#### 2026-10-08 *0.10.40*
+- **A fake link dressed up in formatting no longer slips past the scam
+  check.** The check compares the address a link's text shows with where
+  the link really goes; its own tag stripper read `www.pay<b>pal</b>.com` as
+  "www.pay pal .com", which names no site, so such a link passed. Link texts,
+  link targets and the body the check searches now go through the
+  framework's HTML reader (`HTML::ExtractPlainText`, `HTML::DecodeEntities`):
+  a word split by formatting stays whole, every entity is decoded (not only
+  five), and the text of a `<style>` or `<script>` is no longer searched as
+  if it were the message. The link list shows link texts as the reader sees
+  them ("Click here", not "Click  here").
+- **The links of a formatted mail come from the parsed page.** The scam
+  check and the link list found links by searching the HTML for `<a `; a
+  link written inside an HTML comment or a script counted as one, and a
+  mail's "button" (a table inside a link) gave its words run together. The
+  links are now the page's `<a href>`, `<area href>` and `<form action>`
+  elements as the HTML reader parses them, each with the text it shows.
+  Mail checked before this version is checked again, by the next sync and
+  when it is opened, so a fake link the old check let through is caught in
+  mail already received.
+
+#### 2026-10-08 *0.10.39*
+- **Formatted mail as plain text keeps its paragraphs.** With Settings >
+  Reading set to plain text, and in the quote of a formatted mail in a reply
+  or forward, the text was the HTML with its tags taken out: paragraphs ran
+  into one another or kept the HTML source's line breaks, only four entities
+  were decoded (`&eacute;`, `&#8211;` and the rest showed as written), and a
+  newsletter's hidden preview line appeared at the top. The text now comes
+  from the framework's HTML reader (`HTML::ExtractPlainText`, its new Lines
+  layout): a paragraph to a line with a blank line between, `<br>` as a line
+  break, table cells a tab apart, list items as `- `, every entity decoded,
+  and hidden text left out.
+
+#### 2026-10-08 *0.10.38*
+- **The mail's text can be selected and copied.** In formatted (HTML) mail a
+  drag selects across the whole message, from paragraph to paragraph as in a
+  browser, a double-click takes a word and a triple-click a paragraph;
+  Ctrl+C copies and Ctrl+A selects the whole message once it has been
+  clicked. The subject, the sender, the recipients and the date can be
+  selected too. A right-click on the text offers Copy and Select All, over
+  formatted and plain-text mail alike. Only one part is highlighted at a
+  time, as on a web page. A link still opens on a click; a drag that starts
+  on a link selects instead. (The framework's selectable labels, see the
+  framework changelog.)
+- **A copy button on sign-in codes.** A one-time code - the code a sign-in,
+  a payment or an address check sends to be typed in elsewhere - gets a copy
+  button: inside the code's own box when the mail puts it in one
+  (Papierkram's "Dein Anmelde-Code"), otherwise in a bar above the message
+  with the code and a Copy button (plain-text mail, a code inside a
+  sentence). A click copies the code - without the spaces of "649 082" - and
+  the button shows a check mark for a moment.
+  - Found in any language: the code by its shape (4 to 10 digits, or
+    capitals and digits, alone or in groups) and the word for "code" beside
+    it or in the subject - Code, código, codice, kod, kód, koodi, код,
+    κωδικός, 验证码, 認証コード, 인증번호, รหัส, رمز, קוד, कोड, OTP, PIN, TAN and
+    more (`UltraMailOneTimeCode.h`).
+  - Numbers that only look like codes get no button: years, prices, times,
+    IP addresses, phone numbers, "#order" numbers, parts of links and
+    addresses, and what follows "postal code", "error code" and the like.
+
+#### 2026-10-08 *0.10.37*
+- **A click anywhere on an account tile switches to that account.** Clicking
+  the other account's tile mostly did nothing: the window gave a click to
+  the innermost element under the pointer and to no other, and the tile's
+  name, address, avatar and counters are elements of their own that ignore a
+  click. The rows holding them stretch across the tile, so only its padding
+  and the strip between the two rows switched the account - on a tile in a
+  real window, 1 of 14 spots (the centre of each part of the tile) answered.
+  A click that missed looked like a switch that never came, or a slow one
+  when a later click happened to land on the padding; 0.10.21, 0.10.30 and
+  0.10.32 made the switch itself faster, which cannot help a click that never
+  reaches the tile. All 14 spots switch now, twice over: the framework hands
+  a press nobody under the pointer took on to the elements around it (see
+  the framework changelog, "A mouse press the element under the pointer does
+  not take climbs to its parents"), and the tile is one target for the
+  pointer. The counters' captions moved from each counter's tooltip into the
+  tile's: the address, then *New today*, *Unread (before today)* and *Waiting
+  for reply* with their numbers (`ClickSurface::PassPointerThroughContent`).
+  Tests:
+  `Tests/UltraMail/AccountBarClickTest.cpp` (`UltraMailAccountBarTest`, a
+  window under Xvfb; it skips without a display).
+
+- **A click on a group's or list's name in the address book selects it.**
+  The sidebar of the contacts window had the same dead spots as the account
+  tiles: the name stretches across the row and ignored the click, so only
+  the row's edges and its count answered. Fixed by the same framework change
+  (a press nobody under the pointer took goes on to the row), with no change
+  in UltraMail's code.
+
+#### 2026-10-08 *0.10.36*
+- **The message fills the pane.** Two things kept a message's body from
+  using the space it is given:
+  - **No empty band under the mail.** The attachment strip under the body
+    kept its 42 px, and the pane's gap above it, for every message - with
+    no attachment in it as well. It is hidden now while a message has no
+    attachments, and the body reaches the bottom of the pane.
+  - **No sideways scrolling by the scrollbar's width.** A newsletter whose
+    body asks to be at least as wide as the window (`min-width: 100%`, as
+    Reddit's digest does) was measured against the whole pane, including
+    the 12 px under the vertical scrollbar, so it scrolled sideways by
+    exactly that much and its centred layout sat off-centre. The body now
+    sits in a page as wide as the visible pane, the way a browser's window
+    works, so every width the message's CSS gives in percent is taken from
+    what the reader can see. Mails that do not ask for that (most) looked
+    right before and still do; content that really is wider than the pane
+    (a fixed-width table, a large picture) still gets its horizontal bar.
+
+#### 2026-10-07 *0.10.35*
+- **The window first, with the mail in it.** UltraMail opens its window as
+  soon as it can show the stored mail - the accounts, the folder tree, the
+  list and the selected message - and does the rest of its start after it
+  is on screen. Before, the mail plug-ins were loaded, the password vault
+  unlocked (a deliberately slow key derivation), the cloud accounts opened
+  and the attachment cache pruned before the window existed, and the
+  selected message was laid out only after the window's first paint.
+  - Before the window: the mail database, the settings, the address book
+    (the sender badges), the outbox (its button), the list and the selected
+    message - the message is in the window's first frame now, not a moment
+    after it.
+  - After it (`FinishStartup`): the attachment cache is pruned on a thread
+    of its own; the cloud accounts, the IMAP / SMTP plug-ins, the vault, the
+    sync timer, the outbox retries and the first mail check follow. A click
+    that needs any of them before then (Update, a new message, Send, Delete,
+    Add account) finishes the start first instead of reporting a missing
+    plug-in, and a body the first message lacks is fetched once the vault
+    is open.
+  - **Never a black window on Windows:** the window's first frame is drawn
+    before the window appears, and a window's surface starts in its
+    background colour instead of black (framework changelog, "Windows: a
+    window is never shown black").
+  - **Nor does a cold font cache hold it:** Windows' system fonts are scanned
+    in the background. When the scan takes longer than 0.4 s - every font file
+    read, the first start on a computer or after Windows changed its fonts -
+    the window opens with UltraMail's own fonts and Windows' symbol fonts, and
+    switches to the full set when the scan ends (framework changelog,
+    "Windows: the system fonts are scanned in the background"). The trace says
+    which: "system fonts: scanned in the background in N ms, in use from the
+    start", or "still being scanned" and later "System fonts ready after N s
+    of scanning".
+- **No console window on Windows.** Release builds are GUI programs now,
+  like the other apps: starting UltraMail no longer opens a black console
+  window beside it. The timing trace below goes to `trace.log` in the data
+  folder, and into the console of a command prompt UltraMail is started from;
+  Debug builds keep their console window.
+- **A timing trace of the start and of every account switch.** Switching
+  accounts still takes ten seconds and more on Windows, and the window stays
+  black for ten to fifteen seconds after the start, while the switch measured
+  on Linux for 0.10.30 took 10-55 ms - so where the time goes has to be
+  measured on the machine where it is lost. UltraMail now writes each step it
+  takes, with its time, to `trace.log` in the data folder, emptied at each
+  start, and to the console it was started from. Every line carries the
+  time of day, the seconds since the process started and the thread.
+  `ULTRAMAIL_TRACE=0` turns it off.
+  - **The start:** how long the process ran before `main()` (loading the
+    program and its libraries); the framework's initialisation with each of
+    its steps - fontconfig, the image subsystem, the windowing backend, the
+    bundled and system fonts, the clipboard - (framework changelog, "Startup
+    and frame timings"); opening the mail database, the preferences, the
+    attachment cache, the vault and its device key, the address book, the
+    outbox, the cloud accounts and the mail plug-ins; building the window and
+    filling it; and the first frames with their layout, painting and
+    compositing times, "on screen N s after the process started".
+  - **An account switch:** each step of the click (status line, connection
+    pill, the tile, the folder tree and each folder query, every query of the
+    message list, the rows, the list, the reading pane's message - its body,
+    its scan, its HTML), the next frames timed from the click, and the inbox
+    update from the server - on its worker (sign-in, the fetch, what it
+    brought) and back on the UI thread with its refresh.
+  - **The mail checks:** one block per check on its worker; the work it
+    causes on the UI thread (the address book, the refresh, the counts) only
+    when it took 50 ms or more, and then with its steps.
+  - **A watchdog** asks the UI thread to answer four times a second; when it
+    does not, a line says for how long so far and in which step the UI thread
+    is - or that it is in none of them, which is the framework's own work (an
+    event, a timer, layout or painting). Every frame of 100 ms or more is
+    reported as a slow frame.
+  - `UltraMailTrace` (engine); README, "Timing trace". Tests:
+    `test_trace.cpp`.
+
+#### 2026-10-07 *0.10.34*
+- **New mail shows a notification on the screen.** When a sync brings new
+  mail into an inbox, UltraMail posts one notification through UltraMessage,
+  the desktop's message channel, and the desktop's own notification service
+  draws it - GNOME Shell, Plasma, dunst and the rest on Linux, a toast in the
+  Action Center on Windows, Notification Center on macOS - with its look, its
+  sound and do-not-disturb. One
+  message names its sender and subject ("New mail from Ada Lovelace" / "The
+  engine notes"); several are counted, with the newest three listed ("3 new
+  messages": "Grace: Moth" ...). With more than one account it says which.
+  A click on it brings UltraMail to the front with the message open - or the
+  account's inbox, for several. Until now new mail only reached the desktop's
+  message feed, where nothing showed it on screen.
+  - Only news counts: unread mail the sync stored above the highest UID the
+    inbox held before it. An account's first download, mail already read on
+    another computer, a gap repaired in an old part of the mailbox and an inbox
+    fetched again from scratch raise no notification, and overlapping syncs
+    of one account (a timer sync while the inbox is opened) announce once.
+  - The notification is not added to the desktop's message centre: each
+    message is listed there already.
+  - Settings > Display > Notifications switches it off.
+  - Needs the framework's UltraMessage presenters (the changes pending in
+    `Docs/UltraCanvas/changelog.d/ultramessage-presenters.md` and
+    `ultramessage-macos-presenter.md`). On macOS the notification carries
+    UltraMail's name and icon when UltraMail hosts the message channel and
+    runs from its bundle; macOS asks once to allow it.
+
 #### 2026-10-06 *0.10.33*
 - **The account wizard explains how to set up iCloud mail.** Apple takes only
   an app-specific password in other mail programs, made on account.apple.com -

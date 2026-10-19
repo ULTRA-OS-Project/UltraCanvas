@@ -1,5 +1,46 @@
 # UltraCanvasSlideshow Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [SlideshowSlide Structure](#slideshowslide-structure)
+  - [Configuration](#configuration)
+  - [Slide Management](#slide-management)
+  - [Playback Control](#playback-control)
+  - [Events](#events)
+  - [Overrides](#overrides)
+- [Enumerations](#enumerations)
+  - [SlideshowFadeStyle](#slideshowfadestyle)
+  - [SlideshowTextMode](#slideshowtextmode)
+  - [SlideshowInfoLayout](#slideshowinfolayout)
+  - [SlideshowGapFill](#slideshowgapfill)
+  - [SlideshowIndicatorShape](#slideshowindicatorshape)
+  - [SlideshowIndicatorEdge](#slideshowindicatoredge)
+- [Data Structures](#data-structures)
+  - [SlideshowIndicatorStyle](#slideshowindicatorstyle)
+  - [SlideshowConfig](#slideshowconfig)
+- [Examples](#examples)
+  - [Basic Timed Slideshow with an Info Panel](#basic-timed-slideshow-with-an-info-panel)
+  - [Bars Indicator](#bars-indicator)
+  - [Dots Indicator](#dots-indicator)
+  - [Progress Bar](#progress-bar)
+  - [Story Bars](#story-bars)
+  - [Counter](#counter)
+  - [Thumbnails](#thumbnails)
+  - [Labels](#labels)
+  - [Choosing the Indicator Edge](#choosing-the-indicator-edge)
+  - [Manual Navigation Controls](#manual-navigation-controls)
+  - [Overlay Layout with a Scrim](#overlay-layout-with-a-scrim)
+  - [Image Fitting and Gap Fill](#image-fitting-and-gap-fill)
+  - [Static Text Mode](#static-text-mode)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasSlideshow** is a timed image slideshow element. It cross-fades through a list of slides, each pairing an image with an optional info-panel title and body, and renders everything itself (image layers, info panel, and indicators are painted directly in `Render()` — no child UI elements are created). It offers six transition styles, fourteen info-panel layouts (split and overlay), five image-fit policies, and eight selectable indicator styles, plus autoplay, hover-pause, looping, and arrow-key navigation.
@@ -79,6 +120,13 @@ void ClearSlides();
 size_t GetSlideCount() const;
 const std::vector<SlideshowSlide>& GetSlides() const;
 ```
+
+A picture saved over while the slideshow shows it - the slide, a slide in a
+transition, a thumbnail indicator - is drawn as it is now within a couple of
+seconds: the paths each paint drew go to an
+[`UltraCanvasImageFileWatch`](UltraCanvasImageFileWatch.md), which checks the
+files on a worker thread and repaints the slideshow when one changed. Nothing
+touches the disk on the paint path for it.
 
 ### Playback Control
 

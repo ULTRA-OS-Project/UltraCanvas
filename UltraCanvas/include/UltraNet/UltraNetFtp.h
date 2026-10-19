@@ -10,8 +10,14 @@
 // message is libcurl's specific reason plus the server's refusal ("RETR
 // response: 550 - the server said \"550 Permission denied\""), and
 // UltraNetResult::diagnostics carries the connection chain.
-// Version: 0.4.0 - session log, specific failure messages, inactivity timeout
-// Last Modified: 2026-10-04
+//
+// Connections are kept open between calls on one thread
+// (UltraNet_FtpCloseIdleConnections), and a server that refused MLSD is
+// listed with LIST from then on.
+// Version: 0.7.0 - isCancelled / UltraNet_SetThreadFtpCancel: a call can be called off
+// Version: 0.6.0 - SFTP with a private key: sshPrivateKeyFile, sshPublicKeyFile, sshKeyPassphrase
+// Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -73,9 +79,24 @@ struct UltraNetFtpOptions {
     bool createMissingDirs = false;
     bool resumeTransfer = false;
     int64_t resumeOffset = 0;
+    // SFTP with a key instead of (or beside) a password: the private key
+    // file's path, UTF-8, as libcurl's CURLOPT_SSH_PRIVATE_KEYFILE; the
+    // public key file beside it when the library cannot derive it (empty
+    // tries "<private>.pub", then none); the key's passphrase when it has
+    // one. With a key set the sign-in offers the key first and the
+    // password, when there is one, after it. Ignored by ftp:// and ftps://.
+    std::string sshPrivateKeyFile;
+    std::string sshPublicKeyFile;
+    std::string sshKeyPassphrase;
     // The session log of this call. When empty, the calling thread's sink
     // (UltraNet_SetThreadFtpLog) gets it, if there is one.
     UltraNetFtpLogCallback onLog;
+    // Asked while the call runs - as bytes move, and about once a second
+    // while none do; once it answers true the call ends as
+    // UltraNetResultCode::Cancelled ("called off"). Runs on the calling
+    // thread inside libcurl, so it must answer at once (an atomic flag).
+    // When empty, the calling thread's (UltraNet_SetThreadFtpCancel) is asked.
+    std::function<bool()> isCancelled;
 
     static UltraNetFtpOptions Default() { return {}; }
 };
@@ -87,6 +108,29 @@ struct UltraNetFtpOptions {
 // which calls UltraNet - and so cannot hand an onLog down. Per thread, so
 // two workers never read each other's sessions. An empty callback clears it.
 UltraNetFtpLogCallback UltraNet_SetThreadFtpLog(UltraNetFtpLogCallback sink);
+
+// The same for calling a call off: FTP calls made on the CALLING THREAD whose
+// options carry no isCancelled of their own ask this one. Returns the previous
+// one so a caller can put it back; an empty function clears it. UltraFiler's
+// drive worker sets it per job, so a download the user no longer waits for -
+// a preview copy of a file they have moved away from - stops without the
+// layer in between (UltraCloud) having to carry a flag down.
+std::function<bool()> UltraNet_SetThreadFtpCancel(std::function<bool()> isCancelled);
+
+// Every call leaves its connection open, and the next call ON THE SAME THREAD
+// to the same server, as the same user with the same TLS settings, takes it
+// up without connecting or logging in again - so a worker listing one folder
+// after another logs in once, not once per folder. libcurl drops a connection
+// left idle for two minutes, and one the server has closed.
+//
+// This closes the calling thread's open connections now (each is sent QUIT).
+// A thread's connections are also closed when it ends, and every thread's by
+// UltraNet_Shutdown. A caller whose work comes in bursts calls it when it
+// falls idle: an open connection whose network has gone away since can hold
+// the QUIT for as long as libcurl waits for the reply - up to two minutes
+// before libcurl 8.10 - and the thread's end, which a window closing may wait
+// on, with it.
+void UltraNet_FtpCloseIdleConnections();
 
 struct UltraNetFtpEntry {
     std::string name;

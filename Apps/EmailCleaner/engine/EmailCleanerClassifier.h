@@ -77,9 +77,6 @@ public:
     // letter-separator obfuscation, collapse whitespace.
     static std::string NormalizeText(const std::string& text);
 
-    // Remove HTML tags and decode the handful of entities that matter.
-    static std::string StripHtml(const std::string& html);
-
     // Collapse "v.i.a.g.r.a" / "v i a g r a" style spacing to "viagra".
     static std::string CollapseObfuscation(const std::string& text);
 

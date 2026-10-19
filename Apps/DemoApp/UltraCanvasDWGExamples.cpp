@@ -178,15 +178,15 @@ namespace {
 
         auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 40, 300, 190);
         infoText->SetText(
-                "✓ DWG R13, R14, 2000, 2004, 2007, 2010, 2013, 2018\n"
-                "✓ DXF R12 and later (read and write)\n"
-                "✓ Lines, arcs, circles, ellipses, splines\n"
-                "✓ Polylines, LW polylines, 3D and mesh polylines\n"
-                "✓ Hatches (solid, pattern, gradient boundaries)\n"
-                "✓ Text, MTEXT, attributes, leaders, dimensions\n"
-                "✓ Blocks and nested inserts, mirrored and arrayed\n"
-                "✓ Layers, true colours, lineweights, linetypes\n"
-                "✓ DWG to DXF conversion: DWGConverter::DecodeToDxf\n"
+                "• DWG R13, R14, 2000, 2004, 2007, 2010, 2013, 2018\n"
+                "• DXF R12 and later (read and write)\n"
+                "• Lines, arcs, circles, ellipses, splines\n"
+                "• Polylines, LW polylines, 3D and mesh polylines\n"
+                "• Hatches (solid, pattern, gradient boundaries)\n"
+                "• Text, MTEXT, attributes, leaders, dimensions\n"
+                "• Blocks and nested inserts, mirrored and arrayed\n"
+                "• Layers, true colours, lineweights, linetypes\n"
+                "• DWG to DXF conversion: DWGConverter::DecodeToDxf\n"
                 "• DWG writing needs LibreDWG's dxf2dwg (optional)\n"
         );
         infoText->SetFontSize(11);

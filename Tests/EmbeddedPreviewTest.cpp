@@ -6,13 +6,15 @@
 // Checks the format gate, the extractors against the repository's own sample
 // documents and against EPS files written here, and that what comes out
 // really is a decodable image.
+// Version: 1.2.0 - UltraCanvas Documents (*.ucd): the thumbnail after the header
 // Version: 1.1.0
-// Last Modified: 2026-09-03
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasUCDContainer.h"
 
 #include <cstdint>
 #include <algorithm>
@@ -183,6 +185,38 @@ void CheckPostScriptPreviews(const fs::path& dir) {
     fs::remove_all(dir, ec);
 }
 
+// An UltraCanvas Document keeps its thumbnail straight after the header; a
+// private one keeps none to show, even when one is stored against the rule.
+void CheckUCDPreviews(const fs::path& dir) {
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    const std::vector<uint8_t> png = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 };
+    UCD::Writer w("UCBitmap");
+    w.SetThumbnailPng(png);
+    w.AddSection("BMAP", { 1, 2, 3 });
+    std::string err;
+    const fs::path file = dir / "layers.ucd";
+    Check(w.WriteToFile(UltraCanvas::PathToUtf8(file), err), "ucd: a document with a thumbnail is written");
+    Check(ExtractEmbeddedPreviewBytes(UltraCanvas::PathToUtf8(file)) == png,
+          "ucd: the thumbnail comes back byte for byte");
+
+    std::vector<uint8_t> bytes;
+    w.WriteToBuffer(bytes, err);
+    bytes[17] |= UCD::FlagPrivate;   // marked private, the thumbnail still stored
+    const fs::path hidden = dir / "private.ucd";
+    WriteFile(hidden, bytes);
+    Check(ExtractEmbeddedPreviewBytes(UltraCanvas::PathToUtf8(hidden)).empty(),
+          "ucd: a private document shows no preview");
+
+    UCD::Writer bare("UCDoc");
+    bare.AddSection("META", { 0 });
+    const fs::path none = dir / "none.ucd";
+    Check(bare.WriteToFile(UltraCanvas::PathToUtf8(none), err) &&
+                  ExtractEmbeddedPreviewBytes(UltraCanvas::PathToUtf8(none)).empty(),
+          "ucd: one without a thumbnail yields none");
+    fs::remove_all(dir, ec);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -201,6 +235,7 @@ int main(int argc, char** argv) {
     Check(FormatCarriesEmbeddedPreview("figure.EPSF"), "epsf carries one");
     Check(FormatCarriesEmbeddedPreview("page.ps"), "ps carries one");
     Check(FormatCarriesEmbeddedPreview("artwork.ai"), "ai carries one");
+    Check(FormatCarriesEmbeddedPreview("layers.UCD"), "ucd carries one");
     Check(!FormatCarriesEmbeddedPreview("photo.png"), "png does not");
     Check(!FormatCarriesEmbeddedPreview("drawing.svg"), "svg does not");
     Check(!FormatCarriesEmbeddedPreview(""), "the empty path does not");
@@ -219,6 +254,9 @@ int main(int argc, char** argv) {
 
     std::cout << "\n=== PostScript documents (EPSI and DOS EPS) ===\n";
     CheckPostScriptPreviews(fs::temp_directory_path() / "uc-eps-preview-test");
+
+    std::cout << "\n=== UltraCanvas Documents ===\n";
+    CheckUCDPreviews(fs::temp_directory_path() / "uc-ucd-preview-test");
 
     // The filer decides whether to try at all from the format inventory; a
     // regression there is what silently strips every thumbnail.

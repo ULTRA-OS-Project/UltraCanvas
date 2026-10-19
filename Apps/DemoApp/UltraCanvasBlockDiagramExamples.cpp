@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
 // Interactive block diagram demo - HVAC System (Flat 2D, Zoned Layout)
+// Version: 2.2.3 - BlockConnectionStyle (was ConnectionStyle)
 // Version: 2.2.2
-// Last Modified: 2026-05-01
+// Last Modified: 2026-10-07
 //
 // Changelog 2.2.2:
 //  - Reset button now also restores every node to its initial layout
@@ -157,59 +158,59 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
  
     // ----- Control signals into the refrigerant loop -----
     // Drive Clutch -> Compressor (mechanical drive)
-    diagram->AddConnection("ctrl_drive", "drive_clutch", "compressor", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("ctrl_drive", "drive_clutch", "compressor", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("ctrl_drive", ctrlConn);
     diagram->SetConnectionWidth("ctrl_drive", connWidth);
  
     // Comp Control -> Compressor (electrical signal, dashed)
-    diagram->AddConnection("ctrl_comp", "comp_control", "compressor", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("ctrl_comp", "comp_control", "compressor", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("ctrl_comp", ctrlConn);
     diagram->SetConnectionWidth("ctrl_comp", connWidth);
     diagram->SetConnectionLineStyle("ctrl_comp", LineStyle::Dashed);
  
     // ----- Refrigerant cycle (closed loop: clockwise) -----
-    diagram->AddConnection("ref1", "compressor", "condenser", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("ref1", "compressor", "condenser", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("ref1", coolConn);
     diagram->SetConnectionWidth("ref1", connWidth);
  
-    diagram->AddConnection("ref2", "condenser", "expansion", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("ref2", "condenser", "expansion", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("ref2", coolConn);
     diagram->SetConnectionWidth("ref2", connWidth);
  
-    diagram->AddConnection("ref3", "expansion", "evaporator", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("ref3", "expansion", "evaporator", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("ref3", coolConn);
     diagram->SetConnectionWidth("ref3", connWidth);
  
-    diagram->AddConnection("ref4", "evaporator", "compressor", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("ref4", "evaporator", "compressor", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("ref4", coolConn);
     diagram->SetConnectionWidth("ref4", connWidth);
  
     // ----- Blower control signal (dashed) -----
-    diagram->AddConnection("ctrl_blower", "blower_ctrl", "blower", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("ctrl_blower", "blower_ctrl", "blower", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("ctrl_blower", ctrlConn);
     diagram->SetConnectionWidth("ctrl_blower", connWidth);
     diagram->SetConnectionLineStyle("ctrl_blower", LineStyle::Dashed);
  
     // ----- Airflow path (left to right) -----
     // Blower pushes air up into the evaporator (cooling), then across to heater.
-    diagram->AddConnection("air1", "blower", "evaporator", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("air1", "blower", "evaporator", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("air1", airConn);
     diagram->SetConnectionWidth("air1", connWidth);
  
-    diagram->AddConnection("air2", "evaporator", "heater", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("air2", "evaporator", "heater", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("air2", airConn);
     diagram->SetConnectionWidth("air2", connWidth);
  
-    diagram->AddConnection("air3", "heater", "mode_door", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("air3", "heater", "mode_door", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("air3", airConn);
     diagram->SetConnectionWidth("air3", connWidth);
  
     // Air Mix Door bypasses the heater and joins the mode door
-    diagram->AddConnection("air4", "blower", "air_mix", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("air4", "blower", "air_mix", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("air4", airConn);
     diagram->SetConnectionWidth("air4", connWidth);
  
-    diagram->AddConnection("air5", "air_mix", "mode_door", ConnectionStyle::Orthogonal);
+    diagram->AddConnection("air5", "air_mix", "mode_door", BlockConnectionStyle::Orthogonal);
     diagram->SetConnectionColor("air5", airConn);
     diagram->SetConnectionWidth("air5", connWidth);
  

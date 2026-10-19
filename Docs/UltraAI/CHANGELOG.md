@@ -1,3 +1,67 @@
+#### 2026-10-16 *0.1.15*
+- **The dashboard draws its own icons.** The ten service buttons and the
+  Settings button were labelled with emoji, which show as empty boxes where
+  the system font has no emoji glyphs. Each service is now a tile with a
+  128 x 128 icon over its name (and a tooltip saying what it does); Settings
+  carries a gear. The set lives in `media/icons/ultraai/`: one SVG per icon
+  (rounded gradient tile, white glyph), the 128 px PNG rendered from it that
+  the app loads, and `generate_icons.py`, which writes the SVGs. The window
+  grows to 1000 x 468 to fit the tiles.
+
+#### 2026-10-13 *0.1.14*
+- **The endpoint settings are found in a profile named in any script.**
+  `endpoints.json`'s folder was built by hand from `HOME` and
+  `XDG_CONFIG_HOME` read through the narrow `getenv` on macOS and Linux; it
+  comes from the framework's settings root now
+  (`UltraCanvasSettingsFolderRoot`, every variable read as UTF-8) and lands in
+  the same folder as before on every platform (framework changelog:
+  `settings-root-and-xdg-everywhere`).
+
+#### 2026-10-12 *0.1.13*
+- **One UltraAI at a time.** Starting UltraAI while it is already running brings
+  the open window forward (restored if minimised; an open dialog comes forward
+  with it) instead of opening a second copy. Two starts at the same moment
+  cannot both stay, and a copy that does not answer is reported with
+  *"UltraAI is already running"*. Command-line modes are unaffected.
+  Framework: `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-09 *0.1.12*
+- **New dashboard icon.** The face is drawn larger and without the light blue
+  disc behind it (`media/appicon/UltraAI.svg`, the uploaded artwork).
+  `media/appicon/UltraAI.png` is re-rendered from it at 256 px through
+  librsvg; the drawing is taller than wide (229 x 303 units), so it is padded
+  to a square on a transparent background. The window and taskbar icon, the
+  Windows `.exe` icon and the `hicolor` theme icons are all made from this
+  pair, so every one of them changes with it.
+
+#### 2026-10-07 *0.1.11*
+- **The Translation dialog takes the source language and the formality.**
+  It sent only the texts and a target language, so the register and a known
+  source language could not be tried from the dashboard. The target field now
+  shares a row with a source-language field (empty: the provider detects it)
+  and a Default / Formal / Informal picker, and the run happens off the UI
+  thread like the other dialogs, since a chat model behind the translator
+  takes seconds per batch where the mock answered at once.
+- **The Translation dialog names the model.** The provider row carries a
+  model field, as the image, video and speech dialogs do: the translator
+  providers translate through their chat models, and until now only the
+  provider's default model could be used.
+
+#### 2026-10-07 *0.1.10*
+- **Translation works through every chat model.** `ITranslator` had only the
+  mock behind it; the module now serves it with any `ITextLLM`
+  (`UltraAITextLLMTranslator.h`): the texts go to the model as numbered JSON
+  segments with the register, domain, glossary and markup rules in the
+  system prompt, and the reply is asked for as JSON in the same numbering,
+  so batches come back in order. Every text-LLM provider but the mock is a
+  translator provider under its own id — `anthropic`, `openai`, `qwen`,
+  `llama-cpp` — so the dashboard's Translation dialog lists them, and an
+  empty provider follows the routing policy, local LLMs first
+  (`KnownLocalProviders("translator")`). `DetectLanguage` goes the same way.
+  Options: `textllm.provider`, `textllm.batchSize`, `textllm.temperature`,
+  `textllm.maxOutputTokens`, and a per-request `textllm.glossary`. Doc:
+  `Docs/Modules/UltraAI/Adapters.md`; test: `test_textllm_translator`.
+
 #### 2026-10-05 *0.1.9*
 - **The dashboard keeps its settings and endpoints in a Windows profile
   named in any script.** Its configuration folder was read with the narrow

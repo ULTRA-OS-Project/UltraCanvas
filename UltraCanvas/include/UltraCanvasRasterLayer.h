@@ -14,8 +14,16 @@
 // round trip is a plain memory copy. Alpha is straight, not premultiplied:
 // a half-transparent red pixel is (255, 0, 0, 128). Conversion to Cairo's
 // premultiplied ARGB32 happens once, in CompositeOnto().
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+//
+// A layer can also be a TEXT LAYER: it carries the words it shows
+// (RasterTextContent - a rich document in a box on the canvas) and its pixels
+// are a rendering of them (UltraCanvasRasterText.h), so the text stays
+// editable - font, size, colour, the words themselves - until the layer is
+// rasterized. Anything that changes the pixels another way takes the text
+// off: the geometry here that resamples or mirrors them, and the document's
+// pixel edits (UltraCanvasRasterDocument.h), whose undo puts it back.
+// Version: 1.1.0 - text layers (RasterTextContent, UCRasterLayer::text)
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +37,8 @@
 namespace PixelFX { class PFXImage; }
 
 namespace UltraCanvas {
+
+class UCRichDocument;
 
 // ===== LAYER BLEND MODES =====
 // How a layer combines with everything below it. The arithmetic is the
@@ -62,6 +72,37 @@ struct RasterPixel {
     Color ToColor() const { return Color(r, g, b, a); }
     bool operator==(const RasterPixel& o) const { return r == o.r && g == o.g && b == o.b && a == o.a; }
     bool operator!=(const RasterPixel& o) const { return !(*this == o); }
+};
+
+// ===== THE TEXT OF A TEXT LAYER =====
+// Words set in a box on the canvas: a rich document (runs with their own
+// fonts, sizes, colours, bold / italic / underline, paragraphs with their
+// alignment) laid out the width of the box, the way UltraCanvasRichTextEdit
+// lays it out - which is what lets that element edit it on the canvas and
+// show exactly what the layer will hold. Immutable once a layer carries it:
+// an edit makes a new one, so undo snapshots can share it.
+struct RasterTextContent {
+    std::shared_ptr<const UCRichDocument> document;
+    // The box, in canvas pixels: its top-left corner, the width the lines
+    // wrap at, and the height the text took when it was last laid out
+    // (RenderTextLayer fills it in).
+    double x = 0.0;
+    double y = 0.0;
+    double width = 0.0;
+    double height = 0.0;
+    // What a run without a font, size or colour of its own is set in.
+    std::string fontFamily = "Sans";
+    float fontSizePx = 32.0f;
+    RasterPixel colour = RasterPixel(0, 0, 0, 255);
+
+    Rect2Dd GetBox() const { return Rect2Dd(x, y, width, height); }
+    // The same text with its box moved by (dx, dy).
+    std::shared_ptr<const RasterTextContent> MovedBy(double dx, double dy) const {
+        auto moved = std::make_shared<RasterTextContent>(*this);
+        moved->x += dx;
+        moved->y += dy;
+        return moved;
+    }
 };
 
 // ===== A RASTER LAYER =====
@@ -101,19 +142,22 @@ public:
     // Composites `src` over this layer at (dx, dy) with source-over.
     void BlendFrom(const UCRasterLayer& src, int dx, int dy, float opacity = 1.0f,
                    RasterBlendMode mode = RasterBlendMode::Normal);
-    // A new layer holding just `r` (clipped); the layer's attributes carry over.
+    // A new layer holding just `r` (clipped); the layer's attributes carry
+    // over, and a text layer's text with its box moved as the pixels were.
     std::shared_ptr<UCRasterLayer> CropCopy(const Rect2Di& r) const;
     std::shared_ptr<UCRasterLayer> Clone() const;
     // Re-shape the canvas: pixels keep their position relative to the new
-    // origin `(offsetX, offsetY)`; exposed area is transparent.
+    // origin `(offsetX, offsetY)`; exposed area is transparent. A text
+    // layer's box moves with them and the text stays.
     void ResizeCanvas(int newWidth, int newHeight, int offsetX, int offsetY);
-    // Geometry that needs no resampling.
+    // Geometry that needs no resampling. These mirror or turn the pixels, so
+    // a text layer's text no longer describes them and is taken off.
     void FlipHorizontal();
     void FlipVertical();
     void Rotate90(bool clockwise);
     void Rotate180();
     // Simple bilinear resample (used when libvips is not available; the
-    // document prefers PixelFX for quality).
+    // document prefers PixelFX for quality). Takes a text layer's text off.
     void ResampleBilinear(int newWidth, int newHeight);
 
     // ===== ANALYSIS =====
@@ -142,8 +186,8 @@ public:
     PixelFX::PFXImage ToPixelFX() const;
     // Replaces the pixels with `img`, cast to 8-bit RGBA (grey and RGB
     // images get an opaque alpha band; extra bands are dropped). The layer
-    // takes `img`'s size. Returns false when the image cannot be
-    // materialised.
+    // takes `img`'s size and is no longer a text layer. Returns false when
+    // the image cannot be materialised.
     bool FromPixelFX(const PixelFX::PFXImage& img);
 #endif
 
@@ -153,6 +197,14 @@ public:
     bool            locked  = false;      // painting tools refuse to touch it
     float           opacity = 1.0f;       // 0..1
     RasterBlendMode blendMode = RasterBlendMode::Normal;
+
+    // ===== TEXT LAYER =====
+    // The words this layer's pixels show, or null for a bitmap layer. Shared
+    // and immutable: Clone() shares it, an edit replaces it. Whoever writes
+    // the pixels some other way takes it off first (`text.reset()`) - the
+    // document's edit brackets do, and their undo puts it back.
+    std::shared_ptr<const RasterTextContent> text;
+    bool IsTextLayer() const { return text != nullptr; }
 
 private:
     int width = 0;
@@ -170,5 +222,12 @@ uint8_t RasterBlendChannel(RasterBlendMode mode, uint8_t src, uint8_t dst);
 // `coverage` (0..1) scaling the source alpha. Returns the straight result.
 RasterPixel RasterBlendPixel(const RasterPixel& src, const RasterPixel& dst,
                              float coverage, RasterBlendMode mode = RasterBlendMode::Normal);
+
+// Moves `dst` `coverage` (0..1) of the way to `src`, alpha included, in
+// premultiplied space: at full coverage the result is `src` itself, so a
+// transparent source clears the pixel where source-over would leave it as it
+// was. For an opaque source this is the same as RasterBlendPixel in Normal.
+// A result with no alpha left is (0, 0, 0, 0), whatever the source's RGB.
+RasterPixel RasterReplacePixel(const RasterPixel& src, const RasterPixel& dst, float coverage);
 
 } // namespace UltraCanvas

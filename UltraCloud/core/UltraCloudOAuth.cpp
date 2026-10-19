@@ -1,12 +1,28 @@
 // UltraCloud/core/UltraCloudOAuth.cpp
-// Version: 0.3.0 - the app registration is UltraNet's shared registry
-// Last Modified: 2026-09-23
+// Version: 0.6.0 - a provider without a client of its own signs in through the
+//                  sign-in service
+// Version: 0.5.0 - the browser sign-in says its steps in the thread's log,
+//                  and can be called off (SetThreadSignInCancel)
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOAuth.h>
+#include <UltraCloud/UltraCloudLog.h>
 
 #include <ctime>
 
 namespace UltraCloud {
+
+namespace {
+thread_local std::function<bool()> t_signInCancelled;
+} // namespace
+
+std::function<bool()> SetThreadSignInCancel(std::function<bool()> cancelled) {
+    std::function<bool()> previous = std::move(t_signInCancelled);
+    t_signInCancelled = std::move(cancelled);
+    return previous;
+}
+
+bool SignInCancelled() { return t_signInCancelled && t_signInCancelled(); }
 
 void EnsureOAuthAppsRegistered() {
     static const bool once = [] {
@@ -37,19 +53,54 @@ bool HasOAuthApp(const std::string& providerId) {
     return GetOAuthApp(providerId).IsConfigured();
 }
 
+bool UsesSignInService(const std::string& providerId) {
+    if (HasOAuthApp(providerId)) return false;   // a client of its own wins
+    return !UltraNet_OAuth2SignInServiceUrl().empty();
+}
+
+bool CanSignIn(const std::string& providerId) {
+    return HasOAuthApp(providerId) || UsesSignInService(providerId);
+}
+
 OAuthProviderBase::OAuthProviderBase(HttpFn http, OAuthHooks hooks)
     : HttpProviderBase(std::move(http)), hooks_(std::move(hooks)) {
     if (!hooks_.authorize)
         hooks_.authorize = [](const UltraNetOAuth2Config& cfg,
                               const std::function<void(const std::string&)>& openUrl,
                               UltraNetOAuth2Token& out) {
-            return UltraNet_OAuth2AuthorizeInteractive(cfg, openUrl, out);
+            // The calling thread's cancel check, asked while the browser
+            // answer is awaited.
+            return UltraNet_OAuth2AuthorizeInteractive(cfg, openUrl, out, 300000,
+                                                       [] { return SignInCancelled(); });
         };
     if (!hooks_.refresh)
         hooks_.refresh = [](const UltraNetOAuth2Config& cfg, const std::string& refreshToken,
                             UltraNetOAuth2Token& out) {
             return UltraNet_OAuth2Refresh(cfg, refreshToken, out);
         };
+    if (!hooks_.serviceAuthorize)
+        hooks_.serviceAuthorize = [](const UltraNetOAuth2ServiceConfig& cfg,
+                                     const std::function<void(const std::string&)>& openUrl,
+                                     UltraNetOAuth2Token& out) {
+            return UltraNet_OAuth2AuthorizeViaService(cfg, openUrl, out, 300000,
+                                                      [] { return SignInCancelled(); });
+        };
+    if (!hooks_.serviceRefresh)
+        hooks_.serviceRefresh = [](const UltraNetOAuth2ServiceConfig& cfg,
+                                   const std::string& refreshToken, UltraNetOAuth2Token& out) {
+            return UltraNet_OAuth2ServiceRefresh(cfg, refreshToken, out);
+        };
+}
+
+UltraNetOAuth2ServiceConfig OAuthProviderBase::OAuthServiceConfig() const {
+    UltraNetOAuth2ServiceConfig cfg;
+    cfg.serviceUrl = UltraNet_OAuth2SignInServiceUrl();
+    cfg.providerId = SignInServiceProviderId();
+    // The same scopes the direct flow asks for; the service checks them
+    // against its allow-list for the provider.
+    cfg.scopes     = OAuthConfig(OAuthApp{}).scopes;
+    cfg.clientName = "UltraCloud";
+    return cfg;
 }
 
 void OAuthProviderBase::ApplyToken(const UltraNetOAuth2Token& token, Credentials& credentials,
@@ -67,16 +118,46 @@ Result OAuthProviderBase::SignIn(const Account& account,
                                  const std::function<void(const std::string& url)>& openUrl,
                                  Credentials& out) {
     (void)account;
+    const bool viaService = UsesSignInService(Id());
     const OAuthApp app = GetOAuthApp(Id());
-    if (!app.IsConfigured())
+    if (!viaService && !app.IsConfigured())
         return Result::Error(ResultCode::Unsupported,
-                             "no OAuth client id configured for " + DisplayName()
-                             + " (set ULTRACLOUD_" + Id() + "_CLIENT_ID or call SetOAuthApp)");
+                             "the sign-in service is off and no OAuth client id is configured for "
+                             + DisplayName() + " (set ULTRACLOUD_OAUTH_SERVICE_URL, or ULTRACLOUD_"
+                             + Id() + "_CLIENT_ID or call SetOAuthApp)");
+    // The sign-in page's address goes to the log without its query, which
+    // carries the request's one-time state and code challenge.
+    auto logOpen = [&openUrl](const std::string& url) {
+        LogToThread(LogKind::Step, "Opening the sign-in page in the browser: " +
+                                   url.substr(0, url.find('?')));
+        if (openUrl) openUrl(url);
+    };
     UltraNetOAuth2Token token;
-    UltraNetResult r = hooks_.authorize(OAuthConfig(app), openUrl, token);
-    if (!r || !token.IsValid())
-        return Result::Error(ResultCode::AuthFailed,
-                             "sign-in failed: " + (r.message.empty() ? "no token" : r.message));
+    UltraNetResult r;
+    if (viaService) {
+        const UltraNetOAuth2ServiceConfig cfg = OAuthServiceConfig();
+        LogToThread(LogKind::Step, "Signing in to " + DisplayName() +
+                                   " through the browser - waiting for the answer at the "
+                                   "sign-in service " + cfg.serviceUrl);
+        r = hooks_.serviceAuthorize(cfg, logOpen, token);
+    } else {
+        LogToThread(LogKind::Step, "Signing in to " + DisplayName() +
+                                   " through the browser - waiting for the answer on " +
+                                   app.redirectUri);
+        r = hooks_.authorize(OAuthConfig(app), logOpen, token);
+    }
+    if (SignInCancelled()) {
+        LogToThread(LogKind::Step, "The sign-in was cancelled");
+        return Result::Error(ResultCode::Cancelled, "sign-in cancelled");
+    }
+    if (!r || !token.IsValid()) {
+        const std::string why = r.message.empty() ? "no token" : r.message;
+        LogToThread(LogKind::Step, "The browser sign-in did not complete: " + why);
+        return Result::Error(ResultCode::AuthFailed, "sign-in failed: " + why);
+    }
+    LogToThread(LogKind::Step, "Signed in - " + DisplayName() + " gave an access token" +
+                               (token.refreshToken.empty() ? std::string(" (no refresh token)")
+                                                           : std::string()));
     ApplyToken(token, out);
     return Result::Ok();
 }
@@ -85,11 +166,18 @@ Result OAuthProviderBase::RefreshCredentials(const Account& account, Credentials
     (void)account;
     if (credentials.refreshToken.empty())
         return Result::Error(ResultCode::AuthFailed, "the sign-in has expired; sign in again");
-    const OAuthApp app = GetOAuthApp(Id());
-    if (!app.IsConfigured())
-        return Result::Error(ResultCode::Unsupported, "no OAuth client id configured for " + DisplayName());
     UltraNetOAuth2Token token;
-    UltraNetResult r = hooks_.refresh(OAuthConfig(app), credentials.refreshToken, token);
+    UltraNetResult r;
+    if (UsesSignInService(Id())) {
+        r = hooks_.serviceRefresh(OAuthServiceConfig(), credentials.refreshToken, token);
+    } else {
+        const OAuthApp app = GetOAuthApp(Id());
+        if (!app.IsConfigured())
+            return Result::Error(ResultCode::Unsupported,
+                                 "the sign-in service is off and no OAuth client id is configured for "
+                                 + DisplayName());
+        r = hooks_.refresh(OAuthConfig(app), credentials.refreshToken, token);
+    }
     if (!r || !token.IsValid())
         return Result::Error(ResultCode::AuthFailed,
                              "token refresh failed: " + (r.message.empty() ? "no token" : r.message));

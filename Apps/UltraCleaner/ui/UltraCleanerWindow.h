@@ -15,9 +15,11 @@
 
 #include "UltraCleanerAlbumView.h"
 #include "UltraCleanerHomeView.h"
+#include "UltraCleanerRegistryView.h"
 #include "UltraCleanerCategoryPanel.h"
 
 #include "UltraCleanerAlbumScanner.h"
+#include "UltraCleanerRegistry.h"
 #include "UltraCleanerRemover.h"
 #include "UltraCleanerScanner.h"
 #include "UltraCleanerTypes.h"
@@ -61,6 +63,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildHomePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRulePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAlbumPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRegistryPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
     // The System junk page's two halves and the band of text under them.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildCategoryPanel();
@@ -79,6 +82,10 @@ private:
     // The run's outcome and its failures, grouped by reason, in a scrolling
     // Markdown dialog.
     void ShowCleanResult(const std::string& summary, const RemovalReport& result);
+    // After a scan the system kept out of somewhere: offers, once a session,
+    // to open the settings page that lets UltraCleaner in (macOS: Full Disk
+    // Access). `advice` is BlockedAccessAdvice() for the scan.
+    void OfferBlockedAccessSettings(const std::string& advice);
 
     // ===== VIEW UPDATES =====
     void RefreshDetailList();
@@ -107,6 +114,11 @@ private:
     void RegroupAlbum(SimilarityLevel level);
     void CleanAlbumSelection();
     void RefreshAlbumSummary();
+
+    // ===== REGISTRY (Windows) =====
+    void StartRegistryScan();
+    void CleanRegistry();
+    void ChooseRegistryBackupToRestore();
 
     // ===== THREAD PLUMBING =====
     void RunOnUiThread(std::function<void()> action);
@@ -143,7 +155,18 @@ private:
     // which folder the album page last scanned — what OnTabEntered checks
     // before starting one, so a tab switch never throws away ticks.
     bool junkScannedOnce_ = false;
+    // Whether OfferBlockedAccessSettings has asked yet this session: once is
+    // enough, the status line repeats the advice after every scan.
+    bool blockedAccessOffered_ = false;
     std::string albumScannedFolder_;
+
+    // The Windows registry page; absent (tab index -1, no store) elsewhere.
+    RegistryView registryView_;
+    RegistryScanner registryScanner_;
+    RegistryCleaner registryCleaner_;
+    std::unique_ptr<RegistryStore> registryStore_;
+    std::unique_ptr<FileProbe> registryProbe_;
+    int registryTab_ = -1;
     // The category the filter dropdown is on; CategoryCount means "all".
     CleanCategory filterCategory_ = CleanCategory::CategoryCount;
     std::vector<CleanCategory> filterCategories_;
@@ -157,7 +180,8 @@ private:
     std::string pendingStatus_;
     bool pendingStatusDirty_ = false;
     // Which tab's status line the pending text belongs to.
-    bool pendingStatusIsAlbum_ = false;
+    enum class StatusTarget { Junk, Album, Registry };
+    StatusTarget pendingStatusTarget_ = StatusTarget::Junk;
     std::atomic<bool> working_{false};
     UltraCanvas::TimerId uiTimer_ = 0;
 };

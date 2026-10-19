@@ -1,10 +1,47 @@
 # UltraCanvasBreadcrumb Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [BreadcrumbItem Structure](#breadcrumbitem-structure)
+  - [Item Management](#item-management)
+  - [Path Helpers](#path-helpers)
+  - [Folder Path Mechanism](#folder-path-mechanism)
+  - [Dropdowns](#dropdowns)
+  - [Current Item](#current-item)
+  - [Style Configuration](#style-configuration)
+  - [Hover, Press and Readability](#hover-press-and-readability)
+- [Enumerations](#enumerations)
+  - [BreadcrumbSeparatorStyle](#breadcrumbseparatorstyle)
+  - [BreadcrumbOverflowMode](#breadcrumboverflowmode)
+  - [BreadcrumbItemStyle](#breadcrumbitemstyle)
+- [Style Presets](#style-presets)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Usage Examples](#usage-examples)
+  - [Default Breadcrumb](#default-breadcrumb)
+  - [Style Presets](#style-presets-1)
+  - [Building a Breadcrumb from a Path String](#building-a-breadcrumb-from-a-path-string)
+  - [Iterating Separator Styles](#iterating-separator-styles)
+  - [Item with Dropdown Menu](#item-with-dropdown-menu)
+  - [Items with Icons](#items-with-icons)
+  - [Live Navigation (Truncate Path on Click)](#live-navigation-truncate-path-on-click)
+  - [Overflow: Collapse Middle Items](#overflow-collapse-middle-items)
+  - [Overflow: Ellipsize per-item Text](#overflow-ellipsize-per-item-text)
+  - [Overflow: ShrinkText](#overflow-shrinktext)
+  - [Custom Rounded Strip Style](#custom-rounded-strip-style)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasBreadcrumb** is a hierarchical navigation control that renders a path of clickable segments separated by configurable separators. It supports per-item icons, per-item dropdown menus, several built-in style presets, and four different overflow strategies (clip, collapse, ellipsize, shrink-text) for narrow containers.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasBreadcrumb.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -31,9 +68,10 @@
 ### Constructor
 
 ```cpp
-UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
-                      long x = 0, long y = 0,
-                      long w = 400, long h = 28);
+UltraCanvasBreadcrumb(const std::string& identifier,
+                      float x, float y, float w, float h);
+UltraCanvasBreadcrumb(const std::string& identifier, float w, float h);   // position -1, -1
+explicit UltraCanvasBreadcrumb(const std::string& identifier = "");       // size -1, -1 (layout decides)
 ```
 
 ### Factory Function
@@ -41,7 +79,7 @@ UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
 ```cpp
 std::shared_ptr<UltraCanvasBreadcrumb> CreateBreadcrumb(
     const std::string& identifier,
-    long x, long y, long w = 400, long h = 28);
+    float x, float y, float w = 400, float h = 28);
 ```
 
 ### BreadcrumbItem Structure

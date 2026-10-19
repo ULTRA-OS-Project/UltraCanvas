@@ -1,7 +1,10 @@
 // core/UltraCanvasChip.cpp
 // Platform-independent chip and tag-input implementation.
+// Version: 1.0.3 - TagInput made without a height starts at OneRowHeight(), in the
+//                  layout's size.height too
+// Version: 1.0.2 - TagInput grows inside a layout: its height in the layout too
 // Version: 1.0.1
-// Last Modified: 2026-07-10
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasChip.h"
@@ -211,7 +214,13 @@ namespace UltraCanvas {
                                              float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Text;
-        if (h <= 0) SetHeight(style.chipStyle.height + 2 * style.padding);
+        // No height given: one row of chips, in the layout too (size.height),
+        // so a field in a flex container is as tall on its first frame as it
+        // will be after it has measured its chips.
+        if (h <= 0) {
+            size.height = CSSLayout::Dimension::Px(OneRowHeight());
+            SetHeight(OneRowHeight());
+        }
     }
 
     bool UltraCanvasTagInput::HasTag(const std::string& tag) const {
@@ -375,9 +384,14 @@ namespace UltraCanvas {
                           Point2Dd(caretX, inputRect.y + inputRect.height - 4));
         }
 
-        // Grow to fit wrapped rows.
+        // Grow to fit wrapped rows - in the layout too: a field in a flex
+        // container is given size.height at the next layout pass, which would
+        // put the height it was made with straight back.
         if (autoHeight && std::abs(contentHeight - b.height) > 0.5f) {
+            size.height = CSSLayout::Dimension::Px(contentHeight);
             SetHeight(contentHeight);
+            InvalidateLayout();
+            RequestRedraw();
         }
     }
 

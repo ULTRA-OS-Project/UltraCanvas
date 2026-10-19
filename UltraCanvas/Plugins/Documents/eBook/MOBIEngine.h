@@ -16,8 +16,13 @@
 // tables (one chapter per skeleton part) with FDST separating the markup flow
 // from CSS flows. HUFF/CDIC compression and DRM are detected and reported
 // rather than mis-rendered.
-// Version: 1.2.0
-// Last Modified: 2026-07-23
+//
+// The cover is the EXTH 201 image, else the first image of the book.
+// ReadCoverImageFromFile finds it without loading the book - and so also for
+// a DRM-protected or HUFF/CDIC-compressed one, whose images are stored
+// plainly - for a file manager's thumbnails.
+// Version: 1.3.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -52,6 +57,16 @@ public:
     std::vector<uint8_t> GetResource(const std::string& href) const override;
     std::vector<uint8_t> GetCoverImage() const override;
 
+    // The cover image of the Mobipocket / Kindle book at `filePath` (UTF-8):
+    // the JPEG / PNG / GIF / BMP bytes as the book stores them, the same
+    // picture GetCoverImage gives once the book is loaded, or an empty vector
+    // when the book has no image or is not a MOBI file. Reads the record
+    // list, record 0 and the cover record - not the text, which is neither
+    // decompressed nor decrypted, so a DRM-protected or HUFF/CDIC book has
+    // its cover too. Never throws, and owns everything it touches, so it is
+    // safe on any thread.
+    static std::vector<uint8_t> ReadCoverImageFromFile(const std::string& filePath);
+
     // ===== HELPERS (public for tests) =====
     static uint16_t ReadBE16(const uint8_t* p);
     static uint32_t ReadBE32(const uint8_t* p);
@@ -72,6 +87,7 @@ private:
 
     // Record-0 derived state.
     uint16_t compression = 1;
+    uint16_t encryption = 0;                     // PalmDOC header: 0 = none
     uint32_t textRecordCount = 0;
     uint32_t firstImageIndex = 0;
     uint32_t textEncoding = 1252;
@@ -97,7 +113,11 @@ private:
     };
 
     bool ParseRecords(const uint8_t* data, size_t size);
+    // Header fields + the refusal of a text this engine cannot read.
     bool ParseRecord0();
+    // Header fields only (PalmDOC, MOBI, EXTH): never refuses for DRM or
+    // compression, which concern the text records alone.
+    bool ParseRecord0Header();
     void ParseExth(const uint8_t* data, size_t size);
     bool DecompressText();
     void ExtractImages();

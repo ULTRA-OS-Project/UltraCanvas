@@ -1,7 +1,9 @@
 // core/UltraCanvasSlideshow.cpp
 // Timed image slideshow with selectable info-panel layouts and indicator styles.
-// Version: 1.4.0
-// Last Modified: 2026-06-13
+// Version: 1.5.0 - a picture saved over shows its new content: the drawn
+//                  paths go to an UltraCanvasImageFileWatch, checked on its
+//                  worker, never on the paint path
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlideshow.h"
@@ -454,8 +456,10 @@ namespace UltraCanvas {
             ctx->SetTextPaint(Color(180, 180, 180));
             ctx->SetFontSize(14.0f);
             ctx->DrawTextInRect("(no slides)", Rect2Dd(GetLocalBounds()));
+            imageFileWatch.SetDrawnImages({});
             return;
         }
+        drawnImages.clear();
 
         // Update continuous progress for ProgressBar / StoryBars
         if (elapsedFrozen) {
@@ -475,6 +479,8 @@ namespace UltraCanvas {
         DrawInfoPanel(ctx);
         DrawIndicators(ctx);
         ctx->PopState();
+        // What this paint drew is what is watched for being saved over.
+        imageFileWatch.SetDrawnImages(drawnImages);
     }
 
     void UltraCanvasSlideshow::DrawBackground(IRenderContext* ctx) {
@@ -520,6 +526,7 @@ namespace UltraCanvas {
         const auto& slide = slides[slideIdx];
         if (slide.imagePath.empty()) return;
         auto img = UCImage::Get(slide.imagePath);
+        drawnImages.push_back({slide.imagePath, img ? img->GetSourceStamp() : FileStamp{}});
         if (!img) return;
 
         int iw = img->GetWidth();
@@ -932,6 +939,9 @@ namespace UltraCanvas {
             ctx->ClipRect(Rect2Dd(r));
             ctx->SetAlpha(isActive ? 1.0f : 0.65f);
             auto img = UCImage::Get(slides[i].imagePath);
+            if (!slides[i].imagePath.empty())
+                drawnImages.push_back({slides[i].imagePath,
+                                       img ? img->GetSourceStamp() : FileStamp{}});
             if (img) {
                 ctx->DrawImage(*img, Rect2Dd(r), ImageFitMode::Cover);
             } else {

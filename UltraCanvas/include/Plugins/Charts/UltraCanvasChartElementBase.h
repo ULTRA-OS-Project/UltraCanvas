@@ -1,7 +1,11 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.2.1 - a left press is taken only when it starts a pan
+// Version: 1.2.0 - x-axis zoom and pan that work (charts opt in); the wheel and
+//                  drags are left to the parent when nothing zooms; plot area
+//                  recomputed on every resize; the element's own background
 // Version: 1.1.0
-// Last Modified: 2025-01-27
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -37,10 +41,25 @@ namespace UltraCanvas {
 
         // Interactive state
         bool isDragging = false;
-        bool isZooming = false;
         Point2Di lastMousePos;
+
+        // Free for a subclass that zooms or pans its own way (the tree map
+        // does); the base class's x-axis zoom below does not use them.
+        bool isZooming = false;
         float zoomLevel = 1.0f;
         Point2Di panOffset;
+
+        // The visible part of the x axis, as fractions of the whole range
+        // (0..1 = everything). Only the wheel and drags of a chart that returns
+        // true from SupportsXAxisZoom() move it, with SetEnableZoom /
+        // SetEnablePan on. In numeric mode it narrows cachedDataBounds' x
+        // range; in DataLabel mode it spreads the evenly spaced points.
+        double xViewStart = 0.0;
+        double xViewEnd = 1.0;
+        static constexpr double kMaxXAxisZoom = 50.0;   // narrowest view: 1/50 of the range
+        bool isPanning = false;
+        int panStartPointerX = 0;
+        double panStartViewStart = 0.0;
 
         // Animation state
         bool animationEnabled = true;
@@ -63,8 +82,8 @@ namespace UltraCanvas {
         size_t hoveredPointIndex = SIZE_MAX;
         bool isTooltipActive = false;
 
-        // Chart styling
-        Color backgroundColor = Color(255, 255, 255, 255);
+        // Chart styling. The background is the element's own
+        // (UltraCanvasUIElement::backgroundColor), white unless set.
         Color plotAreaColor = Color(250, 250, 250, 255);
         bool showBackground = true;
         bool showGrid = true;
@@ -103,7 +122,9 @@ namespace UltraCanvas {
 
     public:
         UltraCanvasChartElementBase(const std::string& id, int x, int y, int width, int height) :
-                UltraCanvasUIElement(id, x, y, width, height) {};
+                UltraCanvasUIElement(id, x, y, width, height) {
+            backgroundColor = Color(255, 255, 255, 255);
+        }
 
         virtual ~UltraCanvasChartElementBase() = default;
 
@@ -194,8 +215,11 @@ namespace UltraCanvas {
         // VISUAL CONFIGURATION (COMMON)
         // =============================================================================
 
+        // The element's background: the same colour UltraCanvasUIElement's
+        // SetBackgroundColor / GetBackgroundColor set and read. This overload
+        // only adds the repaint.
         void SetBackgroundColor(const Color& color) {
-            backgroundColor = color;
+            UltraCanvasUIElement::SetBackgroundColor(color);
             RequestRedraw();
         }
 
@@ -233,13 +257,37 @@ namespace UltraCanvas {
         // INTERACTIVE FEATURES (COMMON)
         // =============================================================================
 
+        // Wheel zoom of the x axis around the pointer (wheel up zooms in, down
+        // out, up to 50x). The line, area and scatter charts implement it; on
+        // other charts the flag is kept but the wheel goes to the parent. Off
+        // by default. Even when on, a wheel turn that changes nothing - outside
+        // the plot, or zooming out of the whole range - is left to the parent,
+        // so a scrolling container still scrolls. Turning it off resets the view.
         void SetEnableZoom(bool enable) {
             enableZoom = enable;
+            if (!enable) ResetZoom();
         }
 
+        // Dragging a zoomed x axis sideways with the left button. Off by
+        // default; only does something while a chart that zooms is zoomed in.
+        // A left press that starts no pan, and its release, are left to the
+        // parent, so a chart inside a scrolling or draggable container does
+        // not swallow its clicks.
         void SetEnablePan(bool enable) {
             enablePan = enable;
+            if (!enable) EndPan();
         }
+
+        // Back to the whole x range.
+        void ResetZoom() {
+            if (!IsZoomed()) return;
+            xViewStart = 0.0;
+            xViewEnd = 1.0;
+            InvalidateCache();
+            RequestRedraw();
+        }
+
+        bool IsZoomed() const { return xViewEnd - xViewStart < 1.0 - 1e-9; }
 
         void SetEnableSelection(bool enable) {
             enableSelection = enable;
@@ -260,6 +308,12 @@ namespace UltraCanvas {
 
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
+        // A new size (from SetBounds or from the layout's Arrange) makes the
+        // plot area be worked out again on the next paint.
+        using UltraCanvasUIElement::SetBounds;
+        void SetBounds(const Rect2Df& b) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
         // =============================================================================
         // EVENT HANDLING OVERRIDE
         // =============================================================================
@@ -277,8 +331,54 @@ namespace UltraCanvas {
                 cachedPlotArea = CalculatePlotArea();
                 // Calculate data bounds from current data source
                 cachedDataBounds = CalculateDataBounds();
+                ApplyXAxisView(cachedDataBounds);
                 cacheValid = true;
             }
+        }
+
+        // Charts that place their points through GetDataPointScreenPosition
+        // (numeric x through cachedDataBounds, or evenly spaced by index)
+        // return true, and then the wheel and drags zoom and pan the x axis.
+        virtual bool SupportsXAxisZoom() const { return false; }
+
+        // Narrows the x range of `bounds` to the visible part of the axis.
+        void ApplyXAxisView(ChartDataBounds& bounds) const {
+            if (!IsZoomed()) return;
+            double fullMin = bounds.minX;
+            double range = bounds.maxX - bounds.minX;
+            bounds.minX = fullMin + xViewStart * range;
+            bounds.maxX = fullMin + xViewEnd * range;
+        }
+
+        // Moves the visible part of the x axis, kept inside the whole range.
+        void SetXAxisView(double start, double span);
+
+        // Ends a pan drag and lets go of the mouse it captured.
+        void EndPan();
+
+        // Screen x of the index-th of totalPoints evenly spaced points
+        // (DataLabel mode), through the visible part of the axis.
+        double IndexToScreenX(size_t index, size_t totalPoints) const {
+            if (totalPoints <= 1) return cachedPlotArea.x + cachedPlotArea.width / 2;
+            double t = static_cast<double>(index) / static_cast<double>(totalPoints - 1);
+            return cachedPlotArea.x + (t - xViewStart) / (xViewEnd - xViewStart) * cachedPlotArea.width;
+        }
+
+        // False for a point scrolled out of the plot by the zoom, so it is
+        // neither hovered nor drawn outside the plot.
+        bool IsScreenXInView(double screenX) const {
+            return !IsZoomed() ||
+                   (screenX >= cachedPlotArea.x - 0.5 && screenX <= cachedPlotArea.GetRight() + 0.5);
+        }
+
+        // While zoomed: clips drawing to the plot's columns (value labels
+        // above and below the plot stay visible). Returns whether it pushed a
+        // state the caller pops.
+        bool PushXAxisViewClip(IRenderContext* ctx) {
+            if (!IsZoomed()) return false;
+            ctx->PushState();
+            ctx->ClipRect(Rect2Dd(cachedPlotArea.x, 0, cachedPlotArea.width, GetHeight()));
+            return true;
         }
 
         virtual ChartPlotArea CalculatePlotArea() {
@@ -345,19 +445,12 @@ namespace UltraCanvas {
         // Helper method to get screen position for a data point
         Point2Dd GetDataPointScreenPosition(size_t index, const ChartDataPoint& point) {
             if (useIndexBasedPositioning && dataSource) {
-                // Use index-based positioning (for categorical data with labels)
-                size_t totalPoints = dataSource->GetPointCount();
-                if (totalPoints <= 1) {
-                    // Single point - center it
-                    float x = cachedPlotArea.x + cachedPlotArea.width / 2;
-                    ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                    return Point2Dd(x, transform.DataToScreen(point.x, point.y).y);
-                } else {
-                    // Multiple points - distribute evenly
-                    float x = cachedPlotArea.x + (index * cachedPlotArea.width / (totalPoints - 1));
-                    ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                    return Point2Dd(x, transform.DataToScreen(point.x, point.y).y);
-                }
+                // Use index-based positioning (for categorical data with labels):
+                // one point is centred, several are spread evenly over the
+                // visible part of the axis
+                ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+                return Point2Dd(IndexToScreenX(index, dataSource->GetPointCount()),
+                                transform.DataToScreen(point.x, point.y).y);
             } else {
                 // Use actual x coordinate positioning (for numeric data)
                 ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);

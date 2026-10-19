@@ -25,6 +25,13 @@
 // screen (AuthenticatorWindow.h). Both timings live in a settings file beside
 // the vault (Preferences.h); nothing about them is secret.
 //
+// One UltraAuthenticator per user: a second start brings the running one
+// forward and quits (UltraCanvasSingleInstance.h).
+//
+// Version: 0.3.1 - the default vault folder comes from VaultLocation.h: Application
+//                  Support on macOS, %APPDATA% ahead of HOME on Windows, moved there once
+// Version: 0.3.0 - one UltraAuthenticator per user: a second start brings the
+//                  first one's window forward instead of opening another copy
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -32,10 +39,12 @@
 #include "AuthenticatorWindow.h"
 #include "NewVaultDialog.h"
 #include "Preferences.h"
+#include "VaultLocation.h"   // DefaultVaultPath
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
 
@@ -79,32 +88,6 @@ void PrintUsage(const char* prog) {
               << "  --vault PATH   use this vault file\n"
               << "  -h, --help     show this message\n"
               << "  -v, --version  show version\n";
-}
-
-// Per-user data directory, following XDG on Linux and the platform's
-// equivalent elsewhere. The vault holds second factors, so it belongs beside
-// the user's other application data, not in the working directory.
-std::string DefaultVaultPath() {
-    namespace fs = std::filesystem;
-    fs::path base;
-
-    // UTF-8 (GetEnvUtf8), as PathFromUtf8 expects: on Windows a narrow
-    // getenv answers in the ANSI code page and would miss a profile folder
-    // named outside it.
-    if (const std::string xdg = GetEnvUtf8("XDG_DATA_HOME"); !xdg.empty()) {
-        base = PathFromUtf8(xdg);
-    } else if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) {
-        base = PathFromUtf8(home) / ".local" / "share";
-    } else if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) {
-        base = PathFromUtf8(appData);
-    } else {
-        base = fs::current_path();
-    }
-
-    fs::path dir = base / "UltraAuthenticator";
-    std::error_code ec;
-    fs::create_directories(dir, ec);   // best effort; open reports real errors
-    return PathToUtf8(dir / "accounts.vault");
 }
 
 // Bridges a dialog's std::string into a secure buffer and wipes the copy we
@@ -188,7 +171,18 @@ int main(int argc, char* argv[]) {
         }
         if (a == "--vault" && i + 1 < argc) { vaultPath = argv[++i]; continue; }
     }
-    if (vaultPath.empty()) vaultPath = DefaultVaultPath();
+    if (vaultPath.empty()) {
+        // The platform's application data folder (VaultLocation.h); a vault
+        // 0.2.6 kept in ~/.local/share on macOS, or on Windows with HOME set,
+        // is moved there once, settings included.
+        std::string movedFrom, moveError;
+        vaultPath = DefaultVaultPath(&movedFrom, &moveError);
+        if (!movedFrom.empty())
+            std::cerr << "UltraAuthenticator: moved the vault and its settings from " << movedFrom
+                      << " to " << PathToUtf8(PathFromUtf8(vaultPath).parent_path()) << "\n";
+        else if (!moveError.empty())
+            std::cerr << "UltraAuthenticator: " << moveError << "\n";
+    }
 
     // Fail before showing any UI if there is no crypto backend. Without one
     // there is no safe way to hold a seed, and an authenticator that starts
@@ -207,6 +201,12 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, OnSignal);
 #endif
 
+    // One UltraAuthenticator per user, decided before any window opens: two
+    // copies would hold the same vault open and could each write it.
+    UltraCanvasSingleInstance instance("org.ultraos.ultraauthenticator", "UltraAuthenticator");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
     UltraCanvasApplication app;
 
     AccountStore store;
@@ -216,6 +216,12 @@ int main(int argc, char* argv[]) {
         if (!app.Initialize("UltraAuthenticator")) {
             std::cerr << "Failed to initialize UltraCanvas application\n";
             return EXIT_FAILURE;
+        }
+
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning) {
+            // The other copy holds the lock but did not answer: say so
+            // rather than vanish without a word.
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraAuthenticator");
         }
 
         // One icon, everywhere the app is drawn: the window and the taskbar
@@ -231,13 +237,20 @@ int main(int argc, char* argv[]) {
 
         OpenVaultThen(app, store, vaultPath, window);
 
+        // A later start asks this copy to come forward: the account list, or
+        // the unlock / new-vault dialog in front of it.
+        instance.ListenRaise();
+
         app.Run();
+        instance.Close();   // no request reaches the window once it starts to go
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
+        instance.Close();
         store.Close();
         return EXIT_FAILURE;
     } catch (...) {
         std::cerr << "Fatal: unknown exception\n";
+        instance.Close();
         store.Close();
         return EXIT_FAILURE;
     }

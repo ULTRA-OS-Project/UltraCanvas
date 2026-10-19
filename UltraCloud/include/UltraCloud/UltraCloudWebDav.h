@@ -4,8 +4,9 @@
 // links exist only when the account has a public base URL that mirrors the
 // DAV root (a plain web folder), in which case the link is base + path.
 // Nextcloud derives from this and adds real share links.
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.4.0 - Delete (DELETE) and Rename (MOVE): a WebDAV server is a drive too
+// Version: 0.3.0 - WebDavErrorMessage
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -29,6 +30,12 @@ std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& f
 // The link a plain web folder gives: publicBaseUrl + encoded path.
 std::string PublicFolderLink(const std::string& publicBaseUrl, const std::string& path);
 
+// The message of a WebDAV error body - SabreDAV's (Nextcloud, ownCloud)
+// "<d:error><s:exception>...</s:exception><s:message>File with name x could
+// not be located</s:message></d:error>" - with its entities decoded; "" when
+// the body carries none.
+std::string WebDavErrorMessage(const std::string& xml);
+
 class WebDavProvider : public HttpProviderBase {
 public:
     explicit WebDavProvider(HttpFn http = nullptr) : HttpProviderBase(std::move(http)) {}
@@ -46,6 +53,13 @@ public:
                   const std::string& localPath, const std::string& remotePath) override;
     Result Download(const Account& account, const Credentials& credentials,
                     const std::string& remotePath, const std::string& localPath) override;
+    // DELETE; a folder's URL ends with '/'. The root is refused.
+    Result Delete(const Account& account, const Credentials& credentials,
+                  const std::string& path, bool isDirectory) override;
+    // MOVE to the same folder under the new name, never over an existing
+    // entry (Overwrite: F).
+    Result Rename(const Account& account, const Credentials& credentials,
+                  const std::string& path, const std::string& newName) override;
     Result CreateShareLink(const Account& account, const Credentials& credentials,
                            const std::string& remotePath,
                            const ShareLinkOptions& options, ShareLink& out) override;

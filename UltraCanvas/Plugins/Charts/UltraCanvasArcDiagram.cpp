@@ -1,7 +1,10 @@
 // UltraCanvasArcDiagram.cpp
 // Arc diagram — nodes on a baseline, edges as cubic Bezier arcs above/below
+// Version: 1.1.1 - hover and clicks hit-test in local space (they were offset
+//                  by the diagram's position in its parent); presses and
+//                  clicks on the empty area are the diagram's
 // Version: 1.1.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 // Changes: P1 degree sizing, P2 vertical labels, P3 opacity weight, P4 semicircle mode,
 //          P5 axis arrow, P6 mid-arc arrowhead, P7 self-loops, P8 parallel bundles,
@@ -957,11 +960,20 @@ namespace UltraCanvas {
     bool UltraCanvasArcDiagram::OnEvent(const UCEvent& event) {
         if (nodes.empty()) return false;
 
-        auto bounds = GetLocalBounds();
-        float localX = static_cast<float>(event.pointer.x - finalBounds.x);
-        float localY = static_cast<float>(event.pointer.y - finalBounds.y);
+        // event.pointer is already local, the frame ComputeLayout places the
+        // nodes in. Subtracting finalBounds (the position in the parent) as
+        // well shifted every hover and click by that offset: a diagram not at
+        // its parent's top left selected the wrong node, or none.
+        float localX = static_cast<float>(event.pointer.x);
+        float localY = static_cast<float>(event.pointer.y);
 
         switch (event.type) {
+
+            // A node or an edge is chosen on the release; the press that
+            // starts the click is the diagram's all the same, or it would go
+            // on to the elements around the diagram while the release acts.
+            case UCEventType::MouseDown:
+                return event.button == UCMouseButton::Left;
 
             case UCEventType::MouseMove: {
                 int nodeIdx = HitTestNode(localX, localY);
@@ -1043,12 +1055,13 @@ namespace UltraCanvas {
                     return true;
                 }
 
-                // Click on empty area — deselect
+                // Click on empty area — deselect. The click was the
+                // diagram's either way.
                 if (selectedNodeIdx >= 0 || selectedEdgeIdx >= 0) {
                     selectedNodeIdx = selectedEdgeIdx = -1;
                     RequestRedraw();
                 }
-                return false;
+                return true;
             }
 
             default:

@@ -1,0 +1,6 @@
+# Sites that read HTML, CSS or entities on their own, from before
+# scripts/check_html_reuse.py existed. Each is a replacement waiting to
+# happen (HTML::ExtractPlainText, HTML::DecodeEntities,
+# ImportHTMLToRichDocument, HTML::StyleSheet) - see
+# Docs/UltraCanvas/UltraCanvasHTMLReader.md. Only shrink this file.
+# Regenerate with: python3 scripts/check_html_reuse.py --update-baseline

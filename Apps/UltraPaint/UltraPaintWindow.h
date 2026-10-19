@@ -8,8 +8,22 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
+// Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
+//                  the keyboard back to the text being typed
+// Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
+//                  canvas at its zoom edits a text layer; Layer > Edit Text / Rasterize Layer
+// Version: 1.5.0 - the right panel's sections are group boxes (optionsPanel, layersPanel)
+// Version: 1.4.0 - BringForward: restores and raises the window (a file handed over by a
+//                  second start opens in a window of its own and comes to the front)
+// Version: 1.3.0 - toolSlots: the palette's tools in groups, one slot each, with a fold-out bar
+// Version: 1.2.0 - the mouse pointer magnification glass (a loupe over the canvas while the
+//                  rectangle selection is active) and Edit > Settings... with its page
+// Version: 1.1.3 - StartLayerRename / FinishLayerRename: a layer is renamed in the list
+// Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
+// Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,12 +37,17 @@
 #include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 
 #include "UltraPaintTools.h"
 #include "UltraPaintFilters.h"
 #include "UltraPaintDialogs.h"
+#include "UltraPaintSettings.h"
+#include "UltraPaintSettingsDialog.h"
 
 #include <memory>
 #include <string>
@@ -55,6 +74,9 @@ public:
     // application exits with the last of them — so the pointer may be ignored.
     static std::shared_ptr<UltraPaintWindow> OpenWindow(const std::vector<std::string>& paths);
     static int WindowCount();
+    // Restores the window when minimised and raises it with the keyboard
+    // focus: what a file a second start handed over opened in comes forward.
+    void BringForward();
 
 private:
     // ----- window registry -----
@@ -69,9 +91,16 @@ private:
     void BuildToolbar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next editor opens it the way it was left.
+    void RememberColourPicker();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
+    // A menu entry's icon: the 16 px set (media/icons/ultrapaint/16).
+    std::string MenuIconPath(const std::string& file) const;
+    // A tool's icon for the palette: the 28 px set (media/icons/ultrapaint/28).
+    std::string ToolIconPath(const std::string& file) const;
     std::string TexterIconPath(const std::string& file) const;
 
     // ----- document -----
@@ -108,7 +137,9 @@ private:
     // Merges a document's flattened pixels into the open image as a new layer.
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
-    bool SaveToPath(const std::string& path);
+    // `size`: the pixel size chosen in the Save dialog's Settings for this
+    // save (Save As); the picture's own size otherwise.
+    bool SaveToPath(const std::string& path, const FileSaveImageSize& size = FileSaveImageSize());
     // Opens a dialog as this window's own: created, marked transient for the
     // editor and centred on it. A dialog that skips this is a top-level window
     // as far as the desktop is concerned, and gets placed like one — behind
@@ -136,6 +167,9 @@ private:
     void CmdCopy(bool merged);
     void CmdPaste();
     void CmdPasteAsNew();
+    // The newest image in the clipboard history, whatever the clipboard holds
+    // now (text copied after the picture, for one).
+    void CmdPasteLastImage();
     void CmdDelete();
     void CmdFill(bool foreground);
     void CmdScaleImage();
@@ -156,6 +190,7 @@ private:
     void CmdCurves();
     void CmdColourToAlpha();
     void CmdFilter(const PaintFilter& filter);
+    void CmdSettings();
     void CmdAbout();
     void CmdQuit();
 
@@ -163,8 +198,82 @@ private:
     void SelectTool(PaintToolId id);
     void RebuildToolOptions();
     void RebuildLayerPanel();
+    // Rebuilds the layer list once the current event has been handled: the
+    // request usually comes from a widget in that list (a row's button or
+    // visibility box), which the rebuild would destroy under its own handler.
+    void ScheduleLayerPanelRebuild();
+    // Renaming a layer in the list: a double-click on its name puts a text
+    // field in the name's place; Enter or a click elsewhere keeps what was
+    // typed, Escape the old name.
+    void StartLayerRename(int index);
+    void FinishLayerRename(bool keep, const std::string& name);
     PaintTool* ActiveTool() const;
-    void PlaceText(double x, double y, const UltraPaintTextResult& r);
+
+    // ----- the Text tool: typing on the canvas -----
+    // A text is typed into an UltraCanvasRichTextEdit lying over the canvas
+    // at the canvas's zoom, in the text's box; it lays the words out as the
+    // text layer will hold them (UltraCanvasRasterText.h), so what is typed is
+    // what the layer gets. The layer being edited is left out of the canvas
+    // meanwhile (UCRasterDocument::SetInPlaceEditLayer), and the edit goes
+    // into the document - a new text layer, or the edited one drawn again -
+    // as one undo step when it is committed.
+    struct TextEditSession {
+        std::shared_ptr<UCRasterLayer> layer;      // the text layer being edited; null for a new text
+        RasterTextContent content;                 // its box and default font (the edit's words are the editor's)
+    };
+    // Starts typing at (x, y): into the text layer whose box is there, or a
+    // new text there. `boxWidth` > 0 when a box was dragged out.
+    void BeginTextEdit(double x, double y, double boxWidth);
+    // The editor opened on layer `layerIndex` (a text layer), or on a new
+    // text at (x, y) when it is -1.
+    void OpenTextSession(int layerIndex, double x, double y, double boxWidth);
+    // Puts what was typed into the document and closes the editor. A new text
+    // left empty adds nothing; an edited text emptied is removed.
+    void CommitTextEdit();
+    bool IsEditingText() const { return textSession != nullptr; }
+    // Keeps the editor on the box as the view zooms and pans, and as tall as
+    // what is typed.
+    void PlaceTextEditor();
+    // A Text tool option changed: applied to the editor's selection (or what
+    // is typed next), else to the whole active text layer.
+    void ApplyTextOption(const std::string& option);
+    // A Text option's control let go of the keyboard without a change (a
+    // list closed with Escape): after the event that closed it, the keys go
+    // back to the text being typed - if the control still has them; Tab or a
+    // click elsewhere put them where they were meant to go.
+    void ReturnKeyboardToText(UltraCanvasUIElement& control);
+    // The topmost visible text layer whose box holds (x, y), or -1.
+    int TextLayerAt(double x, double y) const;
+    // Before painting on a text layer: asks whether to rasterize it.
+    void AskRasterize(const std::string& action);
+    // For a command that changes the active layer's pixels (a filter, Fill,
+    // Delete): finishes a text being typed and, when the active layer is a
+    // text layer, asks to rasterize it and returns true - the command stops.
+    bool StopsAtTextLayer(const std::string& action);
+    // Draws the box of the text being typed (and, with the Text tool, every
+    // text layer's) over the canvas.
+    void DrawTextBoxes(IRenderContext* ctx, const PaintViewTransform& view);
+    void CmdEditText();
+    void CmdRasterizeLayer();
+
+    // ----- the mouse pointer magnification glass -----
+    // A loupe over a corner of the canvas (a UltraCanvasPaintSurface in loupe
+    // mode inside a framed container) that shows the pixels around the
+    // pointer at the view's zoom times the configured factor, with a
+    // crosshair on the pointer's pixel. Shown while the active tool asks for
+    // it (PaintTool::WantsMagnifier) and Settings > Display has it on.
+    void BuildMagnifier();
+    // Applies settings.magnifier*: size, zoom, and whether it shows at all.
+    void ApplySettings();
+    // Shows or hides it for the active tool and the settings.
+    void UpdateMagnifierVisibility();
+    // Follows the pointer: the view, and the corner when the pointer comes
+    // near. `view` is the pointer in the surface's own coordinates.
+    void UpdateMagnifier(double imageX, double imageY, const Point2Di& view);
+    // Moves the glass to `corner` (0 top-left, 1 top-right, 2 bottom-left,
+    // 3 bottom-right) of the canvas.
+    void PlaceMagnifier(int corner);
+    Rect2Df MagnifierRectForCorner(int corner) const;
 
     // ----- filters with preview -----
 #ifdef HAS_LIBVIPS
@@ -184,18 +293,32 @@ private:
     std::shared_ptr<UltraCanvasContainer>      rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>    colorPicker;
     std::shared_ptr<UltraCanvasColorSwatchBar> swatches;
-    std::shared_ptr<UltraCanvasContainer>      optionsPanel;
-    std::shared_ptr<UltraCanvasLabel>          optionsTitle;
-    std::shared_ptr<UltraCanvasContainer>      layersPanel;
+    // Two of the right panel's cards (BuildRightPanel; the Colour card holds
+    // the picker and swatches): the active tool's options, captioned with the
+    // tool's name, and Layers.
+    std::shared_ptr<UltraCanvasGroupBox>       optionsPanel;
+    std::shared_ptr<UltraCanvasGroupBox>       layersPanel;
     std::shared_ptr<UltraCanvasContainer>      layerRows;
     std::shared_ptr<UltraCanvasSlider>         layerOpacity;
     std::shared_ptr<UltraCanvasDropdown>       layerBlend;
     std::shared_ptr<UltraCanvasContainer>      statusBar;
     std::shared_ptr<UltraCanvasLabel>          statusPos, statusZoom, statusSize, statusHint;
     std::shared_ptr<UltraCanvasButton>         undoButton, redoButton;
-    std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
+    // The palette's slots, one per tool group (UltraPaintWindow.cpp:
+    // PaletteGroups), top to bottom.
+    std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
+    std::shared_ptr<UltraCanvasContainer>      textEditorHost;   // over the canvas while a text is typed
+    std::shared_ptr<UltraCanvasRichTextEdit>   textEditor;       // in it, on the text's box
+    std::unique_ptr<TextEditSession>           textSession;
+    std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
+    std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it
+    int magnifierCorner = 1;                                      // where it sits now
+    std::weak_ptr<UltraPaintSettingsDialog>    settingsDialog;   // raised instead of reopened
+
+    UltraPaintSettings settings;
 
     std::shared_ptr<UCRasterDocument> document;
+    UCRasterDocument::ListenerId documentListener = 0;   // the panels' and title's
     std::vector<std::unique_ptr<PaintTool>> tools;
     PaintToolOptions toolOptions;
     PaintToolContext toolContext;
@@ -219,6 +342,17 @@ private:
         std::string file;
     };
     PasteSource ReadPasteSource();
+    // `image` as a new layer: where it was copied from when it came from
+    // here and still fits, centred otherwise.
+    void PasteAsLayer(std::shared_ptr<UCRasterLayer> image, const std::string& layerName, bool fromHere,
+                      const std::string& what);
+    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image);
+    // The clipboard history's newest image (UltraCanvasClipboardHistory, the
+    // one UltraDesktop keeps) and when it was copied ("5 min ago"); null when
+    // there is no history or no image in it.
+    std::shared_ptr<UCRasterLayer> LastCopiedImage(std::string& when);
+    // Nothing to paste: offers the history's newest image to `use`.
+    void OfferLastCopiedImage(const std::function<void(std::shared_ptr<UCRasterLayer>)>& use);
 
     // filter preview state
     std::shared_ptr<UCRasterLayer> previewOriginal;
@@ -232,6 +366,11 @@ private:
     std::string pendingImport;
     double pointerX = 0, pointerY = 0;
     bool pointerInside = false;
+    bool layerPanelRebuildPending = false;
+    int renamingLayer = -1;   // the layer whose name the list is editing, or -1
+    // Expires with the window, so a rebuild posted to the event loop does
+    // not run on a window that closed in between.
+    std::shared_ptr<bool> lifeToken = std::make_shared<bool>(true);
 };
 
 } // namespace UltraCanvas

@@ -24,7 +24,7 @@ The engine implements a useful subset of CSS, not the whole specification.
 **Supported layout modes:**
 
 - **Flex** (`display: flex`) — direction, wrap, grow/shrink/basis, justify/align, gap, order
-- **Grid** (`display: grid`) — explicit placement, auto-placement, track sizing (px / % / fr / auto / min/max-content / fit-content), gaps
+- **Grid** (`display: grid`) — explicit placement, auto-placement, track sizing (px / % / fr / auto / min/max-content / fit-content), gaps. Columns are sized first, then rows with each item measured at the width of the columns it spans, so wrapped text makes its row taller (CSS Grid §12.1). An auto-placed item spanning more columns than the grid has adds implicit columns.
 - **Block** (`display: block`, the default) — children stacked vertically; each in-flow
   child's margin offsets it and adds to the stack, and its left/right margin narrows the
   width it is offered (percentages resolve against the content width)
@@ -35,7 +35,7 @@ The engine implements a useful subset of CSS, not the whole specification.
 **Not implemented yet** (do not rely on these):
 
 - **No normal flow / inline layout.** `Inline` and `InlineBlock` fall through to Block
-  (see the `TODO` at `Element.cpp:214-215`) — there is no inline formatting context, no
+  (see the `TODO` at `Element.cpp:268-269`) — there is no inline formatting context, no
   text-run wrapping across boxes, no baseline alignment.
 - **No `table-row` / `table-cell` display types.** A table's cells are its direct
   children, placed by row and column (see [Table layout](#table-layout)); there are no
@@ -43,7 +43,8 @@ The engine implements a useful subset of CSS, not the whole specification.
 - Minor gaps: LTR writing-mode only; no margin collapsing (in Block as in Flex, two
   stacked siblings are separated by the *sum* of their facing margins); Block does not
   centre on `margin: auto` (an auto margin is 0 there); Grid named lines / template
-  areas / subgrid / masonry / dense packing are not implemented.
+  areas / subgrid / masonry / dense packing are not implemented (the HTML reader resolves
+  `grid-template-areas` to line numbers itself), and grid items' margins are not applied.
 
 ## How it integrates with the UI framework
 
@@ -60,26 +61,33 @@ flowchart TD
 ```
 
 The window calls `Measure()` then `Arrange()` on the root each frame for visible, dirty
-windows (see [UltraCanvasWindow.cpp:343-350](../UltraCanvas/core/UltraCanvasWindow.cpp#L343-L350)):
+windows (see [UltraCanvasWindow.cpp:681-689](../UltraCanvas/core/UltraCanvasWindow.cpp#L681-L689),
+where `window` is `this`):
 
+<!-- doc-check: UltraCanvasWindowBase* window; CSSLayout::LayoutContext lctx; -->
 ```cpp
 CSSLayout::MeasureConstraints mc{
     { CSSLayout::ConstraintMode::Exact, lctx.viewportWidth  },
     { CSSLayout::ConstraintMode::Exact, lctx.viewportHeight }
 };
-this->Measure(mc, lctx);
-this->Arrange(finalBounds, lctx);
+window->Measure(mc, lctx);
+window->Arrange(window->finalBounds, lctx);
 ```
 
 ## The element contract — every UI element must conform
 
 A widget participates in layout by overriding two virtual hooks declared on
-`CSSLayout::Element` ([CSSLayout.h:433-436](../UltraCanvas/include/CSSLayout/CSSLayout.h#L433-L436)):
+`CSSLayout::Element` ([CSSLayout.h:519-522](../UltraCanvas/include/CSSLayout/CSSLayout.h#L519-L522)):
 
 ```cpp
-virtual Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
-                                  const LayoutContext& ctx);
-virtual void    Arrange(const Rect2Df& finalRect, const LayoutContext& ctx);
+namespace UltraCanvas::CSSLayout {
+class Element {
+public:
+    virtual Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                      const LayoutContext& ctx);
+    virtual void    Arrange(const Rect2Df& finalRect, const LayoutContext& ctx);
+};
+}
 ```
 
 **1. `MeasureOwnContent()` — report intrinsic content size.**
@@ -87,7 +95,7 @@ A *leaf* widget (label, image, icon, button text) overrides this to return its o
 **content-box** size, *excluding* padding and border. Pure containers don't need it — the
 base returns `{0, 0}` and the engine sizes them from their children. When the engine needs
 to wrap content it passes a `definiteContentWidth`; otherwise it asks for max-content
-(`std::nullopt`). Example from `UltraCanvasLabel` (`UltraCanvasLabel.cpp:193-212`):
+(`std::nullopt`). Example from `UltraCanvasLabel` (`UltraCanvasLabel.cpp:395-420`):
 
 ```cpp
 Size2Df UltraCanvasLabel::MeasureOwnContent(std::optional<float> definiteContentWidth,
@@ -121,7 +129,7 @@ void UltraCanvasButton::Arrange(const Rect2Df& finalRect, const CSSLayout::Layou
 **3. Do NOT modify `finalBounds` manually.**
 `finalBounds` is engine-owned and written by `Arrange()`. Avoid the legacy
 `SetPosition()` / `SetSize()` setters (they bypass the engine and can break layout — note
-the warning at [UltraCanvasUIElement.h:218](../UltraCanvas/include/UltraCanvasUIElement.h#L218)).
+the warning at [UltraCanvasUIElement.h:265](../UltraCanvas/include/UltraCanvasUIElement.h#L265)).
 Prefer `SetElementSize()` / `SetElementAbsolutePosition()`, which update the CSS properties
 and let the engine recompute placement.
 
@@ -143,10 +151,17 @@ sequenceDiagram
     A->>L: Widget::Arrange override places sub-rects
 ```
 
-- **Measure** (`Element::Measure`, `Element.cpp:187`) computes each node's content-box size
+- **Measure** (`Element::Measure`, `Element.cpp:232`) computes each node's content-box size
   given its constraints, bottom-up. Results are cached by constraints *and* layout context
-  (viewport, font size, DPI), so unchanged subtrees are skipped.
-- **Arrange** (`Element::Arrange`, `Element.cpp:241`) walks top-down, writes each node's
+  (viewport, font size, DPI), so unchanged subtrees are skipped. Besides the current result
+  (`measured`), each element keeps its last eight results under other constraints
+  (`measureCache`). A flex or grid parent measures a child several ways (at its max-content,
+  at its line's size, stretched), and does it again each time it is measured itself. With
+  one cached result, nested flex boxes re-measured their whole subtree at every level and
+  layout time doubled per level of nesting. `InvalidateLayout` / `InvalidateSubtree` clear
+  both; code that drops a cached size by hand calls `ForgetMeasurements()`, not
+  `measured.valid = false`.
+- **Arrange** (`Element::Arrange`, `Element.cpp:297`) walks top-down, writes each node's
   border-box into `finalBounds`, and dispatches to `ArrangeBlock` / `ArrangeFlex` /
   `ArrangeGrid` to place children.
 
@@ -168,10 +183,15 @@ does exactly this to drop its in-field button when the command bar narrows.
 ## `finalBounds` is a border-box
 
 `finalBounds` now holds the element's **border-box** (border + padding + content;
-**margin excluded**), positioned relative to the parent's border-box origin. UI elements
-default to `box.boxSizing = BorderBox`
-([UltraCanvasUIElement.h:141](../UltraCanvas/include/UltraCanvasUIElement.h#L141)), so an
-explicit `width`/`height` describes the border-box directly.
+**margin excluded**), positioned relative to the parent's border-box origin. What an
+explicit `width`/`height` describes depends on `box.boxSizing`. Every
+`UltraCanvasUIElement` constructor sets `BorderBox` — the full-rect `(id, x, y, w, h)`
+([UltraCanvasUIElement.h:182](../UltraCanvas/include/UltraCanvasUIElement.h#L182)) and
+the size-only `(id, w, h)`
+([UltraCanvasUIElement.h:209](../UltraCanvas/include/UltraCanvasUIElement.h#L209)) — so
+a widget's size is its border-box, padding and border included. The engine's own
+default, for a bare `CSSLayout` box, is `ContentBox`
+([CSSLayout.h:260](../UltraCanvas/include/CSSLayout/CSSLayout.h#L260)).
 
 ```
    margin (NOT part of finalBounds)
@@ -207,7 +227,7 @@ CSS position type and how the engine sizes it:
 `Absolute` (against the containing block's padding-box) **but also contributes to the
 container's measured size** during Measure — the container grows to cover `left+width` /
 `top+height`. Plain `Absolute` keeps the standard CSS behaviour of *not* affecting the
-parent's size. From [CSSLayout.h:127-131](../UltraCanvas/include/CSSLayout/CSSLayout.h#L127-L131):
+parent's size. From [CSSLayout.h:153-157](../UltraCanvas/include/CSSLayout/CSSLayout.h#L153-L157):
 
 ```cpp
 // AbsoluteUI: positioned exactly like Absolute (against the padding-box),
@@ -218,17 +238,22 @@ enum class PositionType   { Static, Relative, Absolute, Fixed, AbsoluteUI };
 ```
 
 The full-rect constructor stamps `AbsoluteUI` **only for a real non-zero offset**
-([UltraCanvasUIElement.h:144-155](../UltraCanvas/include/UltraCanvasUIElement.h#L144-L155)) —
+([UltraCanvasUIElement.h:185-196](../UltraCanvas/include/UltraCanvasUIElement.h#L185-L196)) —
 flex/grid children are conventionally built with `(0, 0, w, h)` so they stay in flow and
 the parent's algorithm can place them. Note also that an explicit `width`/`height`
-**overrides** parent stretch (grid cell, `flex-grow`, `align-self: stretch`); for a widget
-you want the engine to size or stretch, use the no-size constructor (or pass `0, 0`).
+**overrides** the parent's stretch (`align-items` / `justify-items: stretch`), though not
+the element's own `align-self: stretch`; for a widget you want the engine to size or
+stretch, use the no-size constructor (or pass `0, 0`). See
+[Stretching is a design decision](#stretching-is-a-design-decision).
 
 ## Quick guidelines
 
 - **Prefer Flex / Grid layouts over absolute positions.**
 - For children of a flex/grid container, use the **no-size** (or `(0,0)`) constructor so the
   parent's algorithm sizes them; pass a fixed `w`/`h` only when you truly want a fixed box.
+- **Ask for stretch where the design wants it.** Nothing stretches by default; a container
+  that should fill its children across says `SetFlexAlignItems(AlignItems::Stretch)` (grid:
+  `SetGridJustifyItems` / `SetGridAlignItems`), one child says `SetAlignSelf(Stretch)`.
 - For **leaf widgets**, implement `MeasureOwnContent()` to publish the content-box size.
 - Override `Arrange()` only for internal sub-rect placement — call the base first.
 - **Never write to `finalBounds` directly;** use `SetElementSize()` /
@@ -288,6 +313,16 @@ its children with unbounded height - the block parent's own set height, which it
 records on each child as `percentHeightBase` (so `Pct(50)` inside a box of
 `Px(200)` is 100, and 50% of that inside it 50). With neither, as in CSS, a
 percentage height is auto and a percentage limit limits nothing.
+
+An `Exact` constraint on **one** axis is normally only a fill hint: a block
+offers its children its content width that way, and a child's own `size.width`
+(`Pct(50)`, `Px(120)`) still wins. A parent that decides a child's width itself
+says so with `widthSetByParent = true` on the child; an `Exact` width from it is
+then the child's used width, exactly as an `Exact` on both axes always is. The
+table engine sets it on its cells: a cell's own px / % width has already gone
+into its column, and the row's height is measured with the cell's content at
+the column's width - not at a cell of `width="50%"` taking its 50% a second
+time (`Tests/HTMLTableLayoutTest.cpp`, *LinkedIn mail*).
 
 A `Dimension` can carry pixels on top of its value, CSS's `calc(50% - 20px)`:
 `Dimension::PctPlus(50, -20)`, or any `Dimension` with `offsetPx` set. The
@@ -358,6 +393,46 @@ scroll-range arithmetic `UltraCanvasContainer::UpdateScrollability` performs.
 
 The grid engine needs no such fallback: `ArrangeGrid` sizes a non-stretch item to
 `min(track, natural)`, so a grid item can never be larger than the area it is aligned in.
+
+## Stretching is a design decision
+
+The engine stretches nothing on its own. A child is stretched across its container only
+when the layout asks for it, and the most specific statement wins: the child's own
+`align-self` / `justify-self`, then the child's own size, then its container's
+`align-items` / `justify-items`.
+
+| Who asks | Flex | Grid |
+|---|---|---|
+| the container, for every child | `layout.SetFlexAlignItems(AlignItems::Stretch)` | `layout.SetGridJustifyItems(JustifyItems::Stretch)` (across the column), `layout.SetGridAlignItems(AlignItems::Stretch)` (down the row) |
+| one child (wins over its own size) | `layoutItem.SetAlignSelf(AlignSelf::Stretch)` | `layoutItem.SetJustifySelf(...)`, `layoutItem.SetGridAlignSelf(...)` |
+| the default | `AlignItems::Start`: each child at its own size, at the start | `Start` both ways; a grid item's `Auto` takes the container's |
+
+- **A set size beats the container's stretch.** A child with a `width` (in a column, or a
+  grid cell's width) or a `height` (in a row, or a grid cell's height) keeps it when only
+  its container asks for `Stretch`, aligned to the start — CSS Flexbox §9.4 step 11, CSS
+  Box Alignment §6.1. A 200 px button in a stretching column is 200 px; a text input that
+  should fill the column is one built without a width.
+- **The child's own stretch beats its size.** `layoutItem.SetAlignSelf(Stretch)` (grid:
+  `SetJustifySelf` / `SetGridAlignSelf`) stretches the child over a width or height it
+  carries. CSS would keep the size; here a size often comes from a constructor that needs
+  one, while an `align-self` is always meant, so this is the one place the engine departs
+  from CSS. A reader mapping a stylesheet drops an `align-self: stretch` that CSS would
+  ignore.
+- **A negative size is no size.** CSS rejects a negative `width` / `height`; here `-1` is
+  the "not set" marker and a size computed before the window had one can come out
+  negative, so a negative length counts as automatic.
+- **Finding leftovers:** run an application with `ULTRACANVAS_LAYOUT_AUDIT=1` and every
+  child whose set size outranked its container's stretch is printed once on stderr, with
+  both sizes — a size given only because a constructor wanted one shows up there.
+- **Wrapping still works.** A child that is not stretched is measured against the
+  container's width as an upper bound, so a word-wrapping label in a `Start` column still
+  wraps at the column's width; it is just not widened past its text.
+- **For a stylesheet reader:** the CSS initial value of `align-items` is `stretch`, so code
+  that maps CSS onto these structures sets `Stretch` explicitly wherever the sheet leaves
+  `align-items` unset.
+- Until 2026-10-06 flex `align-items` and grid items defaulted to stretch and a set size
+  was stretched over; the containers in the framework and apps that relied on that ask for
+  it explicitly now. `Apps/CSSLayoutTests` (Phase 11) pins the rule.
 
 ## Table layout
 

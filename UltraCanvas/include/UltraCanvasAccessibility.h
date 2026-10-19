@@ -5,7 +5,8 @@
 // positions and formatting, and a stream of events telling a listener what
 // changed. The platform bridges sit on top of it: AT-SPI on Linux
 // (OS/Linux/UltraCanvasLinuxAccessibility), UI Automation on Windows
-// (OS/MSWindows/UltraCanvasWindowsAccessibility); none yet for macOS.
+// (OS/MSWindows/UltraCanvasWindowsAccessibility), NSAccessibility on macOS
+// (OS/MacOS/UltraCanvasMacOSAccessibility).
 //
 //     if (IAccessibleText* text = element->GetAccessibleTextInterface()) {
 //         int start = 0, end = 0;
@@ -16,7 +17,7 @@
 //
 // Offsets count characters (Unicode code points), as the platform APIs do,
 // not bytes.
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -45,7 +46,35 @@ enum class AccessibleRole {
     Image,
     Link,
     Menu,
-    MenuItem
+    MenuItem,
+    // Version 1.2: the common widgets.
+    RadioButton,
+    Switch,           // on/off switch (a toggle button to assistive technology)
+    ComboBox,         // drop-down list with one current item
+    Slider,
+    SpinButton,       // number field with up/down steps
+    ProgressBar,
+    Toolbar,
+    TabList,          // tabbed container
+    Tree,
+    Group             // panel, group box: holds and names other elements
+};
+
+// A checkbox, radio button, switch or toggle button's state.
+enum class AccessibleToggleState {
+    NotToggleable,
+    Off,
+    On,
+    Mixed             // a tri-state checkbox's indeterminate state
+};
+
+// A slider, spin button or progress bar's value and range.
+struct AccessibleRange {
+    double value = 0.0;
+    double minimum = 0.0;
+    double maximum = 0.0;
+    double step = 0.0;        // 0 = continuous
+    bool readOnly = false;
 };
 
 enum class AccessibleTextBoundary { Character, Word, Line, Sentence, Paragraph };
@@ -103,7 +132,9 @@ enum class AccessibilityEventType {
     CaretMoved,         // offset = the new caret offset
     SelectionChanged,
     NameChanged,
-    ElementDestroyed    // `element` is being destroyed; drop any reference to it
+    ElementDestroyed,   // `element` is being destroyed; drop any reference to it
+    ValueChanged,       // its range value or value text changed (slider, combo box, text field)
+    StateChanged        // its toggle state changed (checked, pressed)
 };
 
 struct AccessibilityEvent {

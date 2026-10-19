@@ -8,13 +8,18 @@
 //
 //   * UltraCanvasTagInput — a token field: type text and press Enter (or comma)
 //                           to add a removable chip; Backspace on an empty field
-//                           removes the last chip. Chips wrap across rows.
+//                           removes the last chip. Chips wrap across rows and
+//                           the field grows to fit them, in a layout too.
 //
 // Both are self-rendered (no child widgets) and follow the standard element
 // conventions.
 //
+// Version: 1.0.3 - CreateTagInput: no height given, the field starts as tall as
+//                  one row of chips (OneRowHeight), so it does not grow on the
+//                  first frame
+// Version: 1.0.2 - TagInput: autoHeight grows the field inside a layout
 // Version: 1.0.1
-// Last Modified: 2026-07-10
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -219,6 +224,10 @@ namespace UltraCanvas {
         void SetStyle(const TagInputStyle& s) { style = s; RequestRedraw(); }
 
         float GetContentHeight() const { return contentHeight; }
+        // The height of the field with one row of chips: the chip height
+        // plus the padding above and below. A field made without a height
+        // starts at this.
+        float OneRowHeight() const { return style.chipStyle.height + 2 * style.padding; }
 
         // ===== OVERRIDES =====
         bool AcceptsFocus() const override { return true; }
@@ -265,8 +274,10 @@ namespace UltraCanvas {
         return c;
     }
 
+    // No height (h <= 0): the field starts as tall as one row of chips and
+    // grows a row at a time (autoHeight).
     inline std::shared_ptr<UltraCanvasTagInput> CreateTagInput(
-            const std::string& identifier, float x, float y, float w, float h = 36) {
+            const std::string& identifier, float x, float y, float w, float h = -1) {
         return std::make_shared<UltraCanvasTagInput>(identifier, x, y, w, h);
     }
 

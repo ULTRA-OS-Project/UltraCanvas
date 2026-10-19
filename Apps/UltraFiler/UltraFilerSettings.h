@@ -1,16 +1,21 @@
 // Apps/UltraFiler/UltraFilerSettings.h
-// Persistent application settings for UltraFiler. Follows the UltraTexter
-// config pattern: a simple key=value file in the platform config directory
-// (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
-// on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
+// Persistent application settings for UltraFiler: a simple key=value file,
+// config.ini, in UltraFiler's folder of the shared UltraCanvas settings
+// folder (UltraCanvasSettingsFolder(): ~/.config/UltraCanvas/UltraFiler on
+// Linux, %APPDATA%\UltraCanvas\UltraFiler on Windows,
+// ~/Library/Application Support/UltraCanvas/UltraFiler on macOS), where
+// every UltraCanvas application keeps its settings. The history, favorites,
+// folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.13.0
-// Last Modified: 2026-09-17
+// Version: 1.16.0 - the shared settings folder, and the move of the old one into it
+// Version: 1.15.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasPathUtf8.h"     // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
+#include "UltraCanvasSettingsFolder.h"
 #include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge,
                                      // FilerFileIconStyle
 
@@ -27,6 +32,13 @@
 
 namespace UltraCanvas {
 
+// Display > Tab style: the three looks of the window's tab strip.
+enum class FilerTabStripStyle {
+    Modern,        // capsules floating in the strip, the open one outlined
+    SimpleModern,  // flat tabs, a line under the open one
+    Classic        // the rounded tabs joined to the page, as before 1.71.0
+};
+
 class UltraFilerSettings {
 public:
     // ===== DEFAULTS =====
@@ -34,6 +46,16 @@ public:
     // offer "Restore defaults" without repeating the literals.
     static inline const Color kDefaultTreeDriveBackgroundColor{226, 236, 248, 255};
     static inline const Color kDefaultTreeSelectedFolderColor{0, 120, 215, 255};
+
+    // Display > Treeview: the folder tree's width - the narrowest the tree
+    // pane goes (the divider stops there too; low enough that a tree of a few
+    // short names really is fitted to them, as UltraMail's folder list is),
+    // the widest a fitted tree grows to (a folder a dozen levels down would
+    // otherwise push the file display off the window), and the fixed width a
+    // fresh installation would use.
+    static constexpr int kMinTreeWidth     = 100;
+    static constexpr int kMaxTreeWidth     = 600;
+    static constexpr int kDefaultTreeWidth = 280;
 
     // Display > PDF Inventory: the range the thumbnail width slider offers and
     // the width the preview ships with. A thumbnail below ~32 px shows nothing
@@ -78,6 +100,12 @@ public:
     // them, and the highlight of the selected folder.
     Color treeDriveBackgroundColor = kDefaultTreeDriveBackgroundColor;
     Color treeSelectedFolderColor  = kDefaultTreeSelectedFolderColor;
+    // ... and its width: fitted to the rows on show, 10 px wider than the
+    // longest (following them as branches open and close and drives come and
+    // go), or the fixed number of pixels set beside it. Dragging the divider
+    // still resizes the tree for the moment.
+    bool treeWidthAuto  = true;
+    int  treeFixedWidth = kDefaultTreeWidth;   // pixels, when not auto
 
     // Display > Home folder: what the Home folder shows - in the folder tree
     // and in the file display alike. "Predefined only" lists the main user
@@ -117,12 +145,21 @@ public:
     // Display > File icons: whose icons an entry with no picture of its own
     // is drawn with - UltraFiler's own drawn folder shape and coloured sheet,
     // or the icon this desktop uses for the type (the shell's on Windows,
-    // Finder's on macOS, the icon theme's on Linux/BSD). The simple icons by
-    // default: they are what every earlier release drew, they look the same
-    // on every platform, and they need nothing installed. Files that show a
+    // Finder's on macOS, the icon theme's on Linux/BSD). The host's icons by
+    // default, so a folder listing looks like the rest of the desktop; a
+    // system with no desktop to ask draws the simple icons whatever this
+    // says, and so does any type the host has no icon for. Files that show a
     // thumbnail of their own content, and programs and shortcuts that carry
     // an icon inside them, are drawn the same way under both.
-    FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
+    FilerFileIconStyle fileIconStyle = FilerFileIconStyle::HostOperatingSystem;
+
+    // Display > Tab style: how the window's tab strip draws its tabs.
+    // Modern is the capsule look (each tab a pill floating in the strip,
+    // the open one white with a blue outline, the others plain text until
+    // hovered); Simple modern is flat tabs with a blue line under the open
+    // one; Classic is the rounded tabs joined to the page that every release
+    // before 1.71.0 drew.
+    FilerTabStripStyle tabStripStyle = FilerTabStripStyle::Modern;
 
     // Display > Files: whether the file display lists what the platform
     // calls hidden - the dot names everywhere, plus the hidden attribute on
@@ -287,27 +324,62 @@ public:
 
     // ===== PERSISTENCE =====
 
+    // UltraFiler's folder in the shared UltraCanvas settings folder, as every
+    // newer application keeps it. Until 1.72.4 UltraFiler had a folder of its
+    // own beside it (~/.config/UltraFiler, %APPDATA%\UltraFiler, ~/Library/
+    // Application Support/UltraFiler); the first call after the change moves
+    // that folder, whole - config.ini, history, favorites, folder views,
+    // folder icons, the remote drive list - into the new place, so nothing
+    // is lost, and copies it where a move is not possible (another file
+    // system). "UltraFiler", relative, when the environment names no home.
     static std::string GetConfigDirectory() {
+        static const std::string directory = []() {
+            const std::filesystem::path shared = UltraCanvasSettingsFolder();
+            if (shared.empty()) return std::string("UltraFiler");
+            const std::filesystem::path current = shared / "UltraFiler";
+            MoveLegacyConfigDirectory(current);
+            return PathToUtf8(current);
+        }();
+        return directory;
+    }
+
+    // Where UltraFiler kept its settings before 1.72.4; empty when the
+    // environment names no home. Every variable is read through GetEnvUtf8,
+    // like every path in UltraFiler: the narrow getenv answers in the ANSI
+    // code page on Windows, which cannot spell a profile folder named in
+    // Thai. This and MoveLegacyConfigDirectory can go once a release has
+    // carried the move to every installation.
+    static std::filesystem::path LegacyConfigDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-        // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8),
-        // like every path in UltraFiler. The narrow getenv answers in the
-        // ANSI code page, which cannot spell a profile folder named in Thai
-        // under code page 1252 (it came back with '?' in it) and which SQLite
-        // and the vault, given these bytes, read as UTF-8 even where it
-        // could.
         if (const std::string appdata = GetEnvUtf8("APPDATA"); !appdata.empty())
-            return PathToUtf8(PathFromUtf8(appdata) / "UltraFiler");
-        return std::string("UltraFiler");
+            return PathFromUtf8(appdata) / "UltraFiler";
+        return {};
 #elif defined(__APPLE__)
-        const char* home = std::getenv("HOME");
-        return home ? std::string(home) + "/Library/Application Support/UltraFiler"
-                    : std::string("UltraFiler");
+        const std::string home = GetEnvUtf8("HOME");
+        return home.empty() ? std::filesystem::path()
+                            : PathFromUtf8(home) / "Library" / "Application Support" / "UltraFiler";
 #else
-        const char* xdgConfig = std::getenv("XDG_CONFIG_HOME");
-        if (xdgConfig) return std::string(xdgConfig) + "/UltraFiler";
-        const char* home = std::getenv("HOME");
-        return home ? std::string(home) + "/.config/UltraFiler" : std::string("UltraFiler");
+        if (const std::string xdgConfig = GetEnvUtf8("XDG_CONFIG_HOME"); !xdgConfig.empty())
+            return PathFromUtf8(xdgConfig) / "UltraFiler";
+        const std::string home = GetEnvUtf8("HOME");
+        return home.empty() ? std::filesystem::path() : PathFromUtf8(home) / ".config" / "UltraFiler";
 #endif
+    }
+
+    // Moves the pre-1.72.4 folder to `current` when `current` does not exist
+    // yet and the old one does. A failed move (another file system) falls
+    // back to a copy, which leaves the old folder behind.
+    static void MoveLegacyConfigDirectory(const std::filesystem::path& current) {
+        std::error_code ec;
+        if (std::filesystem::exists(current, ec)) return;
+        const std::filesystem::path legacy = LegacyConfigDirectory();
+        if (legacy.empty() || !std::filesystem::is_directory(legacy, ec)) return;
+        std::filesystem::create_directories(current.parent_path(), ec);
+        ec.clear();
+        std::filesystem::rename(legacy, current, ec);
+        if (!ec) return;
+        ec.clear();
+        std::filesystem::copy(legacy, current, std::filesystem::copy_options::recursive, ec);
     }
 
     static std::string GetConfigPath() { return GetConfigDirectory() + "/config.ini"; }
@@ -346,6 +418,11 @@ public:
         if (it != kv.end()) ParseColor(it->second, treeDriveBackgroundColor);
         it = kv.find("tree.selected.folder.color");
         if (it != kv.end()) ParseColor(it->second, treeSelectedFolderColor);
+        it = kv.find("tree.width.mode");
+        if (it != kv.end()) treeWidthAuto = (it->second != "fixed");
+        it = kv.find("tree.width");
+        if (it != kv.end())
+            ParseInt(it->second, treeFixedWidth, kMinTreeWidth, kMaxTreeWidth);
         it = kv.find("display.home.content");
         if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
         it = kv.find("display.thumbnails.kinds.off");
@@ -362,8 +439,15 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
-        it = kv.find("display.file.icons");
+        // Not "display.file.icons", the key UltraFiler 1.66.1 and earlier
+        // wrote: every save put "simple" there whether or not anyone chose
+        // it, so it cannot tell a choice from the old default, and reading
+        // it would keep every existing installation on the simple icons.
+        // Its only other value, "host", is the default now anyway.
+        it = kv.find("display.file.icons.style");
         if (it != kv.end()) fileIconStyle = ParseFileIconStyle(it->second);
+        it = kv.find("display.tabs.style");
+        if (it != kv.end()) tabStripStyle = ParseTabStripStyle(it->second);
         it = kv.find("display.files.show.hidden");
         if (it != kv.end())
             showHiddenFiles =
@@ -457,6 +541,8 @@ public:
              << FormatColor(treeDriveBackgroundColor) << "\n";
         file << "tree.selected.folder.color = "
              << FormatColor(treeSelectedFolderColor) << "\n";
+        file << "tree.width.mode = " << (treeWidthAuto ? "auto" : "fixed") << "\n";
+        file << "tree.width = " << treeFixedWidth << "\n";
         file << "display.home.content = "
              << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
         file << "display.thumbnails.kinds.off = "
@@ -471,8 +557,10 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
-        file << "display.file.icons = "
+        file << "display.file.icons.style = "
              << FormatFileIconStyle(fileIconStyle) << "\n";
+        file << "display.tabs.style = "
+             << FormatTabStripStyle(tabStripStyle) << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
         file << "display.ignored.builtin = "
@@ -551,6 +639,25 @@ public:
     static FilerFileIconStyle ParseFileIconStyle(const std::string& text) {
         return Trim(text) == "host" ? FilerFileIconStyle::HostOperatingSystem
                                     : FilerFileIconStyle::Simple;
+    }
+
+    // ===== HOW THE TAB STRIP DRAWS ITS TABS =====
+    // Named, like every other choice in the file. An unknown value - a file
+    // written by a later release with a fourth style - reads back as Modern,
+    // the default.
+    static std::string FormatTabStripStyle(FilerTabStripStyle style) {
+        switch (style) {
+            case FilerTabStripStyle::SimpleModern: return "simple-modern";
+            case FilerTabStripStyle::Classic:      return "classic";
+            default:                               return "modern";
+        }
+    }
+
+    static FilerTabStripStyle ParseTabStripStyle(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "simple-modern") return FilerTabStripStyle::SimpleModern;
+        if (value == "classic")       return FilerTabStripStyle::Classic;
+        return FilerTabStripStyle::Modern;
     }
 
     // ===== THE DROP CONFIRMATION =====

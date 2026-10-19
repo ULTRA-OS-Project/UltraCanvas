@@ -25,7 +25,13 @@
 #                          directory inside the source or build tree.
 #   UC_VCPKG_KEEP_GOING=1  build every port it can and list all failures,
 #                          instead of stopping at the first
+#   UC_VCPKG_ONLY_DOWNLOADS=1  download every port's sources and tools and build
+#                          nothing (vcpkg install --only-downloads); prints no
+#                          prefix. CI runs it to fill its asset cache.
 #   VCPKG_BINARY_SOURCES   vcpkg's own binary cache setting (CI points it at a
+#                          directory it restores and saves between runs)
+#   X_VCPKG_ASSET_SOURCES  vcpkg's asset cache setting: where downloaded sources
+#                          are kept and looked for first (CI points it at a
 #                          directory it restores and saves between runs)
 #   MACOSX_DEPLOYMENT_TARGET  when set, must match the triplet's target
 #
@@ -99,8 +105,17 @@ args=(
     --clean-after-build
 )
 [ "${UC_VCPKG_KEEP_GOING:-}" = "1" ] && args+=(--keep-going)
+only_downloads=0
+if [ "${UC_VCPKG_ONLY_DOWNLOADS:-}" = "1" ]; then
+    only_downloads=1
+    args+=(--only-downloads)
+fi
 
-echo "macos-deps: building for $triplet (macOS $triplet_target and newer)" >&2
+if [ "$only_downloads" = 1 ]; then
+    echo "macos-deps: downloading the sources for $triplet (building nothing)" >&2
+else
+    echo "macos-deps: building for $triplet (macOS $triplet_target and newer)" >&2
+fi
 # Build output to stderr, so the prefix is the only thing on stdout; a copy
 # is kept to find the ports that failed.
 vcpkg_log=$(mktemp "${TMPDIR:-/tmp}/macos-deps.XXXXXX")
@@ -123,6 +138,11 @@ if ! VCPKG_ROOT="$VCPKG_ROOT" "$VCPKG_ROOT/vcpkg" "${args[@]}" 2>&1 | tee "$vcpk
     echo "macos-deps: vcpkg failed; ports that failed to build: ${failed:-none named - see the vcpkg output above}" >&2
     grep -E 'failed with: |: (BUILD_FAILED|POST_BUILD_CHECKS_FAILED|FILE_CONFLICTS|CASCADED_)' "$vcpkg_log" >&2 || true
     exit 1
+fi
+
+if [ "$only_downloads" = 1 ]; then
+    echo "macos-deps: every source downloaded" >&2
+    exit 0
 fi
 
 prefix="$INSTALL_ROOT/$triplet"

@@ -7,10 +7,12 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
-// Version: 1.2.0
+// Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUI.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
@@ -263,8 +265,15 @@ Rect2Df UltraCanvasRichTextEdit::ToElement(const Rect2Df& r) const {
                    r.width * zoom, r.height * zoom);
 }
 
+void UltraCanvasRichTextEdit::SetZoomRange(float minimum, float maximum) {
+    if (!(minimum > 0.0f) || !(maximum >= minimum)) return;
+    minZoom = minimum;
+    maxZoom = maximum;
+    SetZoom(zoom);
+}
+
 void UltraCanvasRichTextEdit::SetZoom(float factor) {
-    factor = std::clamp(factor, 0.25f, 5.0f);
+    factor = std::clamp(factor, minZoom, maxZoom);
     if (std::abs(factor - zoom) < 0.001f) return;
     // The scroll offset is in document pixels, so the view keeps its place.
     zoom = factor;
@@ -2197,7 +2206,12 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
         // At the usual marker position, unless the label is too wide to fit
         // before the text there ("1.2.3.", "(viii)"): then it moves left to
         // end a small gap before the text, but never past the column edge.
-        const double width = static_cast<double>(ctx->GetTextLineWidth(bl.markerText));
+        // The standard bullets are drawn, as wide as a "•": the bundled UI
+        // font has no "◦" or "▪", which showed as hex boxes where no
+        // fallback font has them either.
+        const bool drawnBullet = IsDrawnBullet(bl.markerText);
+        const double width = static_cast<double>(
+                ctx->GetTextLineWidth(drawnBullet ? std::string("\xE2\x80\xA2") : bl.markerText));
         const double gap = std::max(4.0, markerFont.fontSize * 0.4);
         double markerX = std::max(static_cast<double>(originX),
                                   std::min(static_cast<double>(originX + bl.markerLeft),
@@ -2207,7 +2221,10 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
             const double textRight = originX + bl.textLeft + (bl.layout ? bl.layout->GetExplicitWidth() : 0.0);
             markerX = std::max(textRight + gap, static_cast<double>(originX + bl.markerLeft) - width);
         }
-        ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
+        if (!drawnBullet || !DrawBulletMark(ctx, bl.markerText, Point2Dd(markerX, originY), markerFont,
+                                            style.listMarkerColor)) {
+            ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
+        }
         ctx->PopState();
     }
 
@@ -3573,6 +3590,10 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
             }
             return true;
         }
+        // No menu of its own: the right press goes on to the elements around
+        // the editor, so the menu of the pane or card it sits in can open -
+        // as a button without a context menu lets it. Taking the focus and
+        // selecting a picture above are what that menu then acts on.
         return false;
     }
 
@@ -4106,6 +4127,7 @@ UC_RTE_FORMAT_ACTION(ClearFormatting(), editor.ClearFormatting())
 UC_RTE_FORMAT_ACTION(SetFontFamily(const std::string& family), editor.SetFontFamily(family))
 UC_RTE_FORMAT_ACTION(SetFontSize(float pt), editor.SetFontSize(pt))
 UC_RTE_FORMAT_ACTION(SetTextColor(const std::string& hexColor), editor.SetTextColor(hexColor))
+UC_RTE_FORMAT_ACTION(ApplyCharFormat(const RichCharFormatDelta& delta), editor.ApplyCharFormat(delta))
 UC_RTE_FORMAT_ACTION(SetLink(const std::string& target), editor.SetLink(target))
 UC_RTE_FORMAT_ACTION(SetHeadingLevel(int level), editor.SetHeadingLevel(level))
 UC_RTE_FORMAT_ACTION(SetAlignment(RichTextAlign align), editor.SetAlignment(align))

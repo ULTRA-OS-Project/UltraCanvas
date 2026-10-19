@@ -1,5 +1,40 @@
 # UltraCanvasBlockDiagram Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [Nested Enumerations on UltraCanvasBlockDiagram](#nested-enumerations-on-ultracanvasblockdiagram)
+  - [BlockNode](#blocknode)
+  - [BlockConnection](#blockconnection)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Factory Function](#factory-function)
+  - [Node Management](#node-management)
+  - [Connection Management](#connection-management)
+  - [View Control](#view-control)
+  - [Grid & Background](#grid--background)
+  - [3D Isometric Rendering](#3d-isometric-rendering)
+  - [Edit Mode](#edit-mode)
+  - [Selection & Operations](#selection--operations)
+  - [Callbacks](#callbacks)
+- [Usage Examples](#usage-examples)
+  - [Creating the diagram canvas](#creating-the-diagram-canvas)
+  - [Adding shaped, colored nodes](#adding-shaped-colored-nodes)
+  - [Connecting nodes with orthogonal routing](#connecting-nodes-with-orthogonal-routing)
+  - [Dashed control-signal lines](#dashed-control-signal-lines)
+  - [Toolbar wired to edit mode and view](#toolbar-wired-to-edit-mode-and-view)
+  - [Resetting layout and view](#resetting-layout-and-view)
+  - [Toggling grid visibility from a checkbox](#toggling-grid-visibility-from-a-checkbox)
+- [Render Pipeline](#render-pipeline)
+- [Mouse & Edit Behaviour](#mouse--edit-behaviour)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasBlockDiagram** is an interactive block diagram component within the UltraCanvas framework, designed for building flowcharts, system diagrams, and technical schematics. Nodes can be drawn as a wide variety of shapes (rectangles, diamonds, hexagons, cylinders, actors, etc.) and connected by labeled, styled lines with optional arrowheads. The component supports an optional 3D isometric rendering mode for HVAC- and engineering-style visuals, an interactive editor mode (select / create-node / create-connection / pan), grid snapping, and pan/zoom.
@@ -7,7 +42,7 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasBlockDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.3.1
+**Version:** 2.4.0
 
 ## Class Hierarchy
 
@@ -46,7 +81,7 @@ enum class BlockShape {
     Triangle, Star, Cloud, Cylinder, StickyNote, Actor
 };
 
-enum class ConnectionStyle {
+enum class BlockConnectionStyle {
     Straight,    // Direct line
     Orthogonal,  // Right-angle bends
     Curved,      // Smooth curve
@@ -59,6 +94,10 @@ enum class ArrowStyle {
 
 enum class LineStyle { Solid, Dashed, Dotted, DashDot };
 ```
+
+`BlockConnectionStyle` was called `ConnectionStyle` until 0.9.184, which clashed with the
+chart connection renderer's `ConnectionStyle` struct: a program could not
+include both headers.
 
 ### Nested Enumerations on UltraCanvasBlockDiagram
 
@@ -107,7 +146,7 @@ struct BlockConnection {
     std::string sourceId;
     std::string targetId;
 
-    ConnectionStyle style     = ConnectionStyle::Straight;
+    BlockConnectionStyle style     = BlockConnectionStyle::Straight;
     ArrowStyle      arrowStyle = ArrowStyle::Forward;
     LineStyle       lineStyle = LineStyle::Solid;
 
@@ -167,11 +206,11 @@ void AddConnection(const std::string& id,
 void AddConnection(const std::string& id,
                    const std::string& sourceId,
                    const std::string& targetId,
-                   ConnectionStyle style);
+                   BlockConnectionStyle style);
 void AddConnection(const std::string& id,
                    const std::string& sourceId,
                    const std::string& targetId,
-                   ConnectionStyle style,
+                   BlockConnectionStyle style,
                    ArrowStyle arrowStyle);
 void RemoveConnection(const std::string& id);
 BlockConnection* GetConnection(const std::string& id);
@@ -180,7 +219,7 @@ BlockConnection* GetConnection(const std::string& id);
 void SetConnectionColor(const std::string& id, const Color& color);
 void SetConnectionWidth(const std::string& id, float width);
 void SetConnectionLabel(const std::string& id, const std::string& label);
-void SetConnectionStyle(const std::string& id, ConnectionStyle style);
+void SetConnectionStyle(const std::string& id, BlockConnectionStyle style);
 void SetConnectionLineStyle(const std::string& id, LineStyle lineStyle);
 ```
 
@@ -238,7 +277,7 @@ std::function<void(const std::string&)> onNodeCreated;
 std::function<void(const std::string&)> onNodeSelected;
 std::function<void(const std::string&)> onNodeDoubleClick;
 std::function<void(const std::string&, const std::string&)> onConnectionCreated;
-std::function<void(EditMode)> onEditModeChanged;
+std::function<void(UltraCanvasBlockDiagram::EditMode)> onEditModeChanged;
 ```
 
 ## Usage Examples
@@ -287,22 +326,22 @@ Color coolConn  = Color(70, 120, 170, 255);
 float connWidth = 2.0f;
 
 diagram->AddConnection("ref1", "compressor", "condenser",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref1", coolConn);
 diagram->SetConnectionWidth("ref1", connWidth);
 
 diagram->AddConnection("ref2", "condenser", "expansion",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref2", coolConn);
 diagram->SetConnectionWidth("ref2", connWidth);
 
 diagram->AddConnection("ref3", "expansion", "evaporator",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref3", coolConn);
 diagram->SetConnectionWidth("ref3", connWidth);
 
 diagram->AddConnection("ref4", "evaporator", "compressor",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref4", coolConn);
 diagram->SetConnectionWidth("ref4", connWidth);
 ```
@@ -313,8 +352,10 @@ A dashed line distinguishes electrical control signals from the refrigerant
 flow it modulates.
 
 ```cpp
+Color ctrlConn = Color(120, 130, 145, 255);
+
 diagram->AddConnection("ctrl_comp", "comp_control", "compressor",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ctrl_comp", ctrlConn);
 diagram->SetConnectionWidth("ctrl_comp", connWidth);
 diagram->SetConnectionLineStyle("ctrl_comp", LineStyle::Dashed);
@@ -323,24 +364,30 @@ diagram->SetConnectionLineStyle("ctrl_comp", LineStyle::Dashed);
 ### Toolbar wired to edit mode and view
 
 ```cpp
+int btnY = 635;
+int btnX = 50;
+
 auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", btnX, btnY, 90, 32);
 btnSelect->SetText("Select");
 btnSelect->SetOnClick([diagram]() {
     diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::Select);
 });
 
+btnX += 100;
 auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", btnX, btnY, 90, 32);
 btnConnect->SetText("Connect");
 btnConnect->SetOnClick([diagram]() {
     diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::CreateConnection);
 });
 
+btnX += 100;
 auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", btnX, btnY, 90, 32);
 btnZoomIn->SetText("Zoom +");
 btnZoomIn->SetOnClick([diagram]() {
     diagram->SetZoomLevel(diagram->GetZoomLevel() * 1.2f);
 });
 
+btnX += 100;
 auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", btnX, btnY, 90, 32);
 btnZoomOut->SetText("Zoom -");
 btnZoomOut->SetOnClick([diagram]() {
@@ -363,7 +410,7 @@ std::vector<InitialNodePos> initialLayout = {
     // ... etc.
 };
 
-auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 90, 32);
+auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 450, 635, 90, 32);
 btnReset->SetText("Reset");
 btnReset->SetOnClick([diagram, initialLayout]() {
     diagram->SetZoomLevel(1.0f);

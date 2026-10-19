@@ -18,8 +18,15 @@
 #include <stdexcept>
 
 #include <cairo/cairo.h>
+// libvips reads the image a file scan decodes and writes the exported
+// picture; a build without it (the WebAssembly no-vips variant) keeps the
+// element, the scan of a pixel buffer and the decoder, and says so from
+// the two functions that need the library.
+#ifdef HAS_LIBVIPS
 #include <vips/vips8>
+#endif
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // WriteFileAtomically
 #ifdef ULTRACANVAS_QRCODE_HAS_DECODER
 #include <zbar.h>
 #endif
@@ -167,32 +174,40 @@ namespace UltraCanvas {
         const int totalModules = data.size + 2 * quiet;
         const int px = totalModules * moduleSize;
 
-        std::ofstream f(UltraCanvas::PathFromUtf8(filename));
-        if (!f) return false;
+        // Staged, like the image export: the file is written beside the target
+        // and moved over it only when complete, so a write that fails part way
+        // (a full disk) leaves no half-written file and keeps an older one.
+        const std::string failure = UltraCanvas::WriteFileAtomically(filename,
+                [&](const std::string& staged) -> std::string {
+                    std::ofstream f(UltraCanvas::PathFromUtf8(staged));
+                    if (!f) return "cannot create the file";
 
-        f << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-        f << "<svg xmlns=\"http://www.w3.org/2000/svg\" "
-          << "viewBox=\"0 0 " << totalModules << " " << totalModules << "\" "
-          << "width=\"" << px << "\" height=\"" << px << "\" "
-          << "shape-rendering=\"crispEdges\">\n";
-        f << "  <rect width=\"" << totalModules << "\" height=\"" << totalModules
-          << "\" fill=\"" << background.ToHexString() << "\"/>\n";
+                    f << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+                    f << "<svg xmlns=\"http://www.w3.org/2000/svg\" "
+                      << "viewBox=\"0 0 " << totalModules << " " << totalModules << "\" "
+                      << "width=\"" << px << "\" height=\"" << px << "\" "
+                      << "shape-rendering=\"crispEdges\">\n";
+                    f << "  <rect width=\"" << totalModules << "\" height=\"" << totalModules
+                      << "\" fill=\"" << background.ToHexString() << "\"/>\n";
 
-        f << "  <path fill=\"" << foreground.ToHexString() << "\" d=\"";
-        for (int y = 0; y < data.size; ++y) {
-            int x = 0;
-            while (x < data.size) {
-                if (!data.IsDark(x, y)) { ++x; continue; }
-                int runStart = x;
-                while (x < data.size && data.IsDark(x, y)) ++x;
-                int runLen = x - runStart;
-                f << "M" << (runStart + quiet) << "," << (y + quiet)
-                  << "h" << runLen << "v1h-" << runLen << "z";
-            }
-        }
-        f << "\"/>\n";
-        f << "</svg>\n";
-        return f.good();
+                    f << "  <path fill=\"" << foreground.ToHexString() << "\" d=\"";
+                    for (int y = 0; y < data.size; ++y) {
+                        int x = 0;
+                        while (x < data.size) {
+                            if (!data.IsDark(x, y)) { ++x; continue; }
+                            int runStart = x;
+                            while (x < data.size && data.IsDark(x, y)) ++x;
+                            int runLen = x - runStart;
+                            f << "M" << (runStart + quiet) << "," << (y + quiet)
+                              << "h" << runLen << "v1h-" << runLen << "z";
+                        }
+                    }
+                    f << "\"/>\n";
+                    f << "</svg>\n";
+                    f.close();
+                    return f.fail() ? "the file could not be written" : "";
+                });
+        return failure.empty();
     }
 
     std::string QRCodeUtils::CreateURLContent(const std::string& url) {
@@ -383,6 +398,11 @@ namespace UltraCanvas {
         };
 #ifndef ULTRACANVAS_QRCODE_HAS_DECODER
         setErr("QR decoder support not built in (compile with libzbar)");
+        return results;
+#elif !defined(HAS_LIBVIPS)
+        (void)imagePath;
+        setErr("Reading the image file needs libvips, which this build has not got; "
+               "scan the pixels with ScanQRCodeImage instead");
         return results;
 #else
         using namespace zbar;
@@ -646,10 +666,11 @@ namespace UltraCanvas {
                                         config_.style.backgroundColor);
     }
 
-    bool UltraCanvasQRCode::ExportToImage(const std::string& filename,
-                                          QRImageFormat format,
-                                          int moduleSize,
-                                          std::string* errorMessage) {
+    // The code drawn scan-friendly and written to outPath, whose extension
+    // names the type
+    bool UltraCanvasQRCode::WriteImage(const std::string& outPath,
+                                       int moduleSize,
+                                       std::string* errorMessage) {
         auto setErr = [&](const std::string& s) {
             if (errorMessage) *errorMessage = s;
         };
@@ -732,6 +753,63 @@ namespace UltraCanvas {
             }
         }
 
+#ifndef HAS_LIBVIPS
+        (void)rgba; (void)sw; (void)sh; (void)outPath;
+        setErr("Writing the picture needs libvips, which this build has not got");
+        return false;
+#else
+        try {
+            if (VIPS_INIT("ultracanvas-qrcode") != 0) {
+                setErr(vips_error_buffer());
+                vips_error_clear();
+                return false;
+            }
+            // `rgba` stays alive through write_to_file below, so the non-copying
+            // new_from_memory is safe (new_from_memory_copy isn't in this libvips).
+            vips::VImage img = vips::VImage::new_from_memory(
+                rgba.data(),
+                rgba.size(),
+                sw, sh,
+                4,
+                VIPS_FORMAT_UCHAR);
+            // Marked sRGB through copy(): set("interpretation", ...) only adds a
+            // metadata item and leaves the header's interpretation at
+            // "multiband", and libvips' heifsave crashes on a 4-band
+            // multiband image (a double free in 8.12 and 8.15 alike), so an
+            // AVIF export took the whole process down wherever an AV1
+            // encoder was installed.
+            img = img.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
+            // Staged: libvips opens - and truncates - the target before it has
+            // encoded a byte, so a failed encode (AVIF on a libheif without an
+            // AV1 encoder) left an empty file, or emptied the one it replaced.
+            // Written beside the target and moved over it only when complete,
+            // a failure leaves no file and the old one as it was.
+            vips_error_clear();
+            const std::string failure = WriteFileAtomically(outPath,
+                    [&img](const std::string& staged) -> std::string {
+                        try {
+                            img.write_to_file(staged.c_str());
+                            return std::string();
+                        } catch (const vips::VError& e) {
+                            return std::string("vips: ") + e.what();
+                        }
+                    });
+            if (!failure.empty()) { setErr(failure); return false; }
+            return true;
+        } catch (const vips::VError& e) {
+            setErr(std::string("vips: ") + e.what());
+            return false;
+        } catch (const std::exception& e) {
+            setErr(e.what());
+            return false;
+        }
+#endif  // HAS_LIBVIPS
+    }
+
+    bool UltraCanvasQRCode::ExportToImage(const std::string& filename,
+                                          QRImageFormat format,
+                                          int moduleSize,
+                                          std::string* errorMessage) {
         const char* fmtExt = nullptr;
         switch (format) {
             case QRImageFormat::PNG:  fmtExt = ".png";  break;
@@ -758,30 +836,17 @@ namespace UltraCanvas {
             }
         }
 
-        try {
-            if (VIPS_INIT("ultracanvas-qrcode") != 0) {
-                setErr(vips_error_buffer());
-                vips_error_clear();
-                return false;
-            }
-            // `rgba` stays alive through write_to_file below, so the non-copying
-            // new_from_memory is safe (new_from_memory_copy isn't in this libvips).
-            vips::VImage img = vips::VImage::new_from_memory(
-                rgba.data(),
-                rgba.size(),
-                sw, sh,
-                4,
-                VIPS_FORMAT_UCHAR);
-            img.set("interpretation", static_cast<int>(VIPS_INTERPRETATION_sRGB));
-            img.write_to_file(outPath.c_str());
-            return true;
-        } catch (const vips::VError& e) {
-            setErr(std::string("vips: ") + e.what());
-            return false;
-        } catch (const std::exception& e) {
-            setErr(e.what());
+        return WriteImage(outPath, moduleSize, errorMessage);
+    }
+
+    bool UltraCanvasQRCode::ExportToImage(const std::string& filename,
+                                          int moduleSize,
+                                          std::string* errorMessage) {
+        if (!UltraCanvasFileLoader::CanSaveImage(filename)) {
+            if (errorMessage) *errorMessage = "this build does not write that picture type: " + filename;
             return false;
         }
+        return WriteImage(filename, moduleSize, errorMessage);
     }
 
     void UltraCanvasQRCode::Regenerate() {

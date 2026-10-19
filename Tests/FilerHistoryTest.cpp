@@ -9,8 +9,18 @@
 // easy to get wrong separately: while recording, while reading the file back,
 // and at the moment it is lowered - a limit that only takes effect at the next
 // restart looks, to the person who just moved the slider, like it did nothing.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+//
+// Both History and Favorites (UltraFilerFavorites.h) drop an entry whose file
+// has left the disk, so both are checked with a Thai-and-emoji file name: on
+// Windows that check once read the UTF-8 path in the code page, found nothing
+// and forgot the entry.
+//
+// It runs on Windows CI too (Tests/FilerTests.cmake), where a path converted
+// through the code page names a different file: every path here goes through
+// PathToUtf8 / PathFromUtf8, and the config folder is redirected through the
+// wide environment API that GetEnvUtf8 reads.
+// Version: 1.1.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 // The config directory is read from the environment, so it is pointed at a
@@ -22,7 +32,18 @@
 #include <string>
 #include <vector>
 
+#include "UltraCanvasPathUtf8.h"
+#include "UltraFilerFavorites.h"
 #include "UltraFilerHistory.h"
+
+#if defined(_WIN32) || defined(_WIN64)
+// Declared rather than taken from <windows.h>, for the reason
+// UltraCanvasPathUtf8.h gives for GetEnvironmentVariableW: windows.h would
+// rename our own functions. This is the declaration windows.h makes (BOOL is
+// int, LPCWSTR const wchar_t*).
+extern "C" __declspec(dllimport) int __stdcall SetEnvironmentVariableW(
+        const wchar_t* lpName, const wchar_t* lpValue);
+#endif
 
 using namespace UltraCanvas;
 
@@ -53,15 +74,15 @@ void CheckEq(const std::string& got, const std::string& want,
 }
 
 // The config directory UltraFilerSettings::GetConfigDirectory() reports, moved
-// into a temporary folder so the test never touches a real installation.
+// into a temporary folder so the test never touches a real installation -
+// through the wide API on Windows, which is where GetEnvUtf8 reads APPDATA.
 void RedirectConfigDirectory(const std::filesystem::path& root) {
-    const std::string path = root.string();
 #if defined(_WIN32) || defined(_WIN64)
-    _putenv_s("APPDATA", path.c_str());
+    SetEnvironmentVariableW(L"APPDATA", root.c_str());
 #elif defined(__APPLE__)
-    setenv("HOME", path.c_str(), 1);
+    setenv("HOME", PathToUtf8(root).c_str(), 1);
 #else
-    setenv("XDG_CONFIG_HOME", path.c_str(), 1);
+    setenv("XDG_CONFIG_HOME", PathToUtf8(root).c_str(), 1);
 #endif
 }
 
@@ -95,7 +116,7 @@ void TestSurvivesRestart() {
     history.Record(FilerHistoryKind::Folder, "/docs");
     history.Record(FilerHistoryKind::App,    "/usr/bin/editor");
 
-    Check(std::filesystem::exists(UltraFilerHistory::GetHistoryPath()),
+    Check(std::filesystem::exists(PathFromUtf8(UltraFilerHistory::GetHistoryPath())),
           "recording writes history.txt without waiting for exit");
 
     // A second instance is the next run of the application.
@@ -242,7 +263,7 @@ void TestSettingRoundTrip() {
 
     // Hand-edited past the ends of the slider's range.
     {
-        std::ofstream file(UltraFilerSettings::GetConfigPath(), std::ios::app);
+        std::ofstream file(PathFromUtf8(UltraFilerSettings::GetConfigPath()), std::ios::app);
         file << "extras.history.max.entries = 999999\n";
     }
     {
@@ -253,7 +274,7 @@ void TestSettingRoundTrip() {
                 "a value above the range is held at the ceiling");
     }
     {
-        std::ofstream file(UltraFilerSettings::GetConfigPath(), std::ios::app);
+        std::ofstream file(PathFromUtf8(UltraFilerSettings::GetConfigPath()), std::ios::app);
         file << "extras.history.max.entries = -5\n";
     }
     {
@@ -272,7 +293,7 @@ void TestMissingPathsDropOut() {
     std::printf("\n-- entries that have left the disk --\n");
 
     const std::filesystem::path dir =
-            std::filesystem::path(UltraFilerSettings::GetConfigDirectory()) / "files";
+            PathFromUtf8(UltraFilerSettings::GetConfigDirectory()) / "files";
     std::filesystem::create_directories(dir);
     const std::filesystem::path kept = dir / "kept.txt";
     const std::filesystem::path gone = dir / "gone.txt";
@@ -281,15 +302,62 @@ void TestMissingPathsDropOut() {
 
     UltraFilerHistory history;
     history.ClearAll();
-    history.Record(FilerHistoryKind::File, kept.string());
-    history.Record(FilerHistoryKind::File, gone.string());
+    history.Record(FilerHistoryKind::File, PathToUtf8(kept));
+    history.Record(FilerHistoryKind::File, PathToUtf8(gone));
     CheckEq(history.Paths(FilerHistoryKind::File).size(), 2u,
             "both files are listed while both exist");
 
     std::filesystem::remove(gone);
     const std::vector<std::string> paths = history.Paths(FilerHistoryKind::File);
     CheckEq(paths.size(), 1u, "the deleted file is forgotten");
-    CheckEq(paths.front(), kept.string(), "the one still there is kept");
+    CheckEq(paths.front(), PathToUtf8(kept), "the one still there is kept");
+}
+
+// ===== A NAME OUTSIDE THE CODE PAGE =====
+// Paths() asks the disk whether each entry is still there. On Windows a UTF-8
+// path handed to the filesystem as a plain string is read in the ANSI code
+// page (1252 on CI), which cannot hold Thai or an emoji - the file was "not
+// found" and the entry forgotten the first time the History view was opened.
+void TestNonAsciiNameStays() {
+    std::printf("\n-- a Thai and emoji file name --\n");
+
+    const std::filesystem::path dir =
+            PathFromUtf8(UltraFilerSettings::GetConfigDirectory()) / "files";
+    std::filesystem::create_directories(dir);
+    // "รูปภาพ 📄.txt"
+    const std::string name =
+            "\xE0\xB8\xA3\xE0\xB8\xB9\xE0\xB8\x9B\xE0\xB8\xA0\xE0\xB8\xB2\xE0\xB8\x9E"
+            " \xF0\x9F\x93\x84.txt";
+    const std::filesystem::path file = dir / PathFromUtf8(name);
+    { std::ofstream(file) << "x"; }
+    Check(std::filesystem::exists(file), "the file was written under its own name");
+
+    UltraFilerHistory history;
+    history.ClearAll();
+    history.Record(FilerHistoryKind::File, PathToUtf8(file));
+    std::vector<std::string> paths = history.Paths(FilerHistoryKind::File);
+    CheckEq(paths.size(), 1u, "it is listed while it exists");
+    if (!paths.empty())
+        CheckEq(paths.front(), PathToUtf8(file), "under the same UTF-8 path");
+
+    // Paths() writes the list back when it drops anything, so a wrongly
+    // forgotten entry would also be missing after a restart.
+    UltraFilerHistory reloaded;
+    reloaded.Load();
+    CheckEq(reloaded.Paths(FilerHistoryKind::File).size(), 1u,
+            "and is still there after a restart");
+
+    // Favorites prune their dead pins the same way.
+    UltraFilerFavorites favorites;
+    favorites.ClearAll();
+    Check(favorites.Pin(FilerFavoriteKind::File, PathToUtf8(file)),
+          "the same file can be pinned to Favorites");
+    CheckEq(favorites.Paths(FilerFavoriteKind::File).size(), 1u,
+            "the pin is listed while the file exists");
+    UltraFilerFavorites reloadedFavorites;
+    reloadedFavorites.Load();
+    CheckEq(reloadedFavorites.Paths(FilerFavoriteKind::File).size(), 1u,
+            "and the pin is still there after a restart");
 }
 
 } // namespace
@@ -317,6 +385,7 @@ int main() {
     TestLimitClamped();
     TestSettingRoundTrip();
     TestMissingPathsDropOut();
+    TestNonAsciiNameStays();
 
     std::filesystem::remove_all(root, ec);
 

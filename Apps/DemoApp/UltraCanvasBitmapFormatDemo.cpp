@@ -23,21 +23,9 @@
 
 namespace UltraCanvas {
 
-// ===== FULL-SIZE VIEWER =====
-    // Every demo page that opens a sample "full size" - bitmaps, vector
-    // drawings, 3D models - comes here, and the file opens in one
-    // UltraCanvasMediaViewerWindow over the window the click came from (the
-    // demo's main window). The arrow keys walk the rest of the sample's
-    // folder; Escape closes it. The instance is allocated once and never
-    // destroyed: its destructor closes a window, which must not run during
-    // static teardown after the windowing system has shut down.
-    void ShowInMediaViewer(const std::string& path) {
-        if (path.empty()) return;
-        static auto* viewerWindow = new UltraCanvasMediaViewerWindow();
-        UltraCanvasWindowBase* host = nullptr;
-        if (auto* app = UltraCanvasApplication::GetInstance()) host = app->GetFocusedWindow();
-        viewerWindow->Show(path, host);
-    }
+// (ShowInMediaViewer, the full-size viewer every sample page opens, is in
+// UltraCanvasMediaViewerExamples.cpp: that file is built in every
+// configuration, this one only with libvips.)
 
 // ===== FORMAT INFO STRUCTURES =====
 
@@ -819,7 +807,18 @@ namespace UltraCanvas {
         imageCard->AddChild(imageFrame);
 
         auto image = std::make_shared<UltraCanvasImageElement>("Image", 4, 4, 222, 162);
-        image->LoadFromFile(sampleImagePath);
+        // A build whose libvips lacks this format's codec (the WebAssembly
+        // sysroot reads PNG, JPEG, TIFF, WebP and GIF; BMP needs ImageMagick,
+        // HEIC and AVIF libheif) cannot show the sample. The page still
+        // builds - the About and Format Specification cards do not depend
+        // on it - and says so where the picture and its properties would be.
+        const bool readable = image->LoadFromFile(sampleImagePath);
+        // libvips ends its messages with a newline; on one line here.
+        std::string unreadableReason = readable ? std::string() : image->GetLastError();
+        for (char& c : unreadableReason) if (c == '\n' || c == '\r') c = ' ';
+        while (!unreadableReason.empty() && unreadableReason.back() == ' ') unreadableReason.pop_back();
+        const std::string unreadableNotice =
+            "This build cannot read " + info.formatName + " files.";
         image->SetFitMode(ImageFitMode::Contain);
         // Hand, not LookingGlass: a click opens the image in the viewer, and a
         // magnifier reads as "zoom" rather than "click to open".
@@ -828,6 +827,19 @@ namespace UltraCanvas {
             ShowInMediaViewer(sampleImagePath);
         };
         imageFrame->AddChild(image);
+        if (!readable) {
+            image->SetVisible(false);
+            auto noticeCont = std::make_shared<UltraCanvasContainer>("UnreadableCont", 12, 48, 206, 74);
+            auto notice = std::make_shared<UltraCanvasLabel>("Unreadable");
+            notice->SetText(unreadableNotice);
+            notice->SetFontSize(11);
+            notice->SetFontWeight(FontWeight::Bold);
+            notice->SetTextColor(Color(234, 88, 12, 255));
+            notice->SetWrap(TextWrap::WrapWord);
+            notice->SetAlignment(TextAlignment::Center);
+            noticeCont->AddChild(notice);
+            imageFrame->AddChild(noticeCont);
+        }
 
         // Extract filename
         std::string filename = sampleImagePath;
@@ -844,7 +856,8 @@ namespace UltraCanvas {
         imageCard->AddChild(filenameLabel);
 
         auto viewBtn = std::make_shared<UltraCanvasButton>("ViewBtn", 20, 250, 108, 32);
-        viewBtn->SetText("🔍 Full Size");
+        viewBtn->SetText("Full Size");
+        SetFlatButtonIcon(*viewBtn, "menu/zoom-in.svg");
         viewBtn->SetFontSize(10);
         viewBtn->SetColors(info.accentColor, info.accentColor);
         viewBtn->SetTextColors(Color(255, 255, 255, 255));
@@ -853,20 +866,31 @@ namespace UltraCanvas {
         viewBtn->onClick = [sampleImagePath]() {
             ShowInMediaViewer(sampleImagePath);
         };
+        viewBtn->SetVisible(readable);
         imageCard->AddChild(viewBtn);
 
         auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 138, 250, 108, 32);
-        exportBtn->SetText("📤 Export");
+        exportBtn->SetText("Export");
+        SetFlatButtonIcon(*exportBtn, "menu/extract.svg");
         exportBtn->SetFontSize(10);
         exportBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
         exportBtn->SetTextColors(Color(71, 85, 105, 255));
         exportBtn->SetCornerRadius(6);
         exportBtn->onClick = [sampleImagePath]() {
-            auto vimg = vips::VImage::new_from_file(sampleImagePath.c_str());
-            auto win = CreateImageExportDialog(vimg);
-            win->Create();
-            win->Show();
+            // A throw out of a click handler ends the program (and the
+            // WebAssembly build has no console to say why), so a sample the
+            // viewer could show but libvips cannot reopen is reported instead.
+            try {
+                auto vimg = vips::VImage::new_from_file(sampleImagePath.c_str());
+                auto win = CreateImageExportDialog(vimg);
+                win->Create();
+                win->Show();
+            } catch (const std::exception& e) {
+                debugOutput << "Bitmap page: export of " << sampleImagePath
+                            << " failed: " << e.what() << std::endl;
+            }
         };
+        exportBtn->SetVisible(readable);
         imageCard->AddChild(exportBtn);
 
         // ===== ROW 3 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
@@ -876,16 +900,42 @@ namespace UltraCanvas {
         container->AddChild(propertiesCard);
 
         auto propHeader = std::make_shared<UltraCanvasLabel>("PropHeader", 20, 16, 300, 24);
-        propHeader->SetText("📊  Image Properties");
+        propHeader->SetText("Image Properties");
         propHeader->SetFontSize(14);
         propHeader->SetFontWeight(FontWeight::Bold);
         propHeader->SetTextColor(Color(30, 41, 59, 255));
         propertiesCard->AddChild(propHeader);
 
-        auto imgInfo = PixelFX::ExtractImageInfo(sampleImagePath);
+        // ExtractImageInfo throws when libvips cannot open the file; before
+        // the try below, that throw left the page without a single card.
+        PixelFX::PXImageFileInfo imgInfo;
+        bool haveInfo = readable;
+        if (haveInfo) {
+            try {
+                imgInfo = PixelFX::ExtractImageInfo(sampleImagePath);
+            } catch (const std::exception& e) {
+                debugOutput << "Bitmap page: no properties for " << sampleImagePath
+                            << ": " << e.what() << std::endl;
+                haveInfo = false;
+            }
+        }
+        if (!haveInfo) {
+            auto noPropsCont = std::make_shared<UltraCanvasContainer>("NoPropsCont", 20, 56, 600, 120);
+            auto noProps = std::make_shared<UltraCanvasLabel>("NoProps");
+            noProps->SetText(unreadableNotice +
+                             (unreadableReason.empty() ? std::string()
+                                                       : " The reader said: " + unreadableReason));
+            noProps->SetFontSize(11);
+            noProps->SetTextColor(Color(71, 85, 105, 255));
+            noProps->SetWrap(TextWrap::WrapWord);
+            noProps->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
+            noPropsCont->AddChild(noProps);
+            propertiesCard->AddChild(noPropsCont);
+        }
 
         // Property placeholders (would be populated from actual image metadata)
-        std::vector<std::pair<std::string, std::string>> defaultProps = {
+        std::vector<std::pair<std::string, std::string>> defaultProps = haveInfo ?
+            std::vector<std::pair<std::string, std::string>>{
                 {"FILE SIZE", FormatFileSize(imgInfo.fileSize)},
                 {"RESOLUTION", fmt::format("{}x{}", imgInfo.width, imgInfo.height)},
                 {"CHANNELS", fmt::format("{}", imgInfo.channels)},
@@ -894,7 +944,7 @@ namespace UltraCanvas {
                 {"BITS PER CHANNEL", fmt::format("{}", imgInfo.bitsPerChannel)},
                 {"ALPHA CHANNEL", imgInfo.hasAlpha ? "Yes" : "No"},
                 {"DPI", fmt::format("{}", round(imgInfo.dpiX))}
-        };
+            } : std::vector<std::pair<std::string, std::string>>{};
 
         int propY = 56;
         for (size_t i = 0; i < defaultProps.size(); ++i) {
@@ -931,18 +981,19 @@ namespace UltraCanvas {
         aboutCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(aboutCard);
 
-        auto aboutIconLabel = std::make_shared<UltraCanvasLabel>("AboutIcon", 16, 12, 36, 36);
-        aboutIconLabel->SetText("📄");
-        aboutIconLabel->SetFontSize(16);
-        aboutIconLabel->SetBackgroundColor(Color(
+        // A flat document icon on a tile of the format's colour (an image,
+        // not a "📄" glyph the bundled UI font does not have).
+        auto aboutIcon = std::make_shared<UltraCanvasImageElement>("AboutIcon", 16, 12, 36, 36);
+        aboutIcon->LoadFromFile(DemoIconPath("menu/file-icons.svg"));
+        aboutIcon->SetFitMode(ImageFitMode::Contain);
+        aboutIcon->SetBackgroundColor(Color(
                 std::min(255, info.accentColor.r + 100),
                 std::min(255, info.accentColor.g + 100),
                 std::min(255, info.accentColor.b + 100),
                 255
         ));
-        aboutIconLabel->SetAlignment(TextAlignment::Center);
-        aboutIconLabel->SetPadding(4);
-        aboutCard->AddChild(aboutIconLabel);
+        aboutIcon->SetPadding(8);
+        aboutCard->AddChild(aboutIcon);
 
         auto aboutTitle = std::make_shared<UltraCanvasLabel>("AboutTitle", 64, 18, 800, 22);
         aboutTitle->SetText(info.aboutTitle);
@@ -972,7 +1023,7 @@ namespace UltraCanvas {
         container->AddChild(specCard);
 
         auto specTitle = std::make_shared<UltraCanvasLabel>("SpecTitle", 20, 14, 400, 22);
-        specTitle->SetText("📐  Format Specification");
+        specTitle->SetText("Format Specification");
         specTitle->SetFontSize(14);
         specTitle->SetFontWeight(FontWeight::Bold);
         specTitle->SetTextColor(Color(30, 41, 59, 255));

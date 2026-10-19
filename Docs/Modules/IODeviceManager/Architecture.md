@@ -91,6 +91,16 @@ manager.RegisterEnumerator(IODeviceCategory::Camera, "gphoto2", EnumerateGPhoto2
 `EnumerateDevices(category)` runs every enumerator registered for that
 category and merges the results.
 
+`ULTRACANVAS_DEVICE_BACKENDS`, when set, narrows that to the backends it
+names - a comma-separated list, case ignored (`eSCL,IPP`). It is for leaving
+out a backend that is slow to search and finds nothing wanted: SANE probes
+every port it knows of, which takes seconds where only network scanners are
+used, and a test of one backend has no use for the rest
+(`IODeviceScannerESCLLiveTest` sets `eSCL`, which took it from 5 seconds or
+more to under 2). A category none of whose backends is named is an error, as
+one with no backend is, and its devices are left as they were rather than
+dropped. `GetRegisteredBackends()` still lists every backend registered.
+
 This is deliberately **not** a set of `EnumerateScanners()` /
 `EnumerateCameras()` methods on the manager. With one method per category,
 every platform backend has to define the same symbol — so a webcam backend
@@ -887,6 +897,12 @@ plugin reports the full service name, so the instance is cut out of it
 name escaped, `Office\032Scanner._uscan._tcp.local.`. The full name is kept as
 the `mdns-name` attribute.
 
+A scanner named in `ULTRACANVAS_ESCL_SCANNERS` has no instance name: it is
+listed under its URL until it has described itself. Once its
+`ScannerCapabilities` are read, it takes the `MakeAndModel` they report as its
+name (`FillInEsclIdentity`), as an IPP printer configured by address takes its
+`printer-name` - and so does a certificate trusted for it.
+
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.
 
@@ -935,7 +951,25 @@ Checked on Linux (libcurl with OpenSSL) against CUPS's `ippeveprinter` over
 `ipps://` and a TLS-only eSCL scanner: first contact learns the key `openssl`
 computes for the certificate, a changed certificate is refused with the key
 file untouched, and the first-contact server saw only `HEAD /` before the
-pinned request. Not yet run on Schannel (Windows) or Apple's TLS.
+pinned request. `IODevicePrinterIPPLiveTest` checks the same against
+`ippeveprinter` over `ipps://` on every Linux CI run: first contact, a print
+through the pinned connection, a changed key refused and not overwritten,
+relearning after forgetting, and learning switched off.
+`IODeviceScannerESCLLiveTest` does the same for a scanner on every Linux CI
+run, against `Tests/IODeviceScannerESCLLiveScanner.py` - an eSCL scanner that
+answers only over HTTPS, since there is no reference one to run - with
+certificates the test makes with `openssl`: the scanner's first request is a
+bare `HEAD /`, the key kept is its certificate's, under the make and model it
+reports; pages are scanned through the pinned connection; restarted with a
+second certificate on the same port, it is refused before any request reaches
+it; forgetting the key learns the new one; and learning switched off refuses it.
+The scanner test is built on the macOS and Windows rows too
+(`ULTRACANVAS_BUILD_DEVICE_TLS_TESTS`, without the full suite) and run there
+with its skip made a failure, so the pinning and the certificate capture are
+exercised on each TLS library libcurl uses: OpenSSL on Linux, Apple's TLS
+(the system libcurl) on macOS, Schannel (MSYS2's `curl-winssl`) on Windows.
+The IPP test stays Linux-only: `ippeveprinter` is not available on the other
+runners, and the trust it would check is the same code.
 
 ---
 

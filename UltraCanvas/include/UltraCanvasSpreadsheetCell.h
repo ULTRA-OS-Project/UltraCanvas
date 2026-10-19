@@ -1,7 +1,8 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
-// Last Modified: 2026-01-09
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -595,6 +596,7 @@ inline void SpreadsheetCell::SetValueFromString(const std::string& input) {
 }
 
 inline void SpreadsheetCell::SetFormulaResult(const CellValueVariant& result, CellValueType resultType) {
+    (void)resultType;
     value_ = result;
     // Keep valueType_ as Formula, but store result
     formulaDirty_ = false;
@@ -799,6 +801,7 @@ inline void SpreadsheetCell::SetValidation(const DataValidation& validation) {
 }
 
 inline bool SpreadsheetCell::ValidateValue(std::string* errorMessage) const {
+    (void)errorMessage;
     if (!validation_) return true;
     
     // TODO: Implement validation logic based on ValidationType and ValidationOperator

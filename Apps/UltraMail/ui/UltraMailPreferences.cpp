@@ -1,4 +1,9 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.13.0 - switch_on_quiet_sec (alerts wait after the computer was switched on)
+// Version: 0.12.0 - folder_tree_content (current / all), account_order
+// Version: 0.11.0 - trusted_senders, blocked_senders
+// Version: 0.10.0 - warn_* (Settings > Spam/scam warnings)
+// Version: 0.9.0 - notify_new_mail (a notification on screen when new mail arrives)
 // Version: 0.8.0 - fetch_site_icons (website icons of other senders)
 // Version: 0.7.0 - check_mail_every_sec (how often new mail is checked)
 // Version: 0.6.0 - list_sort (the message list's order)
@@ -55,7 +60,30 @@ bool Preferences::Load(const std::string& path) {
         const std::string value = trimmed.substr(eq + 1);
         if (key == "reading_pane")       showReadingPane  = ParseBool(value);
         if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
+        if (key == "notify_new_mail")    notifyNewMail    = ParseBool(value);
         if (key == "fetch_site_icons")   fetchSiteIcons   = ParseBool(value);
+        if (key == "warn_phishing")       scamWarnings.phishing      = ParseBool(value);
+        if (key == "warn_romance")        scamWarnings.romance       = ParseBool(value);
+        if (key == "warn_advance_fee")    scamWarnings.advanceFee    = ParseBool(value);
+        if (key == "warn_government")     scamWarnings.government    = ParseBool(value);
+        if (key == "warn_crypto_scams")   scamWarnings.cryptoScams   = ParseBool(value);
+        if (key == "warn_crypto_caution") scamWarnings.cryptoCaution = ParseBool(value);
+        if (key == "warn_attachments")    scamWarnings.attachments   = ParseBool(value);
+        if (key == "warn_spam_flag")      scamWarnings.spamFlag      = ParseBool(value);
+        if (key == "trusted_senders" || key == "blocked_senders") {
+            // Comma-separated addresses; a blocked "@example.com" is a domain.
+            const bool blockList = key == "blocked_senders";
+            std::set<std::string>& list = blockList ? senderLists.blocked : senderLists.trusted;
+            std::size_t start = 0;
+            while (start <= value.size()) {
+                std::size_t comma = value.find(',', start);
+                if (comma == std::string::npos) comma = value.size();
+                const std::string entry =
+                    SenderLists::Entry(value.substr(start, comma - start), blockList);
+                if (!entry.empty()) list.insert(entry);
+                start = comma + 1;
+            }
+        }
         if (key == "remote_images") {
             const std::string v = Trim(value);
             remoteImages = v == "always" ? RemoteImagePolicy::LoadAlways
@@ -79,6 +107,22 @@ bool Preferences::Load(const std::string& path) {
             }
             catch (...) { /* keeps the default */ }
         }
+        if (key == "folder_tree_content")
+            folderTreeContent = Trim(value) == "current" ? FolderTreeContent::CurrentAccount
+                                                         : FolderTreeContent::AllAccounts;
+        if (key == "account_order") {
+            accountOrder.clear();
+            std::size_t start = 0;
+            while (start <= value.size()) {
+                std::size_t comma = value.find(',', start);
+                if (comma == std::string::npos) comma = value.size();
+                std::string id = Trim(value.substr(start, comma - start));
+                if (!id.empty() &&
+                    std::find(accountOrder.begin(), accountOrder.end(), id) == accountOrder.end())
+                    accountOrder.push_back(id);
+                start = comma + 1;
+            }
+        }
         if (key == "link_display")
             linkDisplay = Trim(value) == "tooltip" ? LinkDisplay::Tooltip
                                                    : LinkDisplay::StatusBar;
@@ -90,6 +134,10 @@ bool Preferences::Load(const std::string& path) {
         if (key == "list_sort") listSort = MessageSort::FromString(value);
         if (key == "check_mail_every_sec") {
             try { checkMailEverySec = NearestCheckMailChoice(std::stoi(Trim(value))); }
+            catch (...) { /* keeps the default */ }
+        }
+        if (key == "switch_on_quiet_sec") {
+            try { switchOnQuietSec = NearestSwitchOnQuietChoice(std::stoi(Trim(value))); }
             catch (...) { /* keeps the default */ }
         }
         if (key == "trusted_image_domains") {
@@ -116,6 +164,16 @@ bool Preferences::Load(const std::string& path) {
         }
     }
     return true;
+}
+
+void Preferences::OrderAccounts(std::vector<Account>& accounts) const {
+    if (accountOrder.empty()) return;
+    auto rank = [this](const Account& a) {
+        const auto it = std::find(accountOrder.begin(), accountOrder.end(), a.accountId);
+        return static_cast<std::size_t>(it - accountOrder.begin());   // unnamed: size()
+    };
+    std::stable_sort(accounts.begin(), accounts.end(),
+                     [&](const Account& a, const Account& b) { return rank(a) < rank(b); });
 }
 
 bool Preferences::Save(const std::string& path) const {
@@ -147,12 +205,42 @@ bool Preferences::Save(const std::string& path) const {
     file << "folder_tree_width_mode = "
          << (folderTreeWidthMode == FolderTreeWidthMode::FixedWidth ? "fixed" : "auto") << "\n";
     file << "folder_tree_width = " << folderTreeWidth << "\n";
+    file << "folder_tree_content = "
+         << (folderTreeContent == FolderTreeContent::CurrentAccount ? "current" : "all") << "\n";
+    file << "account_order = ";
+    for (std::size_t i = 0; i < accountOrder.size(); ++i)
+        file << (i ? ", " : "") << accountOrder[i];
+    file << "\n";
     file << "link_display = "
          << (linkDisplay == LinkDisplay::Tooltip ? "tooltip" : "status-bar") << "\n";
     file << "needs_answer_max_age_days = " << needsAnswerMaxAgeDays << "\n";
     file << "needs_answer_only_written_to = " << (needsAnswerOnlyWrittenTo ? "true" : "false") << "\n";
     file << "list_sort = " << listSort.ToString() << "\n";
     file << "check_mail_every_sec = " << checkMailEverySec << "\n";
+    file << "switch_on_quiet_sec = " << switchOnQuietSec << "\n";
+    file << "notify_new_mail = " << (notifyNewMail ? "true" : "false") << "\n";
+    auto flag = [&file](const char* key, bool on) {
+        file << key << " = " << (on ? "true" : "false") << "\n";
+    };
+    flag("warn_phishing",       scamWarnings.phishing);
+    flag("warn_romance",        scamWarnings.romance);
+    flag("warn_advance_fee",    scamWarnings.advanceFee);
+    flag("warn_government",     scamWarnings.government);
+    flag("warn_crypto_scams",   scamWarnings.cryptoScams);
+    flag("warn_crypto_caution", scamWarnings.cryptoCaution);
+    flag("warn_attachments",    scamWarnings.attachments);
+    flag("warn_spam_flag",      scamWarnings.spamFlag);
+    auto list = [&file](const char* key, const std::set<std::string>& entries) {
+        file << key << " = ";
+        bool firstEntry = true;
+        for (const auto& e : entries) {
+            file << (firstEntry ? "" : ", ") << e;
+            firstEntry = false;
+        }
+        file << "\n";
+    };
+    list("trusted_senders", senderLists.trusted);
+    list("blocked_senders", senderLists.blocked);
     return static_cast<bool>(file);
 }
 
@@ -179,6 +267,28 @@ std::string Preferences::CheckMailLabel(int seconds) {
     const int minutes = seconds / 60;
     if (seconds % 60 == 0) return minutes == 1 ? "1 minute" : std::to_string(minutes) + " minutes";
     return std::to_string(seconds) + " seconds";
+}
+
+const std::vector<int>& Preferences::SwitchOnQuietChoices() {
+    static const std::vector<int> choices = { 0, 30, 60, 120, 180, 300, 600 };
+    return choices;
+}
+
+int Preferences::NearestSwitchOnQuietChoice(int seconds) {
+    int best = kDefaultSwitchOnQuietSec;
+    long long bestDistance = -1;
+    for (int choice : SwitchOnQuietChoices()) {
+        const long long distance = std::llabs(static_cast<long long>(seconds) - choice);
+        if (bestDistance < 0 || distance < bestDistance) {   // the shorter on a tie
+            best = choice;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+std::string Preferences::SwitchOnQuietLabel(int seconds) {
+    return seconds <= 0 ? std::string("Off") : CheckMailLabel(seconds);
 }
 
 std::string Preferences::NormalizeDomain(const std::string& text) {

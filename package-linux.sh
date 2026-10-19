@@ -52,9 +52,16 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # (UltraCrypt); without it they are skipped here like any app not built.
 # UltraClipboard shows the clipboard history UltraDesktop records, and
 # records it itself while it is open on another desktop.
+# UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
+# UltraCanvasStart, the setup application, is in the bundle like every app;
+# scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
+# `ultrapress` is one program too (Apps/UltraPress): the commands - a
+# starter site, the check, a page's HTML shadow, the static publish, the
+# WordPress import - and, given a site folder, the editor window. Outputs
+# to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard)
+      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
@@ -98,15 +105,13 @@ log "=== UltraCanvas portable Linux packager (v$VERSION, $ARCH) ==="
 
 if [ "$SKIP_BUILD" != "1" ]; then
     log "Configuring + building (shared) into $BUILDDIR ..."
-    # Bake the UltraMail OAuth client into the release when the credentials are
-    # in the environment (CI secrets); harmless/empty otherwise. See
-    # Docs/UltraMail/AccountSetup.md section 3.
+    # UltraMail signs in through the ULTRA OS OAuth sign-in service
+    # (Server/OAuthCallback; the address is Apps/UltraMail/CMakeLists.txt's
+    # ULTRAMAIL_OAUTH_SERVICE_URL default), so no client credentials are
+    # baked into a release. See Docs/UltraMail/AccountSetup.md section 3.
     cmake -S "$PROJECTDIR" -B "$BUILDDIR" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DULTRACANVAS_BUILD_SHARED=ON \
-        -DULTRAMAIL_GOOGLE_CLIENT_ID="${ULTRAMAIL_GOOGLE_CLIENT_ID:-}" \
-        -DULTRAMAIL_GOOGLE_CLIENT_SECRET="${ULTRAMAIL_GOOGLE_CLIENT_SECRET:-}" \
-        -DULTRAMAIL_MICROSOFT_CLIENT_ID="${ULTRAMAIL_MICROSOFT_CLIENT_ID:-}"
+        -DULTRACANVAS_BUILD_SHARED=ON
     cmake --build "$BUILDDIR" -j"$(nproc)"
 else
     log "SKIP_BUILD=1 -> packaging existing build in $BUILDDIR"
@@ -149,6 +154,8 @@ fi
 if compgen -G "$BUILDDIR/lib/*.so*" > /dev/null; then
     cp -a "$BUILDDIR"/lib/*.so* "$PKG/lib/"
 fi
+# libVideoFX ships with the rest: UltraVideo links it (and FFmpeg through it),
+# so the package carries the engine since UltraVideo 0.1.0.
 
 # --- UltraNet plug-ins (dlopened by UltraMail, UltraNetMonitor, …) -----------
 

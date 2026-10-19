@@ -1,7 +1,7 @@
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-01
+**Version:** 1.0.3
+**Last Modified:** 2026-10-10
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -13,11 +13,19 @@ and the hooks), but every step names what to do with another assistant too.
 **Choose your platform as you read.** Every step that differs by operating
 system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
-UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
-the same choice on its first page, preselected to the machine it runs on, and
-then checks and installs the packages below, names the matching SDK, writes
-the project skeleton of step 3 and prepares the first prompt for the
-assistant. `UltraCanvasStart --check` does the checking in a terminal.
+UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), offers
+the same choice under its first step, preselected to the machine it runs on,
+and then walks through the rest: it checks and installs the packages below,
+downloads the matching SDK, writes the project skeleton of step 3 and
+prepares the first prompt for the assistant. `UltraCanvasStart --check` does the checking in a terminal.
+
+**On a computer with nothing yet, start with UltraCanvasStart.** Every
+release of the framework carries it on its own, built for each platform:
+`UltraCanvasStart-<OS>-<version>-<arch>` under
+`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.xz` on
+Linux, a `.zip` on Windows, a signed `.dmg` on macOS). Unpack it, start it,
+and it does steps 1 to 3 below; the steps stay here for reading what it does
+and for doing it by hand.
 
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
@@ -49,7 +57,10 @@ Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
 `libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
 decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
 for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
-(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). Phone photos
+(HEIC) need libheif's HEVC decoder, `libheif-plugin-libde265`; with
+`libheif-dev`, which `libvips-dev` brings along, the build asks libheif and
+offers HEIC only where it decodes. The complete
 list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
 Other distributions use the same library names under their package manager.
 
@@ -151,9 +162,11 @@ other applications sit in `build/bin/`.
 <details>
 <summary><b>macOS</b></summary>
 
-The core builds as a static library by default. The applications are plain
-executables under `build/bin/`; `package-macos.sh` turns them into bundles in
-step 10.
+The core builds as a shared library by default, as it does on Linux and as CI
+does; `build/lib/libUltraCanvas.dylib` is what every application loads. The
+applications are plain executables under `build/bin/`; `package-macos.sh`
+turns them into bundles in step 10, with the core in the suite's shared
+`Frameworks/`.
 
 </details>
 
@@ -162,8 +175,11 @@ step 10.
 
 Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
 `./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
-command prompt with the MSYS2 `bin` directory on `PATH`. The executables are
-GUI-subsystem programs, so they print nothing to a console;
+command prompt with the MSYS2 `bin` directory on `PATH`. In a Release build
+the executables are GUI-subsystem programs, so they print nothing to a console
+(the few with command-line modes, such as DeviceExplorer, have a console
+companion, `DeviceExplorer.com`, which a prompt runs for the bare name and
+waits for);
 `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
 build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
 
@@ -177,6 +193,10 @@ reasons:
   page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
   `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
   widget looks like and how it is wired, open the page and then the file.
+  `UltraCanvasDemo --component <id>` (the id a page is registered with in
+  `UltraCanvasDemo.cpp`, e.g. `listview`) starts on that page and without
+  the About window, so a page can be screenshotted by a script; `--no-about`
+  leaves the About window out on the default page.
 - **A green build is your baseline.** When the assistant's first change
   breaks the build you want to know it was the change.
 
@@ -230,7 +250,7 @@ Two layouts are supported.
 | Layout | When | How it links |
 |---|---|---|
 | **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
-| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK artifact CI builds for your platform ([`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK for your platform from the release of the current version (`https://github.com/ULTRA-OS-Project/UltraCanvas/releases`, or UltraCanvasStart's *Download* button; [`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
 
 Both routes are validated on every pull request: CI builds the in-tree
 applications, and it installs the framework into a scratch prefix and builds
@@ -291,6 +311,8 @@ install(TARGETS MyApp RUNTIME DESTINATION bin)
 ```
 
 `Apps/MyApp/main.cpp`
+
+<!-- doc-check: #define MYAPP_VERSION "1.0.0" -->
 
 ```cpp
 #include "UltraCanvasApplication.h"
@@ -357,8 +379,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __arg
 The `#ifdef` blocks are the whole of what differs per platform in an
 application's entry point: Linux needs X11 threading and the signal handlers,
 Windows needs `WinMain` because the executables are GUI-subsystem programs,
-and macOS needs neither. On Windows also mark the target `WIN32_EXECUTABLE TRUE`
-so no console opens beside the window, and embed the icon in the `.exe` with
+and macOS needs neither. On Windows also call `ultracanvas_windows_gui_app(MyApp)`
+(`cmake/UltraCanvasWindowsGuiApp.cmake`), which makes a Release build a
+GUI-subsystem program, so no console opens beside the window, and still lets
+`--help` print into the prompt it was typed at (for an app in this repository,
+add it to the list under *Hide console window on Windows Release builds* in the
+root `CMakeLists.txt`; an app whose command-line modes print into the prompt
+goes on the list of console companions there,
+`ultracanvas_windows_console_companion()`), and embed the icon in the `.exe` with
 `ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
 Explorer and the taskbar read.
 
@@ -382,10 +410,12 @@ The working order for every screen:
    codes, document views), each with its header.
 2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
    and, for a non-trivial one, its page in `Apps/DemoApp/`.
-3. Lay out with the layout engines, not with hand-computed coordinates:
-   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
-   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
-   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+3. Lay out with the layout engine (`CSSLayout/CSSLayout.h`), not with
+   hand-computed coordinates: a container's `layout` is a flex row, a flex
+   column or a grid (`layout.SetFlexRow()`, `SetFlexColumn()`, `SetGrid()`)
+   and each child sizes itself through its `layoutItem`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`, reference in
+   `Docs/CSSLayout.md`). Inside a self-rendered view, position children
    with `PlaceChildAt()`, never `SetBounds()`.
 4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
    widget `std::shared_ptr`-managed.
@@ -559,6 +589,16 @@ every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
 and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
 macOS.
 
+macOS asks before an app opens the camera or the microphone, or reaches the
+local network, and the prompt shows the reason in the app's `Info.plist`.
+`package-macos.sh` writes the local-network reason and the Bonjour service
+types the framework browses into every app, because any app that prints looks
+for network printers. An app that opens the camera or the microphone is listed
+in `camera_usage` / `microphone_usage` in the script. That one line gives it
+the usage description and the hardened-runtime device entitlement it is
+signed with. A signed app needs both: without the description macOS terminates
+it, and without the entitlement the device is refused.
+
 </details>
 
 <details>
@@ -566,12 +606,38 @@ macOS.
 
 `./package-win.sh`, run from the CLANG64 or CLANGARM64 shell after the build,
 collects every application with the DLLs it needs into one standalone zip.
+`--installer` also builds `UltraCanvas-Setup-Windows-<version>-<arch>.exe`
+from the same folder (`Windows/Installer/UltraCanvasSetup.nsi`, through
+`scripts/build-windows-installer.sh`; first `pacman -S mingw-w64-clang-x86_64-nsis`
+in CLANG64, or NSIS for Windows, which CLANGARM64 has to use, as it has no NSIS
+package). CI builds the installer on both Windows rows, installs and
+uninstalls it once, and uploads it as an artifact. It installs for
+the current account without administrator rights, into
+`%LOCALAPPDATA%\Programs\UltraCanvas`. Every GUI program gets a Start-menu
+entry, and the suite gets an *Apps & features* entry. The finish page offers
+UltraDesktop as the Windows desktop. The uninstaller gives the Windows desktop
+back first, then removes exactly the files it installed.
 `--no-sign` skips Authenticode signing when no certificate is present;
 `SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
-release uses. The version in the `.exe` resource and the manifest comes from
+release uses. They read the certificate's password from
+`ULTRACANVAS_SIGN_PFX_PASSWORD` - set it in the shell, or as a secret on a
+build machine - and stop, saying so, when it is not set. The `.pfx` they
+export next to themselves is ignored by git: it holds the private key.
+Until 2026-10 the password was written into the scripts, so it is in the
+repository's history: on the signing machine, set a new one in
+`ULTRACANVAS_SIGN_PFX_PASSWORD` and run each script once with
+`-Mode RotatePassword`. It exports the same certificate and key again under the
+new password, opens the result once to prove it, and replaces the old `.pfx`.
+When the certificate is not in the account's store, it also needs the old
+password, in `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD`. Every mode that takes the
+password refuses the published one, so on a machine still using it `-Mode Sign` - and with it
+`package-win.sh` - stops and names these steps instead of signing; `--no-sign`
+still packages. Delete any other copy of the old `.pfx` - it still opens with
+the old password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version, and the CMake configure warns when they are stale.
+bumping the version; the CMake configure warns when they are stale and
+`scripts/check_changelog.py` fails CI on it.
 
 </details>
 
@@ -602,7 +668,7 @@ assistant must read, which is what stops it guessing.
 > `UltraCanvasMediaViewer` preview on the right, inside the existing split
 > pane. Files are chosen with `UltraCanvasDialogManager`. Read
 > `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
-> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+> writing code, and lay the toolbar row out as a flex row (`layout.SetFlexRow()`).
 
 **Using a module**
 

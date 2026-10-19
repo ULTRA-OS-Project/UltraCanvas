@@ -1,7 +1,8 @@
 // OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
+// Version: 1.6.0 - a held key is one press and one release (detectable auto-repeat)
 // Version: 1.5.0 - image cursors kept per screen scaling
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -64,6 +65,10 @@ namespace UltraCanvas {
         Visual* visual;
         Colormap colormap;
         int depth;
+        // Whether the server sends a held key's repeats as presses only
+        // (XkbSetDetectableAutoRepeat). Without it every repeat comes as a
+        // release and a press, and IsAutoRepeatRelease drops the release.
+        bool detectableAutoRepeat = false;
 
         // System (font and theme) cursors.
         std::unordered_map<UCMouseCursor, Cursor> cursors;
@@ -156,6 +161,9 @@ namespace UltraCanvas {
 //        Atom GetWMStateMinimized() const { return wmStateMinimized; }
 
         void ProcessXEvent(XEvent& xEvent);
+        // A KeyRelease that is only the first half of an auto-repeat: the
+        // next queued event presses the same key at the same time.
+        bool IsAutoRepeatRelease(const XEvent& xEvent);
 
         /**
          * Set the maximum time interval (in milliseconds) between clicks

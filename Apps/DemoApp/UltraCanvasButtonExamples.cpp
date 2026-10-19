@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasButtonDemo.cpp
 // Comprehensive button component demonstration
+// Version: 2.0.2 - the split buttons' arrows and the File menu: icons instead of glyphs
 // Version: 2.0.1
-// Last Modified: 2026-05-01
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -218,7 +219,10 @@ namespace UltraCanvas {
             // Basic Split Button
             auto splitBtn = CreateButton("SplitButton", 20, yOffset, 130, 35, "Action");
             splitBtn->SetSplitEnabled(true);
-            splitBtn->SetSplitSecondaryText("▼");
+            // The arrow is the framework's dropdown icon, not a "▼" glyph,
+            // which the bundled UI font does not have.
+            splitBtn->SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/dropdown.svg"));
+            splitBtn->SetSplitSecondaryIconSize(12, 8);
             splitBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Split button primary clicked\nMain action executed");
             };
@@ -312,20 +316,25 @@ namespace UltraCanvas {
         auto vertSplitMenu = std::make_shared<UltraCanvasMenu>("vertSplitMenu", 0, 0, 200, 0);
         vertSplitMenu->SetMenuType(MenuType::PopupMenu);
 
-        vertSplitMenu->AddItem(MenuItemData::Action("New file", []() {
+        // Flat icons of media/icons/menu/, not emoji in the labels: an emoji
+        // draws only where a colour emoji font is installed.
+        auto menuIcon = [](const char* name) {
+            return NormalizePath(GetResourcesDir() + "media/icons/menu/" + name + ".svg");
+        };
+        vertSplitMenu->AddItem(MenuItemData::Action("New file", menuIcon("new"), []() {
         }));
 
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", menuIcon("folder"), []() {
               debugOutput << "Open file" << std::endl;
         }));
 
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Save", "Ctrl+S", menuIcon("save"), []() {
               debugOutput << "Save file" << std::endl;
         }));
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", menuIcon("save"), []() {
               debugOutput << "Save as" << std::endl;
           }));
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("🚪 Exit", "Alt+F4", []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Exit", "Alt+F4", menuIcon("exit"), []() {
             debugOutput << "Exit application" << std::endl;
         }));
 
@@ -335,7 +344,10 @@ namespace UltraCanvas {
             vertSplitBtn->SetSplitEnabled(true);
             vertSplitBtn->SetSplitHorizontal(false); // Vertical
             vertSplitBtn->SetSplitRatio(0.6);
-            vertSplitBtn->SetSplitSecondaryText("Menu ▼");
+            // The lower part is the dropdown arrow alone: the icon, not a "▼"
+            // glyph the bundled UI font does not have.
+            vertSplitBtn->SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/dropdown.svg"));
+            vertSplitBtn->SetSplitSecondaryIconSize(12, 8);
             vertSplitBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("File action clicked\nOpen file dialog");
             };

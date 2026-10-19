@@ -99,14 +99,14 @@ namespace UltraCanvas {
 
         auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 40, 280, 200);
         infoText->SetText(
-                "✓ PostScript interpreter (level 1/2 core)\n"
-                "✓ Procedures, loops, dictionaries\n"
-                "✓ Paths, arcs, beziers, clipping\n"
-                "✓ Gray / RGB / CMYK / HSB color\n"
-                "✓ Dashes, caps, joins, transforms\n"
-                "✓ Sampled images (hex data)\n"
-                "✓ Text via mapped system fonts\n"
-                "✓ DOS EPS binary preview headers\n"
+                "• PostScript interpreter (level 1/2 core)\n"
+                "• Procedures, loops, dictionaries\n"
+                "• Paths, arcs, beziers, clipping\n"
+                "• Gray / RGB / CMYK / HSB color\n"
+                "• Dashes, caps, joins, transforms\n"
+                "• Sampled images (hex data)\n"
+                "• Text via mapped system fonts\n"
+                "• DOS EPS binary preview headers\n"
         );
         infoText->SetFontSize(11);
         infoText->SetTextColor(Color(50, 50, 50, 255));

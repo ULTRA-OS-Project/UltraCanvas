@@ -1,6 +1,6 @@
 # Tests/VectorFormatsTests.cmake
 # VectorFormatsPluginTest (every vector converter, and detailed.cdr through
-# the patched libcdr) and CDRWriterTest. Included by Tests/CMakeLists.txt
+# the patched libcdr), CDRWriterTest and CDRPluginRenderTest. Included by Tests/CMakeLists.txt
 # under BUILD_TESTS, and by the top-level CMakeLists.txt on its own under
 # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS - so platforms that build no full
 # test suite (Windows CI) still run the CorelDRAW path on real files.
@@ -79,4 +79,42 @@ if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
     message(STATUS "    Test registered: CDRWriterTest")
 else()
     message(STATUS "  CDRWriterTest skipped (needs UltraCanvasCDRPlugin and UltraCanvasVectorPlugin)")
+endif()
+
+# Draws every page of media/vector/CDR through the CDR plugin after its parse,
+# as the DemoApp does: the recorded draw commands must not reach back into the
+# painter that recorded them, which is gone by then (detailed.cdr's gradient
+# fills crashed the DemoApp's CDR page that way).
+if(TARGET UltraCanvasCDRPlugin)
+    message(STATUS "  Building CDRPluginRenderTest...")
+    add_executable(CDRPluginRenderTest
+        ${_VFT_DIR}/CDRPluginRenderTest.cpp
+    )
+    target_include_directories(CDRPluginRenderTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(CDRPluginRenderTest PRIVATE cxx_std_20)
+    target_compile_definitions(CDRPluginRenderTest PRIVATE
+        CDRRENDER_SAMPLES_DIR="${_VFT_DIR}/../media/vector/CDR"
+    )
+    target_link_libraries(CDRPluginRenderTest PRIVATE UltraCanvasCDRPlugin UltraCanvas)
+    # Exported symbols, so the crash backtrace names our painter's frames.
+    set_target_properties(CDRPluginRenderTest PROPERTIES ENABLE_EXPORTS ON)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(CDRRENDER_CAIRO cairo)
+            if(CDRRENDER_CAIRO_FOUND)
+                target_compile_definitions(CDRPluginRenderTest PRIVATE CDRRENDER_HAVE_CAIRO=1)
+                target_include_directories(CDRPluginRenderTest PRIVATE ${CDRRENDER_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(CDRPluginRenderTest PRIVATE ${CDRRENDER_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(CDRPluginRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME CDRPluginRenderTest COMMAND CDRPluginRenderTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: CDRPluginRenderTest")
+else()
+    message(STATUS "  CDRPluginRenderTest skipped (needs UltraCanvasCDRPlugin)")
 endif()

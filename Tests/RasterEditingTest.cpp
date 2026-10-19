@@ -3,25 +3,43 @@
 // composite arithmetic, UCRasterSelection shapes and algebra, the brush
 // engine (strokes, opacity cap, fills, shapes, gradients, wand),
 // UCRasterDocument layers / undo / redo / selection-aware filters, colour
-// keying (Colour to Alpha), and the PNG and .ucraster round trips (the last
-// three only with libvips).
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
+// surface's view through a resize, and the PNG and .ucraster round trips (the
+// last three only with libvips).
+// Version: 1.5.0 - TestLayeredUCD: *.ucd keeps layers, blend modes and text layers as text
+// Version: 1.4.1 - TestSurfaceFollowsResize: a document change after a resize reports the move
+// Version: 1.4.0 - TestSurfaceFollowsResize: the view re-centres when the element is resized
+// Version: 1.3.0 - TestTextLayers, TestTextLayerProject: text layers stay
+//                  text until their pixels change, and survive a project
+// Version: 1.2.0 - TestLinesCurvesArrows: polylines in one pass, curves, arrows
+// Version: 1.1.0 - TestListeners: several observers of one document
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterLayer.h"
 #include "UltraCanvasRasterSelection.h"
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasBrushEngine.h"
+#include "UltraCanvasRasterText.h"
+#include "UltraCanvasRichDocument.h"
+#include "UltraCanvasRenderContext.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
+#include "UltraCanvasPaintSurface.h"
+#include "UltraCanvasUCDContainer.h"
 
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
 #include <vips/vips8>
 #endif
 
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
@@ -33,6 +51,44 @@ static int checks = 0;
 
 #define CHECK(cond) do { ++checks; if (!(cond)) { ++failures; std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
 #define CHECK_NEAR(a, b, tol) do { ++checks; if (std::abs(static_cast<int>(a) - static_cast<int>(b)) > (tol)) { ++failures; std::printf("FAIL %s:%d: %s=%d vs %s=%d\n", __FILE__, __LINE__, #a, static_cast<int>(a), #b, static_cast<int>(b)); } } while (0)
+
+// Two listeners and the slot all hear a change; a removed listener does
+// not, even when it removes itself from inside its own callback.
+static void TestListeners() {
+    UCRasterDocument doc(4, 4, RasterPixel(0, 0, 0, 0));
+    int slotPixels = 0, aPixels = 0, bPixels = 0, aState = 0, aSelection = 0, aStructure = 0;
+    doc.onPixelsChanged = [&](const Rect2Di&) { ++slotPixels; };
+    UCRasterDocument::Listener a;
+    a.pixelsChanged = [&](const Rect2Di& r) { ++aPixels; CHECK(r.width > 0); };
+    a.stateChanged = [&]() { ++aState; };
+    a.selectionChanged = [&]() { ++aSelection; };
+    a.structureChanged = [&]() { ++aStructure; };
+    const UCRasterDocument::ListenerId idA = doc.AddListener(a);
+    UCRasterDocument::ListenerId idB = 0;
+    UCRasterDocument::Listener b;
+    b.pixelsChanged = [&](const Rect2Di&) { ++bPixels; doc.RemoveListener(idB); };   // once, then gone
+    idB = doc.AddListener(b);
+    CHECK(idA != 0 && idB != 0 && idA != idB);
+
+    doc.NotifyChanged(Rect2Di(1, 1, 1, 1));
+    CHECK(slotPixels == 1 && aPixels == 1 && bPixels == 1);
+    doc.NotifyChanged(Rect2Di(1, 1, 1, 1));
+    CHECK(slotPixels == 2 && aPixels == 2 && bPixels == 1);
+
+    doc.SetModified(true);
+    CHECK(aState >= 1);
+    doc.GetSelection().SetRectangle(Rect2Di(0, 0, 2, 2), RasterSelectionMode::Replace);
+    doc.CommitSelectionChange("Select");
+    CHECK(aSelection >= 1);
+    doc.AddLayer("second");
+    CHECK(aStructure >= 1);
+
+    doc.RemoveListener(idA);
+    doc.RemoveListener(idA);   // twice is harmless
+    const int before = aPixels;
+    doc.NotifyChanged(Rect2Di(0, 0, 1, 1));
+    CHECK(aPixels == before && slotPixels == 3);
+}
 
 static void TestLayerBasics() {
     UCRasterLayer l(8, 4, RasterPixel(10, 20, 30, 255), "t");
@@ -241,6 +297,37 @@ static void TestRasterPaint() {
     // global fill replaces every white pixel
     RasterPaint::FloodFill(f, nullptr, 1, 1, RasterPixel(0, 0, 255, 255), 0, false);
     CHECK(f.GetPixel(1, 1).b == 255 && f.GetPixel(18, 18).b == 255);
+    // A transparent colour: painted over (Blend) it changes nothing; Replace
+    // makes the region transparent, stored as (0, 0, 0, 0), and stops at the frame.
+    UCRasterLayer t(20, 20, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawRectangle(t, nullptr, Rect2Df(5, 5, 10, 10), frame);
+    const RasterPixel clear(255, 255, 255, 0);
+    RasterPaint::FloodFill(t, nullptr, 10, 10, clear, 0, true);
+    CHECK(t.GetPixel(10, 10) == RasterPixel(255, 255, 255, 255));
+    RasterPaint::FloodFill(t, nullptr, 10, 10, clear, 0, true, nullptr, RasterBlendMode::Normal, 1.0f,
+                           RasterPaint::FillCompositing::Replace);
+    CHECK(t.GetPixel(10, 10) == RasterPixel(0, 0, 0, 0));
+    CHECK(t.GetPixel(5, 10).a == 255 && t.GetPixel(1, 1) == RasterPixel(255, 255, 255, 255));
+    // the cleared area is one region with what a new transparent layer holds
+    std::vector<uint8_t> holeWand = RasterPaint::MagicWandMask(t, 10, 10, 0, true);
+    CHECK(holeWand[8 * 20 + 8] == 255 && holeWand[1 * 20 + 1] == 0);
+    // Replace at half opacity goes half way: the alpha halves, the colour stays white
+    UCRasterLayer h(4, 4, RasterPixel(255, 255, 255, 255));
+    RasterPaint::FloodFill(h, nullptr, 0, 0, clear, 0, true, nullptr, RasterBlendMode::Normal, 0.5f,
+                           RasterPaint::FillCompositing::Replace);
+    CHECK_NEAR(h.GetPixel(2, 2).a, 128, 1);
+    CHECK(h.GetPixel(2, 2).r == 255 && h.GetPixel(2, 2).g == 255);
+    // a half-transparent red replaces rather than tints: alpha 128, pure red
+    RasterPaint::FloodFill(h, nullptr, 0, 0, RasterPixel(255, 0, 0, 128), 255, true, nullptr,
+                           RasterBlendMode::Normal, 1.0f, RasterPaint::FillCompositing::Replace);
+    CHECK(h.GetPixel(1, 1) == RasterPixel(255, 0, 0, 128));
+    // for an opaque colour Replace and Blend agree, at any coverage
+    for (const float cov : { 0.25f, 0.5f, 1.0f }) {
+        const RasterPixel src(10, 200, 30, 255), dst(240, 20, 90, 160);
+        const RasterPixel a = RasterBlendPixel(src, dst, cov), b = RasterReplacePixel(src, dst, cov);
+        CHECK_NEAR(a.r, b.r, 1); CHECK_NEAR(a.g, b.g, 1); CHECK_NEAR(a.b, b.b, 1); CHECK_NEAR(a.a, b.a, 1);
+    }
+
     std::vector<uint8_t> wand = RasterPaint::MagicWandMask(f, 10, 10, 0, true);
     CHECK(wand[10 * 20 + 10] == 255 && wand[1 * 20 + 1] == 0);
 
@@ -251,6 +338,77 @@ static void TestRasterPaint() {
     UCRasterLayer m(2, 2, RasterPixel(255, 255, 255, 255));
     RasterPaint::StampMask(m, nullptr, mask, 2, 2, 0, 0, RasterPixel(0, 0, 0, 255));
     CHECK(m.GetPixel(0, 0).r == 0 && m.GetPixel(1, 0).r == 255 && m.GetPixel(1, 1).r == 0);
+}
+
+// The Lines group's primitives: a polyline's corner and an arrow's shaft
+// under its head are painted once (a translucent colour shows it), a curve
+// bends where its control points say, an arrow's head is there and a wide
+// shaft stops at it.
+static void TestLinesCurvesArrows() {
+    const RasterPixel clear(0, 0, 0, 0);
+    RasterPaint::ShapeStyle half;
+    half.stroke = RasterPixel(255, 0, 0, 128);
+    half.strokeWidth = 4;
+
+    // polyline: one pass, so the corner is no darker than the rest
+    UCRasterLayer pl(40, 40, clear);
+    const std::vector<Point2Df> corner = {Point2Df(5, 20), Point2Df(20, 20), Point2Df(20, 5)};
+    Rect2Di r = RasterPaint::DrawPolygon(pl, nullptr, corner, false, half);
+    CHECK(r.width > 0);
+    CHECK_NEAR(pl.GetPixel(10, 20).a, 128, 2);
+    CHECK_NEAR(pl.GetPixel(19, 19).a, 128, 2);   // the corner, covered by both segments
+    CHECK(pl.GetPixel(12, 12).a == 0);           // open: no segment back to the start
+    UCRasterLayer closedPl(40, 40, clear);
+    RasterPaint::DrawPolygon(closedPl, nullptr, corner, true, half);
+    CHECK(closedPl.GetPixel(12, 12).a > 100);    // closed: the third side runs through it
+
+    // curve: bends towards the control points, not along the chord
+    UCRasterLayer cv(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::ShapeStyle black;
+    black.stroke = RasterPixel(0, 0, 0, 255);
+    black.strokeWidth = 2;
+    const std::vector<Point2Df> flat = RasterPaint::FlattenCubicBezier(
+            Point2Df(5, 30), Point2Df(30, 0), Point2Df(30, 0), Point2Df(55, 30));
+    CHECK(flat.size() >= 9);
+    CHECK(flat.front().x == 5 && flat.front().y == 30 && flat.back().x == 55 && flat.back().y == 30);
+    RasterPaint::DrawCurve(cv, nullptr, Point2Df(5, 30), Point2Df(30, 0), Point2Df(30, 0), Point2Df(55, 30), black);
+    CHECK(cv.GetPixel(30, 7).r < 128);           // B(0.5) = (30, 7.5)
+    CHECK(cv.GetPixel(30, 29).r == 255);         // the chord's middle stays white
+
+    // arrow: the head, the shaft, nothing past the tip
+    UCRasterLayer ar(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawArrow(ar, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, false, black);
+    CHECK(ar.GetPixel(50, 21).r == 0);           // in the head
+    CHECK(ar.GetPixel(44, 24).r == 0);           // in the head, off the 2 px shaft
+    CHECK(ar.GetPixel(20, 19).r == 0);           // the shaft
+    CHECK(ar.GetPixel(20, 23).r == 255);
+    CHECK(ar.GetPixel(56, 20).r == 255);         // nothing past the tip
+    CHECK(ar.GetPixel(12, 21).r == 255);         // no head at the tail
+    UCRasterLayer both(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawArrow(both, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, true, black);
+    CHECK(both.GetPixel(12, 21).r == 0);         // the head at the tail
+
+    // a shaft wider than the point stops at the head's base
+    UCRasterLayer wide(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::ShapeStyle thick = black;
+    thick.strokeWidth = 10;
+    RasterPaint::DrawArrow(wide, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, false, thick);
+    CHECK(wide.GetPixel(30, 16).r == 0);         // the 10 px shaft
+    CHECK(wide.GetPixel(53, 15).r == 255);       // beside the point: the shaft does not reach it
+
+    // a translucent arrow: shaft and head meet without a darker seam
+    UCRasterLayer seam(60, 40, clear);
+    RasterPaint::DrawArrow(seam, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, false, half);
+    CHECK_NEAR(seam.GetPixel(42, 19).a, 128, 2);
+    CHECK_NEAR(seam.GetPixel(44, 19).a, 128, 2);
+
+    // a head longer than the arrow is the arrow; a zero-length one is nothing
+    UCRasterLayer stub(20, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawArrow(stub, nullptr, Point2Df(5, 20), Point2Df(10, 20), 50, 12, false, black);
+    CHECK(stub.GetPixel(8, 20).r == 0);
+    CHECK(stub.GetPixel(2, 20).r == 255);
+    CHECK(!RasterPaint::ArrowShape(Point2Df(5, 5), Point2Df(5, 5), 10, 10, false, 2).valid);
+    CHECK(RasterPaint::DrawArrow(stub, nullptr, Point2Df(5, 5), Point2Df(5, 5), 10, 10, false, black).width == 0);
 }
 
 static void TestDocument() {
@@ -442,6 +600,14 @@ static void TestSaveOverTheOpenFile() {
     CHECK(std::filesystem::file_size(UltraCanvas::PathFromUtf8(keep)) == 12);
     CHECK(strays() == 0);
 
+    // A name without an extension (saved under "All files") has no format to
+    // pick: it fails saying so, and writes nothing.
+    const std::string bare = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "untitled");
+    CHECK(!unsupported.SaveToFile(bare, err));
+    CHECK(err.find("no extension") != std::string::npos);
+    CHECK(!std::filesystem::exists(UltraCanvas::PathFromUtf8(bare)));
+    CHECK(strays() == 0);
+
     std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }
 
@@ -585,18 +751,565 @@ static void TestColourToAlpha() {
 }
 #endif
 
+
+// ===== TEXT LAYERS =====
+
+// Two paragraphs: "Hello " in bold and "world" in red at 24 pt, then a
+// centred line in the layer's default font.
+static std::shared_ptr<UCRichDocument> MakeTextDocument() {
+    auto doc = std::make_shared<UCRichDocument>();
+    RichDocBlock first;
+    RichTextRun hello;
+    hello.text = "Hello ";
+    hello.bold = true;
+    RichTextRun world;
+    world.text = "world";
+    world.color = "#CC0000";
+    world.fontSizePt = 24.0f;
+    first.runs = { hello, world };
+    RichDocBlock second;
+    RichTextRun line;
+    line.text = "centred line";
+    second.runs = { line };
+    second.align = RichTextAlign::Center;
+    doc->blocks = { first, second };
+    return doc;
+}
+
+static RasterTextContent MakeTextContent() {
+    RasterTextContent content;
+    content.document = MakeTextDocument();
+    content.x = 10.4;          // drawn from a whole pixel
+    content.y = 8;
+    content.width = 180;
+    content.fontFamily = "Sans";
+    content.fontSizePx = 20.0f;
+    content.colour = RasterPixel(0, 0, 255, 255);
+    return content;
+}
+
+static int CountOpaque(const UCRasterLayer& l, const Rect2Di& r) {
+    int n = 0;
+    for (int y = r.y; y < r.y + r.height; ++y)
+        for (int x = r.x; x < r.x + r.width; ++x)
+            if (l.GetPixel(x, y).a) ++n;
+    return n;
+}
+
+static bool SamePixels(const UCRasterLayer& a, const UCRasterLayer& b) {
+    return a.GetWidth() == b.GetWidth() && a.GetHeight() == b.GetHeight() &&
+           std::equal(a.Data(), a.Data() + a.DataSize(), b.Data());
+}
+
+// The fonts a Text tool offers: every scalable family this process can set
+// text in, sorted regardless of case, each once.
+static void TestInstalledFontFamilies() {
+    const std::vector<std::string> families = GetInstalledFontFamilies();
+    CHECK(!families.empty());
+    auto lower = [](std::string s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    for (size_t i = 1; i < families.size(); ++i) CHECK(lower(families[i - 1]) < lower(families[i]));
+    for (const auto& f : families) CHECK(!f.empty());
+}
+
+static void TestTextLayers() {
+    std::string err;
+    const RasterTextContent content = MakeTextContent();
+    auto layer = RenderTextLayer(content, 240, 120, err);
+    CHECK(layer != nullptr);
+    if (!layer) { std::printf("  RenderTextLayer: %s\n", err.c_str()); return; }
+    CHECK(layer->IsTextLayer() && layer->GetWidth() == 240 && layer->GetHeight() == 120);
+    CHECK(layer->name == "Hello world");
+    const Rect2Dd box = layer->text->GetBox();
+    CHECK(box.x == 10 && box.y == 8 && box.width == 180);
+    CHECK(box.height > 20 && box.height < 112);
+    const Rect2Di inside(10, 8, 180, static_cast<int>(std::ceil(box.height)));
+    CHECK(CountOpaque(*layer, inside) > 100);
+    CHECK(CountOpaque(*layer, layer->GetRect()) == CountOpaque(*layer, inside));   // nothing outside the box
+    // The runs' own colour, the layer's colour for the rest.
+    bool red = false, blue = false;
+    for (int y = 0; y < 120; ++y)
+        for (int x = 0; x < 240; ++x) {
+            const RasterPixel p = layer->GetPixel(x, y);
+            if (p.a == 255 && p.r > 150 && p.b < 60) red = true;
+            if (p.a == 255 && p.b > 200 && p.r < 60) blue = true;
+        }
+    CHECK(red && blue);
+    {
+        RasterTextContent none = content;
+        none.document.reset();
+        CHECK(RenderTextLayer(none, 240, 120, err) == nullptr && !err.empty());
+        RasterTextContent narrow = content;
+        narrow.width = 0;
+        CHECK(RenderTextLayer(narrow, 240, 120, err) == nullptr);
+    }
+    {
+        UCRichDocument blank;
+        CHECK(IsTextLayerDocumentEmpty(blank) && TextLayerName(blank) == "Text");
+        CHECK(!IsTextLayerDocumentEmpty(*content.document));
+        CHECK(TextLayerName(*content.document, 5) == "Hell\xE2\x80\xA6");
+    }
+
+    // The editor the Text tool puts on the canvas, at 1:1, draws exactly the
+    // pixels the layer holds: that is the WYSIWYG promise.
+    {
+        auto editor = std::make_shared<UltraCanvasRichTextEdit>("probe", 0, 0, 180, 400);
+        PrepareTextLayerEditor(*editor, *layer->text, 1.0);
+        editor->SetDocument(std::make_shared<UCRichDocument>(*content.document));
+        const int h = static_cast<int>(std::ceil(box.height));
+        editor->SetBounds(Rect2Df(0, 0, 180, static_cast<float>(h)));
+        UCPixmap pixmap;
+        CHECK(pixmap.Init(180, h));
+        auto ctx = CreateRenderContext(Size2Di(180, h), nullptr);
+        ctx->Clear(Colors::Transparent);
+        editor->Render(ctx.get(), Rect2Df(0, 0, 180, static_cast<float>(h)));
+        ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
+        pixmap.MarkDirty();
+        pixmap.Flush();
+        const uint32_t* px = pixmap.GetPixelData();
+        int differing = 0;
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < 180; ++x)
+                if (static_cast<int>(px[static_cast<size_t>(y) * pixmap.GetRawWidth() + x] >> 24) != layer->GetPixel(10 + x, 8 + y).a) ++differing;
+        CHECK(differing == 0);
+        CHECK(std::abs(editor->GetContentHeight() - box.height) < 0.01);
+        editor->SetZoom(8.0f);   // a canvas zoom past a word processor's 5x
+        CHECK(editor->GetZoom() == 8.0f);
+    }
+
+    // In the document.
+    UCRasterDocument doc(240, 120, RasterPixel(255, 255, 255, 255));
+    const int idx = doc.AddLayer(layer);
+    CHECK(idx == 1 && doc.GetLayer(1)->IsTextLayer());
+    const auto text = doc.GetLayer(1)->text;
+
+    // Duplicating keeps it text; so do attribute edits.
+    CHECK(doc.DuplicateLayer(1) == 2 && doc.GetLayer(2)->IsTextLayer());
+    doc.Undo();
+    doc.SetLayerOpacity(1, 0.5f);
+    CHECK(doc.GetLayer(1)->text == text);
+    doc.Undo();
+
+    // An edit that changes nothing leaves it text.
+    doc.BeginEdit("Nothing", 1, Rect2Di(0, 0, 4, 4));
+    doc.EndEdit();
+    CHECK(doc.GetLayer(1)->text == text);
+    // A pixel edit makes it a bitmap; undo makes it text again, redo not.
+    int structureEvents = 0;
+    UCRasterDocument::Listener listener;
+    listener.structureChanged = [&]() { ++structureEvents; };
+    const auto listenerId = doc.AddListener(listener);
+    doc.BeginEdit("Paint", 1, Rect2Di(0, 0, 4, 4));
+    doc.GetLayer(1)->SetPixel(1, 1, RasterPixel(0, 255, 0, 255));
+    doc.EndEdit();
+    CHECK(!doc.GetLayer(1)->IsTextLayer() && structureEvents == 1);
+    doc.Undo();
+    CHECK(doc.GetLayer(1)->text == text && doc.GetLayer(1)->GetPixel(1, 1).a == 0);
+    doc.Redo();
+    CHECK(!doc.GetLayer(1)->IsTextLayer() && doc.GetLayer(1)->GetPixel(1, 1).g == 255);
+    doc.Undo();
+    doc.RemoveListener(listenerId);
+    // A cancelled edit leaves it text.
+    doc.BeginEdit("Cancelled", 1, Rect2Di(0, 0, 4, 4));
+    doc.GetLayer(1)->SetPixel(1, 1, RasterPixel(0, 255, 0, 255));
+    doc.CancelEdit();
+    CHECK(doc.GetLayer(1)->text == text && doc.GetLayer(1)->GetPixel(1, 1).a == 0);
+    // RecordEdit, the brush strokes' way, too.
+    {
+        auto before = doc.GetLayer(1)->Clone();
+        doc.GetLayer(1)->SetPixel(2, 2, RasterPixel(0, 255, 0, 255));
+        doc.RecordEdit("Stroke", 1, Rect2Di(0, 0, 4, 4), *before);
+        CHECK(!doc.GetLayer(1)->IsTextLayer());
+        doc.Undo();
+        CHECK(doc.GetLayer(1)->text == text);
+    }
+    // So do a fill and a delete through the selection.
+    doc.FillSelection(RasterPixel(1, 2, 3, 255));
+    CHECK(!doc.GetLayer(1)->IsTextLayer());
+    doc.Undo();
+    CHECK(doc.GetLayer(1)->text == text);
+
+    // The canvas growing, or a crop, moves the box with the pixels.
+    doc.ResizeCanvas(300, 160, 20, 30);
+    CHECK(doc.GetLayer(1)->IsTextLayer() && doc.GetLayer(1)->text->x == 30 && doc.GetLayer(1)->text->y == 38);
+    doc.Undo();
+    CHECK(doc.GetLayer(1)->text == text);
+    doc.CropTo(Rect2Di(5, 4, 200, 100));
+    CHECK(doc.GetLayer(1)->IsTextLayer() && doc.GetLayer(1)->text->x == 5 && doc.GetLayer(1)->text->y == 4);
+    doc.Undo();
+    // Mirroring, turning or scaling the pixels does not.
+    doc.FlipHorizontal();
+    CHECK(!doc.GetLayer(1)->IsTextLayer());
+    doc.Undo();
+    CHECK(doc.GetLayer(1)->text == text);
+    doc.Rotate90(true);
+    CHECK(!doc.GetLayer(1)->IsTextLayer());
+    doc.Undo();
+    doc.ScaleImage(120, 60);
+    CHECK(!doc.GetLayer(1)->IsTextLayer());
+    doc.Undo();
+    CHECK(doc.GetLayer(1)->text == text);
+
+    // A copy of the selected pixels is a picture, not words.
+    Point2Di origin;
+    doc.SetActiveLayerIndex(1);
+    auto copied = doc.CopySelection(origin);
+    CHECK(copied && !copied->IsTextLayer());
+
+    // Editing the text: the layer drawn again, as one undo step.
+    {
+        RasterTextContent edited = *text;
+        auto changedDoc = std::make_shared<UCRichDocument>(*text->document);
+        changedDoc->blocks[1].runs[0].text = "another line";
+        edited.document = changedDoc;
+        auto rerendered = RenderTextLayerLike(*doc.GetLayer(1), edited, err);
+        CHECK(rerendered && rerendered->text && rerendered->name == doc.GetLayer(1)->name);
+        CHECK(doc.ReplaceLayer(1, rerendered, "Edit Text"));
+        CHECK(doc.GetUndoLabel() == "Edit Text");
+        CHECK(doc.GetLayer(1)->text->document->ToPlainText() == changedDoc->ToPlainText());
+        doc.Undo();
+        CHECK(doc.GetLayer(1)->text == text);
+        CHECK(!doc.ReplaceLayer(1, std::make_shared<UCRasterLayer>(10, 10), "Wrong size"));
+    }
+
+    // Shown by an editor in place: out of the composite, not out of the image.
+    {
+        const Rect2Di inBox(10, 8, 180, static_cast<int>(std::ceil(box.height)));
+        auto countComposite = [&]() {
+            auto pm = doc.GetCompositePixmap();
+            const uint32_t* px = pm->GetPixelData();
+            int n = 0;
+            for (int y = inBox.y; y < inBox.y + inBox.height; ++y)
+                for (int x = inBox.x; x < inBox.x + inBox.width; ++x)
+                    if ((px[static_cast<size_t>(y) * pm->GetRawWidth() + x] & 0xFFFFFF) != 0xFFFFFF) ++n;
+            return n;
+        };
+        const int withText = countComposite();
+        CHECK(withText > 100);
+        doc.SetInPlaceEditLayer(doc.GetLayer(1));
+        CHECK(countComposite() == 0 && doc.GetInPlaceEditLayer() == doc.GetLayer(1));
+        CHECK(CountOpaque(*doc.Flatten(), inBox) > 0);
+        doc.SetInPlaceEditLayer(nullptr);
+        CHECK(countComposite() == withText);
+    }
+
+    // Rasterize, and Merge Down, end it.
+    CHECK(!doc.RasterizeLayer(0));
+    CHECK(doc.RasterizeLayer(1) && !doc.GetLayer(1)->IsTextLayer() && doc.GetUndoLabel() == "Rasterize Layer");
+    CHECK(SamePixels(*doc.GetLayer(1), *layer));
+    doc.Undo();
+    CHECK(doc.GetLayer(1)->text == text);
+    CHECK(doc.MergeLayerDown(1) && doc.GetLayerCount() == 1 && !doc.GetLayer(0)->IsTextLayer());
+    doc.Undo();
+    // A text layer merged onto by another stops being text too.
+    CHECK(doc.AddLayer("over") == 2 && doc.MergeLayerDown(2) && !doc.GetLayer(1)->IsTextLayer());
+}
+
+#ifdef HAS_LIBVIPS
+// A project keeps a text layer as text: the same pixels on opening, the same
+// words, box and default font - and drawn again from what was read, the same
+// pixels once more, so editing it after opening moves nothing.
+static void TestTextLayerProject() {
+    std::string err;
+    auto layer = RenderTextLayer(MakeTextContent(), 240, 120, err);
+    CHECK(layer != nullptr);
+    if (!layer) return;
+    UCRasterDocument doc(240, 120, RasterPixel(255, 255, 255, 255));
+    doc.AddLayer(layer);
+    doc.SetLayerOpacity(1, 0.75f);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-text";
+    std::filesystem::create_directories(dir);
+    const std::string proj = PathToUtf8(dir / "text.ucraster");
+    CHECK(doc.SaveProject(proj, err));
+    UCRasterDocument loaded;
+    CHECK(loaded.LoadProject(proj, err));
+    CHECK(loaded.GetLayerCount() == 2);
+    if (loaded.GetLayerCount() != 2) return;
+    auto back = loaded.GetLayer(1);
+    CHECK(back->IsTextLayer() && back->opacity == 0.75f && back->name == layer->name);
+    CHECK(SamePixels(*back, *layer));
+    if (!back->text) return;
+    const RasterTextContent& a = *layer->text;
+    const RasterTextContent& b = *back->text;
+    CHECK(a.x == b.x && a.y == b.y && a.width == b.width && std::abs(a.height - b.height) < 1e-6);
+    CHECK(a.fontFamily == b.fontFamily && a.fontSizePx == b.fontSizePx && a.colour == b.colour);
+    CHECK(b.document && b.document->ToPlainText() == a.document->ToPlainText());
+    auto again = RenderTextLayer(b, 240, 120, err);
+    CHECK(again && SamePixels(*again, *layer));
+    CHECK(!loaded.GetLayer(0)->IsTextLayer());
+    std::filesystem::remove_all(dir);
+}
+#endif
+
+// Draws `surface` at `width` x `height`, as a window does after its layout
+// gave the element that size.
+static void RenderSurfaceAt(UltraCanvasPaintSurface& surface, float width, float height) {
+    surface.SetBounds(Rect2Df(0, 0, width, height));
+    std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(static_cast<int>(width), static_cast<int>(height)), nullptr);
+    CHECK(ctx != nullptr);
+    if (ctx) surface.Render(ctx.get(), Rect2Df(0, 0, width, height));
+}
+
+// A resized view shows what it showed: the image point at its centre stays
+// there, and an image smaller than the view is centred in it again - in the
+// next frame, not at the next edit of the document.
+static void TestSurfaceFollowsResize() {
+    auto doc = std::make_shared<UCRasterDocument>(800, 600, RasterPixel(255, 255, 255, 255));
+    auto surface = CreatePaintSurface("resize-test");
+    int viewChanges = 0;
+    surface->onViewChanged = [&]() { ++viewChanges; };
+    surface->SetDocument(doc);
+
+    // The first frame fits the image and centres it.
+    RenderSurfaceAt(*surface, 1000, 700);
+    const double zoom = surface->GetZoom();
+    CHECK(zoom > 0.5 && zoom < 1.5);
+    CHECK_NEAR(surface->GetTransform().originX, (1000 - 800 * zoom) / 2, 1);
+    CHECK_NEAR(surface->GetTransform().originY, (700 - 600 * zoom) / 2, 1);
+
+    // A larger window: the same zoom, the image centred in the new size.
+    viewChanges = 0;
+    RenderSurfaceAt(*surface, 1400, 900);
+    CHECK(surface->GetZoom() == zoom);
+    CHECK_NEAR(surface->GetTransform().originX, (1400 - 800 * zoom) / 2, 1);
+    CHECK_NEAR(surface->GetTransform().originY, (900 - 600 * zoom) / 2, 1);
+    CHECK(viewChanges == 1);   // the status bar and overlays hear of it
+
+    // A frame at the same size moves nothing.
+    viewChanges = 0;
+    RenderSurfaceAt(*surface, 1400, 900);
+    CHECK(viewChanges == 0);
+
+    // Zoomed in past the view: the point at the centre stays at the centre.
+    surface->SetZoom(4.0);
+    surface->ScrollToImagePoint(200, 150);
+    RenderSurfaceAt(*surface, 1000, 700);
+    const Point2Dd centre = surface->ViewToImage(Point2Di(500, 350));
+    CHECK_NEAR(centre.x, 200, 1);
+    CHECK_NEAR(centre.y, 150, 1);
+
+    // A view call between the resize and the next frame sees the new size.
+    // At 1200 x 800 the centre (600, 400) shows (200, 150) at 4x, so the
+    // pointer at (100, 100) is over (75, 75) - and zooming about the pointer
+    // keeps that point under it.
+    surface->SetBounds(Rect2Df(0, 0, 1200, 800));
+    surface->SetZoomAt(8.0, Point2Di(100, 100));
+    RenderSurfaceAt(*surface, 1200, 800);
+    const Point2Dd underPointer = surface->ViewToImage(Point2Di(100, 100));
+    CHECK_NEAR(underPointer.x, 75, 1);
+    CHECK_NEAR(underPointer.y, 75, 1);
+
+    // A document change between a resize and the frame brings the view to
+    // the new size itself, and reports it like any other view move.
+    RenderSurfaceAt(*surface, 1000, 700);
+    surface->ZoomToFit();
+    const double fitted = surface->GetZoom();
+    surface->SetBounds(Rect2Df(0, 0, 1400, 900));
+    viewChanges = 0;
+    doc->AddLayer("resize-test-layer");
+    CHECK(viewChanges == 1);
+    CHECK_NEAR(surface->GetTransform().originX, (1400 - 800 * fitted) / 2, 1);
+    CHECK_NEAR(surface->GetTransform().originY, (900 - 600 * fitted) / 2, 1);
+    // One that moves nothing reports nothing.
+    doc->AddLayer("resize-test-layer-2");
+    CHECK(viewChanges == 1);
+
+    // A loupe keeps the point SetLoupeView put at its centre.
+    auto loupe = CreatePaintSurface("resize-loupe");
+    loupe->SetLoupeMode(true);
+    loupe->SetDocument(doc);
+    loupe->SetBounds(Rect2Df(0, 0, 200, 200));
+    loupe->SetLoupeView(8.0, 50, 60);
+    RenderSurfaceAt(*loupe, 300, 240);
+    const Point2Dd loupeCentre = loupe->ViewToImage(Point2Di(150, 120));
+    CHECK_NEAR(loupeCentre.x, 50, 1);
+    CHECK_NEAR(loupeCentre.y, 60, 1);
+}
+
+// The PNG IHDR's width and height (big-endian at bytes 16 and 20).
+static bool PngSize(const std::vector<uint8_t>& png, int& w, int& h) {
+    static const uint8_t sig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+    if (png.size() < 24 || !std::equal(sig, sig + 8, png.begin())) return false;
+    auto be = [&](size_t at) {
+        return (static_cast<int>(png[at]) << 24) | (static_cast<int>(png[at + 1]) << 16) |
+               (static_cast<int>(png[at + 2]) << 8) | static_cast<int>(png[at + 3]);
+    };
+    w = be(16);
+    h = be(20);
+    return true;
+}
+
+// A UCD layered image (spec 4.7) keeps what a project keeps - layers, their
+// attributes, text layers as text - without libvips, and reads at every
+// depth: the thumbnail, the pixels, the words.
+static void TestLayeredUCD() {
+    std::string err;
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-ucd";
+    std::filesystem::create_directories(dir);
+
+    UCRasterDocument doc(300, 150, RasterPixel(255, 255, 255, 255));
+    const int painted = doc.AddLayer("Ebene \xC3\xBC \xE2\x80\x94 rot", RasterPixel(0, 0, 0, 0));
+    doc.GetLayer(painted)->FillRect(Rect2Di(20, 30, 100, 50), RasterPixel(200, 10, 20, 180));
+    doc.SetLayerOpacity(painted, 0.4f);
+    doc.SetLayerBlendMode(painted, RasterBlendMode::Multiply);
+    doc.SetLayerLocked(painted, true);
+    const int hidden = doc.AddLayer("hidden", RasterPixel(0, 255, 0, 255));
+    doc.SetLayerVisible(hidden, false);
+    doc.SetLayerBlendMode(hidden, RasterBlendMode::SoftLight);
+    auto text = RenderTextLayer(MakeTextContent(), 300, 150, err);
+    CHECK(text != nullptr);
+    if (!text) return;
+    doc.AddLayer(text);
+    doc.SetActiveLayerIndex(painted);
+
+    const std::string path = PathToUtf8(dir / "layers.ucd");
+    CHECK(UCRasterDocument::IsUCDFile(path) && UCRasterDocument::IsProjectFile(path));
+    CHECK(doc.SaveToFile(path, err));
+    CHECK(doc.GetFilePath() == path && !doc.IsModified());
+
+    // A filer's read: header and thumbnail, nothing else.
+    UCD::Header header;
+    std::vector<uint8_t> thumbnail;
+    CHECK(UCD::ReadHeaderAndThumbnail(path, header, thumbnail, err));
+    CHECK(header.descriptor == "UCBitmap" && header.versionMajor == 2 && header.versionMinor == 1);
+    CHECK(header.HasThumbnail() && header.ThumbnailIsPng() && !header.IsEncrypted());
+    int tw = 0, th = 0;
+    CHECK(PngSize(thumbnail, tw, th) && tw == 256 && th == 128);   // the longer side at 256
+
+    // The container: INDX, LAYR, then a BMAP per layer and a VECT per text layer.
+    UCD::Reader reader;
+    CHECK(reader.Open(path, err));
+    CHECK(reader.GetSections().size() == 7 && reader.GetSections()[0].type == "INDX" &&
+          reader.GetSections()[1].type == "LAYR");
+    CHECK(reader.FindSections("BMAP").size() == 4 && reader.FindSections("VECT").size() == 1);
+
+    // An editor's read: everything back.
+    UCRasterDocument loaded;
+    CHECK(loaded.LoadFromFile(path, err));
+    CHECK(loaded.GetWidth() == 300 && loaded.GetHeight() == 150 && loaded.GetLayerCount() == 4);
+    if (loaded.GetLayerCount() != 4) return;
+    CHECK(loaded.GetActiveLayerIndex() == painted && loaded.GetFilePath() == path && !loaded.IsModified());
+    for (int i = 0; i < 4; ++i) {
+        const auto a = doc.GetLayer(i), b = loaded.GetLayer(i);
+        CHECK(SamePixels(*a, *b));
+        CHECK(a->name == b->name && a->visible == b->visible && a->locked == b->locked);
+        CHECK(a->opacity == b->opacity && a->blendMode == b->blendMode);
+        CHECK(a->IsTextLayer() == b->IsTextLayer());
+    }
+    const auto back = loaded.GetLayer(3);
+    if (back->text && text->text) {
+        const RasterTextContent& a = *text->text;
+        const RasterTextContent& b = *back->text;
+        CHECK(a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height);
+        CHECK(a.fontFamily == b.fontFamily && a.fontSizePx == b.fontSizePx && a.colour == b.colour);
+        CHECK(b.document && b.document->ToPlainText() == a.document->ToPlainText());
+        // The words draw again into the same pixels.
+        auto again = RenderTextLayer(b, 300, 150, err);
+        CHECK(again && SamePixels(*again, *text));
+    }
+
+    // A UCBitmap without a layer stack is one image: its first BMAP (here
+    // RGB8, the third of UCRW's pixel formats), as the Background.
+    {
+        std::vector<uint8_t> bmap;
+        UCD::AppendPreamble(bmap, "UCRW", 1);
+        UCD::ByteWriter w(bmap);
+        w.U16(2); w.U16(1); w.U8(1); w.Zeros(3);
+        const uint8_t rgb[6] = { 10, 20, 30, 40, 50, 60 };
+        w.Bytes(rgb, sizeof(rgb));
+        UCD::Writer single("UCBitmap");
+        single.AddSection("XTND", { 1, 2, 3 });       // unknown to this reader: skipped
+        single.AddSection("BMAP", bmap);
+        const std::string one = PathToUtf8(dir / "single.ucd");
+        CHECK(single.WriteToFile(one, err));
+        UCRasterDocument image;
+        CHECK(image.LoadFromFile(one, err));
+        CHECK(image.GetLayerCount() == 1 && image.GetWidth() == 2 && image.GetHeight() == 1);
+        if (image.GetLayerCount() == 1) {
+            CHECK(image.GetLayer(0)->name == "Background");
+            CHECK(image.GetLayer(0)->GetPixel(1, 0) == RasterPixel(40, 50, 60, 255));
+        }
+    }
+
+    // A text frame this cannot read leaves the layer the bitmap it shows;
+    // an unknown blend mode composites as Normal.
+    {
+        std::vector<uint8_t> stack;
+        UCD::ByteWriter s(stack);
+        s.U8(1); s.Zeros(3); s.U32(4); s.U32(4); s.I32(0); s.U32(1);
+        std::vector<uint8_t> record;
+        UCD::ByteWriter r(record);
+        r.U8(0x01); r.U8(99); r.U16(0); r.F32(1.0f); r.I32(1); r.I32(1);
+        r.U32(0); r.U32(0); r.String16("words");
+        r.U32(0xDEADBEEF);                          // a field from a later revision: skipped
+        s.U32(static_cast<uint32_t>(record.size()));
+        s.Bytes(record.data(), record.size());
+        std::vector<uint8_t> bmap;
+        UCD::AppendPreamble(bmap, "UCRW", 1);
+        UCD::ByteWriter b(bmap);
+        b.U16(1); b.U16(1); b.U8(0); b.Zeros(3);
+        const uint8_t px[4] = { 1, 2, 3, 4 };
+        b.Bytes(px, 4);
+        std::vector<uint8_t> frame;
+        UCD::AppendPreamble(frame, "UCTF", 1);
+        UCD::ByteWriter f(frame);
+        f.F64(0); f.F64(0); f.F64(4); f.F64(4); f.Zeros(4); f.F32(12.0f); f.String16("Sans");
+        f.FourCC("ODT "); f.U32(5); f.Bytes("broke", 5);   // not an OpenDocument text
+        UCD::Writer w("UCBitmap");
+        w.AddSection("LAYR", stack);
+        w.AddSection("BMAP", bmap);
+        w.AddSection("VECT", frame, UCD::Compression::Uncompressed);
+        const std::string odd = PathToUtf8(dir / "odd.ucd");
+        CHECK(w.WriteToFile(odd, err));
+        UCRasterDocument image;
+        CHECK(image.LoadFromFile(odd, err));
+        CHECK(image.GetLayerCount() == 1);
+        if (image.GetLayerCount() == 1) {
+            const auto l = image.GetLayer(0);
+            CHECK(!l->IsTextLayer() && l->name == "words" && l->blendMode == RasterBlendMode::Normal);
+            CHECK(l->GetPixel(1, 1) == RasterPixel(1, 2, 3, 4) && l->GetPixel(0, 0).a == 0);   // placed at (1, 1)
+        }
+    }
+
+    // What this cannot open says why, and leaves the document as it was.
+    {
+        UCRasterDocument keep(5, 5, RasterPixel(9, 9, 9, 255));
+        const std::string notUcd = PathToUtf8(dir / "not.ucd");
+        { std::ofstream(PathFromUtf8(notUcd), std::ios::binary) << "UCD\x01 an old one"; }
+        std::string why;
+        CHECK(!keep.LoadFromFile(notUcd, why) && why.find("version 1") != std::string::npos);
+        UCD::Writer empty("UCDoc");
+        empty.AddSection("META", { 0 });
+        const std::string doc2 = PathToUtf8(dir / "doc.ucd");
+        CHECK(empty.WriteToFile(doc2, err));
+        why.clear();
+        CHECK(!keep.LoadFromFile(doc2, why) && why.find("holds no image") != std::string::npos);
+        CHECK(keep.GetWidth() == 5 && keep.GetLayerCount() == 1);
+    }
+    std::filesystem::remove_all(dir);
+}
+
 int main() {
 #ifdef HAS_LIBVIPS
     if (VIPS_INIT("RasterEditingTest")) { std::printf("vips init failed\n"); return 1; }
 #endif
+    TestListeners();
     TestLayerBasics();
     TestBlend();
     TestSelection();
     TestSelectionFollowsTheCanvas();
     TestBrush();
     TestRasterPaint();
+    TestLinesCurvesArrows();
     TestDocument();
+    TestInstalledFontFamilies();
+    TestTextLayers();
+    TestSurfaceFollowsResize();
+    TestLayeredUCD();
 #ifdef HAS_LIBVIPS
+    TestTextLayerProject();
     TestPixelFXAndFiles();
     TestSaveOverTheOpenFile();
     TestExportIsStaged();

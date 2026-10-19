@@ -8,16 +8,20 @@
 //                    erase / clone / smudge modes. Opacity caps the whole
 //                    stroke (dabs do not stack past it), flow is the amount
 //                    each dab deposits — the Photoshop convention.
-//   RasterPaint    — one-shot operations: anti-aliased lines, rectangles and
-//                    ellipses (outline and fill), flood fill with tolerance,
+//   RasterPaint    — one-shot operations: anti-aliased lines, polylines,
+//                    curves, arrows, rectangles and ellipses (outline and
+//                    fill), flood fill with tolerance,
 //                    magic-wand mask, linear / radial gradients, stamping a
 //                    coverage mask in a colour (text), eyedropper sampling.
 //
 // None of this needs libvips; PixelFX is for whole-image filters, this is
 // for the pixels under the cursor. Everything is clipped to the layer and
 // scaled by the selection's coverage, so callers never test either.
+// Version: 1.1.0 - DrawCurve / FlattenCubicBezier, DrawArrow / ArrowShape; an
+//                  open or closed path's stroke costs its length, not its
+//                  segment count times its bounding box
 // Version: 1.0.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -132,8 +136,43 @@ namespace RasterPaint {
                           const Rect2Df& r, const ShapeStyle& style);
     Rect2Di DrawEllipse(UCRasterLayer& layer, const UCRasterSelection* sel,
                         const Rect2Df& bounds, const ShapeStyle& style);
+    // A polyline (`closed` false) or a polygon. The outline has round joins
+    // and caps and is laid down in one pass, so where two segments meet a
+    // translucent stroke is not painted twice; the fill (background) is for
+    // a closed polygon only.
     Rect2Di DrawPolygon(UCRasterLayer& layer, const UCRasterSelection* sel,
                         const std::vector<Point2Df>& points, bool closed, const ShapeStyle& style);
+
+    // The points along a cubic Bezier curve from `a` to `b` with control
+    // points `c1` and `c2`, `a` first and `b` last, at most `maxStep` image
+    // pixels apart (at least 8 segments, at most 4096): what DrawCurve
+    // strokes, and what a preview of it can draw.
+    std::vector<Point2Df> FlattenCubicBezier(Point2Df a, Point2Df c1, Point2Df c2, Point2Df b,
+                                             float maxStep = 2.0f);
+    // A cubic Bezier curve, stroked with round caps in one pass.
+    Rect2Di DrawCurve(UCRasterLayer& layer, const UCRasterSelection* sel,
+                      Point2Df a, Point2Df c1, Point2Df c2, Point2Df b, const ShapeStyle& style);
+
+    // An arrow from `tail` to `tip`: a shaft of the stroke's width ending in
+    // a filled triangular head at the tip - and at the tail too with
+    // `headAtTail` - `headLength` long and `headWidth` across. A head is
+    // never narrower than the shaft plus 2 px, and the heads never longer
+    // than the arrow (half of it each, with two). The shaft stops at the
+    // head's base, so a wide stroke does not poke out past the point.
+    struct ArrowGeometry {
+        bool valid = false;               // false: tail and tip coincide
+        Point2Df shaftFrom, shaftTo;      // between the heads' bases (empty when they meet)
+        Point2Df tipHead[3];              // the tip, then the two barbs
+        bool hasTailHead = false;
+        Point2Df tailHead[3];             // the tail, then the two barbs
+    };
+    ArrowGeometry ArrowShape(Point2Df tail, Point2Df tip, float headLength, float headWidth,
+                             bool headAtTail, float strokeWidth);
+    // The arrow in the stroke colour, shaft and heads in one pass. Returns
+    // the changed rectangle; nothing for a zero-length arrow.
+    Rect2Di DrawArrow(UCRasterLayer& layer, const UCRasterSelection* sel,
+                      Point2Df tail, Point2Df tip, float headLength, float headWidth,
+                      bool headAtTail, const ShapeStyle& style);
 
     // Coverage-based fill: `inside(x, y)` for sub-pixel sample positions;
     // the bounding box is `bbox`. 4x4 supersampling when `antialias`.
@@ -141,21 +180,33 @@ namespace RasterPaint {
                          const std::function<bool(float, float)>& inside,
                          const RasterPixel& colour, bool antialias, RasterBlendMode blend);
 
+    // How a fill meets the pixels already there.
+    enum class FillCompositing {
+        Blend = 0,   // laid over them in the blend mode (source-over): the
+                     // colour's alpha only says how much of it shows, so a
+                     // transparent colour changes nothing
+        Replace      // takes their place, alpha included: a transparent
+                     // colour makes them transparent. `blend` is not used.
+    };
+
     // Stamp a width*height coverage map (255 = full) at (x, y) in `colour`.
     Rect2Di StampMask(UCRasterLayer& layer, const UCRasterSelection* sel,
                       const uint8_t* mask, int maskWidth, int maskHeight, int x, int y,
                       const RasterPixel& colour, float opacity = 1.0f,
-                      RasterBlendMode blend = RasterBlendMode::Normal);
+                      RasterBlendMode blend = RasterBlendMode::Normal,
+                      FillCompositing compositing = FillCompositing::Blend);
 
     // Flood fill from (x, y): `tolerance` 0..255 is the mean per-channel RGBA
     // distance a pixel may have from the seed; `contiguous` false fills every
     // matching pixel in the layer. `sampleMerged` lets the caller pass a
-    // different layer to read colours from (the composite). Returns the
-    // changed rectangle.
+    // different layer to read colours from (the composite). `compositing`
+    // Replace sets the region to `colour` - transparent included - where
+    // Blend paints over it. Returns the changed rectangle.
     Rect2Di FloodFill(UCRasterLayer& layer, const UCRasterSelection* sel, int x, int y,
                       const RasterPixel& colour, int tolerance, bool contiguous,
                       const UCRasterLayer* sampleLayer = nullptr,
-                      RasterBlendMode blend = RasterBlendMode::Normal, float opacity = 1.0f);
+                      RasterBlendMode blend = RasterBlendMode::Normal, float opacity = 1.0f,
+                      FillCompositing compositing = FillCompositing::Blend);
 
     // Magic wand: the same region test as FloodFill, returned as a
     // canvas-sized coverage map for UCRasterSelection::SetMask().

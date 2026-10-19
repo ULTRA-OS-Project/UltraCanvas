@@ -2,8 +2,9 @@
 // Gantt chart element: project schedule visualization with a task table,
 // timeline grid, hierarchy, dependencies, milestones, progress tracking,
 // critical path analysis, and a preset-based design/palette system.
+// Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
-// Last Modified: 2026-07-26
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -225,8 +226,8 @@ namespace UltraCanvas {
         size_t GetPointCount() const override { return tasks.size(); }
         ChartDataPoint GetPoint(size_t index) override;
         bool SupportsStreaming() const override { return false; }
-        void LoadFromCSV(const std::string& filePath) override {}
-        void LoadFromArray(const std::vector<ChartDataPoint>& data) override {}
+        void LoadFromCSV(const std::string& filePath) override { (void)filePath; }
+        void LoadFromArray(const std::vector<ChartDataPoint>& data) override { (void)data; }
 
     private:
         void Touch() { ++version; }

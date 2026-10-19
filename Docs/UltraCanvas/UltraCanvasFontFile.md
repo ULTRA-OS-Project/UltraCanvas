@@ -1,5 +1,7 @@
 # UltraCanvasFontFile
 
+<!-- doc-check: std::string path; float deviceScale; Rect2Dd rect; std::shared_ptr<UltraCanvasFilerWidget> filer; -->
+
 Reads a **font definition file** — `.ttf`, `.otf`, `.ttc`, `.woff`, Type 1,
 the bitmap formats — as a *document*: its name records are metadata you can
 show, and a line of its own glyphs is a thumbnail you can draw. Together with
@@ -251,7 +253,7 @@ previewing a candidate before it is installed.
 | `std::vector<std::string> GetRegisteredFontFiles()` | Every file registered so far, in registration order. |
 
 Per platform: FontConfig (`FcConfigAppFontAddFile`) on Linux, Android and
-WASM; GDI `AddFontResourceExW(FR_PRIVATE)` **plus** FontConfig on Windows,
+WASM; GDI `AddFontResourceExW` with `FR_PRIVATE` **plus** FontConfig on Windows,
 because Pango is pinned to its FontConfig backend there; CoreText
 (`CTFontManagerRegisterFontsForURL`, process scope) on macOS.
 
@@ -267,9 +269,13 @@ After a successful registration the framework calls
 `RefreshFontConfiguration()` for you, which rebuilds the FontConfig FontSet
 and signals Pango's default font map (`pango_fc_font_map_config_changed`) so
 the new family is resolvable in the very next layout — not only in windows
-created afterwards. On macOS, and on any build without PangoFT2, there is no
-such signal: the default font map is dropped instead, and contexts that
-already exist pick the font up when their surface is next recreated.
+created afterwards. Every open window is then laid out and drawn again
+(`UltraCanvasWindowBase::RefreshAfterFontChange()`), so text already on
+screen in that family, or a character only the new font covers, shows in it
+at once rather than when that spot next happens to be repainted. On macOS,
+and on any build without PangoFT2, there is no such signal: the default font
+map is dropped instead, and contexts that already exist pick the font up when
+their surface is next recreated.
 
 ## In the filer
 

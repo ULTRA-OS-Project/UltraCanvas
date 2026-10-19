@@ -1,7 +1,8 @@
 // core/UltraNet/UltraNetCore.cpp
 // Lifecycle, global config, version reporting. Per-platform UltraNetSupport.*
 // supplies UltraNet_DetectSystemProxy.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0 - UltraNet_SetThreadAbortCheck
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetCore.h"
@@ -18,6 +19,12 @@ namespace ultranet_internal {
     // Defined in UltraNetWebSocket.cpp. Stops every receiver thread and frees
     // every WebSocket easy handle, for the same reason.
     void CloseAllWebSockets();
+    // Defined in UltraNetFtp.cpp. Closes the FTP connections each thread
+    // keeps open between calls, for the same reason.
+    void CloseFtpConnections();
+    // Defined in UltraNetCookies.cpp. Closes every session still open, with
+    // its handles and connections, for the same reason.
+    void CloseAllSessions();
 }
 
 namespace {
@@ -50,6 +57,8 @@ void UltraNet_Shutdown() {
     // callback re-enters into a UltraNet_* getter that takes g_mutex.
     ultranet_internal::StopAsyncWorker();
     ultranet_internal::CloseAllWebSockets();
+    ultranet_internal::CloseFtpConnections();
+    ultranet_internal::CloseAllSessions();
     std::lock_guard<std::mutex> lk(g_mutex);
     if (!g_initialized) return;
     curl_global_cleanup();
@@ -119,3 +128,15 @@ UltraNetTransferCallbacks UltraNet_GetTransferCallbacks() {
     std::lock_guard<std::mutex> lk(g_xferCbMutex);
     return g_xferCallbacks;
 }
+
+namespace {
+thread_local std::function<bool()> t_abortCheck;
+} // namespace
+
+std::function<bool()> UltraNet_SetThreadAbortCheck(std::function<bool()> check) {
+    std::function<bool()> previous = std::move(t_abortCheck);
+    t_abortCheck = std::move(check);
+    return previous;
+}
+
+bool UltraNet_ThreadAbortRequested() { return t_abortCheck && t_abortCheck(); }

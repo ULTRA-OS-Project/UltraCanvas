@@ -1,14 +1,21 @@
 // core/HTMLReader/HTMLParser.cpp
 // Tolerant HTML/XHTML parser implementation.
+// Version: 1.5.0 - elements nest at most kMaxTreeDepth deep; deeper ones are leaves
+// Version: 1.4.0 - the newline right after a <pre>, <listing> or <textarea> start tag
+//                  is not content, as in HTML's tree builder
+// Version: 1.3.0 - foreign content: inside <svg> / <math> the SVG and MathML
+//                  names keep their case (the standard's adjustment tables), HTML
+//                  resumes at foreignObject / desc / title / annotation-xml / mi...
 // Version: 1.2.0 - <!DOCTYPE> recorded; quirks mode decided from it
 // Version: 1.1.0 - <style media="..."> becomes an @media block
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
 
 #include <algorithm>
 #include <array>
+#include <unordered_map>
 #include <cctype>
 #include <cstring>
 
@@ -70,6 +77,55 @@ std::string ToLower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return s;
+}
+
+// The HTML standard's "adjust SVG tag names" and "adjust SVG / MathML
+// attributes" tables: the tokenizer lower-cases every name, and in foreign
+// content these are put back in the case their vocabulary spells them, so
+// `<lineargradient viewbox>` and `<linearGradient viewBox>` both come out
+// right, as in a browser. Looked up by the lower-cased name.
+const std::string* AdjustedForeignName(const std::string& lower, const char* const* table,
+                                       size_t count) {
+    static std::unordered_map<const char* const*, std::unordered_map<std::string, std::string>> maps;
+    auto& map = maps[table];
+    if (map.empty()) {
+        for (size_t i = 0; i < count; ++i) map.emplace(ToLower(table[i]), table[i]);
+    }
+    auto it = map.find(lower);
+    return it == map.end() ? nullptr : &it->second;
+}
+
+const char* const kSvgTagNames[] = {
+    "altGlyph", "altGlyphDef", "altGlyphItem", "animateColor", "animateMotion",
+    "animateTransform", "clipPath", "feBlend", "feColorMatrix", "feComponentTransfer",
+    "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap",
+    "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB", "feFuncG", "feFuncR",
+    "feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset",
+    "fePointLight", "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence",
+    "foreignObject", "glyphRef", "linearGradient", "radialGradient", "textPath",
+};
+
+const char* const kSvgAttributeNames[] = {
+    "attributeName", "attributeType", "baseFrequency", "baseProfile", "calcMode",
+    "clipPathUnits", "diffuseConstant", "edgeMode", "filterUnits", "glyphRef",
+    "gradientTransform", "gradientUnits", "kernelMatrix", "kernelUnitLength", "keyPoints",
+    "keySplines", "keyTimes", "lengthAdjust", "limitingConeAngle", "markerHeight",
+    "markerUnits", "markerWidth", "maskContentUnits", "maskUnits", "numOctaves",
+    "pathLength", "patternContentUnits", "patternTransform", "patternUnits", "pointsAtX",
+    "pointsAtY", "pointsAtZ", "preserveAlpha", "preserveAspectRatio", "primitiveUnits",
+    "refX", "refY", "repeatCount", "repeatDur", "requiredExtensions", "requiredFeatures",
+    "specularConstant", "specularExponent", "spreadMethod", "startOffset", "stdDeviation",
+    "stitchTiles", "surfaceScale", "systemLanguage", "tableValues", "targetX", "targetY",
+    "textLength", "viewBox", "viewTarget", "xChannelSelector", "yChannelSelector",
+    "zoomAndPan",
+};
+
+const char* const kMathMlAttributeNames[] = { "definitionURL" };
+
+template <size_t N>
+std::string AdjustForeignName(std::string lower, const char* const (&table)[N]) {
+    if (const std::string* adjusted = AdjustedForeignName(lower, table, N)) return *adjusted;
+    return lower;
 }
 
 } // namespace
@@ -318,6 +374,22 @@ std::string Parser::ParseTagName() {
     return name;
 }
 
+Parser::Content Parser::ContentOf(const std::vector<Node*>& openStack) {
+    // Nearest open element decides: a foreign root puts us in its vocabulary,
+    // an integration point inside one brings HTML back.
+    for (size_t i = openStack.size(); i-- > 0;) {
+        const std::string& tag = openStack[i]->tag;
+        if (tag == "svg") return Content::Svg;
+        if (tag == "math") return Content::MathMl;
+        if (tag == "foreignObject" || tag == "desc" || tag == "title" ||
+            tag == "annotation-xml" || tag == "mi" || tag == "mo" || tag == "mn" ||
+            tag == "ms" || tag == "mtext") {
+            return Content::Html;
+        }
+    }
+    return Content::Html;
+}
+
 void Parser::ParseTag(Node* /*parent*/, std::vector<Node*>& openStack) {
     // Assumes input[pos] == '<'.
     ++pos;
@@ -328,7 +400,9 @@ void Parser::ParseTag(Node* /*parent*/, std::vector<Node*>& openStack) {
         ++pos;
     }
 
+    const Content content = ContentOf(openStack);
     std::string tag = ParseTagName();
+    if (content == Content::Svg) tag = AdjustForeignName(tag, kSvgTagNames);
     if (tag.empty()) {
         // Malformed: skip to '>'.
         SkipUntil(">");
@@ -340,9 +414,11 @@ void Parser::ParseTag(Node* /*parent*/, std::vector<Node*>& openStack) {
         if (Cur() == '>') ++pos;
 
         // Pop up to and including the matching open element; ignore the end
-        // tag entirely if nothing matches (stray </b> etc.).
+        // tag entirely if nothing matches (stray </b> etc.). Case-insensitive:
+        // an open foreign element carries its vocabulary's case, and the end
+        // tag of an integration point (</foreignObject>) is read as HTML.
         for (size_t i = openStack.size(); i-- > 1;) {
-            if (openStack[i]->IsElement(tag)) {
+            if (openStack[i]->IsElement() && ToLower(openStack[i]->tag) == ToLower(tag)) {
                 openStack.resize(i);
                 return;
             }
@@ -350,15 +426,19 @@ void Parser::ParseTag(Node* /*parent*/, std::vector<Node*>& openStack) {
         return;
     }
 
-    // Implicit closes: <p> before block, <li> before <li>, ...
-    while (openStack.size() > 1 &&
+    // Implicit closes: <p> before block, <li> before <li>, ... HTML's rules;
+    // an SVG or MathML element never closes anything by appearing.
+    while (content == Content::Html && openStack.size() > 1 &&
            ImplicitlyCloses(openStack.back()->tag, tag)) {
         openStack.pop_back();
     }
 
     auto element = std::make_shared<Node>();
     element->tag = tag;
-    ParseAttributes(*element);
+    // The <svg> / <math> element's own attributes are already its
+    // vocabulary's (viewBox on <svg>); so are those of everything inside.
+    ParseAttributes(*element, tag == "svg" ? Content::Svg
+                              : tag == "math" ? Content::MathMl : content);
 
     bool selfClosed = false;
     if (Cur() == '/') {
@@ -371,17 +451,31 @@ void Parser::ParseTag(Node* /*parent*/, std::vector<Node*>& openStack) {
     element->parent = top;
     top->children.push_back(element);
 
-    if (selfClosed || IsVoidElement(tag)) return;
+    if (selfClosed || (content == Content::Html && IsVoidElement(tag))) return;
 
     if (IsRawTextElement(tag)) {
         ParseRawText(*element);
         return;
     }
 
+    // Past kMaxTreeDepth the element stays a leaf (openStack[0] is the
+    // scratch root, not an element).
+    if (openStack.size() > kMaxTreeDepth) {
+        Error("elements nested deeper than " + std::to_string(kMaxTreeDepth) + " flattened");
+        return;
+    }
     openStack.push_back(element.get());
+
+    // A newline straight after <pre>, <listing> or <textarea> is dropped, as
+    // HTML's tree builder drops it, so the content can start on the next
+    // source line; a second one is a blank line.
+    if (content == Content::Html && (tag == "pre" || tag == "listing" || tag == "textarea")) {
+        if (Match("\r\n")) pos += 2;
+        else if (!AtEnd() && (Cur() == '\n' || Cur() == '\r')) ++pos;
+    }
 }
 
-void Parser::ParseAttributes(Node& element) {
+void Parser::ParseAttributes(Node& element, Content content) {
     while (!AtEnd()) {
         while (!AtEnd() && std::isspace(static_cast<unsigned char>(Cur()))) ++pos;
         char c = Cur();
@@ -411,8 +505,11 @@ void Parser::ParseAttributes(Node& element) {
             value = ParseAttributeValue();
         }
 
-        // Drop namespace prefixes on attribute names except xml:lang-style
-        // ones we don't consume anyway; keep names verbatim otherwise.
+        // Names are kept verbatim, lower-cased (xlink:href stays xlink:href).
+        // In foreign content the vocabulary's own case comes back: viewBox,
+        // preserveAspectRatio, definitionURL.
+        if (content == Content::Svg) name = AdjustForeignName(name, kSvgAttributeNames);
+        else if (content == Content::MathMl) name = AdjustForeignName(name, kMathMlAttributeNames);
         element.attributes.emplace_back(name, DecodeEntities(value));
     }
 }

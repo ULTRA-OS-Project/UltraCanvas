@@ -2,8 +2,9 @@
 // Parliament (hemicycle) seat diagram: parties with seat counts laid out as
 // seats in concentric semicircular rows, a full circle, opposing Westminster
 // benches or a plain grid, with a majority marker, total label and legend
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-09-10
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -269,7 +270,14 @@ namespace UltraCanvas {
         double EffectiveInnerRatio() const;
 
         // ===== LAYOUT =====
-        void InvalidateLayout() { cache.valid = false; }
+    public:
+        // The framework's invalidation - a new size, visibility, style - drops
+        // the chart's own layout cache and lets the layout engine re-measure.
+        // A cache-only InvalidateLayout() overrode the engine's and kept the
+        // change from reaching the parent.
+        void InvalidateLayout() override { DropLayoutCache(); UltraCanvasChartElementBase::InvalidateLayout(); }
+    private:
+        void DropLayoutCache() { cache.valid = false; }
         void UpdateLayout(IRenderContext* ctx);
         void LayoutArc(const Rect2Dd& area, double spanRadians);
         void LayoutWestminster(const Rect2Dd& area);

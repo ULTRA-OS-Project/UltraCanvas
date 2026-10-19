@@ -15,7 +15,8 @@ The app opens on an **Overview** page rather than on its rule table: a
 circular chart per mounted drive, coloured by how full it is, so a user can
 see whether a clean-up is worth starting before choosing what to clean. Two
 buttons there lead into the two things it can do — system junk, and photo
-albums.
+albums — and on Windows a third into the **Windows registry** page
+(see [Windows registry](#windows-registry)).
 
 The application deletes files, so the design question is not what it can
 find but what it can be talked into destroying. The answer is the rule table
@@ -204,6 +205,33 @@ costs the user something they may not expect — emptying the trash, dropping
 a Maven repository, sweeping old installers out of Downloads — arrive
 unticked and have to be chosen deliberately.
 
+### Locations macOS keeps out of reach
+
+macOS refuses some locations to an app until the user grants it **Full Disk
+Access**: privacy-protected data such as Safari's, and from macOS 27 every
+other developer's app container. macOS 14 to 26 asked once ("would like to access data from other
+apps"). macOS 27 refuses without asking, so the *Sandboxed application cache*
+rule (`~/Library/Containers/*/Data/Library/Caches`) found nothing on it and
+said nothing.
+
+The scanner now counts such a refusal apart from an ordinary unreadable
+folder. An ordinary one is the folder's own permissions (`EACCES`). A
+refusal is the system's "operation not permitted" (`EPERM`, see
+`IsSystemRefusal`). The count lands in `ScanReport::blockedPaths`, and the
+rules that met one in `blockedRules`. It catches a refusal in two places:
+
+- a directory the wildcard expansion could not even look at; and
+- a root the system will not list, probed with `IsRefusedBySystem` before
+  the rule walks it.
+
+`BlockedAccessAdvice()` turns the count into one message, which the status
+line and `--scan` both print: how many locations were refused, which rules
+they belong to and, on macOS, where to turn on Full Disk Access. When
+UltraCleaner is started from Terminal, macOS holds Terminal responsible, so
+it is Terminal that needs the grant. The window also asks once a session
+whether to open that settings page (`BlockedAccessSettingsUrl()`). macOS
+applies the grant from the next launch.
+
 ### The command line
 
 The same engine, no display needed:
@@ -220,6 +248,83 @@ UltraCleaner --clean --trash --all  # include the normally-unticked categories
 `--clean` simulates unless it is given `--trash` or `--delete`, and
 `--delete` additionally requires `--yes`. There is no way to reach a
 permanent delete with a single flag.
+
+## Windows registry
+
+On Windows a fourth tab, **Windows registry**, finds registry entries that
+point at programs, files and folders that are no longer there — the
+leftovers of software deleted by hand or uninstalled badly — and removes
+them after backing them up. It is what AVG TuneUp, CCleaner and the other
+"registry cleaners" do, minus the promises: removing dead entries tidies
+lists (Apps & features, the startup list, Run) and stops Windows trying to
+start a program that is gone; it does **not** make Windows faster, and the
+page says so.
+
+### What it checks
+
+| Kind | Where | Removes | Ticked |
+|---|---|---|---|
+| Leftover uninstall entries | `…\CurrentVersion\Uninstall` (HKLM, HKLM WOW6432Node, HKCU) | the program's key | yes |
+| Startup entries for missing programs | `…\CurrentVersion\Run`, `RunOnce` (HKCU, HKLM, WOW6432Node) | the value | yes |
+| App Paths of missing programs | `…\CurrentVersion\App Paths` (HKCU, HKLM, WOW6432Node) | the program's key | yes |
+| Shared DLLs that are gone | `…\CurrentVersion\SharedDLLs` (HKLM, WOW6432Node) | the value | yes |
+| Cached names of missing programs | `HKCU\Software\Classes\Local Settings\…\Shell\MuiCache` | the value | yes |
+| Missing help files | `…\Windows\Help`, `…\Windows\HTML Help` (HKLM, WOW6432Node) | the value | yes |
+| Installer records of missing folders | `HKLM\…\CurrentVersion\Installer\Folders` | the value | no |
+| Orphaned per-user COM classes | `HKCU\Software\Classes\CLSID` | the class's key | no |
+
+That table (`kCheckRoots` in `engine/UltraCleanerRegistry.cpp`) is also the
+guard: a key finding must sit directly below one of its keys, a value
+finding in one of them, or removal refuses it.
+
+### When an entry counts as defective
+
+Only when its target is **provably** missing:
+
+- the path is absolute, on a drive letter that is a **fixed** disk present
+  right now. A USB stick, a network share, an unmounted drive or a bare
+  program name found on `PATH` is *unknown*, never *missing*;
+- the filesystem answers "not found" — not "access denied";
+- it is **outside the Windows folder**, where WOW64 redirection, WinSxS and
+  Windows' own repair tools decide what is there;
+- a command is reduced to the file it runs the way `CreateProcess` does
+  (quoted path, or the shortest unquoted prefix ending in an executable
+  extension; the DLL behind `rundll32`/`regsvr32`); a command that cannot be
+  pinned to one file (`msiexec`, `cmd /c`, script hosts) is left alone;
+- an uninstall entry is reported only when its uninstaller is missing *and*
+  nothing else it names (install folder, icon, quiet uninstaller) still
+  exists, and never when it is a Windows Installer product, a system
+  component or an update of another entry.
+
+Everything that could not be judged is counted ("could not be judged and
+are left alone") and never removed.
+
+### Backup, removal and restore
+
+*Back up and clean…* re-reads every ticked entry and re-checks its target
+immediately before acting — anything reinstalled since the scan is skipped —
+then writes all of them to
+`%LOCALAPPDATA%\UltraCleaner\RegistryBackups\registry-<date>-<time>.reg`
+(regedit's "Version 5.00" format, UTF-16), and only then removes them. If
+the backup cannot be written, nothing is removed. Double-clicking that file
+restores it, as do *Restore a backup…* and `UltraCleaner --registry-restore
+<file>` (both run `reg.exe import`). Entries under `HKEY_LOCAL_MACHINE` need
+UltraCleaner to run as administrator; without it those rows fail with
+"Access denied" and everything else still goes.
+
+```bash
+UltraCleaner --registry                  # list what is defective, change nothing
+UltraCleaner --registry --fix            # say what would go
+UltraCleaner --registry --fix --yes      # back up, then remove the ticked ones
+UltraCleaner --registry --fix --yes --all  # including the unticked kinds
+UltraCleaner --registry-restore C:\…\registry-20261017-101500.reg
+```
+
+The engine (`engine/UltraCleanerRegistry.{h,cpp}`) talks to a
+`RegistryStore` and a `FileProbe`; the Win32 implementations are in
+`engine/UltraCleanerRegistryWindows.cpp`, and the test suite
+(`Tests/UltraCleaner/test_registry.cpp`) runs every check, the guard, the
+backup writer and the cleaner against an in-memory registry on any platform.
 
 ## What it looks for
 
@@ -286,7 +391,11 @@ removable only when all of these hold:
    `/usr` and `C:\` cannot be reached whatever a rule says.
 2. It lies **strictly inside** a root the current rule set resolved. A root
    is a container, never a target — rules clear a cache directory's contents,
-   they never remove the cache directory.
+   they never remove the cache directory. The guard holds each root under
+   two spellings: as the rule named it and with its symlinks resolved. A path
+   inside either one counts, because the scanner walks a root under its own
+   spelling. On macOS `$TMPDIR` is `/var/folders/…` and `/var` is a link to
+   `/private/var`.
 3. Neither it nor its symlink-resolved form is a protected location, and it
    is not an ancestor of one. `ProtectedPaths()` covers the filesystem and OS
    roots, the user's home, and the directories inside it that hold work
@@ -364,8 +473,10 @@ RemovalReport result = remover.Remove(report, options);
 | `CleanCategory`, `CategoryTitle`, `CategoryDescription`, `CategoryKey` | The grouping the UI shows |
 | `CleanItem`, `CategorySummary`, `ScanReport`, `SummarizeReport` | Scan results and their totals |
 | `FormatByteSize` | Decimal byte formatting shared by the GUI and the CLI |
+| `BlockedAccessAdvice`, `BlockedAccessSettingsUrl` | What to tell the user about locations the system refused, and the settings page that lifts it (macOS: Full Disk Access) |
 | `CleanRule`, `RuleMode`, `BuiltinRules`, `RulesForPlatform`, `FindRule` | The rule table |
 | `HomeDir`, `UserCacheDir`, … , `ExpandTokens`, `ExpandWildcardDirectories`, `GlobMatch`, `IsPathInside` | Platform paths and pattern matching |
+| `IsSystemRefusal`, `IsRefusedBySystem` | Telling the system's refusal (`EPERM`) from a folder's own permissions |
 | `PathGuard`, `SafetyCheck`, `SafetyVerdict`, `ProtectedPaths`, `IsProtectedPath` | The safety guard |
 | `Scanner`, `ScanOptions`, `ScanProgress` | Scanning, with progress and cancellation |
 | `Remover`, `RemovalMode`, `RemovalOptions`, `RemovalReport`, `MoveToPlatformTrash` | Removal |

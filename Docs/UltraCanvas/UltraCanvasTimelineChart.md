@@ -1,5 +1,7 @@
 # UltraCanvasTimelineChart
 
+<!-- doc-check: Rect2Dd plot; double mouseX; -->
+
 A **chronological timeline**: milestones and spans placed *to scale* on a real
 date axis, with a two-tier header, automatic lane packing, callout labels, and
 wheel zoom / drag pan. It deliberately has no task table and no dependency
@@ -23,6 +25,24 @@ graph — it is the stakeholder view, not the working schedule.
 **Version:** 1.0.0
 **Last Modified:** 2026-07-31
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Class hierarchy](#class-hierarchy)
+- [Quick start](#quick-start)
+- [Dates](#dates)
+- [Data model](#data-model)
+  - [Building data](#building-data)
+- [Lane packing](#lane-packing)
+- [Lane modes: packed or swimlanes](#lane-modes-packed-or-swimlanes)
+- [Axis, scale and view](#axis-scale-and-view)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Geometry queries](#geometry-queries)
+- [Using TimeAxis on its own](#using-timeaxis-on-its-own)
+- [Sample data](#sample-data)
+- [Not yet implemented](#not-yet-implemented)
 
 ## Class hierarchy
 

@@ -1,8 +1,25 @@
 # UltraCanvas Video
 
+<!-- doc-check: namespace MyApp { std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts); } -->
+
 Cross-platform video **playback** and **recording** for UltraCanvas. Mirrors the
 three-layer design of UltraCanvas Audio: a frame resource, non-visual engines,
 and composite UI elements, all behind a pluggable platform backend.
+
+## Contents
+
+- [Status](#status)
+- [Architecture](#architecture)
+- [Public API surface](#public-api-surface)
+  - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
+  - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
+  - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
+  - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
+  - [UI elements](#ui-elements)
+  - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+- [Adding a container or codec](#adding-a-container-or-codec)
+- [Build](#build)
+- [Notes / follow-ups](#notes--follow-ups)
 
 ## Status
 
@@ -153,9 +170,18 @@ Callbacks: `onRecordingStateChanged`, `onPreviewFrame`, `onSaved`,
 
 ### UI elements
 
-`UltraCanvasVideoPlayerElement` — video surface (aspect-fit letterbox) with an
-auto-hiding overlay transport bar: play/pause, seek, mute, volume, time labels.
-`ShowOpenDialog()` opens the native file picker.
+`UltraCanvasVideoPlayerElement` — video surface with an auto-hiding overlay
+transport bar: play/pause, seek, mute, volume, time labels.
+`ShowOpenDialog()` opens the native file picker. `VideoPlayerStyle::videoFit`
+places the picture: `Contain` (fitted whole, letterboxed; the default),
+`Cover` (filling the element, cropped) or `Pixels` (its own pixels at
+`zoomPercent`, or those of a picture `zoomReferenceHeight` high, so a
+proxy file zooms as the original would), inside `videoInset` from the
+element's edges - a host that
+shows the player in place of a frame surface of its own gives it the same
+inset and fit, and the picture stays put. `showSafeArea` draws a dashed
+title-safe guide over the picture, `safeAreaInset` (5 % by default) of its
+width and height in from each edge, in `safeAreaColor`.
 
 `UltraCanvasVideoRecorderElement` — live camera preview with a REC/stop button,
 elapsed-time readout, blinking record indicator, and a camera picker popup.
@@ -185,6 +211,8 @@ container registers it with `RegisterVideoCodecPlugin`
 `IVideoDecodeSession`:
 
 ```cpp
+#include "../libspecific/Video/VideoCodecPlugin.h"
+
 MediaCodecRegistration codec;
 codec.extension   = "ivf";
 codec.description = "Indexed Video Format";
@@ -233,6 +261,12 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
   `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires
   an `NSCameraUsageDescription` (and `NSMicrophoneUsageDescription`) entry in the
-  app's Info.plist.
+  app's Info.plist; without it macOS terminates the app when it opens the
+  device. A signed app (hardened runtime, which notarization requires) also
+  needs the `com.apple.security.device.camera` (and
+  `com.apple.security.device.audio-input`) entitlement, or the request is
+  refused before the user is asked. For the apps in this repository
+  `package-macos.sh` writes both from one line per app in `camera_usage` /
+  `microphone_usage`.
 - All three backends report frames as `VideoPixelFormat::BGRA32`, matching
   Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.

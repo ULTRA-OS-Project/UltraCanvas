@@ -4,7 +4,16 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
-// Version: 2.7.0 - SetShowLinkTooltips: a text link's href as a tooltip while hovered
+// Version: 2.13.0 - LabelVariant (Body, Muted, Faint, Heading): FromTheme maps the theme's
+//                  ink onto a label's part; SetThemeVariant on the element
+// Version: 2.12.0 - LabelStyle::FromTheme, ApplyTheme
+// Version: 2.11.0 - LabelTextLink::quiet: a link with no tooltip or hover report
+// Version: 2.10.0 - LabelTextBox / SetTextBoxes: backgrounds and borders around
+//                  byte ranges of the text (CSS inline boxes), a piece per line
+// Version: 2.9.0 - selectable text: SetSelectable / SetTextSelection, a drag
+//                 selects, a double-click a word, a triple-click all of it,
+//                 Ctrl+C copies (UltraCanvasTextSelection.h)
+// Version: 2.8.0 - a label to screen readers, named by its text
 // Version: 2.6.0 - onLinkHovered: the link under the pointer (a status line shows
 //                 where it goes)
 // Version: 2.5.0 - NaturalTextWidth: the width the text fits on its lines at
@@ -14,19 +23,30 @@
 //                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
 //                 object-position)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include <chrono>
 #include <string>
 #include <functional>
+#include <memory>
+#include <utility>
 
 namespace UltraCanvas {
 
+    class UltraCanvasTextSelection;
+
 // ===== LABEL STYLE CONFIGURATION =====
+    // A label's part in the window, which FromTheme maps the theme's ink
+    // onto: Body - primary text; Muted - secondary text (a note, a caption,
+    // a status line); Faint - a hint, a placeholder; Heading - a panel or
+    // section title (ink; a theme may name "label.heading" for its own)
+    enum class LabelVariant { Body, Muted, Faint, Heading };
+
     struct LabelStyle {
         // Text appearance
         FontStyle fontStyle;
@@ -47,10 +67,24 @@ namespace UltraCanvas {
         // to hold it.
         float lineHeightPx = 0.f;
 
+        // Behind the selected text of a selectable label (the text area's
+        // selection colour).
+        Color selectionColor = Color(51, 153, 255, 100);
+
         // Text effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 128);
         Point2Di shadowOffset = Point2Di(1, 1);
+
+        // The theme's roles by the label's variant: ink (Body, Heading),
+        // muted ink (Muted) or faint ink (Faint) - "label.muted",
+        // "label.faint" and "label.heading" where a theme names them -
+        // faint ink when disabled, the accent behind a selection, over a
+        // base's own shape (font, alignment, wrap), or a default one
+        static LabelStyle FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base,
+                                    LabelVariant variant = LabelVariant::Body);
+        static LabelStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, LabelStyle()); }
+        static LabelStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         static LabelStyle DefaultStyle() {
             return LabelStyle{};
@@ -70,6 +104,10 @@ namespace UltraCanvas {
         int startByte = 0;
         int endByte = 0;      // exclusive
         std::string href;
+        // Clickable without showing it: no tooltip, and onLinkHovered is
+        // told nothing (the HTML reader's <label> text, which acts on its
+        // form control).
+        bool quiet = false;
     };
 
     // An image flowing in the text, like a browser's inline <img>: it stands on
@@ -131,18 +169,48 @@ namespace UltraCanvas {
         LabelInlineImageFrame frame;   // none by default: the picture alone
     };
 
+    // The box of an inline element in the text (CSS's inline box): its
+    // background and border drawn around the bytes [startByte, endByte),
+    // one piece per line, behind the text. The bytes hold its horizontal
+    // padding and border as room (the HTML reader's U+FFFC placeholders), so
+    // the box's sides fall at the room's outer edges; the vertical padding
+    // reaches above and below the text without moving the lines, as in CSS.
+    // When the element breaks across lines, the left border is on its first
+    // piece and the right one on its last (box-decoration-break: slice).
+    struct LabelTextBox {
+        int startByte = 0;
+        int endByte = 0;
+        Color background = Colors::Transparent;
+        LabelInlineImageBorder borderTop, borderRight, borderBottom, borderLeft;
+        float paddingTop = 0.f, paddingBottom = 0.f;
+        float borderRadius = 0.f;           // on a box that fits on one line
+    };
+
 // ===== LABEL COMPONENT =====
     class UltraCanvasLabel : public UltraCanvasUIElement {
     private:
         // ===== LABEL PROPERTIES =====
         std::string text;
         LabelStyle style;
+        LabelVariant themeVariant = LabelVariant::Body;
         std::vector<LabelTextLink> textLinks;
         int hoveredLink = -1;
         bool showLinkTooltips = false;
         std::vector<LabelInlineImage> inlineImages;
         float inlineFitWidth = -1.f;   // line width the image shapes were sized for; -1 = none
         std::vector<float> inlineAscents;   // per image: its top above the baseline, as laid out
+        std::vector<LabelTextBox> textBoxes;
+
+        // ===== TEXT SELECTION =====
+        std::shared_ptr<UltraCanvasTextSelection> textSelection;
+        int selectionStart = 0, selectionEnd = 0;   // bytes of the rendered text; equal: none
+        bool selectionDragging = false;
+        // A link pressed in a selectable label: it opens on the release,
+        // unless the press became a drag that selected something.
+        std::string pressedLinkHref;
+        // The last double-click, so a third press soon after takes the whole text.
+        std::chrono::steady_clock::time_point lastDoubleClickTime{};
+        Point2Di lastDoubleClickPoint;
 
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
@@ -151,6 +219,13 @@ namespace UltraCanvas {
 
         bool internalLayoutValid = false;
     public:
+        // ===== ACCESSIBILITY =====
+        // A label, named by its text (SetAccessibleName() replaces it).
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Label; }
+        std::string GetAccessibleName() const override {
+            return GetAccessibleNameOverride().empty() ? text : GetAccessibleNameOverride();
+        }
+
         // ===== CONSTRUCTOR =====
         UltraCanvasLabel(const std::string &identifier, float x, float y, float w, float h,
                          const std::string &labelText = "");
@@ -164,7 +239,7 @@ namespace UltraCanvas {
         explicit UltraCanvasLabel(const std::string &labelText = "")
                 : UltraCanvasLabel("", -1, -1, -1, -1, labelText) {}
 
-        virtual ~UltraCanvasLabel() = default;
+        virtual ~UltraCanvasLabel();
 
         // ===== TEXT MANAGEMENT =====
         void SetText(const std::string &newText);
@@ -189,6 +264,16 @@ namespace UltraCanvas {
         // Index into GetTextLinks() of the link at a label-local point, or -1.
         int LinkIndexAtPoint(const Point2Di& localPoint);
 
+        // ===== INLINE BOXES =====
+        // Backgrounds and borders around byte ranges of the text (see
+        // LabelTextBox), drawn in order: an enclosing box before the boxes
+        // inside it.
+        void SetTextBoxes(std::vector<LabelTextBox> boxes);
+        const std::vector<LabelTextBox>& GetTextBoxes() const { return textBoxes; }
+        // Where box `index` is drawn, label-local: one rectangle per line it
+        // spans (its border box). Empty before the first layout.
+        std::vector<Rect2Df> TextBoxPieces(size_t index);
+
         // ===== INLINE IMAGES =====
         // Images drawn at U+FFFC placeholders of the text (see LabelInlineImage).
         void SetInlineImages(std::vector<LabelInlineImage> images);
@@ -200,6 +285,45 @@ namespace UltraCanvas {
         // The image's border box: its frame's background and border, inside
         // the margins.
         Rect2Df InlineImageBoxRect(size_t index);
+
+        // ===== TEXT SELECTION =====
+        // Lets the reader select the text and copy it: a drag selects, a
+        // double-click takes a word and a triple-click the whole text; Ctrl+C
+        // (or Ctrl+Insert) copies and Ctrl+A selects all. Off by default. In a
+        // selectable label a text link opens when the button is released
+        // without having dragged, so a drag that starts on a link selects.
+        void SetSelectable(bool selectable);
+        bool IsSelectable() const { return textSelection != nullptr; }
+        // Joins a selection several labels share (UltraCanvasTextSelection),
+        // so that a drag runs on from this label into the next ones; null
+        // makes the label unselectable again. SetSelectable(true) gives the
+        // label a selection of its own.
+        void SetTextSelection(std::shared_ptr<UltraCanvasTextSelection> selection);
+        const std::shared_ptr<UltraCanvasTextSelection>& GetTextSelection() const { return textSelection; }
+
+        // The highlighted bytes of the rendered text (GetRenderedText()); an
+        // end past the text stands for its end. The selection sets them; set
+        // them directly to highlight a range from code.
+        void SetSelectedRange(int startByte, int endByte);
+        void ClearSelectedRange() { SetSelectedRange(0, 0); }
+        bool HasSelectedRange() const { return selectionEnd > selectionStart; }
+        int GetSelectionStart() const { return selectionStart; }
+        int GetSelectionEnd() const { return selectionEnd; }
+        // The highlighted text as a reader would copy it: pictures in the
+        // text (their U+FFFC placeholders) and soft hyphens left out, a
+        // no-break space as a plain space.
+        std::string GetSelectedText();
+        // The text as laid out - markup parsed, entities decoded: the bytes
+        // the selection, link and image offsets count. Needs the text layout,
+        // so a markup label not in a window yet answers "".
+        std::string GetRenderedText();
+        // The text position (a byte offset into GetRenderedText()) nearest a
+        // label-local point: above the text its start, below it its end, left
+        // or right of a line that line's start or end. -1 when the label has
+        // no text layout yet.
+        int TextIndexAtPoint(const Point2Df& localPoint);
+        // The word around a byte offset of the rendered text: [first, second).
+        std::pair<int, int> WordRangeAt(int byteIndex);
 
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle &newStyle);
@@ -241,15 +365,32 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(LabelStyle::FromTheme(theme, GetStyle(), themeVariant)); }
+        // The label's part in the window for the theme (Body unless set); a
+        // following label re-styles at once
+        void SetThemeVariant(LabelVariant variant) {
+            themeVariant = variant;
+            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+        }
+        LabelVariant GetThemeVariant() const { return themeVariant; }
+
+        // A selectable label takes the keyboard focus when it is pressed - the
+        // one its selection last pressed, so a page of them is a single stop
+        // in the Tab order - and copies on Ctrl+C there.
+        bool AcceptsFocus() const override;
 
         // A label with a click handler behaves like a hyperlink, so it reports
         // the hand/pointer cursor automatically (for text links only while
-        // the pointer is over a link range). An explicit SetMouseCursor()
-        // (i.e. a non-Default cursor) always takes precedence.
+        // the pointer is over a link range); a selectable label shows the text
+        // I-beam elsewhere. An explicit SetMouseCursor() (i.e. a non-Default
+        // cursor) always takes precedence.
         UCMouseCursor GetMouseCursor() const override {
             if (mouseCursor == UCMouseCursor::Default &&
                 (onClick || hoveredLink >= 0)) {
                 return UCMouseCursor::Hand;
+            }
+            if (mouseCursor == UCMouseCursor::Default && textSelection) {
+                return UCMouseCursor::Text;
             }
             return mouseCursor;
         }
@@ -283,6 +424,7 @@ namespace UltraCanvas {
     private:
         // The display size of an inline image on a line `inlineFitWidth` wide.
         Size2Df InlineImageSize(const LabelInlineImage& image) const;
+        void RenderTextBoxes(IRenderContext* ctx);
         // Natural (max-content) text width that keeps the natural line breaks.
         float NaturalTextWidth();
         // The margin box an inline image reserves on its line, label-local.
@@ -290,6 +432,11 @@ namespace UltraCanvas {
         // Size the images for a line `width` wide (-1: unbounded); drops the
         // text layout when that changes an image's box, so it is rebuilt.
         void FitInlineImages(float width);
+        // The selection's highlight, under the text (content-box coordinates).
+        void RenderSelection(IRenderContext* ctx, int contentX, int contentY);
+        // A selectable label's mouse and keyboard handling; false when the
+        // event is not one it takes.
+        bool HandleSelectionEvent(const UCEvent& event);
     };
 
 

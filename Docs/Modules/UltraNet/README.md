@@ -1,3 +1,4 @@
+<!-- Generated from UltraNet/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraNet
 
 **Unified network communication layer for ULTRA OS.**
@@ -13,6 +14,22 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 > OS modules can rely on.
 
 ---
+
+## Contents
+
+- [Why it exists](#why-it-exists)
+- [Protocols at a glance](#protocols-at-a-glance)
+  - [Core (Tier 1, in module)](#core-tier-1-in-module)
+  - [Plugin-supplied (Tier 2/3)](#plugin-supplied-tier-23)
+- [Architecture](#architecture)
+- [Quick examples](#quick-examples)
+- [Module layout](#module-layout)
+- [Debugging a mail connection](#debugging-a-mail-connection)
+- [The FTP session log](#the-ftp-session-log)
+- [Integration with sibling modules](#integration-with-sibling-modules)
+- [Conventions](#conventions)
+- [Status](#status)
+- [Reference](#reference)
 
 ## Why it exists
 
@@ -36,10 +53,13 @@ libcurl was built against on each platform:
 | Linux    | OpenSSL         | `libcurl4-openssl-dev` |
 | Windows  | Schannel        | None — Win32 native crypto |
 | macOS    | SecureTransport | None — Apple's system libcurl |
-| ULTRA OS | tbd             | Selected by the ULTRA OS build |
+| ULTRA OS | OpenSSL         | The Linux build: the desktop tier is Linux-based and ships libcurl built against OpenSSL in its image; the Android (mobile) tier builds UltraNet from the same Linux TLS sources with curl, OpenSSL and c-ares in the sysroot |
 
 UltraNet never calls TLS-library APIs directly, so swapping the backend
-is purely a libcurl build option.
+is purely a libcurl build option. There is no separate ULTRA OS platform
+backend (`UltraCanvas/OS/` holds Linux, Android, BSD, Windows, macOS and
+WASM), so ULTRA OS inherits the Linux row above; a native backend remains
+planned (see the status table below).
 
 ---
 
@@ -55,9 +75,10 @@ is purely a libcurl build option.
 | Transport | TCP, UDP | `UltraNet/UltraNetSocket.h` |
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
-| Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
+| Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
-| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build; text in any charset iconv knows (ISO-2022-JP - also raw in headers -, Shift_JIS, GB18030, KOI8-R, windows-125x, ...) converted to UTF-8, UTF-8 and Latin-1 without iconv; unlabelled 8-bit header text read in the body's charset or the best-scoring guess | `UltraNet/UltraNetMime.h` |
@@ -144,11 +165,45 @@ req.body   = SerializeJson(payload);
 UltraNetHandle h = UltraNet_HttpRequestAsync(req,
     [](const UltraNetResponse& resp) {
         // runs on libcurl multi worker thread — marshal to UI thread if needed
+        // A transfer cut off mid-body (timeout, lost connection, over
+        // maxReceiveSize, cancelled) keeps the server's status line:
+        // check IsComplete() / transferError before trusting resp.body.
+        if (!resp.IsComplete()) { /* resp.transferError says why */ }
     });
 
-// File download streamed straight to disk
+// A relative reference against a base URL (RFC 3986 section 5)
+std::string url;
+UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
+// url == "https://x.org/data/a.json"; a URL with a control character in it
+// (a CR or LF that would end the request line) is refused
+
+// File download streamed straight to disk. No whole-transfer timeout (a
+// download is as long as the file is large), a 30 s stall timeout instead.
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
                           "/tmp/big.zip");
+
+// A download that can be resumed, paused and checked before its body: any
+// request writes to a file through outputFilePath, on the async path too.
+UltraNetHttpRequest dl;
+dl.url = "https://cdn.example.com/big.zip";
+dl.options.outputFilePath     = "/tmp/big.zip.part";
+dl.options.resumeOutputFile   = true;   // the file's size is the Range start
+dl.options.httpsOnlyRedirects = true;   // never bounced onto http://
+dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
+dl.onHeaders = [](const UltraNetResponse& head) {
+    // The final response's headers, before any body: 206 means the rest of
+    // the file is coming, 200 that the server sent it all and the partial
+    // file was replaced. Return false to end the transfer (Cancelled).
+    return head.contentLength <= kMaxPackageBytes;
+};
+dl.onDownloadProgress = [](int64_t now, int64_t total) {
+    // Figures of the whole file, the resumed bytes included.
+};
+UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetResponse& resp) {
+    // The file is closed and complete here when resp.IsComplete().
+});
+UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
+UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
 ```
 
 ```cpp
@@ -198,12 +253,37 @@ cfg.redirectUri           = "http://127.0.0.1:0/callback";  // 0 = ephemeral por
 
 UltraNetOAuth2Token token;
 auto r = UltraNet_OAuth2AuthorizeInteractive(
-    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token);
+    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token,
+    300000,                                  // how long the browser may take
+    [&] { return dialogClosed.load(); });    // optional: ends the wait early
+// A wait called off ends as UltraNetResultCode::Cancelled within a fraction
+// of a second, rather than holding its thread until the timeout.
 if (r) {
     // token.accessToken -> "authorization: Bearer ..." on API calls
     // token.refreshToken -> store in the credential vault;
     //   renew later with UltraNet_OAuth2Refresh(cfg, refreshToken, token)
 }
+```
+
+```cpp
+#include <UltraNet/UltraNetOAuth2Service.h>
+
+// The same sign-in through a sign-in service: the service holds the client
+// id and secret and is the https address the provider redirects to, so the
+// application carries only the service's address. Blocking - a worker thread.
+UltraNetOAuth2ServiceConfig svc;
+svc.serviceUrl = UltraNet_OAuth2SignInServiceUrl();   // the registry's: built in, or configured
+svc.providerId = "google";                        // "microsoft", "yahoo"
+svc.loginHint  = "erika@gmail.com";               // preselects the account
+svc.clientName = "UltraMail";                     // for the service's log
+
+UltraNetOAuth2Token token;
+auto r = UltraNet_OAuth2AuthorizeViaService(
+    svc, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token,
+    300000, [&] { return dialogClosed.load(); });
+// Later: UltraNet_OAuth2ServiceRefresh(svc, token.refreshToken, token).
+// The steps are exposed too (ServiceBegin, ServiceWaitForCode,
+// ServiceExchangeCode) and so are the answer parsers, for tests.
 ```
 
 ---
@@ -223,6 +303,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetCookies.h
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
+│   ├── UltraNetOAuth2Service.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
@@ -325,6 +406,17 @@ sink for its thread instead: `UltraNet_SetThreadFtpLog(fn)` returns the
 previous sink to put back afterwards, and only calls without an `onLog` of
 their own go to it.
 
+A call can be called off. `UltraNetFtpOptions::isCancelled` is asked while
+the call runs - as bytes move, and about once a second while none do, so a
+stalled transfer is called off as promptly as a busy one; once it answers
+true the call ends as `UltraNetResultCode::Cancelled` with the message
+*called off*, and a listing is not tried again in another format. It runs on
+the calling thread inside libcurl and must answer at once (an atomic flag). As
+with the log, a caller behind a layer that builds the options sets one for
+its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
+UltraFiler's drive worker uses it to stop a preview download the user is no
+longer waiting for.
+
 What a failure says, whether or not anyone reads the log:
 
 - `message` is libcurl's specific reason (its error buffer, not just the error
@@ -338,7 +430,32 @@ What a failure says, whether or not anyone reads the log:
 - A listing tries MLSD, then LIST, then NLST only when the server refused the
   command; a failure to connect, sign in, set up TLS or the data connection, or
   a timeout, is reported once rather than three times, and an empty folder is
-  listed with one request.
+  listed with one request - also when the server lists nothing but the
+  folder's own `.` / `..` (MLSD `cdir` / `pdir`, or `ls -la` style LIST),
+  which is never taken for an entry, whatever name a `cdir` carries. A server
+  that does not know MLSD (500 / 502 / 504) is remembered for the life of the
+  process and listed with LIST from then on; a 550 refuses the folder, not
+  the command, and is not taken as that.
+
+Connections are kept open between calls. Each thread's calls share a libcurl
+connection pool, so the next call on the same thread to the same server, as
+the same user with the same TLS settings, takes up the connection the last one
+left open - no connect, no login; the second pass of a listing that fell back
+from MLSD runs on it too. The log says *Using the open connection to host -
+already logged in*. A worker listing folder after folder therefore logs in
+once. libcurl drops a connection idle for two minutes and one the server has
+closed; `UltraNet_FtpCloseIdleConnections()` closes the calling thread's open
+connections now (each is sent QUIT), and a thread's are closed when it ends,
+every thread's by `UltraNet_Shutdown`. A caller whose work comes in bursts
+closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
+whose network has since gone away waits up to two minutes for its reply.
+(One pool per thread: libcurl does not support sharing connections between
+threads that transfer at the same time.) A change - delete, rename, create or
+remove a folder - is the exception on FTP: it always logs in on a connection
+of its own and closes it, because libcurl sends those commands before it
+changes folder, and they name the entry from the folder a login lands in; on
+a kept connection that a listing left in a subfolder they would name another
+file.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.
@@ -369,7 +486,10 @@ architecture.
   interfaces use `I<Category>ProtocolPlugin`. Callbacks use
   `on<Event>` (base verb form).
 * **Errors:** every blocking call returns `UltraNetResult`. Operator
-  `bool` for quick success checks; structured fields for diagnostics.
+  `bool` for quick success checks; structured fields for diagnostics. An
+  HTTP request that failed in transit (no answer, TLS refused, timed out)
+  carries the connection chain in `diagnostics`, as an FTP or mail failure
+  does (`UltraNetCurlError.h`).
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.
@@ -383,6 +503,13 @@ architecture.
   first use for scanners and printers is built on these.
 * **Threading:** async callbacks run on the libcurl multi worker
   thread — callers must marshal to their own loop and not block.
+* **Calling a transfer off:** a thread that runs synchronous HTTP requests
+  or FTP uploads and downloads sets `UltraNet_SetThreadAbortCheck(fn)`; the
+  transfers it makes ask `fn` as they run (libcurl's progress callback, so
+  about once a second even while the server is silent) and end as
+  `UltraNetResultCode::Cancelled` once it says true. UltraFiler's drive
+  worker uses it so that quitting does not wait for a large upload to
+  finish. Asynchronous requests are cancelled with `UltraNet_CancelRequest`.
 * **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
   `ResolveHost()` etc. at module level — always go through the
   `UltraNet_*` API. (Full reserved-pattern list lives in the master

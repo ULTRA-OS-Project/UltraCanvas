@@ -1,17 +1,52 @@
 # UltraCanvasToolbar Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Configuration](#configuration)
+  - [Item Management](#item-management)
+  - [Item Badges](#item-badges)
+  - [Convenience Methods](#convenience-methods)
+  - [Tool Groups](#tool-groups)
+  - [Auto-Hide](#auto-hide)
+  - [Drag and Drop](#drag-and-drop)
+- [Enumerations](#enumerations)
+  - [ToolbarOrientation](#toolbarorientation)
+  - [ToolbarPosition](#toolbarposition)
+  - [ToolbarStyle](#toolbarstyle)
+  - [ToolbarOverflowMode](#toolbaroverflowmode)
+  - [ToolbarIconSize](#toolbariconsize)
+- [ToolbarAppearance Structure](#toolbarappearance-structure)
+- [Items are widgets](#items-are-widgets)
+- [Events and Callbacks](#events-and-callbacks)
+- [Builder Pattern](#builder-pattern)
+- [Preset Factories](#preset-factories)
+- [Usage Examples](#usage-examples)
+  - [Standard Horizontal Toolbar (Builder)](#standard-horizontal-toolbar-builder)
+  - [Toolbar with Dropdowns and Toggles](#toolbar-with-dropdowns-and-toggles)
+  - [Flat Style Toolbar](#flat-style-toolbar)
+  - [Vertical Sidebar Toolbar](#vertical-sidebar-toolbar)
+  - [Ribbon-Style Toolbar (Grouped)](#ribbon-style-toolbar-grouped)
+  - [Badges and Reordering — a Taskbar](#badges-and-reordering-—-a-taskbar)
+- [Implementation Notes](#implementation-notes)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.6.0
+**Version:** 1.8.1
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
 
 ## Features
 
-- **Item Types**: Button, ToggleButton, DropdownButton, Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
+- **Item Types**: Button, ToggleButton, DropdownButton, ToolGroup (several tools in one slot, with a fold-out bar), Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
 - **Multiple Styles**: Standard, Flat, Raised, Docked (macOS-like), Ribbon, StatusBar, Sidebar
 - **Orientation**: Horizontal or Vertical
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
@@ -94,25 +129,58 @@ its item through reorders and scrolling. The returned badge is the real
 
 ### Convenience Methods
 
+Each creates a real widget, adds it as a child, and returns the typed
+`shared_ptr` for inline configuration.
+
 ```cpp
-void AddButton(const std::string& id, const std::string& text,
-               const std::string& icon = "", std::function<void()> onClick = nullptr);
+std::shared_ptr<UltraCanvasButton> AddButton(
+        const std::string& id, const std::string& text,
+        const std::string& icon = "", std::function<void()> onClick = nullptr);
 
-void AddToggleButton(const std::string& id, const std::string& text,
-                     const std::string& icon = "",
-                     std::function<void(bool)> onToggle = nullptr);
+std::shared_ptr<UltraCanvasButton> AddToggleButton(
+        const std::string& id, const std::string& text,
+        const std::string& icon = "", std::function<void(bool)> onToggle = nullptr);
 
-void AddDropdownButton(const std::string& id, const std::string& text,
-                       const std::vector<std::string>& items,
-                       std::function<void(const std::string&)> onSelect = nullptr);
+std::shared_ptr<UltraCanvasDropdown> AddDropdownButton(
+        const std::string& id, const std::string& text,
+        const std::vector<std::string>& items,
+        std::function<void(const std::string&)> onSelect = nullptr);
 
-void AddSeparator(const std::string& id = "");
-void AddSpacer(int size = 8);
-void AddStretch(float stretch = 1.0f);
-void AddLabel(const std::string& id, const std::string& text);
-void AddSearchBox(const std::string& id,
-                  const std::string& placeholder = "Search...",
-                  std::function<void(const std::string&)> onTextChange = nullptr);
+std::shared_ptr<UltraCanvasToolGroupButton> AddToolGroup(
+        const std::string& id, const std::vector<ToolGroupItem>& items,
+        std::function<void(const std::string&)> onSelect = nullptr);
+
+std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
+std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
+std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
+std::shared_ptr<UltraCanvasLabel> AddLabel(const std::string& id, const std::string& text);
+std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
+        const std::string& id, const std::string& placeholder = "Search...",
+        std::function<void(const std::string&)> onTextChange = nullptr);
+std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
+        const std::string& id, const std::string& placeholder = "Search...",
+        std::function<void(const std::string&)> onTextChange = nullptr);
+```
+
+### Tool Groups
+
+`AddToolGroup` puts several tools in one slot, as a paint program's palette
+groups its selection tools or its brushes. The slot shows one of them; resting
+the pointer on it folds out a bar with the whole group - to the right in a
+vertical toolbar, below in a horizontal one - and a click there picks a tool.
+`onSelect` gets the id of the tool picked, by a click on the slot or in the
+bar. The slot shows the tool last picked, or always the group's first tool
+with `SetSlotShowsLastPicked(false)`. A group of one item is a plain toggle
+button. See [UltraCanvasToolGroupButton.md](UltraCanvasToolGroupButton.md).
+
+```cpp
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+auto shapes = palette->AddToolGroup("shapes", {
+        {"rectangle", "media/icons/ultrapaint/28/rect.svg",    "Rectangle (Q)"},
+        {"ellipse",   "media/icons/ultrapaint/28/ellipse.svg", "Ellipse (P)"},
+    },
+    [](const std::string& toolId) { (void)toolId; /* make it the active tool */ });
 ```
 
 ### Auto-Hide
@@ -141,6 +209,15 @@ changed. A plain click still clicks. Spacers and separators are not dragged
 this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
 it.
+
+With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
+surface — the padding and the gaps between its items — never by an item: a
+press on a label, a separator or a disabled button climbs to the toolbar too,
+and is not a grab. The drag follows the pointer in window coordinates with
+the mouse captured, so it keeps up however far the pointer leaves the bar,
+and ends on the release wherever that happens. The bar stays where it is
+dropped: dragging sets its CSS position (`SetElementAbsolutePosition`), so a
+toolbar that sat in its parent's flow floats from then on.
 
 ## Enumerations
 
@@ -204,6 +281,26 @@ enum class ToolbarIconSize {
     Huge,       // 64x64
     Custom      // user-defined
 };
+```
+
+Every button the toolbar adds draws its icon at this size, and
+`SetAppearance()` applies it again to the buttons already there:
+`ToolbarAppearance::IconPixelSize()` gives the pixels (Custom is
+`customIconWidth` x `customIconHeight`; a button's `GetIconWidth()` /
+`GetIconHeight()` read it back). Pick the size the icon set is drawn
+for. A line icon is drawn on the pixel grid of one size, and at any other
+size its lines fall between two pixels and blur: the shared 24 px sets
+(`media/icons/menu/`, `media/icons/artcreator/`) want `Medium`, a 16 px set
+`Small`. A button that needs another size sets it with `SetIconSize()` after
+it is added, and again after a later `SetAppearance()`.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasToolbar>("tools", 0, 0, 0, 38);
+ToolbarAppearance look = bar->GetAppearance();
+look.iconSize = ToolbarIconSize::Small;   // a set drawn on a 16 px grid
+bar->SetAppearance(look);
+auto play = bar->AddButton("play", "", "media/icons/ultravideo/play.svg", [] {});
+int drawn = play->GetIconWidth();         // 16
 ```
 
 ## ToolbarAppearance Structure
@@ -470,6 +567,7 @@ running->ClearItemBadge("webcam");                                // off again
 ## See Also
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
+- [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally

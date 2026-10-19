@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasTimelineChart.cpp
 // Chronological timeline: milestones and spans to scale on a real date axis
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-07-31
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasTimelineChart.h"
@@ -301,12 +302,12 @@ namespace UltraCanvas {
         hoveredEntry = TimelineEntryRef();
         selectedEntry = TimelineEntryRef();
         viewInitialized = false;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineChart::DataChanged() {
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -321,7 +322,7 @@ namespace UltraCanvas {
     void UltraCanvasTimelineChart::SetDesign(TimelineChartDesign d) {
         if (design == d) return;
         design = d;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -335,18 +336,18 @@ namespace UltraCanvas {
             darkTheme = false;
             SetDarkTheme(true);
         }
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineChart::SetStyle(const TimelineChartStyle& s) {
         style = s;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineChart::StyleChanged() {
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -386,19 +387,19 @@ namespace UltraCanvas {
     void UltraCanvasTimelineChart::SetLaneMode(TimelineLaneMode mode) {
         if (laneMode == mode) return;
         laneMode = mode;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineChart::SetSwimlanes(const std::vector<TimelineSwimlane>& lanes) {
         swimlanes = lanes;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineChart::ClearSwimlanes() {
         swimlanes.clear();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -460,21 +461,21 @@ namespace UltraCanvas {
     void UltraCanvasTimelineChart::SetScale(TimelineScale scale) {
         if (style.scale == scale) return;
         style.scale = scale;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineChart::SetAxisPosition(TimelineAxisPosition position) {
         if (style.axisPosition == position) return;
         style.axisPosition = position;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineChart::SetDateRange(double startSerial, double endSerial) {
         axis.SetRange(startSerial, endSerial);
         viewInitialized = true;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         if (onViewChanged) onViewChanged();
     }
@@ -498,7 +499,7 @@ namespace UltraCanvas {
             axis.SetRange(lo, hi);
         }
         viewInitialized = true;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         if (onViewChanged) onViewChanged();
     }
@@ -525,7 +526,7 @@ namespace UltraCanvas {
     void UltraCanvasTimelineChart::ZoomBy(double factor) {
         EnsureView();
         axis.ZoomAbout((layout.plotArea.x + layout.plotArea.width / 2.0), factor);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         if (onViewChanged) onViewChanged();
     }
@@ -533,14 +534,14 @@ namespace UltraCanvas {
     void UltraCanvasTimelineChart::PanDays(double days) {
         EnsureView();
         axis.SetRange(axis.GetRangeStart() + days, axis.GetRangeEnd() + days);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         if (onViewChanged) onViewChanged();
     }
 
     void UltraCanvasTimelineChart::SetSubtitle(const std::string& text) {
         subtitle = text;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -1903,7 +1904,7 @@ namespace UltraCanvas {
                     const Point2Di pos(event.pointer.x, event.pointer.y);
                     axis.PanPixels(static_cast<double>(pos.x - panAnchor.x));
                     panAnchor = pos;
-                    InvalidateLayout();
+                    DropLayoutCache();
                     RequestRedraw();
                     if (onViewChanged) onViewChanged();
                     return true;
@@ -1926,7 +1927,7 @@ namespace UltraCanvas {
                     if (!zoomAnim.IsBound()) {
                         zoomAnim.Bind([this](double f) {
                                           axis.ZoomAbout(zoomAnchorX, f);
-                                          InvalidateLayout();
+                                          DropLayoutCache();
                                       },
                                       [this] {
                                           RequestRedraw();

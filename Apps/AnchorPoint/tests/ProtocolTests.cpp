@@ -147,7 +147,7 @@ void TestTraversalLandsInsideSaveFolder(const fs::path& root) {
     std::string offered;
     auto res = ReceiveFile(conn, [&](const OfferInfo& offer, const std::string&) {
         offered = offer.fileName;
-        return PathToUtf8(saveDir / offer.fileName);
+        return PathToUtf8(saveDir / UltraCanvas::PathFromUtf8(offer.fileName));
     });
 
     Check(res.ok, "traversal name still transfers, into the save folder: " + res.error);

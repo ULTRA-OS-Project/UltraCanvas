@@ -1,7 +1,15 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.7.0 - WindowConfig::desktopArea: a Desktop window on any monitor
+// Version: 2.6.0 - RefreshAfterFontChange(): lays out and draws everything again
+// Version: 2.5.0 - popups composite with their alpha over the window, and a popup's
+//                  drop shadow (GetPopupShadow) is painted beneath it
+// Version: 2.4.1 - default bodies mark unused parameters (void): no -Wunused-parameter
+// Version: 2.4.0 - popup opacity (SetPopupOpacity): a popup composited over what lies
+//                  beneath it, so one can fade in or out as a whole
+// Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-08-08
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -29,6 +37,15 @@ namespace UltraCanvas {
     using WindowOverlayRenderer = std::function<void(IRenderContext* ctx,
                                                      const Rect2Di& overlayRect)>;
 
+    // Where the time of one frame went (see onFrameRendered), in milliseconds.
+    struct WindowFrameTiming {
+        double layoutMs    = 0;   // measure and arrange; 0 when the layout was valid
+        double paintMs     = 0;   // the elements in the dirty rectangles, and popups
+        double compositeMs = 0;   // popups, caret and tooltip onto the native surface
+        int    dirtyRects  = 0;   // rectangles painted in the window's content
+        bool   laidOut     = false;
+    };
+
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
         Standard, Dialog, Popup, Tool, 
@@ -38,7 +55,15 @@ namespace UltraCanvas {
         // (_NET_WM_WINDOW_TYPE_DESKTOP on X11). The window a desktop shell
         // draws its wallpaper and bars in. Where the platform has no such
         // notion it is a borderless window the size of the screen.
-        Desktop
+        Desktop,
+        // A notification on screen (a toast): undecorated, kept above other
+        // windows, on every virtual desktop, out of taskbars and pagers, and
+        // never given the keyboard focus, so it does not interrupt typing
+        // (_NET_WM_WINDOW_TYPE_NOTIFICATION with input hint off on X11;
+        // WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE on Windows).
+        // Placed where config.x / config.y say. Where the platform has no
+        // such notion it is a borderless window.
+        Notification
     };
 
     enum class WindowState {
@@ -80,12 +105,28 @@ namespace UltraCanvas {
         // Window class suffix (Windows only; empty = use "Main" default class)
         // Examples: "Dialog", "Tool", "Popup"
         std::string windowClassSuffix;
+
+        // WindowType::Desktop only: the part of the screen it covers, in
+        // physical pixels of the whole virtual screen - one monitor of
+        // UltraCanvasDesktopShell::ListScreens(), say. Empty (the default):
+        // the primary monitor on Windows, the whole screen on X11.
+        Rect2Di desktopArea;
     };
 
     struct PopupElement {
         UltraCanvasUIElement* element;
         PopupElementSettings settings;
         UltraCanvasDirtyRectManager dirtyRectManager;
+        // How opaque the popup is composited onto the window, 0..1 (see
+        // UltraCanvasWindowBase::SetPopupOpacity). 1, the default, puts the
+        // popup's surface over the window as it is; its transparent pixels
+        // (rounded corners) show the window beneath at any opacity.
+        float opacity = 1.0f;
+        // The popup's drop shadow, drawn once into its own surface and
+        // composited under the popup until its size or the shadow changes.
+        std::shared_ptr<IRenderContext> shadowSurface;
+        PopupShadow shadowDrawn;
+        Size2Di shadowDrawnFor;
     };
 
     struct FilterFunction {
@@ -103,6 +144,9 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _windowVisible = false;
+        // RenderBeforeShow is drawing the first frame of a window not yet
+        // shown (UpdateAndRender otherwise skips a hidden window).
+        bool _renderingBeforeShow = false;
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
@@ -213,6 +257,11 @@ namespace UltraCanvas {
         std::function<void()> onWindowRestore;
         std::function<void()> onWindowShow;
         std::function<void()> onWindowHide;
+        // After every frame that laid out or painted anything: how long its
+        // layout, painting and compositing took. For finding a slow frame - a
+        // window that stays blank at start, or a view that is slow to appear;
+        // nothing is timed while it is unset.
+        std::function<void(const WindowFrameTiming&)> onFrameRendered;
 
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
@@ -325,6 +374,13 @@ namespace UltraCanvas {
         // Get the currently focused element in this window
         UltraCanvasUIElement* GetFocusedElement() const { return _focusedElement; }
 
+        // Called as an element is destroyed: every window still alive -
+        // registered with the application or not (popups, tool windows) -
+        // forgets it as its focused element. A window it was focused in that
+        // is not the window the element names is a bookkeeping bug that would
+        // have left a dangling focus pointer; it is reported on debugOutput.
+        static void ForgetFocusedElement(UltraCanvasUIElement* element);
+
         // Clear focus from current element
         virtual void ClearFocus();
 
@@ -377,6 +433,18 @@ namespace UltraCanvas {
         bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
         PopupElement* GetActivePopupElement();
         void CloseAllPopups();
+
+        // How opaque an open popup is on screen, 0 (not seen) to 1 (the
+        // default). Below 1 the popup - background, border, shadow, content,
+        // all of it - is mixed with the window content and the popups beneath
+        // it, so a popup can fade in or out as a whole by stepping this. Only
+        // the window is composited again; the popup is not repainted, so
+        // animating it is cheap. A popup takes input at any opacity. Opening
+        // a popup starts it at 1. Returns false when `element` is not an open
+        // popup of this window.
+        bool SetPopupOpacity(UltraCanvasUIElement& element, float opacity);
+        // The popup's opacity; 1 for an element that is not an open popup here.
+        float GetPopupOpacity(const UltraCanvasUIElement& element) const;
 
         // event filters
         void InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents);
@@ -436,17 +504,29 @@ namespace UltraCanvas {
         virtual bool OnEvent(const UCEvent& event) override;
 
         // derived classes may override it to render something within the dirty area
-        virtual void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) {}
+        virtual void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) { (void)ctx; (void)dirtyRect; }
 
         // Adds a dirty rectangle (in window coords) to the window's render queue.
         void AddDirtyRectangle(const Rect2Di& windowRect);
         // Adds a dirty rectangle (in popup-local coords) to the named popup's queue.
         void AddPopupDirtyRect(UltraCanvasUIElement* popup, const Rect2Di& popupLocalRect);
+        // The fonts available changed (the system fonts arrived after the
+        // start, a font was registered): every element measures its text
+        // again, and the whole window and each open popup is drawn again.
+        // A new layout alone repaints nothing - only dirty rectangles are
+        // drawn - so text shaped with the old fonts, a box where a character
+        // had no font, stayed on screen.
+        void RefreshAfterFontChange();
 
         void RequestPopupGeometry() { _needsPopupGeometry = true; }
         void RequestWindowComposition() { _needsWindowComposition = true; }
         void RequestCaretComposition() { _needsCaretComposition = true; }
         void UpdateAndRender();
+        // Lays out and draws the window's first frame into its surface while
+        // it is still hidden, so a backend's Show() puts the window on screen
+        // with its content - not a surface nothing was drawn into yet (black
+        // on Windows) that the event loop's first frame replaces later.
+        void RenderBeforeShow();
 
         bool IsNeedsResize() const { return _needsResize; }
 
@@ -491,7 +571,12 @@ namespace UltraCanvas {
         void HandleMoveEvent(int x, int y);
 
         // ===== PROTECTED HELPER METHODS =====
+        // Puts the drop shadow `pe`'s popup asks for (GetPopupShadow) on the
+        // native surface under the popup at `popupPos`, at its opacity.
+        void CompositePopupShadow(PopupElement& pe, const Point2Dd& popupPos);
+
         virtual void RenderWindowBackground(IRenderContext* ctx) {
+            (void)ctx;
             // Default implementation - clear to background color
             // OS-specific implementations can override
         }

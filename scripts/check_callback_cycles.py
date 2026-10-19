@@ -31,8 +31,25 @@ What this reports:
       A callback captures a container that (transitively) owns that widget,
       via AddChild / AddDialogElement / AddRadioButton.
 
+"Stored on" is either form the framework uses: an assignment to a callback
+member (`x->onClick = [...]`, `x->fooCallback = [...]`) or a lambda handed
+straight to a setter on the object (`x->SetOnClick([...])`,
+`x->SetValueFormatter([...])`, `x->AddListener([...])`). "Captures" is any
+capture that copies the shared_ptr: a plain `[x]`, an init-capture of the
+name itself (`[p = x]`, `[p = std::move(x)]`), or a `[=]` default whose body
+uses `x`. A by-reference capture (`[&x]`, `[&]`) copies nothing and is not a
+cycle; neither is `[x = x.get()]` or `[w = std::weak_ptr<T>(x)]`.
+
 Both are reported ONLY when the capture is demonstrably a `shared_ptr` in
-that scope. This matters: the first version of this check matched capture
+that scope: `make_shared`, a declared `shared_ptr` local, a factory whose
+declared return type is one — or a parameter of the enclosing function
+declared `shared_ptr<T>`, `const shared_ptr<T>&` or `shared_ptr<T>&&`. The
+parameter case is how `UltraCanvasRadioGroup::AddRadioButton` leaked every
+radio it was given (`button->onChecked = [this, button]`, with `button` the
+by-value parameter) while this check passed: it only looked inside the body,
+and a parameter is declared before the `{`.
+
+Being demonstrable matters: the first version of this check matched capture
 names alone and reported three "leaks" in Texter and UltraFiler that were
 already `auto* editorPtr = editor.get()` and a `T* target` parameter — raw
 pointers, no ownership, nothing to fix. A name is not a type.
@@ -59,14 +76,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Where widget-building code lives. Vendored code and build output are never
-# scanned. Mirrors check_ui_reuse.py, plus SmartHome, which builds its own UI.
+# Where widget-building code lives: the framework (plugins, OS back ends and
+# render back ends included - a flow-chart palette button that owned itself
+# went unseen while Plugins was left out), the applications, SmartHome and
+# the tests. Vendored code and build output are never scanned.
 SEARCH_ROOTS = [
     "UltraCanvas/core",
     "UltraCanvas/include",
     "UltraCanvas/dialogs",
+    "UltraCanvas/Plugins",
+    "UltraCanvas/OS",
+    "UltraCanvas/libspecific",
     "Apps",
     "SmartHome",
+    "Tests",
 ]
 SKIP_PARTS = {"third_party", "3rdparty", "build", "cmake-build-debug"}
 SOURCE_SUFFIXES = {".cpp", ".h", ".hpp", ".mm"}
@@ -89,11 +112,51 @@ CALLBACK_RE = re.compile(
     r"\[(?P<captures>[^\]]*)\]"
 )
 
+# `widget->SetOnClick([captures]...)`: the lambda is the setter's first
+# argument and the setter stores it on the widget, exactly as the assignment
+# above does. SetOnClick, SetEventCallback, SetValueFormatter, SetXProvider,
+# AddListener / AddXCallback. The framework wires most clicks this way, and
+# the first version of this check never looked at them.
+SETTER_RE = re.compile(
+    r"(?P<obj>\w+)\s*->\s*"
+    r"(?P<member>Set[A-Z]\w*|Add\w*(?:Listener|Callback|Handler))\s*\(\s*"
+    r"\[(?P<captures>[^\]]*)\]"
+)
+
+# What may sit between a lambda's `]` and its body's `{`: a parameter list
+# (one level of nested parentheses, for a `std::function<void(int)>`
+# parameter), `mutable`, `noexcept`, a trailing return type.
+LAMBDA_HEAD_RE = re.compile(
+    r"\s*(?:\((?P<params>[^()]*(?:\([^()]*\)[^()]*)*)\))?[^;{}()]*\{"
+)
+
+# `[p = x]` / `[p = std::move(x)]`: an init-capture that copies (or moves)
+# the shared_ptr itself. Anything else on the right — `x.get()`,
+# `std::weak_ptr<T>(x)`, `x.get()->child` — holds something other than x.
+INIT_CAPTURE_RE = re.compile(
+    r"^(?P<alias>\w+)\s*=\s*(?:std::move\s*\(\s*(?P<moved>\w+)\s*\)|(?P<plain>\w+))$"
+)
+
+# A parameter that is a shared_ptr held by value or by reference — not a
+# pointer to one, not a weak_ptr, not a container of them. The template
+# argument is matched greedily so `shared_ptr<Foo<Bar>>` still parses.
+SHARED_PARAM_RE = re.compile(
+    r"^(?:const\s+)?(?:std::)?shared_ptr\s*<.+>\s*(?:const\s*)?&{0,2}\s*"
+    r"(?P<name>\w+)$"
+)
+
 # Declarations that settle a name's type inside a scope.
 RAW_AUTO_RE = r"\bauto\s*\*\s*{name}\s*="            # auto* x = y.get()
 RAW_PARAM_RE = r"[\w>]\s*\*\s*&?\s*{name}\b\s*[,)]"  # T* x / T*& x parameter
 AUTO_INIT_RE = r"\bauto\s+{name}\s*=\s*(?P<init>[^;]{{0,120}})"
 SHARED_DECL_RE = r"std::shared_ptr\s*<[^>]+>\s*&?\s*{name}\b"
+# `T name = ...` / `auto* name;` / `Foo name{...}` — a declaration that would
+# shadow the enclosing `name` inside a lambda body. `return name;` and the
+# like are uses, not declarations.
+LOCAL_DECL_RE = (
+    r"(?:\b(?!(?:return|co_return|throw|delete|else|case|new|goto)\b)\w+|>)"
+    r"\s*[*&]*\s+[*&]*{name}\s*(?:=|;|\{{|\()"
+)
 # A factory whose declared return type is a shared_ptr (CreateButton, ...).
 FACTORY_RE = r"std::shared_ptr\s*<[^>]+>\s*{name}\s*\("
 # The same, harvested from the headers, so `auto btn = CreateButton(...)` is
@@ -204,7 +267,97 @@ def function_bodies(code: str) -> list[tuple[int, int]]:
     return bodies
 
 
-def is_shared_ptr(name: str, body: str, whole: str) -> bool:
+def split_top_level(text: str, sep: str = ",") -> list[str]:
+    """Split on `sep` outside (), <>, [] and {} — a parameter list's commas."""
+    parts, depth, cur = [], 0, []
+    for k, ch in enumerate(text):
+        if ch in "(<[{":
+            depth += 1
+        elif ch in ")>]}" and not (ch == ">" and k and text[k - 1] == "-"):
+            depth = max(0, depth - 1)
+        if ch == sep and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+            continue
+        cur.append(ch)
+    parts.append("".join(cur))
+    return parts
+
+
+def shared_ptr_params(code: str, body_start: int) -> frozenset[str]:
+    """Parameters of the function whose body opens at `body_start` that are
+    declared `shared_ptr<T>`, `const shared_ptr<T>&` or `shared_ptr<T>&&`.
+
+    The body is everything from its `{`, so a parameter is invisible to a
+    search of it — which is how a by-value `shared_ptr` parameter captured
+    into a callback on itself went unreported.
+    """
+    window = max(0, body_start - 400)
+    before = code[window:body_start].rstrip()
+    match = BODY_OPEN_RE.search(before)
+    if not match:
+        return frozenset()
+    close = window + match.start()        # the parameter list's `)`
+    depth, i = 0, close
+    while i >= window:
+        if code[i] == ")":
+            depth += 1
+        elif code[i] == "(":
+            depth -= 1
+            if depth == 0:
+                break
+        i -= 1
+    else:
+        return frozenset()
+
+    names = set()
+    for param in split_top_level(code[i + 1:close]):
+        # Drop a default argument; `=` cannot appear in the declarator itself.
+        param = " ".join(param.split("=", 1)[0].split())
+        found = SHARED_PARAM_RE.match(param)
+        if found:
+            names.add(found.group("name"))
+    return frozenset(names)
+
+
+def lambda_after(code: str, close_bracket: int) -> tuple[str, str] | None:
+    """(parameter list, body) of the lambda whose capture list ends at
+    `close_bracket` (the index of its `]`), or None if it cannot be read."""
+    head = LAMBDA_HEAD_RE.match(code, close_bracket + 1)
+    if not head:
+        return None
+    open_brace = head.end() - 1
+    depth = 0
+    for j in range(open_brace, len(code)):
+        if code[j] == "{":
+            depth += 1
+        elif code[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return head.group("params") or "", code[open_brace + 1:j]
+    return None
+
+
+def uses_free_name(name: str, params: str, lambda_body: str) -> bool:
+    """True when a `[=]` lambda's body names `name` as the enclosing scope's
+    variable, so the default captures it by value.
+
+    Conservative: a lambda parameter of that name, any declaration of it in
+    the body, or a use only as a member (`obj.name`, `p->name`, `X::name`)
+    means it is not captured.
+    """
+    word = re.escape(name)
+    if re.search(rf"\b{word}\b", params):
+        return False
+    if re.search(LOCAL_DECL_RE.format(name=word), lambda_body):
+        return False
+    if re.search(RAW_PARAM_RE.format(name=word), lambda_body):
+        return False
+    return bool(re.search(rf"(?<![\w.])(?<!->)(?<!::){word}\b", lambda_body))
+
+
+def is_shared_ptr(name: str, body: str, whole: str,
+                  params: frozenset[str] = frozenset()) -> bool:
     """True only when `name` is demonstrably a shared_ptr in this scope.
 
     Deliberately conservative — an unknown type is not reported. A missed leak
@@ -230,7 +383,10 @@ def is_shared_ptr(name: str, body: str, whole: str) -> bool:
                 return True
         return False
 
-    return bool(re.search(SHARED_DECL_RE.format(name=re.escape(name)), body))
+    if re.search(SHARED_DECL_RE.format(name=re.escape(name)), body):
+        return True
+    # Declared in the signature: `AddRadioButton(std::shared_ptr<Radio> button)`.
+    return name in params
 
 
 def ancestors_of(name: str, parent: dict[str, str]) -> set[str]:
@@ -244,13 +400,16 @@ def ancestors_of(name: str, parent: dict[str, str]) -> set[str]:
 
 class Finding:
     def __init__(self, path: Path, line: int, kind: str, owner: str,
-                 capture: str, member: str):
+                 capture: str, member: str, via: str = ""):
         self.path = path
         self.line = line
         self.kind = kind
         self.owner = owner
         self.capture = capture
         self.member = member
+        # How the shared_ptr got in: "" for a plain `[x]`, "[=]" for a
+        # default capture, or the init-capture's own name (`[p = x]` -> "p").
+        self.via = via
 
     @property
     def rel(self) -> str:
@@ -265,14 +424,68 @@ class Finding:
         return f"{self.rel}::{self.kind}::{self.owner}->{self.member}::{self.capture}"
 
     def __str__(self) -> str:
+        how = ""
+        if self.via == "[=]":
+            how = " (implicitly, through [=])"
+        elif self.via:
+            how = f" (as `{self.via}`)"
         if self.kind == "self-capture":
-            what = (f"{self.owner}->{self.member} captures a shared_ptr to "
-                    f"{self.owner} itself")
+            what = (f"{self.owner}->{self.member} captures{how} a shared_ptr "
+                    f"to {self.owner} itself")
         else:
-            what = (f"{self.owner}->{self.member} captures a shared_ptr to "
-                    f"{self.capture}, which owns {self.owner}")
+            what = (f"{self.owner}->{self.member} captures{how} a shared_ptr "
+                    f"to {self.capture}, which owns {self.owner}")
+        alias = self.via if self.via and self.via != "[=]" else self.capture
         return (f"{self.rel}:{self.line}: {self.kind}: {what} — capture it raw "
-                f"(`{self.capture} = {self.capture}.get()`)")
+                f"(`{alias} = {self.capture}.get()`)")
+
+
+def captured_by_value(captures: str, owning: set[str], code: str,
+                      close_bracket: int) -> list[tuple[str, str]]:
+    """The names in `owning` that this capture list copies, as (name, via).
+
+    A plain `[x]`, an init-capture `[p = x]` / `[p = std::move(x)]`, or —
+    under a `[=]` default — a use of `x` in the lambda's body. By-reference
+    captures (`[&x]`, `[&]`) copy nothing, and an init-capture of anything
+    but the name itself (`x.get()`, `std::weak_ptr<T>(x)`) has already chosen
+    to hold something else.
+    """
+    found: list[tuple[str, str]] = []
+    explicit: set[str] = set()
+    copy_default = False
+    for entry in split_top_level(captures):
+        entry = entry.strip()
+        if not entry or entry in ("this", "*this", "&"):
+            continue
+        if entry == "=":
+            copy_default = True
+            continue
+        if entry.startswith("&"):
+            explicit.add(entry.lstrip("&").split("=", 1)[0].strip())
+            continue
+        init = INIT_CAPTURE_RE.match(" ".join(entry.split()))
+        if init:
+            alias = init.group("alias")
+            explicit.add(alias)
+            name = init.group("moved") or init.group("plain")
+            if name in owning:
+                found.append((name, alias if alias != name else ""))
+            continue
+        if "=" in entry:
+            explicit.add(entry.split("=", 1)[0].strip())
+            continue
+        explicit.add(entry)
+        if entry in owning:
+            found.append((entry, ""))
+
+    if copy_default:
+        lam = lambda_after(code, close_bracket)
+        if lam:
+            params, lambda_body = lam
+            for name in sorted(owning - explicit):
+                if uses_free_name(name, params, lambda_body):
+                    found.append((name, "[=]"))
+    return found
 
 
 def check_file(path: Path) -> list[Finding]:
@@ -292,24 +505,18 @@ def check_file(path: Path) -> list[Finding]:
     for start, end in function_bodies(code):
         body = code[start:end]
         parent = {m.group(2): m.group(1) for m in ADDER_RE.finditer(body)}
+        params = shared_ptr_params(code, start)
 
-        for match in CALLBACK_RE.finditer(body):
+        stored = [(m, m.group("member")) for m in CALLBACK_RE.finditer(body)]
+        stored += [(m, m.group("member") + "(...)")
+                   for m in SETTER_RE.finditer(body)]
+        for match, member in sorted(stored, key=lambda s: s[0].start()):
             owner = match.group("obj")
             owning = {owner} | ancestors_of(owner, parent)
 
-            for entry in match.group("captures").split(","):
-                entry = entry.strip()
-                if not entry or entry in ("this", "=", "&"):
-                    continue
-                # An init-capture (`x = x.get()`, `w = weak_ptr<T>(x)`) has
-                # already chosen what it holds; only a plain by-value capture
-                # of the owner or an ancestor is a cycle.
-                if "=" in entry:
-                    continue
-                entry = entry.lstrip("&")
-                if entry not in owning:
-                    continue
-                if not is_shared_ptr(entry, body, code):
+            for entry, via in captured_by_value(match.group("captures"), owning,
+                                                body, match.end() - 1):
+                if not is_shared_ptr(entry, body, code, params):
                     continue
                 findings.append(
                     Finding(
@@ -318,7 +525,8 @@ def check_file(path: Path) -> list[Finding]:
                         "self-capture" if entry == owner else "ancestor-capture",
                         owner,
                         entry,
-                        match.group("member"),
+                        member,
+                        via,
                     )
                 )
 

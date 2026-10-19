@@ -25,7 +25,8 @@ include(cmake/UltraCanvasVersion.cmake)
 # this is checked here instead of being discovered one file at a time.
 set(ULTRACANVAS_MIN_CLANG_MAJOR 16)
 if(UNIX AND NOT APPLE AND NOT ANDROID
-   AND NOT DEFINED ENV{CXX} AND NOT DEFINED CMAKE_CXX_COMPILER)
+   AND NOT DEFINED ENV{CXX} AND NOT DEFINED CMAKE_CXX_COMPILER
+   AND NOT CMAKE_TOOLCHAIN_FILE)   # a toolchain file (emcmake, the NDK) names its own compiler
     # Unversioned first: it is what CI installs and it keeps the ccache key
     # stable. Then versioned binaries `clang-NN`, newest first, for dev boxes
     # that install e.g. clang-21 without the unversioned symlink. Each
@@ -124,7 +125,7 @@ endif()
 # ${CMAKE_MATCH_1} before if() evaluates MATCHES, so in one condition it read
 # the previous match's leftovers and the branch was taken on any ld
 # ("GNU ld 2.42 < 2.40").
-if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Ask the compiler which linker it actually drives (honours its default and any
     # -fuse-ld), not CMAKE_LINKER - that is just a path CMake happened to find and
     # is not what clang links with.
@@ -152,6 +153,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Every file includes the standard headers it uses. libc++ 23 (LLVM 23, which
+# MSYS2's CLANG64/CLANGARM64 ship since 2026-10-09) dropped most of its
+# transitive includes - <string> no longer brings in <algorithm>, <cstdlib>,
+# <iterator>, <optional> and more - and libc++ 24 removes the bridge that
+# restored them (_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23), so the tree does
+# not define it: the Windows legs, which build with libc++ 23, reject a file
+# that relies on a transitive include the day it is written, instead of the
+# day LLVM 24 arrives.
+
 # Build type defaults to Release
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
@@ -171,18 +181,20 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# macOS: record only the dylibs a binary actually takes a symbol from. On
-# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
-# so every application's link line carries the core's whole PUBLIC dependency
-# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
-# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
-# command for each one whether the program uses it or not. package-macos.sh
-# then copies every one of them, with its own dependencies, into each .app's
-# Frameworks/, six bundles over. With this flag an app that never reaches the
-# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
-# that supplied no symbol at link time are dropped, so nothing an app calls
-# can go missing; it would only matter for a library needed purely for a side
-# effect of its initializer, and none of the Homebrew dependencies is that.
+# macOS: record only the dylibs a binary actually takes a symbol from. ld64,
+# unlike GNU ld with --as-needed, writes a load command for every library on
+# the link line whether the program takes a symbol from it or not. While the
+# core was linked statically on macOS, every application's link line carried
+# the core's whole PUBLIC dependency list - tesseract, leptonica, MuPDF, zbar,
+# libcdr with boost and ICU, the audio codecs - and package-macos.sh copied
+# every one of them into each .app's Frameworks/. The core is a shared
+# libUltraCanvas.dylib on macOS now too (ULTRACANVAS_BUILD_SHARED), so the
+# apps' link lines are short, but the flag still earns its place: the core
+# itself records only the libraries it uses, and a format plug-in archive an
+# app links still brings its dependency list along. Only libraries that
+# supplied no symbol at link time are dropped, so nothing an app calls can go
+# missing; it would only matter for a library needed purely for a side effect
+# of its initializer, and none of the dependencies is that.
 if(APPLE)
     add_link_options(LINKER:-dead_strip_dylibs)
 endif()
@@ -253,12 +265,11 @@ if(ANDROID)
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
-    # Image processing: libvips' ~10-library transitive stack is not in a
-    # minimal sysroot; the HAS_LIBVIPS fallbacks cover phase 1.
-    set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing")
+    # libvips is not in this list: it is part of UltraCanvas on Android as on
+    # every platform, built into the sysroot with the rest of the stack
+    # (UltraCanvas/OS/Android/packaging/vcpkg.json).
     # Runtime-dlopen'ed plugin DSOs don't load from outside the APK on Android
-    # (investigation §4.3); miniaudio/GStreamer/MuPDF/tesseract/cargo builds are
-    # all post-phase-1.
+    # (investigation §4.3); MuPDF/tesseract/cargo builds are all post-phase-1.
     set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)")
     set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CDR plugin (requires libcdr)")
     set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin")
@@ -273,12 +284,75 @@ if(ANDROID)
     # beneath it - both reached through dlopen, so there is nothing extra to
     # link and no NDK-side dependency. Only its optional codec libraries are
     # missing from a minimal sysroot, which costs formats, not the backend.
-    set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)")
+    # ULTRACANVAS_ENABLE_VIDEO stays ON for the same reason as audio: the
+    # Android backend (libspecific/Video/VideoBackendAndroid*.cpp) uses only
+    # the NDK's own media, camera and AAudio libraries.
     set(ULTRACANVAS_ENABLE_DATABASE OFF CACHE BOOL "Build the UltraDatabase data-access library")
     set(ULTRACANVAS_USE_VIRTUALFS OFF CACHE BOOL "Build the VirtualFS module and the UltraCanvas bridge to it")
     # UltraNet works on Android (Linux TLS/proxy sources + mandatory c-ares)
     # but needs curl/openssl/c-ares in the sysroot; opt in explicitly.
     set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library")
+endif()
+
+# ===== WEBASSEMBLY DEFAULTS (the core library and the demo as a web page) =====
+# Cache defaults only (no FORCE), like the Android block: -D on the command
+# line still wins. Under emcmake the root builds the core library and
+# UltraCanvasDemo.html (see the demo's EMSCRIPTEN block below); the other
+# applications and the sibling modules have never been compiled for the
+# browser, and most of them cannot be - they are built around sockets
+# (UltraNet is forced off in UltraCanvas/CMakeLists.txt), processes, D-Bus,
+# the desktop's windows or FFmpeg. VirtualFS stays on: the core's archive
+# bridge and FileLoader's decompression are plain C++ and the demo's Filer
+# page browses archives through them. The sysroot and the flags are in
+# UltraCanvas/OS/WASM/README.md.
+if(EMSCRIPTEN)
+    # The wasm sysroot for find_package(ZLIB) - VirtualFS below and the
+    # Models plugin's FBX reader; see the file.
+    include(cmake/UltraCanvasWasmSysroot.cmake)
+    # One threading and exception ABI for every archive in the page's link:
+    # the sysroot and the core are built -pthread -fwasm-exceptions
+    # (UltraCanvas/CMakeLists.txt, WASM branch, where the core passes them on
+    # to what links it), and a sibling module compiled before the core
+    # without them stops the link - "--shared-memory is disallowed by
+    # VirtualFSManager.cpp.o because it was not compiled with 'atomics'".
+    # The thread switch is the library's (same name, same default; its own
+    # option() then finds the value), declared here because this runs first.
+    option(ULTRACANVAS_WASM_THREADS "WebAssembly: build with -pthread (Web Workers)" ON)
+    if(ULTRACANVAS_WASM_THREADS)
+        add_compile_options(-pthread -fwasm-exceptions)
+    else()
+        add_compile_options(-fwasm-exceptions)
+    endif()
+    set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
+    set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
+    set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
+    set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
+    set(BUILD_ARTCREATOR_APP OFF CACHE BOOL "Build the ArtCreator vector drawing editor application")
+    set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
+    set(BUILD_ULTRAAI_MODULE OFF CACHE BOOL "Build the UltraAI module (interfaces, registry, adapters)")
+    set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
+    set(ULTRACANVAS_USE_VIDEOFX OFF CACHE BOOL "Build the VideoFX video editing / conversion module")
+    set(BUILD_ULTRACLOUD OFF CACHE BOOL "Build the UltraCloud module")
+    set(BUILD_SMARTHOME OFF CACHE BOOL "Build the Smart Home module")
+    set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
+    set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    set(BUILD_ULTRASOCIAL OFF CACHE BOOL "Build the UltraSocial application")
+    set(BUILD_ULTRAFIBU OFF CACHE BOOL "Build the UltraFIBU accounting application")
+    set(BUILD_ULTRACLEANER OFF CACHE BOOL "Build the UltraCleaner application")
+    set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
+    set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
+    set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
+    set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
+    set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
+    set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
+    set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
+    set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
+    set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
+    set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
+    set(BUILD_ULTRAPASSWORD OFF CACHE BOOL "Build the UltraPassword application")
+    set(BUILD_ULTRAWIN_MANAGER OFF CACHE BOOL "Build the UltraWin Manager application")
+    set(BUILD_ULTRAWIN_SETUP OFF CACHE BOOL "Build the ultrawin-setup CLI tool")
+    set(BUILD_ULTRAMSG_CLI OFF CACHE BOOL "Build the ultramsg command-line tool")
 endif()
 
 # ===== BUILD OPTIONS =====
@@ -316,6 +390,8 @@ option(ULTRACANVAS_USE_VIDEOFX "Build the VideoFX video editing / conversion mod
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 include(cmake/UltraCanvasWinManifest.cmake)
+include(cmake/UltraCanvasWindowsGuiApp.cmake)
+include(cmake/UltraCanvasSingleInstance.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -370,6 +446,14 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
 endif()
 
+# Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
+# flock() on Linux, the BSDs and macOS, LockFileEx on Windows). Same reason as
+# above: the core file compiles an "Unsupported" fallback unless this is set,
+# and the library and Tests/ must agree about which side defines the backend.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK ON)
+endif()
+
 # Which platforms have a trash UltraCanvasTrash can move files into: the
 # Recycle Bin (Windows), the Finder's Trash (macOS) and the freedesktop.org
 # trash (Linux, the BSDs). Android and WebAssembly have none; there the core
@@ -388,7 +472,30 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
 endif()
 
+# A build machine's private OAuth settings (the sign-in service UltraNet is
+# built with), kept out of the repository - see cmake/oauth.local.cmake.example.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+endif()
+
 add_subdirectory(UltraCanvas)
+
+# ===== WEBASSEMBLY DEMOS =====
+# The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
+# the ultraos.eu front page) are ordinary UltraCanvas applications: built here
+# natively they run on the desktop, so a page can be looked at before the
+# hour-long wasm pipeline (wasm-build.yml) runs; built here under emcmake they
+# are pages beside UltraCanvasDemo.html, from the one library build (that is
+# what wasm-build.yml does). Off by default; emcmake also builds them from
+# their own directory (see UltraCanvas/OS/WASM/README.md).
+option(BUILD_WASM_DEMOS "Build the WebAssembly demo apps (as desktop applications natively, as pages under emcmake)" OFF)
+if(BUILD_WASM_DEMOS)
+    message(STATUS "")
+    message(STATUS "── Building WebAssembly demos ──")
+    add_subdirectory(UltraCanvas/OS/WASM/demo)
+endif()
 
 # ===== BUILD ULTRAAI MODULE =====
 # Sibling module — capability interfaces + registry + adapters. Built on
@@ -470,6 +577,17 @@ if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraFIBU)
 endif()
 
+# ===== ULTRAPRESS =====
+# The website and shop builder that publishes WebAssembly
+# (Docs/Research/UltraPressDesignProposal.md). Phase 1 begins with the
+# headless engine and the `ultrapress` command line; the editor and the
+# renderer follow. The engine links the core for UltraCanvasJSON and the
+# HTMLReader, so it is built wherever the core is.
+option(BUILD_ULTRAPRESS "Build the UltraPress engine and command line" ON)
+if(BUILD_ULTRAPRESS AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_subdirectory(Apps/UltraPress)
+endif()
+
 # ===== ULTRACLEANER =====
 # Removes the files macOS, Windows and Linux leave behind: temporary files,
 # application and browser caches, logs, crash reports, thumbnail databases,
@@ -527,6 +645,18 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRAWEB =====
+# The ULTRA OS browser. This version runs WebAssembly apps that build their UI
+# out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
+# reader and JavaScript follow Docs/UltraWeb/UltraWebProposal.md. A headless
+# --check mode starts an app without a window.
+option(BUILD_ULTRAWEB "Build the UltraWeb browser" ON)
+if(BUILD_ULTRAWEB)
+    message(STATUS "")
+    message(STATUS "── Building UltraWeb ──")
+    add_subdirectory(Apps/UltraWeb)
+endif()
+
 # ===== ULTRADESKTOP =====
 # The ULTRA OS desktop: taskbar with the running applications, desktop
 # organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
@@ -548,6 +678,17 @@ endif()
 option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
 if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
+endif()
+
+# ===== ULTRAVIDEO =====
+# The video editor on the VideoFX engine and the UltraCanvasVideoTimeline
+# element: media bin, viewer with scrubbing, inspector, timeline, undo,
+# .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
+option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
+if(BUILD_ULTRAVIDEO)
+    message(STATUS "")
+    message(STATUS "── Building UltraVideo ──")
+    add_subdirectory(Apps/UltraVideo)
 endif()
 
 # ===== DEVICEEXPLORER =====
@@ -613,6 +754,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
             Apps/DemoApp/UltraCanvasTimePickerExamples.cpp
             Apps/DemoApp/UltraCanvasAlertExamples.cpp
+            Apps/DemoApp/UltraCanvasNotificationToastExamples.cpp
             Apps/DemoApp/UltraCanvasPaginationExamples.cpp
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
@@ -666,6 +808,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
@@ -680,7 +823,6 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
-            Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
             Apps/DemoApp/UltraCanvasPieChartExamples.cpp
             Apps/DemoApp/UltraCanvasSunburstChartExamples.cpp
@@ -712,24 +854,34 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAudioFXExamples.cpp
             Apps/DemoApp/UltraCanvasEBookExamples.cpp
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
+            Apps/DemoApp/UltraCanvasVideoTimelineExamples.cpp
             Apps/DemoApp/UltraCanvasSpectrogramExamples.cpp
             Apps/DemoApp/UltraCanvasLevelMeterExamples.cpp
             Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasAIExamples.cpp
-            Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
             Apps/DemoApp/UltraCanvasSTLExamples.cpp
     )
 
-    # These files depend on libvips
+    # These files depend on libvips (the performance page benchmarks its
+    # codecs through vips::VImage directly), which the single-threaded
+    # WebAssembly build has not got.
     if(LIBVIPS_FOUND)
         list(APPEND DEMO_SOURCES
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
             Apps/DemoApp/UltraCanvasPixelFXExamples.cpp
+            Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
         )
+    endif()
+
+    # The LaTeX page calls CreateLaTeXView(), whose on-demand loader
+    # (core/UltraCanvasLaTeXModuleLoader.cpp) is only compiled with the plugin;
+    # without it the page's registration is out too (ULTRACANVAS_PLUGIN_LATEX).
+    if(ULTRACANVAS_PLUGIN_LATEX)
+        list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasLaTeXExamples.cpp)
     endif()
 
     # Only include GL examples if GL support is enabled
@@ -849,8 +1001,12 @@ if(BUILD_DEMO_APP)
     )
     # Export the executable's dynamic symbols so on-demand plugin modules
     # (dlopen'ed via the loader, e.g. libUltraCanvasLaTeX) can resolve
-    # UltraCanvas core symbols when the core is linked statically.
-    set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
+    # UltraCanvas core symbols when the core is linked statically. Not in the
+    # browser: nothing is dlopen'ed there, and the setting would ask for a
+    # dynamic-linking wasm build.
+    if(NOT EMSCRIPTEN)
+        set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
+    endif()
 
     # Include directories
     target_include_directories(UltraCanvasDemo PRIVATE
@@ -868,8 +1024,10 @@ if(BUILD_DEMO_APP)
     # application links.
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
-    # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
-    # needs the element's library; without UltraMessage the page says so.
+    # The message centre and notification toast pages
+    # (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp,
+    # UltraCanvasNotificationToastExamples.cpp) need the elements' library;
+    # without UltraMessage the pages say so.
     if(TARGET UltraMessageCenter)
         target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
     endif()
@@ -901,6 +1059,57 @@ if(BUILD_DEMO_APP)
         # macOS deprecated OpenGL in 10.14; silence per-call warnings in the GL demo code.
         $<$<AND:$<BOOL:${ULTRACANVAS_ENABLE_GL}>,$<BOOL:${APPLE}>>:GL_SILENCE_DEPRECATION=1>
     )
+
+    # ===== The demo as a web page (emcmake; UltraCanvas/OS/WASM/README.md) =====
+    # The output is UltraCanvasDemo.html plus .js, .wasm, .ww.js and the .data
+    # bundle holding every file the pages read: GetResourcesDir() resolves to
+    # ./share/ with the virtual filesystem's cwd of /, so each directory is
+    # preloaded at /share/<its repository path>, the layout package-linux.sh
+    # gives the portable package. The bundle is downloaded whole before main()
+    # runs, so it holds what the pages show and not the whole of media/
+    # (124 MB): media/3D without its four largest folders (the 25 MB STL, the
+    # 18 MB .blend, the 6.9 MB VRML and the 3.9 MB PLY, which the model
+    # formats page does not list either), and no audio or video samples,
+    # whose players are compiled out in the browser. The demo's own sources
+    # go in for the page header's source button, as the packages ship them.
+    if(EMSCRIPTEN)
+        set_target_properties(UltraCanvasDemo PROPERTIES SUFFIX ".html")
+        # The browser utilities (WASMURL reads ?component=... for main.cpp)
+        # live under OS/WASM/, which is not on the library's include path.
+        target_include_directories(UltraCanvasDemo PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas)
+        set(_uc_demo_preload
+            media/fonts media/icons media/appicon media/images media/vector
+            media/flags media/textsamples media/ebooks media/diagrams
+            media/docs
+            media/3D/3DS media/3D/Alembic media/3D/COLLADA media/3D/DWG
+            media/3D/DXF media/3D/FBX media/3D/MS3D media/3D/OBJ media/3D/STEP
+            media/3D/X3D media/3D/XFile media/3D/spring.obj media/3D/torusknot.obj
+            Docs/UltraCanvas Docs/Modules)
+        foreach(_uc_dir IN LISTS _uc_demo_preload)
+            if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_uc_dir}")
+                target_link_options(UltraCanvasDemo PRIVATE
+                    "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/${_uc_dir}@/share/${_uc_dir}")
+            endif()
+        endforeach()
+        unset(_uc_dir)
+        unset(_uc_demo_preload)
+        file(GLOB _uc_demo_sources "${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp/*.cpp")
+        foreach(_uc_src IN LISTS _uc_demo_sources)
+            get_filename_component(_uc_name "${_uc_src}" NAME)
+            target_link_options(UltraCanvasDemo PRIVATE
+                "SHELL:--preload-file ${_uc_src}@/share/DemoApp/${_uc_name}")
+        endforeach()
+        unset(_uc_src)
+        unset(_uc_name)
+        unset(_uc_demo_sources)
+        # The page around the canvases: a loading line while the bundle
+        # downloads, then the demo window filling the viewport.
+        target_link_options(UltraCanvasDemo PRIVATE
+            "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp/wasm-shell.html")
+        set_property(TARGET UltraCanvasDemo APPEND PROPERTY LINK_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp/wasm-shell.html")
+    endif()
 
     # Embed app icon in .exe (Windows only)
     ultracanvas_embed_app_icon(UltraCanvasDemo
@@ -962,6 +1171,40 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== VIDEOFX TESTS WITHOUT THE FULL SUITE =====
+# VideoFXTest and UltraVideoDocumentTest alone, for builds that leave
+# BUILD_TESTS off (the Windows CI rows): the engine on the FFmpeg the Windows
+# package ships, through the Windows file names, cache folder and fonts, and
+# UltraVideo's .ultravideo file written there.
+option(ULTRACANVAS_BUILD_VIDEOFX_TESTS "Build VideoFXTest and UltraVideoDocumentTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VIDEOFX_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VideoFXTests.cmake)
+endif()
+
+# ===== DESKTOP SHELL TEST WITHOUT THE FULL SUITE =====
+# DesktopShellTest alone, for builds that leave BUILD_TESTS off (the Windows
+# CI rows): the Win32 backend of UltraCanvasDesktopShell - the window list,
+# the monitor's hooks, the screen edges, hot keys, the screenshot and the
+# Start menu - is only a test on a Windows desktop.
+option(ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS "Build DesktopShellTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/DesktopShellTests.cmake)
+endif()
+
+# ===== DEVICE TLS TESTS WITHOUT THE FULL SUITE =====
+# IODeviceScannerESCLLiveTest alone, for builds that leave BUILD_TESTS off
+# (the macOS and Windows CI rows): trusting a device's self-signed certificate
+# on first use rests on libcurl's public-key pinning and certificate capture,
+# which each TLS library implements apart - OpenSSL on Linux, Apple's TLS on
+# macOS, Schannel on Windows - so it is a test on every one of them.
+option(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS "Build the device TLS tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/DeviceTlsTests.cmake)
+endif()
+
 # ===== VAULT TESTS WITHOUT THE FULL SUITE =====
 # UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
 # row): the device-key vault in a Thai-and-emoji folder is only a test where a
@@ -991,6 +1234,8 @@ if(BUILD_ULTRAWIN_MANAGER AND TARGET UltraWin)
         Apps/UltraWinManager/main.cpp
         Apps/UltraWinManager/UltraWinManagerWindow.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraWinManager)
     target_include_directories(UltraWinManager PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraWinManager
@@ -1045,6 +1290,10 @@ if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
     add_executable(ultramsg Apps/UltraMessageCli/main.cpp)
     target_compile_features(ultramsg PRIVATE cxx_std_20)
     target_link_libraries(ultramsg PRIVATE UltraMessage)
+    # A command-line tool has no window to set an icon on; on Windows the
+    # .exe carries media/appicon/UltraMsg.png (the render of UltraMsg.svg).
+    ultracanvas_embed_app_icon(ultramsg
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraMsg.png")
 endif()
 
 # ===== ULTRADATABASE TESTS =====
@@ -1117,6 +1366,17 @@ if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
     message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
 endif()
 
+# ===== ULTRAPRESS ENGINE TESTS =====
+# The content model, the validator, the HTML shadow, the sitemap and feed,
+# the static publish of the example site. Headless; needs the core library.
+option(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS "Build the UltraPress engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS AND TARGET UltraPressEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraPress)
+    message(STATUS "")
+    message(STATUS "── UltraPress engine test suite enabled (target: UltraPressEngineTests) ──")
+endif()
+
 # ===== ULTRACLEANER ENGINE TESTS =====
 # Headless engine tests: the path guard, the rule table, the scanner and the
 # remover, all driven over temporary trees. Enabled on its own switch.
@@ -1162,6 +1422,8 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(Texter)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(Texter PROPERTIES ENABLE_EXPORTS ON)
@@ -1242,6 +1504,8 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
     )
+    # One copy per user; a second start's folder opens here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraFiler)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(UltraFiler PROPERTIES ENABLE_EXPORTS ON)
@@ -1350,6 +1614,8 @@ if (BUILD_ULTRAVIEWER_APP)
             Apps/UltraViewer/main.cpp
             Apps/UltraViewer/UltraViewerWindow.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraViewer)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(UltraViewer PROPERTIES ENABLE_EXPORTS ON)
@@ -1419,7 +1685,10 @@ if (BUILD_ULTRAPAINT_APP)
             Apps/UltraPaint/UltraPaintTools.cpp
             Apps/UltraPaint/UltraPaintFilters.cpp
             Apps/UltraPaint/UltraPaintDialogs.cpp
+            Apps/UltraPaint/UltraPaintSettingsDialog.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraPaint)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(UltraPaint PROPERTIES ENABLE_EXPORTS ON)
@@ -1432,6 +1701,13 @@ if (BUILD_ULTRAPAINT_APP)
     target_link_libraries(UltraPaint PRIVATE
             ${ULTRACANVAS_LIBRARY}
     )
+
+    # Paste with nothing on the clipboard offers the newest image of the
+    # clipboard history UltraDesktop keeps; Edit > Paste Last Copied Image.
+    if(TARGET UltraClipboardHistory)
+        target_link_libraries(UltraPaint PRIVATE UltraClipboardHistory)
+        target_compile_definitions(UltraPaint PRIVATE ULTRAPAINT_HAVE_CLIPBOARD_HISTORY=1)
+    endif()
 
     # The 3D model formats. Core reads STL by itself; OBJ, PLY, COLLADA, FBX,
     # X3D, Alembic, MilkShape, .blend and STEP arrive with this plugin, and
@@ -1498,7 +1774,10 @@ if (BUILD_ARTCREATOR_APP)
             Apps/ArtCreator/ArtCreatorWindow.cpp
             Apps/ArtCreator/ArtCreatorTools.cpp
             Apps/ArtCreator/ArtCreatorDialogs.cpp
+            Apps/ArtCreator/ArtCreatorIcon.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(ArtCreator)
     set_target_properties(ArtCreator PROPERTIES ENABLE_EXPORTS ON)
 
     target_include_directories(ArtCreator PRIVATE
@@ -1569,7 +1848,10 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
+        Apps/UltraAIApp/UltraAITranslatorDialog.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraAIApp)
 
     target_include_directories(UltraAIApp PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
@@ -1679,6 +1961,86 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME HTMLTableLayoutTest COMMAND HTMLTableLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # display: flex and grid on the CSSLayout flex / grid engines: items,
+    # flex sizing, tracks, auto-fill, named areas, hostile values (builder +
+    # layout, headless).
+    add_executable(HTMLFlexGridLayoutTest Tests/HTMLFlexGridLayoutTest.cpp)
+    target_include_directories(HTMLFlexGridLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLFlexGridLayoutTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLFlexGridLayoutTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLFlexGridLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLFlexGridLayoutTest COMMAND HTMLFlexGridLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UltraCanvasWebView on a fake web: loading, links, fragments, history and
+    # scroll positions, error pages, late pictures (headless).
+    add_executable(WebViewTest Tests/WebViewTest.cpp)
+    target_include_directories(WebViewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(WebViewTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(WebViewTest PRIVATE cxx_std_20)
+    set_target_properties(WebViewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WebViewTest COMMAND WebViewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # HTML forms with real widgets: encodings, the builder's widgets and their
+    # places, the entry list, submit / Enter / reset, radio groups, form="id",
+    # what was typed across a rebuild (headless).
+    add_executable(HTMLFormsTest Tests/HTMLFormsTest.cpp)
+    target_include_directories(HTMLFormsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLFormsTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLFormsTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLFormsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLFormsTest COMMAND HTMLFormsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # A plain inline element's box: margin, border and padding as room in its
+    # line, its background painted, a bordered one or a mail button as a box
+    # on the line (builder + layout + paint, headless).
+    add_executable(HTMLInlineBoxTest Tests/HTMLInlineBoxTest.cpp)
+    target_include_directories(HTMLInlineBoxTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLInlineBoxTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLInlineBoxTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLInlineBoxTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLInlineBoxTest COMMAND HTMLInlineBoxTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Mutated HTML through parser, builder and layout: a crash or a hang
+    # fails it (Tests/Fuzz/README.md; the parser and CSS have their own
+    # targets in Tests/Fuzz, which need no UI library).
+    add_executable(HTMLBuilderFuzzSmoke Tests/Fuzz/HTMLBuilderFuzz.cpp Tests/Fuzz/FuzzSmokeMain.cpp)
+    target_include_directories(HTMLBuilderFuzzSmoke PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLBuilderFuzzSmoke PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLBuilderFuzzSmoke PRIVATE cxx_std_20)
+    set_target_properties(HTMLBuilderFuzzSmoke PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLBuilderFuzzSmoke
+             COMMAND HTMLBuilderFuzzSmoke -runs=400 -max_len=16384
+                     -dict=${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/html.dict
+                     ${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/corpus/html
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(HTMLBuilderFuzzSmoke PROPERTIES TIMEOUT 600)
+
+    # Every UltraCanvasUIElement constructor makes a border-box element: a
+    # widget's size includes its padding and border however it was built.
+    add_executable(UIElementBoxSizingTest Tests/UIElementBoxSizingTest.cpp)
+    target_include_directories(UIElementBoxSizingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(UIElementBoxSizingTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(UIElementBoxSizingTest PRIVATE cxx_std_20)
+    set_target_properties(UIElementBoxSizingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UIElementBoxSizingTest COMMAND UIElementBoxSizingTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
@@ -1792,6 +2154,8 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorStoreTests
         Tests/UltraAuthenticatorStoreTests.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
+        # The default vault folder, and a vault moved into it from where 0.2.6 kept it.
+        Apps/UltraAuthenticator/VaultLocation.cpp
     )
     target_link_libraries(UltraAuthenticatorStoreTests PRIVATE UltraCrypt)
     target_compile_features(UltraAuthenticatorStoreTests PRIVATE cxx_std_20)
@@ -2083,31 +2447,41 @@ if (BUILD_FILEMANAGER_APP)
 endif()
 
 # Hide console window on Windows Release builds
+# Every app whose command line only opens the window (--help and --version
+# aside) is a GUI-subsystem program there, so no empty console opens beside
+# it; ultracanvas_windows_gui_app() (cmake/UltraCanvasWindowsGuiApp.cmake)
+# also attaches it to the prompt's console before main(), so --help and
+# --version still print. UltraMail calls it in its own CMakeLists.txt, as do
+# the standalone UltraTexter and AnchorPoint builds.
+#
+# The apps whose command-line modes print into the prompt they were typed at
+# - DeviceExplorer (--list), UltraCleaner (--scan), UltraNetMonitor (--list),
+# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print) and
+# UltraDesktop (--windows) - are GUI programs as well, each with a console
+# companion beside it (ultracanvas_windows_console_companion()): <App>.com,
+# which cmd and PowerShell run for the bare name, starts the .exe, waits for
+# it and returns its exit code. So the prompt waits as for a console program,
+# and the Start menu, Explorer and the sign-in start the .exe without a
+# console window. ultrafibu and ultrapress do the same in their own
+# CMakeLists.txt. Debug builds keep the console.
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    if(BUILD_DEMO_APP)
-        set_target_properties(UltraCanvasDemo PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_TEXTER_APP)
-        set_target_properties(Texter PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAFILER_APP)
-        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAVIEWER_APP)
-        set_target_properties(UltraViewer PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAPAINT_APP)
-        set_target_properties(UltraPaint PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ARTCREATOR_APP)
-        set_target_properties(ArtCreator PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_FILEMANAGER_APP)
-        set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAFILER_APP)
-        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
+    foreach(_uc_gui_app
+            UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
+            UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
+        if(TARGET ${_uc_gui_app})
+            ultracanvas_windows_gui_app(${_uc_gui_app})
+        endif()
+    endforeach()
+    unset(_uc_gui_app)
+    foreach(_uc_console_app
+            DeviceExplorer UltraCleaner UltraNetMonitor UltraCanvasStart UltraWeb
+            UltraClaude UltraDesktop)
+        if(TARGET ${_uc_console_app})
+            ultracanvas_windows_console_companion(${_uc_console_app})
+        endif()
+    endforeach()
+    unset(_uc_console_app)
 endif()
 
 add_custom_target(copy_assets
@@ -2126,6 +2500,9 @@ if(BUILD_ULTRAFILER_APP)
 endif()
 if(BUILD_ULTRAVIEWER_APP)
     add_dependencies(UltraViewer copy_assets)
+endif()
+if(TARGET UltraVideo)
+    add_dependencies(UltraVideo copy_assets)
 endif()
 if(BUILD_ULTRAPAINT_APP)
     add_dependencies(UltraPaint copy_assets)
@@ -2172,24 +2549,15 @@ endif()
 # THE CMAKE PACKAGE"), where the link interface and the dependency choices they
 # describe are in scope. Tests/PackageConsumer builds against the result.
 
-# ===== CPack CONFIGURATION =====
-#set(CPACK_PACKAGE_NAME "UltraCanvas")
-#set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-#set(CPACK_PACKAGE_VENDOR "ULTRA OS Development GmbH")
-#set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Cross-platform UI & Rendering Framework")
-#set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-#set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-#
-#if(UNIX AND NOT APPLE)
-#    set(CPACK_GENERATOR "DEB;TGZ")
-#    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libcairo2, libpango-1.0-0, libfreetype6")
-#elseif(APPLE)
-#    set(CPACK_GENERATOR "DragNDrop;TGZ")
-#elseif(WIN32)
-#    set(CPACK_GENERATOR "NSIS;ZIP")
-#endif()
-#
-#include(CPack)
+# ===== PACKAGES =====
+# Not CPack: what a package must hold - every DLL an application loads, the
+# ImageMagick coders renamed away from Windows system DLL names, the CA
+# bundle, the vips and libheif modules - is collected by the platform
+# scripts, not by install() rules, and a second collection here could only
+# disagree with them. Windows: package-win.sh builds the zip and, with
+# --installer, the installer from the same folder
+# (Windows/Installer/UltraCanvasSetup.nsi, scripts/build-windows-installer.sh).
+# Linux: package-linux.sh and appimage/. macOS: package-macos.sh.
 
 # ===== FINAL CONFIGURATION SUMMARY =====
 message(STATUS "")

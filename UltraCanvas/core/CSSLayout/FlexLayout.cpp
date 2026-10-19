@@ -2,6 +2,13 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.6.0 - widthSetByParent: an Exact width is the container's used width
+//                 (a table cell measured for its row's height)
+// Version: 1.5.0 - an item stretches only when the container or the item asks
+//                 for it (align-items now starts at Start); the container's
+//                 stretch leaves a set width in a column, or height in a row,
+//                 as it is (CSS Flexbox 9.4 step 11), the item's own
+//                 align-self: stretch does not
 // Version: 1.4.0 - merged with main's 1.3.7 (a stretched item is clamped by its min /
 //                 max cross size)
 // Version: 1.3.9 - a flex container's own min / max-height percentages use
@@ -30,7 +37,7 @@
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -439,11 +446,18 @@ namespace UltraCanvas {
                 const bool authoritative =
                     c.horizontal.mode == ConstraintMode::Exact &&
                     c.vertical.mode   == ConstraintMode::Exact;
+                // The width alone is the used one when the parent decides it
+                // (a table's cell: its column width) - the main extent of a
+                // row, the cross extent of a column.
+                const bool usedWidth = authoritative ||
+                    (e.widthSetByParent && c.horizontal.mode == ConstraintMode::Exact);
+                const bool usedMain  = s.axis.isRow ? usedWidth : authoritative;
+                const bool usedCross = s.axis.isRow ? authoritative : usedWidth;
 
                 // Treat the main extent as "known" when constraints are Exact OR an
                 // explicit size resolves; AtMost is also acceptable as an upper bound
                 // for wrapping decisions.
-                if (authoritative && mainOuter.has_value()) {
+                if (usedMain && mainOuter.has_value()) {
                     s.availableMain = std::max(0.f, *mainOuter - s.padMain - s.bordMain);
                     s.mainKnown = true;
                 } else if (ownMain.has_value()) {
@@ -464,7 +478,7 @@ namespace UltraCanvas {
                     s.mainKnown = false;
                 }
 
-                if (authoritative && crossOuter.has_value()) {
+                if (usedCross && crossOuter.has_value()) {
                     s.availableCross = std::max(0.f, *crossOuter - s.padCross - s.bordCross);
                     s.crossKnown = true;
                 } else if (ownCross.has_value()) {
@@ -775,6 +789,21 @@ namespace UltraCanvas {
 
                     AlignSelf as = effectiveAlignSelf(it->fi, s.fl.alignItems);
                     float itemCross = it->crossSize;
+                    // The most specific statement wins. A container's
+                    // align-items: stretch fills the line only for an item
+                    // whose cross size is automatic (CSS Flexbox 9.4 step 11):
+                    // a set width in a column, or height in a row, is the
+                    // item's size - a 200px button in a stretch column stays
+                    // 200px, at the start. The item's own align-self: stretch
+                    // is a statement about that very item and stretches it
+                    // over a size it carries (where CSS would keep the size):
+                    // in this framework a size often comes from a constructor
+                    // that requires one, the align-self never does.
+                    const Dimension& crossDim = s.axis.isRow ? it->el->size.height : it->el->size.width;
+                    if (as == AlignSelf::Stretch && it->fi.alignSelf != AlignSelf::Stretch && hasSetSize(crossDim)) {
+                        auditKeptSize(*it->el, s.axis.isRow ? "height" : "width", it->crossSize, ln.lineCrossSize);
+                        as = AlignSelf::Start;
+                    }
                     if (as == AlignSelf::Stretch) {
                         float marginsCross = it->marginCrossStart + it->marginCrossEnd;
                         itemCross = std::max(0.f, ln.lineCrossSize - marginsCross);

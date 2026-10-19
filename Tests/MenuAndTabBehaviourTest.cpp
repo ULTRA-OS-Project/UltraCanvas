@@ -1,0 +1,1022 @@
+// Tests/MenuAndTabBehaviourTest.cpp
+// Menu, tabbed container and text area settings do what their names say.
+//
+//  - MenuItemData::Input() was declared but never defined, so a call compiled
+//    and then failed to link. The declarations are gone; MenuItemType::Input
+//    stays, reserved.
+//  - MenuStyle::enableAnimations computed an opening progress that nothing
+//    drew. A popup now fades in over animationDuration - the whole panel,
+//    background, border, shadow and entries, not only the entries - by
+//    stepping its popup opacity on the window.
+//  - UltraCanvasWindowBase::SetPopupOpacity: below 1 the window mixes a popup
+//    with the content beneath it; at 1, the default, the popup is blended over
+//    the window with its alpha - its opaque pixels as they are, its
+//    transparent ones (a rounded corner) showing the content.
+//  - The popup menu's panel (MenuStyle::Default): rounded corners that show
+//    the window, a soft drop shadow the window paints outside the menu's
+//    bounds, a hover highlight inset from the panel's edges, padding above
+//    the first row that hovers nothing, and separators across the panel.
+//  - UltraCanvasMenu::OpenMenuAnchored: a menu opened for a widget goes below
+//    it, or ends above it when it does not fit below - never over it - and
+//    can line its right edge up with the widget's; a menubar at the foot of
+//    the window opens its drop-downs above itself. CloseAllSubmenus() closes
+//    them without walking the list each closed child erases itself from.
+//  - MenuStyle::iconTint: a grey (symbolic) icon is painted in the entry's
+//    text colour - light in a dark menu, greyed when disabled - while a
+//    coloured icon, or one in black and white, keeps its colours;
+//    MenuIconTint::Original leaves them all.
+//  - Escape closes an open menu through the popup system (the application
+//    closes the topmost popup when its closeByEscapeKey is set). That was
+//    already so; the check here keeps the menu registered that way.
+//  - UltraCanvasTabbedContainer stored SetDropdownSearchEnabled() and
+//    SetDropdownSearchThreshold() and ignored them: the overflow button always
+//    opened the search popup. It now opens a plain menu of the tabs unless
+//    search is on and enough tabs are listed. Turning search off on a
+//    container outside a window no longer calls through the null window
+//    pointer (undefined behaviour that did not crash, so the last tab check
+//    only shows the call is harmless).
+//  - UltraCanvasTextArea::SetCursorPosition(pos, true) ignored `selecting`;
+//    it extends the selection from its anchor now. GetCursorPosition() is
+//    const.
+//  - Activating a menu item with no application called through a null
+//    pointer to post the MenuClick event; it runs the item and posts nothing.
+//  - A menu bar's dropdown taller than the room below its bar was moved up
+//    to fit, over the bar and the pointer on it: the release of the click
+//    that opened it picked the row it landed on and closed the menu, so
+//    ArtCreator's Arrange menu never stayed open. It stays under the bar and
+//    scrolls; a cascading submenu still moves up to fit, never past the top.
+//  - A menu bar's first item was measured before the menu set its font, in
+//    whatever font the window's context was left in: after a colour picker
+//    had laid itself out in its smaller font, "File" was drawn as "...".
+//    Every item is measured in its own font now.
+//
+// Runs headless: popups open in a window stand-in with no native side, and
+// the menu is drawn into an offscreen surface read back pixel by pixel. The
+// fade is read off a second stand-in whose "screen" is an offscreen surface,
+// so UpdateAndRender() composites onto it exactly as onto a real window.
+// Version: 1.6.0 - menu bar items measured in their own font
+// Version: 1.5.0 - a tall menu bar dropdown stays under its bar
+// Version: 1.4.0 - anchored menus and menubar drop-downs; symbolic icon tint
+// Version: 1.3.0 - popups blend over the window; the menu's rounded, shadowed panel
+// Version: 1.2.0 - the whole popup fades, composited by the window at its opacity
+// Version: 1.1.0 - activating an item with no application
+// Last Modified: 2026-10-16
+// Author: UltraCanvas Framework
+
+#include "UltraCanvasMenu.h"
+#include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasTextArea.h"
+#include "UltraCanvasWindow.h"
+
+#include <cairo/cairo.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+using namespace UltraCanvas;
+
+static int testCount = 0;
+static int failCount = 0;
+
+#define TEST(name, condition)                                                 \
+    do {                                                                      \
+        bool passed = (condition);                                            \
+        std::cerr << (passed ? "PASS" : "FAIL") << ": " << name << std::endl; \
+        if (!passed) failCount++;                                             \
+        testCount++;                                                          \
+    } while (0)
+
+namespace {
+
+// Asked in a template so that a missing member reads as false, not as an error.
+template <typename Item>
+constexpr bool HasInputFactory = requires {
+    Item::Input(std::string(), std::string(), std::function<void(const std::string&)>());
+};
+
+template <typename Area>
+constexpr bool CursorReadableThroughConst = requires(const Area& area) { area.GetCursorPosition(); };
+
+// A window with nothing native behind it: popups open into its list exactly as
+// they do in a real one, and focus requests are only recorded (a real focus
+// change would start the caret, which needs an application).
+class HeadlessWindow : public UltraCanvasWindowBase {
+public:
+    HeadlessWindow() { SetBounds(Rect2Df(0, 0, 800, 600)); }
+
+    UltraCanvasUIElement* focusRequested = nullptr;
+    void SetFocusedElement(UltraCanvasUIElement* element) override { focusRequested = element; }
+
+    void Show() override {}
+    void Hide() override {}
+    void RaiseAndFocus() override {}
+    void SetWindowTitle(const std::string&) override {}
+    void SetWindowIcon(const std::string&) override {}
+    void SetWindowPosition(int, int) override {}
+    void SetWindowSize(int, int) override {}
+    void Minimize() override {}
+    void Maximize() override {}
+    void Restore() override {}
+    void SetFullscreen(bool) override {}
+    void SetResizable(bool) override {}
+    void GetScreenSize(int& width, int& height) const override { width = 800; height = 600; }
+    NativeWindowHandle GetNativeHandle() const override { return NativeWindowHandle{}; }
+    void InvalidateWindowNative() override {}
+
+protected:
+    bool CreateNative() override { return true; }
+    void DestroyNative() override {}
+    void DoResizeNative() override {}
+    bool RecreateNativeSurface() override { return true; }
+};
+
+// A white offscreen surface; counts the dark (text) pixels drawn into it.
+struct Canvas {
+    std::unique_ptr<IRenderContext> ctx;
+    cairo_t* cr = nullptr;
+    int width, height;
+
+    Canvas(int w, int h) : width(w), height(h) {
+        ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+        if (ctx) cr = static_cast<cairo_t*>(ctx->GetNativeContext());
+    }
+
+    void Clear() {
+        cairo_save(cr);
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_paint(cr);
+        cairo_restore(cr);
+    }
+
+    int DarkPixels() const {
+        cairo_surface_t* s = cairo_get_target(cr);
+        cairo_surface_flush(s);
+        const unsigned char* data = cairo_image_surface_get_data(s);
+        const int stride = cairo_image_surface_get_stride(s);
+        int dark = 0;
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const auto px = *reinterpret_cast<const uint32_t*>(data + y * stride + x * 4);
+                if (((px >> 16) & 0xFF) < 100 && ((px >> 8) & 0xFF) < 100 && (px & 0xFF) < 100) ++dark;
+            }
+        }
+        return dark;
+    }
+};
+
+// A window stand-in with a screen: an offscreen surface takes the native
+// surface's place, so UpdateAndRender() lays out, paints and composites the
+// popups onto it exactly as a real window does. The content is one flat
+// colour, so whatever a popup lets through of it can be told apart.
+class ScreenWindow : public HeadlessWindow {
+public:
+    static constexpr int kWidth = 400;
+    static constexpr int kHeight = 300;
+    const Color content = Color(30, 160, 60, 255);
+    cairo_surface_t* screen = nullptr;
+
+    ScreenWindow() {
+        config_.width = kWidth;
+        config_.height = kHeight;
+        SetBounds(Rect2Df(0, 0, kWidth, kHeight));
+        screen = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, kWidth, kHeight);
+        nativeSurface = screen;
+        renderContext = CreateRenderContext(Size2Di(kWidth, kHeight), nativeSurface);
+        _created = renderContext != nullptr;
+        _windowVisible = true;
+        AddDirtyRectangle(Rect2Di(0, 0, kWidth, kHeight));
+    }
+    ~ScreenWindow() override {
+        CloseAllPopups();
+        renderContext.reset();
+        cairo_surface_destroy(screen);
+    }
+
+    bool Ready() const { return _created; }
+
+    void RenderCustomContent(IRenderContext* ctx, const Rect2Di&) override {
+        ctx->SetFillPaint(content);
+        ctx->FillRectangle(Rect2Df(0, 0, kWidth, kHeight));
+    }
+
+    // One frame, as the application's loop would run it.
+    void Frame() { UpdateAndRender(); }
+
+    // The screen's pixels (premultiplied ARGB) inside `r`, row by row.
+    std::vector<uint32_t> Pixels(const Rect2Di& r) const {
+        cairo_surface_flush(screen);
+        const unsigned char* data = cairo_image_surface_get_data(screen);
+        const int stride = cairo_image_surface_get_stride(screen);
+        std::vector<uint32_t> out;
+        for (int y = r.y; y < r.y + r.height; ++y)
+            for (int x = r.x; x < r.x + r.width; ++x)
+                out.push_back(*reinterpret_cast<const uint32_t*>(data + y * stride + x * 4));
+        return out;
+    }
+
+    // The largest difference of any channel of any pixel in `r` from the content colour.
+    int MaxDifferenceFromContent(const Rect2Di& r) const {
+        int worst = 0;
+        for (uint32_t px : Pixels(r)) {
+            worst = std::max({worst,
+                              std::abs(static_cast<int>((px >> 16) & 0xFF) - content.r),
+                              std::abs(static_cast<int>((px >> 8) & 0xFF) - content.g),
+                              std::abs(static_cast<int>(px & 0xFF) - content.b),
+                              std::abs(static_cast<int>(px >> 24) - content.a)});
+        }
+        return worst;
+    }
+};
+
+// A popup that is not a menu: opaque blue on the left, half-transparent red in
+// the middle, nothing on the right - so a copy and a blend give different pixels.
+class Swatch : public UltraCanvasUIElement {
+public:
+    Swatch() : UltraCanvasUIElement("swatch", 0, 0, 90, 30) {}
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        ctx->SetFillPaint(Color(0, 0, 255, 255));
+        ctx->FillRectangle(Rect2Df(0, 0, 30, 30));
+        ctx->SetFillPaint(Color(255, 0, 0, 128));
+        ctx->FillRectangle(Rect2Df(30, 0, 30, 30));
+    }
+};
+
+Rect2Di WindowBounds(const UltraCanvasUIElement& e) {
+    Rect2Df b = e.GetBoundsInWindow();
+    return Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
+                   static_cast<int>(b.width), static_cast<int>(b.height));
+}
+
+// A popup menu with one wide label, open in `win` and laid out at the origin.
+std::shared_ptr<UltraCanvasMenu> OpenLabelMenu(HeadlessWindow& win, bool animate, float seconds) {
+    auto menu = std::make_shared<UltraCanvasMenu>("fade", 220, 40);
+    menu->SetMenuType(MenuType::PopupMenu);
+    MenuStyle style = MenuStyle::Default();
+    style.font.fontSize = 20.0f;
+    style.itemHeight = 36;
+    style.enableAnimations = animate;
+    style.animationDuration = seconds;
+    menu->SetStyle(style);
+    menu->AddItem(MenuItemData::Action("MMMM WWWW", [] {}));
+    menu->OpenMenu(Point2Di(0, 0), win, PopupElementSettings());
+    CSSLayout::LayoutContext lctx;
+    menu->Arrange(Rect2Df(0, 0, 220, 44), lctx);
+    return menu;
+}
+
+int DrawAndCount(UltraCanvasMenu& menu, Canvas& canvas) {
+    canvas.Clear();
+    menu.Render(canvas.ctx.get(), Rect2Df(0, 0, 220, 44));
+    return canvas.DarkPixels();
+}
+
+void MenuChecks(HeadlessWindow& win) {
+    // ---- 1. No factory for the unimplemented Input item ----
+    TEST("MenuItemData has no Input() factory to link against", !HasInputFactory<MenuItemData>);
+
+    // ---- 2. enableAnimations fades the entries in ----
+    Canvas canvas(220, 44);
+    if (!canvas.cr) {
+        TEST("an offscreen surface to draw the menu into", false);
+        return;
+    }
+
+    auto still = OpenLabelMenu(win, false, 0.6f);
+    const int full = DrawAndCount(*still, canvas);
+    TEST("without animation the label is drawn at once", full > 40);
+    still->CloseMenu();
+
+    // The window does the fading now, so the menu itself draws in full: its
+    // entries are no longer faded a second time inside a faded popup.
+    auto fading = OpenLabelMenu(win, true, 60.0f);
+    TEST("a fading menu opens with its popup at opacity 0", win.GetPopupOpacity(*fading) == 0.0f);
+    const int atOpen = DrawAndCount(*fading, canvas);
+    TEST("and draws its entries in full: the window fades the whole popup", atOpen == full);
+    fading->CloseMenu();
+
+    // ---- 3. Escape: the menu's popup is one the application closes on Escape ----
+    bool closed = false;
+    auto menu = std::make_shared<UltraCanvasMenu>("escape", 160, 0);
+    menu->SetMenuType(MenuType::PopupMenu);
+    menu->AddItem(MenuItemData::Action("Item", [] {}));
+    menu->onMenuClosed = [&closed] { closed = true; };
+    menu->OpenMenu(Point2Di(10, 10), win, PopupElementSettings());
+    PopupElement* top = win.GetActivePopupElement();
+    TEST("an opened menu is the window's topmost popup", top && top->element == menu.get());
+    TEST("registered to close on Escape", top && top->settings.closeByEscapeKey);
+    // What UltraCanvasApplication does with an Escape key while it is open.
+    win.ClosePopup(*menu, ClosePopupReason::EscapeKey);
+    TEST("closing it for Escape hides the menu", !menu->IsVisible() && closed);
+
+    // ---- 4. Activating an item with no application runs it ----
+    // The menu reports the click to the application's event queue; with no
+    // application (this test has none) it used to call through a null pointer.
+    bool ran = false;
+    auto picker = std::make_shared<UltraCanvasMenu>("noapp", 160, 0);
+    picker->SetMenuType(MenuType::PopupMenu);
+    picker->AddItem(MenuItemData::Action("Run", [&ran] { ran = true; }));
+    picker->OpenMenu(Point2Di(10, 10), win, PopupElementSettings());
+    UCEvent key;
+    key.type = UCEventType::KeyDown;
+    key.virtualKey = UCKeys::Down;
+    picker->OnEvent(key);
+    key.virtualKey = UCKeys::Return;
+    picker->OnEvent(key);
+    TEST("Return on an item runs it without an application", ran);
+    if (picker->IsVisible()) picker->CloseMenu();
+}
+
+void PopupOpacityChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+    const Rect2Di whole(0, 0, ScreenWindow::kWidth, ScreenWindow::kHeight);
+    TEST("the stand-in's screen shows its content", win.MaxDifferenceFromContent(whole) == 0);
+
+    // ---- A popup opened with default settings is blended over the window ----
+    auto swatch = std::make_shared<Swatch>();
+    win.OpenPopup(Point2Di(40, 50), *swatch, PopupElementSettings());
+    win.Frame();
+    const Rect2Di at = WindowBounds(*swatch);
+    Canvas own(90, 30);   // the popup drawn on its own, onto nothing
+    if (own.cr) swatch->Render(own.ctx.get(), Rect2Df(0, 0, 90, 30));
+    std::vector<uint32_t> ownPixels;
+    if (own.cr) {
+        cairo_surface_flush(cairo_get_target(own.cr));
+        const unsigned char* data = cairo_image_surface_get_data(cairo_get_target(own.cr));
+        const int stride = cairo_image_surface_get_stride(cairo_get_target(own.cr));
+        for (int y = 0; y < 30; ++y)
+            for (int x = 0; x < 90; ++x)
+                ownPixels.push_back(*reinterpret_cast<const uint32_t*>(data + y * stride + x * 4));
+    }
+    TEST("a popup opens at opacity 1", win.GetPopupOpacity(*swatch) == 1.0f);
+    // Its opaque third is its own, its transparent third the content, and the
+    // half-transparent red between is mixed with the content.
+    const Rect2Di opaqueThird(at.x, at.y, 30, 30);
+    std::vector<uint32_t> ownOpaque;
+    for (int y = 0; y < 30 && !ownPixels.empty(); ++y)
+        for (int x = 0; x < 30; ++x) ownOpaque.push_back(ownPixels[y * 90 + x]);
+    const uint32_t halfRed = win.Pixels(Rect2Di(at.x + 45, at.y + 15, 1, 1))[0];
+    auto close = [](int v, int want) { return std::abs(v - want) <= 2; };
+    TEST("at the default opacity its opaque pixels are put on the window as they are",
+         at.x == 40 && at.y == 50 && at.width == 90 && at.height == 30 &&
+         !ownOpaque.empty() && win.Pixels(opaqueThird) == ownOpaque);
+    TEST("its transparent pixels leave the content showing",
+         win.MaxDifferenceFromContent(Rect2Di(at.x + 60, at.y, 30, 30)) == 0);
+    TEST("its half-transparent ones are blended over the content",
+         close((halfRed >> 16) & 0xFF, 128 + 30 * 127 / 255) && close((halfRed >> 8) & 0xFF, 160 * 127 / 255) &&
+         close(halfRed & 0xFF, 60 * 127 / 255));
+    const std::vector<uint32_t> atOne = win.Pixels(at);
+
+    // ---- Below 1 it is mixed with the content beneath ----
+    TEST("SetPopupOpacity takes an open popup", win.SetPopupOpacity(*swatch, 0.0f));
+    win.Frame();
+    TEST("at opacity 0 the content beneath shows unchanged", win.MaxDifferenceFromContent(at) == 0);
+
+    win.SetPopupOpacity(*swatch, 0.5f);
+    win.Frame();
+    const uint32_t mid = win.Pixels(Rect2Di(at.x + 10, at.y + 10, 1, 1))[0];
+    auto near = [](int v, int want) { return std::abs(v - want) <= 2; };
+    TEST("at opacity 0.5 its opaque blue is half way to the content",
+         near((mid >> 16) & 0xFF, (30 + 0) / 2) && near((mid >> 8) & 0xFF, (160 + 0) / 2) &&
+         near(mid & 0xFF, (60 + 255) / 2));
+    std::cerr << "  (opacity 0.5 over the content: " << std::hex << mid << std::dec << ")" << std::endl;
+
+    win.SetPopupOpacity(*swatch, 1.0f);
+    win.Frame();
+    TEST("back at 1 it is the full blend again", win.Pixels(at) == atOne);
+
+    Swatch loose;
+    TEST("an element that is not an open popup has no opacity to set", !win.SetPopupOpacity(loose, 0.5f) &&
+                                                                       win.GetPopupOpacity(loose) == 1.0f);
+    win.ClosePopup(*swatch);
+    win.Frame();
+    TEST("closing it uncovers the content", win.MaxDifferenceFromContent(at) == 0);
+
+    // ---- A menu with enableAnimations fades in as a whole panel ----
+    auto open = [&win](bool animate, float seconds) {
+        auto menu = std::make_shared<UltraCanvasMenu>("panel", 220, 40);
+        menu->SetMenuType(MenuType::PopupMenu);
+        MenuStyle style = MenuStyle::Default();
+        style.font.fontSize = 20.0f;
+        style.itemHeight = 36;
+        style.enableAnimations = animate;
+        style.animationDuration = seconds;
+        menu->SetStyle(style);
+        menu->AddItem(MenuItemData::Action("MMMM WWWW", [] {}));
+        menu->OpenMenu(Point2Di(20, 20), win, PopupElementSettings());
+        win.Frame();
+        return menu;
+    };
+
+    auto still = open(false, 1.0f);
+    const Rect2Di panel = WindowBounds(*still);
+    const std::vector<uint32_t> stillPixels = win.Pixels(panel);
+    TEST("a menu without animation is on screen at once",
+         panel.width > 100 && panel.height > 30 && win.MaxDifferenceFromContent(panel) > 100);
+    still->CloseMenu();
+    win.Frame();
+
+    auto fading = open(true, 1.0f);
+    const float opacityAtOpen = win.GetPopupOpacity(*fading);
+    const int differenceAtOpen = win.MaxDifferenceFromContent(panel);
+    TEST("an animated menu opens nearly transparent", opacityAtOpen < 0.25f);
+    TEST("its whole panel - background, border, shadow, entries - is close to the content beneath",
+         WindowBounds(*fading).x == panel.x && WindowBounds(*fading).y == panel.y &&
+         differenceAtOpen <= static_cast<int>(std::ceil(255.0f * opacityAtOpen)) + 2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    // No application, so no timer: a repaint moves the fade on to where the clock has got.
+    fading->RequestRedraw();
+    win.Frame();
+    TEST("after animationDuration the popup is opaque", win.GetPopupOpacity(*fading) == 1.0f);
+    TEST("and the panel's pixels are the menu's own, exactly as without animation",
+         win.Pixels(panel) == stillPixels);
+    std::cerr << "  (fade: opacity at open " << opacityAtOpen << ", largest difference from the content "
+              << differenceAtOpen << ")" << std::endl;
+    fading->CloseMenu();
+}
+
+// The default menu's panel on a window: rounded corners, a soft shadow outside
+// its bounds, a hover highlight inset from its edges, top padding that hovers
+// nothing, and a separator across the panel.
+void MenuPanelChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+
+    const MenuStyle style = MenuStyle::Default();
+    auto menu = std::make_shared<UltraCanvasMenu>("panel-look", 160, 0);
+    menu->SetMenuType(MenuType::PopupMenu);
+    menu->SetStyle(style);
+    menu->AddItem(MenuItemData::Action("Open", [] {}));
+    menu->AddItem(MenuItemData::Separator());
+    menu->AddItem(MenuItemData::Action("Save As...", [] {}));
+    menu->OpenMenu(Point2Di(100, 60), win, PopupElementSettings());
+    win.Frame();
+
+    const Rect2Di b = WindowBounds(*menu);
+    auto px = [&win](int x, int y) { return win.Pixels(Rect2Di(x, y, 1, 1))[0]; };
+    auto green = [](uint32_t p) { return static_cast<int>((p >> 8) & 0xFF); };
+    const int bgGreen = style.backgroundColor.g;
+    const int rowsTop = b.y + style.borderWidth + style.paddingTop;
+    const int firstRowMiddle = rowsTop + style.itemHeight / 2;
+    const int panelHeight = 2 * (style.borderWidth + style.paddingTop) + 2 * style.itemHeight + style.separatorHeight;
+
+    TEST("the menu's bounds are its panel: border, padding and rows, no room for a shadow",
+         b.x == 100 && b.y == 60 && b.height == panelHeight);
+    TEST("its corner is rounded off: the corner pixel is the window beneath, not the panel",
+         green(px(b.x, b.y)) <= win.content.g);
+    TEST("inside, the padding above the first row is the panel's background",
+         std::abs(green(px(b.x + b.width / 2, b.y + 2)) - bgGreen) <= 1);
+    const uint32_t underPanel = px(b.x + b.width / 2, b.y + b.height + 3);
+    TEST("a soft shadow lies just below the panel, outside its bounds",
+         green(underPanel) < win.content.g - 8 && green(underPanel) > 40);
+    TEST("and fades out: well below the panel is the plain content",
+         win.MaxDifferenceFromContent(Rect2Di(b.x, b.y + b.height + 30, b.width, 4)) == 0);
+
+    // Hover the first row through its label.
+    UCEvent move;
+    move.type = UCEventType::MouseMove;
+    move.pointerWindow = Point2Di(b.x + b.width / 2, firstRowMiddle);
+    move.pointer = Point2Di(b.width / 2, firstRowMiddle - b.y);
+    menu->OnEvent(move);
+    win.Frame();
+    const int inset = style.borderWidth + style.itemInset;
+    TEST("a hovered row's highlight starts after the inset: the gutter keeps the background",
+         std::abs(green(px(b.x + inset - 2, firstRowMiddle)) - bgGreen) <= 1);
+    TEST("and inside the inset it is a shade darker than the background",
+         green(px(b.x + inset + 2, firstRowMiddle)) < bgGreen - 8);
+
+    // The padding above the first row is no row's: the highlight goes.
+    move.pointerWindow = Point2Di(b.x + b.width / 2, b.y + 2);
+    move.pointer = Point2Di(b.width / 2, 2);
+    menu->OnEvent(move);
+    win.Frame();
+    TEST("the panel's top padding hovers nothing",
+         std::abs(green(px(b.x + inset + 2, firstRowMiddle)) - bgGreen) <= 1);
+
+    const int separatorLine = rowsTop + style.itemHeight + style.separatorHeight / 2;
+    TEST("a separator runs across the panel, past the rows' inset",
+         green(px(b.x + inset - 2, separatorLine)) < bgGreen - 8 &&
+         std::abs(green(px(b.x + inset - 2, separatorLine - 2)) - bgGreen) <= 1);
+    menu->CloseMenu();
+    win.Frame();
+    TEST("closing the menu takes its shadow with it",
+         win.MaxDifferenceFromContent(Rect2Di(b.x - 20, b.y - 20, b.width + 40, b.height + 40)) == 0);
+}
+
+void TallDropdownChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to lay menus out in", false);
+        return;
+    }
+    // Twenty rows: several times the window's height.
+    std::vector<MenuItemData> rows;
+    for (int i = 0; i < 20; ++i) rows.push_back(MenuItemData::Action("Row " + std::to_string(i), [] {}));
+
+    auto bar = MenuBuilder("tall-bar", 0, 0, ScreenWindow::kWidth, 28)
+                       .SetType(MenuType::Menubar)
+                       .AddSubmenu("Arrange", rows)
+                       .Build();
+    win.AddChild(bar);
+    win.Frame();
+    const Rect2Di barBounds = WindowBounds(*bar);
+
+    bar->OpenSubmenu(0);
+    win.Frame();
+    PopupElement* top = win.GetActivePopupElement();
+    TEST("the menu bar's dropdown opens", top && top->element && top->element != bar.get());
+    if (top && top->element) {
+        const Rect2Di b = WindowBounds(*top->element);
+        TEST("a dropdown taller than the window starts under its bar, off the pointer",
+             b.y >= barBounds.y + barBounds.height);
+        TEST("and ends at the window's bottom edge, its rows scrolled",
+             b.y + b.height <= ScreenWindow::kHeight && b.height > 3 * 28);
+    }
+    bar->CloseAllSubmenus();
+
+    // A cascading submenu beside a popup menu moves up to fit instead.
+    auto popup = std::make_shared<UltraCanvasMenu>("cascade", 160, 0);
+    popup->SetMenuType(MenuType::PopupMenu);
+    popup->AddItem(MenuItemData::Submenu("More", rows));
+    popup->OpenMenu(Point2Di(10, 200), win, PopupElementSettings());
+    win.Frame();
+    popup->OpenSubmenu(0);
+    win.Frame();
+    top = win.GetActivePopupElement();
+    TEST("the cascading submenu opens", top && top->element && top->element != popup.get());
+    if (top && top->element) {
+        const Rect2Di b = WindowBounds(*top->element);
+        TEST("a cascading submenu taller than the window moves up to the window's top",
+             b.y == 0 && b.y + b.height <= ScreenWindow::kHeight);
+        TEST("beside its parent, not over it", b.x >= WindowBounds(*popup).x + WindowBounds(*popup).width);
+    }
+    popup->CloseMenutree();
+}
+
+// A menu bar's items are as wide as their labels in the menu's font, whatever
+// font the window's context was last left in. The first item was measured
+// before the menu set its font, in the font of the text drawn or measured
+// last - a colour picker's smaller one - and its label was ellipsized into
+// that width: "File" read "...".
+void MenubarFontChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to draw a menu bar on", false);
+        return;
+    }
+    auto bar = MenuBuilder("font-bar", 0, 0, ScreenWindow::kWidth, 28)
+                       .SetType(MenuType::Menubar)
+                       .AddSubmenu("File", {MenuItemData::Action("Open", [] {})})
+                       .AddSubmenu("Edit", {MenuItemData::Action("Copy", [] {})})
+                       .Build();
+    win.AddChild(bar);
+    win.Frame();
+    IRenderContext* ctx = win.GetRenderContext();
+    const FontStyle menuFont = bar->GetStyle().font;
+    ctx->SetFontStyle(menuFont);
+    const int editX = bar->GetItemX(1);
+
+    FontStyle small = menuFont;
+    small.fontSize = 6.0;
+    ctx->SetFontStyle(small);
+    TEST("a smaller font left in the context does not move the second item",
+         bar->GetItemX(1) == editX);
+    FontStyle large = menuFont;
+    large.fontSize = 30.0;
+    ctx->SetFontStyle(large);
+    TEST("nor does a larger one", bar->GetItemX(1) == editX);
+
+    // The bar drawn straight into the window's context (the stand-in's
+    // content would cover it in a frame), with the context left in `left`
+    // beforehand; the pixels of the first item read back from what the
+    // context draws on.
+    auto drawBar = [&](const FontStyle& left) {
+        ctx->PushState();
+        ctx->SetFillPaint(Colors::White);
+        ctx->FillRectangle(Rect2Df(0, 0, ScreenWindow::kWidth, 28));
+        ctx->SetFontStyle(left);
+        bar->Render(ctx, Rect2Df(0, 0, ScreenWindow::kWidth, 28));
+        ctx->PopState();
+        cairo_surface_t* target = cairo_get_target(static_cast<cairo_t*>(ctx->GetNativeContext()));
+        cairo_surface_flush(target);
+        const unsigned char* data = cairo_image_surface_get_data(target);
+        const int stride = cairo_image_surface_get_stride(target);
+        std::vector<uint32_t> out;
+        for (int y = 0; y < 28; ++y)
+            for (int x = 0; x < editX; ++x)
+                out.push_back(*reinterpret_cast<const uint32_t*>(data + y * stride + x * 4));
+        return out;
+    };
+    const std::vector<uint32_t> drawn = drawBar(menuFont);
+    TEST("the first label is drawn",
+         std::any_of(drawn.begin(), drawn.end(), [](uint32_t px) { return (px & 0xFF) < 100; }));
+    TEST("and drawn whole after a smaller font, not ellipsized into that font's width",
+         drawBar(small) == drawn);
+}
+
+// A square icon of one colour - or of two, left and right halves - as an
+// image decoded from a PNG made in memory.
+std::shared_ptr<UCImage> SquareIcon(const Color& color, const Color& rightHalf) {
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 16, 16);
+    cairo_t* cr = cairo_create(surface);
+    cairo_set_source_rgba(cr, color.r / 255.0, color.g / 255.0, color.b / 255.0, color.a / 255.0);
+    cairo_paint(cr);
+    cairo_set_source_rgba(cr, rightHalf.r / 255.0, rightHalf.g / 255.0, rightHalf.b / 255.0, rightHalf.a / 255.0);
+    cairo_rectangle(cr, 8, 0, 8, 16);
+    cairo_fill(cr);
+    cairo_destroy(cr);
+    std::vector<uint8_t> png;
+    cairo_surface_write_to_png_stream(surface, [](void* closure, const unsigned char* data, unsigned int length) {
+        auto* out = static_cast<std::vector<uint8_t>*>(closure);
+        out->insert(out->end(), data, data + length);
+        return CAIRO_STATUS_SUCCESS;
+    }, &png);
+    cairo_surface_destroy(surface);
+    return UCImage::GetFromMemory(png.data(), png.size());
+}
+
+std::shared_ptr<UCImage> SquareIcon(const Color& color) { return SquareIcon(color, color); }
+
+// OpenMenuAnchored and the menubar's drop-downs: below the anchor, above it
+// when there is no room below, never over it.
+void AnchoredMenuChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+    auto twoItems = [] {
+        auto menu = std::make_shared<UltraCanvasMenu>("anchored", 120, 0);
+        menu->SetMenuType(MenuType::PopupMenu);
+        menu->SetStyle(MenuStyle::Default());
+        menu->AddItem(MenuItemData::Action("Open", [] {}));
+        menu->AddItem(MenuItemData::Action("Save As...", [] {}));
+        return menu;
+    };
+
+    // ---- Room below: under the widget, left edges lined up ----
+    const Rect2Di high(50, 40, 80, 24);
+    auto below = twoItems();
+    below->OpenMenuAnchored(high, win, PopupElementSettings(), 2);
+    win.Frame();
+    Rect2Di b = WindowBounds(*below);
+    TEST("an anchored menu opens gap pixels below its widget", b.x == 50 && b.y == 40 + 24 + 2);
+    below->CloseMenu();
+
+    // ---- No room below: above the widget, ending gap pixels over it ----
+    const Rect2Di low(50, 250, 80, 24);   // 26 px left below it in a 300 px window
+    auto above = twoItems();
+    above->OpenMenuAnchored(low, win, PopupElementSettings(), 2);
+    win.Frame();
+    b = WindowBounds(*above);
+    TEST("without room below it ends gap pixels above its widget, covering none of it",
+         b.height > 40 && b.y + b.height == 250 - 2 && b.x == 50);
+    above->CloseMenu();
+
+    // ---- Right edges lined up ----
+    const Rect2Di right(300, 40, 60, 24);
+    auto aligned = twoItems();
+    aligned->OpenMenuAnchored(right, win, PopupElementSettings(), 2, MenuAnchorAlign::Right);
+    win.Frame();
+    b = WindowBounds(*aligned);
+    TEST("MenuAnchorAlign::Right lines the menu's right edge up with the widget's",
+         b.width > 60 && b.x + b.width == 360 && b.y == 66);
+    aligned->CloseMenu();
+
+    // ---- A point is still a point: a context menu ends at it ----
+    auto point = twoItems();
+    point->OpenMenu(Point2Di(50, 280), win, PopupElementSettings());
+    win.Frame();
+    b = WindowBounds(*point);
+    TEST("OpenMenu at a point with no room below ends at the point, as before",
+         b.y + b.height == 280);
+    point->CloseMenu();
+
+    // ---- A menubar at the foot of the window opens upwards ----
+    auto bar = std::make_shared<UltraCanvasMenu>("bar", 0, 266, 400, 34);
+    bar->SetMenuType(MenuType::Menubar);
+    bar->AddItem(MenuItemData::Submenu("File", {MenuItemData::Action("New", [] {}),
+                                                MenuItemData::Action("Open", [] {}),
+                                                MenuItemData::Action("Quit", [] {})}));
+    win.AddChild(bar);
+    win.Frame();
+    bar->OpenSubmenu(0);
+    win.Frame();
+    PopupElement* top = win.GetActivePopupElement();
+    const Rect2Di dropDown = top ? WindowBounds(*top->element) : Rect2Di();
+    TEST("a menubar's drop-down with no room below stands on the bar, not over it",
+         top && top->element != bar.get() && dropDown.height > 60 &&
+         dropDown.y + dropDown.height == 266 && dropDown.x == 0);
+    // Closing a child erases it from the bar's list of children: the bar
+    // walked that list while it did, freeing the drop-down inside its own
+    // CloseMenu() (the log was cut off mid-line after this point).
+    bar->CloseAllSubmenus();
+    TEST("CloseAllSubmenus closes the drop-down and leaves no popup open",
+         win.GetActivePopupElement() == nullptr);
+    win.Frame();
+    win.RemoveChild(bar);
+}
+
+// MenuStyle::iconTint: symbolic icons take the entry's text colour.
+void IconTintChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+    auto black = SquareIcon(Color(0, 0, 0, 255));
+    auto red = SquareIcon(Color(220, 30, 30, 255));
+    auto blackAndWhite = SquareIcon(Color(0, 0, 0, 255), Color(255, 255, 255, 255));
+    if (!black || !red || !blackAndWhite) {
+        TEST("icons decoded from PNGs made in memory", false);
+        return;
+    }
+
+    auto open = [&](const MenuStyle& style) {
+        auto menu = std::make_shared<UltraCanvasMenu>("tinted", 160, 0);
+        menu->SetMenuType(MenuType::PopupMenu);
+        menu->SetStyle(style);
+        MenuItemData grey = MenuItemData::Action("Grey icon", [] {});
+        grey.iconImage = black;
+        MenuItemData colour = MenuItemData::Action("Coloured icon", [] {});
+        colour.iconImage = red;
+        MenuItemData greyed = MenuItemData::Action("Disabled", [] {});
+        greyed.iconImage = black;
+        greyed.enabled = false;
+        MenuItemData twoTone = MenuItemData::Action("Black and white", [] {});
+        twoTone.iconImage = blackAndWhite;
+        menu->AddItem(grey);
+        menu->AddItem(colour);
+        menu->AddItem(greyed);
+        menu->AddItem(twoTone);
+        menu->OpenMenu(Point2Di(60, 40), win, PopupElementSettings());
+        win.Frame();
+        return menu;
+    };
+    // The middle of row `row`'s icon.
+    auto iconPixel = [&win](const UltraCanvasMenu& menu, int row, int dx = 0) {
+        const Rect2Di b = WindowBounds(menu);
+        const MenuStyle& s = menu.GetStyle();
+        const int x = b.x + s.borderWidth + s.itemInset + s.paddingLeft + s.iconSize / 2 + dx;
+        const int y = b.y + s.borderWidth + s.paddingTop + row * s.itemHeight + s.itemHeight / 2;
+        const uint32_t p = win.Pixels(Rect2Di(x, y, 1, 1))[0];
+        return Color(static_cast<uint8_t>((p >> 16) & 0xFF), static_cast<uint8_t>((p >> 8) & 0xFF),
+                     static_cast<uint8_t>(p & 0xFF), 255);
+    };
+
+    const MenuStyle dark = MenuStyle::Dark();
+    auto tinted = open(dark);
+    const Color greyOnDark = iconPixel(*tinted, 0);
+    const Color redOnDark = iconPixel(*tinted, 1);
+    const Color disabledOnDark = iconPixel(*tinted, 2);
+    TEST("in a dark menu a black symbolic icon is painted in the light text colour",
+         greyOnDark.r > 220 && greyOnDark.g > 220 && greyOnDark.b > 220);
+    TEST("a coloured icon keeps its colours", redOnDark.r > 190 && redOnDark.g < 70 && redOnDark.b < 70);
+    TEST("a disabled entry's symbolic icon takes the disabled text colour",
+         std::abs(disabledOnDark.r - dark.disabledTextColor.r) <= 3 &&
+         std::abs(disabledOnDark.g - dark.disabledTextColor.g) <= 3);
+    const Color twoToneLeft = iconPixel(*tinted, 3, -4), twoToneRight = iconPixel(*tinted, 3, 4);
+    TEST("an icon in black and white is not one shade: it keeps both",
+         twoToneLeft.r < 40 && twoToneRight.r > 220 && twoToneRight.g > 220);
+    std::cerr << "  (icons on dark: grey " << int(greyOnDark.r) << ", red " << int(redOnDark.r) << "/"
+              << int(redOnDark.g) << ", disabled " << int(disabledOnDark.r) << ")" << std::endl;
+    tinted->CloseMenu();
+
+    MenuStyle original = MenuStyle::Dark();
+    original.iconTint = MenuIconTint::Original;
+    auto untinted = open(original);
+    const Color greyAsDrawn = iconPixel(*untinted, 0);
+    TEST("MenuIconTint::Original leaves a black icon black, as before",
+         greyAsDrawn.r < 30 && greyAsDrawn.g < 30 && greyAsDrawn.b < 30);
+    untinted->CloseMenu();
+}
+
+void TabChecks(HeadlessWindow& win) {
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("tabs", 0, 0, 400, 300);
+    win.AddChild(tabs);
+    tabs->SetOverflowDropdownPosition(OverflowDropdownPosition::Left);
+    for (int i = 0; i < 3; ++i) tabs->AddTab("Tab " + std::to_string(i));
+    tabs->SetDropdownSearchThreshold(5);
+
+    // ---- 4. Below the threshold: the plain list, not the search popup ----
+    tabs->overflowButton->onClick();   // what a click on the overflow button runs
+    PopupElement* top = win.GetActivePopupElement();
+    auto* list = top ? dynamic_cast<UltraCanvasMenu*>(top->element) : nullptr;
+    TEST("3 tabs, threshold 5: the overflow button opens a menu", list != nullptr);
+    TEST("and not the search popup", !tabs->dropdownSearchActive &&
+                                     (!top || top->element != tabs->searchAutoComplete.get()));
+    if (list) {
+        auto& items = list->GetItems();
+        TEST("the menu lists every tab", items.size() == 3);
+        TEST("with the active one checked", items.size() == 3 && items[0].checked && !items[2].checked);
+        if (items.size() == 3 && items[2].onClick) items[2].onClick();
+        TEST("choosing an entry activates its tab", tabs->GetActiveTab() == 2);
+        list->CloseMenu();
+    }
+
+    // ---- At the threshold: the search popup ----
+    tabs->AddTab("Tab 3");
+    tabs->AddTab("Tab 4");
+    tabs->overflowButton->onClick();
+    top = win.GetActivePopupElement();
+    TEST("5 tabs, threshold 5: the search popup opens", tabs->dropdownSearchActive &&
+                                                         top && top->element == tabs->searchAutoComplete.get());
+    tabs->HideSearchAutoComplete();
+
+    // ---- Search off: the plain list however many tabs there are ----
+    tabs->SetDropdownSearchEnabled(false);
+    tabs->overflowButton->onClick();
+    top = win.GetActivePopupElement();
+    TEST("search disabled: the overflow button opens the menu",
+         !tabs->dropdownSearchActive && top && dynamic_cast<UltraCanvasMenu*>(top->element) != nullptr);
+    if (top) win.ClosePopup(*top->element);
+
+    // ---- Turning search off before the container is in a window ----
+    auto loose = CreateTabbedContainerWithDropdown("loose", 0, 0, 300, 200,
+                                                   OverflowDropdownPosition::Left, false, 5);
+    TEST("a container outside any window takes search off", loose && !loose->IsDropdownSearchEnabled());
+}
+
+// Dragging a tab to another place: the swap follows the bar's axis, every
+// index that names a tab follows the tab, and a pointer held at either end of
+// the strip carries the tab on past the visible range. The steps a drag is
+// made of are driven directly: there is no application here to deliver the
+// mouse events or run the auto-scroll timer.
+void TabReorderChecks(HeadlessWindow& win) {
+    CSSLayout::LayoutContext lctx;
+
+    // ---- A vertical bar swaps on y, not x ----
+    auto side = std::make_shared<UltraCanvasTabbedContainer>("side", 0, 0, 300, 400);
+    win.AddChild(side);
+    side->SetTabPosition(TabPosition::Left);
+    side->SetTabHeight(30);
+    side->SetAllowTabReordering(true);
+    for (int i = 0; i < 4; ++i) side->AddTab("Tab " + std::to_string(i));
+    side->Arrange(Rect2Df(0, 0, 300, 400), lctx);
+    side->SetActiveTab(0);
+    side->draggingTabIndex = 0;
+    side->isDraggingTab = true;
+    Rect2Di below = side->GetTabBounds(1);
+    TEST("left bar: the tabs are stacked", below.y >= 30 && below.width > 0);
+    side->UpdateDragReorder(below.x + 5, below.y + 3);
+    TEST("over the upper half of the next tab nothing moves yet",
+         side->GetTabTitle(0) == "Tab 0" && side->dragInsertionIndex == 1);
+    side->UpdateDragReorder(below.x + 5, below.y + below.height - 3);
+    TEST("past its centre the dragged tab takes its place",
+         side->GetTabTitle(1) == "Tab 0" && side->GetTabTitle(0) == "Tab 1" && side->draggingTabIndex == 1);
+    TEST("and stays the active tab", side->GetActiveTab() == 1);
+    side->isDraggingTab = false;
+    side->draggingTabIndex = -1;
+
+    // ---- Indices follow the tabs they name ----
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("reorder", 0, 0, 600, 200);
+    win.AddChild(tabs);
+    for (int i = 0; i < 5; ++i) tabs->AddTab("Tab " + std::to_string(i));
+    tabs->Arrange(Rect2Df(0, 0, 600, 200), lctx);
+    tabs->SetActiveTab(1);
+    tabs->hoveredTabIndex = 3;
+    tabs->hoveredCloseButtonIndex = 3;
+    tabs->ReorderTabs(0, 4);
+    TEST("moving the first tab to the end shifts the hovered tab down with it",
+         tabs->hoveredTabIndex == 2 && tabs->hoveredCloseButtonIndex == 2 && tabs->GetTabTitle(2) == "Tab 3");
+    TEST("and the active tab", tabs->GetActiveTab() == 0 && tabs->GetTabTitle(0) == "Tab 1");
+    tabs->hoveredTabIndex = 1;
+    tabs->ReorderTabs(1, 3);
+    TEST("moving the hovered tab itself moves the hover with it",
+         tabs->hoveredTabIndex == 3 && tabs->GetTabTitle(3) == "Tab 2");
+    tabs->hoveredTabIndex = -1;
+    tabs->hoveredCloseButtonIndex = -1;
+
+    // ---- A pointer at the strip's end carries the tab past the visible range ----
+    auto strip = std::make_shared<UltraCanvasTabbedContainer>("strip", 0, 0, 260, 200);
+    win.AddChild(strip);
+    strip->SetTabMinWidth(100);
+    strip->SetTabMaxWidth(100);
+    strip->SetAllowTabReordering(true);
+    for (int i = 0; i < 6; ++i) strip->AddTab("Tab " + std::to_string(i));
+    strip->Arrange(Rect2Df(0, 0, 260, 200), lctx);
+    strip->SetActiveTab(0);
+    TEST("the strip shows fewer tabs than it holds", strip->maxVisibleTabs > 0 && strip->maxVisibleTabs < 6);
+    strip->draggingTabIndex = 0;
+    strip->isDraggingTab = true;
+    Rect2Di area = strip->GetTabAreaBounds();
+    strip->UpdateDragAutoScroll(area.x + area.width / 2, area.y + 5);
+    TEST("a pointer in the middle of the strip arms nothing", strip->dragAutoScrollDirection == 0);
+    strip->UpdateDragAutoScroll(area.x + area.width - 2, area.y + 5);
+    TEST("a pointer at the right end arms the auto-scroll forwards", strip->dragAutoScrollDirection == 1);
+    for (int tick = 0; tick < 10; ++tick) strip->DragAutoScrollTick();
+    TEST("the ticks carry the tab to the end",
+         strip->GetTabTitle(5) == "Tab 0" && strip->draggingTabIndex == 5 && strip->GetActiveTab() == 5);
+    TEST("and scroll the strip to keep it in view",
+         strip->tabScrollOffset <= 5 && 5 < strip->tabScrollOffset + strip->maxVisibleTabs);
+    TEST("at the end the auto-scroll stands down", strip->dragAutoScrollDirection == 0);
+    strip->UpdateDragAutoScroll(area.x + area.width - 2, area.y + 5);
+    TEST("and is not re-armed with nowhere to go", strip->dragAutoScrollDirection == 0);
+    strip->UpdateDragAutoScroll(area.x + 2, area.y + 5);
+    TEST("a pointer at the left end arms it backwards", strip->dragAutoScrollDirection == -1);
+    strip->DragAutoScrollTick();
+    TEST("one tick carries the tab back one place and shows it",
+         strip->GetTabTitle(4) == "Tab 0" && strip->draggingTabIndex == 4 &&
+         strip->tabScrollOffset <= 4 && 4 < strip->tabScrollOffset + strip->maxVisibleTabs);
+    strip->isDraggingTab = false;
+    strip->StopDragAutoScroll();
+    strip->draggingTabIndex = -1;
+    TEST("stopping clears the direction", strip->dragAutoScrollDirection == 0);
+
+    // ---- A whole drag through the events, with no application behind the window ----
+    auto drag = std::make_shared<UltraCanvasTabbedContainer>("drag", 0, 0, 600, 200);
+    win.AddChild(drag);
+    drag->SetAllowTabReordering(true);
+    for (int i = 0; i < 3; ++i) drag->AddTab("Tab " + std::to_string(i));
+    drag->Arrange(Rect2Df(0, 0, 600, 200), lctx);
+    int reorders = 0;
+    drag->onTabReorder = [&reorders](int, int) { ++reorders; };
+    auto mouse = [](UCEventType type, int x, int y) {
+        UCEvent e;
+        e.type = type;
+        e.button = UCMouseButton::Left;
+        e.pointer = Point2Di(x, y);
+        e.pointerWindow = Point2Di(x, y);
+        e.pointerGlobal = Point2Di(x, y);
+        return e;
+    };
+    Rect2Di first = drag->GetTabBounds(0);
+    Rect2Di last = drag->GetTabBounds(2);
+    const int row = first.y + first.height / 2;
+    drag->OnEvent(mouse(UCEventType::MouseDown, first.x + first.width / 2, row));
+    TEST("pressing a tab activates it and arms the drag", drag->GetActiveTab() == 0 && drag->draggingTabIndex == 0 && !drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, first.x + first.width / 2 + 3, row));
+    TEST("a move within the threshold is not a drag", !drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, first.x + first.width / 2 + 12, row));
+    TEST("a move past the threshold is", drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, last.x + last.width - 3, row));
+    TEST("carried past the last tab's centre, the tab lands at the end",
+         drag->GetTabTitle(2) == "Tab 0" && drag->draggingTabIndex == 2 && drag->GetActiveTab() == 2 && reorders == 1);
+    drag->OnEvent(mouse(UCEventType::MouseUp, last.x + last.width - 3, row));
+    TEST("releasing ends the drag", !drag->isDraggingTab && drag->draggingTabIndex == -1 && drag->dragAutoScrollDirection == 0);
+    TEST("the order stays", drag->GetTabTitle(0) == "Tab 1" && drag->GetTabTitle(1) == "Tab 2" && drag->GetTabTitle(2) == "Tab 0");
+}
+
+void TextAreaChecks() {
+    // ---- 5. SetCursorPosition(pos, true) extends the selection ----
+    auto area = std::make_shared<UltraCanvasTextArea>("area", 0, 0, 300, 200);
+    area->SetText("hello world\nsecond line");
+    area->SetCursorPosition({0, 2});
+    TEST("placing the caret selects nothing", !area->HasSelection());
+
+    area->SetCursorPosition({0, 7}, true);
+    TEST("selecting from the caret selects up to the new place",
+         area->HasSelection() && area->GetSelectionStart().lineIndex == 0 &&
+         area->GetSelectionStart().columnIndex == 2 && area->GetSelectionEnd().columnIndex == 7);
+    TEST("the selected text", area->GetSelectedText() == "llo w");
+
+    area->SetCursorPosition({1, 3}, true);
+    TEST("selecting again keeps the anchor and moves the end",
+         area->GetSelectionStart().lineIndex == 0 && area->GetSelectionStart().columnIndex == 2 &&
+         area->GetSelectionEnd().lineIndex == 1 && area->GetSelectionEnd().columnIndex == 3);
+
+    TEST("the caret follows", area->GetCursorPosition().lineIndex == 1 &&
+                              area->GetCursorPosition().columnIndex == 3);
+    TEST("GetCursorPosition() can be called on a const text area",
+         CursorReadableThroughConst<UltraCanvasTextArea>);
+}
+
+} // namespace
+
+int main() {
+    UCImage::InitializeImageSubsysterm("MenuAndTabBehaviourTest");
+    auto win = std::make_shared<HeadlessWindow>();
+    MenuChecks(*win);
+    PopupOpacityChecks();
+    MenuPanelChecks();
+    AnchoredMenuChecks();
+    IconTintChecks();
+    TallDropdownChecks();
+    MenubarFontChecks();
+    TabChecks(*win);
+    TabReorderChecks(*win);
+    TextAreaChecks();
+
+    std::cerr << "\nMenuAndTabBehaviourTest: " << testCount << " checks, " << failCount << " failures" << std::endl;
+    return failCount;
+}

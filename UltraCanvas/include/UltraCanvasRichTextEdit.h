@@ -18,7 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
-// Version: 1.2.0
+// Version: 1.3.0 - SetZoomRange: follow a canvas zoom beyond 0.25 to 5;
+//                  ApplyCharFormat: set formatting exactly
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,7 +77,9 @@ struct RichTextEditStyle {
     std::array<float, 6> headingSizeMultipliers = {2.0f, 1.6f, 1.35f, 1.2f, 1.1f, 1.0f};
     bool headingsBold = true;
 
-    // Nested bullet characters (level 0, 1, 2+; UTF-8).
+    // Nested bullet characters (level 0, 1, 2+; UTF-8). These three are drawn
+    // as shapes (the bundled UI font has no ◦ or ▪); any other string is
+    // drawn as text.
     std::array<std::string, 3> bulletCharacters = {
         "\xe2\x80\xa2",         // •
         "\xe2\x97\xa6",         // ◦
@@ -246,6 +249,10 @@ public:
     void SetFontFamily(const std::string& family);
     void SetFontSize(float pt);
     void SetTextColor(const std::string& hexColor);
+    // Sets what `delta` names exactly - bold on, italic off - where the
+    // toggles flip it: a checkbox's state, applied as it reads. Like the
+    // others, to the selection, or armed for what is typed next.
+    void ApplyCharFormat(const RichCharFormatDelta& delta);
     void SetLink(const std::string& target);
     void ClearFormatting();
     // What a toolbar should show for the current selection.
@@ -452,9 +459,14 @@ public:
     // ===== ZOOM =====
     // 1 = 100%. Everything is drawn scaled - text, pictures, pages - and
     // outside page view the text rewraps to the zoomed width, as a word
-    // processor's web view does. Ctrl+wheel zooms too. 0.25 to 5.
+    // processor's web view does. Ctrl+wheel zooms too. 0.25 to 5, unless
+    // SetZoomRange widened it.
     void SetZoom(float factor);
     float GetZoom() const { return zoom; }
+    // The zoom SetZoom (and Ctrl+wheel) stays within. An element that edits
+    // text lying on a zoomable canvas - a bitmap editor's text layer - follows
+    // the canvas's zoom, which goes well past a word processor's 0.25 to 5.
+    void SetZoomRange(float minimum, float maximum);
     std::function<void(float zoom)> onZoomChanged;
 
     // ===== SCROLLING =====
@@ -916,6 +928,8 @@ private:
     float scrollOffset = 0.0f;
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;
+    float minZoom = 0.25f;
+    float maxZoom = 5.0f;
     bool needsHorizontalScrollbar = false;
     Rect2Df hThumbRect{0, 0, 0, 0};
     bool draggingHThumb = false;

@@ -2,20 +2,32 @@
 # Build configuration for the VideoFX module (video editing / conversion).
 # FFmpeg is optional: without it the same API is built from a stub whose calls
 # return VideoFXResult::NotAvailable, so consumers never need an #ifdef.
-# Version: 0.4.2
-# Last Modified: 2026-10-02
+# VideoFX is a shared library of its own (libVideoFX.so, libVideoFX.dylib,
+# VideoFX.dll / libVideoFX.dll) - not absorbed into the UltraCanvas core, so an
+# application that does no video never loads it or FFmpeg.
+# Version: 0.16.0 - the engine reports 0.16.0 (effects on image and video overlays)
+# Version: 0.15.1 - no experimental encoder is chosen, listed or reported (FindEncoderByName)
+# Version: 0.15.0 - the engine reports 0.15.0 (the Fill crop around a clip's faces)
+# Version: 0.14.1 - on Windows the DLL and videofx.exe go beside the applications
+# Last Modified: 2026-10-16
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.4.2
+    VERSION 0.16.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
 
 option(VIDEOFX_USE_FFMPEG "Build VideoFX on FFmpeg (libavformat/avcodec/avfilter/swscale)" ON)
 option(VIDEOFX_BUILD_TOOL "Build the videofx command-line tool" ON)
+# Shared by default, like the UltraCanvas core; Android keeps static libraries
+if(ANDROID)
+    option(VIDEOFX_BUILD_SHARED "Build VideoFX as a shared library" OFF)
+else()
+    option(VIDEOFX_BUILD_SHARED "Build VideoFX as a shared library" ON)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,8 +70,26 @@ set(VIDEOFX_SOURCES
     core/VideoFXKenBurns.h
     core/VideoFXMusic.cpp
     core/VideoFXMusic.h
+    core/VideoFXBeats.cpp
+    core/VideoFXBeats.h
+    core/VideoFXFaces.cpp
+    core/VideoFXFaces.h
+    core/VideoFXFaceCascade.inc
+    core/VideoFXProject.cpp
+    core/VideoFXProject.h
+    core/VideoFXProxy.cpp
+    core/VideoFXProxy.h
+    core/VideoFXPlatform.h
     core/VideoFXJob.cpp
 )
+# The per-user cache folder, where proxies go - the stub has it too
+if(WIN32)
+    list(APPEND VIDEOFX_SOURCES OS/MSWindows/VideoFXCacheDir.cpp)
+elseif(APPLE)
+    list(APPEND VIDEOFX_SOURCES OS/MacOS/VideoFXCacheDir.cpp)
+else()
+    list(APPEND VIDEOFX_SOURCES OS/Linux/VideoFXCacheDir.cpp)
+endif()
 
 if(VIDEOFX_FFMPEG_FOUND)
     list(APPEND VIDEOFX_SOURCES
@@ -69,7 +99,6 @@ if(VIDEOFX_FFMPEG_FOUND)
         core/VideoFXExport.cpp
         core/VideoFXRemux.cpp
         core/VideoFXFonts.cpp
-        core/VideoFXPlatform.h
     )
     # The executable's directory, where bundled fonts are looked for
     if(WIN32)
@@ -83,7 +112,11 @@ else()
     list(APPEND VIDEOFX_SOURCES core/VideoFXUnavailable.cpp)
 endif()
 
-add_library(VideoFX STATIC ${VIDEOFX_SOURCES} ${VIDEOFX_HEADERS})
+if(VIDEOFX_BUILD_SHARED)
+    add_library(VideoFX SHARED ${VIDEOFX_SOURCES} ${VIDEOFX_HEADERS})
+else()
+    add_library(VideoFX STATIC ${VIDEOFX_SOURCES} ${VIDEOFX_HEADERS})
+endif()
 add_library(VideoFX::VideoFX ALIAS VideoFX)
 
 target_include_directories(VideoFX
@@ -93,9 +126,45 @@ target_include_directories(VideoFX
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
 )
-# The single source of VideoFX's version (VideoFX_GetVersion)
+# The single source of VideoFX's version (VideoFX_GetVersion): the VERSION in
+# project() above. The "// Version:" line at the top of each source file is
+# not a copy of it - it names the release in which that file last changed, as
+# every file of the framework does, so a file untouched since 0.5.0 says
+# 0.5.0 and only a file a release changes moves to that release's number.
 target_compile_definitions(VideoFX PRIVATE VIDEOFX_VERSION_STRING="${PROJECT_VERSION}")
 set_target_properties(VideoFX PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Where the DLL, the videofx tool and the tests that load the DLL go. Windows
+# looks for a DLL in the folder of the executable that loads it, so on Windows
+# that is the folder the build puts the applications in
+# (CMAKE_RUNTIME_OUTPUT_DIRECTORY, the build root, beside UltraVideo.exe and
+# the core DLL). The DLL went to bin/ until 0.14.1, and UltraVideo.exe - in
+# the build tree, and in the package, which takes the build root's DLLs -
+# stopped at start with "libVideoFX.dll was not found". Elsewhere bin/: the
+# shared library itself goes to lib/ there (LIBRARY_OUTPUT_DIRECTORY), and an
+# executable "videofx" cannot sit in the build root beside the VideoFX/ folder
+# on a case-insensitive file system (macOS); "videofx.exe" can.
+if(WIN32 AND CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+    set(VIDEOFX_RUNTIME_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+else()
+    set(VIDEOFX_RUNTIME_DIR ${CMAKE_BINARY_DIR}/bin)
+endif()
+
+if(VIDEOFX_BUILD_SHARED)
+    # 0.x: every minor version may change the ABI, so it is in the soname
+    # (libVideoFX.so.0.9).
+    set_target_properties(VideoFX PROPERTIES
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
+    )
+    if(WIN32)
+        # No __declspec(dllexport) in the sources, as in the core: export
+        # everything (the tests reach VideoFX::Internal too) and emit an
+        # import library.
+        set_target_properties(VideoFX PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
+endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(VideoFX PUBLIC Threads::Threads)
@@ -105,10 +174,12 @@ if(VIDEOFX_FFMPEG_FOUND)
     target_compile_definitions(VideoFX PUBLIC VIDEOFX_HAS_FFMPEG=1)
 endif()
 
-# Exported so parents (tests, apps) can tell a working engine from the stub
+# Exported so parents (tests, apps) can tell a working engine from the stub,
+# and put an executable that loads the DLL where Windows finds it
 get_directory_property(VIDEOFX_HAS_PARENT PARENT_DIRECTORY)
 if(VIDEOFX_HAS_PARENT)
     set(VIDEOFX_FFMPEG_FOUND ${VIDEOFX_FFMPEG_FOUND} PARENT_SCOPE)
+    set(VIDEOFX_RUNTIME_DIR ${VIDEOFX_RUNTIME_DIR} PARENT_SCOPE)
 endif()
 
 # ============================================================================
@@ -118,12 +189,13 @@ endif()
 # (macOS, Windows) "videofx" and the library "VideoFX" would share one
 # CMakeFiles/<target>.dir, and the Makefile build stops with "No rule to make
 # target VideoFX/CMakeFiles/VideoFX.dir/depend". For the same reason the
-# executable goes to bin/ rather than next to the build tree's VideoFX/ folder.
+# executable goes to bin/ rather than next to the build tree's VideoFX/ folder,
+# except on Windows, where it goes beside the DLL (VIDEOFX_RUNTIME_DIR above).
 if(VIDEOFX_BUILD_TOOL)
     add_executable(videofx_cli tools/videofx_cli.cpp)
     set_target_properties(videofx_cli PROPERTIES
         OUTPUT_NAME videofx
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
     )
     target_link_libraries(videofx_cli PRIVATE VideoFX::VideoFX)
     if(WIN32)
@@ -136,4 +208,9 @@ if(VIDEOFX_FFMPEG_FOUND)
 else()
     set(VIDEOFX_ENGINE "stub (no FFmpeg)")
 endif()
-message(STATUS "VideoFX ${PROJECT_VERSION}: engine=${VIDEOFX_ENGINE}, tool=${VIDEOFX_BUILD_TOOL}")
+if(VIDEOFX_BUILD_SHARED)
+    set(VIDEOFX_LINKAGE "shared")
+else()
+    set(VIDEOFX_LINKAGE "static")
+endif()
+message(STATUS "VideoFX ${PROJECT_VERSION}: engine=${VIDEOFX_ENGINE}, library=${VIDEOFX_LINKAGE}, tool=${VIDEOFX_BUILD_TOOL}")

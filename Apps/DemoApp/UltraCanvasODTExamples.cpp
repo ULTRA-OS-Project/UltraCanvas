@@ -1,6 +1,6 @@
 // Apps/DemoApp/UltraCanvasODTExamples.cpp
 // Demonstrates word-processing document support (.odt / .docx / legacy .doc):
-// an "Open Document…" button that parses files through
+// an "Open Document" button that parses files through
 // UltraCanvasFileLoader::LoadTextDocument into a UCRichDocument, displayed by
 // the WYSIWYG UltraCanvasRichTextEdit in read-only mode - so fonts, sizes,
 // colours, alignment, list numbering and table layout show as the document
@@ -8,8 +8,9 @@
 // document's own page size, margins, headers and footers, like Writer's
 // print layout. A standard sample document is loaded from
 // media/docs/document.odt on entry.
+// Version: 1.4.0 - Open offers what LoadTextDocument reads (AddTextDocumentLoadTypes)
 // Version: 1.3.0
-// Last Modified: 2026-09-25
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -88,7 +89,7 @@ namespace UltraCanvas {
 
         // ===== TOOLBAR: Open button + status label =====
         auto openBtn = std::make_shared<UltraCanvasButton>("odtOpenBtn", 20, 50, 180, 30,
-                                                           "Open Document…");
+                                                           "Open Document");
         root->AddChild(openBtn);
 
         auto status = std::make_shared<UltraCanvasLabel>("odtStatus", 210, 56, kWidth - 230, 22);
@@ -119,7 +120,7 @@ namespace UltraCanvas {
             NormalizePath(GetResourcesDir() + "media/docs/document.odt");
         if (!ShowDocumentInView(samplePath, view, status)) {
             view->SetMarkdown("No sample document found.\n\nExpected: " + samplePath
-                              + "\n\nUse **Open Document…** to load an .odt, .docx or .doc file.");
+                              + "\n\nUse **Open Document** to load an .odt, .docx or .doc file.");
         }
 
         // ===== OPEN -> FileLoader::OpenTextDocument-style flow =====
@@ -127,15 +128,9 @@ namespace UltraCanvas {
         // callback; both are also owned by the container (no ownership cycle).
         openBtn->onClick = [view, status]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open Document")
-                .AddFilter("Documents",
-                           std::vector<std::string>{ "odt", "docx", "doc", "tex", "md" })
-                .AddFilter("OpenDocument Text (*.odt)", "odt")
-                .AddFilter("Word Document (*.docx)", "docx")
-                .AddFilter("Word 97-2003 (*.doc)", "doc")
-                .AddFilter("LaTeX (*.tex)", "tex")
-                .AddFilter("Markdown (*.md)", "md")
-                .AddFilter("All files", "*");
+            opts.SetTitle("Open Document");
+            UltraCanvasFileLoader::AddTextDocumentLoadTypes(opts);
+            opts.AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [view, status](DialogResult result, const std::string& path) {

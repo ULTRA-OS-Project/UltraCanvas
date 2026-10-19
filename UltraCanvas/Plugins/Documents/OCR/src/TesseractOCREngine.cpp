@@ -98,7 +98,8 @@ std::string TesseractOCREngine::ResolveDataPath(const std::string& userPath,
     if (std::string hit = probe(UltraCanvasOCR::LanguageDataDir()); !hit.empty())
         return hit;
     // 3) TESSDATA_PREFIX, honouring the user's environment.
-    if (const char* env = std::getenv("TESSDATA_PREFIX"); env && *env) {
+    // Read as UTF-8 (GetEnvUtf8): a narrow getenv answers in the ANSI code page on Windows.
+    if (const std::string env = UltraCanvas::GetEnvUtf8("TESSDATA_PREFIX"); !env.empty()) {
         if (std::string hit = probe(env); !hit.empty()) return hit;
     }
     // 4) Bundle locations relative to the executable and the resources dir.

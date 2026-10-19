@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- UltraVideo: a film frame on the design's amber accent, with the play mark -->
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="#F2A53A"/>
+  <rect x="48" y="64" width="160" height="128" rx="14" fill="#1F2328"/>
+  <g fill="#F2A53A">
+    <rect x="60" y="76" width="18" height="12" rx="3"/><rect x="60" y="100" width="18" height="12" rx="3"/>
+    <rect x="60" y="124" width="18" height="12" rx="3"/><rect x="60" y="148" width="18" height="12" rx="3"/>
+    <rect x="60" y="172" width="18" height="12" rx="3"/>
+    <rect x="178" y="76" width="18" height="12" rx="3"/><rect x="178" y="100" width="18" height="12" rx="3"/>
+    <rect x="178" y="124" width="18" height="12" rx="3"/><rect x="178" y="148" width="18" height="12" rx="3"/>
+    <rect x="178" y="172" width="18" height="12" rx="3"/>
+  </g>
+  <path d="M112 100 L156 128 L112 156 Z" fill="#FFFFFF"/>
+</svg>

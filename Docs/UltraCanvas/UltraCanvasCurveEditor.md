@@ -1,5 +1,7 @@
 # UltraCanvas Curve Editor and Curves Dialog
 
+<!-- doc-check: void Preview(const ToneCurveSet& curves); void Commit(const ToneCurveSet& curves); void Restore(); -->
+
 ## Overview
 
 The **tone curve** stack is the framework's "Curves" facility — the per-channel
@@ -94,8 +96,9 @@ if (!set.IsIdentity()) {
 ## Applying a curve to an image — `PixelFX::Colour::MapLut`
 
 ```cpp
-PFXImage MapLut(const PFXImage& image,
-                const std::vector<std::vector<uint8_t>>& tables);
+namespace PixelFX::Colour {
+    PFXImage MapLut(const PFXImage& image, const std::vector<std::vector<uint8_t>>& tables);
+}
 ```
 
 Maps an image through per-channel 8-bit lookup tables. Every table holds 256

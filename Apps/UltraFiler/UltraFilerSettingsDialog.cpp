@@ -5,7 +5,8 @@
 // the window opens, so it opens on the start page: what the sections hold.
 // Pages: Display > Treeview (the folder tree's drive-row
 // background and selected-folder highlight, each shown as a colour box that
-// opens the colour picker in a popup window), Display > Home folder (what the
+// opens the colour picker in a popup window, and the tree's width - fitted
+// to its rows or fixed), Display > Home folder (what the
 // Home folder shows), Display > Files (whether hidden files are listed),
 // Display > File extensions (whether a displayed name
 // still ends in its extension, and whether a thumbnail tile carries that
@@ -38,8 +39,9 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.14.0
-// Last Modified: 2026-09-17
+// Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
+// Version: 1.16.0
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -59,6 +61,7 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasSpinner.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTrash.h"   // TrashDisplayName
@@ -67,6 +70,7 @@
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -103,6 +107,7 @@ namespace {
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay = "display";
     constexpr const char* kPageTreeview = "display/treeview";
+    constexpr const char* kPageTabStyle = "display/tab-style";
     constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPageFiles = "display/files";
     constexpr const char* kPageIgnoredFiles = "display/ignored-files";
@@ -151,6 +156,11 @@ namespace {
         // Display > Treeview: the colour boxes that open the picker popup.
         std::shared_ptr<UltraCanvasButton> driveColorBox;
         std::shared_ptr<UltraCanvasButton> selectedColorBox;
+        // ... and the tree's width: fitted to its rows, or [ 280 px ].
+        std::shared_ptr<UltraCanvasRadio>   treeFitRadio;
+        std::shared_ptr<UltraCanvasRadio>   treeFixedRadio;
+        UltraCanvasRadioGroup               treeWidthGroup;
+        std::shared_ptr<UltraCanvasSpinner> treeWidthSpinner;
 
         // Display > Home folder: what the Home folder shows.
         std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
@@ -185,6 +195,9 @@ namespace {
         std::vector<std::pair<FilerFileIconStyle,
                               std::shared_ptr<UltraCanvasRadio>>> fileIconRadios;
         UltraCanvasRadioGroup                fileIconGroup;
+        std::vector<std::pair<FilerTabStripStyle,
+                              std::shared_ptr<UltraCanvasRadio>>> tabStyleRadios;
+        UltraCanvasRadioGroup                tabStyleGroup;
 
         // Display > Thumbnails / Display > Detail view: the kind checkboxes
         // and the per-format ones of each page, kept so the two "Everything
@@ -502,21 +515,6 @@ namespace {
         return box;
     }
 
-    // A colour picker restyled for the dialog's light surface.
-    ColorPickerStyle LightPickerStyle() {
-        ColorPickerStyle s;
-        s.backgroundColor = Color(249, 249, 251, 255);
-        s.panelColor      = Color(240, 240, 244, 255);
-        s.borderColor     = Color(210, 210, 216, 255);
-        s.textColor       = kTextColor;
-        s.mutedTextColor  = Color(120, 120, 126, 255);
-        s.fieldColor      = Color(255, 255, 255, 255);
-        s.fieldBorderColor = Color(190, 190, 196, 255);
-        s.accentColor     = Color(60, 140, 220, 255);
-        s.markerOutline   = Color(90, 90, 96, 255);
-        return s;
-    }
-
     // ===== COLOUR BOX + PICKER POPUP =====
 
     // The box showing a configured colour. It is a button filled with that
@@ -600,11 +598,15 @@ namespace {
 
         popup->window->layout.SetFlexColumn()
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        popup->window->SetBackgroundColor(Color(249, 249, 251, 255));
+        const Color popupSurface(249, 249, 251, 255);
+        popup->window->SetBackgroundColor(popupSurface);
 
         popup->picker = CreateColorPicker("ufl-set-popup-picker", initial,
                                           0, 0, 280, 380);
-        popup->picker->SetStyle(LightPickerStyle());
+        // The framework's light picker, on the popup's surface.
+        ColorPickerStyle pickerStyle = ColorPickerStyle::Light();
+        pickerStyle.backgroundColor = popupSurface;
+        popup->picker->SetStyle(pickerStyle);
         popup->picker->SetUIScale(0.85f);
         popup->picker->SetShowAlpha(false);   // tree rows are painted opaque
         popup->picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -677,7 +679,8 @@ namespace {
 
     std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-treeview", "Treeview",
-                "Colours of the folder tree on the left of the main window:");
+                "Colours and width of the folder tree on the left of the main "
+                "window:");
 
         d->driveColorBox = MakeColorBox("ufl-set-tv-drive-color",
                 d->settings->treeDriveBackgroundColor,
@@ -719,22 +722,82 @@ namespace {
         parts.body->AddChild(MakeColorRow("ufl-set-tv-selected-row",
                 "Selected folder colour:", d->selectedColorBox));
 
+        // ----- the tree's width: fitted, or [ 280 px ] -----
+        AddBodyCaption(parts, "ufl-set-tv-width-caption",
+                       "Width of the folder tree:");
+        const bool fit = d->settings->treeWidthAuto;
+        d->treeFitRadio = MakeChoice("ufl-set-tv-width-fit",
+                "Auto - 10 px wider than the longest name shown", fit);
+        d->treeFixedRadio = MakeChoice("ufl-set-tv-width-fixed", "Fixed width:",
+                                       !fit, 110);
+        d->treeWidthGroup.AddRadioButton(d->treeFitRadio);
+        d->treeWidthGroup.AddRadioButton(d->treeFixedRadio);
+        d->treeWidthGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->treeWidthAuto = (selected == d->treeFitRadio);
+            ApplyAndSave(d);
+        };
+
+        d->treeWidthSpinner = CreateIntSpinner("ufl-set-tv-width", 0, 0, 90,
+                static_cast<float>(kControlHeight),
+                UltraFilerSettings::kMinTreeWidth,
+                UltraFilerSettings::kMaxTreeWidth,
+                d->settings->treeFixedWidth, 10);
+        d->treeWidthSpinner->SetSuffix(" px");
+        d->treeWidthSpinner->GetStyle().fontStyle.fontSize = kTextFontSize;
+        d->treeWidthSpinner->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Setting a width is choosing a fixed one.
+        d->treeWidthSpinner->onValueChanged = [d](double value) {
+            if (d->syncing || !d->settings) return;
+            d->settings->treeFixedWidth = static_cast<int>(std::lround(value));
+            if (d->settings->treeWidthAuto) {
+                d->settings->treeWidthAuto = false;
+                d->syncing = true;
+                d->treeWidthGroup.SelectButton(d->treeFixedRadio);
+                d->syncing = false;
+            }
+            ApplyAndSave(d);
+        };
+
+        auto fixedRow = std::make_shared<UltraCanvasContainer>(
+                "ufl-set-tv-width-fixed-row");
+        fixedRow->layout.SetFlexRow().SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        fixedRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        fixedRow->AddChild(d->treeFixedRadio);
+        fixedRow->AddChild(d->treeWidthSpinner);
+        parts.body->AddChild(d->treeFitRadio);
+        parts.body->AddChild(fixedRow);
+
         AddNote(parts, "ufl-set-tv-note1",
                 "Click a colour box to pick a colour. The folder tree shows "
                 "the colour while it is being picked; Cancel puts the previous "
                 "one back.");
+        AddNote(parts, "ufl-set-tv-note2",
+                "Auto fits the tree to the drives and folders it shows, and "
+                "fits it again whenever a branch is opened or closed or a "
+                "drive comes or goes - up to 600 px, and never so wide that "
+                "the file display falls below its own minimum. Dragging the "
+                "divider still resizes the tree for the moment.");
 
-        d->resets[kPageTreeview] = PageReset{"Restore default colours", 170,
+        d->resets[kPageTreeview] = PageReset{"Restore defaults", 170,
                 [d]() {
             if (!d->settings) return;
             d->settings->treeDriveBackgroundColor =
                     UltraFilerSettings::kDefaultTreeDriveBackgroundColor;
             d->settings->treeSelectedFolderColor =
                     UltraFilerSettings::kDefaultTreeSelectedFolderColor;
+            d->settings->treeWidthAuto = true;
+            d->settings->treeFixedWidth = UltraFilerSettings::kDefaultTreeWidth;
             SetColorBoxColor(d->driveColorBox,
                              d->settings->treeDriveBackgroundColor);
             SetColorBoxColor(d->selectedColorBox,
                              d->settings->treeSelectedFolderColor);
+            d->syncing = true;
+            d->treeWidthGroup.SelectButton(d->treeFitRadio);
+            d->treeWidthSpinner->SetValue(d->settings->treeFixedWidth);
+            d->syncing = false;
             ApplyAndSave(d);
         }};
 
@@ -1201,6 +1264,69 @@ namespace {
         }
     }
 
+    // The style the page ticks: the setting, except that a system with no
+    // desktop to ask draws the simple icons whatever it says - and the host
+    // icons are the default - so the page ticks what is actually drawn
+    // rather than the greyed-out choice.
+    FilerFileIconStyle ShownFileIconStyle(const DialogState* d) {
+        if (!UltraCanvasFilerWidget::AreHostFileIconsAvailable())
+            return FilerFileIconStyle::Simple;
+        return d->settings->fileIconStyle;
+    }
+
+    // ===== DISPLAY > TAB STYLE =====
+
+    std::string TabStripStyleDescription(FilerTabStripStyle style) {
+        switch (style) {
+            case FilerTabStripStyle::SimpleModern:
+                return "Simple modern - flat tabs, with a blue line under the "
+                       "open one";
+            case FilerTabStripStyle::Classic:
+                return "Classic - rounded tabs joined to the page below, as "
+                       "UltraFiler drew them before 1.71.0";
+            default:
+                return "Modern - each tab a capsule floating in the strip: the "
+                       "open one white with a blue outline, the others plain "
+                       "text until the pointer is over them";
+        }
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildTabStylePage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-tab-style", "Tab style",
+                "How the window's tab strip draws its tabs:");
+
+        d->tabStyleRadios.clear();
+        for (FilerTabStripStyle style : {FilerTabStripStyle::Modern,
+                                         FilerTabStripStyle::SimpleModern,
+                                         FilerTabStripStyle::Classic}) {
+            std::string id = std::string("ufl-set-tab-style-") +
+                    (style == FilerTabStripStyle::Modern ? "modern" :
+                     style == FilerTabStripStyle::SimpleModern ? "simple-modern" : "classic");
+            auto radio = MakeChoice(id, TabStripStyleDescription(style),
+                                    d->settings && d->settings->tabStripStyle == style);
+            d->tabStyleGroup.AddRadioButton(radio);
+            d->tabStyleRadios.emplace_back(style, radio);
+            parts.body->AddChild(radio);
+        }
+        d->tabStyleGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            for (const auto& [style, radio] : d->tabStyleRadios) {
+                if (radio != selected) continue;
+                d->settings->tabStripStyle = style;
+                ApplyAndSave(d);
+                return;
+            }
+        };
+
+        AddNote(parts, "ufl-set-tab-style-note1",
+                "The change shows at once on the open window's tab strip. "
+                "Whichever style is chosen, the tabs behave the same: click "
+                "to switch, the X or a middle click to close, drag to reorder, "
+                "and the + at the end opens another tab.");
+        return parts.page;
+    }
+
     std::shared_ptr<UltraCanvasContainer> BuildFileIconsPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-file-icons", "File icons",
                 "Whose icons the file display draws for a file that shows no "
@@ -1217,7 +1343,7 @@ namespace {
                             (style == FilerFileIconStyle::HostOperatingSystem
                                      ? "host" : "simple"),
                     FileIconStyleDescription(style),
-                    d->settings->fileIconStyle == style);
+                    ShownFileIconStyle(d) == style);
             // Nothing to take icons from on this system: the choice is shown
             // so the page still says what the setting is, and greyed so it
             // does not promise a display it cannot produce.
@@ -2435,6 +2561,7 @@ namespace {
 
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
+        AddTreeNode(d, kPageDisplay, kPageTabStyle, "Tab style");
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, "Home folder");
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
@@ -2471,6 +2598,7 @@ namespace {
 
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
+        AddPage(d, kPageTabStyle, BuildTabStylePage(d));
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
@@ -2619,7 +2747,9 @@ namespace {
         for (const auto& [badge, radio] : d->badgeRadios)
             if (badge == d->settings->extensionBadge) d->extensionBadgeGroup.SelectButton(radio);
         for (const auto& [style, radio] : d->fileIconRadios)
-            if (style == d->settings->fileIconStyle) d->fileIconGroup.SelectButton(radio);
+            if (style == ShownFileIconStyle(d)) d->fileIconGroup.SelectButton(radio);
+        for (const auto& [style, radio] : d->tabStyleRadios)
+            if (style == d->settings->tabStripStyle) d->tabStyleGroup.SelectButton(radio);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }

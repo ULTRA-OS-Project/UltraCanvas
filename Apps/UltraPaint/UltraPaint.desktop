@@ -31,7 +31,7 @@ StartupWMClass=UltraPaint
 Categories=Graphics;2DGraphics;RasterGraphics;Photography;
 Actions=NewWindow;
 Keywords=image;bitmap;photo;paint;draw;raster;layer;filter;3D;model;
-MimeType=image/png;image/jpeg;image/gif;image/bmp;image/webp;image/tiff;image/heif;image/heic;image/avif;image/jxl;image/qoi;image/x-tga;image/x-portable-pixmap;image/x-portable-graymap;image/x-portable-bitmap;image/x-portable-anymap;image/vnd.adobe.photoshop;image/vnd.microsoft.icon;image/x-icon;image/x-exr;image/vnd.radiance;image/x-adobe-dng;image/x-canon-cr2;image/x-nikon-nef;image/x-sony-arw;image/svg+xml;image/svg+xml-compressed;application/pdf;application/postscript;image/x-eps;application/illustrator;model/stl;model/x.stl-ascii;model/x.stl-binary;model/obj;model/step;model/vnd.collada+xml;model/x3d+xml;model/x3d+vrml;model/vrml;image/x-3ds;application/x-blender;application/x-ultracanvas-raster;
+MimeType=image/png;image/jpeg;image/gif;image/bmp;image/webp;image/tiff;image/heif;image/heic;image/avif;image/jxl;image/qoi;image/x-tga;image/x-portable-pixmap;image/x-portable-graymap;image/x-portable-bitmap;image/x-portable-anymap;image/vnd.adobe.photoshop;image/vnd.microsoft.icon;image/x-icon;image/x-exr;image/vnd.radiance;image/x-adobe-dng;image/x-canon-cr2;image/x-nikon-nef;image/x-sony-arw;image/svg+xml;image/svg+xml-compressed;application/pdf;application/postscript;image/x-eps;application/illustrator;model/stl;model/x.stl-ascii;model/x.stl-binary;model/obj;model/step;model/vnd.collada+xml;model/x3d+xml;model/x3d+vrml;model/vrml;image/x-3ds;application/x-blender;application/x-ultracanvas-raster;image/x-ultracanvas-bitmap;
 
 # Right-click the launcher icon: a second editor window on a blank canvas.
 # UltraPaint is multi-window, and every window is its own document.

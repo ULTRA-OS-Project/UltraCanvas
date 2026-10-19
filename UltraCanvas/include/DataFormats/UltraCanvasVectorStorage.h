@@ -985,6 +985,13 @@ namespace UltraCanvas {
         // The band a width profile turns a stroke into: a filled outline
         // (even-odd for closed subpaths, where it becomes a ring).
         PathData VariableWidthOutline(const PathData& path, const StrokeData& stroke);
+        // Where a brush stamps along one flattened subpath, as the renderer
+        // stamps it: each matrix maps the stamp's own space onto the line -
+        // centred on the point, its height scaled to Width * Scale (with the
+        // 0.5 width floor), turned to the tangent when Rotate is set, one
+        // every Spacing stamp-widths, at most 4000. Empty without a stamp or
+        // a length to stamp along.
+        std::vector<Matrix3x3> BrushStampPlacements(const std::vector<Point2Dd>& points, const StrokeData& stroke);
 
         PathData ParsePathString(const std::string &pathStr);
         std::string SerializePathData(const PathData &path);

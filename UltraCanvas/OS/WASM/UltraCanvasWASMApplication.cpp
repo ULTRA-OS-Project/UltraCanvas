@@ -1,7 +1,10 @@
 // OS/WASM/UltraCanvasWASMApplication.cpp
 // WebAssembly (Emscripten) platform application implementation
+// Version: 2.2.0 - input method composition: a transparent textarea takes the
+//   keyboard while the focused element draws compositions; its composition
+//   events become TextComposition events
 // Version: 2.1.0
-// Last Modified: 2026-09-07
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -15,6 +18,7 @@
 #include <fontconfig/fontconfig.h>
 
 #include <sys/select.h>
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <filesystem>
@@ -39,6 +43,41 @@ extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnPaste(char* text) {
     event.nativeKeyCode = 'V';
     event.ctrl = true;
     app->PushEvent(event);
+}
+
+// ===== INPUT METHOD BRIDGE =====
+// The hidden textarea's composition and input events (registered in
+// InitializeNative()) land here; each string was allocated with
+// stringToNewUTF8 and is freed here.
+namespace {
+    std::string TakeImeString(char* text) {
+        std::string result = text ? std::string(text) : std::string();
+        free(text);
+        return result;
+    }
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnImeCompositionStart() {
+    if (auto* app = UltraCanvas::UltraCanvasWASMApplication::GetInstance()) app->OnImeCompositionStart();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnImeComposition(char* text, int cursorUtf16) {
+    const std::string composing = TakeImeString(text);
+    if (auto* app = UltraCanvas::UltraCanvasWASMApplication::GetInstance()) app->OnImeComposition(composing, cursorUtf16);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnImeCompositionEnd(char* text) {
+    const std::string committed = TakeImeString(text);
+    if (auto* app = UltraCanvas::UltraCanvasWASMApplication::GetInstance()) app->OnImeCompositionEnd(committed);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnImeText(char* text) {
+    const std::string typed = TakeImeString(text);
+    if (auto* app = UltraCanvas::UltraCanvasWASMApplication::GetInstance()) app->OnImeText(typed);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnImeFocus(int focused) {
+    if (auto* app = UltraCanvas::UltraCanvasWASMApplication::GetInstance()) app->OnImeFocus(focused != 0);
 }
 
 namespace UltraCanvas {
@@ -95,6 +134,89 @@ namespace UltraCanvas {
             document.addEventListener('paste', window.__ultracanvasOnPaste);
         });
 
+        // Input method bridge: a transparent textarea that takes the
+        // keyboard while the focused element draws compositions (see
+        // UpdateImeTarget). Keys still reach OnKeyCallback on the window;
+        // the textarea only adds the browser's composition events. It never
+        // keeps text: what it would hold is delivered and cleared.
+        EM_ASM({
+            if (window.__ultracanvasIme && window.__ultracanvasIme.parentNode) {
+                window.__ultracanvasIme.parentNode.removeChild(window.__ultracanvasIme);
+            }
+            var ta = document.createElement('textarea');
+            ta.setAttribute('autocomplete', 'off');
+            ta.setAttribute('autocorrect', 'off');
+            ta.setAttribute('autocapitalize', 'off');
+            ta.setAttribute('spellcheck', 'false');
+            ta.setAttribute('aria-hidden', 'true');
+            ta.tabIndex = -1;
+            var st = ta.style;
+            st.position = 'absolute';
+            st.left = '0px';
+            st.top = '0px';
+            st.width = '1px';
+            st.height = '16px';
+            st.margin = '0';
+            st.padding = '0';
+            st.border = '0';
+            st.outline = 'none';
+            st.resize = 'none';
+            st.overflow = 'hidden';
+            st.whiteSpace = 'nowrap';
+            st.opacity = '0';
+            st.color = 'transparent';
+            st.background = 'transparent';
+            st.caretColor = 'transparent';
+            st.pointerEvents = 'none';
+            st.zIndex = '2147483647';
+            document.body.appendChild(ta);
+            window.__ultracanvasIme = ta;
+
+            var sentText = null;
+            var sentCursor = -1;
+            var composing = '';
+            var send = function(text, cursor) {
+                if (text === sentText && cursor === sentCursor) return;
+                sentText = text;
+                sentCursor = cursor;
+                _UltraCanvasWasmOnImeComposition(stringToNewUTF8(text), cursor);
+            };
+            ta.addEventListener('compositionstart', function() {
+                composing = '';
+                sentText = null;
+                sentCursor = -1;
+                _UltraCanvasWasmOnImeCompositionStart();
+            });
+            ta.addEventListener('compositionupdate', function(e) {
+                composing = e.data || '';
+                send(composing, composing.length);
+            });
+            ta.addEventListener('compositionend', function(e) {
+                var text = e.data || '';
+                composing = '';
+                sentText = null;
+                sentCursor = -1;
+                ta.value = '';
+                _UltraCanvasWasmOnImeCompositionEnd(stringToNewUTF8(text));
+            });
+            ta.addEventListener('input', function(e) {
+                if (e.isComposing) {
+                    if (ta.value === composing) {
+                        var caret = ta.selectionEnd;
+                        if (typeof caret !== 'number' || caret > composing.length) caret = composing.length;
+                        send(composing, caret);
+                    }
+                    return;
+                }
+                if (e.inputType === 'insertText' && e.data) {
+                    _UltraCanvasWasmOnImeText(stringToNewUTF8(e.data));
+                }
+                ta.value = '';
+            });
+            ta.addEventListener('focus', function() { _UltraCanvasWasmOnImeFocus(1); });
+            ta.addEventListener('blur', function() { _UltraCanvasWasmOnImeFocus(0); });
+        });
+
         InitializeWakeUp();
 
         running = false;
@@ -110,12 +232,24 @@ namespace UltraCanvas {
         emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
         emscripten_set_visibilitychange_callback(nullptr, EM_TRUE, nullptr);
         emscripten_set_beforeunload_callback(nullptr, nullptr);
+        imeSwitchingFocus = true;     // removing a focused textarea blurs it: not the window's doing
         EM_ASM({
             if (window.__ultracanvasOnPaste) {
                 document.removeEventListener('paste', window.__ultracanvasOnPaste);
                 window.__ultracanvasOnPaste = null;
             }
+            if (window.__ultracanvasIme) {
+                if (window.__ultracanvasIme.parentNode) {
+                    window.__ultracanvasIme.parentNode.removeChild(window.__ultracanvasIme);
+                }
+                window.__ultracanvasIme = null;
+            }
         });
+        imeSwitchingFocus = false;
+        imeWindow.reset();
+        imeCanvasId.clear();
+        imeActive = false;
+        imeComposing = false;
     }
 
 // ===== MAIN LOOP =====
@@ -176,6 +310,7 @@ namespace UltraCanvas {
         // queued — there is nothing to collect and this must never block.
         // Registered fd watches (WebSocket-proxied sockets etc.) are still
         // polled with a zero timeout so AddFdWatch() clients keep working.
+        UpdateImeTarget();
         auto keys = SnapshotFdWatchKeys();
         if (keys.empty()) {
             return;
@@ -397,6 +532,22 @@ namespace UltraCanvas {
             return EM_FALSE;
         }
 
+        // While the input method textarea has the keyboard, a key the input
+        // method is processing (keyCode 229, or any key mid-composition) is
+        // its business: not delivered as a key press too - its text comes
+        // from compositionend - and not cancelled, or the composition
+        // breaks. A dead key is let through so the browser can compose its
+        // accent.
+        if (app->imeActive) {
+            constexpr unsigned long kImeProcessKeyCode = 229;
+            if (keyEvent->keyCode == kImeProcessKeyCode || app->imeComposing) {
+                return EM_FALSE;
+            }
+            if (eventType == EMSCRIPTEN_EVENT_KEYDOWN && strcmp(keyEvent->key, "Dead") == 0) {
+                return EM_FALSE;
+            }
+        }
+
         UCEvent event = app->ConvertKeyEvent(eventType, keyEvent);
         if (event.virtualKey != UCKeys::Unknown || !event.text.empty()) {
             app->PushEvent(event);
@@ -410,6 +561,189 @@ namespace UltraCanvas {
             return EM_FALSE;
         }
         return EM_TRUE;
+    }
+
+// ===== INPUT METHOD COMPOSITION =====
+
+    namespace {
+        // A UTF-16 offset into UTF-8 text (what the DOM counts) as a byte
+        // offset, never inside a character.
+        int Utf8OffsetOfUtf16(const std::string& text, int units) {
+            size_t i = 0;
+            int counted = 0;
+            while (i < text.size() && counted < units) {
+                const unsigned char c = static_cast<unsigned char>(text[i]);
+                const size_t length = c < 0x80 ? 1 : (c >> 5) == 0x06 ? 2 : (c >> 4) == 0x0E ? 3 : 4;
+                counted += (length == 4) ? 2 : 1;
+                i += length;
+            }
+            return static_cast<int>(std::min(i, text.size()));
+        }
+    }
+
+    void UltraCanvasWASMApplication::UpdateImeTarget() {
+        UltraCanvasWindow* window = GetFocusedWindow();
+        UltraCanvasUIElement* focused = window ? window->GetFocusedElement() : nullptr;
+        const bool wanted = window && window->IsWindowVisible() && focused && focused->DrawsTextComposition();
+        auto current = imeWindow.lock();
+
+        // No window active (the tab or the page lost the keyboard): the
+        // textarea stays the window's keyboard, so its focus coming back
+        // reactivates the window (OnImeFocus), as the canvas's would.
+        if (!window && current) return;
+
+        if (wanted) {
+            if (imeActive && current.get() == window) return;
+            // Take the keyboard from our own canvases (or from nobody), never
+            // from a page element the user is typing into.
+            const int mayTake = EM_ASM_INT({
+                var a = document.activeElement;
+                return (!a || a === document.body || a === window.__ultracanvasIme ||
+                        (a.id && a.id.indexOf('ultracanvas-window-') === 0)) ? 1 : 0;
+            }, 0);
+            if (!mayTake) return;
+            imeWindow = window->GetWindowWeakPtr();
+            imeCanvasId = window->GetCanvasId();
+            imeActive = true;
+            PositionImeInput();
+            SetImeFocus(true, imeCanvasId);
+            return;
+        }
+
+        if (!imeActive) return;
+        // The focused element no longer draws compositions: the canvas gets
+        // the keyboard back (a composition in progress ends as typed text,
+        // which the browser does when the textarea loses focus).
+        imeActive = false;
+        SetImeFocus(false, current ? imeCanvasId : std::string());
+        if (imeComposing) {
+            imeComposing = false;
+            UCEvent end;
+            end.type = UCEventType::TextComposition;
+            end.compositionCursor = 0;
+            PushImeEvent(end);
+        }
+        imeWindow.reset();
+        imeCanvasId.clear();
+    }
+
+    void UltraCanvasWASMApplication::SetImeFocus(bool toInput, const std::string& canvasId) {
+        imeSwitchingFocus = true;
+        EM_ASM({
+            var ta = window.__ultracanvasIme;
+            if (!ta) return;
+            if ($0) {
+                if (document.activeElement !== ta) ta.focus({ preventScroll: true });
+                return;
+            }
+            if (document.activeElement !== ta) return;
+            var canvas = document.getElementById(UTF8ToString($1));
+            if (canvas) {
+                canvas.focus({ preventScroll: true });
+            } else {
+                ta.blur();
+            }
+        }, toInput ? 1 : 0, canvasId.c_str());
+        imeSwitchingFocus = false;
+    }
+
+    void UltraCanvasWASMApplication::PositionImeInput() {
+        // The browser puts its candidate window at the textarea's caret, so
+        // the textarea sits on the element's caret, one line high.
+        auto window = imeWindow.lock();
+        if (!window) return;
+        UltraCanvasUIElement* focused = window->GetFocusedElement();
+        if (!focused) return;
+        Rect2Df caret = focused->GetBoundsInWindow();
+        if (IAccessibleText* text = focused->GetAccessibleTextInterface()) {
+            const Rect2Df at = text->GetCharacterBounds(text->GetCaretOffset());
+            if (at.height > 0.0f) caret = at;
+        }
+        EM_ASM({
+            var ta = window.__ultracanvasIme;
+            var canvas = document.getElementById(UTF8ToString($0));
+            if (!ta || !canvas) return;
+            var box = canvas.getBoundingClientRect();
+            var line = Math.max(1, Math.round($3));
+            ta.style.left = Math.round(box.left + window.scrollX + $1) + 'px';
+            ta.style.top = Math.round(box.top + window.scrollY + $2) + 'px';
+            ta.style.height = line + 'px';
+            ta.style.fontSize = line + 'px';
+            ta.style.lineHeight = line + 'px';
+        }, imeCanvasId.c_str(), caret.x, caret.y, caret.height);
+    }
+
+    void UltraCanvasWASMApplication::PushImeEvent(UCEvent& event) {
+        auto window = imeWindow.lock();
+        if (!window) return;
+        event.targetWindow = window;
+        event.nativeWindowHandle = window->GetNativeHandle();
+        PushEvent(event);
+    }
+
+    bool UltraCanvasWASMApplication::PrepareImeForClick(UltraCanvasWindowBase* window) {
+        if (!imeActive) return false;
+        if (imeComposing) {
+            // A click ends the composition, keeping what was composed:
+            // taking the focus away and back makes the browser commit it
+            // (compositionend), before the click is delivered.
+            imeSwitchingFocus = true;
+            EM_ASM({
+                var ta = window.__ultracanvasIme;
+                if (ta && document.activeElement === ta) {
+                    ta.blur();
+                    ta.focus({ preventScroll: true });
+                }
+            }, 0);
+            imeSwitchingFocus = false;
+        }
+        auto current = imeWindow.lock();
+        if (!window || current.get() != window) return false;
+        SetImeFocus(true, imeCanvasId);
+        return true;
+    }
+
+    void UltraCanvasWASMApplication::OnImeCompositionStart() {
+        imeComposing = true;
+        PositionImeInput();
+    }
+
+    void UltraCanvasWASMApplication::OnImeComposition(const std::string& text, int cursorUtf16) {
+        UCEvent event;
+        event.type = UCEventType::TextComposition;
+        event.text = text;
+        event.compositionCursor = Utf8OffsetOfUtf16(text, std::max(0, cursorUtf16));
+        PushImeEvent(event);
+    }
+
+    void UltraCanvasWASMApplication::OnImeCompositionEnd(const std::string& text) {
+        imeComposing = false;
+        UCEvent end;
+        end.type = UCEventType::TextComposition;
+        end.compositionCursor = 0;
+        PushImeEvent(end);
+        OnImeText(text);
+    }
+
+    void UltraCanvasWASMApplication::OnImeText(const std::string& text) {
+        // Committed text: a KeyDown with `text`, like a typed character.
+        if (text.empty()) return;
+        UCEvent event;
+        event.type = UCEventType::KeyDown;
+        event.virtualKey = UCKeys::Unknown;
+        event.text = text;
+        event.character = (text.size() == 1 && static_cast<unsigned char>(text[0]) < 128) ? text[0] : 0;
+        PushImeEvent(event);
+    }
+
+    void UltraCanvasWASMApplication::OnImeFocus(bool focused) {
+        // The textarea stands in for the canvas: the page or tab losing and
+        // regaining the keyboard is the window deactivating and activating,
+        // as a canvas focus change is (OnFocusCallback).
+        if (imeSwitchingFocus) return;
+        UCEvent event;
+        event.type = focused ? UCEventType::WindowFocus : UCEventType::WindowBlur;
+        PushImeEvent(event);
     }
 
 // ===== FONTS =====

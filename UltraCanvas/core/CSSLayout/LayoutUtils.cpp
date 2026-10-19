@@ -1,14 +1,42 @@
 // core/CSSLayout/LayoutUtils.cpp
 // Shared helpers: dimension resolution, edge resolution, constraint clamping.
+// Version: 1.3.0 - hasSetSize, auditKeptSize
 // Version: 1.2.0 - resolveDimension adds a Dimension's offsetPx
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/LayoutUtils.h"
+#include "UltraCanvasPathUtf8.h"   // GetEnvUtf8
 #include <algorithm>
+#include <cstdio>
+#include <mutex>
+#include <set>
+#include <string>
+#include <utility>
 
 namespace UltraCanvas {
     namespace CSSLayout {
+
+        bool hasSetSize(const Dimension& dim) {
+            if (dim.isAuto()) return false;
+            if (dim.unit == DimensionUnit::Pixels && dim.value + dim.offsetPx < 0.f) return false;
+            return true;
+        }
+
+        void auditKeptSize(const Element& element, const char* axis, float setSize,
+                           float stretchSize) {
+            static const bool enabled = !GetEnvUtf8("ULTRACANVAS_LAYOUT_AUDIT").empty();
+            if (!enabled) return;
+            static std::mutex mutex;
+            // Keyed by address and id, so an element at a reused address is told too.
+            static std::set<std::pair<const Element*, std::string>> told;
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!told.insert({&element, element.id + "/" + axis}).second) return;
+            std::fprintf(stderr,
+                         "ULTRACANVAS_LAYOUT_AUDIT: '%s' keeps its set %s of %.0f px; its container "
+                         "would have stretched it to %.0f px\n",
+                         element.id.c_str(), axis, setSize, stretchSize);
+        }
 
         std::optional<float> resolveDimension(const Dimension& dim,
                                               std::optional<float> parentExtent,

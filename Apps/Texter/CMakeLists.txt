@@ -173,6 +173,13 @@ set(ULTRATEXTER_SOURCES
 add_executable(UltraTexter
         ${ULTRATEXTER_SOURCES}
 )
+# One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+# The root build has included the module already; a build of this folder alone
+# includes it here.
+if(NOT COMMAND ultracanvas_single_instance)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasSingleInstance.cmake")
+endif()
+ultracanvas_single_instance(UltraTexter)
 
 # Include directories
 target_include_directories(UltraTexter PRIVATE
@@ -237,6 +244,12 @@ set_target_properties(UltraTexter PROPERTIES
         OUTPUT_NAME "UltraTexter"
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+# Windows Release builds open no console window beside the editor, as the
+# Texter target of the root build does; --help and --version still print into
+# the prompt it was typed at (cmake/UltraCanvasWindowsGuiApp.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
+ultracanvas_windows_gui_app(UltraTexter)
 
 # ===== INSTALLATION =====
 install(TARGETS UltraTexter

@@ -6,13 +6,18 @@
 // text via shared strings, booleans, errors, dates/times/percentages/
 // currency mapped through number formats), formulas, merged cells, column
 // widths/row heights and the same CellStyle subset (font, solid fill,
-// borders, alignment, wrap).
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// borders, alignment, wrap). Number formats are classified by
+// ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
+// .xls reader.
+// Version: 1.2.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetXls.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOfficeEncryption.h"
+#include "UltraCanvasSpreadsheetExcelFormula.h"   // Excel's Sheet!A1 <-> 'Sheet'.A1
 
 #include "tinyxml2.h"
 
@@ -101,54 +106,6 @@ std::string CellRef(int row, int col) {
     return ColumnLetters(col) + std::to_string(row + 1);
 }
 
-// ===== NUMBER FORMAT CLASSIFICATION =====
-
-// Deduces the value category from a numFmt id or format code. Excel stores
-// dates/times/percentages as plain numbers — only the format reveals them.
-NumberFormatCategory CategoryForNumFmt(int numFmtId, const std::string& formatCode) {
-    if ((numFmtId >= 14 && numFmtId <= 17)) return NumberFormatCategory::Date;
-    if (numFmtId == 22) return NumberFormatCategory::DateTime;
-    if (numFmtId >= 18 && numFmtId <= 21) return NumberFormatCategory::Time;
-    if (numFmtId >= 45 && numFmtId <= 47) return NumberFormatCategory::Time;
-    if (numFmtId == 9 || numFmtId == 10) return NumberFormatCategory::Percentage;
-    if (numFmtId == 11 || numFmtId == 48) return NumberFormatCategory::Scientific;
-    if (numFmtId == 49) return NumberFormatCategory::Text;
-    if ((numFmtId >= 5 && numFmtId <= 8) || numFmtId == 42 || numFmtId == 44) {
-        return NumberFormatCategory::Currency;
-    }
-    if (numFmtId >= 1 && numFmtId <= 4) return NumberFormatCategory::Number;
-    if (numFmtId >= 37 && numFmtId <= 40) return NumberFormatCategory::Number;
-
-    if (!formatCode.empty()) {
-        // Custom code: strip quoted literals, then look for telltale tokens.
-        std::string code;
-        bool inQuote = false;
-        for (char c : formatCode) {
-            if (c == '"') inQuote = !inQuote;
-            else if (!inQuote) code.push_back(static_cast<char>(std::tolower(
-                static_cast<unsigned char>(c))));
-        }
-        if (code.find('%') != std::string::npos) return NumberFormatCategory::Percentage;
-        if (formatCode.find("[$") != std::string::npos
-            || formatCode.find_first_of("$\xE2\xC2") != std::string::npos) {
-            // "[$..]" locale currency, '$', or a UTF-8 currency symbol lead byte
-            if (code.find('0') != std::string::npos) return NumberFormatCategory::Currency;
-        }
-        bool hasDate = code.find('y') != std::string::npos
-                       || code.find('d') != std::string::npos;
-        bool hasTime = code.find('h') != std::string::npos
-                       || code.find('s') != std::string::npos;
-        if (hasDate && hasTime) return NumberFormatCategory::DateTime;
-        if (hasDate) return NumberFormatCategory::Date;
-        if (hasTime) return NumberFormatCategory::Time;
-        if (code.find('e') != std::string::npos
-            && code.find('0') != std::string::npos) return NumberFormatCategory::Scientific;
-        if (code.find('0') != std::string::npos
-            || code.find('#') != std::string::npos) return NumberFormatCategory::Number;
-    }
-    return NumberFormatCategory::General;
-}
-
 const char* BorderStyleName(BorderStyle style) {
     switch (style) {
         case BorderStyle::Thin: return "thin";
@@ -195,10 +152,26 @@ class XlsxLoader {
 public:
     explicit XlsxLoader(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
-    bool Load(const std::string& filePath, std::string& error) {
-        if (!zip_.Open(filePath)) {
-            error = "The file is not a valid Excel workbook (.xlsx): " + filePath;
-            return false;
+    bool Load(const std::string& filePath, const std::string& password, std::string& error) {
+        // A password-protected workbook is a compound file holding the
+        // package encrypted (UltraCanvasOfficeEncryption.h), not a ZIP.
+        std::vector<uint8_t> package;
+        switch (DecryptOfficePackageFile(filePath, password, package, error)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                if (!zip_.Open(filePath)) {
+                    error = "The file is not a valid Excel workbook (.xlsx): " + filePath;
+                    return false;
+                }
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!zip_.OpenFromMemory(std::move(package))) {
+                    error = "The decrypted workbook is not a valid Excel workbook (.xlsx): " + filePath;
+                    return false;
+                }
+                break;
+            default:
+                error += ": " + filePath;
+                return false;
         }
         std::string workbookXml;
         if (!zip_.ReadEntry("xl/workbook.xml", workbookXml)) {
@@ -408,7 +381,7 @@ private:
             std::string formatCode;
             auto custom = customFormats.find(numFmtId);
             if (custom != customFormats.end()) formatCode = custom->second;
-            NumberFormatCategory category = CategoryForNumFmt(numFmtId, formatCode);
+            NumberFormatCategory category = ExcelNumberFormatCategory(numFmtId, formatCode);
             style.numberFormat.category = category;
             if (!formatCode.empty()) style.numberFormat.formatCode = formatCode;
             cellStyles_.push_back(style);
@@ -523,7 +496,8 @@ private:
 
         bool hasFormula = false;
         if (f && f->GetText()) {
-            std::string formula = f->GetText();
+            // Excel's Data!B5 is the engine's 'Data'.B5 (and _xlfn.IFS its IFS).
+            std::string formula = ExcelFormulaToNative(f->GetText());
             if (!formula.empty() && formula[0] != '=') formula = "=" + formula;
             cell->SetFormula(formula);
             hasFormula = true;
@@ -611,7 +585,7 @@ class XlsxSaver {
 public:
     explicit XlsxSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
-    bool Save(const std::string& filePath, std::string& error) {
+    bool Save(const std::string& filePath, const std::string& password, std::string& error) {
         // Sheets are generated first so the style/string tables are complete
         // before styles.xml and sharedStrings.xml are written.
         std::vector<std::string> sheetXmls;
@@ -624,7 +598,11 @@ public:
             return false;
         }
 
-        if (!zip_.Open(filePath)) {
+        // With a password the package is built in memory and encrypted into
+        // the file (UltraCanvasOfficeEncryption.h); nothing unencrypted is
+        // written to disk.
+        const bool encrypt = !password.empty();
+        if (encrypt ? !zip_.OpenInMemory() : !zip_.Open(filePath)) {
             error = "Cannot create file: " + filePath;
             return false;
         }
@@ -643,7 +621,7 @@ public:
             error = "Failed to write workbook package: " + zip_.GetLastError();
             return false;
         }
-        return true;
+        return !encrypt || EncryptOfficePackageToFile(zip_.TakeBytes(), password, filePath, error);
     }
 
 private:
@@ -849,7 +827,8 @@ private:
 
         std::string formula;
         if (cell.HasFormula()) {
-            formula = cell.GetFormulaText();
+            // Back into Excel's syntax: 'Data'.B5 is Data!B5 to Excel.
+            formula = NativeFormulaToExcel(cell.GetFormulaText());
             if (!formula.empty() && formula[0] == '=') formula = formula.substr(1);
         }
 
@@ -1110,22 +1089,24 @@ private:
 
 // ===== SPREADSHEET ENTRY POINTS =====
 
-bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath, const std::string& password) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     XlsxLoader loader(this);
-    if (!loader.Load(filePath, lastError_)) {
+    if (!loader.Load(filePath, password, lastError_)) {
         return false;
     }
+    ClearUndoHistory();   // the loaded document starts a fresh history
     Recalculate();
     RequestAutoFitForUnsizedColumns();
     Invalidate();
     return true;
 }
 
-bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath, const std::string& password) {
     lastError_.clear();
     XlsxSaver saver(this);
-    return saver.Save(filePath, lastError_);
+    return saver.Save(filePath, password, lastError_);
 }
 
 } // namespace UltraCanvas

@@ -14,8 +14,9 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
-// Version: 1.2.1
-// Last Modified: 2026-10-01
+// Version: 1.3.0 - Open, Save as and Insert image offer FileLoader's types; saves through SaveTextDocument
+// Version: 1.2.2
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -28,7 +29,6 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath, OpenURL
-#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -457,16 +457,12 @@ namespace UltraCanvas {
         // ===== ROW 1: DOCUMENT AND STRUCTURE =====
         auto documentBar = MakeToolbar("wysiwygDocumentBar", 72);
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygOpen", "Open…", Icon("folder-open.svg"),
+        MakeToolbarButton(documentBar->AddButton("wysiwygOpen", "Open", Icon("folder-open.svg"),
             [raw]() {
                 FileDialogOptions options;
-                options.SetTitle("Open Document")
-                       .AddFilter("Documents", std::vector<std::string>{"odt", "docx", "doc", "tex", "md"})
-                       .AddFilter("OpenDocument Text (*.odt)", "odt")
-                       .AddFilter("Word Document (*.docx)", "docx")
-                       .AddFilter("LaTeX (*.tex)", "tex")
-                       .AddFilter("Markdown (*.md)", "md")
-                       .AddFilter("All files", "*");
+                options.SetTitle("Open Document");
+                UltraCanvasFileLoader::AddTextDocumentLoadTypes(options);
+                options.AddFilter("All files", "*");
 
                 UltraCanvasFileLoader::OpenFileDialog(options,
                     [raw](DialogResult result, const std::string& path) {
@@ -488,15 +484,13 @@ namespace UltraCanvas {
                                        + " — " + std::to_string(document->blocks.size()) + " blocks, "
                                        + std::to_string(document->media.size()) + " images");
                     });
-            }), "Open an .odt / .docx / .tex / .md document");
+            }), "Open a document: ODT, DOCX, DOC, LaTeX, Markdown or text");
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygSave", "Save as…", Icon("save.svg"),
+        MakeToolbarButton(documentBar->AddButton("wysiwygSave", "Save as", Icon("save.svg"),
             [raw]() {
                 FileDialogOptions options;
-                options.SetTitle("Save Document As")
-                       .SetDefaultFileName("document.odt")
-                       .AddFilter("OpenDocument Text (*.odt)", "odt")
-                       .AddFilter("Word Document (*.docx)", "docx");
+                options.SetTitle("Save Document As").SetDefaultFileName("document.odt");
+                UltraCanvasFileLoader::AddTextDocumentSaveTypes(options);
 
                 UltraCanvasFileLoader::SaveFileDialog(options,
                     [raw](DialogResult result, const std::string& path) {
@@ -508,7 +502,7 @@ namespace UltraCanvas {
                         // back the document it has been editing and the writer
                         // takes it from there.
                         std::string error;
-                        if (!UCWordDocumentIO::Save(path, *raw->edit->GetDocument(), error)) {
+                        if (!UltraCanvasFileLoader::SaveTextDocument(*raw->edit->GetDocument(), path, error)) {
                             raw->SetStatus("Could not save: " + error);
                             return;
                         }
@@ -534,9 +528,9 @@ namespace UltraCanvas {
         MakeToolbarButton(documentBar->AddButton("wysiwygImage", "", Icon("md-image.svg"),
             [raw]() {
                 FileDialogOptions options;
-                options.SetTitle("Insert Image")
-                       .AddFilter("Images", std::vector<std::string>{"png", "jpg", "jpeg", "gif", "bmp"})
-                       .AddFilter("All files", "*");
+                options.SetTitle("Insert Image");
+                UltraCanvasFileLoader::AddLoadTypes(options, "Images", {MediaFormatCategory::Bitmap});
+                options.AddFilter("All files", "*");
                 UltraCanvasFileLoader::OpenFileDialog(options,
                     [raw](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) return;
@@ -730,8 +724,8 @@ namespace UltraCanvas {
         auto notes = std::make_shared<UltraCanvasLabel>("wysiwygNotes", 20, 704, 960, 56);
         notes->SetText("Known limits: columns in a multi-column section are not balanced, a right-to-left "
                        "paragraph keeps left-to-right indents, the input method's candidate window is not "
-                       "placed at the caret, and macOS has no screen-reader bridge yet (Linux and Windows "
-                       "have one). See UltraCanvasRichTextEdit.md.");
+                       "placed at the caret, and screen readers are tested on Linux only so far (the Windows "
+                       "and macOS bridges are untested). See UltraCanvasRichTextEdit.md.");
         notes->SetFontSize(11);
         notes->SetTextColor(Color(120, 120, 120, 255));
         root->AddChild(notes);
@@ -979,18 +973,16 @@ namespace UltraCanvas {
         MakeToolbarButton(bar->AddButton("wysiwygIntlRedo", "", Icon("redo.svg"),
             [editor]() { editor->Redo(); }), "Redo (Ctrl+Y)");
         bar->AddSeparator();
-        MakeToolbarButton(bar->AddButton("wysiwygIntlSave", "Save as…", Icon("save.svg"),
+        MakeToolbarButton(bar->AddButton("wysiwygIntlSave", "Save as", Icon("save.svg"),
             [editor, statusLabel]() {
                 FileDialogOptions options;
-                options.SetTitle("Save Document As")
-                       .SetDefaultFileName("multilingual.odt")
-                       .AddFilter("OpenDocument Text (*.odt)", "odt")
-                       .AddFilter("Word Document (*.docx)", "docx");
+                options.SetTitle("Save Document As").SetDefaultFileName("multilingual.odt");
+                UltraCanvasFileLoader::AddTextDocumentSaveTypes(options);
                 UltraCanvasFileLoader::SaveFileDialog(options,
                     [editor, statusLabel](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) return;
                         std::string error;
-                        if (!UCWordDocumentIO::Save(path, *editor->GetDocument(), error)) {
+                        if (!UltraCanvasFileLoader::SaveTextDocument(*editor->GetDocument(), path, error)) {
                             statusLabel->SetText("Could not save: " + error);
                             return;
                         }

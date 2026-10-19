@@ -225,6 +225,15 @@ protected:
 
         outCapabilities = described.capabilities;
         documentFormat = ChooseFormat(described.documentFormats);
+
+        // A scanner named only by its address in ULTRACANVAS_ESCL_SCANNERS
+        // is called what it says it is now, as an IPP printer is once it has
+        // described itself - and so is a certificate trusted for it.
+        IODeviceInfo info = GetDeviceInfo();
+        if (FillInEsclIdentity(info, described)) {
+            UpdateDeviceInfo(info);
+            Internal::NoteDeviceTlsName(info.connectionPath, info.name);
+        }
         return IODeviceResult::Ok(GetDeviceId());
     }
 

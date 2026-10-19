@@ -120,10 +120,14 @@ add fields without breaking older readers. See
 
 ## Where the vault lives
 
-`$XDG_DATA_HOME/UltraPassword/vault.upwvault`, else
-`%APPDATA%\UltraPassword\vault.upwvault` on Windows, else
-`~/.local/share/UltraPassword/vault.upwvault`. `--vault PATH` uses another
-file.
+`$XDG_DATA_HOME/UltraPassword/vault.upwvault` when `$XDG_DATA_HOME` is set, else
+`%APPDATA%\UltraPassword\vault.upwvault` on Windows,
+`~/Library/Application Support/UltraPassword/vault.upwvault` on macOS and
+`~/.local/share/UltraPassword/vault.upwvault` elsewhere - the same places
+UltraMail and the desktop's clipboard history keep their data
+(`Apps/UltraPassword/core/VaultLocation.h`). Up to 0.1.2 the macOS vault was
+in `~/.local/share` too; the first start of a newer version moves that folder
+into place, whole. `--vault PATH` uses another file.
 
 ## Building and testing
 

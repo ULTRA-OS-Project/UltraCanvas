@@ -12,7 +12,7 @@
 // turning print options into the attributes a job carries, and working out
 // whether a document goes to the printer as it is or has to be drawn first.
 // UltraCanvasIODevicePrinterIPP.cpp holds the part that needs a network.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -288,6 +288,52 @@ std::string IppNormalizePrinterUri(const std::string& address);
 // host address gives none.
 std::vector<std::string> IppUrisForWindowsPort(const std::string& portName,
                                                const std::string& hostAddress);
+
+// A host in one spelling, so that two spellings of one address compare
+// equal: lower case, no DNS root dot ("printer.local."), no IPv6 brackets.
+std::string IppNormalizeHost(const std::string& host);
+
+// The host of a URI ("http://10.0.0.5:3911/" gives "10.0.0.5"), normalized as
+// IppNormalizeHost does. Empty when it is not a URI.
+std::string IppUriHost(const std::string& uri);
+
+// One Windows device node, as the spooler backend reads it through SetupAPI.
+// Only what finding a WSD printer's address takes.
+struct IppWindowsDeviceNode {
+    std::string containerId;                 // DEVPKEY_Device_ContainerId
+    std::string friendlyName;                // DEVPKEY_Device_FriendlyName
+    bool isPrintQueue = false;               // device class PrintQueue
+    std::vector<std::string> ipAddresses;    // PKEY_PNPX_IpAddress
+    std::vector<std::string> xAddrs;         // PKEY_PNPX_XAddrs: WS-Discovery URLs
+    std::string location;                    // DEVPKEY_Device_LocationInfo
+};
+
+// The network addresses of the printer behind Windows queue `queueName`.
+//
+// A WSD port carries no address the spooler gives out, but Plug and Play
+// puts the queue's device node and the WSD device it prints to in one
+// *container* - the box on the network - and the WSD device node has the
+// printer's addresses: PnP-X's IpAddress, or failing that, the host of its
+// WS-Discovery URLs or of its location. So the queue's container is looked
+// up by its name, and the addresses read off the other nodes in it. IPv4
+// first, each once.
+//
+// A queue in no container, or in the computer's own ({00000000-0000-0000-
+// ffff-ffffffffffff}, which every built-in device shares), gives none.
+std::vector<std::string> IppHostsForWindowsQueue(const std::string& queueName,
+                                                 const std::vector<IppWindowsDeviceNode>& nodes);
+
+// Whether a printer found under DNS-SD - at `mdnsHost`, answering at every
+// address in `mdnsAddresses` (the mDNS plugin's "ip" list: IPv4 and IPv6,
+// from every interface) - is one a Windows queue already reaches, given the
+// hosts the queues print to. Any one address matching is enough, so a queue
+// set up by IPv4 address is matched even when the printer's IPv6 answer came
+// first. The Windows counterpart of IppCupsQueueReachesPrinter: the
+// queue is the system's own way to the printer, so the IPP backend leaves it
+// to the spooler rather than listing it twice.
+bool IppPrinterIsWindowsQueue(const std::vector<std::string>& queueHosts,
+                              const std::string& mdnsHost,
+                              const std::vector<std::string>& mdnsAddresses);
 
 // The printer URI a DNS-SD advertisement describes. `rp` in the TXT record is
 // the resource path ("ipp/print"); absent, the printer is at the root, which

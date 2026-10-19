@@ -1,5 +1,28 @@
 # FileLoader - Universal File Handling for Modern Applications
 
+## Contents
+
+- [Simplify File Management Across All Formats](#simplify-file-management-across-all-formats)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Generic File Loading](#generic-file-loading)
+  - [Typed Object Loaders](#typed-object-loaders)
+  - [Editable Vector Documents](#editable-vector-documents)
+  - [Save Settings](#save-settings)
+  - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [Transparent Decompression](#transparent-decompression)
+  - [Runtime Format Inventory](#runtime-format-inventory)
+  - [A Dialog's File Types](#a-dialogs-file-types)
+  - [Extensible Plugin Architecture](#extensible-plugin-architecture)
+- [Supported Formats](#supported-formats)
+- [Why FileLoader?](#why-fileloader)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+  - [For Users](#for-users)
+- [Perfect For](#perfect-for)
+- [Get Started](#get-started)
+- [The Bottom Line](#the-bottom-line)
+
 ## Simplify File Management Across All Formats
 
 **FileLoader** is a cross-platform file handling facade that reduces the
@@ -53,16 +76,38 @@ listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
 display), and the file-name field and file-type dropdown
 below them.
 
+<!-- doc-check: FileDialogOptions opts; void ShowPicture(std::shared_ptr<UCImage> image); void Play(std::shared_ptr<UCAudio> audio); void ShowDocument(std::shared_ptr<UCRichDocument> document); void ShowError(const std::string& message); -->
 ```cpp
 // Decode an image into a UCImage
-UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) { ... });
+UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) {
+    if (r.IsSuccess()) ShowPicture(img);
+    else if (!r.loadError.empty()) ShowError(r.loadError);   // empty: cancelled
+});
 
 // Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC always; OGG/Opus with codec libs)
-UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) { ... });
+UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
+    if (r.IsSuccess()) Play(audio);
+});
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
-UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) { ... });
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
+// a PowerPoint deck, .pptx, as an outline of its slides).
+// A password-protected .docx asks for its password before it loads.
+UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
+    if (r.IsSuccess()) ShowDocument(doc);
+});
 ```
+
+A file saved with *Encrypt with Password* - an `.xlsx`, `.docx` or `.pptx` -
+needs its password before any loader can read it.
+`RequestDocumentPassword(path, parent, onResult)` asks for it in a password
+field, checks it, and asks again after a wrong one; it calls straight back
+with `(true, "")` for a file that has none. Pass what it hands back to the
+loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
+`LoadFromFile(path, password)`. Saving works the same way:
+`RequestNewDocumentPassword(parent, onResult)` asks for a new password twice,
+and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
+`SaveToFile(path, password)` writes the file encrypted. See
+[UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
 ### Editable Vector Documents
 
@@ -73,6 +118,8 @@ writers are the Vector plugin's converters (SVG, XAR, EMF, WMF, DXF, DWG, AI,
 EPS, CDR, PDF), installed by `RegisterVectorFormatsPlugin()`:
 
 ```cpp
+#include "UltraCanvasVectorFormatsPlugin.h"          // the Vector plugin
+
 RegisterVectorFormatsPlugin();                       // once, at start-up
 
 std::string error;
@@ -88,6 +135,76 @@ opts.AddFilter("Drawings", UltraCanvasFileLoader::GetVectorLoadExtensions());
 `UCImage` also opens `.svg` (through librsvg), but as pixels — right for a
 viewer, useless to an editor. Use `LoadVectorDocument` whenever the drawing
 is to be changed or written back.
+
+### Save Settings
+How a format is written - JPEG's quality, PNG's compression, TIFF's codec - is
+described per format (`UltraCanvasFileSaveSettings.h`), so one dialog can offer
+the settings of any of them, and the values the user chose are kept for every
+application, between runs. The framework's Save dialog has a **Settings**
+button on its type row that edits the chosen type's settings, and the
+writers read them back - `UCRasterDocument::SaveToFile` does so on its own:
+
+```cpp
+if (UltraCanvasFileLoader::HasSaveSettings("photo.jpg"))
+    UltraCanvasFileLoader::ShowSaveSettingsDialog("photo.jpg", window.get());
+
+FileSaveSettings jpeg = UltraCanvasFileLoader::GetSaveSettings("jpg");
+int quality = jpeg.GetInt("quality", 85);
+
+UCImageSave::ImageExportOptions options;                 // the image writer's, ready made
+UltraCanvasFileLoader::GetImageExportOptions("out.webp", options);
+```
+
+The bitmap formats the image writer takes options for are built in; a plugin
+or an application adds its own with `RegisterSaveFormat`. A caller that passes
+the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
+a bitmap type's settings, for that save only: the size comes back through the
+`SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
+`GetImageExportOptions(path, size, options)` writes at it. A drawing (SVG,
+a page of shapes) has no pixel size of its own: `SetDrawingSize` gives the
+size it is drawn at, offers the same row, and the caller draws it again at the
+size chosen. See *Save settings*
+in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
+
+### A Drawing Saved as a Bitmap
+Every file a user loads or saves in an UltraCanvas application goes through
+FileLoader - only a program's own internal files (settings, caches, logs) are
+read and written directly. That is what puts every format this build reads
+and writes in front of the user, and the conversions between them. A
+drawing's Export is two calls: the Save dialog's types for it - every vector
+writer and every bitmap type this build writes, with the page's size as a
+drawing so a bitmap type's Settings offer any size - and the save, which
+draws the page at the size chosen (a drawing has no pixel size of its own,
+so it is sharp at any) and writes it with the format's save settings:
+
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> drawing; void ShowError(const std::string&); -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export drawing");
+UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *drawing);
+UltraCanvasFileLoader::SaveFileDialog(opts, [drawing](DialogResult r, const std::string& path,
+                                                      const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    std::string error;
+    if (!UltraCanvasFileLoader::SaveVectorDocument(*drawing, path, size, error))
+        ShowError(error);
+});
+```
+
+`GetVectorDocumentPixelSize(document)` is the size a page starts at (96 DPI;
+the model is in points), and `CanSaveImage(extensionOrPath)` says whether
+this build writes a bitmap type. A picture's Save offers
+`AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
+and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
+(see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
+by the framework's own libvips plugins, and GIF is written on every build:
+where libvips has no GIF writer of its own (cgif - not in the MSYS2 package or
+the macOS libraries), the framework's encoder takes the save. An AVIF or HEIC type is offered to
+save only where libheif can encode it, and to open only where it can decode
+it: libvips' HEIF loader takes both file endings wherever libheif is, but
+libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
+with an AV1 one (aomdec, dav1d). The build asks libheif when its headers are
+installed; without them, the inventory goes by the loader's file endings.
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -132,17 +249,63 @@ auto imgSave = UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCate
 auto info = UltraCanvasSupportedFormats::FindByExtension(".heic");
 ```
 
+### A Dialog's File Types
+An application's Open and Save dialogs offer the inventory, never a list of
+their own (the rule in `AGENTS.md`), so every type this build reads or
+writes is on offer and nothing it cannot:
+
+<!-- doc-check: std::shared_ptr<UCRichDocument> letter; void ShowError(const std::string& message); -->
+```cpp
+// Open: one filter holding every type this build reads in the categories
+FileDialogOptions open;
+open.SetTitle("Import media");
+UltraCanvasFileLoader::AddLoadTypes(open, "Video, pictures and sound",
+    {MediaFormatCategory::Video, MediaFormatCategory::Bitmap, MediaFormatCategory::Audio});
+open.AddFilter("All files", "*");
+
+// Save: one filter per type it writes, under its name - the type the
+// proposed name ends in first, since the dialog starts on the first
+FileDialogOptions save;
+save.SetDefaultFileName("table.ods");
+UltraCanvasFileLoader::AddSaveTypes(save, MediaFormatCategory::Spreadsheet);
+
+// A text document: what LoadTextDocument reads (ODT, DOCX, DOC, LaTeX,
+// Markdown, text - not the PDFs and e-books the Document category also
+// holds) and what SaveTextDocument writes (ODT, DOCX)
+FileDialogOptions saveLetter;
+saveLetter.SetDefaultFileName("letter.odt");
+UltraCanvasFileLoader::AddTextDocumentSaveTypes(saveLetter);
+UltraCanvasFileLoader::SaveFileDialog(saveLetter, [document = letter](DialogResult r, const std::string& path) {
+    std::string error;
+    if (r == DialogResult::OK && !UltraCanvasFileLoader::SaveTextDocument(*document, path, error))
+        ShowError(error);
+});
+```
+
+`AddTextDocumentLoadTypes(opts)` is the Open side: one "Documents" filter,
+then each type under its name. A codec an application brings itself joins
+the lists once it is registered: UltraVideo registers what its FFmpeg engine
+reads and writes (`VideoFX_GetFileFormats`) with `RegisterMediaCodec`, and
+FileLoader's Video and Audio lists then hold MKV, WebM and AVI on a macOS
+whose platform backend reads only MP4, MOV and 3GP. The other way round, it
+hands its engine the framework's image reader (`UCImageRaster`, through
+`VideoFX_SetPictureReader`) for the picture types FileLoader reads and FFmpeg
+does not open whole, so a phone's HEIC comes in as the whole photo.
+
 ### Extensible Plugin Architecture
 Add support for proprietary or specialized graphics formats without modifying
 core code. Register an `IGraphicsPlugin` with the graphics plugin registry and
 its extensions immediately show up in the format inventory:
 
+<!-- doc-check: std::shared_ptr<IGraphicsPlugin> myFormatPlugin; -->
 ```cpp
+#include "Models/STL/UltraCanvasSTLPlugin.h"
+
 // Register a graphics plugin (e.g. the built-in STL model plugin)
 RegisterSTLPlugin();
 
-// ...or your own
-UltraCanvasGraphicsPluginRegistry::RegisterPlugin(std::make_shared<MyFormatPlugin>());
+// ...or your own: an IGraphicsPlugin implementation
+UltraCanvasGraphicsPluginRegistry::RegisterPlugin(myFormatPlugin);
 ```
 
 ---
@@ -159,7 +322,12 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
-**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save)
+**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
+
+**Layered images** (`MediaFormatCategory::LayeredImage`): `.ucd`, the UCD 2.1
+layered image (load + save, no libvips needed), and `.ucraster`, the UltraPaint
+project (load + save, libvips) - files that keep an image's layers and its text
+layers as text, read and written by `UCRasterDocument`.
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*
@@ -201,6 +369,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 FileLoader is part of the core library — no separate initialization is needed
 beyond creating the application. Load a file and check the result:
 
+<!-- doc-check: void ProcessBytes(const std::vector<uint8_t>& bytes); -->
 ```cpp
 auto result = UltraCanvasFileLoader::LoadFile("any_file.ext");
 if (result.success) {

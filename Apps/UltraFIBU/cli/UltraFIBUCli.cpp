@@ -33,7 +33,9 @@
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNr.h"
 
+#include <algorithm>  // std::sort; libc++ no longer brings it in through <string>
 #include <cstdio>
+#include <cstdlib>   // std::atoi, std::atol, std::atoll
 #include <cstring>
 #include <string>
 #include <vector>

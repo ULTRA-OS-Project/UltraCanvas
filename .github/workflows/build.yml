@@ -184,9 +184,9 @@ jobs:
       # platforms, MSYS2 included, and so actions/cache can name it directly.
       # CCACHE_MAXSIZE is deliberately small: GitHub allows 10 GB of cache per
       # REPOSITORY and evicts least-recently-used, and this matrix saves six
-      # caches per run, so a default 5 GB per leg would evict the other legs'
-      # entries (and llms-txt's, and ui-reuse's) on every push. 500 MB x 6 legs
-      # leaves the budget with room.
+      # caches per run on main, so a default 5 GB per leg would evict the
+      # other legs' entries (and llms-txt's, and ui-reuse's) on every push.
+      # 500 MB x 6 legs leaves the budget with room.
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
       # Compare the compiler by content rather than mtime: the runner image
@@ -236,13 +236,49 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       # ===== Windows: MSYS2/MinGW dependency management =====
+      # The action only unpacks the MSYS2 release here: no package traffic.
+      # The database sync, the upgrade and the package install run in the
+      # step after it, under a retry, because the action has neither a retry
+      # nor a mirror setting and pacman abandons a mirror that stays below
+      # 1 byte/s for 10 s. On 2026-10-08 a slow mirror.msys2.org failed both
+      # Windows legs of #740 inside the action, in the same minute, before a
+      # line of the tree was compiled.
       - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
+        id: msys2
         uses: msys2/setup-msys2@v2
+        # Normally 2-5 min; 7 at most in the runs of 2026-10-06/07.
+        timeout-minutes: 30
         with:
           msystem: ${{ matrix.msystem }}
-          update: true
-          install: >-
+          update: false
+          cache: false        # the package cache is ours, below
+
+      # The downloaded packages, as the action cached them when it did the
+      # install: any earlier cache of this MSYSTEM is restored (pacman then
+      # fetches only what changed), and a new one is saved when the set of
+      # files changed. Pruned to one version per package, so it stays near
+      # the size of one install.
+      - name: Restore the MSYS2 package cache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
+          key: msys2-pkgs-${{ matrix.msystem }}-
+          restore-keys: msys2-pkgs-${{ matrix.msystem }}-
+
+      # -ffmpeg is VideoFX's engine: without it VideoFX builds from its stub,
+      # and the package's UltraVideo starts but opens, plays and exports
+      # nothing. MSYS2 builds FFmpeg with --enable-gpl --enable-version3
+      # (libx264, libx265), so what the Windows package ships linking it is
+      # GPL-3.0-or-later - see FFmpeg in THIRD_PARTY_LICENSES.md.
+      - name: Update MSYS2 and install the build dependencies (Windows)
+        if: runner.os == 'Windows'
+        id: msys2-deps
+        shell: pwsh
+        env:
+          MSYS2_PKG_DIR: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
+          MSYS2_PACKAGES: >-
             ${{ matrix.msys_toolchain }}
             ${{ matrix.msys_prefix }}-cmake
             ${{ matrix.msys_prefix }}-ccache
@@ -268,6 +304,7 @@ jobs:
             ${{ matrix.msys_prefix }}-mupdf
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
+            ${{ matrix.msys_prefix }}-openssl
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
             ${{ matrix.msys_prefix }}-tesseract-ocr
@@ -278,6 +315,7 @@ jobs:
             ${{ matrix.msys_prefix }}-opusfile
             ${{ matrix.msys_prefix }}-libopusenc
             ${{ matrix.msys_prefix }}-lame
+            ${{ matrix.msys_prefix }}-ffmpeg
             ${{ matrix.msys_prefix }}-librevenge
             ${{ matrix.msys_prefix }}-libcdr
             ${{ matrix.msys_prefix }}-lcms2
@@ -285,6 +323,63 @@ jobs:
             ${{ matrix.msys_prefix }}-boost
             ${{ matrix.msys_prefix }}-python
             zip
+        run: |
+          # Every pacman call goes through the action's msys2.cmd wrapper as
+          # a child process (as the action itself does), so a core upgrade
+          # that closes every MSYS2 process takes the child, not this script.
+          function Invoke-Pacman([string]$What, [string]$Command, [int]$Attempts = 5) {
+            for ($i = 1; $i -le $Attempts; $i++) {
+              Write-Host "::group::$What (attempt $i of $Attempts)"
+              msys2 -c $Command
+              $code = $LASTEXITCODE
+              Write-Host "::endgroup::"
+              if ($code -eq 0) { return }
+              if ($i -lt $Attempts) {
+                $wait = 30 * $i
+                Write-Host "$What failed (exit $code); retrying in $wait s"
+                Start-Sleep -Seconds $wait
+              }
+            }
+            throw "$What failed after $Attempts attempts"
+          }
+          function Disable-DownloadTimeout {
+            # pacman's default gives up on a transfer under 1 byte/s for 10 s;
+            # on a hosted runner waiting for a slow mirror beats failing.
+            msys2 -c "grep -q '^DisableDownloadTimeout' /etc/pacman.conf || echo DisableDownloadTimeout >> /etc/pacman.conf"
+          }
+
+          Disable-DownloadTimeout
+          Invoke-Pacman 'Synchronize the package databases' 'pacman --noconfirm -Sy'
+
+          # The core upgrade may replace msys2-runtime, which closes every
+          # MSYS2 process including the child shell, so the first pass's
+          # exit code says nothing; the second pass finishes what the first
+          # began - the setup action's own sequence. A pacman.conf.pacnew
+          # from the upgrade replaces the config, as in the action, so the
+          # timeout setting is applied again after it.
+          msys2 -c "pacman --noconfirm -Suu --overwrite '*'"
+          taskkill /F /FI "MODULES eq msys-2.0.dll" | Out-Null
+          msys2 -c "mv -f /etc/pacman.conf.pacnew /etc/pacman.conf 2>/dev/null; true"
+          Disable-DownloadTimeout
+          Invoke-Pacman 'Upgrade the installation' "pacman --noconfirm -Suu --overwrite '*'"
+
+          Invoke-Pacman 'Install the build dependencies' "pacman --noconfirm -S --needed --overwrite '*' $env:MSYS2_PACKAGES"
+
+          # One version per package in the cache, then a hash of its file
+          # names for the save step: the same set of files is the same cache.
+          msys2 -c "paccache -rk1 || true"
+          $names = (Get-ChildItem -LiteralPath $env:MSYS2_PKG_DIR -File | Sort-Object Name | ForEach-Object Name) -join "`n"
+          $stream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($names))
+          $hash = (Get-FileHash -InputStream $stream -Algorithm SHA1).Hash.Substring(0, 16)
+          "pkg-hash=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          exit 0
+
+      - name: Save the MSYS2 package cache (Windows)
+        if: runner.os == 'Windows' && steps.msys2-deps.outputs.pkg-hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
+          key: msys2-pkgs-${{ matrix.msystem }}-${{ steps.msys2-deps.outputs.pkg-hash }}
 
       # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
       # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
@@ -295,6 +390,8 @@ jobs:
       # source tree. =====
       - name: Install build tools (macOS)
         if: runner.os == 'macOS'
+        # Normally under 30 s; Homebrew's own auto-update can add minutes.
+        timeout-minutes: 15
         run: |
           # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
           # Homebrew's tap-trust check prints a multi-line "not trusted"
@@ -322,7 +419,7 @@ jobs:
       - name: Restore vcpkg binary cache (macOS)
         if: runner.os == 'macOS'
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.vcpkg/binary-cache
           key: vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
@@ -330,15 +427,64 @@ jobs:
             vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
             vcpkg-${{ matrix.os }}-
 
+      # vcpkg's asset cache: the source archives and tools its ports download,
+      # each kept under its SHA-512 and looked for there before the library's
+      # own site. A library the binary cache above lacks is then built from
+      # a source already here, so an outage of its home site cannot fail the
+      # build (download.gnome.org did not resolve on 2026-10-08, and glib's
+      # rebuild turned macos-15-intel red). One cache for both macOS legs,
+      # keyed by what decides the sources - the manifest, its overlay ports
+      # and the vcpkg commit in the script. No older key is restored: a
+      # manifest change downloads its sources afresh, so archives no build
+      # uses any more do not pile up.
+      - name: Restore vcpkg asset cache (macOS)
+        if: runner.os == 'macOS'
+        id: vcpkg-assets
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ github.workspace }}/.vcpkg/asset-cache
+          key: vcpkg-assets-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}
+
+      # Missing that cache, download every source the manifest needs - those
+      # of the libraries the binary cache restores too, which the build never
+      # fetches - without building anything. Best effort: an outage now must
+      # not fail a build that may download nothing; only a complete fetch is
+      # saved, so a failed one is tried again by the next run.
+      - name: Download the bundled libraries' sources (macOS)
+        if: runner.os == 'macOS' && steps.vcpkg-assets.outputs.cache-hit != 'true'
+        id: vcpkg-fetch
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          VCPKG_BINARY_SOURCES: clear
+          X_VCPKG_ASSET_SOURCES: clear;x-azurl,file://${{ github.workspace }}/.vcpkg/asset-cache/,,readwrite
+          UC_VCPKG_ONLY_DOWNLOADS: "1"
+          UC_VCPKG_KEEP_GOING: "1"
+        run: |
+          mkdir -p .vcpkg/asset-cache
+          scripts/macos-deps.sh
+          echo "Sources in the asset cache: $(find .vcpkg/asset-cache -type f | wc -l) files, $(du -sh .vcpkg/asset-cache | cut -f1)"
+
+      - name: Save vcpkg asset cache (macOS)
+        if: runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.vcpkg/asset-cache
+          key: ${{ steps.vcpkg-assets.outputs.cache-primary-key }}
+
       - name: Build the bundled libraries for macOS ${{ env.MACOSX_DEPLOYMENT_TARGET }} (macOS)
         if: runner.os == 'macOS'
         id: macos-deps
         env:
           VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg/binary-cache,readwrite
+          # Sources from the asset cache first (read only: what it lacks is
+          # downloaded as before, and saved by the fetch step of a run whose
+          # cache misses).
+          X_VCPKG_ASSET_SOURCES: clear;x-azurl,file://${{ github.workspace }}/.vcpkg/asset-cache/,,read
           # Report every port that fails in one run, not just the first.
           UC_VCPKG_KEEP_GOING: "1"
         run: |
-          mkdir -p .vcpkg/binary-cache
+          mkdir -p .vcpkg/binary-cache .vcpkg/asset-cache
           cached_before=$(find .vcpkg/binary-cache -type f | wc -l)
           prefix=$(scripts/macos-deps.sh)
           cached_after=$(find .vcpkg/binary-cache -type f | wc -l)
@@ -356,7 +502,7 @@ jobs:
       # built half the libraries keeps them for the next one.
       - name: Save vcpkg binary cache (macOS)
         if: always() && runner.os == 'macOS' && steps.vcpkg-cache.outcome == 'success' && steps.macos-deps.outputs.built != 'false'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ github.workspace }}/.vcpkg/binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
@@ -364,47 +510,82 @@ jobs:
       # ===== Linux: system package manager =====
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
+        # A mirror that crawls still finishes (15-27 min on 2026-10-07, against
+        # about 3 normally); anything slower is not worth waiting out.
+        timeout-minutes: 45
         run: |
           # Shared by both Linux rows (x86_64 and arm64): the package set is
           # identical on Ubuntu ports, so the only architecture-dependent bit
           # is the multiarch libdir the from-source builds install into.
-          sudo apt-get update
+          # Every apt-get goes through scripts/ci-apt.sh: a download that stops
+          # dead is stopped and retried rather than holding the job for an hour.
+          scripts/ci-apt.sh update
           # No `clang` here on purpose: jammy's is 14, below this project's
           # floor, and it is installed from LLVM's own repository just below.
-          sudo apt-get install -y cmake pkg-config build-essential ccache
+          scripts/ci-apt.sh install cmake pkg-config build-essential ccache
           # dpkg-architecture comes with dpkg-dev (pulled in by build-essential
           # above), so this is resolved only after that install.
           MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
             || gcc -print-multiarch)
           echo "Building Linux dependencies for $MULTIARCH ($(uname -m))"
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libharfbuzz-dev
-          sudo apt-get install -y libvips-dev libglib2.0-dev libfreetype6-dev dbus
-          sudo apt-get install -y libtinyxml2-dev libfmt-dev
-          sudo apt-get install -y libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
-          sudo apt-get install -y libcdr-dev librevenge-dev zlib1g-dev
+          scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
+          scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus
+          scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
+          scripts/ci-apt.sh install libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+          scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
-          sudo apt-get install -y libboost-dev liblcms2-dev libicu-dev
-          sudo apt-get install -y libzbar-dev
+          scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
+          scripts/ci-apt.sh install libzbar-dev
+          # Spell checking: Linux has no native backend, so without Hunspell the
+          # library builds with spell checking off (zero dictionaries) and
+          # SpellCheckerTest exercises none of the Hunspell path. The en_US
+          # dictionary is what the test and the text widgets load by default.
+          scripts/ci-apt.sh install libhunspell-dev hunspell-en-us
           # IODeviceManager's optional backends are compiled only when configure
           # finds their library; without these CI never builds them and a
           # compile error in one goes unseen. libudev: the hot-plug watcher
           # (OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp). libcups: the CUPS
           # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
           # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
-          sudo apt-get install -y libudev-dev libcups2-dev libsane-dev
-          # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest,
+          scripts/ci-apt.sh install libudev-dev libcups2-dev libsane-dev
+          # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest -
+          # over ipp://, and over ipps:// with the self-signed certificate it makes,
+          # which exercises trusting a device on first use (UltraCanvasIODeviceTlsTrust) -
           # and the DNS-SD daemon it needs to start at all (even with -r off).
           # The test skips without them, and "Run unit tests" turns that skip
           # into a failure, so it cannot quietly stop running.
-          sudo apt-get install -y cups-ipp-utils avahi-daemon
+          scripts/ci-apt.sh install cups-ipp-utils avahi-daemon
+          # IODeviceScannerESCLLiveTest scans over https:// from a scanner the
+          # test runs itself (Tests/IODeviceScannerESCLLiveScanner.py, so
+          # Python 3) with certificates it makes with the openssl command. Both
+          # come with the runner image; named here so the test's needs are
+          # stated where they are met. "Run unit tests" forbids its skip too,
+          # as "Run the device TLS test" does on macOS and Windows.
+          scripts/ci-apt.sh install python3 openssl
+          # A virtual X display for DesktopShellTest's X11 half (see "Run
+          # DesktopShellTest on a virtual display" below).
+          scripts/ci-apt.sh install xvfb xauth
+          # A comma-decimal locale for the tests that hold file formats to
+          # dot-decimal numbers (HTMLReaderTest, HTMLRichImportTest,
+          # ModelLocaleDecimalTest, MindMapIOTest, Model3DSTest, ModelMS3DTest,
+          # DiagramJsonLocaleTest): they run under de_DE.UTF-8 and skip
+          # without it, so it is generated here rather than hoped for from the
+          # runner image. The check after it fails the step if it did not take.
+          scripts/ci-apt.sh install locales
+          sudo locale-gen de_DE.UTF-8
+          locale -a | grep -qix -e 'de_DE.utf8' -e 'de_DE.UTF-8'
           # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
           # CI should compile it. 22.04 ships freerdp2; newer runners
           # will pick freerdp3-dev automatically once available.
-          sudo apt-get install -y freerdp2-dev || sudo apt-get install -y freerdp3-dev
+          if apt-cache show freerdp2-dev >/dev/null 2>&1; then
+            scripts/ci-apt.sh install freerdp2-dev
+          else
+            scripts/ci-apt.sh install freerdp3-dev
+          fi
           # ImageMagick runtime: not a build dep, but package-linux.sh bundles
           # it as libvips' delegate (coder modules + config), so the files must
           # be present on the runner to match the developer package.
-          sudo apt-get install -y imagemagick libmagickcore-6.q16-6-extra
+          scripts/ci-apt.sh install imagemagick libmagickcore-6.q16-6-extra
           # MuPDF: Ubuntu 22.04 ships 1.19, too old for the PDF plugin, which uses
           # 1.23-era APIs (FZ_IMAGE_PSD, FZ_META_INFO_SUBJECT/KEYWORDS/*DATE,
           # pdf_page_label, pdf_apply_redaction, the 7-arg fz_search_page_number).
@@ -424,9 +605,46 @@ jobs:
           # XCFLAGS=-fPIC so the static archives link into the shared libUltraCanvas.so.
           # The companion -dev libs below satisfy both the plugin's find_library() probes
           # and MuPDF's USE_SYSTEM_* builds.
-          sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
+          scripts/ci-apt.sh install libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
           MUPDF_VER=1.23.10
-          curl -fsSL "https://mupdf.com/downloads/archive/mupdf-${MUPDF_VER}-source.tar.gz" | tar xz
+          # The release archive lives on mupdf.com, and on 2026-10-09 that
+          # host timed out twice: once for 135 s, then for a whole seven
+          # minutes of retries. The download gets what the apt step has (a
+          # short connect timeout, a stall watchdog of under 1 byte/s for
+          # 120 s, curl's own retries, three attempts with a growing pause),
+          # and when mupdf.com still does not answer, the same release is
+          # cloned from its GitHub mirror instead: the 1.23.10 tag plus the
+          # third-party submodules this build compiles (the ones replaced by
+          # USE_SYSTEM_* below, and the OCR, GLUT and curl ones the make
+          # never touches, are left out). Either way the tree is unpacked
+          # before make sees it, so a truncated transfer never reaches tar.
+          MUPDF_TAR="mupdf-${MUPDF_VER}-source.tar.gz"
+          MUPDF_SRC="mupdf-${MUPDF_VER}-source"
+          mupdf_downloaded=false
+          for attempt in 1 2 3; do
+            rm -f "$MUPDF_TAR"
+            if curl -fsSL --connect-timeout 20 --speed-time 120 --speed-limit 1 \
+                    --retry 3 --retry-all-errors --retry-delay 10 \
+                    -o "$MUPDF_TAR" "https://mupdf.com/downloads/archive/$MUPDF_TAR"; then
+              mupdf_downloaded=true
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::warning::could not download $MUPDF_TAR from mupdf.com in 3 attempts; cloning the release from github.com/ArtifexSoftware/mupdf instead"
+              break
+            fi
+            echo "download of $MUPDF_TAR failed (attempt $attempt of 3); retrying in $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          if [ "$mupdf_downloaded" = true ]; then
+            tar xzf "$MUPDF_TAR"
+          else
+            rm -rf "$MUPDF_SRC"
+            git clone -q --depth 1 --branch "$MUPDF_VER" https://github.com/ArtifexSoftware/mupdf.git "$MUPDF_SRC"
+            git -C "$MUPDF_SRC" submodule -q update --init --depth 1 \
+              thirdparty/jbig2dec thirdparty/mujs thirdparty/gumbo-parser \
+              thirdparty/lcms2 thirdparty/zlib thirdparty/extract
+          fi
           make -C "mupdf-${MUPDF_VER}-source" -j"$(nproc)" \
             HAVE_X11=no HAVE_GLUT=no \
             USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes \
@@ -442,13 +660,13 @@ jobs:
           # depends on it, but apt won't auto-pull it (the pre-installed LLVM
           # toolchain ships a conflicting libunwind), failing with "held broken
           # packages". Installing it explicitly lets apt resolve the set.
-          sudo apt-get install -y libunwind-dev
-          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          scripts/ci-apt.sh install libunwind-dev
+          scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
           # VideoFX's engine (FFmpeg 4.4 on 22.04). Without it the module builds
           # from its stub and VideoFXTest checks only the filter-text half.
-          sudo apt-get install -y libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev
+          scripts/ci-apt.sh install libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev
           # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-          sudo apt-get install -y libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev
+          scripts/ci-apt.sh install libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev
           # libopusenc-dev is not packaged for Ubuntu 22.04 (added in 24.04),
           # so build the release tarball from source to keep Opus-file encode
           # support. Depends only on libopus (installed above); the dist tarball
@@ -463,15 +681,15 @@ jobs:
           # which predates WebSockets (curl_ws_* arrived in 7.86), so UltraNet
           # falls back to building the vendored third_party/curl (8.21). That
           # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON).
-          sudo apt-get install -y libcurl4-openssl-dev libpsl-dev
+          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev
           # libsodium: cryptographic backend for UltraCrypt
-          sudo apt-get install -y libsodium-dev
+          scripts/ci-apt.sh install libsodium-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
           # multi-user one. Both are named explicitly rather than relied on
           # from the runner image, because UltraDatabase soft-disables itself
           # when a header is missing - and a silently disabled database layer
           # takes the whole UltraFIBU bookkeeping suite out of CI with it.
-          sudo apt-get install -y libsqlite3-dev libpq-dev
+          scripts/ci-apt.sh install libsqlite3-dev libpq-dev
           # c-ares: UltraNet's async DNS uses the event-thread API
           # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
           # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
@@ -499,6 +717,8 @@ jobs:
       # floor to 2.39 for everyone who installs it.
       - name: Install Clang (Linux)
         if: runner.os == 'Linux'
+        # Normally 20 s; 2.5 min on the slow mirror day of 2026-10-07.
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           V="${ULTRACANVAS_CLANG_VERSION}"
@@ -529,6 +749,8 @@ jobs:
       # vtracer / visioncortex crates build with a new-enough compiler.
       - name: Install Rust toolchain (macOS/Linux)
         if: runner.os != 'Windows'
+        # Normally under 20 s; 35 s at most in the runs of 2026-10-06/07.
+        timeout-minutes: 10
         shell: bash
         run: |
           set -eu
@@ -552,17 +774,31 @@ jobs:
       # in CI (where libcurl has WS support).
       - name: Install python websockets package
         if: runner.os != 'Windows'
+        # Normally a few seconds.
+        timeout-minutes: 5
         run: pip3 install --user --break-system-packages websockets || pip3 install --user websockets
 
       # ===== Configure & Build =====
 
-      # Restore the previous run's compiled objects. `key` is unique per run, so
-      # every run saves a fresh cache at the end; `restore-keys` is the prefix,
-      # so a run that finds no exact match falls back to the most recent cache
-      # for the same leg and starts from those objects rather than from nothing.
-      # Keyed per os AND build_type because the compile lines differ.
+      # Restore the previous run's compiled objects. `key` is unique per run
+      # and never matches; `restore-keys` is the prefix, so every run falls
+      # back to the most recent cache for the same leg and starts from those
+      # objects rather than from nothing. Keyed per os AND build_type because
+      # the compile lines differ.
+      #
+      # Only a run on main saves a cache (the step after the build). A pull
+      # request's cache is visible to that pull request alone, yet it counted
+      # against the repository's 10 GB like any other, and with six legs
+      # saving on every run of every branch the least-recently-used eviction
+      # regularly took main's caches with it. The leg that paid was the
+      # macOS Intel one: its runner compiles five to ten times slower than
+      # the others, so a cold start there was a 65-82 minute build step
+      # against 13 with the cache (2026-10-13), and the whole matrix waited
+      # on it. A pull request now restores main's cache on every push and
+      # saves none.
       - name: Restore ccache
-        uses: actions/cache@v4
+        id: ccache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ matrix.os }}-${{ matrix.build_type }}-${{ github.run_id }}
@@ -593,16 +829,22 @@ jobs:
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
+            -DULTRACANVAS_BUILD_SHARED=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
+            -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
+            -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
+            -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
@@ -619,16 +861,19 @@ jobs:
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
-            -DULTRACANVAS_BUILD_SHARED=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} \
+            -DULTRACANVAS_BUILD_SHARED=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
@@ -671,6 +916,20 @@ jobs:
             exit 1
           fi
           echo "UltraDatabase verified: SQLite + PostgreSQL"
+
+      # Spell checking also degrades quietly: no Hunspell and every text widget
+      # still builds, with no dictionaries and no red underlines. That passed
+      # CI unnoticed until 2026-10-15, so configure has to say it found it.
+      - name: Verify spell checking built with Hunspell (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -qE "Hunspell: [0-9]" configure.log; then
+            echo "::error::Hunspell was not found during configure (libhunspell-dev missing?) - spell checking would be off"
+            exit 1
+          fi
+          echo "Spell checking verified: $(grep -oE 'Hunspell: [0-9][^ ]*' configure.log | head -1)"
 
       # libcurl selection is asserted per platform so a silent regression is caught:
       #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
@@ -823,8 +1082,17 @@ jobs:
           mkdir -p "$SDK_NAME/examples"
           cp -R Tests/PackageConsumer "$SDK_NAME/examples/PackageConsumer"
           mkdir -p sdk-dist
+          # Linux packs with xz: the SDK is the shared core and its libraries,
+          # which xz packs about 28% smaller than gzip (the UltraCanvasStart
+          # package, the same kind of tree, went from 100 MB to 70 MB), and
+          # -T0 keeps the compression to seconds. The Download button in
+          # UltraCanvasStart unpacks with `tar -xf`, which reads xz on every
+          # platform (StartSdk.cpp names the extension per platform). macOS
+          # stays gzip for now.
           if [ "${{ runner.os }}" = "Windows" ]; then
             zip -qr "sdk-dist/$SDK_NAME.zip" "$SDK_NAME"
+          elif [ "${{ runner.os }}" = "Linux" ]; then
+            XZ_OPT="-T0" tar cJf "sdk-dist/$SDK_NAME.tar.xz" "$SDK_NAME"
           else
             tar czf "sdk-dist/$SDK_NAME.tar.gz" "$SDK_NAME"
           fi
@@ -848,10 +1116,25 @@ jobs:
         if: always()
         run: ccache -s
 
+      # The objects of this run, for the next one - from main only, whether
+      # or not the build succeeded (a half-built tree is still a head start).
+      # See "Restore ccache" for why a pull request saves none.
+      - name: Save ccache (main)
+        if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
       # UltraCanvasStart's engine tests, then the app's headless --check on
       # this leg's platform: it detects the runner, finds its package manager
       # and checks the toolchain and core libraries, which the leg has by
       # construction, so a non-zero status names a detection or check bug.
+      # Then the project skeleton its Project step writes (--create), built
+      # against the SDK installed above the way a programmer builds it,
+      # cmake --preset default && cmake --build --preset default: 0.3.0's
+      # skeleton called a method the application class does not have, and
+      # nothing compiled it before a user did.
       # The engine test binary is a ctest entry (UltraCanvasStartEngine);
       # Linux runs it again with the rest of the suite below, which is fine.
       # The job's default shell: the MSYS2 shell on Windows, where the DLLs
@@ -859,12 +1142,26 @@ jobs:
       - name: UltraCanvasStart engine tests and --check smoke run
         run: |
           set -eu
+          # The engine tests compile the skeleton against the SDK installed
+          # above when ULTRACANVAS_SDK_PREFIX names it (test_project.cpp,
+          # BuildProject): the same guard a developer gets locally from
+          # ctest with the variable set, through the code the Build step
+          # runs. The prefix goes into CMakePresets.json as text, so on
+          # Windows it is the D:/... form (cygpath -m), see below.
+          sdk="$PWD/$SDK_NAME"
+          if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
+          export ULTRACANVAS_SDK_PREFIX="$sdk"
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
           "$exe" --check
           "$exe" --plan --for ${{ runner.os == 'Linux' && 'windows' || 'linux' }} > /dev/null
+          # The same skeleton once more with the programmer's own two commands
+          # (the test above runs the engine's argv for them).
+          "$exe" --create scaffold-smoke --name "Smoke App" --sdk "$sdk"
+          test -f scaffold-smoke/main.cpp
+          (cd scaffold-smoke && cmake --preset default && cmake --build --preset default --parallel 2)
 
       - name: Run UltraNet tests
         if: runner.os != 'Windows'
@@ -938,18 +1235,103 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
 
+      # UltraCleaner's engine suite: the path guard, the rule table, the
+      # scanner, the remover and the album logic, over temporary trees only
+      # (no display, no network, nothing outside the temp folder removed).
+      # ULTRACANVAS_BUILD_ULTRACLEANER_TESTS was on in no row until 2026-10,
+      # so the cleaner's tests ran nowhere but a developer's machine. Linux
+      # runs the suite in the full pass below; here it runs on the two
+      # systems the cleaner has its own code for - the recycle bin and the
+      # UTF-16 paths on Windows, ~/.Trash and case-insensitive names on macOS.
+      - name: Run UltraCleaner engine tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
+
+      # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
+      # ships - and through the Windows file names, cache folder and fonts;
+      # then UltraVideo's document on it, whose .ultravideo file must hold
+      # '/' between a path's parts where Windows joins them with '\'.
+      # As on Linux (below), the stub would pass VideoFXTest on its
+      # filter-text checks alone (and UltraVideoDocumentTest skips itself),
+      # so first prove the engine was configured.
+      - name: Verify the VideoFX engine and run its tests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -eu
+          if ! grep -q "VideoFX: FFmpeg .* found - engine enabled" configure.log; then
+            echo "::error::VideoFX was configured without FFmpeg - is the MSYS2 -ffmpeg package installed?"
+            exit 1
+          fi
+          cd build
+          ctest --output-on-failure --no-tests=error -R "^(VideoFXTest|UltraVideoDocumentTest)$"
+
+      # UltraCloud's module suite - the account store on UltraDatabase, the
+      # secret stores on UltraVault, every provider against an injected fake
+      # (WebDAV's DELETE and MOVE, FTP's options, the SFTP key path through
+      # the vault) - is headless and contacts nothing. Linux runs it in the
+      # full pass below; here it runs on the two systems whose libcurl and
+      # whose profile paths differ - Apple's TLS and Schannel behind the
+      # providers, the UTF-16 file APIs under the vault's device key on
+      # Windows - so a verb that only works where it was written is caught.
+      - name: Run UltraCloud tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCloud$"
+
+      # Trusting a device's self-signed certificate on first use rests on
+      # libcurl pinning a public key and handing back the server's
+      # certificate, which each TLS library does its own way. Linux runs this
+      # in the full pass, on OpenSSL; here it runs on Apple's TLS (macOS, the
+      # system libcurl) and Schannel (Windows, MSYS2's curl-winssl), against
+      # a scanner the test starts with certificates it makes. The test needs
+      # Python 3 and openssl and would skip without them, so a skip is made a
+      # failure, and --no-tests=error catches it not being built at all.
+      # ULTRACANVAS_BUILD_DEVICE_TLS_TESTS builds it without BUILD_TESTS. On
+      # Windows, openssl is MSYS2's -openssl package, in "Setup MSYS2" (no
+      # comment can sit beside it there: inside that block scalar a "#" line
+      # is not a comment but more package names).
+      - name: Run the device TLS test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_ESCL_REQUIRED: 1
+        run: ctest --output-on-failure --no-tests=error -R "^IODeviceScannerESCLLiveTest$"
+
       # The file display against Thai, CJK and emoji names, on Windows: the
       # name-encoding test writes such files to a real folder and lists it
       # through UltraCanvasFilerWidget, which on Windows goes through the
       # UTF-16 file APIs - and through the runner's code page 1252 wherever a
       # conversion was missed. The host-icons test asks the real shell for
-      # its icons, and the shortcut test reads .lnk files on the system they
-      # come from. ULTRACANVAS_BUILD_FILER_TESTS builds the four without the
-      # Linux-only BUILD_TESTS; Linux runs them in the full pass.
+      # its icons, the shortcut test reads .lnk files on the system they
+      # come from, and the history test keeps UltraFiler's recently-used lists
+      # under %APPDATA%, and the retire test stops a display's workers the way
+      # UltraFiler does for a closed tab. ULTRACANVAS_BUILD_FILER_TESTS builds
+      # them without the Linux-only BUILD_TESTS; Linux runs them in the full
+      # pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest)$"
+
+      # The Win32 backend of the desktop shell module (UltraDesktop's window
+      # list, monitor, screen edges, hot keys, screenshot and Start menu)
+      # against the runner's desktop: the test opens a window of its own,
+      # finds it in the list with its Thai title, reserves a screen edge for
+      # it and checks the work area makes room, minimizes and closes it, and
+      # lists a Start menu it builds under a temp APPDATA and ProgramData.
+      # ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS builds it without the Linux-only
+      # BUILD_TESTS; Linux runs it in the full pass. ConsoleCompanionTest
+      # beside it: the console companion (<App>.com) the command-line apps
+      # are typed through, redirected and on a console of its own - typed
+      # input read, output on the screen, Ctrl+C reaching the program.
+      - name: Run DesktopShellTest (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: |
+          set -e
+          ctest --output-on-failure --no-tests=error -R "^DesktopShellTest$"
+          ctest --output-on-failure --no-tests=error -R "^ConsoleCompanionTest$"
 
       # EmailCleaner's and UltraMail's engine suites on Windows. Both were
       # built here (see the note above "Run UltraNet tests") but only Linux
@@ -995,6 +1377,22 @@ jobs:
               Tests/PathUtf8Test.cpp -o build/PathUtf8Test.exe
           ./build/PathUtf8Test.exe
 
+      # UCZipPackageReader (CorelDRAW thumbnails, ODT/DOCX/XLSX import) opens
+      # its file through OpenFileUtf8. miniz's own open, used before, made a
+      # Thai or emoji name depend on the toolchain, and on this one opened
+      # with _wfopen_s, which locks other programs out of writing the file
+      # while it is read - the test writes it from a second handle to prove
+      # that is gone. Compiled by hand like PathUtf8Test, on code page 1252.
+      - name: Run ZipPackageTest (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          clang -c UltraCanvas/third_party/miniz/miniz.c -o build/ZipPackageTest-miniz.o
+          clang++ -std=c++20 -Wall -Wextra -IUltraCanvas/include \
+              -IUltraCanvas/third_party/miniz \
+              Tests/ZipPackageTest.cpp UltraCanvas/core/UltraCanvasZipPackage.cpp \
+              build/ZipPackageTest-miniz.o -o build/ZipPackageTest.exe
+          ./build/ZipPackageTest.exe
+
       # ippeveprinter stops with "Unable to initialize DNS-SD" when no daemon is
       # running, so IODevicePrinterIPPLiveTest needs Avahi up. Installing the
       # package normally starts it; this makes sure, and fails here - where the
@@ -1016,6 +1414,9 @@ jobs:
           # IODevicePrinterIPPLiveTest prints to a real ippeveprinter; a skip
           # would look like a pass, so forbid it, as for the database test.
           ULTRACANVAS_TEST_IPP_REQUIRED: 1
+          # And IODeviceScannerESCLLiveTest scans from a running scanner over
+          # https://, trusting its self-signed certificate on first use.
+          ULTRACANVAS_TEST_ESCL_REQUIRED: 1
           ULTRAFIBU_TEST_PG_HOST: /var/run/postgresql
           ULTRAFIBU_TEST_PG_PORT: 5432
           # ULTRAFIBU_TEST_PG_USER comes from the step above via GITHUB_ENV:
@@ -1024,6 +1425,23 @@ jobs:
           # A skip here is indistinguishable from a pass, so forbid it.
           ULTRAFIBU_TEST_PG_REQUIRED: 1
         run: ctest --output-on-failure 2>&1 | tee ctest.log
+
+      # "Run unit tests" runs DesktopShellTest with no display, where the X11
+      # backend has nothing to talk to - so the monitor's and a global
+      # shortcut's Stop() went untested, and hung for good on any display
+      # until 2026-10-15 (a blocking wake pipe). On a virtual display the test
+      # drives the backend for real: the monitor sees a root property change,
+      # the virtual desktops and RandR's monitors are read, and every Stop()
+      # has to return within seconds. ULTRACANVAS_TEST_DISPLAY_REQUIRED turns
+      # "no display" into a failure, so a broken Xvfb cannot pass as a skip.
+      - name: Run DesktopShellTest on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1600x900x24 +extension RANDR"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^DesktopShellTest$"
 
       # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
       # already covers "it ran". What it cannot cover is the test not existing
@@ -1085,9 +1503,173 @@ jobs:
         if: runner.os == 'Linux'
         run: BUILDDIR="$PWD/build" SKIP_BUILD=1 ./package-linux.sh
 
+      # NSIS for the installer: preinstalled on the Windows Server 2022 and
+      # Windows-on-Arm runner images, not on 2025's, and MSYS2 packages it
+      # for CLANG64 but not for CLANGARM64 - so the runner's own copy, else
+      # Chocolatey's. scripts/build-windows-installer.sh finds it there.
+      - name: NSIS for the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @("${env:ProgramFiles(x86)}\NSIS\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe")
+          $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $found) {
+            choco install nsis --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "Chocolatey could not install NSIS (exit $LASTEXITCODE)" }
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $found) { throw "makensis.exe is not where NSIS installs it" }
+          & $found /VERSION
+          Write-Host ""
+          Write-Host "makensis: $found"
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        run: ./package-win.sh --no-sign
+        run: ./package-win.sh --no-sign --installer
+
+      # The installer, run as a user would - silently, into a folder of its
+      # own - and taken out again: everything it installs is where it
+      # belongs, the shell guard has no Start-menu entry, UltraDesktop is
+      # registered for Run boxes, the command-line apps come with their
+      # console companions, and the uninstaller removes exactly what it put
+      # there. /D= and _?= must be last and unquoted, hence a path
+      # without spaces.
+      - name: Install and uninstall the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem -Filter 'UltraCanvas-Setup-Windows-*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'package-win.sh --installer built no installer' }
+          "Installer: $($setup.Name), $([math]::Round($setup.Length / 1MB, 1)) MB"
+          $dir = Join-Path $env:RUNNER_TEMP 'UltraCanvasInstallTest'
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The installer exited with $($p.ExitCode)" }
+          foreach ($file in 'UltraDesktop.exe', 'UOS-Settings.exe', 'UltraCanvasShellGuard.exe', 'Uninstall.exe') {
+            if (-not (Test-Path (Join-Path $dir $file))) { throw "$file was not installed" }
+          }
+          $installed = (Get-ChildItem $dir -Recurse -File).Count
+          "Installed: $installed files"
+          # Test binaries never ship (package-win.sh leaves them out).
+          $tests = @(Get-ChildItem $dir -File | Where-Object { $_.Name -match '(Tests?\.(exe|com)|^ConsoleCompanionProbe\.)' })
+          if ($tests.Count -gt 0) { throw "Test binaries were installed: $(($tests | ForEach-Object Name) -join ', ')" }
+          # The apps whose command line prints are GUI programs with a console
+          # companion (cmake/UltraCanvasWindowsGuiApp.cmake): <App>.exe starts
+          # without a console window, <App>.com is what a prompt runs for the
+          # bare name, and it waits and hands back the exit code.
+          function Get-Subsystem([string]$path) {
+            $bytes = [IO.File]::ReadAllBytes($path)
+            [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 60) + 92)
+          }
+          $companions = @()
+          foreach ($app in 'UltraDesktop', 'UltraCleaner', 'UltraNetMonitor', 'UltraWeb', 'UltraClaude',
+                           'UltraCanvasStart', 'DeviceExplorer', 'ultrafibu', 'ultrapress') {
+            $exe = Join-Path $dir "$app.exe"
+            if (-not (Test-Path $exe)) { continue }
+            $com = Join-Path $dir "$app.com"
+            if (-not (Test-Path $com)) { throw "$app.exe was installed without its console companion $app.com" }
+            if ((Get-Subsystem $exe) -ne 2) { throw "$app.exe is not a GUI program" }
+            if ((Get-Subsystem $com) -ne 3) { throw "$app.com is not a console program" }
+            $companions += $app
+          }
+          if ($companions -notcontains 'UltraDesktop') { throw 'UltraDesktop has no console companion' }
+          "Console companions: $($companions -join ', ')"
+          $version = cmd /c "cd /d $dir && UltraDesktop --version"
+          if ($LASTEXITCODE -ne 0 -or -not ($version -match '^UltraDesktop ')) {
+            throw "UltraDesktop --version from a prompt: exit $LASTEXITCODE, '$version'"
+          }
+          "UltraDesktop --version from a prompt: $($version -join ' / ')"
+          $appPath = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe').'(default)'
+          if ($appPath -ne (Join-Path $dir 'UltraDesktop.exe')) { throw "App Paths names '$appPath'" }
+          $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'UltraCanvas'
+          $links = @(Get-ChildItem $menu -Filter '*.lnk' | ForEach-Object Name)
+          "Start menu: $($links -join ', ')"
+          if ($links -notcontains 'UltraDesktop.lnk') { throw 'UltraDesktop has no Start-menu entry' }
+          if ($links -contains 'UltraCanvasShellGuard.lnk') { throw 'The shell guard got a Start-menu entry' }
+          if (-not (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraCanvas' -ErrorAction SilentlyContinue)) {
+            throw 'No Apps & features entry'
+          }
+          # _?= runs the uninstaller in place and waits for it; it cannot
+          # delete itself then, everything else must go.
+          $p = Start-Process -FilePath (Join-Path $dir 'Uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The uninstaller exited with $($p.ExitCode)" }
+          $left = @(Get-ChildItem $dir -Recurse -File | Where-Object Name -ne 'Uninstall.exe')
+          if ($left.Count -gt 0) { throw "Left behind: $(($left | Select-Object -First 10 | ForEach-Object FullName) -join ', ')" }
+          if (Test-Path $menu) { throw 'The Start-menu folder was left behind' }
+          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe' -ErrorAction SilentlyContinue) {
+            throw 'The App Paths entry was left behind'
+          }
+          "Uninstalled: nothing of the $installed files left"
+
+      # UltraCanvasStart on its own: the setup application has to reach a
+      # computer that has nothing yet, so it ships as one small archive beside
+      # the suite, cut out of the suite package just made with exactly the
+      # libraries it loads (scripts/package-ultracanvasstart.sh; the script
+      # runs the packaged application before it is done). On macOS
+      # package-macos.sh --start-app does it, where the signing is.
+      - name: Package UltraCanvasStart on its own (Linux, Windows)
+        if: runner.os != 'macOS'
+        run: scripts/package-ultracanvasstart.sh
+
+      # What the package weighs, and where the weight is: the core library
+      # (one shared copy of the framework and the modules folded into it), the
+      # application executables in total and each one. In the job summary
+      # next to the macOS suite table, so an app that has grown a second copy
+      # of the framework - a module archive linked beside the shared core, a
+      # static core - shows up on the run page as a fat executable.
+      - name: Package sizes (Linux, Windows)
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          set -eu
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            pkg=dist; core=$(ls dist/libUltraCanvas.dll dist/UltraCanvas.dll 2>/dev/null | head -1 || true)
+            apps=$(find dist -maxdepth 1 -name '*.exe' | sort)
+            archive=$(ls UCDemo-Windows-*.zip 2>/dev/null | head -1 || true)
+          else
+            pkg=$(ls -d dist/UltraCanvas-Linux-*/ | head -1); pkg=${pkg%/}
+            core=$(ls "$pkg"/lib/libUltraCanvas.so.* 2>/dev/null | grep -v '\.so\.[0-9]*$' | head -1 || true)
+            [ -n "$core" ] || core=$(ls "$pkg"/lib/libUltraCanvas.so* 2>/dev/null | head -1 || true)
+            apps=$(find "$pkg/bin" -maxdepth 1 -type f -perm -u+x ! -name '*.so*' | sort)
+            archive=$(ls dist/UltraCanvas-Linux-*.tar.gz 2>/dev/null | head -1 || true)
+          fi
+          kb() { du -sk "$1" | cut -f1; }
+          mb() { awk -v k="$1" 'BEGIN { printf "%.1f MB", k / 1024 }'; }
+          total=0; rows=""
+          for app in $apps; do
+            k=$(kb "$app"); total=$((total + k))
+            rows+="| $(basename "$app") | $(mb "$k") |"$'\n'
+          done
+          {
+            echo "### Package sizes (${{ runner.os }} ${{ matrix.arch_label }})"
+            echo ""
+            echo "| Item | Size |"
+            echo "|---|---:|"
+            [ -n "$archive" ] && echo "| **$(basename "$archive")** (download) | $(mb "$(kb "$archive")") |"
+            echo "| $pkg/ (unpacked) | $(mb "$(kb "$pkg")") |"
+            if [ -n "$core" ]; then
+              echo "| $(basename "$core") (the shared core) | $(mb "$(kb "$core")") |"
+            else
+              echo "| (no shared core library in the package) | |"
+            fi
+            echo "| application executables, $(echo "$apps" | wc -l | tr -d ' ') in total | $(mb "$total") |"
+            printf '%s' "$rows"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # How big each file-format plug-in is (Vector, CDR + libcdr, XAR, EPS,
+      # Models, OCR, Vectorizer + its Rust library). They are static, so each
+      # application that registers one carries a copy; the table is what a
+      # decision to make them shared libraries rests on. OCR and the
+      # Vectorizer build only where Tesseract and Rust are installed, which
+      # is here. Measurement only: it never fails the job.
+      - name: Format plug-in sizes
+        continue-on-error: true
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python || true)
+          [ -n "$py" ] || { echo "no Python: plug-in sizes skipped"; exit 0; }
+          "$py" scripts/report_plugin_sizes.py build \
+            --title "Format plug-in sizes (${{ runner.os }} ${{ matrix.arch_label }})" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The same dist/ as an MSIX package (package-win-msix.sh, see
       # Docs/UltraCanvas/UltraCanvasWindowsMSIX.md). Every run builds the test
@@ -1166,7 +1748,7 @@ jobs:
       # so a PR still proves package-macos.sh runs end to end.
       - name: Package (macOS, unsigned - pull requests and manual runs)
         if: runner.os == 'macOS' && env.RELEASE_BUILD != 'true'
-        run: ./package-macos.sh --no-sign --dmg
+        run: ./package-macos.sh --no-sign --dmg --start-app
 
       - name: Package (macOS, signed and notarized - push to main)
         if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
@@ -1175,7 +1757,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: ./package-macos.sh --notarize --dmg
+        run: ./package-macos.sh --notarize --dmg --start-app
 
       # Unconditional on macOS, and `|| true` inside: on a run that never
       # imported a certificate there is no keychain to delete, and this must
@@ -1192,6 +1774,17 @@ jobs:
           name: UCDemo-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
             dist/
+          retention-days: 7
+
+      # The installer is LZMA-compressed already: stored as it is.
+      - name: Upload the installer (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvas-Setup-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
+          path: UltraCanvas-Setup-Windows-*.exe
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
       # An .msix is a zip already, hence compression-level 0.
@@ -1232,6 +1825,129 @@ jobs:
           path: dist/UltraCanvas-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}.tar.gz
           retention-days: 7
 
+      # The archive is already compressed (tar.gz, zip, or the LZMA image),
+      # so no compression here. The macOS image of a pull request is signed
+      # ad hoc and says so in its name, as the suite's does.
+      - name: Upload UltraCanvasStart on its own
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvasStart-${{ runner.os == 'macOS' && 'MacOS' || runner.os }}-${{ env.VERSION }}-${{ matrix.arch_label }}${{ runner.os == 'macOS' && env.RELEASE_BUILD != 'true' && '-unsigned' || '' }}
+          path: |
+            dist-start/*.tar.xz
+            dist-start/*.zip
+            dist-start/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  # ===== THE SDKS AND ULTRACANVASSTART AS RELEASE ASSETS =====
+  # Workflow artifacts last seven days and need a signed-in browser. Each
+  # release build of main - the dispatch changelog-fold.yml sends for its
+  # version commit, or a direct push - also attaches the six SDK archives
+  # and the six UltraCanvasStart archives to a GitHub release tagged
+  # v<version>, where a fixed URL serves them to anyone:
+  # https://github.com/<repo>/releases/download/v<version>/<archive>.
+  # UltraCanvasStart's Project page downloads the SDK for its platform from
+  # there (Apps/UltraCanvasStart/engine/StartSdk.cpp names the URL), and
+  # UltraCanvasStart itself is what a computer with nothing on it yet
+  # downloads first (Docs/GettingStarted.md). The release is created with
+  # the version's changelog section as its notes; a re-run of the same
+  # version replaces the assets and keeps the release.
+  publish-sdk:
+    name: Publish the SDKs and UltraCanvasStart as release assets
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      # The version the build legs used, read the same way, and that
+      # version's section of the changelog as the release notes.
+      - name: The version and its changelog section
+        id: version
+        env:
+          TARGET: ${{ inputs.sha || github.sha }}
+        run: |
+          set -eu
+          changelog=Docs/UltraCanvas/CHANGELOG.md
+          VERSION=$(sed -nE '1s/^#### [0-9-]+ \*([0-9]+\.[0-9]+\.[0-9]+)\*.*/\1/p' "$changelog")
+          [ -n "$VERSION" ] || { echo "::error::no version on the first line of $changelog"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # The version's section: everything between its header and the next.
+          awk 'NR == 1 { next } /^#### / { exit } { print }' "$changelog" > section.md
+          if ! grep -q '[^[:space:]]' section.md; then
+            echo "::warning::the $VERSION section of $changelog is empty - the release notes point at the commits instead"
+          fi
+          {
+            echo "UltraCanvas $VERSION."
+            echo
+            echo "- **UltraCanvasStart-<OS>-$VERSION-<arch>**: the setup application on its own, for a"
+            echo "  computer that has nothing yet. It checks and installs the development packages,"
+            echo "  downloads the SDK below, writes a project skeleton and prepares the first prompt"
+            echo "  for an AI assistant (Apps/UltraCanvasStart/README.md)."
+            echo "- **UltraCanvas-SDK-<OS>-$VERSION-<arch>**: the framework built and installed for each"
+            echo "  platform, with the CMake package and, on Windows and macOS, the dependency"
+            echo "  development files (Docs/UltraCanvasSDK.md). Unpack one and point CMAKE_PREFIX_PATH at it."
+            echo
+            echo "## Changes"
+            echo
+            if grep -q '[^[:space:]]' section.md; then
+              cat section.md
+            else
+              # A header with nothing under it (a hand-cut version, say): the
+              # notes say so and point at the commits rather than ending on an
+              # empty heading.
+              previous=$(sed -nE 's/^#### [0-9-]+ \*([0-9]+\.[0-9]+\.[0-9]+)\*.*/\1/p' "$changelog" | sed -n 2p)
+              echo "The $VERSION section of \`$changelog\` has no entries. The changes are the commits"
+              if [ -n "$previous" ]; then
+                echo "between $previous and this release's commit, $TARGET:"
+              else
+                echo "up to this release's commit, $TARGET:"
+              fi
+              echo "https://github.com/${{ github.repository }}/commits/$TARGET"
+            fi
+          } > release-notes.md
+          echo "::group::release-notes.md"; cat release-notes.md; echo "::endgroup::"
+
+      - name: Download the SDK artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvas-SDK-*
+          path: sdk-release
+          merge-multiple: true
+
+      - name: Download the UltraCanvasStart artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvasStart-*
+          path: sdk-release
+          merge-multiple: true
+
+      - name: Create the release and attach the SDKs and UltraCanvasStart
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET: ${{ inputs.sha || github.sha }}
+        run: |
+          set -eu
+          ls -la sdk-release
+          count=$(ls sdk-release | grep -c '^UltraCanvas-SDK-' || true)
+          [ "$count" -eq 6 ] || echo "::warning::$count SDK archives instead of 6"
+          count=$(ls sdk-release | grep -c '^UltraCanvasStart-' || true)
+          [ "$count" -eq 6 ] || echo "::warning::$count UltraCanvasStart archives instead of 6"
+          tag="v$VERSION"
+          if ! gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            gh release create "$tag" --repo "${{ github.repository }}" --target "$TARGET" \
+              --title "UltraCanvas $VERSION" --notes-file release-notes.md
+          fi
+          gh release upload "$tag" sdk-release/* --repo "${{ github.repository }}" --clobber
+          echo "https://github.com/${{ github.repository }}/releases/tag/$tag"
+
   # ===== ANDROID BACKEND CHECK =====
   # Separate job, not a matrix row (investigation §5): there is no
   # cross-compiled dependency sysroot yet, so a full Android build is not
@@ -1246,6 +1962,12 @@ jobs:
     needs: gate
     if: needs.gate.outputs.pending == 'false'
     runs-on: ubuntu-latest
+    # The whole job, not only its apt step: without one only GitHub's 6-hour
+    # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
+    # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a
+    # slow-mirror day); the install step keeps its own 20 minutes inside this,
+    # and the NDK syntax check, the slowest of the rest, takes under a minute.
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -1253,12 +1975,16 @@ jobs:
           ref: ${{ inputs.sha }}
 
       - name: Install host dependency headers
+        # Normally 20 s; 8 min on a slow mirror day (2026-10-07).
+        timeout-minutes: 20
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake pkg-config \
+          scripts/ci-apt.sh update
+          # libvips-dev: the Android arm requires libvips like every other
+          # (the real one comes from the vcpkg sysroot; android-build.yml).
+          scripts/ci-apt.sh install cmake pkg-config \
             libcairo2-dev libpango1.0-dev libfontconfig-dev libglib2.0-dev \
             libtinyxml2-dev libfreetype-dev libfmt-dev libssl-dev \
-            libcurl4-openssl-dev libc-ares-dev
+            libcurl4-openssl-dev libc-ares-dev libvips-dev
 
       - name: Syntax-check OS/Android against the NDK
         run: scripts/android-syntax-check.sh "$ANDROID_NDK_LATEST_HOME"
@@ -1271,8 +1997,9 @@ jobs:
       - name: Configure-only test of the Android CMake arms
         # -DANDROID=1 stands in for the toolchain file (host compilers, host
         # pkg-config deps): validates platform detection, the glue-source
-        # wiring, forced-off GL/plugins, and the UltraNet Android arm with
-        # c-ares present. A full toolchain configure needs the dep sysroot.
+        # wiring, forced-off GL/plugins, libvips required, and the UltraNet
+        # Android arm with c-ares present. The full NDK build against the
+        # vcpkg sysroot is android-build.yml.
         run: |
           cmake -B build-android-cfgtest \
             -DANDROID=1 \

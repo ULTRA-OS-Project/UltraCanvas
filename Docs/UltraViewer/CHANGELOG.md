@@ -1,3 +1,64 @@
+#### 2026-10-19 *1.0.8*
+- **One compact toolbar.** The two toolbar rows at the top are one row now,
+  with smaller, flat icons, so the picture gets the room back. The Details
+  (info) button is gone from the toolbar; the one at the bottom right of the
+  window opens the same panel. Framework: `UltraCanvasMediaViewer` (framework
+  changelog: `media-viewer-one-toolbar`).
+
+#### 2026-10-14 *1.0.7*
+- **One UltraViewer at a time.** Opening a file while UltraViewer is already
+  running opens it in the running copy (in the viewer, in place of what it
+  showed) instead of starting a second one; starting it without a file brings
+  the open window forward. Two starts at the same moment cannot both stay, and
+  a copy that does not answer is reported with *"UltraViewer is already
+  running"*. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
+#### 2026-10-13 *1.0.6*
+- **Save image as: every type this build writes, at another size, with the
+  type's settings.** The Save dialog offered six types of the viewer's own
+  (PNG, JPEG, WebP, TIFF, AVIF, BMP); it now offers the framework's
+  FileLoader list - every bitmap type this build writes, GIF, HEIC, QOI and
+  icons among them. And its Settings button showed no size field here: the
+  viewer never told it how big the picture was. A bitmap type's Settings now
+  start with the picture's size - as shown, so a picture turned
+  a quarter starts on its turned sides - and the file is written at the size
+  chosen, with the type's settings (JPEG quality, PNG compression ...), which
+  the viewer ignored before. A drawing (SVG) has no pixel size of its own: it
+  is offered at its size on the page and drawn again at the size chosen, so it
+  stays sharp at any size instead of being stretched (framework changelog,
+  pending entry `save-size-for-drawings-and-the-viewer`).
+
+#### 2026-10-10 *1.0.5*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraViewer --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+
+#### 2026-10-06 *1.0.4*
+- **Save image as saves an SVG.** Saving a drawing wrote nothing: the dialog
+  offered `<name>.svg`, which the viewer cannot write, and the failure showed
+  only in the info line at the bottom. It now offers `<name>.png` and says in
+  a message when a save fails. The fix is in the framework's media viewer
+  (`Docs/UltraCanvas/changelog.d/media-viewer-save-svg.md`); the viewer
+  therefore shows message boxes now - a failed save and a replace prompt -
+  which follow the framework-dialog setting like its file dialogs.
+- **The file type chosen in Save image as is the format saved.** Picking JPEG
+  and typing `photo` saved nothing - a name without an extension is no format
+  the viewer knows - and the type list was ignored; it now saves `photo.jpg`.
+  The dialog also starts on the type of the file shown (a JPEG opens on
+  JPEG) and renames the file when another type is picked. Framework change:
+  0.9.176 ("A Save dialog gives the name the chosen file type's
+  extension").
+- **A failed save leaves no empty file.** Saving as AVIF on a build without
+  an AV1 encoder left a 0-byte `.avif` behind, and the same failure over an
+  existing file emptied it. The image is now written to a temporary file and
+  put in place only when complete. Framework change:
+  `Docs/UltraCanvas/changelog.d/image-save-staged.md`.
+
 #### 2026-10-01 *1.0.3*
 - **Open and Save use the framework's new file dialog.** The toolbar's Open
   button showed the platform's picker, because `main.cpp` turned native

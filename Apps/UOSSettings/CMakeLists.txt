@@ -20,6 +20,8 @@ add_executable(UOSSettings
     ui/UOSSettingsWindow.cpp
     ${UOSSETTINGS_DESKTOP_DIR}/UltraDesktopSettings.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UOSSettings)
 # The program is called UOS-Settings; the CMake target cannot carry the hyphen
 # in every generator, so only the output name does.
 set_target_properties(UOSSettings PROPERTIES

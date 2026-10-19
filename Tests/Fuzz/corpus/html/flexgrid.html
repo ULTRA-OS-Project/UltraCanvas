@@ -1,0 +1,10 @@
+<!DOCTYPE html><html><head><style>
+.page{display:grid;grid-template-columns:200px 1fr;grid-template-areas:"head head" "side main";gap:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+nav{display:flex;flex-flow:row wrap;justify-content:space-between;align-items:center;gap:1em}
+nav a{flex:1 1 0;order:2}
+.chip{display:inline-flex;place-items:center}
+@media (max-width:600px){.page{grid-template-columns:1fr}}
+</style></head><body><div class="page"><header style="grid-area:head"><nav><a href="/">Home</a> text <a href="/x">X</a></nav></header>
+<aside style="grid-area:side">side</aside><main style="grid-area:main"><div class="cards"><div style="grid-column:1/-1">wide</div><div style="grid-row:span 2">a</div><div>b</div></div>
+<p>Inline <span class="chip"><b>c</b><i>d</i></span> chip</p></main></div></body></html>

@@ -1,8 +1,37 @@
 # UltraCanvasSankeyDiagram Documentation
 
-**Version:** 1.3.0
-**Last Modified:** 2025-10-16
+**Version:** 1.3.1
+**Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Node Management](#node-management)
+  - [Link Management](#link-management)
+  - [Data I/O](#data-io)
+  - [Layout Configuration](#layout-configuration)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Function](#factory-function)
+- [Data Structures](#data-structures)
+  - [SankeyNode](#sankeynode)
+  - [SankeyLink](#sankeylink)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Energy Flow Example](#energy-flow-example)
+  - [Hosting the Diagram in a Container](#hosting-the-diagram-in-a-container)
+  - [Live Configuration via Controls](#live-configuration-via-controls)
+  - [Financial Flow Example](#financial-flow-example)
+  - [Web Traffic Flow Example](#web-traffic-flow-example)
+  - [Manual Column Ordering and Custom Theme](#manual-column-ordering-and-custom-theme)
+  - [Custom Builder Tab (Add Link at Runtime)](#custom-builder-tab-add-link-at-runtime)
+  - [Performance Test (Random Diagram)](#performance-test-random-diagram)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -41,7 +70,7 @@ UltraCanvasUIElement
 ### Constructor
 
 ```cpp
-UltraCanvasSankeyDiagram(const std::string& id, long x, long y, long w, long h);
+UltraCanvasSankeyDiagram(const std::string& id, float x, float y, float w, float h);
 ```
 
 Creates a Sankey diagram element at the given position and size.
@@ -112,7 +141,7 @@ std::function<void(const std::string&, const std::string&)> onLinkHover;
 
 ```cpp
 inline std::shared_ptr<UltraCanvasSankeyDiagram> CreateSankeyRenderer(
-        const std::string& id, long x, long y, long w, long h);
+        const std::string& id, float x, float y, float w, float h);
 ```
 
 ## Data Structures
@@ -180,16 +209,15 @@ void GenerateEnergySankeyData(UltraCanvasSankeyDiagram* renderer) {
 
     renderer->SetTheme(SankeyTheme::Energy);
 }
+
+auto energySankey = std::make_shared<UltraCanvasSankeyDiagram>(
+        "EnergySankey", 10, 110, 950, 520);
+GenerateEnergySankeyData(energySankey.get());
 ```
 
 ### Hosting the Diagram in a Container
 
 ```cpp
-auto energySankey = std::make_shared<UltraCanvasSankeyDiagram>(
-        "EnergySankey", 10, 110, 950, 520);
-
-GenerateEnergySankeyData(energySankey.get());
-
 energySankey->onNodeClick = [statusLabel](const std::string& nodeId) {
     statusLabel->SetText("Clicked node: " + nodeId);
 };
@@ -240,6 +268,10 @@ void GenerateFinanceSankeyData(UltraCanvasSankeyDiagram* renderer) {
 
     renderer->SetTheme(SankeyTheme::Finance);
 }
+
+auto financeSankey = std::make_shared<UltraCanvasSankeyDiagram>(
+        "FinanceSankey", 10, 110, 950, 520);
+GenerateFinanceSankeyData(financeSankey.get());
 ```
 
 ### Web Traffic Flow Example
@@ -266,6 +298,10 @@ void GenerateWebTrafficSankeyData(UltraCanvasSankeyDiagram* renderer) {
 
     renderer->SetTheme(SankeyTheme::WebTraffic);
 }
+
+auto webSankey = std::make_shared<UltraCanvasSankeyDiagram>(
+        "WebTrafficSankey", 10, 110, 950, 520);
+GenerateWebTrafficSankeyData(webSankey.get());
 ```
 
 ### Manual Column Ordering and Custom Theme
@@ -325,6 +361,11 @@ clearBtn->onClick = [customSankey]() {
 ### Performance Test (Random Diagram)
 
 ```cpp
+auto perfSankey = std::make_shared<UltraCanvasSankeyDiagram>(
+        "PerfSankey", 10, 110, 950, 520);
+auto generateBtn = std::make_shared<UltraCanvasButton>("GenerateBtn", 10, 70, 120, 30);
+generateBtn->SetText("Generate");
+
 generateBtn->onClick = [perfSankey, nodesSlider, linksSlider]() {
     perfSankey->ClearAll();
 

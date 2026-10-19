@@ -1,7 +1,8 @@
 // VideoFX/core/VideoFXFilterBuilder.cpp
 // Effect list -> filter-graph text, and the effect / segment / preset factories.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.16.0 - an overlay's effects: IsOverlayEffect, BuildOverlayEffectGraph, ValidateOverlay
+// Version: 0.4.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "VideoFXFilterBuilder.h"
@@ -96,6 +97,16 @@ VideoFXOverlay VideoFXOverlay::ImageFromFrame(const VideoFXFrame& frame, VideoFX
     return o;
 }
 
+VideoFXOverlay VideoFXOverlay::Video(const std::string& path, VideoFXAnchor anchor, double heightFraction, double videoStart) {
+    VideoFXOverlay o;
+    o.kind = VideoFXOverlayKind::Video;
+    o.videoPath = path;
+    o.videoStart = videoStart;
+    o.anchor = anchor;
+    o.imageHeight = heightFraction;
+    return o;
+}
+
 VideoFXSegment VideoFXSegment::FromFile(const std::string& path, double start, double end) {
     VideoFXSegment s;
     s.kind = VideoFXSourceKind::File;
@@ -144,6 +155,14 @@ VideoFXExportSettings VideoFXExportSettings::WebMP4(int height) {
     s.videoCodec = VideoFXVideoCodec::H264;
     s.audioCodec = VideoFXAudioCodec::AAC;
     s.height = height;
+    return s;
+}
+
+VideoFXExportSettings VideoFXExportSettings::Draft(int height) {
+    VideoFXExportSettings s = WebMP4(height);
+    s.encoderPreset = "ultrafast";
+    s.quality = 30;
+    s.audioBitRate = 96000;
     return s;
 }
 
@@ -489,12 +508,55 @@ namespace {
     }
 }
 
+bool IsOverlayEffect(VideoFXEffectType type) {
+    switch (type) {
+        case VideoFXEffectType::Brightness: case VideoFXEffectType::Contrast: case VideoFXEffectType::Saturation:
+        case VideoFXEffectType::Gamma: case VideoFXEffectType::Exposure: case VideoFXEffectType::Hue:
+        case VideoFXEffectType::Temperature: case VideoFXEffectType::Grayscale: case VideoFXEffectType::Sepia:
+        case VideoFXEffectType::Invert: case VideoFXEffectType::Blur: case VideoFXEffectType::Sharpen:
+        case VideoFXEffectType::Denoise: case VideoFXEffectType::Vignette:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool BuildOverlayEffectGraph(const std::vector<VideoFXEffect>& effects, const std::string& input,
+                             const std::string& output, const std::string& prefix,
+                             std::string& graph, std::string& error) {
+    graph.clear();
+    if (effects.empty()) return true;
+    for (const VideoFXEffect& e : effects) {
+        if (!IsOverlayEffect(e.type)) {
+            error = "An overlay takes colour and detail effects only (no LUT, geometry, fades or sound)";
+            return false;
+        }
+    }
+    std::string chain;
+    if (!BuildVideoEffectChain(effects, 0.0, chain, error)) return false;
+    if (chain.empty()) chain = "null";      // every effect a no-op (a blur of 0)
+    // The effects work on the colour; the picture's alpha goes round them
+    const std::string a = prefix + "a", b = prefix + "b", al = prefix + "al", c = prefix + "c";
+    graph = "[" + input + "]format=rgba,split[" + a + "][" + b + "];[" + b + "]alphaextract[" + al + "];[" + a + "]" +
+            chain + "[" + c + "];[" + c + "][" + al + "]alphamerge[" + output + "];";
+    return true;
+}
+
 bool ValidateOverlay(const VideoFXOverlay& o, double segmentDuration, std::string& error) {
     (void)segmentDuration;
+    if (!o.effects.empty()) {
+        if (o.kind == VideoFXOverlayKind::Text) { error = "A text overlay takes no effects"; return false; }
+        std::string graph;
+        if (!BuildOverlayEffectGraph(o.effects, "in", "out", "check", graph, error)) return false;
+    }
     if (o.kind == VideoFXOverlayKind::Text) {
         if (o.text.empty()) { error = "Text overlay has no text"; return false; }
         if (!InRange(o.fontSize, 0.005, 1.0)) { error = "Text size must be 0.005..1 of the frame height"; return false; }
         if (!InRange(o.boxOpacity, 0.0, 1.0)) { error = "Box opacity must be 0..1"; return false; }
+    } else if (o.kind == VideoFXOverlayKind::Video) {
+        if (o.videoPath.empty()) { error = "Video overlay has no file"; return false; }
+        if (!InRange(o.videoStart, 0.0, 1e6)) { error = "Video overlay start must be >= 0"; return false; }
+        if (!InRange(o.imageHeight, 0.0, 1.0)) { error = "Video height must be 0..1 of the frame height"; return false; }
     } else {
         if (!o.image.IsValid() && o.imagePath.empty()) { error = "Image overlay has no image"; return false; }
         if (!InRange(o.imageHeight, 0.0, 1.0)) { error = "Image height must be 0..1 of the frame height"; return false; }
@@ -625,6 +687,34 @@ void BuildImageOverlayFilters(const VideoFXOverlay& o, int outWidth, int outHeig
     // A single still without fades: eof_action=repeat holds it for the whole segment
     overlayFilter = "overlay=x=" + EscapeFilterValue(x) + ":y=" + EscapeFilterValue(y) +
                     (fades ? ":shortest=1" : ":eof_action=repeat");
+    const std::string enable = OverlayEnableExpr(o, segmentDuration);
+    if (!enable.empty()) overlayFilter += ":enable=" + EscapeFilterValue(enable);
+}
+
+// A video overlay's frames arrive already upright and RGBA, timed on the
+// segment's clock (the overlay's own `start` is where its first frame
+// lies), so the chain only sizes, dims and fades them; the overlay filter
+// holds the last frame when the file ends before the overlay does
+void BuildVideoOverlayFilters(const VideoFXOverlay& o, int outWidth, int outHeight, int videoHeight,
+                              double segmentDuration, std::string& inputChain, std::string& overlayFilter) {
+    (void)outWidth;
+    inputChain = "format=rgba";
+    if (o.imageHeight > 0.0) {
+        const int h = std::max(2, static_cast<int>(std::lround(o.imageHeight * outHeight)));
+        if (h != videoHeight) AppendFilter(inputChain, "scale=-1:" + std::to_string(h));
+    }
+    AppendFilter(inputChain, "setsar=1");
+    if (o.opacity < 1.0) AppendFilter(inputChain, "colorchannelmixer=aa=" + FormatNumber(o.opacity));
+    const double end = OverlayEnd(o, segmentDuration);
+    if (o.fadeIn > 0.0)
+        AppendFilter(inputChain, "fade=t=in:st=" + FormatNumber(o.start) + ":d=" + FormatNumber(o.fadeIn) + ":alpha=1");
+    if (o.fadeOut > 0.0 && end > 0.0) {
+        const double d = std::min(o.fadeOut, std::max(0.0, end - o.start));
+        AppendFilter(inputChain, "fade=t=out:st=" + FormatNumber(end - d) + ":d=" + FormatNumber(d) + ":alpha=1");
+    }
+    std::string x, y;
+    OverlayPosition(o, outHeight, "W", "H", "w", "h", x, y);
+    overlayFilter = "overlay=x=" + EscapeFilterValue(x) + ":y=" + EscapeFilterValue(y) + ":eof_action=repeat";
     const std::string enable = OverlayEnableExpr(o, segmentDuration);
     if (!enable.empty()) overlayFilter += ":enable=" + EscapeFilterValue(enable);
 }

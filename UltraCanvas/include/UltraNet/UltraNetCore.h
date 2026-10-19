@@ -3,7 +3,9 @@
 // configuration, credentials, proxy descriptor, transfer stats, and the
 // initialize/shutdown/version entrypoints. Full surface defined in the
 // UltraNet Master Registry v1.0.0.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0 - UltraNet_SetThreadAbortCheck: a running HTTP or FTP
+//                  transfer can be called off from outside it
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -82,7 +84,11 @@ enum class UltraNetResultCode {
     // answered, or the device was given a new key. Kept apart from
     // TlsCertificateInvalid because the remedy differs - nothing about the
     // certificate is wrong except that it is not the one remembered.
-    TlsPublicKeyMismatch
+    TlsPublicKeyMismatch,
+    // A redirect the request was not allowed to follow: with
+    // UltraNetHttpOptions::httpsOnlyRedirects, one to a URL that is not
+    // https://. UltraNetResult::httpStatus is the 3xx.
+    RedirectRefused
 };
 
 // ============================================================================
@@ -299,6 +305,18 @@ UltraNetResult         UltraNet_CancelRequest(UltraNetHandle handle);
 bool                   UltraNet_IsRequestActive(UltraNetHandle handle);
 UltraNetTransferStats  UltraNet_GetTransferStats(UltraNetHandle handle);
 
+// Pause an async transfer: nothing more is read from or written to the
+// connection, no data or progress callback fires, the connection stays open,
+// and the stall timeout is suspended (a whole-transfer timeout keeps
+// counting, so a pausable download leaves timeoutMs at its no-limit default).
+// Resume continues where it stopped. Both act on the next turn of the worker
+// and may be called before the request has started; a transfer that ends
+// while paused (the server closes, a cancel) reports as usual. InvalidHandle
+// when no such request is live.
+UltraNetResult         UltraNet_PauseRequest(UltraNetHandle handle);
+UltraNetResult         UltraNet_ResumeRequest(UltraNetHandle handle);
+bool                   UltraNet_IsRequestPaused(UltraNetHandle handle);
+
 // ============================================================================
 // Global transfer progress callback bag. Set once on the module, every HTTP
 // request (sync and async) reports its progress through these callbacks.
@@ -317,3 +335,19 @@ struct UltraNetTransferCallbacks {
 UltraNetTransferCallbacks UltraNet_SetTransferCallbacks(
     const UltraNetTransferCallbacks& cb);
 UltraNetTransferCallbacks UltraNet_GetTransferCallbacks();
+
+// ============================================================================
+// Calling a transfer off from outside it. A thread that runs transfers - a
+// worker its application wants to stop without waiting for a large upload to
+// finish - sets a check for itself here. The synchronous HTTP requests and
+// the FTP uploads and downloads it makes ask it as they run (libcurl's
+// progress callback: as the bytes go by, and about once a second while the
+// server is silent) and end as UltraNetResultCode::Cancelled once it says
+// true. Per thread, because a synchronous request runs on its caller's
+// thread; asynchronous requests run on the multi worker and are cancelled
+// with UltraNet_CancelRequest instead. Returns the previous check, so a
+// caller can put it back; an empty function clears it.
+// ============================================================================
+std::function<bool()> UltraNet_SetThreadAbortCheck(std::function<bool()> check);
+// Whether the calling thread's transfers are to stop now.
+bool UltraNet_ThreadAbortRequested();

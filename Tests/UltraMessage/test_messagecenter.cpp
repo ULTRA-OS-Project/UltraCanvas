@@ -4,6 +4,7 @@
 // replace rules; and, on a private bus, the element receiving live messages,
 // reading the journal, and posting feed.read / feed.dismissed /
 // system.notification.action back for the sources.
+// Version: 0.1.1 - a NoJournal notice makes no row
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -248,6 +249,14 @@ TEST(message_center_mirrors_and_replacements_keep_one_row) {
     center->Ingest(Message("p2", UltraMsgTopics::SystemNotification,
                            Toast("Downloads", "org.ultraos.filer", "Download done", ""), now - 100));
     REQUIRE_EQ(center->GetEntries().size(), size_t(2));
+
+    // A passing alert the journal never holds (UltraMail's "new mail",
+    // whose messages are rows already) is no row: the feed lists only what
+    // it can find again.
+    center->Ingest(Message("a1", UltraMsgTopics::SystemNotification,
+                           Toast("UltraMail", "org.ultraos.ultramail", "2 new messages", ""), now - 50, false, "",
+                           UltraMsgFlag_NoJournal));
+    REQUIRE_EQ(center->GetEntries().size(), size_t(2));
 }
 
 TEST(message_center_on_the_bus_receives_reads_and_answers) {
@@ -294,8 +303,11 @@ TEST(message_center_on_the_bus_receives_reads_and_answers) {
     chatOptions.conversation = "telegram:Ada";
     REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::MessagingMessage, Chat("telegram", "Ada", "Ada", "live one"), chatOptions, &chatId));
     REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::MailMessage, Mail("erika@example.org", "Konrad", "live two"), {}, &mailId));
+    UltraMsgSendOptions silent;   // listed, not shown on the screen of whoever runs the tests
+    silent.flags = UltraMsgFlag_Silent;
     REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::SystemNotification,
-                          Toast("Downloads", "org.ultraos.filer", "live three", "", {{"open", "Open"}}), {}, &toastId));
+                          Toast("Downloads", "org.ultraos.filer", "live three", "", {{"open", "Open"}}), silent,
+                          &toastId));
     REQUIRE(WaitFor([&] { return center->GetEntries().size() == 3; }));
     REQUIRE_EQ(center->GetUnreadCount(), 3);
 

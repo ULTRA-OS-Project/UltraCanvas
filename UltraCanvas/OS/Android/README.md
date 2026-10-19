@@ -7,9 +7,10 @@ EGL/GLES context manager, clipboard, soft keyboard and full IME, multi-touch
 with pinch/rotate gestures, message dialogs, SAF file opening and saving, and
 APK asset extraction.
 
-**Still open, and it gates everything: the cross-compiled dependency sysroot
-and APK packaging.** No APK can be built until that exists, so none of this has
-run on a device — it is compiled continuously in CI, not observed. See
+**Still open, and it gates everything: APK packaging.** The cross-compiled
+dependency sysroot builds in CI, and the core library compiles against it
+(`.github/workflows/android-build.yml`), but no APK has been built, so none of
+this has run on a device — it is compiled continuously in CI, not observed. See
 [`packaging/`](packaging/README.md), and
 [`AndroidOnLinuxInvestigation.md`](../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md)
 for how to run the first APK on a Linux box rather than a phone (and what to
@@ -21,7 +22,7 @@ Android).
 | File | Role |
 |---|---|
 | `UltraCanvasAndroidApplication.{h,cpp}` | All `UltraCanvasApplicationBase` pure virtuals + `GetInstance()`. `CollectAndProcessNativeEvents` pumps the glue's `ALooper` (activity commands + input); cross-thread wakeup is `ALooper_wake` (no eventfd needed). Touch → mouse translation (pointer 0, with double-tap synthesis), `AKEYCODE_*` → `UCKeys` mapping with layout-aware Unicode text via JNI `KeyCharacterMap` (US-ASCII derivation kept as fallback), back button → `WindowCloseRequest`, fontconfig/Pango bundled-font registration, Roboto / Droid Sans Mono defaults. Soft keyboard: `Show/HideSoftKeyboard()` (JNI `InputMethodManager` — the NDK's `ANativeActivity_showSoftInput` is unreliable by long-standing platform bug), driven automatically by `UltraCanvasCaret::onTextEditingChanged` with hides deferred one loop turn so focus moves between text widgets don't flicker the IME. Cursor + mouse-capture virtuals are folded in as accepted no-ops (no separate cursor file). |
-| `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, jstring→std::string. |
+| `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, UTF-8 ↔ jstring both ways (`ToStdString` / `ToJString`: real UTF-8, not JNI's modified UTF-8, so emoji survive and malformed bytes become U+FFFD instead of aborting under CheckJNI). Never use `NewStringUTF` for anything but a literal. |
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text both ways; images and files can be **pasted** (the clip's `content://` items are copied into the app cache through `UltraCanvasActivity`, as the file picker does) but not **copied** — see Clipboard below. `GetAvailableFormats` reports what the clip actually advertises, in the same MIME spelling the Linux backend uses. Change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "nothing there" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
 | `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
@@ -29,9 +30,10 @@ Android).
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs, input dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile` and `SelectFolder` stay logged "Cancel" stubs — **Dialogs** below explains why those two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
 | `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog` (message and text-input), the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
-| `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. |
+| `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, the text being composed, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. They arrive on the Java UI thread and are queued, in order, for the glue thread (`DrainImeQueue`). |
 | `UltraCanvasAndroidAssets.{h,cpp}` | Unpacks the APK's `assets/` tree into `$HOME/share` on the first launch after an install or update (stamped against the APK's mtime+size). Inside an APK nothing is on the filesystem, so without this every path-based `fopen` for a font, icon or media file fails. Uses Java `AssetManager.list()` to walk the tree — the NDK's `AAssetDir` cannot see subdirectories — and the native `AAssetManager` to read contents. |
-| `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the sysroot blocker that stops one being built today. |
+| `UltraCanvasAndroidPermissions.{h,cpp}` | Runtime permissions (`IsGranted`, `Request` with the answer posted to the UI thread) and the display rotation, over JNI. The rotation is also kept as an atomic value any thread can read (`CurrentDisplayRotationDegrees`), updated by `UltraCanvasActivity`'s display listener and on each configuration change. `Request` needs `UltraCanvasActivity`, whose `onRequestPermissionsResult` carries the answer back. Used by the video backend for CAMERA and RECORD_AUDIO. |
+| `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the vcpkg manifest for the dependency sysroot. |
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` no-op. |
 | `GLContextManagerEGL_Android.cpp` | EGL + **OpenGL ES** context manager (ES 3 preferred, ES 2 fallback) behind the same `CreateGLContextManagerEGL()` factory symbol the dispatcher uses on Linux. Same offscreen model as the Linux EGL manager: 1×1 pbuffer made current, all real rendering into FBOs (`GLFramebuffer.cpp` compiles against `<GLES3/gl3.h>` on Android, and `ICompositeStrategy.cpp` reads back `GL_RGBA` + swizzles to Cairo's word order, since core GLES has no `GL_BGRA` readback). `GLSurfaceConfig`'s desktop fields (`glVersionMajor/Minor`, `coreProfile`) are ignored. Note: the FBO layer uses ES 3 sized formats (`GL_RGBA8`), so the ES 2 fallback context is best-effort only — every `minSdk 26` device ships ES 3.x. |
 
@@ -107,6 +109,23 @@ It is **optional**. The C++ side looks every bridge method up by name and
 degrades when it is absent — dialogs return "cancelled", and the soft keyboard
 is raised against the decor view without an IME session — so an app that needs
 neither native dialogs nor composed text input can ship with no Java at all.
+
+**Calls from Java back into C++** (a dialog's answer, typed text, a permission
+answer, a display turn) are `native` methods resolved by name, and that works
+only because `UltraCanvasActivity.onCreate` loads the app's library through
+`System.loadLibrary` before `NativeActivity` does. `NativeActivity` opens the
+library with a plain `OpenNativeLibrary` (`dlopen`), and ART looks `native`
+methods up only in libraries loaded through `System.loadLibrary` /
+`System.load`. Without that call every one of them would throw
+`UnsatisfiedLinkError` on the UI thread, which crashes the app on the first
+keystroke. Both loads go through the same class-loader linker namespace, so
+the library is one copy, not two. Two checks keep this honest:
+
+- `scripts/android-java-check.sh` (CI) fails when a `native` method has no C++
+  definition. It generates the exact JNI names with `javac -h` and looks each
+  up in `OS/Android/*.cpp`.
+- On a device, `android_main` asks the activity whether the bridge works and
+  logs the answer (see *Diagnostics*).
 
 Message dialogs (`ShowInfo` / `ShowWarning` / `ShowError` / `ShowQuestion` /
 `ShowMessage` / `Confirm` / `ConfirmYesNo`), input dialogs (`InputText` /
@@ -242,15 +261,34 @@ key event, is replayed as Backspace presses so existing text widgets handle it
 unchanged. While the input view holds focus it forwards key events to the
 native side itself, so a hardware keyboard keeps working during editing.
 
-**Composing text stays inside the IME** and is never forwarded. That is not an
-Android shortcut — it matches the framework's cross-platform text model: the
-Linux backend likewise takes only the committed result out of
-`Xutf8LookupString`, and no core widget can render an inline preedit region.
-Showing composition inline would be a new cross-platform capability (a core
-text model that carries a composing range, rendering for it, and support in
-every backend), not something the Android layer can add on its own. The IME
-shows its candidates in its own UI meanwhile, so CJK and suggestion-based input
-work today.
+**The word being composed is shown inline** by an element that draws
+compositions itself (`DrawsTextComposition()`: `UltraCanvasTextInput`,
+`UltraCanvasTextArea` and `UltraCanvasRichTextEdit` when editable):
+`setComposingText` reaches it as `TextComposition` events, the same events the
+Linux (XIM) and Windows (IMM) backends send, and it draws the word at its
+caret. Any other element sees nothing until the word is committed, and the
+suggestion bar shows the candidates meanwhile. The InputConnection runs on the
+Java UI thread, so every call is queued and applied on the glue thread, where
+the focused element can be asked. All calls share one queue: a composition
+overtaking the commit that ends it would leave a stale pre-edit on screen.
+
+What happens to a composition:
+
+- **`commitText`** replaces it. The pre-edit is ended first, then the text
+  arrives as typed.
+- **`finishComposingText`** keeps it as typed. A keyboard does this when it
+  closes mid-word; before, that word was lost.
+- **A tap** keeps it as typed where it was, before the tap can move focus or
+  the caret, as Android's own text fields do. The input session is then
+  restarted so the keyboard composes afresh. The old `InputConnection` ignores
+  everything from then on, so it cannot commit the same word twice.
+- **`setComposingRegion`** (re-composing a word already typed, which keyboards
+  do when backspace reaches it) is refused. The region is measured in the
+  connection's local `Editable`. That only knows what the keyboard typed in
+  this session, not where the user has since moved the caret, so mirroring it
+  would erase whatever text sits before the native caret. Refused, the
+  keyboard composes fresh text at the caret. Before, the word was typed a
+  second time after the copy already there.
 
 **With a plain `NativeActivity`** there is no editor for the IME to attach to,
 so the keyboard is raised against the decor view and only committed key events
@@ -283,6 +321,65 @@ Whoever implements it needs a `ContentProvider` subclass (`openFile` plus
 the `ClipData` — hand-written rather than AndroidX's `FileProvider`, since the
 Java here is compiled against `android.jar` alone.
 
+## Video: playback, thumbnails and the camera
+
+The video backend lives with the other platforms' in
+`libspecific/Video/VideoBackendAndroid*.cpp` and is **on by default**: it uses
+only the NDK's own libraries (`mediandk`, `camera2ndk`, `aaudio`, all present
+at minSdk 26), so unlike most of the stack it does not wait on the
+cross-compiled sysroot.
+
+- **Playback.** `AMediaExtractor` demuxes; `AMediaCodec` decodes the video
+  into an `AImageReader` as YUV_420_888, a layout every decoder can produce
+  whatever its private one is. Frames are converted to BGRA, cropped to the
+  picture and turned upright by the track's rotation (phones record sideways
+  and say so in metadata). Audio is decoded to PCM and played through AAudio.
+  A session clock decides when each frame is shown, and is re-anchored to the
+  audio device's own timestamps while sound plays, so picture follows what is
+  heard. Local files are opened by descriptor; `http(s)://` goes to the
+  platform's data source. Seeking is frame-accurate (decode from the previous
+  sync frame, drop up to the target), and a paused session shows the frame it
+  seeked to.
+- **Playback rate.** Any rate works for the picture. Sound plays only at 1×:
+  AAudio cannot change speed, and pitch-shifted sound is worse than none.
+  Going back to 1× resynchronises the audio.
+- **Thumbnails.** `GrabThumbnail` runs the same video pipeline for one frame,
+  synchronously, without an audio device.
+- **Camera.** Camera2 through the NDK. Cameras are listed with their YUV
+  output sizes, and the first back-facing one is the default. Every preview
+  frame is turned upright for the display as it is at that moment, so the
+  preview follows the device as it turns, and it is mirrored for a front
+  camera. The frames then swap width and height, so a consumer must not
+  assume one size for the whole session. Recording feeds the camera straight into an H.264 or H.265 encoder
+  through its input surface, records the microphone through AAudio into AAC,
+  and writes **MP4** with `AMediaMuxer`, with the orientation as a hint so the
+  file plays upright. `Pause`/`Resume` cut the pause out of the file. Other
+  containers and codecs fail `Start()` with a message: the platform muxer
+  writes MP4 and WebM, but Android has no Vorbis encoder and only newer
+  releases an Opus one.
+- **Permissions.** The camera needs `android.permission.CAMERA` in the manifest
+  (see `packaging/AndroidManifest.xml`) and at runtime:
+  `UltraCanvasVideoDevices::RequestCameraPermission` shows the system prompt
+  through `UltraCanvasActivity`. `GetCameraPermission` reports `Granted` or
+  `Undetermined`: Android cannot tell "never asked" from "refused but may ask
+  again" without asking. Recording without `RECORD_AUDIO` records silently.
+
+Limits to know:
+
+- A recording keeps the orientation the device had when `Start()` ran: a file
+  has one orientation hint, so turning the device mid-recording turns the
+  picture in the file. The preview is unaffected and keeps following the
+  device.
+- The display rotation reaches the camera thread from `UltraCanvasActivity`'s
+  display listener, which also sees 180-degree flips. With a plain
+  `NativeActivity` it is re-read only on a configuration change or resize, and
+  a 180-degree flip raises neither, so that turn is missed until the next one.
+- Each recorded track starts at zero on its own clock. The camera's and the
+  microphone's timestamps come from different clocks on many devices, so they
+  cannot be compared directly. Sync is therefore as good as the two streams'
+  start latencies are equal, which is typically within a frame.
+- Like everything here, none of it has run on a device yet.
+
 ## Diagnostics: seeing anything at all
 
 The single thing to set up before a first run on a device or emulator, because
@@ -304,6 +401,19 @@ sites in core — is captured by the stdio pump instead, under the tag
 ```sh
 adb logcat -s UltraCanvas:V UltraCanvas-stdio:V
 ```
+
+The first line from a launch with `UltraCanvasActivity` says whether Java can
+call into the library, logged at INFO/ERROR whatever the build type:
+
+```
+I UltraCanvas: Java->native bridge OK
+E UltraCanvas: Java->native bridge BROKEN: ...
+```
+
+BROKEN means dialogs, the keyboard and permission requests will crash. The
+usual cause is an `android.app.lib_name` that names a library other than the
+one holding the backend. A plain `NativeActivity` logs neither line: it has
+no Java half to check.
 
 An APK inherits no environment, so `ULTRACANVAS_DEBUG_LOG` cannot be set on a
 device. The Android knob is the system property:
@@ -327,39 +437,42 @@ Native crashes are separate: those go to the tombstone, and
 ## Building
 
 Needs the NDK toolchain plus a cross-compiled dependency sysroot (cairo, pango,
-glib, harfbuzz, fontconfig, freetype, tinyxml2) reachable through
-`PKG_CONFIG_LIBDIR` — see investigation §4:
+glib, harfbuzz, fontconfig, freetype, tinyxml2, libvips) reachable through
+`PKG_CONFIG_LIBDIR` — `scripts/android-bootstrap-sysroot.sh` builds it with
+vcpkg and prints the configure line (investigation §4):
 
 ```sh
-cmake -B build-android \
+PKG_CONFIG_LIBDIR=$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig \
+cmake -G Ninja -B build-android \
   -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
+  -DCMAKE_FIND_ROOT_PATH=$SYSROOT -DPKG_CONFIG_ARGN=--static
 ```
 
 The root CMakeLists defaults everything except the core library OFF for
-Android (apps, plugins, vips, video, UltraNet, database, VirtualFS);
+Android (apps, plugins, UltraNet, database, VirtualFS); libvips is part of
+the core library, as on every platform, and comes from the sysroot;
 each is an ordinary cache option that `-D...=ON` re-enables once its
 dependency exists in the sysroot. GL surfaces stay ON: EGL and GLESv3 come
 from the NDK sysroot itself (no pkg-config probing), wired through
 `GLContextManagerEGL_Android.cpp`.
 
-**That sysroot does not exist yet, so no APK can be built and none of this has
-run on a device.** Everything here is compiled in CI against the real NDK, and
-the Java against `android.jar`, so the code is type-checked continuously — but
-treat the runtime behaviour described in this file as designed and reviewed,
-not as observed. `packaging/` holds the manifest and Gradle scaffolding, and
-spells out what the sysroot needs to contain.
+`.github/workflows/android-build.yml` builds that sysroot for `arm64-v8a` and
+compiles the core library against it with exactly that configure line. **No
+APK has been built yet, so none of this has run on a device.** Everything here
+is compiled in CI against the real NDK, and the Java against `android.jar`, so
+the code is type-checked continuously — but treat the runtime behaviour
+described in this file as designed and reviewed, not as observed. `packaging/`
+holds the manifest, the Gradle scaffolding and the sysroot's vcpkg manifest.
 
 ## Still to come (phases 2–3, investigation §7)
 
-The cross-compiled dependency sysroot and a real APK build (the blocker for
-everything below, since nothing can be observed until then), clipboard
+A real APK build (the blocker for everything below, since nothing can be
+observed until then), clipboard
 images/files **copying** (pasting is done — it needs an app-declared
-`ContentProvider`, see above), gesture
-recognition on top of the touch stream (pinch/rotate → `PinchZoom`), inline
-IME composition (a cross-platform core change, not an Android one), and
-video and PDF. **Audio is on**: its backend is miniaudio, which is vendored
-rather than waiting on the sysroot and speaks AAudio (with OpenSL ES beneath
+`ContentProvider`, see above), and PDF. **Video is on** (see Video above). **Audio is
+on**: its backend is miniaudio, which is vendored rather than waiting on the
+sysroot and speaks AAudio (with OpenSL ES beneath
 it) natively — both runtime-linked, so there is nothing extra to link. Only
 the optional codec libraries are missing from a minimal sysroot, which costs
 formats rather than the backend. Playback needs no manifest permission;

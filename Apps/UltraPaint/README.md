@@ -24,12 +24,44 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
  status: pointer x,y | zoom | size, layers | hint
 ```
 
+The colour picker has a list of designs in its corner - colour circle,
+slider and square, colour rectangle, or colour and brightness sliders - and
+folds its channels (the HSV / HSL / RGB tabs and sliders) away under
+*Channels*. It is as tall as what it shows, so the panels below move up and
+down with it, and it opens with the design and the channels it was left with
+(`picker.design` and `picker.channels` in the settings file).
+
 ## Tools
+
+The palette groups tools of a kind on one button: resting the pointer on it
+folds out a bar beside it with the whole group, and a click there picks a
+tool; a click on the button itself picks the tool it shows. A small triangle
+in a button's corner marks a group. Top to bottom:
+
+| Button | Tools |
+|---|---|
+| Select | Rectangle Select, Ellipse Select, Lasso, Magic Wand |
+| Pen | Paintbrush, Pencil, Airbrush |
+| Lines | Line, Polyline, Arrow, Curve |
+| Shapes | Rectangle, Ellipse |
+| Morph | Smudge, Clone Stamp |
+| Shading | Dodge, Burn |
+| Move, Crop, Eyedropper, Eraser | one tool each |
+| Fill | Fill, Gradient |
+| Text | Text |
+| View | Zoom, Pan |
+
+With an *adaptive* toolbar (the default) a group's button shows the tool last
+picked from it; with a *static* one it always shows the group's main tool -
+the first of the row above - and the bar marks the tool in use
+(*Edit > Settings > Display > Tool palette*). The groups are `PaletteGroups()`
+in `UltraPaintWindow.cpp`; the fold-out is the framework's
+[`UltraCanvasToolGroupButton`](../../Docs/UltraCanvas/UltraCanvasToolGroupButton.md).
 
 | Tool | Key | Notes |
 |---|---|---|
 | Move | M | Drags the selected pixels (or the whole layer) |
-| Rectangle / Ellipse Select | R / E | Shift adds, Alt subtracts, Shift+Alt intersects, Ctrl constrains; feather in the options |
+| Rectangle / Ellipse Select | R / E | Shift adds, Alt subtracts, Shift+Alt intersects, Ctrl constrains; feather in the options. The rectangle shows the mouse pointer magnification glass (below) |
 | Lasso | L | Free-hand outline |
 | Magic Wand | W | Tolerance, contiguous / global, sample merged |
 | Crop | C | Drag, then Enter, double-click or *Image > Crop to Selection* (Escape cancels) |
@@ -37,19 +69,75 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 | Pencil | N | Hard, aliased pixels |
 | Paintbrush | B | Size, hardness, opacity, flow, spacing, round / square, pressure |
 | Airbrush | A | Soft, low flow |
-| Eraser | X (Shift) | To transparency |
+| Eraser | Shift+X | To transparency (plain `X` swaps the colours) |
 | Clone Stamp | S | Ctrl+click sets the source |
 | Smudge | U | Drags colour along |
 | Dodge / Burn | O / K | Lighten / darken |
-| Fill | F | Flood fill: tolerance, contiguous, sample merged, opacity |
+| Fill | F | Flood fill: mode (Normal / Replace), tolerance, contiguous, sample merged, opacity |
 | Gradient | G | Foreground → background; linear, radial, reflected |
 | Line / Rectangle / Ellipse | D / Q / P | Outline in the foreground colour, fill in the background colour, anti-aliased, Shift constrains |
-| Text | T | Click, type, choose font / size / bold |
+| Polyline | Y | Click to add corners; double-click or Enter ends it, a click on the first corner closes it (filled in the background colour with *Fill a closed shape*). Backspace takes the last corner back, Escape cancels, Shift constrains each segment to 45° |
+| Arrow | V | Drag from the tail to the tip: a filled head at the tip, or at both ends. *Head size* in pixels, never less than three times the line width |
+| Curve | J | Drag a straight line, then drag or click twice to bend it - the first bend pulls the whole curve, the second its far half. Enter keeps it as it is, Escape cancels |
+| Text | T | Type on the image: a click starts a text, a drag a box its lines wrap in, a click on a text edits it. Every installed font; size, bold, italic, underline, alignment; the foreground colour. Kept as a **text layer** until merged - see below |
 | Zoom | Z | Click in, Alt/right-click out |
 | Pan | H | Space+drag works with every tool |
 
 `[` and `]` change the brush size; `X` swaps the colours, `Shift+D` resets
 them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
+
+The icons are line drawings in sets, each sharp at the size it is drawn
+for: `media/icons/ultrapaint/28/` on a 28-unit grid for the palette's flat
+36 px buttons, `media/icons/ultrapaint/` on a 24-unit grid for 24 px, and
+`media/icons/ultrapaint/16/` on a 16-unit grid with 1 px lines for the menus,
+where every entry has one (an adjustment's or a filter's is named by its
+id: `16/gaussian-blur.svg`). Straight edges sit on whole pixels, and a
+selection's marching ants have gaps of 3 px or more, so they stay apart at
+16 px. Where the window is too short for every tool the palette scrolls (the
+wheel, or the hints at its ends).
+
+### Filling with a transparent colour
+
+The Fill tool's *Mode* says what the colour does to the pixels it lands on:
+
+| Mode | What a fill does |
+|---|---|
+| Normal | Paints over them. The colour's alpha only says how much of it shows, so alpha 0 changes nothing - the status bar says so instead of ignoring the click |
+| Replace | Puts the colour in their place, alpha included. Alpha 0 makes the area transparent, and the checkerboard shows through; alpha 128 leaves it half transparent in that colour |
+
+For an opaque colour the two are the same. *Opacity* applies to both: at
+0.5, Replace takes the area half way to the colour. The colour's alpha is
+the *A* slider of the colour panel (the last two digits of *Hex*). A
+transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
+`.ucd`, `.ucraster`); a JPEG has none.
+
+### Text layers
+
+The Text tool types **on the canvas**: the words appear where they will be,
+in their font, size and colour, at the zoom of the view - the editor is the
+framework's WYSIWYG element (`UltraCanvasRichTextEdit`) laid over the image,
+and the text layer is drawn by that same element, so what is typed is
+exactly what the layer gets.
+
+| Do | How |
+|---|---|
+| Start a text | Click: the lines wrap at the image's right edge. Drag: a box, and the lines wrap at its width |
+| Format it | The tool options: *Font* (every font installed on the system - type the first letters in the open list to jump to one), *Size* in pixels, *Bold*, *Italic*, *Underline*, *Align* (left, centre, right); the colour is the foreground colour. With text selected they change the selection, otherwise what is typed next - so one text can mix fonts, sizes and colours. Ctrl+B / Ctrl+I / Ctrl+U work while typing |
+| Finish it | Escape, Ctrl+Enter, a click outside the text, another tool or any command. The text becomes a text layer, one undo step ("Text"); nothing typed adds nothing |
+| Edit it later | With the Text tool, click in its box (the Text tool shows every text's box dashed), or *Layer > Edit Text*. Emptying it removes the layer |
+| Change it whole | With the Text tool and a text layer active (not typing), the options and the foreground colour apply to all of it |
+| Move it | The Move tool moves a text layer as text (without a selection): it is drawn again where it lands |
+
+A text layer is marked with a "T" in the Layers panel and **stays editable
+until it is merged** - *Merge Down* and *Flatten* make it pixels, as do
+*Image > Scale / Flip / Rotate*; a canvas resize or a crop moves it along
+and keeps it text. Painting on it with a brush, a fill or a shape, or running
+a filter, an adjustment, *Fill* or *Delete* on it, asks first whether to
+**rasterize** it (*Layer > Rasterize Layer* does that directly); Undo makes it
+text again. The two layered formats keep text layers as text - a `.ucd`
+UltraCanvas layered image as a text frame, a `.ucraster` project as an
+OpenDocument text beside the layer's PNG - while every flat format (PNG,
+JPEG, ...) holds the text as the pixels it shows.
 
 ## Menus
 
@@ -57,13 +145,28 @@ them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
   (merge into this image or open a new window), Save, Save As, Export with
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
-  as New Image, Delete, Fill with Foreground / Background.
+  as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
+  Foreground / Background, Settings. When Paste finds no picture on the
+  clipboard - text was copied after it - it offers the newest image of the
+  clipboard history UltraDesktop keeps, saying when it was copied; Paste
+  Last Copied Image takes it without asking. Settings opens the settings
+  window: *Display > Mouse pointer magnification glass* - on or off, 2x /
+  3x / 4x, and the size of the glass (100-400 px) - and *Display > Tool
+  palette* - an adaptive toolbar (a group's button shows the tool last
+  picked) or a static one (always the group's main tool). A change applies
+  at once and is saved to `~/.config/UltraCanvas/UltraPaint/config.ini` (the
+  platform's settings folder elsewhere); *Restore defaults* restores the
+  page shown.
 - **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),
   Flip, Rotate, Flatten.
-- **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down,
-  Properties (name, opacity, blend mode, visibility, lock).
+- **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down, Edit Text
+  (the active text layer, on the canvas), Rasterize Layer (a text layer
+  becomes pixels), Properties (name, opacity, blend mode, visibility, lock). In the Layers
+  panel a click selects a layer and a double-click on its name renames it in
+  place (Enter or a click elsewhere keeps the name, Escape the old one; undo
+  takes a rename back).
 - **Select:** All, None, Invert, From Layer Alpha, Feather, Grow, Shrink.
 - **Adjust:** Brightness / Contrast, Hue / Saturation, Gamma, Levels,
   Curves, Posterize, Threshold, Solarize, Invert, Desaturate, Sepia,
@@ -72,6 +175,16 @@ them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
   Sobel, Laplacian, Canny, Emboss, Find Edges; Add Noise, Despeckle;
   Pixelate, Oil Paint; Erode, Dilate.
 - **View:** zoom commands, pixel grid, selection outline.
+
+**The mouse pointer magnification glass.** While the Rectangle Select tool
+is active, a small square view sits in a corner of the canvas and shows the
+pixels around the pointer at two, three or four times the view's own zoom,
+with a translucent diagonal crosshair whose centre - the pixel under the
+pointer - is left clear, so a selection starts and ends on the exact pixel.
+The rubber band, the selection outline and the pixel grid show in it too.
+It keeps out of the way: when the pointer comes within 48 px of it, it moves
+to the corner farthest from the pointer, and it takes no clicks, so a drag
+can pass under it.
 
 Every adjustment and filter with parameters opens a dialog with sliders, a
 Preview toggle and OK / Cancel; the preview runs on the canvas itself and is
@@ -103,11 +216,24 @@ every pixel of a colour and `Del` erases them.
 
 ## Files
 
-Opens what libvips loads (PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL,
-TGA, PSD, camera RAW, …). *Save* / *Save As* write the flattened image
-in the format of the extension; *Export with Options* adds the per-format
-knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
-and one PNG per layer.
+Opens and saves the formats the framework's FileLoader lists for this build
+(`UltraCanvasFileLoader::GetSupportedLoadExtensions` / `AddImageSaveTypes`:
+PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL, TGA, QOI, ICO, camera RAW,
+… - whatever libvips and the framework's plugins read and write here), not
+a list of its own. *Save* / *Save As* write the flattened image in the
+format of the extension; *Export with Options* adds the per-format knobs.
+Layered work is kept in one of the two **layered images** FileLoader lists:
+
+- **`.ucd`, an UltraCanvas layered image** - the UCD 2.1 container
+  (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): every layer's pixels, name,
+  visibility, lock, opacity and blend mode, a text layer's words as a text
+  frame, and a thumbnail a file manager or UltraViewer shows without opening
+  the layers;
+- **`.ucraster`, an UltraPaint project** - a ZIP with `document.json` and one
+  PNG per layer, and for a text layer its words as an OpenDocument text
+  (`layers/<n>.odt`).
+
+Both open with their layers, and their text layers as text again.
 
 ### Dropping a file on the canvas
 
@@ -172,7 +298,7 @@ the desktop offer the drop at all is the shortcut in
 UltraPaint reads and whose `Exec=UltraPaint %F` is expanded with the dropped
 paths.
 
-`make install` puts it, the `.ucraster` MIME type and the application icon
+`make install` puts it, the `.ucraster` and `.ucd` MIME types and the application icon
 where the desktop looks:
 
 ```bash
@@ -191,10 +317,18 @@ binary.
 UltraPaint                 # blank canvas
 UltraPaint photo.jpg       # open an image
 UltraPaint work.ucraster   # open a layered project
+UltraPaint work.ucd        # open an UltraCanvas layered image
 UltraPaint logo.svg        # asks for the raster size, then opens it
 UltraPaint part.stl        # asks for the view and the size, then opens it
 UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
 ```
+
+One UltraPaint runs per user. Starting it again while it runs - from a
+shell, a file manager or a drop on the icon - hands the images to the running
+copy, which opens each in a new window of its own and brings it to the front;
+an image already open is never replaced. A start without images just brings
+UltraPaint forward (`UltraCanvasSingleInstance`). `--help` and `--version`
+answer on their own.
 
 ## Building
 
@@ -216,4 +350,4 @@ and brushes build without it.
 | `UltraPaintTools.{h,cpp}` | The tools and their option panels |
 | `UltraPaintFilters.{h,cpp}` | The PixelFX filter catalogue and the parameter dialog |
 | `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha, Import (drop / vector raster size) |
-| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the `.ucraster` MIME type |
+| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the MIME types of `.ucraster` and `.ucd` (an UltraCanvas document; a layered image recognised by its `UCBitmap` signature) |

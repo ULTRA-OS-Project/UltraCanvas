@@ -1,7 +1,9 @@
 // core/UltraCanvasVideoRecorderElement.cpp
 // Composite UI control wrapping UltraCanvasVideoRecorder: camera preview + REC controls
-// Version: 0.1.4
-// Last Modified: 2026-07-23
+// Version: 0.1.5
+// Last Modified: 2026-10-10
+// V0.1.5: the camera list opens anchored to the camera selector: above it when there
+//   is no room below (a recorder at the foot of a window), never over it.
 // V0.1.4: CloseCamera() now clears the last preview frame so the surface shows
 //   "Camera off" after closing (instead of a frozen still). ShowSaveDialog() appends
 //   the recording format's extension when the chosen file name lacks/mismatches it
@@ -408,10 +410,11 @@ void UltraCanvasVideoRecorderElement::OpenCameraPicker() {
                 self->SelectCamera(id, display);
             }));
     }
-    Point2Di anchor(GetXInWindow() + cameraSelectRect.x,
-                    GetYInWindow() + cameraSelectRect.y + cameraSelectRect.height);
+    Rect2Di anchor(static_cast<int>(GetXInWindow()) + cameraSelectRect.x,
+                   static_cast<int>(GetYInWindow()) + cameraSelectRect.y,
+                   cameraSelectRect.width, cameraSelectRect.height);
     PopupElementSettings settings;
-    menu->OpenMenu(anchor, *window, settings);
+    menu->OpenMenuAnchored(anchor, *window, settings, 0);
     cameraPopupMenu = menu;
 }
 

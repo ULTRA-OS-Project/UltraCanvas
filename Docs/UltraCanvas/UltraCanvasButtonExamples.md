@@ -1,8 +1,38 @@
 # UltraCanvasButton Documentation
 
-**Version:** 1.0.2  
-**Last Modified:** 2026-09-10  
+<!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
+
+**Version:** 1.2.0 - a button grows to fit its text  
+**Last Modified:** 2026-10-16  
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Basic Usage](#basic-usage)
+  - [Including the Header](#including-the-header)
+  - [Creating a Button](#creating-a-button)
+- [Class Reference](#class-reference)
+  - [Constructors](#constructors)
+  - [Factories](#factories)
+  - [Core Methods](#core-methods)
+  - [Events](#events)
+  - [Event Usage Example](#event-usage-example)
+- [Button States](#button-states)
+- [ButtonStyle Structure](#buttonstyle-structure)
+- [The theme and the button's variant](#the-theme-and-the-buttons-variant)
+- [ButtonBuilder Pattern](#buttonbuilder-pattern)
+  - [Builder Usage Example](#builder-usage-example)
+- [Practical Examples](#practical-examples)
+  - [Standard Button](#standard-button)
+  - [Colored Button](#colored-button)
+  - [Auto-sized Button](#auto-sized-button)
+  - [A Fixed Width Is a Minimum](#a-fixed-width-is-a-minimum)
+  - [Split Button (a primary action plus a menu)](#split-button-a-primary-action-plus-a-menu)
+  - [Disabled Button](#disabled-button)
+- [Keyboard Support](#keyboard-support)
+- [Rendering](#rendering)
+- [Version History](#version-history)
 
 ## Overview
 
@@ -50,20 +80,25 @@ string, and a button placed by a layout needs no position at all.
 ```cpp
 UltraCanvasButton(const std::string& identifier,
                   float x, float y, float w, float h,
-                  const std::string& buttonText = "Button");
+                  const std::string& buttonText = "");
 UltraCanvasButton(const std::string& identifier,
                   float w, float h,
-                  const std::string& buttonText = "Button");   // positioned by a layout
+                  const std::string& buttonText = "");         // positioned by a layout
 UltraCanvasButton(const std::string& identifier,
                   const std::string& buttonText);               // sized by a layout too
 ```
+
+A button made without a label has none, so an icon-only button needs no
+`""` argument: its icon is centred (`SetIcon` without text). The default
+used to be `"Button"`, which such a button carried and laid out as icon +
+text, its icon at the left padding instead of in the middle.
 
 ### Factories
 
 ```cpp
 std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& identifier,
                                                 float x, float y, float w, float h,
-                                                const std::string& text = "Button");
+                                                const std::string& text = "");
 std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifier,
                                                     float x, float y, float w, float h,
                                                     const std::string& iconPath,
@@ -74,8 +109,8 @@ std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifie
 
 #### Text Management
 ```cpp
-const std::string& GetText() const;
-void SetText(const std::string& newText);
+std::string GetText() const;
+void SetText(const std::string& buttonText);
 ```
 
 #### Mnemonic (Accelerator) Letter
@@ -95,48 +130,63 @@ for how dialogs use it.
 
 #### State Methods
 ```cpp
-ButtonState GetButtonState() const;
+// Inherited from UltraCanvasUIElement
+ElementState GetPrimaryState() const;
 bool IsPressed() const;
-bool AcceptsFocus() const;  // Returns true for buttons
+bool IsHovered() const;
+bool IsDisabled() const;
+void SetDisabled(bool disabled);
+
+// UltraCanvasButton
+bool AcceptsFocus() const override;    // true unless SetAcceptsFocus(false)
+void SetAcceptsFocus(bool accept);
+void SetCanToggled(bool tgl);          // a press latches instead of clicking
+bool CanToggle() const;
 ```
 
-#### Auto-sizing
-```cpp
-void SetAutoresize(bool value);
-bool GetAutoresize() const;
-void AutoResize();  // Manually trigger auto-resize
-```
+#### Sizing
+The button does not resize itself. It reports its preferred size (text, icon
+and split section, plus padding) to the layout through `MeasureOwnContent()`,
+and the layout engine sets its bounds. A button created without a size is
+therefore sized by the layout it is added to, and `SetText()` makes the layout
+measure it again.
 
 #### Style Configuration
 ```cpp
-const ButtonStyle& GetStyle() const;
+ButtonStyle& GetStyle();
 void SetStyle(const ButtonStyle& newStyle);
 
 // Color configuration
-void SetColors(
-    const Color& normal,
-    const Color& hover,
-    const Color& pressed,
-    const Color& disabled
-);
+void SetColors(const Color& normal, const Color& hover,
+               const Color& pressed, const Color& disabled);
+void SetColors(const Color& normal, const Color& hover);
+void SetColors(const Color& normal);
 
-void SetTextColors(
-    const Color& normal,
-    const Color& hover,
-    const Color& pressed,
-    const Color& disabled
-);
+void SetTextColors(const Color& normal, const Color& hover,
+                   const Color& pressed, const Color& disabled);
+void SetTextColors(const Color& normal, const Color& hover);
+void SetTextColors(const Color& normal);
+
+void SetBorder(float width, const Color& color);
 
 // Font configuration
-void SetFont(
-    const std::string& fontFamily,
-    float fontSize,
-    FontWeight weight = FontWeight::Normal
-);
+void SetFont(const std::string& family, float size,
+             FontWeight weight = FontWeight::Normal);
+void SetFontSize(float size);
+void SetTextAlign(TextAlignment align);
 
 // Layout configuration
-void SetPadding(int left, int right, int top, int bottom);
+void SetPadding(float all);                                      // inherited from UltraCanvasUIElement
+void SetPadding(float vertical, float horizontal);
+void SetPadding(float top, float right, float bottom, float left);
+void SetIconSpacing(int spacing);
+void SetIconSize(int width, int height);   // the size the icon is drawn at
 void SetCornerRadius(float radius);
+
+// The icon's size as set with SetIconSize - what a twin of the button
+// (a tool group's fold-out bar) copies
+int GetIconWidth() const;
+int GetIconHeight() const;
 
 // Shadow configuration
 void SetShadow(
@@ -148,8 +198,7 @@ void SetShadow(
 
 #### Interaction
 ```cpp
-void Click(const UCEvent& ev);  // Programmatically click the button
-void SetOnClick(std::function<void()> _onClick);
+void SetOnClick(std::function<void()> onClick_);   // same as assigning onClick
 ```
 
 ### Events
@@ -161,6 +210,7 @@ std::function<void()> onClick;           // Fired when the button is clicked (le
 std::function<void()> onPress;           // Fired when button is pressed down
 std::function<void()> onRelease;         // Fired when button is released
 std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's state change
+std::function<void()> onDoubleClick;     // Left double-click, instead of a second press
 std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
 std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
 std::function<void()> onHoverEnter;      // Fired when mouse enters button
@@ -177,6 +227,20 @@ window coordinates, and is ignored when no `onContextMenu` is set. Inspecting
 button->onContextMenu = [menu, container](int windowX, int windowY) {
     menu->OpenMenu(Point2Di(windowX, windowY), *container->GetWindow(), PopupElementSettings());
 };
+```
+
+**A double-click is a second press unless `onDoubleClick` is set.** Without
+it, the second click of a double-click presses the button again (so rapid
+clicks are not lost) and toggles a toggle button back. Set, `onDoubleClick`
+takes the left double-click instead: the first click has already pressed or
+toggled the button, and the second does what a double-click means - a list
+row that selects on a click and renames on a double-click:
+
+```cpp
+auto row = CreateButton("LayerName", 0, 0, 200, 24, "Layer 2");
+row->SetCanToggled(true);
+row->onToggle = [](bool) { /* select the layer */ };
+row->onDoubleClick = []() { /* put a text field in the row's place */ };
 ```
 
 ### Event Usage Example
@@ -201,14 +265,18 @@ button->onHoverLeave = []() {
 
 ## Button States
 
-The button can be in one of the following states:
+A button has no state enum of its own. `GetPrimaryState()`, inherited from
+`UltraCanvasUIElement`, reports the state that wins, in the order Disabled,
+Pressed, Selected, Hovered, Focused, Normal:
 
 ```cpp
-enum class ButtonState {
-    Normal,    // Default state
-    Hovered,   // Mouse is over the button
-    Pressed,   // Button is being pressed
-    Disabled   // Button is disabled
+enum class ElementState {
+    Normal,
+    Hovered,
+    Pressed,
+    Focused,
+    Disabled,
+    Selected
 };
 ```
 
@@ -218,33 +286,91 @@ The ButtonStyle structure contains appearance settings:
 
 ```cpp
 struct ButtonStyle {
-    // Colors for different states
-    Color normalColor;
-    Color hoverBackgroundColor;
-    Color pressedColor;
-    Color disabledBackgroundColor;
-    
+    // Background colors for different states
+    Color normalColor = Colors::ButtonFace;
+    Color hoverColor = Colors::SelectionHover;
+    Color pressedColor = Color(204, 228, 247, 255);
+    Color disabledColor = Colors::ControlDisabled;
+    Color focusedColor = Color(80, 80, 80, 255);
+
     // Text colors for different states
-    Color normalTextColor;
-    Color hoverTextColor;
-    Color pressedTextColor;
-    Color disabledTextColor;
-    
-    // Font settings
+    Color normalTextColor = Colors::TextDefault;
+    Color hoverTextColor = Colors::TextDefault;
+    Color pressedTextColor = Colors::TextDefault;
+    Color disabledTextColor = Colors::TextDisabled;
+
+    Color borderColor = Colors::ButtonShadow;
+    float borderWidth = 1.0f;
+
+    // Text styling
+    FontStyle fontStyle;
     std::string fontFamily;
-    float fontSize;
-    FontWeight fontWeight;
-    
-    // Layout
-    Padding padding;
-    float cornerRadius;
-    
+    float fontSize = 12.0f;
+    FontWeight fontWeight = FontWeight::Normal;
+    TextAlignment textAlign = TextAlignment::Center;
+
+    int iconSpacing = 4;          // space between icon and text
+    float cornerRadius = 3.0f;
+
+    bool useIconAsMask = false;
+    Color iconMaskColor = Colors::Transparent;   // transparent = follow the text color
+
+    // Optional vertical background gradient drawn over the state background
+    std::vector<GradientStop> backgroundGradient;
+
     // Shadow
-    bool hasShadow;
-    Color shadowColor;
-    Point2Di shadowOffset;
+    bool hasShadow = false;
+    Color shadowColor = Color(0, 0, 0, 64);
+    Point2Df shadowOffset = Point2Di(0, 0);
+
+    // Split button style
+    SplitButtonStyle splitStyle;
 };
 ```
+
+Padding is not part of the style: it is the element's box padding, set with
+`SetPadding()`. Ready-made styles live in the `ButtonStyles` namespace:
+`Default()`, `PrimaryStyle()`, `SecondaryStyle()`, `DangerStyle()`,
+`SuccessStyle()`, `FlatStyle()`, `SplitButtonStyle()`, `BadgeButtonStyle()`
+and `CounterButtonStyle()`.
+
+## The theme and the button's variant
+
+`ButtonStyle::FromTheme` maps the framework theme (`UltraCanvasTheme`,
+`Docs/UltraCanvas/UltraCanvasTheme.md`) onto a style, over a base whose
+shape (sizes, fonts, flags) stays, by the button's **variant**:
+
+```cpp
+enum class ButtonVariant {
+    Standard,   // the raised surface with the control border: a text button
+    Ghost,      // no fill at rest, the hover and pressed fills: an icon button in a bar
+    Primary,    // the accent fill with text on it: the one main action
+    Selected    // a ghost button in its on state: the soft accent fill, the accent for its ink
+};
+static ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base,
+                                          ButtonVariant variant = ButtonVariant::Standard);
+```
+
+A button told its variant and asked to follow the theme styles itself
+from the current theme, now and on every change; an active tool switches
+between `Ghost` and `Selected` with `SetThemeVariant` alone:
+
+```cpp
+auto tool = std::make_shared<UltraCanvasButton>("tool.blade", 0, 0, 28, 28, "");
+ButtonStyle shape;
+shape.borderWidth = 0.0f;
+shape.cornerRadius = 4.0f;
+shape.useIconAsMask = true;
+tool->SetStyle(shape);                              // the shape once
+tool->SetThemeVariant(ButtonVariant::Ghost);        // the colours from the theme
+tool->SetFollowTheme(true);
+tool->SetThemeVariant(ButtonVariant::Selected);     // the active tool, re-styled at once
+```
+
+A theme names the variants' colours as element roles where its design
+differs from the shared roles: `button.ghost-hover`, `button.ghost-pressed`,
+`button.primary`, `button.primary-hover`, `button.on-primary`,
+`button.selected`, `button.on-selected`.
 
 ## ButtonBuilder Pattern
 
@@ -252,27 +378,49 @@ For fluent interface construction:
 
 ```cpp
 class ButtonBuilder {
-    ButtonBuilder& SetColors(const Color& normal, const Color& hover,
-                            const Color& pressed, const Color& disabled);
-    ButtonBuilder& SetTextColors(const Color& normal, const Color& hover,
-                                const Color& pressed, const Color& disabled);
-    ButtonBuilder& SetFont(const std::string& fontFamily, float fontSize);
-    ButtonBuilder& SetPadding(int horizontal, int vertical);
+public:
+    ButtonBuilder(const std::string& identifier = "Button");
+
+    ButtonBuilder& SetPosition(float x, float y);
+    ButtonBuilder& SetSize(float w, float h);
+    ButtonBuilder& SetText(const std::string& text);
+    ButtonBuilder& SetIcon(const std::string& iconPath);
+    ButtonBuilder& SetIconPosition(ButtonIconPosition position);
+    ButtonBuilder& SetIconSize(int width, int height);
+    ButtonBuilder& SetIconSpacing(int spacing);
+    ButtonBuilder& SetStyle(const ButtonStyle& style);
+    ButtonBuilder& SetFont(const std::string& family, float size, FontWeight weight = FontWeight::Normal);
+    ButtonBuilder& SetPadding(int padding);      // padding left/right, padding/2 top/bottom
     ButtonBuilder& SetCornerRadius(float radius);
-    ButtonBuilder& SetShadow(bool enabled);
-    ButtonBuilder& SetAutoresize(bool enabled);
-    ButtonBuilder& OnClick(std::function<void()> handler);
-    
+    ButtonBuilder& SetShadow(bool enabled = true);
+    ButtonBuilder& SetTooltip(const std::string& tooltip);
+    ButtonBuilder& SetSplitEnabled(bool enable = true);
+    ButtonBuilder& SetSplitSecondaryText(const std::string& text);
+    ButtonBuilder& SetSplitSecondaryIcon(const std::string& icon);
+    ButtonBuilder& SetSplitRatio(float ratio);
+    ButtonBuilder& SetSplitColors(const Color& secBg, const Color& secText,
+                                  const Color& secHover, const Color& secPressed);
+    ButtonBuilder& SetSplitIconSize(int width, int height);
+    ButtonBuilder& OnClick(std::function<void()> callback);
+    ButtonBuilder& OnSecondaryClick(std::function<void()> callback);
+    ButtonBuilder& OnHover(std::function<void()> enter, std::function<void()> leave = nullptr);
+
     std::shared_ptr<UltraCanvasButton> Build();
 };
 ```
 
+The builder has no color setters: pass a `ButtonStyle` (or one of the
+`ButtonStyles` presets) to `SetStyle()`, or call `SetColors()` on the built
+button.
+
 ### Builder Usage Example
 
 ```cpp
-auto button = ButtonBuilder("MyButton", 10, 10, "Click Me")
-    .SetColors(Colors::Blue, Colors::LightBlue, Colors::DarkBlue, Colors::Gray)
-    .SetTextColors(Colors::White, Colors::White, Colors::White, Colors::DarkGray)
+auto button = ButtonBuilder("MyButton")
+    .SetPosition(10, 10)
+    .SetSize(120, 30)
+    .SetText("Click Me")
+    .SetStyle(ButtonStyles::PrimaryStyle())
     .SetCornerRadius(5.0f)
     .OnClick([]() { std::cerr << "Clicked!" << std::endl; })
     .Build();
@@ -307,11 +455,36 @@ primaryBtn->SetTextColors(
 ### Auto-sized Button
 
 ```cpp
-auto autoBtn = CreateAutoButton("AutoButton", 20, 100, "Auto Size");
-autoBtn->SetAutoresize(true);
-// Button will automatically resize when text changes
+// No size given: the layout of the container sizes the button from its text
+auto autoBtn = std::make_shared<UltraCanvasButton>("AutoButton", "Auto Size");
+container->AddChild(autoBtn);
+// A new text makes the layout measure the button again
 autoBtn->SetText("This is a longer text that will auto-resize");
 ```
+
+### A Fixed Width Is a Minimum
+
+A button with text never comes out narrower than its text. A width given in
+the constructor or `SetSize()` is the least the button takes: when the text
+needs more - a translation, a larger font - the button grows to it, and it
+returns to the given width when the text is short again. In a flex row that is
+too narrow, a button is not shrunk below its text either (CSS's
+`min-width: auto`). So a label can be translated without checking every
+button's width by hand.
+
+```cpp
+auto button = CreateButton("Open", 10, 10, 80, 30, "Open");
+button->SetText("Ouvrir le fichier");   // grows past 80 px to fit
+button->SetText("OK");                  // back to 80 px
+
+// A button that must keep its width, and may cut its text
+button->SetGrowToFitText(false);
+```
+
+A button that grows keeps its position and grows to the right. In a row of
+absolutely placed buttons it can then reach its neighbour; lay such rows out
+with a flex container (see the Layout documentation) so the buttons after it
+move along. Buttons without text (icon-only tools) are not affected.
 
 ### Split Button (a primary action plus a menu)
 
@@ -351,7 +524,7 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
 
 ```cpp
 auto disabledBtn = CreateButton("DisabledButton", 20, 140, 100, 30, "Disabled");
-disabledBtn->SetEnabled(false);
+disabledBtn->SetDisabled(true);
 ```
 
 ## Keyboard Support
@@ -372,10 +545,23 @@ The button automatically handles:
 - Border and corner radius
 - Optional shadow effect
 
+The icon is drawn on whole pixels: centred in a content box whose width or
+height leaves an odd number of pixels around it - or drawn under a
+translation of a fraction of a pixel - its corner is moved to the nearest
+whole device pixel, so an icon drawn on a pixel grid keeps its sharp lines
+instead of being resampled across two pixels. For a line icon to be sharp it
+also has to be shown at the size of the grid it was drawn on (a 24-unit
+icon at 24 px, not 22).
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
+| 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
+| 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
+| 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
+| 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |
 | 1.0.2 | 2026-09-10 | Document the split button: the `dropdown.svg` arrow, and that `SetUseIconAsMask()` colors the secondary icon through `SetSplitSecondaryIconColors()` |
 | 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |
 | 1.0.0 | 2025-01-08 | Initial documentation based on actual implementation |

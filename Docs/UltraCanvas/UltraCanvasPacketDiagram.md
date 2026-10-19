@@ -13,6 +13,31 @@ Last Modified: 2026-07-31
 
 ---
 
+## Contents
+
+- [What it is](#what-it-is)
+- [Quick start](#quick-start)
+- [The model](#the-model)
+  - [Fields](#fields)
+  - [Field kinds](#field-kinds)
+  - [Sub-fields](#sub-fields)
+  - [Layers](#layers)
+- [Layout modes](#layout-modes)
+  - [Fields that wrap](#fields-that-wrap)
+  - [Proportional scaling](#proportional-scaling)
+- [Rulers and gutters](#rulers-and-gutters)
+- [Annotations](#annotations)
+- [Colour and theme](#colour-and-theme)
+- [Field values](#field-values)
+- [Interaction](#interaction)
+- [Validation](#validation)
+- [Text specs (Mermaid-compatible)](#text-specs-mermaid-compatible)
+- [Built-in templates](#built-in-templates)
+- [Legend](#legend)
+- [Using the layout engine directly](#using-the-layout-engine-directly)
+- [Not yet implemented (Phase 2+)](#not-yet-implemented-phase-2)
+- [See also](#see-also)
+
 ## What it is
 
 A packet diagram answers three questions at a glance: *what fields exist*,
@@ -295,7 +320,9 @@ pkt->SetOnFieldClick([](const UltraCanvas::PacketFieldRef& f) {
                 (unsigned long long)f.bitLength,
                 (unsigned long long)f.ByteOffset());
 });
-pkt->SetOnFieldHover(...);
+pkt->SetOnFieldHover([](const UltraCanvas::PacketFieldRef& f) {
+    std::printf("over %s\n", f.name.c_str());   // the field under the cursor
+});
 pkt->SetSelectedField("Source Address");
 ```
 

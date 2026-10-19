@@ -14,8 +14,17 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.11.0 - the hovered text link's href as a tooltip (SetShowLinkTooltips),
-//                  following the pointer along the link
+// Version: 2.18.0 - FromTheme by LabelVariant
+// Version: 2.17.0 - LabelStyle::FromTheme
+// Version: 2.16.0 - a quiet LabelTextLink shows no tooltip and reports no hover
+// Version: 2.15.0 - LabelTextBox: an inline element's background and border
+//                  drawn around a byte range, one piece per line
+// Version: 2.14.0 - copied text leaves out word joiners (U+2060), which the
+//                  HTML reader glues room to its text with
+// Version: 2.13.0 - selectable text: a drag, a double-click (word) and a
+//                  triple-click (all) select through UltraCanvasTextSelection,
+//                  drawn under the text; Ctrl+C copies, Ctrl+A selects all
+// Version: 2.12.0 - a new text is announced to screen readers as a new name
 // Version: 2.10.0 - onLinkHovered as the pointer moves onto / off a text link
 // Version: 2.9.0 - the natural width is one the text fits on its lines at (letter
 //                 spacing: Pango breaks on spacing its extents leave out)
@@ -27,13 +36,18 @@
 // Version: 2.5.0 - inline images fitted and placed by their fit / position
 // Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include <vector>
 #include <limits>
+#include <cmath>
+#include <cstdlib>
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextSelection.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
 
@@ -78,6 +92,10 @@ namespace UltraCanvas {
         SetText(labelText);
     }
 
+    UltraCanvasLabel::~UltraCanvasLabel() {
+        if (textSelection) textSelection->ForgetLabel(this);
+    }
+
 
     // Property setters: invalidate the text cache (so EnsureTextLayout
     // rebuilds), invalidate the engine layout cache (so the next Measure
@@ -89,10 +107,14 @@ namespace UltraCanvas {
             textLayout.reset();
             InvalidateLayout();
             RequestRedraw();
+            // The selected bytes counted the old text.
+            selectionStart = selectionEnd = 0;
+            if (textSelection) textSelection->LabelTextChanged(this);
 
             if (onTextChanged) {
                 onTextChanged(text);
             }
+            if (GetAccessibleNameOverride().empty()) NotifyAccessibility(AccessibilityEventType::NameChanged);
         }
     }
 
@@ -148,6 +170,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLabel::SetTextIsMarkup(bool markup) {
+        if (markup != isMarkup) {
+            // The rendered text, which the selection counts, is another one.
+            selectionStart = selectionEnd = 0;
+            if (textSelection) textSelection->LabelTextChanged(this);
+        }
         isMarkup = markup;
         textLayout.reset();
         InvalidateLayout();
@@ -230,6 +257,98 @@ namespace UltraCanvas {
             }
         }
         return true;
+    }
+
+    // ===== INLINE BOXES =====
+
+    void UltraCanvasLabel::SetTextBoxes(std::vector<LabelTextBox> boxes) {
+        textBoxes = std::move(boxes);
+        RequestRedraw();
+    }
+
+    std::vector<Rect2Df> UltraCanvasLabel::TextBoxPieces(size_t index) {
+        std::vector<Rect2Df> pieces;
+        if (index >= textBoxes.size()) return pieces;
+        if (!internalLayoutValid || !textLayout) {
+            UpdateInternalLayout(GetRenderContext());
+            if (!internalLayoutValid || !textLayout) return pieces;
+        }
+        const LabelTextBox& box = textBoxes[index];
+        const std::string rendered = textLayout->GetText();
+        const int length = static_cast<int>(rendered.size());
+        const int first = std::max(0, std::min(box.startByte, length));
+        const int last = std::max(0, std::min(box.endByte, length));
+        if (first >= last) return pieces;
+        // A position's x on its line, as RenderSelection takes it.
+        auto xAt = [&](int pos, int lineStart, int lineEnd) -> double {
+            if (pos < lineEnd) return textLayout->IndexToPos(pos).x;
+            if (lineEnd <= lineStart) return textLayout->IndexToPos(lineStart).x;
+            const int lastChar = static_cast<int>(utf8_prev_boundary(rendered, static_cast<size_t>(lineEnd)));
+            const Rect2Di r = textLayout->IndexToPos(lastChar);
+            return r.x + r.width;
+        };
+        // The text's own height on a piece: its first real character's (the
+        // room placeholders and word joiners have none of their own).
+        auto textRect = [&](int a, int b) -> Rect2Di {
+            for (int i = a; i < b; ) {
+                const bool room = rendered.compare(static_cast<size_t>(i), 3, "\xEF\xBF\xBC") == 0 ||
+                                  rendered.compare(static_cast<size_t>(i), 3, "\xE2\x81\xA0") == 0;
+                if (!room) {
+                    const Rect2Di r = textLayout->IndexToPos(i);
+                    if (r.height > 0) return r;
+                }
+                i = static_cast<int>(utf8_next_boundary(rendered, static_cast<size_t>(i)));
+            }
+            return Rect2Di(0, 0, 0, 0);
+        };
+        const float left = static_cast<float>(GetBorderLeftWidth() + GetPaddingLeft());
+        const float top = static_cast<float>(GetBorderTopWidth() + GetPaddingTop() +
+                                             textLayout->GetLayoutVerticalOffset());
+        for (const LayoutLineExtent& line : textLayout->GetLineExtents()) {
+            const int lineStart = line.startByte;
+            const int lineEnd = line.startByte + line.lengthBytes;
+            const int a = std::max(first, lineStart);
+            const int b = std::min(last, lineEnd);
+            if (a >= b) continue;
+            double x1 = xAt(a, lineStart, lineEnd), x2 = xAt(b, lineStart, lineEnd);
+            if (x2 < x1) std::swap(x1, x2);
+            if (x2 - x1 < 0.5) continue;
+            Rect2Di text = textRect(a, b);
+            float y = line.top, h = line.height;
+            if (text.height > 0) { y = static_cast<float>(text.y); h = static_cast<float>(text.height); }
+            y -= box.paddingTop + box.borderTop.width;
+            h += box.paddingTop + box.paddingBottom + box.borderTop.width + box.borderBottom.width;
+            pieces.push_back(Rect2Df(left + static_cast<float>(x1), top + y, static_cast<float>(x2 - x1), h));
+        }
+        return pieces;
+    }
+
+    void UltraCanvasLabel::RenderTextBoxes(IRenderContext* ctx) {
+        for (size_t i = 0; i < textBoxes.size(); ++i) {
+            const LabelTextBox& box = textBoxes[i];
+            const std::vector<Rect2Df> pieces = TextBoxPieces(i);
+            for (size_t k = 0; k < pieces.size(); ++k) {
+                const Rect2Dd r(pieces[k].x, pieces[k].y, pieces[k].width, pieces[k].height);
+                // Sliced: the left side on the first piece, the right on the last.
+                const float leftWidth = k == 0 ? box.borderLeft.width : 0.f;
+                const float rightWidth = k + 1 == pieces.size() ? box.borderRight.width : 0.f;
+                const double rad = pieces.size() == 1
+                    ? std::min<double>(box.borderRadius, std::min(r.width, r.height) / 2.0) : 0.0;
+                const bool border = leftWidth > 0.f || rightWidth > 0.f ||
+                                    box.borderTop.width > 0.f || box.borderBottom.width > 0.f;
+                if (border) {
+                    if (box.background.a > 0) ctx->SetFillPaint(box.background);
+                    ctx->DrawRoundedRectangleWidthBorders(
+                        r, box.background.a > 0,
+                        leftWidth, rightWidth, box.borderTop.width, box.borderBottom.width,
+                        box.borderLeft.color, box.borderRight.color, box.borderTop.color, box.borderBottom.color,
+                        rad, rad, rad, rad,
+                        box.borderLeft.dash, box.borderRight.dash, box.borderTop.dash, box.borderBottom.dash);
+                } else if (box.background.a > 0) {
+                    ctx->DrawFilledRectangle(r, box.background, 0.f, Colors::Transparent, static_cast<float>(rad));
+                }
+            }
+        }
     }
 
     // ===== INLINE IMAGES =====
@@ -429,9 +548,305 @@ namespace UltraCanvas {
         return -1;
     }
 
+    // ===== TEXT SELECTION =====
+    namespace {
+        // What a double-click takes together: a run of letters and digits (a
+        // word), a run of spaces, or one mark of punctuation.
+        enum class CharClass { Space, Word, Other };
+
+        CharClass ClassOf(gunichar c) {
+            if (c == 0xA0 || g_unichar_isspace(c)) return CharClass::Space;
+            if (c == '_' || g_unichar_isalnum(c) || g_unichar_ismark(c)) return CharClass::Word;
+            return CharClass::Other;
+        }
+
+        // A dot or an apostrophe between two letters belongs to the word
+        // ("example.com", "don't"), as a browser's word breaking keeps it.
+        bool JoinsWord(gunichar c) {
+            return c == '.' || c == '\'' || c == 0x2019;
+        }
+
+        // The selected text as a reader copies it: no picture placeholders
+        // (U+FFFC), word joiners (U+2060) or soft hyphens, a no-break space
+        // as a space.
+        std::string TextForCopy(const std::string& text) {
+            std::string out;
+            out.reserve(text.size());
+            for (size_t i = 0; i < text.size(); ) {
+                if (text.compare(i, 3, "\xEF\xBF\xBC") == 0) { i += 3; continue; }   // U+FFFC
+                if (text.compare(i, 3, "\xE2\x81\xA0") == 0) { i += 3; continue; }   // U+2060
+                if (text.compare(i, 2, "\xC2\xAD") == 0) { i += 2; continue; }       // soft hyphen
+                if (text.compare(i, 2, "\xC2\xA0") == 0) { out += ' '; i += 2; continue; }
+                out += text[i++];
+            }
+            return out;
+        }
+    }
+
+    void UltraCanvasLabel::SetSelectable(bool selectable) {
+        if (selectable == IsSelectable()) return;
+        SetTextSelection(selectable ? std::make_shared<UltraCanvasTextSelection>() : nullptr);
+    }
+
+    void UltraCanvasLabel::SetTextSelection(std::shared_ptr<UltraCanvasTextSelection> selection) {
+        if (selection == textSelection) return;
+        if (textSelection) textSelection->ForgetLabel(this);
+        selectionStart = selectionEnd = 0;
+        selectionDragging = false;
+        pressedLinkHref.clear();
+        textSelection = std::move(selection);
+        if (textSelection) textSelection->JoinLabel(this);
+        RequestRedraw();
+    }
+
+    void UltraCanvasLabel::SetSelectedRange(int startByte, int endByte) {
+        startByte = std::max(0, startByte);
+        endByte = std::max(0, endByte);
+        if (endByte < startByte) std::swap(startByte, endByte);
+        if (startByte == endByte) startByte = endByte = 0;
+        if (startByte == selectionStart && endByte == selectionEnd) return;
+        selectionStart = startByte;
+        selectionEnd = endByte;
+        RequestRedraw();
+    }
+
+    std::string UltraCanvasLabel::GetRenderedText() {
+        if (!textLayout && EnsureTextLayout()) {
+            // Made here without the label's width: the next paint sets it.
+            internalLayoutValid = false;
+        }
+        if (textLayout) return textLayout->GetText();
+        return isMarkup ? std::string() : text;
+    }
+
+    std::string UltraCanvasLabel::GetSelectedText() {
+        if (!HasSelectedRange()) return std::string();
+        const std::string rendered = GetRenderedText();
+        const int length = static_cast<int>(rendered.size());
+        const int first = std::min(selectionStart, length);
+        const int last = std::min(selectionEnd, length);
+        if (first >= last) return std::string();
+        return TextForCopy(rendered.substr(static_cast<size_t>(first),
+                                           static_cast<size_t>(last - first)));
+    }
+
+    int UltraCanvasLabel::TextIndexAtPoint(const Point2Df& localPoint) {
+        // As LinkIndexAtPoint: the layout must match the label's current width.
+        if (!internalLayoutValid || !textLayout) {
+            UpdateInternalLayout(GetRenderContext());
+            if (!internalLayoutValid || !textLayout) return -1;
+        }
+        const std::string rendered = textLayout->GetText();
+        const int length = static_cast<int>(rendered.size());
+        if (length == 0) return 0;
+        const std::vector<LayoutLineExtent> lines = textLayout->GetLineExtents();
+        if (lines.empty()) return 0;
+
+        const float layoutX = localPoint.x - (GetBorderLeftWidth() + GetPaddingLeft());
+        const float layoutY = localPoint.y - (GetBorderTopWidth() + GetPaddingTop())
+                              - static_cast<float>(textLayout->GetLayoutVerticalOffset());
+        // Above the first line: the start; below the last: the end - so a drag
+        // past the text takes all of it in that direction.
+        if (layoutY < lines.front().top) return 0;
+        if (layoutY >= lines.back().top + lines.back().height) return length;
+
+        // Beside a line, Pango answers that line's first or last character.
+        const UCLayoutHitResult hit = textLayout->XYToIndex(static_cast<int>(std::floor(layoutX)),
+                                                            static_cast<int>(std::floor(layoutY)));
+        if (hit.index < 0) return 0;
+        size_t index = std::min(static_cast<size_t>(hit.index), rendered.size());
+        // `trailing` counts the characters of the grapheme the point is past.
+        for (int i = 0; i < hit.trailing && index < rendered.size(); ++i)
+            index = utf8_next_boundary(rendered, index);
+        return static_cast<int>(index);
+    }
+
+    std::pair<int, int> UltraCanvasLabel::WordRangeAt(int byteIndex) {
+        const std::string rendered = GetRenderedText();
+        if (rendered.empty()) return {0, 0};
+        // The character at the offset - the last one when it is the text's end.
+        size_t at = utf8_align_boundary(rendered, static_cast<size_t>(std::clamp(byteIndex, 0, static_cast<int>(rendered.size()))));
+        if (at >= rendered.size()) at = utf8_prev_boundary(rendered, rendered.size());
+        auto charAt = [&](size_t pos) { return g_utf8_get_char_validated(rendered.c_str() + pos, static_cast<gssize>(rendered.size() - pos)); };
+        auto classAt = [&](size_t pos) {
+            const gunichar c = charAt(pos);
+            return (c == static_cast<gunichar>(-1) || c == static_cast<gunichar>(-2)) ? CharClass::Other : ClassOf(c);
+        };
+        const CharClass cls = classAt(at);
+        size_t first = at;
+        size_t last = utf8_next_boundary(rendered, at);
+        if (cls == CharClass::Other) return {static_cast<int>(first), static_cast<int>(last)};
+        // Extend left, then right, over the same class.
+        while (first > 0) {
+            const size_t prev = utf8_prev_boundary(rendered, first);
+            if (classAt(prev) == cls) { first = prev; continue; }
+            if (cls == CharClass::Word && prev > 0 && JoinsWord(charAt(prev)) &&
+                classAt(utf8_prev_boundary(rendered, prev)) == CharClass::Word) {
+                first = prev;
+                continue;
+            }
+            break;
+        }
+        while (last < rendered.size()) {
+            if (classAt(last) == cls) { last = utf8_next_boundary(rendered, last); continue; }
+            const size_t next = utf8_next_boundary(rendered, last);
+            if (cls == CharClass::Word && next < rendered.size() && JoinsWord(charAt(last)) &&
+                classAt(next) == CharClass::Word) {
+                last = next;
+                continue;
+            }
+            break;
+        }
+        return {static_cast<int>(first), static_cast<int>(last)};
+    }
+
+    void UltraCanvasLabel::RenderSelection(IRenderContext* ctx, int contentX, int contentY) {
+        if (!HasSelectedRange() || !textLayout) return;
+        const std::string rendered = textLayout->GetText();
+        const int length = static_cast<int>(rendered.size());
+        const int first = std::min(selectionStart, length);
+        const int last = std::min(selectionEnd, length);
+        if (first >= last) return;
+
+        // A position's x on its line: the leading edge of the character there,
+        // or at the line's end the trailing edge of its last character.
+        auto xAt = [&](int pos, int lineStart, int lineEnd) -> double {
+            if (pos < lineEnd) return textLayout->IndexToPos(pos).x;
+            if (lineEnd <= lineStart) return textLayout->IndexToPos(lineStart).x;
+            const int lastChar = static_cast<int>(utf8_prev_boundary(rendered, static_cast<size_t>(lineEnd)));
+            const Rect2Di r = textLayout->IndexToPos(lastChar);
+            return r.x + r.width;
+        };
+        const double top = contentY + textLayout->GetLayoutVerticalOffset();
+        for (const LayoutLineExtent& line : textLayout->GetLineExtents()) {
+            const int lineStart = line.startByte;
+            const int lineEnd = line.startByte + line.lengthBytes;
+            if (last < lineStart || first > lineEnd) continue;
+            const int a = std::max(first, lineStart);
+            const int b = std::min(last, lineEnd);
+            double x1, x2;
+            if (a < b) {
+                x1 = xAt(a, lineStart, lineEnd);
+                x2 = xAt(b, lineStart, lineEnd);
+            } else if (line.lengthBytes == 0 && first <= lineStart && last > lineStart) {
+                // An empty line inside the selection: a sliver, so it shows.
+                x1 = xAt(lineStart, lineStart, lineEnd);
+                x2 = x1 + std::max(3.0, style.fontStyle.fontSize * 0.3);
+            } else {
+                continue;
+            }
+            if (x2 < x1) std::swap(x1, x2);
+            if (x2 - x1 < 0.5) continue;
+            ctx->DrawFilledRectangle(Rect2Dd(contentX + x1, top + line.top, x2 - x1, line.height),
+                                     style.selectionColor, 0.f, Colors::Transparent, 0.f);
+        }
+    }
+
+    bool UltraCanvasLabel::AcceptsFocus() const {
+        return textSelection && textSelection->GetKeyboardLabel() == this;
+    }
+
+    bool UltraCanvasLabel::HandleSelectionEvent(const UCEvent& event) {
+        UltraCanvasTextSelection* selection = textSelection.get();
+        if (!selection) return false;
+        switch (event.type) {
+            case UCEventType::MouseDown: {
+                // A label that is a button (onClick) stays one.
+                if (onClick || !Contains(event.pointer)) return false;
+                const int index = TextIndexAtPoint(Point2Df(static_cast<float>(event.pointer.x),
+                                                            static_cast<float>(event.pointer.y)));
+                if (event.button == UCMouseButton::Right) {
+                    // As in a browser: a click inside the selection keeps it, for
+                    // the menu's Copy; a click outside it drops it.
+                    const bool inside = HasSelectedRange() && index >= selectionStart && index <= selectionEnd;
+                    if (!inside) selection->ClearSelection();
+                    selection->TakeKeyboard(this);
+                    SetFocus(true);
+                    // Taken either way: a right-click never opens a link.
+                    if (selection->onContextMenu) selection->onContextMenu(event);
+                    return true;
+                }
+                if (event.button != UCMouseButton::Left) return false;
+                // A third press soon after a double-click, where it was: the whole text.
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastDoubleClickTime < std::chrono::milliseconds(500) &&
+                    std::abs(event.pointer.x - lastDoubleClickPoint.x) <= 4 &&
+                    std::abs(event.pointer.y - lastDoubleClickPoint.y) <= 4) {
+                    lastDoubleClickTime = {};
+                    pressedLinkHref.clear();
+                    selection->SelectLabelText(this);
+                    SetFocus(true);
+                    return true;
+                }
+                const int link = LinkIndexAtPoint(event.pointer);
+                pressedLinkHref = link >= 0 ? textLinks[static_cast<size_t>(link)].href : std::string();
+                selection->PressAt(this, std::max(0, index), event.shift);
+                SetFocus(true);
+                selectionDragging = true;
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+                return true;
+            }
+
+            case UCEventType::MouseDoubleClick: {
+                if (event.button != UCMouseButton::Left || onClick || !Contains(event.pointer)) return false;
+                const int index = TextIndexAtPoint(Point2Df(static_cast<float>(event.pointer.x),
+                                                            static_cast<float>(event.pointer.y)));
+                if (index < 0) return false;
+                pressedLinkHref.clear();
+                selection->SelectWordAt(this, index);
+                lastDoubleClickTime = std::chrono::steady_clock::now();
+                lastDoubleClickPoint = event.pointer;
+                SetFocus(true);
+                return true;
+            }
+
+            case UCEventType::MouseMove:
+                if (!selectionDragging) return false;
+                selection->DragTo(event.pointerWindow);
+                return true;
+
+            case UCEventType::MouseUp: {
+                if (!selectionDragging || event.button != UCMouseButton::Left) return false;
+                selectionDragging = false;
+                selection->EndDrag();
+                // A click on a link - pressed and released on it, nothing
+                // selected on the way - opens it.
+                const std::string pressed = std::move(pressedLinkHref);
+                pressedLinkHref.clear();
+                if (!pressed.empty() && !selection->HasSelection() && onLinkActivated &&
+                    Contains(event.pointer)) {
+                    const int link = LinkIndexAtPoint(event.pointer);
+                    if (link >= 0 && textLinks[static_cast<size_t>(link)].href == pressed) {
+                        onLinkActivated(pressed);
+                    }
+                }
+                return true;
+            }
+
+            case UCEventType::KeyDown: {
+                const bool command = (event.ctrl || event.meta) && !event.alt && !event.shift;
+                if ((command && event.virtualKey == UCKeys::C) ||
+                    (event.ctrl && !event.alt && !event.shift && event.virtualKey == UCKeys::Insert)) {
+                    return selection->CopyToClipboard();
+                }
+                if (command && event.virtualKey == UCKeys::A) {
+                    selection->SelectAll();
+                    return true;
+                }
+                return false;
+            }
+
+            default:
+                return false;
+        }
+    }
+
     // ===== EVENT HANDLING =====
     bool UltraCanvasLabel::OnEvent(const UCEvent &event) {
         if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }
+        if (textSelection && HandleSelectionEvent(event)) {
             return true;
         }
 
@@ -459,9 +874,10 @@ namespace UltraCanvas {
                         const int was = hoveredLink;
                         hoveredLink = LinkIndexAtPoint(event.pointer);
                         if (hoveredLink != was) {
-                            const std::string href = hoveredLink >= 0
-                                ? textLinks[static_cast<size_t>(hoveredLink)].href
-                                : std::string();
+                            const std::string href =
+                                hoveredLink >= 0 && !textLinks[static_cast<size_t>(hoveredLink)].quiet
+                                    ? textLinks[static_cast<size_t>(hoveredLink)].href
+                                    : std::string();
                             if (onLinkHovered) onLinkHovered(href);
                             if (showLinkTooltips) {
                                 if (!href.empty() && GetWindow())
@@ -563,6 +979,8 @@ namespace UltraCanvas {
             // Element-local content rect: ctx is already translated to element origin
             int contentX = GetBorderLeftWidth() + GetPaddingLeft();
             int contentY = GetBorderTopWidth() + GetPaddingTop();
+            RenderTextBoxes(ctx);
+            RenderSelection(ctx, contentX, contentY);
             if (style.hasShadow) {
                 ctx->SetCurrentPaint(style.shadowColor);
                 //textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.shadowColor));
@@ -673,4 +1091,18 @@ namespace UltraCanvas {
         return *this;
     }
 
+
+    LabelStyle LabelStyle::FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base, LabelVariant variant) {
+        LabelStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        switch (variant) {
+            case LabelVariant::Muted: s.textColor = theme.Role("label.muted", r.inkMuted); break;
+            case LabelVariant::Faint: s.textColor = theme.Role("label.faint", r.inkFaint); break;
+            case LabelVariant::Heading: s.textColor = theme.Role("label.heading", r.ink); break;
+            default: s.textColor = r.ink; break;
+        }
+        s.disabledTextColor = r.inkFaint;
+        s.selectionColor = r.accent.WithAlpha(100);
+        return s;
+    }
 }

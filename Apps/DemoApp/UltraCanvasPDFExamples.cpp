@@ -147,11 +147,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
     auto addToolbarButton = [&](const std::string& id, const std::string& text,
-                                int w, std::function<void()> onClick) {
+                                int w, std::function<void()> onClick) -> UltraCanvasButton& {
         auto btn = CreateButton(id, 0, 0, w, 30, text);
         btn->onClick = std::move(onClick);
         btn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         toolbar->AddChild(btn);
+        return *btn;
     };
 
     addToolbarButton("PDFPrev", "Prev", 60, [viewWeak]() {
@@ -213,13 +214,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     toolbar->AddChild(searchInput);
 
     addToolbarButton("PDFSearchBtn", "Search", 70, doSearch);
-    // Up / down arrows step through the search results.
-    addToolbarButton("PDFPrevHit", "\xE2\x96\xB2", 36, [viewWeak]() {  // U+25B2 ▲
+    // Up / down arrows step through the search results. They are icons, not
+    // "▲" / "▼" glyphs, which the bundled UI font does not have.
+    UltraCanvasButton& prevHit = addToolbarButton("PDFPrevHit", "", 36, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->PrevHit();
     });
-    addToolbarButton("PDFNextHit", "\xE2\x96\xBC", 36, [viewWeak]() {  // U+25BC ▼
+    SetFlatButtonIcon(prevHit, "menu/chevron-up.svg", ButtonIconPosition::Center);
+    prevHit.SetTooltip("Previous result");
+    UltraCanvasButton& nextHit = addToolbarButton("PDFNextHit", "", 36, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->NextHit();
     });
+    SetFlatButtonIcon(nextHit, "menu/chevron-down.svg", ButtonIconPosition::Center);
+    nextHit.SetTooltip("Next result");
 
     // Text-selection mode toggle (Pan <-> Select) and a Copy button.
     auto modeBtn = CreateButton("PDFSelectMode", 0, 0, 80, 30, "Select");

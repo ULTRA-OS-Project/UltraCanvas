@@ -36,12 +36,12 @@ void UltraCanvasCSVExportDialog::Initialize(UltraCanvasSpreadsheet* source,
 }
 
 void UltraCanvasCSVExportDialog::BuildLayout() {
-    layout.SetFlexColumn();
+    layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     layout.SetFlexGap(10);
     SetPadding(16);
 
     contentSection = std::make_shared<UltraCanvasContainer>("CSVExportContent", 0, 0, 588, 460);
-    contentSection->layout.SetFlexColumn();
+    contentSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     contentSection->layout.SetFlexGap(8);
 
     auto makeLabel = [](const std::string& id, const std::string& text, int w, bool bold) {
@@ -56,7 +56,7 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
     contentSection->AddChild(makeLabel("lblExport", "Export", 200, true));
 
     auto charsetRow = std::make_shared<UltraCanvasContainer>("ExpCharsetRow", 0, 0, 588, 28);
-    charsetRow->layout.SetFlexRow();
+    charsetRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     charsetRow->layout.SetFlexGap(8);
     charsetRow->AddChild(makeLabel("lblExpCharset", "Character set:", 110, false));
     encodingDropdown_ = std::make_shared<UltraCanvasDropdown>("ExpEncodingDD", 0, 0, 240, 24);
@@ -71,7 +71,7 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
     contentSection->AddChild(makeLabel("lblExpField", "Field options", 300, true));
 
     auto sepRow = std::make_shared<UltraCanvasContainer>("ExpSepRow", 0, 0, 588, 28);
-    sepRow->layout.SetFlexRow();
+    sepRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     sepRow->layout.SetFlexGap(8);
     sepRow->AddChild(makeLabel("lblExpSep", "Field separator:", 110, false));
     separatorDropdown_ = std::make_shared<UltraCanvasDropdown>("ExpSepDD", 0, 0, 160, 24);
@@ -87,7 +87,7 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
     contentSection->AddChild(sepRow);
 
     auto delimRow = std::make_shared<UltraCanvasContainer>("ExpDelimRow", 0, 0, 588, 28);
-    delimRow->layout.SetFlexRow();
+    delimRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     delimRow->layout.SetFlexGap(8);
     delimRow->AddChild(makeLabel("lblExpDelim", "Text delimiter:", 110, false));
     textDelimDropdown_ = std::make_shared<UltraCanvasDropdown>("ExpTextDelimDD", 0, 0, 90, 24);
@@ -98,7 +98,7 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
     contentSection->AddChild(delimRow);
 
     auto endRow = std::make_shared<UltraCanvasContainer>("ExpEndRow", 0, 0, 588, 28);
-    endRow->layout.SetFlexRow();
+    endRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     endRow->layout.SetFlexGap(8);
     endRow->AddChild(makeLabel("lblExpEnd", "Line ending:", 110, false));
     lineEndingDropdown_ = std::make_shared<UltraCanvasDropdown>("ExpEndDD", 0, 0, 200, 24);
@@ -111,7 +111,7 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
     contentSection->AddChild(makeLabel("lblExpOther", "Other options", 300, true));
 
     auto optRow = std::make_shared<UltraCanvasContainer>("ExpOptRow", 0, 0, 588, 24);
-    optRow->layout.SetFlexRow();
+    optRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     optRow->layout.SetFlexGap(16);
     quoteAllCheck_ = std::make_shared<UltraCanvasCheckbox>("ExpQuoteAll", 0, 0, 220, 20,
                                                            "Quote all text cells");
@@ -135,7 +135,7 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
 
     // ===== Buttons =====
     buttonSection = std::make_shared<UltraCanvasContainer>("CSVExportButtons", 0, 0, 588, 36);
-    buttonSection->layout.SetFlexRow();
+    buttonSection->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     buttonSection->layout.SetFlexGap(8);
     buttonSection->AddStretchSpacer(1);
 

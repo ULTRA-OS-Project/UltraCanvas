@@ -81,13 +81,13 @@ void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
     cfg.dialogType = DialogType::Custom;
     CreateDialog(cfg);
 
-    layout.SetFlexColumn();
+    layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     layout.SetFlexGap(10);
     SetPadding(16);
 
     auto content = std::make_shared<UltraCanvasContainer>(
         "uf-findtext-content", 0, 0, 428, 176);
-    content->layout.SetFlexColumn();
+    content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     content->layout.SetFlexGap(6);
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
@@ -125,7 +125,7 @@ void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
     // Buttons row (custom, so Find can refuse an empty text).
     auto buttons = std::make_shared<UltraCanvasContainer>(
         "uf-findtext-buttons", 0, 0, 428, 34);
-    buttons->layout.SetFlexRow();
+    buttons->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     buttons->layout.SetFlexGap(8);
     auto findBtn = std::make_shared<UltraCanvasButton>(
         "uf-findtext-find", 0, 0, 100, 30);

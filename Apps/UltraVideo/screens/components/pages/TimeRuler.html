@@ -1,0 +1,22 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 960x196. --><title>Time ruler — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)} .r{position:relative;margin:0 0 10px} .l{padding:8px 12px 4px}</style></head>
+<body class="uv">
+<div id="out"></div>
+<script>
+  var U = UltraVideo, out = document.getElementById('out'), beats = [];
+  for (var t = 0.48; t < 30; t += 0.96) beats.push(t);
+  function row(label, m, extra) {
+    out.insertAdjacentHTML('beforeend', '<div class="l uv-cap">' + label + '</div><div class="r">' + U.ruler(m, 960) + (extra || '') + '</div>');
+  }
+  row('Overview · 8 px per second', { pps: 8, fps: 25 });
+  row('Edit · 80 px per second — markers, work area, beats, playhead, hover readout', { pps: 80, fps: 25, range: [1.5, 9.25], beats: beats,
+      markers: [{ t: 3, color: 'amber', label: 'Chorus' }, { t: 7.4, color: 'green', label: 'B-roll' }] },
+    '<div class="uv-playhead" style="left:' + (5.2 * 80) + 'px"><div class="uv-playhead__cap"></div></div>' +
+    '<div class="uv-tip uv-tip--readout" style="position:absolute;left:' + (8.1 * 80 + 6) + 'px;top:-22px">00:00:08:03</div>' +
+    '<div style="position:absolute;left:' + (8.1 * 80) + 'px;top:0;bottom:0;width:1px;background:var(--ink-faint)"></div>');
+  row('Frame · 600 px per second — frame ticks, full timecode', { pps: 600, fps: 25 });
+</script>
+</body>
+</html>

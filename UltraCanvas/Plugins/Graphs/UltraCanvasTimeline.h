@@ -9,6 +9,7 @@
 #include <vector>
 #include <map>
 #include <chrono>
+#include <functional>   // std::function
 #include <memory>
 
 namespace UltraCanvas {

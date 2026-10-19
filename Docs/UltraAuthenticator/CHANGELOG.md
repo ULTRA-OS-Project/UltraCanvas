@@ -1,3 +1,28 @@
+#### 2026-10-13 *0.2.8*
+- **The vault lives in the platform's application data folder.** The default
+  folder was `~/.local/share/UltraAuthenticator` wherever `HOME` was set -
+  on macOS always, and on Windows even ahead of `%APPDATA%`, so a profile
+  with `HOME` set kept its second factors in a folder no other application
+  uses. It is `%APPDATA%\UltraAuthenticator` on Windows,
+  `~/Library/Application Support/UltraAuthenticator` on macOS and
+  `$XDG_DATA_HOME` or `~/.local/share` elsewhere now, `$XDG_DATA_HOME`
+  winning everywhere when it is set: the framework's one rule
+  (`UltraCanvasDataFolder.h`), shared with UltraMail, UltraPassword and
+  UltraSocial, through the new `VaultLocation.h` in the core. On the first
+  start a folder 0.2.6 left in `~/.local/share` on those platforms is moved
+  into place whole - the vault opens with its password as before and
+  `settings.ini` comes along. `--vault PATH` and Linux are unaffected.
+
+#### 2026-10-12 *0.2.7*
+- **One UltraAuthenticator at a time.** Starting UltraAuthenticator while it
+  is already running brings the open window forward (restored if minimised;
+  the unlock or new-vault dialog comes forward with it) instead of opening a
+  second copy on the same vault. Two starts at the same moment cannot both
+  stay, and a copy that does not answer is reported with *"UltraAuthenticator
+  is already running"*. Command-line modes (`--help`, `--version`) are
+  unaffected. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-10-04 *0.2.6*
 - **The owner-only permission is set on the store and export files in a
   folder named in any script.** `fs::permissions` on the temporary file was

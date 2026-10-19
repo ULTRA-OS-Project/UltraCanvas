@@ -290,16 +290,18 @@ namespace {
         viewerPanel->AddChild(fullscreenBtn);
 
         if (files.size() > 1) {
-            auto prevBtn = MakeToolButton("STLPrev", 450, 450, 70, "◀ Prev",
+            auto prevBtn = MakeToolButton("STLPrev", 450, 450, 70, "Prev",
                                           [showSample, currentIndex, files]() {
                                               showSample((*currentIndex + files.size() - 1) % files.size());
                                           });
+            SetFlatButtonIcon(*prevBtn, "menu/chevron-left.svg");
             viewerPanel->AddChild(prevBtn);
 
-            auto nextBtn = MakeToolButton("STLNext", 530, 450, 70, "Next ▶",
+            auto nextBtn = MakeToolButton("STLNext", 530, 450, 70, "Next",
                                           [showSample, currentIndex, files]() {
                                               showSample((*currentIndex + 1) % files.size());
                                           });
+            SetFlatButtonIcon(*nextBtn, "menu/chevron-right.svg", ButtonIconPosition::Right);
             viewerPanel->AddChild(nextBtn);
         }
 
@@ -316,15 +318,15 @@ namespace {
 
         auto infoText = demoui::MakeScrollingText("STLInfoText", 10, 40, 300, 200);
         infoText.SetText(
-                "✓ Read ASCII STL and binary STL (auto-detected)\n"
-                "✓ Write ASCII STL and binary STL\n"
-                "✓ Per-vertex normals, recomputed when a file\n"
+                "• Read ASCII STL and binary STL (auto-detected)\n"
+                "• Write ASCII STL and binary STL\n"
+                "• Per-vertex normals, recomputed when a file\n"
                 "   ships degenerate facet normals\n"
-                "✓ Bounding box, triangle and vertex counts\n"
-                "✓ Shaded 3D view with mouse orbit and dolly\n"
+                "• Bounding box, triangle and vertex counts\n"
+                "• Shaded 3D view with mouse orbit and dolly\n"
                 "   zoom on GL builds (ULTRACANVAS_ENABLE_GL)\n"
-                "✓ Mesh info placeholder without GL\n"
-                "✓ Registered with FileLoader: LoadGraphicsFile\n"
+                "• Mesh info placeholder without GL\n"
+                "• Registered with FileLoader: LoadGraphicsFile\n"
                 "   opens .stl like any other graphics file"
         );
         infoContainer->AddChild(infoText.View);

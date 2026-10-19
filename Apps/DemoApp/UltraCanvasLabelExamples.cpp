@@ -38,21 +38,21 @@ namespace UltraCanvas {
 
         // Status Labels (square corners)
         auto successLabel = std::make_shared<UltraCanvasLabel>("SuccessLabel", 20, 140, 150, 25);
-        successLabel->SetText("✓ Success");
+        successLabel->SetText("Success");
         successLabel->SetBackgroundColor(Color(200, 255, 200, 255));
         successLabel->SetTextColor(Color(0, 150, 0, 255));
         successLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         container->AddChild(successLabel);
 
         auto warningLabel = std::make_shared<UltraCanvasLabel>("WarningLabel", 180, 140, 150, 25);
-        warningLabel->SetText("⚠ Warning");
+        warningLabel->SetText("Warning");
         warningLabel->SetBackgroundColor(Color(255, 255, 200, 255));
         warningLabel->SetTextColor(Color(200, 150, 0, 255));
         warningLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         container->AddChild(warningLabel);
 
         auto errorLabel = std::make_shared<UltraCanvasLabel>("ErrorLabel", 340, 140, 150, 25);
-        errorLabel->SetText("✗ Error");
+        errorLabel->SetText("Error");
         errorLabel->SetBackgroundColor(Color(255, 200, 200, 255));
         errorLabel->SetTextColor(Color(200, 0, 0, 255));
         errorLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -112,7 +112,7 @@ namespace UltraCanvas {
 
         // Filled status pills with no visible border (border colour transparent).
         auto pillSuccess = std::make_shared<UltraCanvasLabel>("PillSuccess", 20, 420, 150, 28);
-        pillSuccess->SetText("✓ Success");
+        pillSuccess->SetText("Success");
         pillSuccess->SetBackgroundColor(Color(76, 175, 80, 255));
         pillSuccess->SetTextColor(Colors::White);
         pillSuccess->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -120,7 +120,7 @@ namespace UltraCanvas {
         container->AddChild(pillSuccess);
 
         auto pillWarning = std::make_shared<UltraCanvasLabel>("PillWarning", 180, 420, 150, 28);
-        pillWarning->SetText("⚠ Warning");
+        pillWarning->SetText("Warning");
         pillWarning->SetBackgroundColor(Color(255, 179, 0, 255));
         pillWarning->SetTextColor(Colors::White);
         pillWarning->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -128,7 +128,7 @@ namespace UltraCanvas {
         container->AddChild(pillWarning);
 
         auto pillError = std::make_shared<UltraCanvasLabel>("PillError", 340, 420, 150, 28);
-        pillError->SetText("✗ Error");
+        pillError->SetText("Error");
         pillError->SetBackgroundColor(Color(229, 57, 53, 255));
         pillError->SetTextColor(Colors::White);
         pillError->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);

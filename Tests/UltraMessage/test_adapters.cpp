@@ -4,8 +4,17 @@
 // (test_main.cpp starts the daemon): serving org.freedesktop.Notifications,
 // the toast -> system.notification translation with its chat and mail
 // mirrors, replace / close, actions signalled back, the switch, and monitor
-// mode when another server owns the name.
-// Version: 0.2.0
+// mode when another server owns the name. The freedesktop-presenter adapter
+// against a fake desktop notification server: an application's notification
+// shown, its click and close reported back, a dismissal closing it, Silent
+// left off screen, and nothing forwarded where UltraMessage is the server;
+// every copy saying what shows it (`displayed`). The presenters' shared half
+// on every platform (what a notification says, which update shows where,
+// what a click publishes, the osascript fallback's arguments), and on macOS
+// the macos-presenter listed and switched.
+// Version: 0.4.0 - the presenters' shared half; macos-presenter
+// Version: 0.3.1 - `displayed`
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 #include "test_helpers.h"
@@ -14,9 +23,12 @@
 #include <UltraMessage/UltraMessageEndpoint.h>
 #include "UltraMessageAdapter.h"   // the shared translation helpers (internal)
 
+#include <condition_variable>
 #include <cstdlib>
+#include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using UltraCanvas::JSONValue;
@@ -89,6 +101,223 @@ TEST(adapter_app_kind_is_guessed_from_identity) {
     REQUIRE_EQ(CategoryForAppKind(AppKind::Unknown), std::string(""));
 }
 
+// ---- the presenters' shared half (every platform) ---------------------------
+
+namespace {
+
+UltraMsgMessage PostedNotification(const UltraMessage::SystemNotification& n, int processId) {
+    UltraMsgMessage m;
+    m.envelope.id = "01PRESENTED";
+    m.envelope.topic = UltraMsgTopics::SystemNotification;
+    m.envelope.from.appId = "org.test.poster";
+    m.envelope.from.displayName = "Poster";
+    m.envelope.from.processId = processId;
+    m.body = UltraMessage::MakeSystemNotification(n);
+    return m;
+}
+
+// The broker side of an adapter, recording what it publishes.
+class RecordingHost final : public UltraMessage::Internal::IAdapterHost {
+public:
+    struct Published {
+        std::string topic;
+        JSONValue body;
+    };
+    std::string Publish(const std::string&, const std::string& topic, const JSONValue& body,
+                        const UltraMsgSendOptions& = {}) override {
+        published.push_back({topic, body});
+        return "01PUBLISHED" + std::to_string(published.size());
+    }
+    void ReportState(const std::string&, const UltraMsgAdapterState&) override {}
+    std::vector<Published> published;
+};
+
+std::string Text(const JSONValue& body, const char* key) {
+    const JSONValue* v = body.Find(key);
+    return v && v->IsString() ? v->GetString() : std::string();
+}
+
+} // namespace
+
+TEST(presenter_content_is_read_from_the_notification) {
+    using UltraMessage::Internal::PresentedContent;
+    using UltraMessage::Internal::ReadPresentedContent;
+    constexpr int kPresenter = 4242;
+    UltraMessage::SystemNotification n;
+    n.appId = "org.ultraos.ultramail";
+    n.appName = "UltraMail";
+    n.summary = "Ada Lovelace";
+    n.body = "Are we still on for the engine review?";
+    n.icon = "file:///tmp/mail%20icons/new.png";
+    n.urgency = "loud";
+    n.actions = {{"default", "Open"}, {"reply", "Reply"}, {"archive", ""}, {"later", "Later"}, {"spam", "Spam"}};
+
+    PresentedContent c;
+    REQUIRE(ReadPresentedContent(PostedNotification(n, kPresenter + 1), kPresenter, c));
+    REQUIRE_EQ(c.notificationId, std::string("01PRESENTED"));
+    REQUIRE_EQ(c.replacesId, std::string(""));
+    REQUIRE_EQ(c.appId, std::string("org.ultraos.ultramail"));
+    REQUIRE_EQ(c.title, std::string("Ada Lovelace"));
+    REQUIRE_EQ(c.subtitle, std::string("UltraMail"));   // another process posted it
+    REQUIRE_EQ(c.body, n.body);
+    REQUIRE_EQ(c.iconFile, std::string("/tmp/mail icons/new.png"));
+    REQUIRE_EQ(c.urgency, std::string("normal"));
+    REQUIRE(c.hasDefaultAction);
+    REQUIRE_EQ(c.buttons.size(), size_t(3));
+    REQUIRE_EQ(c.buttons[0].id, std::string("reply"));
+    REQUIRE_EQ(c.buttons[1].label, std::string("archive"));   // no label: the id
+    REQUIRE_EQ(c.buttons[2].id, std::string("later"));
+
+    // Posted by the presenting process itself: the platform names it already.
+    REQUIRE(ReadPresentedContent(PostedNotification(n, kPresenter), kPresenter, c));
+    REQUIRE_EQ(c.subtitle, std::string(""));
+
+    // An update names the notification it replaces; a theme icon is no file;
+    // no summary: the application's name heads it.
+    n.summary.clear();
+    n.icon = "mail-unread";
+    n.urgency = "critical";
+    n.actions = {{"reply", "Reply"}};
+    UltraMsgMessage update = PostedNotification(n, kPresenter + 1);
+    update.envelope.flags = UltraMsgFlag_Replace;
+    update.envelope.replaces = "01EARLIER";
+    REQUIRE(ReadPresentedContent(update, kPresenter, c));
+    REQUIRE_EQ(c.replacesId, std::string("01EARLIER"));
+    REQUIRE_EQ(c.title, std::string("UltraMail"));
+    REQUIRE_EQ(c.subtitle, std::string(""));
+    REQUIRE_EQ(c.iconFile, std::string(""));
+    REQUIRE_EQ(c.urgency, std::string("critical"));
+    REQUIRE(!c.hasDefaultAction);
+    REQUIRE_EQ(c.buttons.size(), size_t(1));
+
+    // No application name in the body: the sender's.
+    n.summary = "Ada Lovelace";
+    n.appName.clear();
+    REQUIRE(ReadPresentedContent(PostedNotification(n, kPresenter + 1), kPresenter, c));
+    REQUIRE_EQ(c.appName, std::string("Poster"));
+
+    UltraMsgMessage notANotification;
+    notANotification.body = JSONValue(std::string("hello"));
+    REQUIRE(!ReadPresentedContent(notANotification, kPresenter, c));
+}
+
+TEST(presenter_button_sets_are_keyed_stably) {
+    using UltraMessage::Internal::ButtonSetKey;
+    REQUIRE_EQ(ButtonSetKey({}), std::string("plain"));
+    const std::string replyArchive = ButtonSetKey({{"reply", "Reply"}, {"archive", "Archive"}});
+    REQUIRE(replyArchive.rfind("actions-", 0) == 0);
+    REQUIRE_EQ(replyArchive.size(), std::string("actions-").size() + 16);
+    REQUIRE_EQ(ButtonSetKey({{"reply", "Reply"}, {"archive", "Archive"}}), replyArchive);
+    REQUIRE(ButtonSetKey({{"archive", "Archive"}, {"reply", "Reply"}}) != replyArchive);
+    REQUIRE(ButtonSetKey({{"reply", "Answer"}, {"archive", "Archive"}}) != replyArchive);
+    // The id and label boundary counts: "ab"+"c" is not "a"+"bc".
+    REQUIRE(ButtonSetKey({{"ab", "c"}}) != ButtonSetKey({{"a", "bc"}}));
+}
+
+TEST(presenter_book_follows_updates_and_responses) {
+    UltraMessage::Internal::PresentedNotifications book;
+    REQUIRE_EQ(book.Show("m1", "", "m1"), std::string("m1"));
+    // An update shows under the identifier of the one it replaces ...
+    REQUIRE_EQ(book.Show("m2", "m1", "m2"), std::string("m1"));
+    REQUIRE_EQ(book.Size(), size_t(1));
+    REQUIRE_EQ(book.TakeById("m1"), std::string(""));
+    // ... and the platform's answer for that identifier is about the update.
+    REQUIRE_EQ(book.TakeByNative("m1"), std::string("m2"));
+    REQUIRE_EQ(book.Size(), size_t(0));
+    REQUIRE_EQ(book.TakeByNative("m1"), std::string(""));
+
+    // Replacing something no longer on screen shows it anew.
+    REQUIRE_EQ(book.Show("m3", "gone", "m3"), std::string("m3"));
+    REQUIRE_EQ(book.TakeById("m3"), std::string("m3"));
+    REQUIRE_EQ(book.TakeById("m3"), std::string(""));
+
+    // The oldest are forgotten past the limit.
+    for (int i = 0; i < 300; ++i) book.Show("n" + std::to_string(i), "", "n" + std::to_string(i));
+    REQUIRE_EQ(book.Size(), size_t(256));
+    REQUIRE_EQ(book.TakeById("n0"), std::string(""));
+    REQUIRE_EQ(book.TakeById("n299"), std::string("n299"));
+    book.Clear();
+    REQUIRE_EQ(book.Size(), size_t(0));
+}
+
+TEST(presenter_responses_are_published) {
+    using UltraMessage::Internal::PresenterResponse;
+    using UltraMessage::Internal::PublishPresenterResponse;
+    RecordingHost host;
+    REQUIRE(PublishPresenterResponse(host, "test-presenter", "m1", PresenterResponse::Activated, "", true));
+    REQUIRE(!PublishPresenterResponse(host, "test-presenter", "m2", PresenterResponse::Activated, "", false));
+    REQUIRE(PublishPresenterResponse(host, "test-presenter", "m3", PresenterResponse::Action, "reply", false));
+    REQUIRE(!PublishPresenterResponse(host, "test-presenter", "m4", PresenterResponse::Action, "", true));
+    REQUIRE(PublishPresenterResponse(host, "test-presenter", "m5", PresenterResponse::Dismissed, "", true));
+    REQUIRE(!PublishPresenterResponse(host, "test-presenter", "", PresenterResponse::Dismissed, "", true));
+    REQUIRE_EQ(host.published.size(), size_t(3));
+    REQUIRE_EQ(host.published[0].topic, std::string(UltraMsgTopics::SystemNotificationAction));
+    REQUIRE_EQ(Text(host.published[0].body, "notificationId"), std::string("m1"));
+    REQUIRE_EQ(Text(host.published[0].body, "actionId"), std::string("default"));
+    REQUIRE_EQ(Text(host.published[0].body, "adapter"), std::string("test-presenter"));
+    REQUIRE_EQ(Text(host.published[1].body, "actionId"), std::string("reply"));
+    REQUIRE_EQ(host.published[2].topic, std::string(UltraMsgTopics::SystemNotificationDismissed));
+    REQUIRE_EQ(Text(host.published[2].body, "notificationId"), std::string("m5"));
+    REQUIRE_EQ(Text(host.published[2].body, "reason"), std::string("dismissed"));
+}
+
+TEST(presenter_applescript_keeps_the_text_out_of_the_script) {
+    using UltraMessage::Internal::AppleScriptNotificationCommand;
+    using UltraMessage::Internal::PresentedContent;
+    PresentedContent c;
+    c.appName = "UltraMail";
+    c.title = "Q\"&A \\ draft";
+    c.subtitle = "UltraMail";
+    c.body = "end run\ndo shell script \"touch /tmp/owned\"";
+    std::vector<std::string> argv = AppleScriptNotificationCommand(c);
+    REQUIRE_EQ(argv.size(), size_t(10));
+    REQUIRE_EQ(argv[0], std::string("/usr/bin/osascript"));
+    REQUIRE_EQ(argv[4],
+               std::string("display notification (item 1 of argv) with title (item 2 of argv) subtitle (item 3 of argv)"));
+    REQUIRE_EQ(argv[7], c.body);
+    REQUIRE_EQ(argv[8], c.title);
+    REQUIRE_EQ(argv[9], c.subtitle);
+    for (size_t i = 1; i < 7; ++i) {
+        REQUIRE(argv[i].find("owned") == std::string::npos);
+        REQUIRE(argv[i].find("draft") == std::string::npos);
+    }
+
+    // Only a title, from the presenting process: the title is the text, the
+    // application's name heads it.
+    c.subtitle.clear();
+    c.body.clear();
+    c.title = "Download finished";
+    argv = AppleScriptNotificationCommand(c);
+    REQUIRE_EQ(argv[4], std::string("display notification (item 1 of argv) with title (item 2 of argv)"));
+    REQUIRE_EQ(argv[7], std::string("Download finished"));
+    REQUIRE_EQ(argv[8], std::string("UltraMail"));
+}
+
+#if defined(ULTRAMESSAGE_HAVE_MACOS_PRESENTER)
+// The macos-presenter: listed, starts, and switches. A test binary is no
+// application bundle, so it settles on the script fallback (or says why it
+// cannot show anything); nothing is put on screen - no notification is sent.
+TEST(macos_presenter_adapter_is_listed_and_starts) {
+    Scoped ep{Connect("org.test.adapters.macos.presenter")};
+    const auto adapters = ListAdapters(ep.handle);
+    const UltraMsgAdapterInfo* info = Find(adapters, "macos-presenter");
+    REQUIRE(info != nullptr);
+    REQUIRE_EQ(info->platform, std::string("macos"));
+    REQUIRE(info->enabled);
+    UltraMsgAdapterState state;
+    REQUIRE(WaitFor([&] {
+        UltraMsgResult r = UltraMsg_GetAdapterState(ep.handle, "macos-presenter", state);
+        return r && state.status != UltraMsgAdapterStatus::Starting;
+    }, 8000ms));
+    REQUIRE(!state.message.empty());
+    REQUIRE(state.mode == "script" || state.mode == "none");
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "macos-presenter", false));
+    REQUIRE(UltraMsg_GetAdapterState(ep.handle, "macos-presenter", state));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "macos-presenter", true));
+}
+#endif
+
 #if defined(ULTRAMESSAGE_HAVE_WINRT)
 // Windows only, and only meaningful on a desktop session: the listener is
 // listed, and its state is one the user can act on rather than a stall.
@@ -111,6 +340,31 @@ TEST(windows_listener_adapter_is_listed_with_an_actionable_state) {
     REQUIRE(UltraMsg_GetAdapterState(ep.handle, "windows-notification-listener", state));
     REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);
     REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-notification-listener", true));
+}
+#endif
+
+#if defined(_WIN32)
+// Every Windows build has the presenter: listed, started on its own thread
+// with its hidden window, and switchable. Nothing is posted, so no balloon
+// appears.
+TEST(windows_presenter_adapter_is_listed_and_starts) {
+    Scoped ep{Connect("org.test.adapters.windows.presenter")};
+    const auto adapters = ListAdapters(ep.handle);
+    const UltraMsgAdapterInfo* info = Find(adapters, "windows-presenter");
+    REQUIRE(info != nullptr);
+    REQUIRE_EQ(info->platform, std::string("windows"));
+    REQUIRE(info->enabled);
+    UltraMsgAdapterState state;
+    REQUIRE(WaitFor([&] {
+        UltraMsgResult r = UltraMsg_GetAdapterState(ep.handle, "windows-presenter", state);
+        return r && state.status != UltraMsgAdapterStatus::Starting;
+    }, 8000ms));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Running || state.status == UltraMsgAdapterStatus::Error);
+    REQUIRE(!state.message.empty());
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-presenter", false));
+    REQUIRE(UltraMsg_GetAdapterState(ep.handle, "windows-presenter", state));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-presenter", true));
 }
 #endif
 
@@ -425,6 +679,8 @@ TEST(freedesktop_notify_becomes_system_notification_with_chat_mirror) {
     REQUIRE_EQ(Str(toast.body, "adapter"), std::string(kAdapterName));
     REQUIRE_EQ(Int(toast.body, "nativeId"), int64_t(id));
     REQUIRE_EQ(Int(toast.body, "senderPid"), int64_t(4242));
+    // Served, not watched: nothing has drawn it, so a toast host would.
+    REQUIRE(toast.body.Find("displayed") == nullptr);
 
     UltraMsgMessage chat;
     REQUIRE(chats.WaitForField("mirrorOf", toast.envelope.id, chat));
@@ -602,6 +858,7 @@ TEST(freedesktop_switch_and_monitor_mode) {
     REQUIRE(toasts.WaitForField("summary", "Seen passively", toast));
     REQUIRE_EQ(Str(toast.body, "origin"), std::string("freedesktop-monitor"));
     REQUIRE_EQ(Int(toast.body, "nativeId"), int64_t(0));
+    REQUIRE_EQ(Str(toast.body, "displayed"), std::string(kAdapterName));   // the rival drew it
     // A second one proves the monitor stayed connected (a monitor that
     // answered the first call would have been dropped by the daemon).
     app.NotifyNoReply("Watched", "Still watching", "");
@@ -614,6 +871,427 @@ TEST(freedesktop_switch_and_monitor_mode) {
     REQUIRE(UltraMsg_EnableAdapter(ep.handle, kAdapterName, true));
     state = WaitForStatus(ep.handle, UltraMsgAdapterStatus::Running, "server");
     REQUIRE_EQ(state.mode, std::string("server"));
+}
+
+
+// ---------------------------------------------------------------------------
+// The presenter
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr const char* kPresenterName = "freedesktop-presenter";
+
+UltraMsgAdapterState WaitForAdapter(UltraMsgHandle endpoint, const std::string& name, UltraMsgAdapterStatus status,
+                                    const std::string& mode = "") {
+    UltraMsgAdapterState state;
+    WaitFor([&] {
+        UltraMsgResult r = UltraMsg_GetAdapterState(endpoint, name, state);
+        return r && state.status == status && (mode.empty() || state.mode == mode);
+    }, 8000ms);
+    return state;
+}
+
+struct NotifyCall {
+    std::string appName;
+    guint32 replacesId = 0;
+    std::string icon;
+    std::string summary;
+    std::string body;
+    std::vector<std::string> actions;
+    std::map<std::string, std::string> hints;   // the string hints
+    int urgency = -1;
+    gint64 senderPid = 0;
+    guint32 id = 0;
+};
+
+// A desktop's notification server (GNOME Shell, dunst, ...) as far as the
+// bus can tell: owns org.freedesktop.Notifications, answers Notify with ids,
+// records CloseNotification, and raises ActionInvoked / NotificationClosed
+// when told to. Serves on a thread of its own.
+class FakeNotificationServer {
+public:
+    FakeNotificationServer() {
+        thread_ = std::thread([this] { Run(); });
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait_for(lock, 5s, [&] { return started_; });
+    }
+
+    ~FakeNotificationServer() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (loop_) g_main_context_invoke(context_, &Quit, loop_);
+        }
+        if (thread_.joinable()) thread_.join();
+    }
+
+    bool Owns() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return owns_;
+    }
+
+    std::vector<NotifyCall> Calls() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return calls_;
+    }
+
+    std::vector<guint32> Closed() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return closed_;
+    }
+
+    bool WaitForCall(const std::string& summary, NotifyCall& out) {
+        return WaitFor([&] {
+            for (const auto& c : Calls())
+                if (c.summary == summary) { out = c; return true; }
+            return false;
+        }, 5000ms);
+    }
+
+    void EmitActionInvoked(guint32 id, const std::string& key) {
+        Emit("ActionInvoked", g_variant_new("(us)", id, key.c_str()));
+    }
+    void EmitClosed(guint32 id, guint32 reason) { Emit("NotificationClosed", g_variant_new("(uu)", id, reason)); }
+
+private:
+    static gboolean Quit(gpointer loop) {
+        g_main_loop_quit(static_cast<GMainLoop*>(loop));
+        return G_SOURCE_REMOVE;
+    }
+
+    void Emit(const char* member, GVariant* parameters) {
+        g_dbus_connection_emit_signal(connection_, nullptr, kObjectPath, kInterface, member, parameters, nullptr);
+        g_dbus_connection_flush_sync(connection_, nullptr, nullptr);
+    }
+
+    void Run() {
+        GMainContext* context = g_main_context_new();
+        g_main_context_push_thread_default(context);
+        GMainLoop* loop = g_main_loop_new(context, FALSE);
+        const char* address = std::getenv("DBUS_SESSION_BUS_ADDRESS");
+        connection_ = address ? g_dbus_connection_new_for_address_sync(
+                                    address,
+                                    static_cast<GDBusConnectionFlags>(G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                                                                      G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION),
+                                    nullptr, nullptr, nullptr)
+                              : nullptr;
+        guint registration = 0;
+        bool owns = false;
+        if (connection_) {
+            static const char* xml =
+                "<node><interface name='org.freedesktop.Notifications'>"
+                "<method name='Notify'><arg type='s' direction='in'/><arg type='u' direction='in'/>"
+                "<arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='s' direction='in'/>"
+                "<arg type='as' direction='in'/><arg type='a{sv}' direction='in'/><arg type='i' direction='in'/>"
+                "<arg type='u' direction='out'/></method>"
+                "<method name='CloseNotification'><arg type='u' direction='in'/></method>"
+                "<method name='GetCapabilities'><arg type='as' direction='out'/></method>"
+                "<method name='GetServerInformation'><arg type='s' direction='out'/><arg type='s' direction='out'/>"
+                "<arg type='s' direction='out'/><arg type='s' direction='out'/></method>"
+                "<signal name='NotificationClosed'><arg type='u'/><arg type='u'/></signal>"
+                "<signal name='ActionInvoked'><arg type='u'/><arg type='s'/></signal>"
+                "</interface></node>";
+            GDBusNodeInfo* node = g_dbus_node_info_new_for_xml(xml, nullptr);
+            static const GDBusInterfaceVTable vtable = {&OnMethodCall, nullptr, nullptr, {nullptr}};
+            registration = g_dbus_connection_register_object(connection_, kObjectPath, node->interfaces[0], &vtable,
+                                                             this, nullptr, nullptr);
+            g_dbus_node_info_unref(node);
+            GVariant* reply = g_dbus_connection_call_sync(
+                connection_, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName",
+                g_variant_new("(su)", kBusName, 4u /* DO_NOT_QUEUE */), G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE,
+                3000, nullptr, nullptr);
+            if (reply) {
+                guint32 code = 0;
+                g_variant_get(reply, "(u)", &code);
+                g_variant_unref(reply);
+                owns = code == 1;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            context_ = context;
+            loop_ = loop;
+            owns_ = owns;
+            started_ = true;
+        }
+        cv_.notify_all();
+        if (connection_) g_main_loop_run(loop);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            loop_ = nullptr;
+        }
+        if (connection_) {
+            if (registration) g_dbus_connection_unregister_object(connection_, registration);
+            g_dbus_connection_close_sync(connection_, nullptr, nullptr);
+            g_object_unref(connection_);
+        }
+        g_main_loop_unref(loop);
+        g_main_context_pop_thread_default(context);
+        g_main_context_unref(context);
+    }
+
+    static void OnMethodCall(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar* method,
+                             GVariant* parameters, GDBusMethodInvocation* invocation, gpointer userData) {
+        auto* self = static_cast<FakeNotificationServer*>(userData);
+        const std::string name = method ? method : "";
+        if (name == "Notify") {
+            NotifyCall call;
+            const gchar *appName = nullptr, *icon = nullptr, *summary = nullptr, *body = nullptr;
+            GVariantIter* actions = nullptr;
+            GVariantIter* hints = nullptr;
+            gint32 timeout = 0;
+            g_variant_get(parameters, "(&su&s&s&sasa{sv}i)", &appName, &call.replacesId, &icon, &summary, &body,
+                          &actions, &hints, &timeout);
+            call.appName = appName ? appName : "";
+            call.icon = icon ? icon : "";
+            call.summary = summary ? summary : "";
+            call.body = body ? body : "";
+            const gchar* item = nullptr;
+            while (g_variant_iter_next(actions, "&s", &item)) call.actions.emplace_back(item ? item : "");
+            g_variant_iter_free(actions);
+            const gchar* key = nullptr;
+            GVariant* value = nullptr;
+            while (g_variant_iter_next(hints, "{&sv}", &key, &value)) {
+                if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+                    call.hints[key] = g_variant_get_string(value, nullptr);
+                else if (g_variant_is_of_type(value, G_VARIANT_TYPE_BYTE) && g_strcmp0(key, "urgency") == 0)
+                    call.urgency = g_variant_get_byte(value);
+                else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) && g_strcmp0(key, "sender-pid") == 0)
+                    call.senderPid = g_variant_get_int64(value);
+                g_variant_unref(value);
+            }
+            g_variant_iter_free(hints);
+            {
+                std::lock_guard<std::mutex> lock(self->mutex_);
+                call.id = call.replacesId ? call.replacesId : self->nextId_++;
+                self->calls_.push_back(call);
+            }
+            g_dbus_method_invocation_return_value(invocation, g_variant_new("(u)", call.id));
+        } else if (name == "CloseNotification") {
+            guint32 id = 0;
+            g_variant_get(parameters, "(u)", &id);
+            {
+                std::lock_guard<std::mutex> lock(self->mutex_);
+                self->closed_.push_back(id);
+            }
+            g_dbus_method_invocation_return_value(invocation, nullptr);
+        } else if (name == "GetCapabilities") {
+            GVariantBuilder builder;
+            g_variant_builder_init(&builder, G_VARIANT_TYPE("as"));
+            for (const char* capability : {"body", "actions", "body-markup"})
+                g_variant_builder_add(&builder, "s", capability);
+            g_dbus_method_invocation_return_value(invocation, g_variant_new("(as)", &builder));
+        } else if (name == "GetServerInformation") {
+            g_dbus_method_invocation_return_value(invocation,
+                                                  g_variant_new("(ssss)", "FakeShell", "Test", "1.0", "1.2"));
+        } else {
+            g_dbus_method_invocation_return_dbus_error(invocation, "org.freedesktop.DBus.Error.UnknownMethod", "");
+        }
+    }
+
+    std::thread thread_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool started_ = false;
+    bool owns_ = false;
+    GMainContext* context_ = nullptr;
+    GMainLoop* loop_ = nullptr;
+    GDBusConnection* connection_ = nullptr;
+    guint32 nextId_ = 100;
+    std::vector<NotifyCall> calls_;
+    std::vector<guint32> closed_;
+};
+
+UltraMessage::SystemNotification AppNotification(const std::string& summary, const std::string& body) {
+    UltraMessage::SystemNotification n;
+    n.appName = "UltraMail";
+    n.appId = "org.ultraos.ultramail";
+    n.category = "email.arrived";
+    n.summary = summary;
+    n.body = body;
+    n.actions = {{"default", "Open"}};
+    return n;
+}
+
+// True when an adapter published a system.notification with `summary`: the
+// reader must not read the presenter's Notify back onto the bus.
+bool AdapterRepublished(Collector& toasts, const std::string& summary) {
+    std::lock_guard<std::mutex> lock(toasts.mutex);
+    for (const auto& m : toasts.messages)
+        if (Str(m.body, "summary") == summary && m.envelope.from.appId.rfind("org.ultraos.ultramessage.adapter.", 0) == 0)
+            return true;
+    return false;
+}
+
+} // namespace
+
+TEST(freedesktop_presenter_draws_nothing_where_ultramessage_serves) {
+    RequireTestBus();
+    Scoped ep{Connect("org.test.presenter.none")};
+    WaitForStatus(ep.handle, UltraMsgAdapterStatus::Running, "server");
+    const auto adapters = ListAdapters(ep.handle);
+    const UltraMsgAdapterInfo* info = Find(adapters, kPresenterName);
+    REQUIRE(info != nullptr);
+    REQUIRE(info->enabled);
+    REQUIRE_EQ(info->platform, std::string("linux"));
+
+    // The name's owner is UltraMessage itself: nothing on this desktop draws
+    // a notification, and the presenter says so rather than forwarding.
+    UltraMsgAdapterState state = WaitForAdapter(ep.handle, kPresenterName, UltraMsgAdapterStatus::Running, "none");
+    REQUIRE_EQ(state.mode, std::string("none"));
+    REQUIRE(!state.remedy.empty());
+
+    Collector toasts;
+    toasts.Subscribe(ep.handle, UltraMsgTopics::SystemNotification);
+    Scoped app{Connect("org.test.presenter.none.app")};
+    // An application cannot claim it is on screen: only the broker says so.
+    JSONValue claimed = UltraMessage::MakeSystemNotification(AppNotification("Feed only", "no screen here"));
+    claimed.Set("displayed", "my-own-toast");
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification, claimed));
+    UltraMsgMessage posted;
+    REQUIRE(toasts.WaitForField("summary", "Feed only", posted));
+    REQUIRE_EQ(posted.envelope.from.appId, std::string("org.test.presenter.none.app"));
+    // Nothing shows it: a toast host (the ULTRA OS desktop) is to draw it.
+    REQUIRE(posted.body.Find("displayed") == nullptr);
+    WaitFor([] { return false; }, 300ms);
+    REQUIRE(!AdapterRepublished(toasts, "Feed only"));
+}
+
+TEST(freedesktop_presenter_shows_application_notifications) {
+    RequireTestBus();
+    Scoped ep{Connect("org.test.presenter.show")};
+    WaitForStatus(ep.handle, UltraMsgAdapterStatus::Running, "server");
+
+    // A desktop with its own notification server: the reader hands the name
+    // over and watches; the presenter forwards to that server.
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, kAdapterName, false));
+    WaitForStatus(ep.handle, UltraMsgAdapterStatus::Disabled);
+    auto server = std::make_unique<FakeNotificationServer>();
+    REQUIRE(WaitFor([&] { return server->Owns(); }));
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, kAdapterName, true));
+    UltraMsgAdapterState state = WaitForAdapter(ep.handle, kPresenterName, UltraMsgAdapterStatus::Running, "forward");
+    REQUIRE_EQ(state.mode, std::string("forward"));
+    REQUIRE(state.message.find("FakeShell") != std::string::npos);
+    // The reader watches in monitor mode where the bus allows it, which is
+    // what would read the presenter's Notify back without its hint.
+    WaitForStatus(ep.handle, UltraMsgAdapterStatus::Running, "monitor");
+
+    Collector toasts, actions, dismissals;
+    toasts.Subscribe(ep.handle, UltraMsgTopics::SystemNotification);
+    actions.Subscribe(ep.handle, UltraMsgTopics::SystemNotificationAction);
+    dismissals.Subscribe(ep.handle, UltraMsgTopics::SystemNotificationDismissed);
+    Scoped app{Connect("org.test.presenter.show.app", "UltraMail")};
+
+    // 1. Posted on the bus -> Notify on the desktop's server, text intact
+    //    (escaped for a body-markup server), with the hints it needs.
+    UltraMessage::SystemNotification n = AppNotification("New mail from Ada", "Q&A <draft>\nada@example.org");
+    JSONValue body = UltraMessage::MakeSystemNotification(n);
+    body.Set("desktopEntry", "UltraMail");
+    std::string id;
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification, body, {}, &id));
+    REQUIRE(!id.empty());
+    NotifyCall call;
+    REQUIRE(server->WaitForCall("New mail from Ada", call));
+    // Every copy on the bus says what shows it.
+    UltraMsgMessage onBus;
+    REQUIRE(toasts.WaitForField("summary", "New mail from Ada", onBus));
+    REQUIRE_EQ(Str(onBus.body, "displayed"), std::string(kPresenterName));
+    REQUIRE_EQ(call.appName, std::string("UltraMail"));
+    REQUIRE_EQ(call.body, std::string("Q&amp;A &lt;draft&gt;\nada@example.org"));
+    REQUIRE_EQ(call.actions.size(), size_t(2));
+    REQUIRE_EQ(call.actions[0], std::string("default"));
+    REQUIRE_EQ(call.actions[1], std::string("Open"));
+    REQUIRE_EQ(call.hints["category"], std::string("email.arrived"));
+    REQUIRE_EQ(call.hints["desktop-entry"], std::string("UltraMail"));
+    REQUIRE_EQ(call.hints["x-ultramessage-id"], id);
+    REQUIRE_EQ(call.urgency, 1);
+    REQUIRE(call.senderPid > 0);
+    REQUIRE_EQ(call.replacesId, guint32(0));
+
+    // ...and it is on the bus once: the reader does not read it back.
+    WaitFor([] { return false; }, 300ms);
+    REQUIRE(!AdapterRepublished(toasts, "New mail from Ada"));
+
+    // 2. A click on it comes back to the application as an action.
+    server->EmitActionInvoked(call.id, "default");
+    UltraMsgMessage clicked;
+    REQUIRE(actions.WaitForField("notificationId", id, clicked));
+    REQUIRE_EQ(Str(clicked.body, "actionId"), std::string("default"));
+    REQUIRE_EQ(clicked.envelope.from.appId, std::string("org.ultraos.ultramessage.adapter.") + kPresenterName);
+    // The server's own close after the click is not a second report.
+    server->EmitClosed(call.id, 2);
+    WaitFor([] { return false; }, 200ms);
+    UltraMsgMessage unexpected;
+    REQUIRE(!dismissals.Find("notificationId", id, unexpected));
+    // The adapter's action notice must not close it on screen again.
+    for (guint32 closed : server->Closed()) REQUIRE(closed != call.id);
+
+    // 3. The user closing it is reported as dismissed.
+    std::string second;
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification,
+                          UltraMessage::MakeSystemNotification(AppNotification("Closed by the user", "")), {},
+                          &second));
+    NotifyCall secondCall;
+    REQUIRE(server->WaitForCall("Closed by the user", secondCall));
+    WaitFor([] { return false; }, 100ms);   // the reply that maps the server's id
+    server->EmitClosed(secondCall.id, 2);
+    UltraMsgMessage dismissed;
+    REQUIRE(dismissals.WaitForField("notificationId", second, dismissed));
+    REQUIRE_EQ(Str(dismissed.body, "reason"), std::string("dismissed"));
+
+    // 4. The application withdrawing it closes it on screen.
+    std::string third;
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification,
+                          UltraMessage::MakeSystemNotification(AppNotification("Read elsewhere", "")), {}, &third));
+    NotifyCall thirdCall;
+    REQUIRE(server->WaitForCall("Read elsewhere", thirdCall));
+    WaitFor([] { return false; }, 100ms);
+    JSONValue withdraw = JSONValue::MakeObject();
+    withdraw.Set("notificationId", third);
+    withdraw.Set("reason", "read");
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotificationDismissed, withdraw));
+    REQUIRE(WaitFor([&] {
+        for (guint32 closed : server->Closed())
+            if (closed == thirdCall.id) return true;
+        return false;
+    }, 5000ms));
+
+    // 5. A replacement updates the notification on screen.
+    std::string fourth;
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification,
+                          UltraMessage::MakeSystemNotification(AppNotification("2 new messages", "")), {}, &fourth));
+    NotifyCall fourthCall;
+    REQUIRE(server->WaitForCall("2 new messages", fourthCall));
+    WaitFor([] { return false; }, 100ms);
+    UltraMsgSendOptions replace;
+    replace.flags = UltraMsgFlag_Replace;
+    replace.replaces = fourth;
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification,
+                          UltraMessage::MakeSystemNotification(AppNotification("3 new messages", "")), replace));
+    NotifyCall fifthCall;
+    REQUIRE(server->WaitForCall("3 new messages", fifthCall));
+    REQUIRE_EQ(fifthCall.replacesId, fourthCall.id);
+
+    // 6. Silent stays off screen.
+    UltraMsgSendOptions silent;
+    silent.flags = UltraMsgFlag_Silent;
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification,
+                          UltraMessage::MakeSystemNotification(AppNotification("Quietly", "")), silent));
+    UltraMsgMessage quiet;
+    REQUIRE(toasts.WaitForField("summary", "Quietly", quiet));
+    WaitFor([] { return false; }, 300ms);
+    for (const auto& c : server->Calls()) REQUIRE(c.summary != "Quietly");
+
+    // The desktop's server leaves: UltraMessage serves the name again, and
+    // the presenter notices nothing draws notifications any more.
+    server.reset();
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, kAdapterName, false));
+    WaitForStatus(ep.handle, UltraMsgAdapterStatus::Disabled);
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, kAdapterName, true));
+    state = WaitForStatus(ep.handle, UltraMsgAdapterStatus::Running, "server");
+    REQUIRE_EQ(state.mode, std::string("server"));
+    state = WaitForAdapter(ep.handle, kPresenterName, UltraMsgAdapterStatus::Running, "none");
+    REQUIRE_EQ(state.mode, std::string("none"));
 }
 
 #endif // ULTRAMESSAGE_HAVE_GIO && __linux__

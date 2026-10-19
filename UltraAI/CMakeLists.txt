@@ -57,6 +57,7 @@ set(ULTRAAI_PUBLIC_HEADERS
     include/UltraAIImageGen.h
     include/UltraAIVisionAnalyzer.h
     include/UltraAITranslator.h
+    include/UltraAITextLLMTranslator.h
     include/UltraAIVideoGen.h
     include/UltraAIMusicGen.h
     include/UltraAICodeAssist.h
@@ -69,6 +70,7 @@ add_library(UltraAI_Core STATIC
     src/TextLLMFactory.cpp
     src/CapabilityFactories.cpp
     src/Routing.cpp
+    src/TextLLMTranslator.cpp
 )
 add_library(UltraAI::Core ALIAS UltraAI_Core)
 

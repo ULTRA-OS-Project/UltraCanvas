@@ -27,11 +27,21 @@ OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 >   single photo + caption via `sendPhoto` (multipart); `t.me` permalinks
 >   for channels with a public username.
 >
-> The **UI** (target `UltraSocial`) has the compose window — one text area,
-> per-account target checkboxes with live character counters that flip to a
-> warning badge over the limit, adaptation warnings, media chips via the
-> file picker, a Post button, and the recent-history strip — plus the
-> add-account wizard (network picker with per-network fields and hints).
+> The **UI** (target `UltraSocial`) looks like UltraMail — the same
+> near-white page, white cards, blue primary button and type scale
+> (`ui/UltraSocialTheme.h`). Until an account exists the window shows
+> UltraMail's start page for UltraSocial: the app icon, the name, one line
+> on what it does and an "Add social account" button, with the networks it
+> can post to underneath. After that it shows the compose view — a toolbar
+> (logo, name, "Add account"), a "New post" card (one text area, adaptation
+> warnings, image chips via the file picker, Post later… / Post), a "Post
+> to" card (the network's initial in its colour, a checkbox and a live
+> character counter per account that turns orange over the limit), the
+> Scheduled queue (Cancel per post, a retry count) and Recent posts (Posted
+> / Failed, an excerpt or the error, and an Open button for the post's
+> link). The cards follow the window as it is resized. The add-account
+> wizard has a network picker with per-network fields and the network's
+> hint in a box under them.
 > Sign-in and publishing run on worker threads and marshal back through a
 > main-thread timer queue, so the window stays live while the browser
 > consent or a slow network round-trip is in flight.
@@ -95,6 +105,8 @@ Apps/UltraSocial/
                                        UltraSocial's profile (ultrasocial.vault,
                                        device.key, keys social.ultrasocial.<id>)
     UltraSocialStore.{h,cpp}           accounts + outbox + history on UltraDatabase
+    UltraSocialPaths.{h,cpp}           the per-user data folder (ultrasocial.db +
+                                       vault/), moving 0.1.x's folder into place
     UltraSocialPublisher.{h,cpp}       the one publish path (now + scheduled),
                                        outbox flush with retry/backoff
     UltraSocialWebUtil.{h,cpp}         JSON/form requests, multipart bodies, media IO
@@ -110,9 +122,37 @@ Apps/UltraSocial/
     UltraSocialApp.{h,cpp}             app manager: store + vault + windows,
                                        worker-thread sign-in/publish
     UltraSocialAccountWizard.{h,cpp}   add-account dialog
-    UltraSocialComposeView.{h,cpp}     compose surface + targets + history
+    UltraSocialComposeView.{h,cpp}     toolbar + compose / targets /
+                                       scheduled / recent-posts cards
+    UltraSocialStartPage.{h,cpp}       first-run page (no account yet)
+    UltraSocialTheme.h                 UltraMail's colours, sizes and styles,
+                                       per-network avatar colours
   main.cpp                             UltraCanvasApplication bootstrap
+  UltraSocial.desktop                  freedesktop entry (Icon=UltraSocial)
+
+The app icon is `media/appicon/UltraSocial.svg` (three people in three
+colours inside a circle); `UltraSocial.png` beside it is its 256 px render,
+which the window, the taskbar, the start page, the Windows `.exe` and the
+desktop entry all use.
 ```
+
+## Where the data lives
+
+One per-user folder holds the account / outbox / history database,
+`ultrasocial.db`, and the credential vault, `vault/` - every login, token and
+app password is in UltraVault's device-key vault (`ultrasocial.vault`,
+unlocked by the owner-only `device.key` beside it), never in the database.
+
+| Platform | Folder |
+|---|---|
+| Windows | `%APPDATA%\UltraSocial` |
+| macOS | `~/Library/Application Support/UltraSocial` |
+| Linux and others | `$XDG_DATA_HOME/UltraSocial`, else `~/.local/share/UltraSocial` |
+
+`$XDG_DATA_HOME`, when set, wins on every platform. Outside Windows the
+folder is readable by its owner alone. A folder 0.1.x left elsewhere (the
+working directory on Windows, `~/.local/share` on macOS) is moved into place
+on the first start, and its `social.db` becomes `ultrasocial.db`.
 
 ## Building and testing
 

@@ -4,33 +4,35 @@ A comprehensive, self-contained media viewer widget
 (`include/UltraCanvasMediaViewer.h`, `core/UltraCanvasMediaViewer.cpp`).
 One widget displays every media kind the framework knows, chooses the right
 display view automatically from the file kind, and brings its own chrome: a
-folder breadcrumb, two toolbar rows (open / navigation / slideshow /
-transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
+folder breadcrumb, one compact toolbar (open / navigation / slideshow /
+transitions, then zoom / rotate / mirror / adjust / curves / save), an image
 adjustments panel and a bottom info bar with a Details panel.
 
-The toolbars are **icons with tooltips**, not captions, so two rows still fit
-the narrow preview pane UltraFiler gives the viewer. Every icon comes from the
+The toolbar is **flat, small (16 px) icons with tooltips**, not captions, so
+one row holds every control; a window too narrow for it scrolls the row (mouse
+wheel, or the chevron at its edge) instead of clipping it. Every icon comes from the
 framework's own set under `media/icons/` and is drawn as a mask, so it takes the
 toolbar's foreground colour and greys out with the button; hovering shows the
 caption, with the key where there is one:
 
-| Row | Icon | Tooltip |
+| Group | Icon | Tooltip |
 |---|---|---|
-| 1 | `folder-open` | Open a file or folder |
-| 1 | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
-| 1 | `slideshow` (toggle) | Slideshow (Space) |
-| 1 | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
-| 2 | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
-| 2 | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
-| 2 | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
-| 2 | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
-| 2 | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
-| 2 | `curves` | Curves |
-| 2 | `save` | Save as… |
-| 2 | `file-info` | Details |
+| Browse | `folder-open` | Open a file or folder |
+| Browse | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
+| Browse | `slideshow` (toggle) | Slideshow (Space) |
+| Browse | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
+| View | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
+| View | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
+| View | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
+| View | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
+| Edit | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
+| Edit | `curves` | Curves |
+| Edit | `save` | Save as… |
 
-Row 2 shows only the groups the file on show takes - see
-[Tools per kind of file](#tools-per-kind-of-file).
+The browse group is always there; the view and edit groups only as far as the
+file on show takes them - see
+[Tools per kind of file](#tools-per-kind-of-file). *Details* is not on the
+toolbar: its button sits at the right end of the info bar.
 
 The three dropdowns stay text because a value picker shows its value; the
 interval and transition ones start on the defaults. The Slideshow toggle
@@ -65,7 +67,7 @@ using it costs nothing in capability and gains two things:
   fallback.
 
 Embed it as UltraFiler does, with `SetTopBarsVisible(false)` for a pane too
-small for two toolbar rows (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
+small for the toolbar (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
 `UltraCanvasMediaViewer::IsSupportedMedia(path)` answers, before you load
 anything, whether this build can show a given file at all.
 
@@ -78,7 +80,7 @@ tool and a missing plugin should stop it running.
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
-| `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
+| `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
@@ -105,7 +107,7 @@ so the viewer gets full player control for free.
 
 ## Tools per kind of file
 
-The second toolbar row offers only the tools that mean something for the file
+The toolbar's view and edit groups offer only the tools that mean something for the file
 on show; the rest are hidden, not greyed, so a video or a spreadsheet is not
 handed colour sliders it cannot apply. Each load decides it, and a host with
 its own controls can ask the same question:
@@ -124,10 +126,10 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | PDF, e-book | yes | — | — | — |
 | Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
 
-*Details* is always there. Separators follow the groups, so none is left
-standing alone. Text, spreadsheet, font, 3D, video and audio views carry their
-own controls (the players' transport bar, the model's orbit and dolly), so the
-row is down to *Details* for them.
+Separators follow the groups, so none is left standing alone. Text,
+spreadsheet, font, 3D, video and audio views carry their own controls (the
+players' transport bar, the model's orbit and dolly), so the toolbar is down to
+the browse group for them; *Details* stays in the info bar for every kind.
 
 A drawing's pixels are only a rendering of it at the size it is shown, so it
 takes no gamma, colour or curve: the adjustments carry from one bitmap to the
@@ -161,8 +163,9 @@ colours directly under the picture: an
 swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
 clicking the checkerboard goes back to the transparency pattern. Files without
 transparency never show the strip, so it costs no space where it would mean
-nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
-opaque alpha channel a PNG export routinely carries.
+nothing — that check is `UCImage::HasTransparency` (the Cairo image,
+`libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
+channel a PNG export routinely carries.
 
 ```cpp
 viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
@@ -223,9 +226,9 @@ ASCII that the syntax tokenizer would otherwise recognise and open as source.
 ### UltraCanvas Documents (`MediaKind::UCDoc`)
 
 `*.ucd` containers (see `Docs/UltraCanvas/UCD-FileFormat-v2.md`) are
-recognised by the 12-byte signature of the fixed header. Until the UCD v2
-engine lands the viewer shows what the format deliberately makes available
-without parsing the body:
+recognised by the 12-byte signature of the fixed header, read through the
+container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
+format deliberately makes available without parsing the body:
 
 - the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
   fixed header) on the image surface, when present — respecting the
@@ -233,15 +236,17 @@ without parsing the body:
 - otherwise a **header summary** in the text view.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
-container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`, …),
-version, body encoding, compression, encryption and thumbnail info. A
-`*.ucd` file without a valid v2 signature (e.g. a v1 XML/JSON document) gets
-a summary saying so.
+container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
+`UCBitmap` …), version, body encoding, compression, encryption (always
+XChaCha20-Poly1305; the key from a password or from SuperVault) and
+thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
+document) gets a summary saying why. A layered image (`UCBitmap`) shows its
+thumbnail here; `UCRasterDocument` opens it with its layers.
 
 ## Details panel
 
-The **Details** button in the info bar (the `file-info` icon; the same icon
-sits at the end of the second toolbar row) opens a scrollable panel over the
+The **Details** button at the right end of the info bar (the `file-info`
+icon) opens a scrollable panel over the
 active view, for every media kind:
 file name, path and size, the kind-specific facts (dimensions, channels,
 colour space, dpi and loader for an image; title / author for an e-book; page
@@ -320,13 +325,29 @@ viewer->SetVideoPreviewMode(VideoPreviewMode::PreviewClip);  // few seconds mute
 viewer->SetVideoPreviewMode(VideoPreviewMode::Still);        // paused first frame
 viewer->SetVideoPreviewClipSeconds(5.0f);                    // PreviewClip length
 viewer->StopPlayback();   // for hosts that hide/detach the viewer
+bool busy = viewer->IsPlayingMedia();   // a video or sound playing right now
 ```
+
+`IsPlayingMedia()` is true while the shown file is a video or a sound that is
+playing (the muted `PreviewClip` too), and false once it is paused, stopped or
+has ended. A host that reopens a file which changed on disk asks it first:
+reopening restarts playback from the beginning. UltraFiler's preview pane
+reopens a changed video only once its file has stopped changing and it is not
+playing.
 
 `PreviewClip` is silent end to end: the mute is decided before the source is
 opened (so the engine builds a muted session rather than muting one already
 wired for sound), and the clip stays muted while it sits paused at the end of
 the preview. The sound returns when the viewer resumes playback itself — press
 play on the transport bar and the clip continues audibly.
+
+## A file saved over
+
+Images are read with `UCImage::GetFresh()`, which checks the shared image
+cache against the file: a picture saved over since it was last shown opens as
+it is now, not as the cache remembered it. The viewer does not watch the file
+it shows; a host that wants it followed reopens it when the file changes, as
+UltraFiler's preview pane does after a rescan finds the selected file changed.
 
 ## Embedding as a preview pane
 
@@ -336,7 +357,15 @@ preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
+preview->SetFitEnlarges(false);         // a small picture at its own size, not blown up
+preview->SetInfoBarVisible(false);      // nothing but the picture (UltraClipboard's classic preview)
 ```
+
+`SetFitEnlarges(false)` makes fit-to-window shrink only: a picture smaller
+than the pane is shown at its own size, centred, instead of being enlarged to
+fill it - what a hover preview wants, so an icon stays an icon rather than a
+blur the size of the pane. The wheel still zooms in from there, and the info
+bar reports the resulting zoom as always. The default (`true`) fills the pane.
 
 ### Taking the 3D view out of it
 
@@ -386,6 +415,28 @@ The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjus
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+*Save as* offers FileLoader's types - every bitmap type this build writes
+(`UltraCanvasFileLoader::AddImageSaveTypes`: PNG first, then JPEG, WebP,
+AVIF, HEIC, TIFF, GIF, QOI, ICO, … as available) - and tells the Save dialog
+how big the picture is, so the **Settings** of a bitmap type offer
+[another size](UltraCanvasFileDialog.md#the-pictures-size) for that save, and
+writes with the type's save settings (JPEG quality, PNG compression ...) once
+the user has stored any. An SVG has no pixel size of its own: it is offered as
+[a drawing](UltraCanvasFileDialog.md#a-drawing), at its size on the page, and
+written by drawing it again at the size chosen - sharp at any size, where the
+picture shown would blur when stretched. The surface does it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+```cpp
+UltraCanvasMediaSurface* surface = viewer->GetSurface();
+const FileSavePicture picture = surface->GetSavePicture();   // turned as shown
+FileSaveImageSize size;
+size.width = picture.width * 2;
+size.height = picture.height * 2;
+std::string error;
+surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
+```
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The

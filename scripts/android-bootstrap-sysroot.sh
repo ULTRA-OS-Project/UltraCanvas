@@ -2,29 +2,27 @@
 # Cross-compile UltraCanvas's dependency stack for Android via vcpkg, and print
 # the CMake invocation that consumes the result.
 #
-# ============================ READ THIS FIRST ============================
-# THIS SCRIPT HAS NEVER BEEN RUN. It was written in an environment with no
-# Android NDK and no route to download one, so nothing below has been executed
-# even once. It encodes the plan from
-# Docs/UltraCanvas/AndroidPortInvestigation.md §4 ("evaluate vcpkg's
-# arm64-android triplet first"), not a proven build.
-#
-# Expect to iterate on it. The likely failure points, in order:
-#   1. A port that has no arm64-android triplet support (pango and cairo are
-#      the ones to watch; freetype/harfbuzz/tinyxml2 are routine).
-#   2. glib - the investigation calls it "the heaviest pain point after GTK"
-#      for cross-builds, usually over iconv/locale.
-#   3. pkg-config files that hardcode host paths, so the repo's
-#      pkg_check_modules calls find nothing.
-# None of these mean the approach is wrong; they mean this needs a run.
-# =========================================================================
+# Status: runs in CI for arm64-v8a. .github/workflows/android-build.yml runs
+# this script on GitHub's runner, with its NDK, and compiles the core library
+# against the sysroot it builds. The other ABIs and --with-net have not been
+# run yet; a port that has no support for their triplet is the likely failure.
 #
 # Usage: scripts/android-bootstrap-sysroot.sh [--with-net] [ABI]
 #   ABI defaults to arm64-v8a (vcpkg triplet arm64-android).
 #
 # Requires:
 #   ANDROID_NDK_HOME (or ANDROID_NDK_ROOT) - an installed NDK, r25+.
-#   VCPKG_ROOT                             - a bootstrapped vcpkg checkout.
+#   VCPKG_ROOT (optional)                  - a bootstrapped vcpkg checkout;
+#       without one, vcpkg is checked out at VCPKG_COMMIT below into
+#       .vcpkg/vcpkg and bootstrapped (as scripts/macos-deps.sh does).
+#   VCPKG_BINARY_SOURCES (optional)        - vcpkg's binary cache setting; CI
+#       points it at a cached directory (.github/workflows/android-build.yml).
+#   UC_ANDROID_SYSROOT (optional)          - where the libraries are installed
+#       (default: ~/.cache/ultracanvas/android-sysroot). Outside the source
+#       tree on purpose: the core library exports the sysroot's lib directory
+#       as a link directory, and CMake refuses to export one from inside the
+#       source tree (scripts/macos-deps.sh installs outside it for the same
+#       reason).
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -57,14 +55,27 @@ if [ ! -f "$ndk/build/cmake/android.toolchain.cmake" ]; then
     exit 2
 fi
 
-vcpkg_root="${VCPKG_ROOT:-}"
-if [ -z "$vcpkg_root" ] || [ ! -x "$vcpkg_root/vcpkg" ]; then
-    echo "android-bootstrap-sysroot: set VCPKG_ROOT to a bootstrapped vcpkg checkout" >&2
-    echo "  git clone https://github.com/microsoft/vcpkg && ./vcpkg/bootstrap-vcpkg.sh" >&2
+# The vcpkg ports tree the manifest resolves against: the commit
+# scripts/macos-deps.sh pins, so Android and macOS build the same library
+# versions (and the same libvips overlay, packaging/vcpkg-configuration.json).
+VCPKG_COMMIT=19780d9cdf84d0944cf9a318666703b89ab6629c # 2026-10-04, as scripts/macos-deps.sh
+
+vcpkg_root="${VCPKG_ROOT:-$repo/.vcpkg/vcpkg}"
+if [ -z "${VCPKG_ROOT:-}" ] &&
+   { [ ! -x "$vcpkg_root/vcpkg" ] || [ "$(git -C "$vcpkg_root" rev-parse HEAD 2>/dev/null)" != "$VCPKG_COMMIT" ]; }; then
+    echo "android-bootstrap-sysroot: checking out vcpkg $VCPKG_COMMIT into $vcpkg_root" >&2
+    mkdir -p "$vcpkg_root"
+    git -C "$vcpkg_root" init -q
+    git -C "$vcpkg_root" fetch -q --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_COMMIT"
+    git -C "$vcpkg_root" checkout -q --force FETCH_HEAD
+    "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics >&2
+fi
+if [ ! -x "$vcpkg_root/vcpkg" ]; then
+    echo "android-bootstrap-sysroot: VCPKG_ROOT '$vcpkg_root' is not a bootstrapped vcpkg checkout" >&2
     exit 2
 fi
 
-sysroot="$repo/build-android-sysroot"
+sysroot="${UC_ANDROID_SYSROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/ultracanvas/android-sysroot}"
 mkdir -p "$sysroot"
 
 # vcpkg's android triplets read the NDK location from ANDROID_NDK_HOME and
@@ -103,16 +114,19 @@ Sysroot ready: $installed
 
 Configure the build against it with:
 
-  PKG_CONFIG_LIBDIR=$installed/lib/pkgconfig \\
-  cmake -B build-android \\
-    -DCMAKE_TOOLCHAIN_FILE=$vcpkg_root/scripts/buildsystems/vcpkg.cmake \\
-    -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=$ndk/build/cmake/android.toolchain.cmake \\
-    -DVCPKG_TARGET_TRIPLET=$triplet \\
+  PKG_CONFIG_LIBDIR=$installed/lib/pkgconfig:$installed/share/pkgconfig \\
+  cmake -G Ninja -B build-android \\
+    -DCMAKE_TOOLCHAIN_FILE=$ndk/build/cmake/android.toolchain.cmake \\
     -DANDROID_ABI=$abi \\
-    -DANDROID_PLATFORM=android-26$([ "$with_net" -eq 1 ] && echo " \\
+    -DANDROID_PLATFORM=android-26 \\
+    -DCMAKE_FIND_ROOT_PATH=$installed \\
+    -DPKG_CONFIG_ARGN=--static$([ "$with_net" -eq 1 ] && echo " \\
     -DULTRACANVAS_ENABLE_NET=ON")
 
 PKG_CONFIG_LIBDIR (not PKG_CONFIG_PATH) is what stops pkg-config falling back
 to the host's /usr/lib/pkgconfig and silently linking desktop libraries into
-an Android build.
+an Android build. The NDK's own toolchain file, not vcpkg's: vcpkg.cmake would
+install the repository's root vcpkg.json (the Windows set) for Android. The
+sysroot's libraries are static (vcpkg's Android triplets), so every
+pkg-config query asks for the static link list (--static).
 EOF

@@ -11,15 +11,25 @@
 // standard output - the same engine, headless, so it can be checked from a
 // terminal or over ssh.
 //
+// One UltraClaude window per user: a second start brings the running one
+// forward and quits (UltraCanvasSingleInstance.h). The terminal modes do not
+// take part.
+//
+// Version: 0.2.0 - one UltraClaude per user: a second start brings the first
+//                  one's window forward instead of opening another copy
 // Version: 0.1.0
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "ChatStore.h"
 #include "ClaudeChatSession.h"
+#include "RepoStatus.h"
 #include "ui/UltraClaudeWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #include <condition_variable>
@@ -55,6 +65,9 @@ void PrintUsage(const char* programName) {
         "      --permission-mode <mode>\n"
         "                        default, acceptEdits, plan or bypassPermissions\n"
         "  --claude <path>       The claude program to run (default: claude on PATH)\n"
+        "  --list-chats          Print the chats the window remembers and exit\n"
+        "  --count-lines [<dir>] Print the lines <dir> (default: this folder) holds that\n"
+        "                        its default branch does not - the chat list's badge\n"
         "  --version             Print the version and exit\n"
         "  --help                This text\n"
         "\n"
@@ -125,6 +138,41 @@ int RunPrint(const std::string& prompt, const ClaudeChatOptions& options) {
 
 } // namespace
 
+// --list-chats: the chats the window's list shows, newest first.
+int RunListChats() {
+    ChatStore store(ChatStore::DefaultFolder());
+    std::string error;
+    if (!store.Load(error)) { std::fprintf(stderr, "%s\n", error.c_str()); return EXIT_FAILURE; }
+    std::printf("%s\n", UltraCanvas::PathToUtf8(ChatStore::DefaultFolder()).c_str());
+    for (const ChatRecord& chat : store.Chats()) {
+        std::printf("%s  %-40s  %s  session=%s\n", chat.id.c_str(), chat.title.c_str(),
+                    chat.folder.c_str(), chat.sessionId.empty() ? "-" : chat.sessionId.c_str());
+    }
+    return EXIT_SUCCESS;
+}
+
+// --count-lines: the number the chat list's badge shows for a folder.
+int RunCountLines(const std::string& folder) {
+    const RepoLines r = MeasureLinesNotMerged(folder);
+    switch (r.state) {
+        case RepoLines::State::Measured:
+            std::printf("%lld lines not in %s%s%s\n", static_cast<long long>(r.lines), r.base.c_str(),
+                        r.branch.empty() ? "" : (" (branch " + r.branch + ")").c_str(),
+                        r.fetched ? "" : " - not fetched, compared with the last fetch");
+            return EXIT_SUCCESS;
+        case RepoLines::State::NoBase:
+            std::printf("No default branch to compare with%s%s\n", r.error.empty() ? "" : ": ", r.error.c_str());
+            return EXIT_SUCCESS;
+        case RepoLines::State::NotARepo:
+            std::printf("Not a git work tree\n");
+            return EXIT_SUCCESS;
+        case RepoLines::State::Failed:
+            break;
+    }
+    std::fprintf(stderr, "Could not count: %s\n", r.error.c_str());
+    return EXIT_FAILURE;
+}
+
 int main(int argc, char** argv) {
     std::string printPrompt;
     bool print = false;
@@ -154,6 +202,10 @@ int main(int argc, char** argv) {
             options.workingDirectory = next("--cwd");
         } else if (std::strcmp(arg, "--permission-mode") == 0) {
             options.permissionMode = next("--permission-mode");
+        } else if (std::strcmp(arg, "--list-chats") == 0) {
+            return RunListChats();
+        } else if (std::strcmp(arg, "--count-lines") == 0) {
+            return RunCountLines(i + 1 < argc ? argv[i + 1] : ".");
         } else if (std::strcmp(arg, "--claude") == 0) {
             options.executable = next("--claude");
         } else {
@@ -165,12 +217,23 @@ int main(int argc, char** argv) {
 
     if (print) return RunPrint(printPrompt, options);
 
+    // One UltraClaude window per user: two would remember, and write, the
+    // same chat list.
+    using UltraCanvas::UltraCanvasSingleInstance;
+    UltraCanvasSingleInstance instance("org.ultraos.ultraclaude", "UltraClaude");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("UltraClaude")) {
         std::fprintf(stderr, "UltraClaude: the UltraCanvas application could not be "
                              "initialised (no display?). Use --print for the terminal.\n");
         return EXIT_FAILURE;
     }
+    // The other copy holds the lock but did not answer: say so rather than
+    // vanish without a word.
+    if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+        return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraClaude");
     app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(
             UltraCanvas::GetResourcesDir() + "media/appicon/UltraClaude.png"));
 
@@ -181,6 +244,9 @@ int main(int argc, char** argv) {
     }
     window.onClosed = [&app]() { app.Exit(); };
     window.Show();
+    // A later start asks this window to come forward.
+    instance.ListenRaise();
     app.Run();
+    instance.Close();   // no request reaches the window once it starts to go
     return EXIT_SUCCESS;
 }

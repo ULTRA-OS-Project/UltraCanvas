@@ -8,7 +8,20 @@ typed relationships whose line style and end decorations follow the UML rules.
 - Layout: `include/Plugins/Diagrams/UltraCanvasClassLayout.h`
 - Demo: `Apps/DemoApp/UltraCanvasClassDiagramExamples.cpp` (Diagrams → Class Diagram)
 - Tests: `Tests/ClassLayoutTest.cpp` (target `ClassLayoutTest`)
-- Version: 1.0.0
+- Version: 1.0.1
+
+## Contents
+
+- [The three layers](#the-three-layers)
+- [Quick start](#quick-start)
+- [Relationships](#relationships)
+- [Themes and styling](#themes-and-styling)
+- [Rendering rules](#rendering-rules)
+- [Layout](#layout)
+- [Interaction](#interaction)
+- [Demo scenarios](#demo-scenarios)
+- [Known limitations](#known-limitations)
+- [See also](#see-also)
 
 ## The three layers
 
@@ -150,11 +163,14 @@ testing reports the exact member:
 
 ```cpp
 diagram->onMemberClick = [&](const std::string& classifierId,
-                             UMLMemberKind kind, size_t index) { ... };
-diagram->onClassClick = ...;
-diagram->onRelationshipClick = ...;
-diagram->onSelectionChanged = ...;
-diagram->onCanvasRightClick = ...;
+                             UMLMemberKind kind, size_t index) {
+    // kind is UMLMemberKind::Attribute or UMLMemberKind::Operation
+};
+diagram->onClassClick = [&](const std::string& classifierId) { /* ... */ };
+diagram->onClassDoubleClick = [&](const std::string& classifierId) { /* ... */ };
+diagram->onRelationshipClick = [&](const std::string& relationshipId) { /* ... */ };
+diagram->onSelectionChanged = [&](const std::string& selectedId) { /* ... */ };
+diagram->onCanvasRightClick = [&](double x, double y) { /* ... */ };
 ```
 
 `SetInteractive(false)` gives a presentation mode where zoom and pan still work

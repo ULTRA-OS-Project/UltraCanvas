@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasLayoutExamples.cpp
 // Layout system demonstration examples for UltraCanvas Demo Application
-// Version: 2.0.0
-// Last Modified: 2026-06-01
+// Version: 2.0.1 - layouts ask for their stretch; the grid form's inputs have no width of their own
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -76,7 +76,7 @@ namespace UltraCanvas {
         vboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         vboxDemo->SetPadding(15);
 
-        vboxDemo->layout.SetFlexColumn().SetFlexGap(10);
+        vboxDemo->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         auto vboxBtn1 = std::make_shared<UltraCanvasButton>("VBtn1", 0, 0, 150, 35);
         vboxBtn1->SetText("Button 1");
@@ -129,7 +129,7 @@ namespace UltraCanvas {
         hboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         hboxDemo->SetPadding(10);
 
-        hboxDemo->layout.SetFlexRow().SetFlexGap(5);
+        hboxDemo->layout.SetFlexRow().SetFlexGap(5).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         auto newBtn = std::make_shared<UltraCanvasButton>("NewBtn", 0, 0, 60, 30);
         newBtn->SetText("New");
@@ -179,7 +179,9 @@ namespace UltraCanvas {
         gridDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         gridDemo->SetPadding(10);
 
-        gridDemo->layout.SetGrid();
+        gridDemo->layout.SetGrid()
+                .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
         CSSLayout::GridTrackSize colAuto;  // default kind == Auto
         CSSLayout::GridTrackSize colStar;
         colStar.kind  = CSSLayout::GridTrackSizeKind::Fr;
@@ -190,10 +192,12 @@ namespace UltraCanvas {
 
         int row = 0;
 
+        // The inputs and the button have no width of their own: the grid
+        // stretches them across the fr column (and the button across both).
         auto nameLabel = std::make_shared<UltraCanvasLabel>("NameLbl", 0, 0, 70, 25);
         nameLabel->SetText("Name:");
         nameLabel->SetTextColor(Colors::Black);
-        auto nameInput = std::make_shared<UltraCanvasTextInput>("NameIn", 0, 0, 250, 25);
+        auto nameInput = std::make_shared<UltraCanvasTextInput>("NameIn", 0, 0, 0, 25);
         nameInput->SetShowValidationState(false);
         gridDemo->AddChild(nameLabel);
         nameLabel->layoutItem.SetGridRowColSimplified(row, 0);
@@ -203,7 +207,7 @@ namespace UltraCanvas {
         auto emailLabel = std::make_shared<UltraCanvasLabel>("EmailLbl", 0, 0, 70, 25);
         emailLabel->SetText("Email:");
         emailLabel->SetTextColor(Colors::Black);
-        auto emailInput = std::make_shared<UltraCanvasTextInput>("EmailIn", 0, 0, 250, 25);
+        auto emailInput = std::make_shared<UltraCanvasTextInput>("EmailIn", 0, 0, 0, 25);
         gridDemo->AddChild(emailLabel);
         emailLabel->layoutItem.SetGridRowColSimplified(row, 0);
         gridDemo->AddChild(emailInput);
@@ -212,13 +216,13 @@ namespace UltraCanvas {
         auto phoneLabel = std::make_shared<UltraCanvasLabel>("PhoneLbl", 0, 0, 70, 25);
         phoneLabel->SetText("Phone:");
         phoneLabel->SetTextColor(Colors::Black);
-        auto phoneInput = std::make_shared<UltraCanvasTextInput>("PhoneIn", 0, 0, 250, 25);
+        auto phoneInput = std::make_shared<UltraCanvasTextInput>("PhoneIn", 0, 0, 0, 25);
         gridDemo->AddChild(phoneLabel);
         phoneLabel->layoutItem.SetGridRowColSimplified(row, 0);
         gridDemo->AddChild(phoneInput);
         phoneInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
-        auto submitBtn = std::make_shared<UltraCanvasButton>("SubmitBtn", 0, 0, 150, 30);
+        auto submitBtn = std::make_shared<UltraCanvasButton>("SubmitBtn", 0, 0, 0, 30);
         submitBtn->SetText("Submit");
         gridDemo->AddChild(submitBtn);
         submitBtn->layoutItem.SetGridRowColSimplified(row, 0, 1, 2);  // Span 2 columns
@@ -267,7 +271,7 @@ namespace UltraCanvas {
             card->SetBackgroundColor(Color(255, 255, 255, 255));
             card->SetPadding(15);
 
-            card->layout.SetFlexColumn().SetFlexGap(8);
+            card->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
             auto cardTitle = std::make_shared<UltraCanvasLabel>(
                     std::string("CardTitle") + std::to_string(i),

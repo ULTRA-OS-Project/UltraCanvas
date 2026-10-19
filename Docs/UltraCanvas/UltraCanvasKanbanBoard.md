@@ -12,6 +12,21 @@ real-world board styles.
 - Demo: `Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp`
 - Research & roadmap: [`UltraCanvasKanbanBoardProposal.md`](UltraCanvasKanbanBoardProposal.md)
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+  - [Columns](#columns)
+  - [Swimlanes](#swimlanes)
+  - [Cards](#cards)
+  - [History & flow metrics](#history--flow-metrics)
+- [Text definitions (Mermaid `kanban`)](#text-definitions-mermaid-kanban)
+- [JSON persistence](#json-persistence)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+- [Interaction](#interaction)
+- [Factories](#factories)
+
 ## Quick start
 
 ```cpp
@@ -179,20 +194,33 @@ lists Overdue plus every priority actually used on the board.
   column; double-clicking a column header renames it inline; Del removes the
   selected card. Programmatic access: `OpenCardEditor(id)`,
   `CloseCardEditor(save)`, `SetEditable(bool)`.
-- `ScrollToCard(id)` / `SelectCard(id)` from code.
+- **Files from outside** (any board, editable or not): set `onFilesDropped`
+  and files dragged in from a file manager or the desktop land on the column
+  under the pointer; the column is highlighted while they hover it. What the
+  files become is the host's decision. Unset, file drops pass on to the
+  parent elements.
+- `ScrollToCard(id)` / `SelectCard(id)` from code; `ScrollToColumn(id)`
+  scrolls the board sideways just far enough to show a column (works right
+  after `AddColumn`; renaming a column scrolls to it too); `ColumnIdAt(point)` is the
+  column under a point in the element's coordinates (-1 = none);
+  `BeginColumnRename(columnId, startEmpty)` opens a column title's inline
+  rename, for an "add column" button of the host's own.
 
 Callbacks:
 
 ```cpp
-board->onCardMoved = [](int id, int from, int to) { ... };
-board->onCardAdded = [](int id) { ... };          // Via the editor UI
-board->onCardRemoved = [](int id) { ... };
-board->onCardClick = [](int id) { ... };
-board->onCardDoubleClick = [](int id) { ... };
-board->onSelectionChanged = [](int id) { ... };   // -1 = cleared
-board->onWipExceeded = [](int columnId) { ... };
-board->onBoardChanged = []() { ... };             // Any editor mutation
+board->onCardMoved = [](int id, int from, int to) { /* card moved */ };
+board->onCardAdded = [](int id) { /* added */ };          // Via the editor UI
+board->onCardRemoved = [](int id) { /* removed */ };
+board->onCardClick = [](int id) { /* clicked */ };
+board->onCardDoubleClick = [](int id) { /* double-clicked */ };
+board->onSelectionChanged = [](int id) { /* selected */ };   // -1 = cleared
+board->onWipExceeded = [](int columnId) { /* over WIP limit */ };
+board->onBoardChanged = []() { /* changed */ };             // Any editor mutation
 board->canDropCard = [](int cardId, int toColumnId) { return true; };
+board->onFilesDropped = [data](const std::vector<std::string>& files, int columnId, int laneId) {
+    for (const std::string& path : files) data->AddCard(columnId, path, laneId);
+};
 ```
 
 ## Factories

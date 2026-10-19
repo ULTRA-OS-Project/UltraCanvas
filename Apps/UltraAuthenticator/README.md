@@ -52,8 +52,10 @@ whole security-relevant surface is unit-tested in CI without a display.
 
 One file, `accounts.vault`, in the per-user data directory —
 `$XDG_DATA_HOME/UltraAuthenticator/` or `~/.local/share/UltraAuthenticator/`
-on Linux, `%APPDATA%\UltraAuthenticator\` on Windows — created 0600, or
-wherever `--vault` points.
+on Linux, `%APPDATA%\UltraAuthenticator\` on Windows,
+`~/Library/Application Support/UltraAuthenticator/` on macOS
+(`VaultLocation.h`, on the framework's `UltraCanvasDataFolder.h`) — created
+0600, or wherever `--vault` points.
 
 An account is stored as exactly one entry whose value is its `otpauth://`
 URI. That is the format every authenticator already agrees on and the one this

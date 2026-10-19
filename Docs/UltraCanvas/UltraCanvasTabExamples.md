@@ -1,12 +1,62 @@
 # UltraCanvasTabbedContainer Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Features](#core-features)
+  - [Enhanced Dropdown Features](#enhanced-dropdown-features)
+- [Class Definition](#class-definition)
+- [Enumerations](#enumerations)
+  - [TabPosition](#tabposition)
+  - [TabStyle](#tabstyle)
+  - [TabCloseMode](#tabclosemode)
+  - [OverflowDropdownPosition](#overflowdropdownposition)
+  - [NewTabButtonPosition](#newtabbuttonposition)
+  - [NewTabButtonShape](#newtabbuttonshape)
+- [TabData Structure](#tabdata-structure)
+- [Public Methods](#public-methods)
+  - [Construction and Initialization](#construction-and-initialization)
+  - [Tab Management](#tab-management)
+  - [Tab Properties](#tab-properties)
+  - [Container Configuration](#container-configuration)
+  - [Query Methods](#query-methods)
+- [Event Callbacks](#event-callbacks)
+- [Styling Properties](#styling-properties)
+  - [Color Properties](#color-properties)
+  - [Layout Properties](#layout-properties)
+  - [Dragging a tab to another place](#dragging-a-tab-to-another-place)
+- [Factory Functions](#factory-functions)
+  - [CreateTabbedContainerWithDropdown](#createtabbedcontainerwithdropdown)
+  - [CreateTabbedContainer](#createtabbedcontainer)
+- [Usage Examples](#usage-examples)
+  - [Basic Tab Container](#basic-tab-container)
+  - [Advanced Configuration with Dropdown](#advanced-configuration-with-dropdown)
+  - [Nested Tabs Example](#nested-tabs-example)
+  - [Pill Style (TabStyle::Pill)](#pill-style-tabstylepill)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Event Flow](#event-flow)
+  - [Tab Selection](#tab-selection)
+  - [Tab Closure](#tab-closure)
+  - [Dropdown Search](#dropdown-search)
+- [Rendering Details](#rendering-details)
+- [Performance Considerations](#performance-considerations)
+- [Best Practices](#best-practices)
+- [Migration from Previous Versions](#migration-from-previous-versions)
+  - [From v1.5.x to v1.6.0](#from-v15x-to-v160)
+- [Thread Safety](#thread-safety)
+- [Dependencies](#dependencies)
+- [Platform Support](#platform-support)
+
 ## Overview
 
 The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in the UltraCanvas framework that provides rich functionality for organizing content in tabs. It features automatic overflow handling with dropdown menus, integrated search capabilities, multiple tab positioning options, and extensive customization possibilities.
 
-**Version:** 1.7.0  
-**Last Modified:** 2026-08-29  
+**Version:** 1.7.1  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
+
+<!-- doc-check: std::shared_ptr<UltraCanvasUIElement> MakePage(); -->
 
 ## Features
 
@@ -15,7 +65,10 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 - **Tab Styles:** Classic, Modern, Flat, Rounded, Custom
 - **Overflow Management:** Automatic dropdown when tabs exceed available space
 - **Search Functionality:** Real-time filtering of tabs in dropdown
-- **Tab Reordering:** Drag-and-drop tab repositioning
+- **Tab Reordering:** Drag-and-drop tab repositioning (off by default); works
+  along the bar's axis on every `TabPosition`, and a pointer held at either
+  end of the strip carries the tab on past the visible range
+- **Drag Out / Drag In:** Tabs can be dragged out of the bar and transferred between containers
 - **Close Buttons:** Configurable close button behavior
 - **Keyboard Navigation:** Arrow keys, shortcuts, and search input
 - **Event System:** Comprehensive callbacks for all user interactions
@@ -26,8 +79,10 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 ### Enhanced Dropdown Features
 - **Smart Overflow Detection:** Automatically shows dropdown when tabs don't fit
 - **Position Control:** Left or Right side dropdown positioning
-- **Search Integration:** Configurable search threshold with visual indicators
-- **Visual Markers:** Active (●) and disabled ([]) tab indicators in dropdown
+- **Search Integration:** With search on and enough tabs, the overflow button
+  opens a "Search tabs..." popup; otherwise it opens a plain menu of the tabs
+- **Visual Markers:** Disabled tabs are listed in `[brackets]` in the search
+  popup and greyed out in the plain menu
 - **Real-time Filtering:** Instant search results as user types
 
 ## Class Definition
@@ -63,9 +118,18 @@ enum class TabStyle {
     Modern,   // Contemporary flat design
     Flat,     // Minimal borders
     Rounded,  // Rounded corners
+    Pill,     // Capsules floating in the bar: the open tab outlined, the others plain
     Custom    // User-defined styling
 };
 ```
+
+`Pill` is the browser-chip look: every tab is a capsule inset in its slot of
+the tab bar, the open one filled with `activeTabColor` and outlined with
+`activeTabBorderColor`, an inactive one filled with `inactiveTabColor` (make it
+transparent for a text-only tab) and outlined with `inactiveTabBorderColor`, a
+hovered one with `hoveredTabColor` / `hoveredTabBorderColor`. The page below
+gets no frame, only a hairline in `tabContentBorderColor` on the bar's side.
+See [Pill Style](#pill-style-tabstylepill) for the colourways.
 
 ### TabCloseMode
 Controls close button behavior.
@@ -118,19 +182,33 @@ enum class NewTabButtonShape {
 
 ## TabData Structure
 
-Represents individual tab properties.
+Represents individual tab properties. The container keeps one per tab in its
+public `tabs` vector; use the per-tab setters below rather than editing it.
 
 ```cpp
 struct TabData {
     std::string title;                        // Tab label text
     std::string tooltip;                      // Hover tooltip text
+    std::string iconPath;                     // Path to tab icon (16x16 recommended)
+    std::shared_ptr<UCImage> iconImage;       // Decoded icon, drawn instead of iconPath
+    std::shared_ptr<UCImageAnimationController> iconAnimation; // Animated icon (e.g. spinner)
+    std::string badgeText;
+    int badgeWidth = 0;
+    int badgeHeight = 0;
     bool enabled = true;                      // Interactive state
     bool visible = true;                      // Visibility state
     bool closable = true;                     // Can be closed
+    bool hasIcon = false;
+    bool showBadge = false;
+    bool showMarker = false;                  // Dot marker (e.g. "modified")
+    Color markerColor = Colors::Transparent;  // Transparent = container default
     Color textColor = Colors::Black;          // Text color
     Color backgroundColor = Color(240, 240, 240); // Background color
+    Color badgeBackgroundColor = Color(220, 50, 50);
     std::shared_ptr<UltraCanvasUIElement> content = nullptr; // Tab content
     void* userData = nullptr;                 // Custom user data
+
+    TabData(const std::string& tabTitle);
 };
 ```
 
@@ -139,76 +217,127 @@ struct TabData {
 ### Construction and Initialization
 
 ```cpp
-UltraCanvasTabbedContainer(const std::string& elementId, 
-                           long uniqueId, 
-                           long posX, long posY, 
-                           long width, long height)
+UltraCanvasTabbedContainer(const std::string& elementId, float posX, float posY, float w, float h);
+UltraCanvasTabbedContainer(const std::string& elementId, float w, float h);   // position -1, -1
+explicit UltraCanvasTabbedContainer(const std::string& elementId);            // size -1, -1 (layout decides)
 ```
 
 ### Tab Management
 
 #### Adding Tabs
 ```cpp
-int AddTab(const std::string& title, 
-          std::shared_ptr<UltraCanvasUIElement> content)
+int AddTab(const std::string& title, std::shared_ptr<UltraCanvasUIElement> content = nullptr);
 ```
 Adds a new tab with specified title and content. Returns the index of the new tab.
 
 #### Removing Tabs
 ```cpp
-void RemoveTab(int index)
+void RemoveTab(int index);
 ```
-Removes the tab at the specified index. Triggers onTabClose callback.
+Removes the tab at the specified index. Calls `onTabClose` first; if it returns
+false the tab stays.
 
 #### Setting Active Tab
 ```cpp
-void SetActiveTab(int index)
+void SetActiveTab(int index);
 ```
-Switches to the specified tab index.
+Switches to the specified tab index (ignored for a disabled tab).
 
 ### Tab Properties
 
 ```cpp
-void SetTabTitle(int index, const std::string& title)
-std::string GetTabTitle(int index) const
-void SetTabEnabled(int index, bool enabled)
-bool IsTabEnabled(int index) const
+void SetTabTitle(int index, const std::string& title);
+std::string GetTabTitle(int index) const;
+void SetTabTooltip(int index, const std::string& tooltip);
+std::string GetTabTooltip(int index) const;
+void SetTabEnabled(int index, bool enabled);
+bool IsTabEnabled(int index) const;
+void SetTabContent(int index, std::shared_ptr<UltraCanvasUIElement> content);
+std::shared_ptr<UltraCanvasUIElement> GetTabContent(int index) const;
 ```
 
 ### Container Configuration
 
 #### Tab Appearance
 ```cpp
-void SetTabHeight(int height)           // Default: 30
-void SetTabMinWidth(int width)          // Default: 50
-void SetTabMaxWidth(int width)          // Default: 200
-void SetTabPosition(TabPosition position)
-void SetTabStyle(TabStyle style)
-void SetCloseMode(TabCloseMode mode)
+void SetTabHeight(int th);                 // Default: 32
+void SetTabMinWidth(int w);                // Default: 80
+void SetTabMaxWidth(int w);                // Default: 200
+void SetTabPosition(TabPosition position); // Default: Top
+void SetTabStyle(TabStyle style);          // Default: Rounded
+void SetCloseMode(TabCloseMode mode);      // Default: NoClose
+void SetTabBarColor(const Color& c);
+void SetActiveTabBackgroundColor(const Color& c);
+void SetActiveTabTextColor(const Color& c);
+void SetInactiveTabBackgroundColor(const Color& c);
+void SetInactiveTabTextColor(const Color& c);
+void SetHoveredTabBackgroundColor(const Color& c);
+void SetCloseButtonColor(const Color& c);
+void SetActiveTabCloseButtonColor(const Color& c);  // Transparent (default) = closeButtonColor
+void SetCloseButtonHoverColor(const Color& c);
+void SetCloseButtonStrokeWidth(float width);         // Default: 1
+void SetActiveTabIndicatorColor(const Color& c);     // TabStyle::Modern; default Color(33, 150, 243)
+void SetActiveTabIndicatorThickness(int px);         // TabStyle::Modern; default 2
+```
+
+#### Pill Style (TabStyle::Pill only)
+```cpp
+void SetPillInset(int horizontal, int vertical);   // Default: 2, 4 - the capsule inside its slot
+int GetPillInsetX() const;
+int GetPillInsetY() const;
+void SetPillBorderWidth(float width);              // Default: 1
+float GetPillBorderWidth() const;
+void SetPillCornerRadius(float radius);            // Default: 0 = full capsule; > 0 = rounded chip
+float GetPillCornerRadius() const;
+void SetActiveTabBorderColor(const Color& c);      // Default: Color(96, 146, 224)
+Color GetActiveTabBorderColor() const;
+void SetInactiveTabBorderColor(const Color& c);    // Default: transparent
+Color GetInactiveTabBorderColor() const;
+void SetHoveredTabBorderColor(const Color& c);     // Default: transparent
+Color GetHoveredTabBorderColor() const;
+Rect2Di GetPillBounds(int index);                  // The capsule drawn for a tab, in local coordinates
 ```
 
 #### Overflow Dropdown
 ```cpp
-void SetOverflowDropdownPosition(OverflowDropdownPosition position)
-void SetOverflowDropdownWidth(int width)  // Default: 200
-void SetDropdownSearchEnabled(bool enabled)
-void SetDropdownSearchThreshold(int threshold) // Default: 15
-void ClearDropdownSearch()
+void SetOverflowDropdownPosition(OverflowDropdownPosition position); // Default: Off
+void SetOverflowDropdownWidth(int width);          // Overflow button width. Default: 24 (min 16)
+void SetDropdownSearchEnabled(bool enabled);       // Default: true
+void SetDropdownSearchThreshold(int threshold);    // Default: 5 (min 1)
+void ClearDropdownSearch();
+bool UsesDropdownSearch() const;                   // What the overflow button opens next
+```
+
+The overflow button opens one of two lists of the visible tabs:
+
+- the **search popup** ("Search tabs..."), when search is enabled and at
+  least `GetDropdownSearchThreshold()` tabs are visible — the list is long
+  enough to be worth filtering;
+- a **plain menu** otherwise: one entry per visible tab, the active one
+  checked and the disabled ones greyed out. Choosing an entry activates its
+  tab; Escape or a click outside closes it.
+
+`UsesDropdownSearch()` says which one a click opens now.
+
+```cpp
+auto tabs = CreateTabbedContainerWithDropdown("docs", 0, 0, 800, 600,
+                                              OverflowDropdownPosition::Right);
+tabs->SetDropdownSearchThreshold(8);   // a plain menu up to 7 tabs, search from 8
 ```
 
 #### New Tab Button
 ```cpp
-void SetShowNewTabButton(bool show)                     // Default: false
-void SetNewTabButtonPosition(NewTabButtonPosition pos)  // Default: AfterTabs
-void SetNewTabButtonWidth(int width)                    // Slot width in the tab bar. Default: 32
-void SetNewTabButtonGap(int gap)                        // Space between the tabs and the slot. Default: 4
-void SetNewTabButtonShape(NewTabButtonShape shape)      // Default: RoundedSquare
-void SetNewTabButtonSize(int size)                      // Side of the shape, centred in the slot. Default: 24
-void SetNewTabButtonCornerRadius(float radius)          // RoundedSquare corners. Default: 6
-void SetNewButtonColor(const Color& color)              // Idle fill of the shape
-Color newTabButtonHoverColor;                           // Fill while the mouse is over it
-Color newTabButtonIconColor;                            // The "+" strokes
-std::function<void()> onNewTabRequest;                  // Clicked
+void SetShowNewTabButton(bool show);                        // Default: false
+void SetNewTabButtonPosition(NewTabButtonPosition position); // Default: AfterTabs
+void SetNewTabButtonWidth(int w);                           // Slot width in the tab bar. Default: 32
+void SetNewTabButtonGap(int gap);                           // Space between the tabs and the slot. Default: 4
+void SetNewTabButtonShape(NewTabButtonShape shape);         // Default: RoundedSquare
+void SetNewTabButtonSize(int size);                         // Side of the shape, centred in the slot. Default: 24
+void SetNewTabButtonCornerRadius(float radius);             // RoundedSquare corners. Default: 6
+void SetNewButtonColor(const Color& c);                     // Idle fill of the shape. Default: (240, 240, 240)
+Color newTabButtonHoverColor;                               // Fill while the mouse is over it
+Color newTabButtonIconColor;                                // The "+" strokes
+std::function<void()> onNewTabRequest;                      // Clicked
 ```
 
 `NewTabButtonPosition::AfterTabs` draws the "+" directly behind the last tab
@@ -238,9 +367,9 @@ tabs->onNewTabRequest = [tabs]() {
 
 #### Detached Content Area
 ```cpp
-void SetContentHost(const std::shared_ptr<UltraCanvasContainer>& host)
-const std::shared_ptr<UltraCanvasContainer>& GetContentHost() const
-bool IsContentDetached() const
+void SetContentHost(const std::shared_ptr<UltraCanvasContainer>& host);
+const std::shared_ptr<UltraCanvasContainer>& GetContentHost() const;
+bool IsContentDetached() const;
 ```
 
 By default a tabbed container is tab strip *and* content area in one element.
@@ -279,14 +408,16 @@ this way — see `Apps/UltraFiler/UltraFilerWindow.cpp`.
 ### Query Methods
 
 ```cpp
-int GetActiveTab() const
-int GetTabCount() const
-TabPosition GetTabPosition() const
-TabStyle GetTabStyle() const
-TabCloseMode GetCloseMode() const
-NewTabButtonPosition GetNewTabButtonPosition() const
-bool GetShowNewTabButton() const
-bool IsContentDetached() const
+int GetActiveTab() const;
+int GetTabCount() const;
+int GetTabHeight() const;
+TabPosition GetTabPosition() const;
+TabStyle GetTabStyle() const;
+TabCloseMode GetCloseMode() const;
+OverflowDropdownPosition GetOverflowDropdownPosition() const;
+NewTabButtonPosition GetNewTabButtonPosition() const;
+bool GetShowNewTabButton() const;
+bool IsContentDetached() const;
 ```
 
 ## Event Callbacks
@@ -295,47 +426,87 @@ The container provides extensive callback support for user interactions:
 
 ```cpp
 // Tab selection events
-std::function<void(int oldIndex, int newIndex)> onTabChange;
-std::function<void(int index)> onTabSelect;
+std::function<void(int, int)> onTabChange;           // (oldIndex, newIndex)
+std::function<void(int)> onTabSelect;                // (tabIndex)
 
 // Tab closure events
-std::function<bool(int index)> onTabClose;      // Return false to cancel
+std::function<bool(int)> onTabClose;                 // (tabIndex) - return false to cancel
 
 // Tab modification events
-std::function<void(int fromIndex, int toIndex)> onTabReorder;
-std::function<void(int index, const std::string& newTitle)> onTabRename;
+std::function<void(int, int)> onTabReorder;          // (fromIndex, toIndex)
+std::function<void(int, const std::string&)> onTabRename; // (tabIndex, newTitle) - from SetTabTitle()
 
-// Overflow events
-std::function<void(bool visible)> onOverflowChange;
-std::function<void(const std::string& searchText)> onSearchChange;
+// Mouse events
+std::function<void()> onTabBarRightClick;
+std::function<void(int, int, int)> onTabContextMenu; // (tabIndex, windowX, windowY) on right-click
+std::function<void(int)> onTabHover;                 // (tabIndex, or -1 when no tab is hovered)
+
+// Drag-out / drag-in between containers
+std::function<bool(int tabIndex, int screenX, int screenY)> onTabDragOut; // true = handler removed the tab
+std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn; // new index, or -1 to reject
 ```
 
 ## Styling Properties
 
 ### Color Properties
 ```cpp
-Color tabBarColor = Color(245, 245, 245);
-Color tabBorderColor = Color(200, 200, 200);
-Color activeTabColor = Colors::White;
+Color tabBarColor = Colors::Transparent;
+Color tabBorderColor = Colors::Gray;
+Color activeTabBorderColor = Color(96, 146, 224);      // TabStyle::Pill: the open pill's outline
+Color inactiveTabBorderColor = Colors::Transparent;    // TabStyle::Pill: the other pills' outline
+Color hoveredTabBorderColor = Colors::Transparent;     // TabStyle::Pill: the hovered pill's outline
+Color activeTabIndicatorColor = Color(33, 150, 243);   // TabStyle::Modern: the line under the open tab
+int activeTabIndicatorThickness = 2;                   // TabStyle::Modern: that line's thickness
+Color activeTabColor = Color(255, 255, 255);
 Color activeTabTextColor = Colors::Black;
-Color inactiveTabColor = Color(235, 235, 235);
-Color inactiveTabTextColor = Color(100, 100, 100);
-Color hoveredTabColor = Color(240, 240, 240);
-Color hoveredTabTextColor = Colors::Black;
-Color disabledTabColor = Color(250, 250, 250);
-Color disabledTabTextColor = Color(180, 180, 180);
+Color inactiveTabColor = Color(236, 236, 236);
+Color inactiveTabTextColor = Color(80, 80, 80);
+Color hoveredTabColor = Color(240, 240, 255);
+Color disabledTabColor = Color(200, 200, 200);
+Color disabledTabTextColor = Color(150, 150, 150);
+Color closeButtonColor = Color(120, 120, 120);
+Color activeTabCloseButtonColor = Colors::Transparent;  // the open tab's X; transparent = closeButtonColor
+Color closeButtonHoverColor = Color(200, 50, 50);
+Color contentAreaColor = Color(255, 255, 255);
 ```
 
 ### Layout Properties
 ```cpp
-int tabSpacing = 2;              // Space between tabs
-int tabPadding = 10;             // Internal tab padding
-int closeButtonSize = 14;        // Close button dimensions
-int closeButtonMargin = 5;       // Close button spacing
-bool autoSizeTab = true;         // Auto-adjust tab width
-bool allowTabReordering = true;  // Enable drag-and-drop
+int tabSpacing = 0;              // Space between tabs
+int tabPadding = 12;             // Internal tab padding
+int closeButtonSize = 16;        // Close button dimensions
+int closeButtonMargin = 4;       // Close button spacing
+float closeButtonStrokeWidth = 1.0f;  // Weight of the X, the same on every tab
+bool allowTabReordering = false; // Enable drag-and-drop
 bool enableTabScrolling = true;  // Enable scroll buttons
+int dragAutoScrollZone = 24;     // Pixels at either end of the strip that carry a dragged tab on
+unsigned int dragAutoScrollIntervalMs = 250;  // One place per interval while the pointer stays there
 ```
+
+### Dragging a tab to another place
+
+```cpp
+tabs->SetAllowTabReordering(true);          // or tabs->allowTabReordering = true
+tabs->onTabReorder = [](int from, int to) {
+    std::cerr << "Tab " << from << " is now at " << to << std::endl;
+};
+tabs->SetDragAutoScrollZone(32);            // Default: 24px
+tabs->SetDragAutoScrollInterval(200);       // Default: 250ms
+```
+
+Press a tab and move more than 5px to start the drag; a translucent ghost of
+the tab (the capsule itself in `TabStyle::Pill`) follows the pointer, and an
+insertion line marks the tab it would land on. The tabs swap as soon as the
+pointer passes the centre of a neighbour - its horizontal centre on a `Top`
+or `Bottom` bar, its vertical centre on a `Left` or `Right` one - so the
+order updates while you drag and `onTabReorder` fires on every swap. The
+active, hovered and right-clicked indices follow the tabs they name. When
+the strip is scrolled, holding the pointer within `dragAutoScrollZone` of
+either end (or past it) carries the tab one place in that direction every
+`dragAutoScrollIntervalMs` and scrolls the strip to keep it in view, until
+it reaches the end or the pointer moves back. `ReorderTabs(from, to)` moves a
+tab without a drag. Dragging out of the bar altogether is a separate feature:
+see `SetAllowTabDragOut()`, `onTabDragOut` and `AcceptTabTransfer()`.
 
 ## Factory Functions
 
@@ -343,10 +514,16 @@ bool enableTabScrolling = true;  // Enable scroll buttons
 Creates a tabbed container with dropdown configuration:
 
 ```cpp
+std::shared_ptr<UltraCanvasTabbedContainer> CreateTabbedContainerWithDropdown(
+        const std::string& id, float x, float y, float width, float height,
+        OverflowDropdownPosition dropdownPos = OverflowDropdownPosition::Left,
+        bool enableSearch = true, int searchThreshold = 5);
+```
+
+```cpp
 auto container = CreateTabbedContainerWithDropdown(
     "main_tabs",                          // ID
-    1001,                                 // UID
-    10, 10, 980, 500,                    // Position and size
+    10, 10, 980, 500,                     // Position and size
     OverflowDropdownPosition::Left,       // Dropdown position
     true,                                 // Enable search
     5                                     // Search threshold
@@ -357,10 +534,14 @@ auto container = CreateTabbedContainerWithDropdown(
 Creates a basic tabbed container:
 
 ```cpp
+std::shared_ptr<UltraCanvasTabbedContainer> CreateTabbedContainer(
+        const std::string& id, float x, float y, float width, float height);
+```
+
+```cpp
 auto container = CreateTabbedContainer(
     "tabs",                               // ID
-    1000,                                 // UID
-    0, 0, 800, 600                       // Position and size
+    0, 0, 800, 600                        // Position and size
 );
 ```
 
@@ -387,10 +568,10 @@ tabs->SetCloseMode(TabCloseMode::Closable);
 ```cpp
 // Create with dropdown and search
 auto tabs = CreateTabbedContainerWithDropdown(
-    "advancedTabs", 200, 0, 0, 1024, 768,
+    "advancedTabs", 0, 0, 1024, 768,
     OverflowDropdownPosition::Right,
     true,  // Enable search
-    10     // Show search when >10 tabs
+    10     // Search threshold
 );
 
 // Customize colors
@@ -405,7 +586,7 @@ tabs->onTabChange = [](int oldIndex, int newIndex) {
 
 tabs->onTabClose = [](int index) {
     // Confirm before closing
-    return MessageBox::Confirm("Close this tab?");
+    return NativeDialog::Confirm("Close this tab?");
 };
 
 // Enable reordering
@@ -433,12 +614,122 @@ nestedTabs->AddTab("Option 2", option2Panel);
 mainTabs->AddTab("Advanced", nestedTabs);
 ```
 
+### Pill Style (TabStyle::Pill)
+
+The tab bar of a mail client or a browser: the open page is a white capsule
+with a thin accent outline, the other pages are plain text until the pointer
+hovers them, and the whole strip sits on a tinted bar. Everything about the
+look is a colour or an inset, so the same style gives several colourways; the
+test `Tests/TabPillStyleScreenshotTest.cpp` renders the five below side by
+side (`ULTRACANVAS_SCREENSHOT_DIR=<dir> xvfb-run -a ./build/bin/TabPillStyleScreenshotTest`).
+
+**1. Outlined pill on a tinted bar** - the reference look. The unselected tab
+is nothing but icon and text; hovering it fades in a translucent white
+capsule.
+
+```cpp
+auto tabs = CreateTabbedContainer("mail", 0, 0, 800, 600);
+tabs->SetTabStyle(TabStyle::Pill);
+tabs->SetTabHeight(36);
+tabs->SetPillInset(2, 4);                                   // a 28px capsule in a 36px bar
+tabs->SetCloseMode(TabCloseMode::Closable);
+tabs->fontSize = 12;
+
+tabs->SetTabBarColor(Color(229, 234, 241));                 // blue-grey strip
+tabs->SetActiveTabBackgroundColor(Colors::White);
+tabs->SetActiveTabBorderColor(Color(96, 146, 224));         // the accent outline
+tabs->SetActiveTabTextColor(Color(30, 37, 46));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);   // unselected: text only
+tabs->SetInactiveTabTextColor(Color(84, 96, 112));
+tabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
+tabs->closeButtonColor = Color(84, 96, 112);
+tabs->closeButtonHoverColor = Color(30, 37, 46);
+tabs->tabContentBorderColor = Color(205, 212, 222);         // hairline under the bar
+
+tabs->SetShowNewTabButton(true);                            // a "+" in the bar's colour
+tabs->SetNewTabButtonShape(NewTabButtonShape::Circle);
+tabs->newTabButtonColor = Colors::Transparent;
+tabs->newTabButtonHoverColor = Color(255, 255, 255, 140);
+tabs->newTabButtonIconColor = Color(84, 96, 112);
+
+tabs->AddTab("Inbox", MakePage());
+tabs->SetTabIcon(0, "icons/home-icon.png");
+tabs->AddTab("UltraMail: Add/Delete account", MakePage());
+tabs->SetTabIcon(1, "icons/settings.png");
+```
+
+**2. Tinted pill with accent outline** - a near-white bar, the open pill
+filled with a pale shade of a teal accent.
+
+```cpp
+tabs->SetTabBarColor(Color(250, 251, 252));
+tabs->SetActiveTabBackgroundColor(Color(228, 244, 240));
+tabs->SetActiveTabBorderColor(Color(34, 150, 130));
+tabs->SetActiveTabTextColor(Color(20, 60, 55));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
+tabs->SetInactiveTabTextColor(Color(90, 96, 104));
+tabs->SetHoveredTabBackgroundColor(Color(238, 240, 243));
+```
+
+**3. Solid accent pill** - the open tab in solid blue with white text, the
+others as grey pills.
+
+```cpp
+tabs->SetTabBarColor(Color(245, 246, 248));
+tabs->SetActiveTabBackgroundColor(Color(41, 112, 196));
+tabs->SetActiveTabBorderColor(Colors::Transparent);
+tabs->SetActiveTabTextColor(Colors::White);
+tabs->SetInactiveTabBackgroundColor(Color(226, 229, 234));
+tabs->SetInactiveTabTextColor(Color(60, 64, 72));
+tabs->SetHoveredTabBackgroundColor(Color(212, 216, 224));
+tabs->SetCloseButtonColor(Color(110, 116, 125));
+tabs->SetActiveTabCloseButtonColor(Color(225, 236, 250));   // a pale X on the blue pill
+```
+
+**4. Neutral chips** - squarer corners and a grey outline instead of an
+accent; the unselected tabs are light grey chips.
+
+```cpp
+tabs->SetPillCornerRadius(6.0f);
+tabs->SetTabBarColor(Color(252, 252, 253));
+tabs->SetActiveTabBackgroundColor(Colors::White);
+tabs->SetActiveTabBorderColor(Color(205, 205, 214));
+tabs->SetInactiveTabBackgroundColor(Color(240, 241, 244));
+tabs->SetInactiveTabTextColor(Color(90, 90, 100));
+tabs->SetHoveredTabBackgroundColor(Color(232, 233, 237));
+```
+
+**5. Dark bar** - the same outline, a shade brighter, on a dark strip; the
+hover is a faint white wash.
+
+```cpp
+tabs->SetTabBarColor(Color(30, 30, 36));
+tabs->SetActiveTabBackgroundColor(Color(46, 46, 58));
+tabs->SetActiveTabBorderColor(Color(120, 170, 240));
+tabs->SetActiveTabTextColor(Color(240, 240, 245));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
+tabs->SetInactiveTabTextColor(Color(170, 170, 185));
+tabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 24));
+tabs->closeButtonColor = Color(170, 170, 185);
+tabs->contentAreaColor = Color(24, 24, 30);
+tabs->tabContentBorderColor = Color(60, 60, 72);
+```
+
+Geometry: the slot a tab occupies is still `GetTabBounds()` and is the whole
+hit area, so a click in the gap between two pills lands on the nearer one;
+`GetPillBounds()` is the capsule actually drawn. `tabPadding`, the icon and
+the close button are measured from the slot edge as in every other style, so
+the icon sits `tabPadding - pillInsetX` pixels inside the capsule. For wider
+gaps between pills use `tabSpacing`, for a shorter capsule a larger vertical
+inset. `TabPosition::Left` / `Right` stack the same capsules vertically.
+
 ## Keyboard Shortcuts
 
 | Key Combination | Action |
 |----------------|--------|
 | Left Arrow | Navigate to previous tab |
 | Right Arrow | Navigate to next tab |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (wraps around) |
 | Ctrl+W | Close current tab (if closable) |
 | Escape | Clear search / Close dropdown |
 | Enter | Select highlighted search result |
@@ -449,23 +740,24 @@ mainTabs->AddTab("Advanced", nestedTabs);
 
 ### Tab Selection
 1. User clicks on tab or selects from dropdown
-2. `onTabChange` callback fired with old and new indices
-3. `onTabSelect` callback fired with selected index
-4. Content visibility updated
-5. Tab scrolled into view if needed
+2. Tab scrolled into view if needed
+3. Content visibility updated
+4. `onTabChange` callback fired with old and new indices
+5. `onTabSelect` callback fired with selected index
 
 ### Tab Closure
 1. User clicks close button or presses Ctrl+W
 2. `onTabClose` callback fired (can return false to cancel)
 3. If not cancelled, tab removed
-5. Active tab updated if necessary
+4. Active tab updated if necessary
 
 ### Dropdown Search
-1. Search activated when tab count > threshold
-2. User types in dropdown
-3. `onSearchChange` callback fired with search text
-4. Dropdown list filtered in real-time
-5. Escape clears search, Enter selects match
+1. User clicks the overflow button; with search enabled and at least the
+   threshold's number of visible tabs, a search popup opens listing them
+   (with fewer, or search off, a plain menu of the tabs opens instead)
+2. User types in the popup
+3. Dropdown list filtered in real-time
+4. Escape clears search, Enter selects match
 
 ## Rendering Details
 
@@ -478,6 +770,8 @@ The component renders in multiple layers:
 5. **Close Buttons** - Positioned at right edge of tabs
 6. **Overflow Dropdown** - Rendered when tabs exceed space
 7. **Content Area** - Active tab's content rendered below/beside tabs
+   (framed, except in `Flat` - no frame - and `Pill` - a hairline on the
+   bar's side only)
 
 ## Performance Considerations
 
@@ -490,7 +784,7 @@ The component renders in multiple layers:
 ## Best Practices
 
 1. **Limit Tab Count:** Keep under 20 tabs for best UX
-2. **Use Search:** Enable search for >10 tabs
+2. **Use the Overflow Dropdown:** Turn it on when many tabs are expected; the search threshold decides when the list becomes searchable
 3. **Meaningful Titles:** Use clear, concise tab labels
 4. **Icon Support:** Prefix titles with emoji/icons for recognition
 5. **Consistent Style:** Match tab style to application theme
@@ -502,7 +796,6 @@ The component renders in multiple layers:
 ### From v1.5.x to v1.6.0
 - Added `OverflowDropdownPosition` enum
 - Added search functionality with threshold
-- New callbacks: `onOverflowChange`, `onSearchChange`
 - Enhanced keyboard navigation support
 
 ## Thread Safety
@@ -512,7 +805,8 @@ The UltraCanvasTabbedContainer is **not** thread-safe. All operations should be 
 ## Dependencies
 
 - UltraCanvasContainer (base class)
-- UltraCanvasDropdown (overflow menu)
+- UltraCanvasButton and UltraCanvasAutoComplete (overflow button and search popup)
+- UltraCanvasMenu (plain overflow list, tab context menu)
 - UltraCanvasEvent (event handling)
 - UltraCanvasRenderContext (rendering)
 

@@ -6,6 +6,15 @@ movable **playhead**. It is module-agnostic: it consumes a neutral
 `WaveformChannelData` struct and carries no dependency on the audio backend, so
 it can visualise any source of summarised sample data.
 
+## Contents
+
+- [Status](#status)
+- [Data model](#data-model)
+- [Public API surface](#public-api-surface)
+  - [AudioFX adapter](#audiofx-adapter)
+  - [From a media file, through VideoFX](#from-a-media-file-through-videofx)
+- [Wiring to the audio player](#wiring-to-the-audio-player)
+
 ## Status
 
 Fully implemented. Pure UI element (`UltraCanvasUIElement`), rendered through the
@@ -59,6 +68,14 @@ Colours are configurable: `SetWaveColor`, `SetRMSColor`, `SetBackgroundColor`,
 `SetFromAudioFX(fx)` is a templated convenience that copies an
 `AudioFXWaveformData` (matching field names) into the neutral struct, so the
 core UI never compile-depends on the AudioFX module.
+
+### From a media file, through VideoFX
+
+`VideoFXWaveform`, what `VideoFX_ExtractWaveform` returns for any file with
+sound (a song, or a video's soundtrack), carries the same member names, so
+the same adapter feeds it: `wf->SetFromAudioFX(envelope)`. That is how a
+video timeline or a media player gets its waveform without decoding audio
+itself; see *Inspecting media* in `Docs/Modules/VideoFX/README.md`.
 
 ## Wiring to the audio player
 

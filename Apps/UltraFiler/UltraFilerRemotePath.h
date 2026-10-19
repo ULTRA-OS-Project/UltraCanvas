@@ -18,14 +18,15 @@
 //
 // The account id is an UltraCloud slug and never contains '/', which is what
 // makes the split unambiguous.
-// Version: 1.2.0
-// Last Modified: 2026-09-27
+// Version: 1.3.0 - UniqueRemoteFilerName
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <string>
 
 namespace UltraCanvas {
@@ -134,6 +135,25 @@ inline std::string RemoteFilerChild(const std::string& folderPath,
 // treated the way a ".ssh" on this disk is.
 inline bool IsHiddenRemoteFilerName(const std::string& name) {
     return !name.empty() && name[0] == '.';
+}
+
+// The name "Keep both" gives a file whose name is taken in a folder on a
+// drive: "name (2).ext", then "name (3).ext" - the rule the filer widget
+// applies on this disk (UltraCanvasFilerWidget::UniquePathIn), asked of what
+// the folder's listing holds rather than of the disk. `taken` answers
+// whether a name is in use; `name` itself when it is free.
+inline std::string UniqueRemoteFilerName(const std::string& name,
+                                         const std::function<bool(const std::string&)>& taken) {
+    // The extension the way std::filesystem splits one: from the last dot,
+    // unless that dot starts the name (".bashrc" has none).
+    const std::string::size_type dot = name.find_last_of('.');
+    const bool hasExt = dot != std::string::npos && dot > 0;
+    const std::string stem = hasExt ? name.substr(0, dot) : name;
+    const std::string ext = hasExt ? name.substr(dot) : std::string();
+    std::string candidate = name;
+    for (int n = 2; taken(candidate); ++n)
+        candidate = stem + " (" + std::to_string(n) + ")" + ext;
+    return candidate;
 }
 
 // ===== THE TIME A REMOTE LISTING REPORTS =====

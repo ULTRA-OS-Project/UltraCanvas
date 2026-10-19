@@ -14,8 +14,12 @@
 // publish the intrinsic sizes UltraCanvasLabel publishes at runtime without
 // needing a render context to measure real text.
 //
-// Version: 1.2.0
-// Last Modified: 2026-09-22
+// Also: the grid asks for its horizontal stretch, as CreateFormGrid does,
+// since the engine stretches nothing by default - and a control with a set
+// width keeps it.
+//
+// Version: 1.3.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -97,6 +101,7 @@ static std::shared_ptr<Element> FormGrid(float rowGap, float columnGap) {
     control.value = Dimension::Fr(1);
     grid->layout.SetGridColumns({caption, control});
     grid->layout.SetGridGap(rowGap, columnGap);
+    grid->layout.SetGridJustifyItems(JustifyItems::Stretch);   // as CreateFormGrid
     return grid;
 }
 
@@ -169,6 +174,16 @@ int main() {
               "a spanning row covers both columns");
     CheckNear(note->finalBounds.x, 0.0f, "a spanning row starts at the grid's left edge");
 
+    // ----- a control with a set width keeps it -----
+    auto sizedGrid = FormGrid(8.0f, kColumnGap);
+    auto sizedCaption = Text(50.0f);
+    auto sizedControl = Box(150.0f, 28.0f);
+    sizedGrid->AddChild(sizedCaption);
+    sizedGrid->AddChild(sizedControl);
+    LayOut(sizedGrid, kGridWidth);
+    CheckNear(sizedControl->finalBounds.width, 150.0f, "a control with a set width keeps it");
+    CheckNear(sizedControl->finalBounds.x, 50.0f + kColumnGap, "at the start of its column");
+
     // ----- a hidden row leaves the grid entirely -----
     auto hiddenGrid = FormGrid(8.0f, kColumnGap);
     auto visibleCaption = Text(50.0f);
@@ -196,6 +211,7 @@ int main() {
     GridTrackSize autoColumn;
     autoGrid->layout.SetGridColumns({autoColumn, autoColumn});
     autoGrid->layout.SetGridGap(0.0f, 0.0f);
+    autoGrid->layout.SetGridJustifyItems(JustifyItems::Stretch);   // read the columns off the items
     auto a = Text(40.0f);
     auto b = Text(40.0f);
     auto wide = Text(400.0f);

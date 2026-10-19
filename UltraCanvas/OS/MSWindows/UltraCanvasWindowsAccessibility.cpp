@@ -12,8 +12,8 @@
 //
 // UIAutomationCore.dll is loaded at run time, so there is no import library
 // to link and nothing changes for a process no client ever asks.
-// Version: 1.0.0
-// Last Modified: 2026-10-01
+// Version: 1.1.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindowsAccessibility.h"
@@ -48,6 +48,8 @@ namespace AB = AccessibilityBridge;
 constexpr long kRootObjectId = -25;                 // UiaRootObjectId
 constexpr int kAppendRuntimeId = 3;                 // UiaAppendRuntimeId
 constexpr HRESULT kElementNotAvailable = static_cast<HRESULT>(0x80040201);   // UIA_E_ELEMENTNOTAVAILABLE
+constexpr HRESULT kElementNotEnabled = static_cast<HRESULT>(0x80040200);     // UIA_E_ELEMENTNOTENABLED
+constexpr HRESULT kInvalidOperation = static_cast<HRESULT>(0x80131509);      // UIA_E_INVALIDOPERATION
 
 constexpr TEXTATTRIBUTEID kBackgroundColor = 40001;
 constexpr TEXTATTRIBUTEID kFontName = 40005;
@@ -83,6 +85,7 @@ struct UiaApi {
     LRESULT (WINAPI* ReturnRawElementProvider)(HWND, WPARAM, LPARAM, IRawElementProviderSimple*) = nullptr;
     HRESULT (WINAPI* HostProviderFromHwnd)(HWND, IRawElementProviderSimple**) = nullptr;
     HRESULT (WINAPI* RaiseAutomationEvent)(IRawElementProviderSimple*, EVENTID) = nullptr;
+    HRESULT (WINAPI* RaisePropertyChangedEvent)(IRawElementProviderSimple*, PROPERTYID, VARIANT, VARIANT) = nullptr;
     BOOL (WINAPI* ClientsAreListening)() = nullptr;
     HRESULT (WINAPI* GetReservedNotSupportedValue)(IUnknown**) = nullptr;
     HRESULT (WINAPI* GetReservedMixedAttributeValue)(IUnknown**) = nullptr;
@@ -104,6 +107,7 @@ bool LoadUia() {
     Resolve(gUia.ReturnRawElementProvider, "UiaReturnRawElementProvider");
     Resolve(gUia.HostProviderFromHwnd, "UiaHostProviderFromHwnd");
     Resolve(gUia.RaiseAutomationEvent, "UiaRaiseAutomationEvent");
+    Resolve(gUia.RaisePropertyChangedEvent, "UiaRaiseAutomationPropertyChangedEvent");
     Resolve(gUia.ClientsAreListening, "UiaClientsAreListening");
     Resolve(gUia.GetReservedNotSupportedValue, "UiaGetReservedNotSupportedValue");
     Resolve(gUia.GetReservedMixedAttributeValue, "UiaGetReservedMixedAttributeValue");
@@ -364,7 +368,7 @@ public:
         if (!out) return E_POINTER;
         *out = nullptr;
         UltraCanvasUIElement* element = Lookup(id);
-        IAccessibleText* text = element ? element->GetAccessibleTextInterface() : nullptr;
+        IAccessibleText* text = element ? AB::TextInterface(element) : nullptr;
         if (!text) return kElementNotAvailable;
         // One rectangle per line the range covers.
         std::vector<double> coordinates;
@@ -484,7 +488,7 @@ private:
 
     IAccessibleText* Text() const {
         UltraCanvasUIElement* element = Lookup(id);
-        return element ? element->GetAccessibleTextInterface() : nullptr;
+        return element ? AB::TextInterface(element) : nullptr;
     }
 
     static TextRange* Ours(ITextRangeProvider* range) {
@@ -559,6 +563,174 @@ private:
     }
 };
 
+// ===== CONTROL PATTERNS =====
+// One small COM object per pattern, holding only the element's id (the
+// Value and RangeValue patterns share method names with different types).
+
+template <typename Interface>
+class PatternObject : public Interface {
+public:
+    explicit PatternObject(uint32_t elementId) : id(elementId) {}
+    virtual ~PatternObject() = default;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override {
+        if (!out) return E_POINTER;
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(Interface)) {
+            *out = static_cast<Interface*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs; }
+    ULONG STDMETHODCALLTYPE Release() override {
+        const ULONG left = --refs;
+        if (left == 0) delete this;
+        return left;
+    }
+
+protected:
+    uint32_t id;
+    UltraCanvasUIElement* Element() const { return Lookup(id); }
+
+private:
+    std::atomic<ULONG> refs{1};
+};
+
+// A button's press.
+class InvokePattern final : public PatternObject<IInvokeProvider> {
+public:
+    using PatternObject::PatternObject;
+    HRESULT STDMETHODCALLTYPE Invoke() override {
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        if (!element->DoAccessibleAction()) return kElementNotEnabled;
+        return S_OK;
+    }
+};
+
+// A checkbox, switch or toggle button.
+class TogglePattern final : public PatternObject<IToggleProvider> {
+public:
+    using PatternObject::PatternObject;
+    HRESULT STDMETHODCALLTYPE Toggle() override {
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        return element->DoAccessibleAction() ? S_OK : kElementNotEnabled;
+    }
+    HRESULT STDMETHODCALLTYPE get_ToggleState(ToggleState* out) override {
+        if (!out) return E_POINTER;
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        *out = ToUia(element->GetAccessibleToggleState());
+        return S_OK;
+    }
+    static ToggleState ToUia(AccessibleToggleState state) {
+        switch (state) {
+            case AccessibleToggleState::On:    return ToggleState_On;
+            case AccessibleToggleState::Mixed: return ToggleState_Indeterminate;
+            default:                           return ToggleState_Off;
+        }
+    }
+};
+
+// A radio button: selected or not, selected by its action.
+class SelectionItemPattern final : public PatternObject<ISelectionItemProvider> {
+public:
+    using PatternObject::PatternObject;
+    HRESULT STDMETHODCALLTYPE Select() override {
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        return element->DoAccessibleAction() ? S_OK : kElementNotEnabled;
+    }
+    HRESULT STDMETHODCALLTYPE AddToSelection() override { return kInvalidOperation; }
+    HRESULT STDMETHODCALLTYPE RemoveFromSelection() override { return kInvalidOperation; }
+    HRESULT STDMETHODCALLTYPE get_IsSelected(BOOL* out) override {
+        if (!out) return E_POINTER;
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        *out = element->GetAccessibleToggleState() == AccessibleToggleState::On;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_SelectionContainer(IRawElementProviderSimple** out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;   // radio groups are not elements
+        return S_OK;
+    }
+};
+
+// A slider, spin button or progress bar.
+class RangeValuePattern final : public PatternObject<IRangeValueProvider> {
+public:
+    using PatternObject::PatternObject;
+    HRESULT STDMETHODCALLTYPE SetValue(double value) override {
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        AccessibleRange range;
+        if (!element->GetAccessibleRange(range)) return kElementNotAvailable;
+        if (value < range.minimum || value > range.maximum) return E_INVALIDARG;
+        return element->SetAccessibleValue(value) ? S_OK : kElementNotEnabled;
+    }
+    HRESULT STDMETHODCALLTYPE get_Value(double* out) override { return Read(out, [](const AccessibleRange& r) { return r.value; }); }
+    HRESULT STDMETHODCALLTYPE get_Minimum(double* out) override { return Read(out, [](const AccessibleRange& r) { return r.minimum; }); }
+    HRESULT STDMETHODCALLTYPE get_Maximum(double* out) override { return Read(out, [](const AccessibleRange& r) { return r.maximum; }); }
+    HRESULT STDMETHODCALLTYPE get_SmallChange(double* out) override {
+        return Read(out, [](const AccessibleRange& r) { return r.step > 0 ? r.step : (r.maximum - r.minimum) / 100.0; });
+    }
+    HRESULT STDMETHODCALLTYPE get_LargeChange(double* out) override {
+        return Read(out, [](const AccessibleRange& r) {
+            return std::max(r.step, (r.maximum - r.minimum) / 10.0);
+        });
+    }
+    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override {
+        if (!out) return E_POINTER;
+        UltraCanvasUIElement* element = Element();
+        AccessibleRange range;
+        if (!element || !element->GetAccessibleRange(range)) return kElementNotAvailable;
+        *out = range.readOnly || element->GetAccessibleRole() == AccessibleRole::ProgressBar;
+        return S_OK;
+    }
+
+private:
+    template <typename Field>
+    HRESULT Read(double* out, Field field) const {
+        if (!out) return E_POINTER;
+        UltraCanvasUIElement* element = Element();
+        AccessibleRange range;
+        if (!element || !element->GetAccessibleRange(range)) return kElementNotAvailable;
+        *out = field(range);
+        return S_OK;
+    }
+};
+
+// A text field's content, a combo box's shown item.
+class ValuePattern final : public PatternObject<IValueProvider> {
+public:
+    using PatternObject::PatternObject;
+    HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR value) override {
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        const std::string text = WideToUtf8(value ? std::wstring(value) : std::wstring());
+        return element->SetAccessibleValueText(text) ? S_OK : kElementNotEnabled;
+    }
+    HRESULT STDMETHODCALLTYPE get_Value(BSTR* out) override {
+        if (!out) return E_POINTER;
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        // A password's content stays where it is.
+        *out = ToBstr(element->IsAccessiblePassword() ? std::string() : element->GetAccessibleValueText());
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override {
+        if (!out) return E_POINTER;
+        UltraCanvasUIElement* element = Element();
+        if (!element) return kElementNotAvailable;
+        *out = element->GetAccessibleRole() != AccessibleRole::TextField || element->IsDisabled();
+        return S_OK;
+    }
+};
+
 class ElementProvider final : public IRawElementProviderSimple,
                         public IRawElementProviderFragment,
                         public IRawElementProviderFragmentRoot,
@@ -577,7 +749,7 @@ public:
             *out = static_cast<IRawElementProviderFragment*>(this);
         } else if (riid == __uuidof(IRawElementProviderFragmentRoot) && element && AB::AsWindow(element)) {
             *out = static_cast<IRawElementProviderFragmentRoot*>(this);
-        } else if (riid == __uuidof(ITextProvider) && element && element->GetAccessibleTextInterface()) {
+        } else if (riid == __uuidof(ITextProvider) && element && AB::TextInterface(element)) {
             *out = static_cast<ITextProvider*>(this);
         }
         if (!*out) return E_NOINTERFACE;
@@ -603,9 +775,25 @@ public:
         *out = nullptr;
         UltraCanvasUIElement* element = Lookup(id);
         if (!element) return kElementNotAvailable;
-        if (pattern == UIA_TextPatternId && element->GetAccessibleTextInterface()) {
+        const AccessibleRole role = element->GetAccessibleRole();
+        const AccessibleToggleState toggle = element->GetAccessibleToggleState();
+        AccessibleRange range;
+        if (pattern == UIA_TextPatternId && AB::TextInterface(element) && role != AccessibleRole::ComboBox) {
             *out = static_cast<ITextProvider*>(this);
             AddRef();
+        } else if (pattern == UIA_InvokePatternId && toggle == AccessibleToggleState::NotToggleable &&
+                   role != AccessibleRole::RadioButton && !element->GetAccessibleActionName().empty()) {
+            *out = new InvokePattern(id);
+        } else if (pattern == UIA_TogglePatternId && toggle != AccessibleToggleState::NotToggleable &&
+                   role != AccessibleRole::RadioButton) {
+            *out = new TogglePattern(id);
+        } else if (pattern == UIA_SelectionItemPatternId && role == AccessibleRole::RadioButton) {
+            *out = new SelectionItemPattern(id);
+        } else if (pattern == UIA_RangeValuePatternId && element->GetAccessibleRange(range)) {
+            *out = new RangeValuePattern(id);
+        } else if (pattern == UIA_ValuePatternId &&
+                   (role == AccessibleRole::TextField || role == AccessibleRole::ComboBox)) {
+            *out = new ValuePattern(id);
         }
         return S_OK;
     }
@@ -616,7 +804,7 @@ public:
         UltraCanvasUIElement* element = Lookup(id);
         if (!element) return kElementNotAvailable;
         const bool window = AB::AsWindow(element) != nullptr;
-        IAccessibleText* text = element->GetAccessibleTextInterface();
+        IAccessibleText* text = AB::TextInterface(element);
         switch (property) {
             case UIA_ControlTypePropertyId: SetInt(out, ControlType(element)); break;
             case UIA_NamePropertyId: SetString(out, AB::Name(element)); break;
@@ -631,6 +819,11 @@ public:
             // A client that sees false treats the field as ordinary text: a
             // screen reader speaks every character typed into it.
             case UIA_IsPasswordPropertyId: SetBool(out, element->IsAccessiblePassword()); break;
+            case UIA_HelpTextPropertyId: {
+                const std::string help = element->GetAccessibleDescription();
+                if (!help.empty()) SetString(out, help);
+                break;
+            }
             case UIA_IsControlElementPropertyId:
             case UIA_IsContentElementPropertyId:
                 // Elements that never described themselves and hold nothing
@@ -798,7 +991,7 @@ public:
         if (!out) return E_POINTER;
         *out = nullptr;
         UltraCanvasUIElement* element = Lookup(id);
-        IAccessibleText* text = element ? element->GetAccessibleTextInterface() : nullptr;
+        IAccessibleText* text = element ? AB::TextInterface(element) : nullptr;
         if (!text) return kElementNotAvailable;
         const Point2Df at = AB::ScreenToWindow(AB::WindowOf(element), static_cast<int>(point.x), static_cast<int>(point.y));
         const int offset = std::max(0, AB::CharacterAtPoint(text, at));
@@ -831,7 +1024,7 @@ private:
 
     IAccessibleText* Text() const {
         UltraCanvasUIElement* element = Lookup(id);
-        return element ? element->GetAccessibleTextInterface() : nullptr;
+        return element ? AB::TextInterface(element) : nullptr;
     }
 
     static int ControlType(UltraCanvasUIElement* element) {
@@ -851,6 +1044,16 @@ private:
             case AccessibleRole::Link:      return UIA_HyperlinkControlTypeId;
             case AccessibleRole::Menu:      return UIA_MenuControlTypeId;
             case AccessibleRole::MenuItem:  return UIA_MenuItemControlTypeId;
+            case AccessibleRole::RadioButton: return UIA_RadioButtonControlTypeId;
+            case AccessibleRole::Switch:      return UIA_ButtonControlTypeId;   // with the Toggle pattern, as Windows' own switches
+            case AccessibleRole::ComboBox:    return UIA_ComboBoxControlTypeId;
+            case AccessibleRole::Slider:      return UIA_SliderControlTypeId;
+            case AccessibleRole::SpinButton:  return UIA_SpinnerControlTypeId;
+            case AccessibleRole::ProgressBar: return UIA_ProgressBarControlTypeId;
+            case AccessibleRole::Toolbar:     return UIA_ToolBarControlTypeId;
+            case AccessibleRole::TabList:     return UIA_TabControlTypeId;
+            case AccessibleRole::Tree:        return UIA_TreeControlTypeId;
+            case AccessibleRole::Group:       return UIA_GroupControlTypeId;
             case AccessibleRole::Unknown:   break;
         }
         return AB::Children(element).empty() ? UIA_CustomControlTypeId : UIA_PaneControlTypeId;
@@ -871,6 +1074,24 @@ void Raise(UltraCanvasUIElement* element, EVENTID event) {
     provider->Release();
 }
 
+// A property's new value (the old one unknown: VT_EMPTY, which UIA allows).
+void RaiseChanged(UltraCanvasUIElement* element, PROPERTYID property, VARIANT now) {
+    if (!element || !gUia.RaisePropertyChangedEvent) {
+        VariantClear(&now);
+        return;
+    }
+    if (gUia.ClientsAreListening && !gUia.ClientsAreListening()) {
+        VariantClear(&now);
+        return;
+    }
+    VARIANT before;
+    VariantInit(&before);
+    IRawElementProviderSimple* provider = ProviderFor(element);
+    gUia.RaisePropertyChangedEvent(provider, property, before, now);
+    provider->Release();
+    VariantClear(&now);
+}
+
 void OnAccessibilityEvent(const AccessibilityEvent& event) {
     UltraCanvasUIElement* element = event.element;
     switch (event.type) {
@@ -888,8 +1109,46 @@ void OnAccessibilityEvent(const AccessibilityEvent& event) {
             // UI Automation reports the caret as a (degenerate) selection.
             Raise(element, UIA_Text_TextSelectionChangedEventId);
             break;
-        case AccessibilityEventType::NameChanged:
-            break;   // read again on the next property request
+        case AccessibilityEventType::NameChanged: {
+            VARIANT name;
+            VariantInit(&name);
+            SetString(&name, AB::Name(element));
+            RaiseChanged(element, UIA_NamePropertyId, name);
+            break;
+        }
+        case AccessibilityEventType::StateChanged: {
+            if (!element) break;
+            VARIANT state;
+            VariantInit(&state);
+            if (element->GetAccessibleRole() == AccessibleRole::RadioButton) {
+                SetBool(&state, element->GetAccessibleToggleState() == AccessibleToggleState::On);
+                RaiseChanged(element, UIA_SelectionItemIsSelectedPropertyId, state);
+            } else {
+                SetInt(&state, TogglePattern::ToUia(element->GetAccessibleToggleState()));
+                RaiseChanged(element, UIA_ToggleToggleStatePropertyId, state);
+            }
+            break;
+        }
+        case AccessibilityEventType::ValueChanged: {
+            if (!element) break;
+            AccessibleRange range;
+            if (element->GetAccessibleRange(range)) {
+                VARIANT value;
+                VariantInit(&value);
+                value.vt = VT_R8;
+                value.dblVal = range.value;
+                RaiseChanged(element, UIA_RangeValueValuePropertyId, value);
+            }
+            const AccessibleRole role = element->GetAccessibleRole();
+            if (role == AccessibleRole::TextField || role == AccessibleRole::ComboBox) {
+                VARIANT text;
+                VariantInit(&text);
+                SetString(&text, element->IsAccessiblePassword() ? std::string() : element->GetAccessibleValueText());
+                RaiseChanged(element, UIA_ValueValuePropertyId, text);
+                if (role == AccessibleRole::TextField) Raise(element, UIA_Text_TextChangedEventId);
+            }
+            break;
+        }
     }
 }
 

@@ -120,19 +120,34 @@ writer is the single place the offset is stored, so an eased step goes through
 exactly the clamp and repaint an instant scroll would:
 
 ```cpp
-// member
-UltraCanvasSmoothScroll scrollAnimY;
+class MyListView : public UltraCanvasUIElement {
+    int scrollOffsetY = 0;
+    UltraCanvasSmoothScroll scrollAnimY;          // member
+    static constexpr int kWheelStep = 40;
 
-// once (constructor)
-scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
-                 [this](double v) {
-                     scrollOffsetY = static_cast<int>(std::lround(v));
-                     ClampScroll();
-                     RequestRedraw();
-                 });
+    void ClampScroll();                           // the element's own clamp
+    int MaxScrollY() const;
 
-// wheel / page key
-scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep, 0, MaxScrollY());
+public:
+    MyListView(const std::string& id, float x, float y, float w, float h)
+        : UltraCanvasUIElement(id, x, y, w, h) {
+        // once (constructor)
+        scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                         [this](double v) {
+                             scrollOffsetY = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+    }
+
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type == UCEventType::MouseWheel) {   // wheel / page key
+            scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep, 0, MaxScrollY());
+            return true;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 | Call | |
@@ -156,17 +171,30 @@ factors**, which the element applies with the very code it used for the single
 one. No transform maths is duplicated or reinterpreted:
 
 ```cpp
-// members
-UltraCanvasSmoothZoom zoomAnim;
-Point2Di zoomCursor;
+class MyZoomView : public UltraCanvasUIElement {
+    // members
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
+    double zoomLevel = 1.0, minZoom = 0.1, maxZoom = 10.0;
 
-// wheel handler
-if (!zoomAnim.IsBound()) {
-    zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
-                  [this] { RequestRedraw(); });
-}
-zoomCursor = event.pointer;
-zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.1 : 0.9, zoomLevel, minZoom, maxZoom);
+    // the element's own single-step zoom, which keeps `cursor` fixed
+    void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
+
+public:
+    using UltraCanvasUIElement::UltraCanvasUIElement;
+
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type != UCEventType::MouseWheel) return UltraCanvasUIElement::OnEvent(event);
+        // wheel handler
+        if (!zoomAnim.IsBound()) {
+            zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                          [this] { RequestRedraw(); });
+        }
+        zoomCursor = event.pointer;
+        zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.1 : 0.9, zoomLevel, minZoom, maxZoom);
+        return true;
+    }
+};
 ```
 
 The element keeps clamping its own zoom; the range passed to `ZoomBy` only stops

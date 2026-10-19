@@ -10,6 +10,22 @@ palette system modeled on common real-world Gantt styles.
 - Date helpers (header-only): `include/Plugins/Charts/UltraCanvasCalendarDate.h`
 - Demo: `Apps/DemoApp/UltraCanvasGanttChartExamples.cpp`
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Dates](#dates)
+- [Data model](#data-model)
+  - [Tasks](#tasks)
+  - [Dependencies](#dependencies)
+  - [Critical path](#critical-path)
+- [Designs and palettes](#designs-and-palettes)
+- [Style](#style)
+  - [Table columns](#table-columns)
+  - [Time scale](#time-scale)
+- [Interaction](#interaction)
+- [Element API summary](#element-api-summary)
+- [Demo page](#demo-page)
+
 ## Quick start
 
 ```cpp
@@ -147,10 +163,10 @@ zoom; `FitToRange()` picks a day width so the whole project fits.
 Callbacks:
 
 ```cpp
-gantt->onTaskClick        = [](int id) { ... };
-gantt->onTaskDoubleClick  = [](int id) { ... };
-gantt->onTaskToggled      = [](int id, bool expanded) { ... };
-gantt->onSelectionChanged = [](int id) { ... };   // -1 = cleared
+gantt->onTaskClick        = [](int id) { /* a bar or row was clicked */ };
+gantt->onTaskDoubleClick  = [](int id) { /* e.g. open the task editor */ };
+gantt->onTaskToggled      = [](int id, bool expanded) { /* phase collapsed/expanded */ };
+gantt->onSelectionChanged = [](int id) { /* update a details panel */ };   // -1 = cleared
 ```
 
 ## Element API summary

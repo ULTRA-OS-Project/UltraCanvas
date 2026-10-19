@@ -1,5 +1,16 @@
 # UltraCanvasParallelCoordinateChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Reading the chart](#reading-the-chart)
+- [Basic usage](#basic-usage)
+- [Normalisation](#normalisation)
+- [Lines and colour](#lines-and-colour)
+- [Interaction](#interaction)
+- [Named properties](#named-properties)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 `UltraCanvasParallelCoordinateChartElement` renders multi-dimensional records
@@ -56,7 +67,7 @@ pcp->SetGroupColors({{"setosa", Color(68, 1, 84)},
                      {"versicolor", Color(33, 145, 140)},
                      {"virginica", Color(253, 231, 37)}});
 
-window->AddElement(pcp.get());
+window->AddChild(pcp);
 ```
 
 Record-oriented input (`SetRecords`) takes `PCPRecord` — values, label, group,

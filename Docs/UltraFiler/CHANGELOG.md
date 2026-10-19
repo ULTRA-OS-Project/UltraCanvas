@@ -1,3 +1,494 @@
+#### 2026-10-19 *1.77.0*
+- **Home button.** The navigation row has a Home button (a house) between
+  Refresh and the split-view button. It opens the home folder of the host
+  system - `HOME` on Linux and macOS, `USERPROFILE` on Windows - in the active
+  folder display, from the History, Favorites and Computer views too.
+- **A copy, move or delete says what it did on the status line.** When a copy or move
+  ends - a paste, a drop onto a folder, Move to / Copy to - the status line
+  says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
+  "alt"`, `2 folders moved to "Archive"`, or `Copy cancelled - 2 of 5 items
+  copied to "alt"` after a Cancel in the progress window. A delete says so
+  the same way: `"report.pdf" moved to the Trash`, `3 files deleted`,
+  `3 of 5 items moved to the Recycle Bin (2 left)`. Before, a short
+  operation finished without a word: its refresh put the folder's item count
+  straight back on the line. Opening another folder ends the note early.
+  The progress window over a long copy or move is unchanged: it opens once the
+  operation has run for the time set in *Settings > Handling > File
+  operations* (2 seconds by default), the same window as Compress and Extract
+  (framework changelog, pending entry `filer-transfer-finished`).
+
+#### 2026-10-18 *1.76.0*
+- **Quitting during an upload or a download asks first, and quits at once.**
+  Closing UltraFiler while a remote drive was copying dropped every upload
+  and download still waiting, without a word, and the one running kept the
+  process alive with no window on screen until its last byte had gone - for
+  a large file over a slow line, minutes. Now that close asks *An upload is still running — quit
+  anyway?* (or *3 uploads are still running or waiting*, *A download is
+  still running*), naming the file being copied, the drive and the ones
+  waiting behind it. *Keep UltraFiler open* (the default, and what Return
+  gives) leaves everything as it was; *Quit anyway* stops the running
+  transfer where it is, drops the rest, and UltraFiler is gone within a
+  second. With nothing to copy, closing asks nothing. The drive worker calls
+  the transfer off through UltraNet's new per-thread abort check, and the
+  question is asked only when the close would end the application
+  (`UltraCanvasApplicationBase::ClosingEndsApplication`); both are in the
+  framework changelog.
+- **A download that fails part way leaves no half a file.** An FTP download
+  writes straight into the file it was given, so one cut off - the
+  connection lost, or UltraFiler quit during it - left the first part of the
+  file in the folder under its full name. It is removed when the download
+  fails; the name was a free one when the download was queued, so nothing
+  else is touched.
+- **An upload onto a name that is taken asks first.** Dropping or pasting
+  a file into a folder on a drive that already held one of that name
+  replaced it without a word. The folder is now listed afresh first - a
+  file may have appeared there since it was opened - and each such file is
+  asked about the way a paste on this computer is: *"report.pdf" already
+  exists in "up" on Studio FTP*, the two sizes and dates, and *Keep both*
+  (uploaded beside it as *report (2).pdf*), *Replace*, *Skip* or *Stop*,
+  with *Apply to all remaining conflicts* when there are more. Settings >
+  Handling's standing answer for name conflicts applies here too; a file
+  never replaces a folder of its name, so that answer becomes Keep both.
+- **An upload to an FTP or SFTP drive replaces a file only once it is
+  complete, and one stopped part way is cleaned up.** An FTP upload writes
+  straight into the file it names, so one that replaced a file destroyed
+  the old version with its first byte, and one stopped part way (UltraFiler
+  quit during it, or the connection broke) left the part on the server
+  looking like the file. Uploads now go to a hidden part name beside the
+  file (`.report.pdf.part`) and are renamed to their own name once the last
+  byte is in; a server that will not rename onto an existing file (SFTP,
+  some Windows servers) has the old one set aside as `.report.pdf.replaced`
+  for that moment, and put back if the rename fails. What an upload that
+  did not finish left - in this session or one UltraFiler did not get to
+  end - is removed before the next request to that drive, and each step is
+  in that request's connection-log session. The quit question says so for
+  an upload to such a drive: *What was sent is removed from Studio FTP the
+  next time you use it.* UltraCloud does all of this, for UltraMail's
+  cloud links as well (framework changelog: `ftp-uploads-in-place`).
+
+#### 2026-10-17 *1.75.0*
+- **Closing a tab no longer waits for its folder display's workers.** A closed
+  tab's display is told to stop its workers and destroyed once they have all
+  ended, instead of on the spot, where its destructor waited for every one -
+  a worker busy with a slow file froze the window ("Not responding") until it
+  was done. Most noticeable with two tabs on the same FTP folder.
+- **A preview copy no longer holds up a remote drive.** A file selected on
+  an FTP drive is downloaded for the preview pane (up to 64 MB), and every
+  other request to the drive - opening a folder, a refresh, a delete - waited
+  behind it. The download is now called off when you ask the drive for
+  anything else, and fetched again once that is done; called off for good
+  when the selection moves to another file; and called off when the window
+  closes, which no longer waits for it. The connection log shows it as called
+  off, not as a failure.
+
+#### 2026-10-15 *1.74.1*
+- **The colour popup's picker is the framework's light picker.** Settings >
+  Display > Treeview opens the colour picker with the framework's
+  `ColorPickerStyle::Light()` (on the popup's own off-white) instead of a
+  light style of UltraFiler's own: the same picker UltraPaint shows, with a
+  deeper blue accent and lighter, cooler grey field outlines (framework
+  changelog: `section-card-and-light-picker`).
+
+#### 2026-10-14 *1.74.0*
+- **Cloud drives have a connection log too.** The round network button in
+  a folder display's bottom-left corner was only there on FTP / FTPS / SFTP
+  drives; a cloud drive's log held one line per job, so a failed Dropbox or
+  Google Drive listing said `HTTP 409` or `HTTP 403` and nothing else. The
+  button is now there on every remote drive, and on a Dropbox, OneDrive,
+  Google Drive, Nextcloud or WebDAV drive the message log lists what the
+  drive did: each request (`Request:  POST https://api.dropboxapi.com/2/...`)
+  and the service's answer with its status, its own reason for a refusal and
+  how long it took (`Response: 409 Conflict - path/not_found (0.31 s)`); a
+  renewed sign-in, or the service refusing the renewal (`invalid_grant`, the
+  access was revoked); the pages of a long folder; and the service limiting
+  requests, with how long it asks to wait. UltraCloud writes these lines
+  (see the framework changelog); the drive worker puts them in the same log
+  as an FTP drive's commands and replies.
+  - The *Errors* report says *HTTP status 409* and *Last answer* for a cloud
+    drive, not *last server reply*, and its likely cause is read from the
+    HTTP status: an expired or revoked sign-in (401), a refusal (403), an
+    item moved or deleted elsewhere (404), a name conflict (409), a locked
+    file (412 / 423), a file too large (413), throttling (429, and Google
+    Drive's 403 *userRateLimitExceeded*), the service having trouble
+    (500 - 504), a full drive (507), or the service not reached at all. The
+    same numbers are not read as FTP replies (an HTTP 425 is not a failed
+    data connection). The diagnostics carry the request ID the service's
+    support asks for.
+  - A throttled request is reported as *Rate limited* rather than as a
+    server error.
+  - Nothing secret is logged: no access token, no password, no request or
+    answer body, and no value of a URL parameter that carries a key.
+  - `FilerConnectionLogTest` covers a cloud session's labels, its report, its
+    hints and the status line's short form of a request.
+- **A cloud service that limits requests is waited out.** When Dropbox,
+  OneDrive, Google Drive, Nextcloud or a WebDAV server answers that it is
+  limiting requests (429, a 503 that says when to come back, Google Drive's
+  403 *userRateLimitExceeded*), the drive now waits as long as the service
+  asks - or 1, 2 and 4 s when it does not say - and sends the request again,
+  up to three times, instead of failing the folder at once. The status line
+  and the connection log say what it is waiting for (*The service is
+  limiting requests: it asks to wait 20 s - trying again in 20 s (try 2 of
+  4)*). A wait longer than a minute is not sat out: the failure is reported
+  with the time the service asked for. A folder read ahead is not waited
+  for at all - nobody is looking at it, and reading ahead is what ran into
+  the limit - and closing the window ends a wait at once. The waiting itself
+  is UltraCloud's (`RateLimitPolicy`, see the framework changelog).
+- **Adding a drive is in the connection log.** A sign-in from the *Add a
+  cloud drive* or *Add an FTP / SFTP drive* dialog that failed left only the
+  dialog's one-line message. Each attempt is now an *Add drive* session of
+  the connection log, with its steps: for a cloud drive the browser sign-in
+  (*Opening the sign-in page in the browser: https://www.dropbox.com/oauth2/
+  authorize*, *Signed in*, or why it did not complete), then the requests
+  that check the account; for an FTP drive every command and reply, as when
+  browsing. A failed one counts as a failure on the log button. The *+
+  Drive* menu has a *Connection log...* entry, so the log can be opened
+  before there is a drive to open it from.
+- **A cloud drive whose access token the service rejects signs in again by
+  itself.** The access token was renewed only when it had expired by this
+  computer's clock; one the service rejected anyway - revoked early, a clock
+  that is off, or one that ran out while the drive waited on a service that
+  limits requests - failed the folder with *sign-in rejected (HTTP 401)*. The
+  token is now renewed from the drive's stored sign-in and the request made
+  once more; only when the service refuses that too does the folder fail,
+  with a hint to sign in again. The connection log says *The service
+  rejected the access token - renewing it and trying again*.
+- **Cancelling the add-drive dialog cancels the sign-in.** Pressing *Cancel*
+  or closing the dialog while it waited for the browser sign-in left the
+  sign-in waiting for up to five minutes - and when the user went on to
+  sign in in the browser anyway, the drive was added after all, appearing
+  only at the next start. The wait now ends at once and no drive is stored;
+  the connection log's *Add drive* session ends with *The sign-in was
+  cancelled* and does not count as a failure. Closing UltraFiler's window
+  does the same for a sign-in still running, and waits up to two seconds
+  for it to end. A sign-in that outlasts that - one stuck waiting on a
+  server - no longer uses the drive list and the credential store after the
+  window has freed them: the sign-in holds them until it ends
+  (`CloudService` shared with the dialog, see the framework changelog).
+- **Shorter requests on the status line.** While a cloud drive works, the
+  status line showed each request's whole address, query and all. It now
+  shows the method, the server and the end of the path - *Request: PROPFIND
+  cloud.example.org/.../erika/Fotos Mai/* - with the folder or file name
+  decoded; the connection log keeps the whole address.
+
+#### 2026-10-14 *1.73.0*
+- **One UltraFiler at a time.** Opening a folder while UltraFiler is already
+  running opens it in a new tab of the running window - the tab strip's
+  folders stay as they were; a tab that shows that folder already is
+  switched to, and a file opens its folder - and brings the window forward
+  (restored if minimised) instead of starting a second one; starting it
+  without a folder brings the open window forward. Two starts at the same
+  moment cannot both stay, and a copy that does not answer is reported with
+  *"UltraFiler is already running"*. The *Delete as administrator* helper,
+  which UltraFiler starts itself, still runs beside it. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-13 *1.72.6*
+- **The *+ Drive* menu opens at once.** Clicking *+ Drive* took several
+  seconds before the menu with *FTP / SFTP server...*, *Cloud storage...* and
+  *RAM disc...* appeared, on Windows and macOS: each click asked the system
+  whether it can make RAM discs, which launches a shell (`where imdisk`,
+  `command -v hdiutil`), and the same question was asked again when the
+  toolbar was built at start-up and twice more when the *New RAM disc*
+  dialog opened. The question is now put to the system once, on a worker
+  thread right after the window is created, together with the list of RAM
+  discs mounted now; the *+ Drive* button, its menu and the *RAM Discs*
+  section of the folder tree are brought in line when the answer arrives,
+  and every later question answers from it (framework changelog, pending
+  entry `ramdisk-backing-probed-once`). Until the answer is in, the menu
+  offers *RAM disc...* whenever the build has the facility; a click in that
+  moment waits for the answer in the dialog, once, rather than the menu
+  waiting for it every time. The sweep of *Extract and Run*'s leftover
+  folders, which needs the list of discs too, rides on the same worker.
+- **Listing RAM discs no longer waits on a network drive.** On Windows the
+  *RAM Discs* section, refreshed on every mount and unmount, read the volume
+  label of every drive letter to find ImDisk discs - a mapped network drive
+  whose server is away, or an empty CD drive, held the window for as long as
+  Windows took to give up. Only local fixed, removable and RAM drives from
+  D: to Z: are read now; nothing else can hold an ImDisk disc (framework
+  changelog, pending entry `ramdisk-backing-probed-once`).
+- **The *New RAM disc* dialog reads the machine on a worker.** How much
+  memory is free, which decides the sizes offered, and a name no disc uses
+  yet were read on the UI thread when the dialog opened - a hardware
+  information capture and a pass over the mounted discs. Both are read on a
+  worker now and the dialog opens when they are in, with the busy pointer
+  shown if that takes longer than a moment; a second click meanwhile does
+  nothing rather than opening two dialogs.
+- **Plugging a drive in or out no longer lists the drives on the UI thread.**
+  Each mount or unmount, and *Refresh drives* in the tree's menu, listed the
+  mounted volumes and the RAM discs while the window waited. The listing
+  runs on a worker now and the tree's drive rows and the Computer page's
+  drive cards are brought in line when it is in, one listing at a time;
+  the Computer page itself shows from the last listing instead of making
+  one of its own.
+
+#### 2026-10-12 *1.72.5*
+- **Icons no longer flicker in a maximised window.** With *Display > File
+  icons = Host OS* and a folder of DLLs, a window large enough to show more
+  files than the icon cache held never settled: every tile switched between
+  the system's icon and the simple one, back and forth, for as long as the
+  window was open, while a smaller window on the same folder was fine. The
+  framework's icon cache evicted icons that were still on screen and then
+  re-resolved them, and kept one copy of the library icon per file rather
+  than per type (framework changelog, pending entry
+  `filer-host-icons-thrash`).
+
+#### 2026-10-12 *1.72.4*
+- **The settings live in the shared UltraCanvas settings folder.** Every
+  newer UltraCanvas application keeps its settings under
+  `UltraCanvasSettingsFolder()` (`~/.config/UltraCanvas` on Linux,
+  `%APPDATA%\UltraCanvas` on Windows, `~/Library/Application
+  Support/UltraCanvas` on macOS); UltraFiler had a folder of its own beside
+  it, built from a narrow `getenv("HOME")`. Its folder is
+  `UltraCanvas/UltraFiler` now - `config.ini`, the history, favorites, folder
+  views, folder icons and the remote drive list with it. The first run moves
+  the old folder there, whole, so nothing is lost; where a move is not
+  possible (another file system) it is copied and the old one left behind.
+
+#### 2026-10-11 *1.72.3*
+- **Menus follow the theme and stay clear of their buttons.** The context
+  menu's line icons are painted in the entry's text colour - light on a dark
+  menu, greyed with a disabled entry - while application icons in *Open
+  with* keep their colours (framework changelog:
+  `menu-anchors-symbolic-icons`). The New and Add drive menus open with the
+  framework's `OpenMenuAnchored`: below their button, or above it when there
+  is no room below.
+
+#### 2026-10-11 *1.72.2*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraFiler --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+
+#### 2026-10-10 *1.72.1*
+- **Display > Tab style reaches every tab strip.** 1.71.0 dressed only the
+  window's own strip; the three tabs of the History and Favorites views and
+  the two of the Connection log window kept the rounded tabs whatever was
+  chosen. All of them follow the setting now, at once when it changes, with
+  the Modern capsule 24px tall in the 28px Connection log strip as in the
+  30px window strip.
+
+#### 2026-10-10 *1.72.0*
+- **Split view: a layout of its own.**
+  - **The navigation row's path bar is hidden** while the split view is on:
+    each pane has a path bar of its own, and the one above only repeated
+    whichever was active. It comes back with the single display.
+  - **The preview pane sits under the right-hand pane's path bar**, beside
+    that display, with a splitter of its own - it used to stand beside the
+    pane headers as a third column from the top of the split.
+  - **The two displays are equal halves.** They are put back to the same
+    width when the split view opens, when the preview pane opens or closes,
+    when the tree docks or leaves and when the window is resized; the
+    splitter between them can still be dragged in between. With the preview
+    up, the left-hand pane is as wide as the right-hand display beside it.
+    Before, the preview took its width from the two displays in proportion,
+    so a difference between them - left by docking the tree, or by a drag -
+    stayed until the splitter was dragged back.
+  - **A docked tree fits into its pane.** It used to widen its pane at the
+    other display's expense; it now narrows to the room its pane leaves
+    beside the display's minimum, and the other pane keeps its half.
+  - **The tree buttons show plainly when the tree is docked.** Their pressed
+    look was a pale blue barely different from the active pane's tinted
+    header, and it turned grey while the pointer was still on the button
+    after the click. It is a clear blue now, under the pointer too - so are
+    the navigation row's toggles (split view, History, Favorites, Preview).
+- **Split view: files dropped on a folder of the other pane go into that
+  folder.** Dragged from one pane and released on a folder of the other,
+  files were copied into the folder that pane showed instead - out of sight
+  among its other files, without a question, so it looked as if nothing had
+  happened. They now go into the folder under the pointer, and onto the
+  pane's empty space into the folder it shows. While they are over the other
+  pane it frames the folder they would land in, or the whole pane when that
+  is its own folder. A drop across the split is a move, like a drop on a
+  folder of the same pane: Ctrl copies, Shift moves, Settings > Handling >
+  Drag & Drop sets what a plain drop does, and it asks first under Handling >
+  File operations - moves ask by default, with Move, Copy and Cancel. A drop
+  on the folder tree now shows the row it would land on while the files are
+  still being dragged. Files dropped from another program onto a folder in a
+  pane go into that folder too (still copied). Framework change - see
+  `Docs/UltraCanvas/changelog.d/filer-drop-on-other-display.md`.
+  If an earlier drop seemed to do nothing, look in the folder the target pane
+  showed: the files were copied there.
+
+#### 2026-10-10 *1.71.0*
+- **Settings > Display > Tab style: Modern, Simple modern or Classic.** The
+  window's tab strip can now draw its tabs as capsules floating in a
+  blue-grey strip - the open tab white with a blue outline, the others
+  plain text until the pointer is over them - which is *Modern* and the
+  default from this release; as flat tabs with a blue line under the open
+  one, *Simple modern*; or as the rounded tabs joined to the page that every
+  release before this one drew, *Classic*. The choice shows at once on the
+  open window and is kept in `display.tabs.style`. The tabs behave the same
+  under all three: click to switch, the X or a middle click to close, drag
+  to reorder, and the + at the end opens another tab. Built on the
+  framework's new `TabStyle::Pill` and the `TabStyle::Modern` indicator
+  colour (see the framework changelog).
+
+#### 2026-10-10 *1.70.1*
+- **Thumbnails follow a file's new content.** A picture edited and saved over
+  (in an image editor, by a script, or by a camera upload overwriting it) kept
+  its old thumbnail: the folder was rescanned when the save landed, but the
+  thumbnail was made again from a copy of the picture still held in memory,
+  and that old thumbnail was then kept on disk under the new file's date, so
+  it came back on every later start too. The thumbnail is now made from the
+  file as it is after the save, and a thumbnail is only kept on disk when the
+  file did not change while it was being made. Thumbnails kept by earlier
+  versions are made again once, so pictures already showing an old thumbnail
+  are corrected on the first look. A picture caught while it was still being
+  written, and so failed to show at first, gets its thumbnail once the write
+  finishes, instead of keeping the type icon. The dimensions shown for a
+  changed picture are its new ones. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/image-cache-freshness.md`.
+- **The preview pane follows a file that changes while it is selected.** A
+  picture, document or text file edited and saved by another program while
+  UltraFiler shows it in the preview pane is shown again as it is now, a
+  moment after the save - it used to keep the version it was opened with until
+  something else was selected and it was selected again. A file that keeps
+  changing (a log being written, a download in progress) is shown again at
+  most every 2 seconds, and the last change is always shown. A video or sound
+  is shown again only once its file has stopped changing for 2 seconds and it
+  is not playing - reopening one starts it from the beginning, so a video that
+  is still downloading is not restarted while it grows, and one being watched
+  is left alone until it is paused or ends. Reopening shows the file from the
+  top and at its fitted size, as selecting it does.
+
+#### 2026-10-09 *1.70.0*
+- **FTP drives log in once per burst, not once per folder.** Opening a
+  folder on an FTP drive and reading its subfolders ahead used to connect
+  and log in for every one of them - twice on a server without MLSD, such
+  as vsftpd: once to be refused MLSD, once more for LIST. The connection log
+  of opening `/` on a vsftpd server with four subfolders showed ten logins
+  and 36 seconds. The drive worker now keeps the connection open between
+  its jobs (UltraNet keeps it; see the framework changelog), and a server
+  that refused MLSD is listed with LIST from then on, so the same five
+  listings are one login and one MLSD. The connection log says *Using the
+  open connection to ... - already logged in* where it used to show a new
+  login. A delete, rename or new folder still logs in on a connection of its
+  own, which is what keeps it acting on the entry that was chosen. The
+  worker closes the connection once the drive has been quiet for 15 seconds
+  (`kRemoteConnectionIdleClose`), while the server has only just answered:
+  closing sends QUIT and waits for the reply, which a network that has gone
+  away since never sends.
+- **Folders remembered from the last run are no longer read ahead.** A
+  folder's subfolders that `remote-listings.cache` still held were fetched
+  again in the background every time their parent was opened, on every
+  start, whether or not they were opened again. They are now shown from the
+  cache and checked with the server when they are opened; only subfolders
+  that are not cached at all are read ahead.
+- **The connection log button moved into the folder display.** It was a
+  clipboard icon at the right of the status bar, shown whenever any remote
+  drive was configured - over local folders too. It is now a round button
+  with the network symbol in the bottom-left corner of the folder display,
+  shown only while that display is on an FTP / FTPS / SFTP drive; in the
+  split view each display has its own. It sits above the display's info bar
+  and hidden-items strip and follows them as they come and go
+  (`UltraCanvasFilerWidget::GetBottomStripsHeight`, see the framework
+  changelog). Failures not looked at yet turn it red and show as a count on
+  its corner (`UltraCanvasBadge`). The error on the status line and the
+  failure alert now point to it there.
+
+#### 2026-10-09 *1.69.0*
+- **Excel 97-2003 workbooks (`.xls`) show their contents.** A `.xls` file's
+  thumbnail is now a small grid of its first sheet's cells, as `.xlsx` and
+  `.ods` files already had, instead of the bare type icon, and selecting one
+  opens it in the detail pane as a spreadsheet - with its sheets, values,
+  formulas, merged cells and formatting. Excel 5.0/95 files work too, and so
+  do the HTML tables, Excel 2003 XML files, renamed `.xlsx` files and text
+  exports that other programs save with the `.xls` extension. `.xlsx` files
+  now open in the detail pane as well: they had a thumbnail but no detail
+  view. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/xls-workbook-reader.md`.
+
+#### 2026-10-08 *1.68.1*
+- **The folder tree follows the window's size.** The tree is kept to the
+  room the file display leaves it (and the preview pane, while it is up) as
+  the window is resized, not only when its rows change: making the window
+  narrower narrows a tree that would otherwise squeeze the file display
+  below its minimum width, and making it wider again gives the tree back the
+  width it asked for - its fitted width under *Auto*, the set width under
+  *Fixed width*. In 1.68.0 a tree held back by a narrow window stayed that
+  narrow until a branch was next opened or closed. A divider dragged since
+  the last fit keeps its width, as far as the window allows. Resizing measures
+  nothing: the width the tree last asked for is simply placed again.
+
+#### 2026-10-07 *1.68.0*
+- **The folder tree fits its names.** The tree on the left is now as wide as
+  the rows it shows, plus 10 px - the same as UltraMail's folder list - instead
+  of starting at 280 px whatever was in it; a tree of a few short names is
+  now narrower than that, so the divider goes down to 100 px (it stopped at
+  170 px). It fits again whenever a branch is opened or closed, a drive, RAM
+  disc or remote drive comes or goes, a folder appears or is removed, a pin
+  is added, or the tree opens a branch to follow the folder display. It
+  grows to 600 px at most, and never so wide that the file display (and the
+  preview pane, while it is up) drops below its minimum width. In the split view the tree docked beside a display is fitted the
+  same way, inside its pane. Dragging the divider still resizes the tree for
+  the moment; the next fit puts it back.
+- **Settings > Display > Treeview sets the width.** *Auto* is the fitted tree
+  above and the default; *Fixed width* keeps the tree at the pixels set beside
+  it (100 to 600, 280 to start with - typing a width chooses it), which is how
+  every earlier release behaved. Saved as `tree.width.mode` / `tree.width` in
+  `config.ini`; the page's *Restore defaults* (it used to be *Restore default
+  colours*) puts the colours back and the width back to *Auto*. Measuring the
+  rows is the framework's `UltraCanvasTreeView::GetRequiredWidth`, which
+  UltraMail's folder list uses.
+
+#### 2026-10-07 *1.67.1*
+- **Windows: History and Favorites no longer forget a file with a Thai, CJK
+  or emoji name.** Before listing an entry, the History and Favorites views
+  check that its file is still on disk, and they handed the path to Windows
+  as a plain string, which Windows reads in the ANSI code page. A name that
+  code page cannot hold was "not found", so the entry was dropped - and
+  written out of `history.txt` / `favorites.txt`, so it stayed gone: a file
+  pinned to Favorites disappeared the first time the Favorites view was
+  opened. The check now passes the path as UTF-8, like every other file call
+  in UltraFiler. `FilerHistoryTest` records and pins such a file, and the
+  Windows CI job runs it under code page 1252.
+- **Windows: *Extras > Access > Read-only* works on a file with a Thai, CJK
+  or emoji name.** It set the attribute through the same plain-string path,
+  so on such a name it failed with "no such file" and left the file as it
+  was. The Access window now passes the path as UTF-8 on every platform.
+
+#### 2026-10-06 *1.67.0*
+- **The host's file icons are the default.** *Settings > Display > File
+  icons* now starts on **Host OS icons**, so a folder listing draws each type
+  with the icon the rest of the desktop uses for it - the shell's on Windows,
+  Finder's on macOS, the installed icon theme's on Linux and BSD - instead of
+  UltraFiler's own folder shape and coloured sheet. **UltraFiler simple** is
+  still one click away on the same page, or under *Display > File icons* in
+  a file display's context menu. Nothing else about the choice changed: a
+  file that shows a thumbnail of its own content keeps showing it, a program
+  or shortcut keeps the icon it carries, and a type the system has no icon
+  for keeps the simple one.
+
+  Existing installations change too. Every save of 1.66.1 and earlier wrote
+  `display.file.icons = simple` into the config file, whether or not anyone
+  had chosen it, so the choice is now saved under
+  `display.file.icons.style` and the old key is no longer read - otherwise
+  every config written before today would have kept the simple icons for
+  good. Someone who had picked the simple icons on purpose picks them again
+  once. A system with no desktop to ask (WebAssembly, Android) draws the
+  simple icons whatever the setting says, and the settings page now ticks
+  that choice there rather than the greyed-out one.
+- **The context menu has icons, and every tick is round.** Each entry of a
+  file display's right-click menu - Open with, Copy, Cut, Paste, Delete,
+  Delete Permanently, Duplicate, Rename, New, Compress, Extract, Print,
+  Extras, Display, Settings - and of its *Display* submenu now has an icon,
+  and *Display > Type* shows each layout with the same picture as the view
+  selector in the toolbar. The labels line up behind the icons: the switches
+  at the foot of *Display* (Icon-Menu, Folder previews, Info-Bar, Hidden
+  files) used to start one column to the right of the submenus above them.
+  A disabled entry's icon is greyed with its label.
+
+  Every on/off entry in UltraFiler's menus - those switches, the
+  *Thumbnails*, *Detail view* and *Dataset* lists, *Show in names*, the
+  *Pin / Unpin* entries under *Extras* and in the folder tree's menu - is now
+  drawn as a circle with its tick inside, like the round choice entries
+  (*Sort*, *Type*, *File icons*) beside them, instead of a square box. Both
+  are framework changes - see
+  `Docs/UltraCanvas/changelog.d/menu-icons-round-checkboxes.md`.
+
 #### 2026-10-06 *1.66.1*
 - **Windows: Paste of a picture copied in another program writes a picture.**
   It wrote the clipboard's raw bitmap block as `Pasted image.bmp`, a file

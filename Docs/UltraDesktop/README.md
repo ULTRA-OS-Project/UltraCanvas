@@ -4,7 +4,7 @@
 
 UltraDesktop is the ULTRA OS desktop: the taskbar with the running
 applications, the desktop organiser with the virtual desktops, the
-Stickerboard, the clipboard and the screenshot, and the info panel with the
+Sticker board, the notes, the clipboard and the screenshot, and the info panel with the
 devices and services — on one screen-sized window under everything else. It
 is built from UltraCanvas elements on the
 [UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md) module,
@@ -12,6 +12,9 @@ which is where every question about windows, desktops, devices and installed
 applications is answered, so the desktop itself never touches the window
 system.
 
+- User manual: [`Manual.md`](Manual.md) — the desktop task by task, using it
+  as the Windows desktop and getting the Windows desktop back, and
+  troubleshooting. This README is the reference.
 - Source: [`Apps/UltraDesktop`](../../Apps/UltraDesktop/README.md)
 - Version: its own, from the first line of [`CHANGELOG.md`](CHANGELOG.md).
   `cmake/UltraCanvasVersion.cmake` reads it into `ULTRADESKTOP_VERSION`,
@@ -29,11 +32,11 @@ system.
 │ ⚙  │                                                              │ 1  │  desktop
 │ ⋮⋮ │                                                              │ 2  │  organiser
 │╲   │                                                              │ 3  │
-│ ╲  │                                                              │ 📌 │  Stickerboard
+│ ╲  │                                                              │ 📌 │  Sticker board
+│ ▣  │                                                              │ 🗒 │  notes
 │ ▣  │                     wallpaper                                │ 📋 │  clipboard
 │ ▣  │            (application windows float above)                 │ 📷 │  screenshot
 │ ▣  │                                                              │╱   │
-│ ▣  │                                                              │    │
 │  ╲ │                                                              │ ✉14│  info panel
 │   ╲│                                                              │ ⇧⇩ │  (devices and
 │ ▤  │                                                              │ ⌨ ●│   services)
@@ -72,7 +75,7 @@ windows stop short of the bars instead of covering them.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Stickerboard* toggle, the *clipboard* and *screenshot* (the whole screen to
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot* (the whole screen to
   `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
   green dot for three seconds and its tooltip names the file).
 - **Clipboard**: the desktop records every copy into the clipboard history
@@ -81,7 +84,11 @@ windows stop short of the bars instead of covering them.
   secret. The clipboard button, or `Super+V` from any window, opens the quick
   panel: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
-  Delete. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
+  Delete. What the program being pasted into takes comes first, under "For
+  <program>" and chosen - the newest images for a paint program, files for
+  a file manager, code and text for an editor - from its desktop entry's
+  categories and file types; the bar's button uses the window that had the
+  focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
   of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
@@ -125,9 +132,50 @@ windows stop short of the bars instead of covering them.
   desktops - are the *Desktop* page of UOS-Settings. They live in the
   desktop's settings file; the desktop checks it once a second and rebuilds
   the bars in place when UOS-Settings changed one of them.
-- **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
-  one; each note is edited in place, dragged by its top bar, cycled through
-  six paper colours and closed with ×. Notes come back where they were.
+- **Sticker board** (the pinboard button): files and notes sorted into
+  categories on a Kanban board over the wallpaper. It starts with *Docs*,
+  *Work* and *Home*. Drop files from the file manager onto a category and
+  they are added to it straight away, without a question; a file already on
+  the board moves to the category it was dropped on. A double-click opens a
+  file with its default application; cards are dragged from one category to
+  another, and *+ Add card* writes a note. *+ Add category* adds a category,
+  scrolls to it when the board is too wide to show them all, and lets you
+  type its name (double-click a category's title to rename it later). The
+  picker in the bar switches the display style: *Sticky notes*, *Poster*,
+  *Schematic* or *Dark*. Drag the panel by its title and resize it by the
+  grip in its bottom-right corner; the board, its style, its place and its
+  size are kept.
+- **Notes** (the note button below it): free sticky notes over the
+  wallpaper. *+* in the corner adds one; each note is edited in place,
+  dragged by its top bar, cycled through six paper colours and closed with
+  ×. Notes come back where they were.
+
+### Notifications
+
+The desktop is also where notifications appear. On ULTRA OS no other
+notification server runs: UltraMessage serves `org.freedesktop.Notifications`
+itself (the desktop usually hosts the UltraMessage broker, being the first
+program of the session), so every application's notification - Telegram,
+the browser, a download, UltraMail's new mail - arrives on the UltraMessage
+bus. The desktop draws each one as a toast in the top-right corner, beside the
+right bar and below the taskbar when that runs along the top: the
+application's icon and name, the summary, the body, the notification's own
+buttons and a close button, newest on top, four at most.
+
+- A click on the text does what the notification offers by default (UltraMail
+  opens the mail); a button does what it says; × dismisses it. The
+  application is told either way.
+- A toast goes by itself after 8 seconds (5 for a low-priority one) - not
+  while the pointer rests on it - and a critical one (battery low) stays until
+  closed. Gone from the screen is not gone: the message feed keeps it.
+- On a desktop with its own notification server (GNOME, Plasma, dunst, ...)
+  that server draws them and the desktop draws nothing, so nothing appears
+  twice.
+
+The toasts are the framework's
+[UltraCanvasNotificationToast](../UltraCanvas/UltraCanvasNotificationToast.md)
+element and host, in windows that stay above everything and never take the
+keyboard focus.
 
 ## Command line
 
@@ -139,15 +187,29 @@ UltraDesktop --windows          print the open windows and exit
 UltraDesktop --apps             print the installed applications and exit
 UltraDesktop --devices          print the device activity and exit
 UltraDesktop --screenshot [f]   capture the screen (default: the Pictures folder)
+UltraDesktop --use-as-desktop   Windows: in place of the Windows desktop from now on
+UltraDesktop --restore-desktop  Windows: back to the Windows desktop, and exit
+UltraDesktop --session          started by the sign-in: close when switched back
 UltraDesktop --version | --help
 ```
 
 The headless modes print what the module sees, which makes it checkable over
 ssh (`--windows` needs a display; `--apps` and `--devices` do not).
 
+On Windows `UltraDesktop.exe` is a GUI program, so no console window flashes
+up when the sign-in, the Start menu or UOS-Settings starts it. Beside it,
+`UltraDesktop.com` is its console companion. Typed at a prompt without an
+extension, `UltraDesktop --windows` runs the companion: it starts the `.exe`,
+waits for it and returns its exit code, so the listings print and the prompt
+waits as for any console program. Typed as `UltraDesktop.exe --windows`, the
+prompt does not wait.
+
 ## Settings file
 
-`~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set):
+`~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set;
+`%APPDATA%\ultraos\desktop.json` on Windows;
+`~/Library/Application Support/ultraos/desktop.json` on macOS, where a file
+earlier versions kept under `~/.config` is moved on the first start):
 
 ```json
 {
@@ -157,11 +219,19 @@ ssh (`--windows` needs a display; `--apps` and `--devices` do not).
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
   "stickerboardVisible": false,
-  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ]
+  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
+  "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
+                     "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } }
 }
 ```
 
-An empty wallpaper shows the framework's `media/images/landscape.jpg`.
+An empty wallpaper shows the framework's `media/images/landscape.jpg`. An
+empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
+RAM disc of its own, that is the default.
+`categoryBoard.board` is the Kanban element's own JSON document
+([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
+it the Sticker board starts with Docs, Work and Home. `design` is one of
+`stickynotes`, `poster`, `schematic`, `dark`.
 
 ## How the mail count gets there
 
@@ -174,6 +244,107 @@ the ones it has an icon for.
 ## Platform
 
 The window list, the virtual desktops, the screenshot and the device markers
-need the module's X11 backend (Linux, the BSDs). Elsewhere the desktop still
-runs — application list, launcher, settings and Stickerboard work — but the
-running-apps group stays empty and the Task Manager says so.
+come from the module's backends: X11 on Linux and the BSDs, Win32 on Windows.
+Elsewhere (macOS) the desktop still runs — application list, launcher,
+settings, the Sticker board and the notes work — but the running-apps group
+stays empty and the Task Manager says so.
+
+## On Windows
+
+UltraDesktop runs on Windows too, from the same suite folder as the other
+applications, and can take the place of the Windows desktop for one account
+— beside Explorer, or instead of it — with the way back always one click
+away.
+
+### Trying it
+
+Start `UltraDesktop.exe`. It covers the main screen below every window, its
+bars keep their room (maximised windows stop beside them), and Explorer goes
+on running underneath with its own taskbar along the bottom, over the foot of
+the right bar. *Close UltraDesktop* on the settings button's right-click menu
+ends the trial.
+
+### Beside Explorer
+
+Any one of these switches over, for this account only, without administrator
+rights:
+
+- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop beside Explorer*;
+- the settings button's right-click menu: *Use as the Windows desktop (beside
+  Explorer)*;
+- `UltraDesktop --use-as-desktop` (what the installer's finish page runs).
+
+From then on the sign-in starts UltraDesktop (an entry *UltraCanvas Desktop*
+in Task Manager's startup apps) and Explorer's taskbar hides itself; it slides
+in when the pointer touches the bottom edge. Explorer keeps running, so its
+notification area, its notifications, its Start menu and the programs that
+rely on it work as before. This is the gentle way, and takes effect at once.
+
+### Instead of Explorer
+
+- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop instead of
+  Explorer*;
+- the settings button's right-click menu: *Use instead of Explorer (from the
+  next sign-in)*;
+- `UltraDesktop --use-instead-of-explorer`.
+
+From the next sign-in UltraDesktop is the whole desktop and Explorer does not
+start. UltraDesktop then also
+
+- shows the programs' **tray icons** (OneDrive, a VPN client, a chat program)
+  on the info panel, above its services: a click opens the program, a right
+  click its menu, and their balloons appear as notifications;
+- offers **Sign out, Restart and Shut down** on the settings button's
+  right-click menu, which the Start menu would otherwise;
+- opens its **Applications** window when the Win key is pressed and let go
+  on its own, where the Start menu would open (Win with another key is that
+  combination, not a tap);
+- puts the **wallpaper on every other monitor**, which would otherwise stay
+  black — a monitor plugged in or taken away is followed within a few
+  seconds, and so is one whose wallpaper was closed (Alt+F4).
+
+The sign-in actually starts *UltraCanvasShellGuard*, which starts
+UltraDesktop — and keeps the screen from ever staying empty:
+
+- it starts UltraDesktop again when it crashes; after the third crash within a
+  minute, or when UltraDesktop cannot start at all, it starts Explorer for
+  that session and says why (UltraDesktop is tried again at the next sign-in);
+- it starts the programs that start with Windows, as Explorer would — the
+  ones switched off in Task Manager stay off;
+- it writes what it did to `%LOCALAPPDATA%\UltraCanvas\ShellGuard.log`.
+
+Without Explorer there is nothing for the parts of Windows that Explorer
+hosts: the Start menu, the quick settings (Wi-Fi, volume), the notification
+centre and Explorer's own keyboard shortcuts (Win+E, Win+R, Win+X). File
+Explorer windows still open — UltraDesktop opens *This PC* for the Start
+menu's *File Explorer*, which would otherwise start a second desktop.
+
+### Back to the Windows desktop
+
+- UOS-Settings → Desktop → At sign-in: *The Windows desktop*;
+- the settings button's right-click menu: *Switch back to the Windows
+  desktop*;
+- `UltraDesktop --restore-desktop` — also from Task Manager when nothing else
+  is at hand: Ctrl+Shift+Esc, *Run new task*, `UltraDesktop --restore-desktop`
+  (the installer registers the name, so no path is needed);
+- uninstalling the suite does the same.
+
+Each of them removes the start at sign-in, beside or instead, and gives the
+taskbar back the state it had before the switch — auto-hide or not, as you had
+it. A desktop the sign-in started closes within a second; instead of Explorer,
+Explorer then starts in its place at once, and should UltraDesktop not respond
+any more, the guard ends it after five seconds and starts Explorer all the
+same.
+
+### What works, and what differs from Linux
+
+| | On Windows |
+|---|---|
+| Running applications | every window Explorer's taskbar would show, with its program's icon; Microsoft Store apps by the program inside their frame |
+| Applications window | the Start menu's programs, named as the Start menu names them, and the Microsoft Store apps (Calculator, Photos, Settings …) with their tile icons; instead of Explorer the Win key opens it |
+| Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
+| Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
+| Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
+| RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
+| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
+| Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |

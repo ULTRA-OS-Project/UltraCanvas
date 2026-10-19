@@ -1,5 +1,7 @@
 # UltraCanvasModelFormats — reading 3D files
 
+<!-- doc-check: std::string path; -->
+
 The **Models plugin** reads a 3D file of any supported format into one
 structure: `ModelStorage::ModelDocument`. There is no per-format document type
 and no per-format API — a caller names a path, and what comes back is a scene
@@ -18,6 +20,17 @@ STL is documented separately in
 [UltraCanvasSTLElement.md](UltraCanvasSTLElement.md): its loader lives in the
 core library rather than in this plugin, because the Filer's thumbnails and the
 media viewer need one reader that is always present.
+
+## Contents
+
+- [Reading a file](#reading-a-file)
+- [What each format carries](#what-each-format-carries)
+- [Writing](#writing)
+  - [What each writer cannot carry](#what-each-writer-cannot-carry)
+- [Three things that surprise people](#three-things-that-surprise-people)
+- [Displaying a model](#displaying-a-model)
+- [Warnings](#warnings)
+- [See also](#see-also)
 
 ## Reading a file
 

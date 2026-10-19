@@ -1,5 +1,20 @@
 # UltraCanvas Vector Editing: VectorCanvas, VectorEdit, BezierPath
 
+<!-- doc-check: std::vector<VectorEdit::ElementPtr> els; VectorEdit::ElementPtr el; Point2Dd pivot; std::shared_ptr<VectorStorage::VectorGroup> otherGroup; std::shared_ptr<VectorStorage::VectorPath> path; struct EditorTool { void OnPress(const VectorPointerEvent& e); void OnDrag(const VectorPointerEvent& e); void OnRelease(const VectorPointerEvent& e); bool OnKey(const UCEvent& k); void DrawOverlay(IRenderContext* ctx, const VectorViewTransform& v); }; std::shared_ptr<EditorTool> tool; -->
+
+## Contents
+
+- [Overview](#overview)
+- [The document and its Ids](#the-document-and-its-ids)
+- [Selection](#selection)
+- [History](#history)
+- [Hit testing](#hit-testing)
+- [Operations](#operations)
+  - [Pixel alignment](#pixel-alignment)
+- [The Bézier node model](#the-bézier-node-model)
+- [The canvas element](#the-canvas-element)
+- [Tests](#tests)
+
 ## Overview
 
 The **vector-editing layer** is what a vector drawing editor needs on top of
@@ -21,13 +36,13 @@ investigation behind it is
 | `VectorEdit::VectorSelection` | Ordered selected elements, their document-space bounds, listeners, re-binding by Id after an undo | `include/DataFormats/UltraCanvasVectorEdit.h`, `core/DataFormats/UltraCanvasVectorEdit.cpp` |
 | `VectorEdit::VectorHistory` | Labelled undo / redo by document snapshots, coalescing, a memory budget | same |
 | `VectorEdit::VectorHitTester` | Geometric fill / stroke hit testing with a tolerance, through every ancestor transform; rectangle queries | same |
-| `VectorEdit` operations | Transform about a pivot, bake a transform, z-order, group / ungroup / reparent, delete, duplicate, align, distribute, convert to path | same |
+| `VectorEdit` operations | Transform about a pivot, bake a transform, z-order, group / ungroup / reparent, delete, duplicate, align, distribute, convert to path, snap to an icon's pixel grid | same |
 | `UltraCanvasBezierPath` | Anchors that own their handles: the editing model of a path, with split / node types / hit tests / polyline fitting and a lossless round trip to `PathData` | `include/UltraCanvasBezierPath.h`, `core/UltraCanvasBezierPath.cpp` |
 | `UltraCanvasVectorCanvas` | The element: pasteboard, page, grid, rulers, guides, snapping, selection handles, tool hooks in document coordinates | `include/UltraCanvasVectorCanvas.h`, `core/UltraCanvasVectorCanvas.cpp` |
 | `UltraCanvasGradientEditor` | The stops of a gradient on a strip | [UltraCanvasGradientEditor](UltraCanvasGradientEditor.md) |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-15
+**Version**: 1.1.0 - Pixel alignment: `SnapToPixels`, `SnapToPixel`
+**Last Modified**: 2026-10-14
 **Author**: UltraCanvas Framework
 
 Everything here is in the core library. The Vector plugin
@@ -91,7 +106,8 @@ history.Record("Move", [&] { TranslateElements(selection.Elements(), 10, 0); });
 
 // A drag: one entry from press to release.
 history.BeginEdit("Scale");
-... ScaleElements(...) on every drag event ...
+// on every drag event:
+ScaleElements(selection.Elements(), sx, sy, pivot);
 history.EndEdit();
 
 // Repeated nudges collapse into one step.
@@ -127,22 +143,49 @@ TranslateElements(els, dx, dy);
 ScaleElements(els, sx, sy, pivot);            // pivot in document units
 RotateElements(els, radians, pivot);
 SkewElements(els, radX, radY, pivot);
-TransformElements(els, Matrix3x3);            // any document-space matrix
+TransformElements(els, Matrix3x3::Scale(2, 2)); // any document-space Matrix3x3
 BakeTransform(el);                            // write the transform into the geometry
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
 auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
-ReparentElement(el, otherGroup, index);
+ReparentElement(el, otherGroup, 0);           // child index in the new parent, -1 = the end
 
 DeleteElements(els);
 auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
 AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
 DistributeElements(els, DistributeMode::HorizontalCenters);
 auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
-auto made = CombineShapes(sel.Elements(), CombineOp::Subtract);   // Xara's Combine Shapes: the front shape
+auto made = CombineShapes(selection.Elements(), CombineOp::Subtract); // Xara's Combine Shapes: the front shape
                                               // cuts the others (Add / Intersect: one shape, the back one's style)
 ```
+
+### Pixel alignment
+
+An icon is drawn for the size it is shown at, and is sharp there only
+where its straight edges fall on whole pixels. `SnapToPixels` moves shapes
+onto the pixel grid of that size: `pixel` is the width of one icon pixel
+in document units (the page's width divided by the icon's size), and the
+grid starts at `origin`, the page's corner.
+
+```cpp
+const auto result = SnapToPixels(els, 1.0, Point2Dd(0, 0)); // a 24-unit page drawn at 24 px
+// result.aligned: shapes moved; result.skipped: text, images, rotated shapes
+double x = SnapToPixel(2.3, 1.0, 0.0, true);  // 2.5: a pixel centre
+double y = SnapToPixel(2.3, 1.0);              // 2.0: a pixel edge
+```
+
+Line widths become whole pixels (at least one). A shape whose line is an
+odd number of pixels wide lands on pixel centres - a 1 px line there covers
+one row of pixels fully - and one with an even width or no line on pixel
+edges. Rectangles keep at least a pixel each way and whole-pixel corner
+radii; circles and ellipses snap by the edges of their bounds, so any
+diameter stays possible; paths are made absolute and their nodes snapped,
+each curve's control points moving with their node, and a curve that fits
+inside one pixel becomes a straight line. Groups are aligned through their
+children, following any transform that only scales and moves; text,
+images and rotated or skewed shapes are left as they are. ArtCreator's icon
+mode calls it (Arrange > Snap to Pixels).
 
 A document-space matrix `M` lands on an element as `T' = P⁻¹·M·P·T`, `P`
 being its parent-to-document map, so children of transformed groups move
@@ -261,3 +304,5 @@ catalogue ([UltraCanvasUIElements](UltraCanvasUIElements.md)) alongside
 selection, history, hit testing, every operation, the canvas's view maths,
 snapping and handles, and the gradient editor — all without a window.
 `Tests/VectorModelTest.cpp` covers the model and the renderer.
+`Tests/VectorPixelSnapTest.cpp` (CTest `VectorPixelSnapTest`) covers
+`SnapToPixels` and `SnapToPixel`.

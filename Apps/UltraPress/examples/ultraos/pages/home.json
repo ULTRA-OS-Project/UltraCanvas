@@ -1,0 +1,66 @@
+{
+  "slug": "home",
+  "title": "ULTRA OS",
+  "kind": "page",
+  "status": "published",
+  "date": "2026-10-13",
+  "template": "default",
+  "pinned": true,
+  "seo": {
+    "description": "ULTRA OS is a next-generation open-source operating system for desktop PCs and laptops, with mobile phones and tablets to follow.",
+    "noindex": false
+  },
+  "blocks": [
+    {"type": "hero", "props": {
+      "kicker": "Introducing ULTRA OS",
+      "title": "The last 30 years have been the period of computer research - It’s time to build on what we’ve learned.",
+      "text": "Unlike fragmented solutions, ULTRA OS aims to unify simplicity, performance, and modern design across all devices desktop and mobile—under one cohesive platform.",
+      "buttons": [
+        {"title": "Learn More", "page": "the-plan", "primary": true},
+        {"title": "Download", "url": "https://ultraos.eu/download-file/"}
+      ]
+    }},
+    {"type": "text", "props": {
+      "heading": "What ULTRA OS is",
+      "text": "ULTRA OS will be a next-generation operating system project initially targeting desktop PCs and laptops, with plans to expand to mobile phones and tablets in later stages. Our ultimate goal is to provide a compelling, open-source alternative to today’s dominant platforms."
+    }},
+    {"type": "features", "props": {
+      "heading": "Why ULTRA OS",
+      "items": [
+        "We create user-friendly, no-nonsense, open source software",
+        "We reduce the development cost for programmers by a comprehensive cross-platform GUI",
+        "We create more choices for consumers",
+        "We increase the quality of services and programs for users by more global competition",
+        "We set free computer and mobile phone manufacturers from licensing fees",
+        "We reduce maintenance and upgrade costs for companies and administration",
+        "No dirty AI - Server centers should be powered by 100% green energy"
+      ]
+    }},
+    {"type": "newsletter", "props": {
+      "heading": "Newsletter",
+      "text": "Signup our newsletter to get update information, news, insight or promotions."
+    }},
+    {"type": "text", "props": {
+      "heading": "Status",
+      "text": "Currently in the concept and prototyping phase, ULTRA OS is an open-source initiative to create a Resource-efficient but comprehensive operating system to cover both PC and mobile hardware."
+    }},
+    {"type": "faq", "props": {
+      "heading": "Questions",
+      "items": [
+        {"q": "Is ULTRA OS open source?", "a": "Yes. The framework and the applications are developed in the open on GitHub."},
+        {"q": "Which hardware does it target first?", "a": "Desktop PCs and laptops; mobile phones and tablets follow in later stages."}
+      ]
+    }},
+    {"type": "form", "props": {
+      "id": "contact",
+      "heading": "Contact",
+      "text": "ULTRA OS - All You Need. Nothing You Don’t.",
+      "fields": [
+        {"name": "name", "label": "Name", "type": "text", "required": true},
+        {"name": "email", "label": "E-mail", "type": "email", "required": true},
+        {"name": "message", "label": "Message", "type": "textarea", "required": true}
+      ],
+      "submit": "Send"
+    }}
+  ]
+}

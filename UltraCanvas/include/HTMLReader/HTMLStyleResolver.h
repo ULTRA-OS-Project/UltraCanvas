@@ -3,6 +3,13 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.20.0 - flex and grid containers and items: BoxLayoutMode, flex-*, order,
+//                  gap, justify / align / place-*, grid-template-* (repeat(), minmax(),
+//                  auto-fill / auto-fit, areas), grid-column / -row / -area, grid-auto-flow
+// Version: 1.19.0 - NodeSelectorTraits::TagIs matches a foreign element's camelCase
+//                  name (inline <svg>) against the lower-cased type selector
+// Version: 1.18.0 - selector matching moved to CSSStyleSheet.h; NodeSelectorTraits
+//                  is the DOM's view of it, Matches() the stand-alone test
 // Version: 1.17.0 - merged with main's 1.4.0-1.6.0 (float / clear, box-sizing as
 //                  borderBox)
 // Version: 1.16.0 - letter-spacing
@@ -25,13 +32,14 @@
 // Version: 1.4.0 - box-sizing (borderBox)
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "HTMLReader/HTMLDocument.h"
 #include "HTMLReader/CSSStyleSheet.h"
 
+#include <cctype>
 #include <optional>
 #include <string>
 #include <vector>
@@ -110,6 +118,68 @@ enum class ListMarker {
     Decimal, LowerAlpha, UpperAlpha, LowerRoman, UpperRoman,
     NoMarker
 };
+
+// How a box lays out its children: in normal flow, or as a flex or grid
+// container (display: flex / grid; inline-flex / inline-grid are the same on
+// an InlineBlock box). Kept apart from DisplayMode, which says how the box
+// itself sits among its siblings - a flex container is still a block.
+enum class BoxLayoutMode { Flow, Flex, Grid };
+
+enum class FlexDirectionMode { Row, RowReverse, Column, ColumnReverse };
+enum class FlexWrapMode { NoWrap, Wrap, WrapReverse };
+
+// justify-content, align-items, align-content, align-self, justify-items and
+// justify-self share one set of values. Unset is CSS's normal / auto: the
+// layout's own default (stretch for align-items, start for justify-content).
+// left / right / flex-start / self-start ... fold into Start and End.
+enum class BoxAlignMode {
+    Unset, Start, End, Center, Stretch, Baseline,
+    SpaceBetween, SpaceAround, SpaceEvenly
+};
+
+// One bound of a grid track size: a length, a percentage of the grid's
+// width / height, a share of the free space (fr), or a content keyword.
+struct GridTrackBound {
+    enum class Kind { Px, Percent, Fr, Auto, MinContent, MaxContent, FitContent };
+    Kind kind = Kind::Auto;
+    float value = 0.f;   // px, percent or fr; FitContent: its limit in px
+};
+
+// A track of grid-template-columns / -rows: one size, or minmax(min, max).
+struct GridTrackSpec {
+    GridTrackBound min, max;
+    bool IsMinMax() const {
+        return min.kind != max.kind || min.value != max.value;
+    }
+};
+
+// grid-template-columns / -rows. `tracks` is the explicit list with every
+// repeat(<count>, ...) written out; a repeat(auto-fill | auto-fit, ...)
+// keeps its tracks in `autoRepeat`, inserted before tracks[autoRepeatAt]
+// as many times as fit once the grid's width is known (the builder).
+struct GridTemplate {
+    std::vector<GridTrackSpec> tracks;
+    std::vector<GridTrackSpec> autoRepeat;
+    size_t autoRepeatAt = 0;
+    bool autoFit = false;
+    bool Empty() const { return tracks.empty() && autoRepeat.empty(); }
+};
+
+// One end of grid-column / grid-row: auto, a line number (negative counts
+// from the end of the explicit grid), span N, or the name of an area of
+// grid-template-areas.
+struct GridLineSpec {
+    enum class Kind { Auto, Line, Span, Name };
+    Kind kind = Kind::Auto;
+    int value = 0;
+    std::string name;
+};
+
+// The largest track count, line number and span the resolver keeps: CSS
+// lets them grow without bound, and a page saying grid-column: 99999 or
+// repeat(99999, 1px) must not have the layout build a grid that size.
+// Browsers cap the implicit grid the same way.
+constexpr int kMaxGridLines = 1000;
 
 struct ComputedStyle {
     DisplayMode display = DisplayMode::Inline;
@@ -233,6 +303,32 @@ struct ComputedStyle {
     // set", and the cell centres its content, as a browser's UA sheet does.
     VerticalAlignMode verticalAlign = VerticalAlignMode::Baseline;
 
+    // ---- flex and grid containers (not inherited) ----
+    BoxLayoutMode layoutMode = BoxLayoutMode::Flow;
+    FlexDirectionMode flexDirection = FlexDirectionMode::Row;
+    FlexWrapMode flexWrap = FlexWrapMode::NoWrap;
+    BoxAlignMode justifyContent = BoxAlignMode::Unset;
+    BoxAlignMode alignItems = BoxAlignMode::Unset;
+    BoxAlignMode alignContent = BoxAlignMode::Unset;
+    BoxAlignMode justifyItems = BoxAlignMode::Unset;
+    float rowGapPx = 0.f;            // row-gap / gap (and grid-row-gap)
+    float columnGapPx = 0.f;         // column-gap / gap (and grid-column-gap)
+    GridTemplate gridColumns;
+    GridTemplate gridRows;
+    // grid-template-areas, one string per row of names ("." is no area).
+    std::vector<std::vector<std::string>> gridAreas;
+    bool gridAutoFlowColumn = false; // grid-auto-flow: column
+
+    // ---- flex and grid items (not inherited) ----
+    float flexGrow = 0.f;
+    float flexShrink = 1.f;
+    std::optional<float> flexBasisPx;       // none: auto (the item's width / height)
+    std::optional<float> flexBasisPercent;
+    int order = 0;
+    BoxAlignMode alignSelf = BoxAlignMode::Unset;
+    BoxAlignMode justifySelf = BoxAlignMode::Unset;
+    GridLineSpec gridColumnStart, gridColumnEnd, gridRowStart, gridRowEnd;
+
     // links
     bool isLink = false;
     std::string href;
@@ -247,6 +343,64 @@ struct ResolverOptions {
     // 'background-color' declarations are ignored so night/sepia stay legible.
     bool overrideAuthorColors = false;
 };
+
+// The HTML DOM as the selector matcher sees it (CSSStyleSheet.h, "Matching"):
+// HTML tag names are stored lower-case by the parser and compare directly;
+// a foreign element's name (linearGradient inside an inline <svg>) keeps its
+// case and compares case-insensitively with the parser's lower-cased type
+// selector, as a browser does for SVG in HTML. Attribute names go through
+// Node's own lookup, exact then case-insensitive. Class names and ids compare
+// exactly. The matcher itself is shared with every other tree that is styled
+// by CSS (the SVG reader).
+struct NodeSelectorTraits {
+    using Element = Node;
+    static bool TagIs(const Node& n, const std::string& tag) {
+        if (n.tag == tag) return true;
+        if (n.tag.size() != tag.size()) return false;
+        for (size_t i = 0; i < tag.size(); ++i) {
+            if (std::tolower(static_cast<unsigned char>(n.tag[i])) != tag[i]) return false;
+        }
+        return true;
+    }
+    static bool IdIs(const Node& n, const std::string& id) { return n.GetId() == id; }
+    static bool HasClass(const Node& n, const std::string& name) { return n.HasClass(name); }
+    static bool GetAttribute(const Node& n, const std::string& name, std::string& value) {
+        if (!n.HasAttribute(name)) return false;
+        value = n.GetAttribute(name);
+        return true;
+    }
+    static bool IsLink(const Node& n) { return n.tag == "a" && n.HasAttribute("href"); }
+    static bool IsRoot(const Node& n) { return n.tag == "html"; }
+    static bool IsEmpty(const Node& n) {
+        for (const auto& child : n.children) {
+            if (child->IsElement() || (child->type == NodeType::Text && !child->text.empty())) return false;
+        }
+        return true;
+    }
+    static bool SiblingPosition(const Node& n, bool ofType, int& index, int& count) {
+        if (!n.parent) return false;
+        index = 0;
+        count = 0;
+        for (const auto& sib : n.parent->children) {
+            if (!sib->IsElement()) continue;
+            if (ofType && sib->tag != n.tag) continue;
+            ++count;
+            if (sib.get() == &n) index = count;
+        }
+        return index > 0;
+    }
+    // Only an element can match a compound; the document node above <html>
+    // ends the walk.
+    static const Node* Parent(const Node& n) {
+        return n.parent && n.parent->IsElement() ? n.parent : nullptr;
+    }
+};
+
+// Whether `selector` matches `element` - the resolver's own test, on its own,
+// for callers that select nodes rather than style them (a querySelector).
+inline bool Matches(const Selector& selector, const Node& element) {
+    return SelectorMatches<NodeSelectorTraits>(selector, element);
+}
 
 class StyleResolver {
 public:
@@ -276,8 +430,6 @@ private:
     void ApplyLegacyAttributes(const Node& element, ComputedStyle& style);
     void ApplyDeclaration(const Declaration& declaration, ComputedStyle& style,
                           const ComputedStyle& parentStyle);
-    static bool SelectorMatches(const Selector& selector, const Node& element);
-    static bool CompoundMatches(const SimpleSelector& part, const Node& element);
 };
 
 } // namespace HTML

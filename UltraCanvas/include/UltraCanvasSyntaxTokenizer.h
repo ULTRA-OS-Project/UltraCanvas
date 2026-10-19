@@ -1,7 +1,8 @@
 // UltraCanvasSyntaxHighlighter.h
 // Comprehensive syntax highlighting languagesRules for major programming languagesRules
+// Version: 1.1.1 - '??=' is written '?\?=': no trigraph warning
 // Version: 1.1.0
-// Last Modified: 2026-04-24
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1655,7 +1656,7 @@ namespace UltraCanvas {
                 "+", "-", "*", "/", "%", "~/", "=", "+=", "-=", "*=", "/=", "%=", "~/=",
                 "++", "--", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "&", "|",
                 "^", "~", "<<", ">>", ">>>", "&=", "|=", "^=", "<<=", ">>=", ">>>=",
-                "?", ":", "??", "??=", "?.", "!.", "..", "...", "(", ")", "[", "]",
+                "?", ":", "??", "?\?=", "?.", "!.", "..", "...", "(", ")", "[", "]",
                 "{", "}", ",", ";", ".", "=>", "<", ">"
         };
 

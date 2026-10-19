@@ -5,9 +5,14 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.6.0 - SetFollowTheme / ApplyTheme / OnThemeChanged: an element that follows the current UltraCanvasTheme
+// Version: 4.5.0 - the size-only constructor is border-box too, like the full-rect one
+// Version: 4.4.0 - GetPopupShadow: a soft drop shadow the window paints under a popup
+// Version: 4.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
+// Version: 4.3.0 - accessible name/description overrides, toggle state, range value, value text and default action
 // Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -16,6 +21,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTooltipTypes.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasAccessibility.h"
 #include "CSSLayout/CSSLayout.h"
 #include <iostream>
@@ -90,6 +96,33 @@ namespace UltraCanvas {
         std::weak_ptr<UltraCanvasUIElement> popupOwner;
     };
 
+    // A soft drop shadow under a popup (see UltraCanvasUIElement::
+    // GetPopupShadow). The window paints it outside the popup's own surface,
+    // beneath it, so the popup keeps its bounds and the shadow catches no
+    // clicks. Its shape is the popup's outline - a rounded rectangle of
+    // `cornerRadius` - moved by `offset`; `blur` is the width of the fade
+    // from `color` to nothing, centred on that outline as a CSS box-shadow's
+    // blur is, so the shadow reaches blur / 2 past it at half strength.
+    struct PopupShadow {
+        Color color = Colors::Transparent;   // alpha 0: no shadow
+        int blur = 0;
+        Point2Di offset = Point2Di(0, 0);
+        float cornerRadius = 0.0f;
+
+        bool IsVisible() const { return color.a > 0; }
+        bool operator==(const PopupShadow& o) const {
+            return color == o.color && blur == o.blur && offset == o.offset &&
+                   cornerRadius == o.cornerRadius;
+        }
+        bool operator!=(const PopupShadow& o) const { return !(*this == o); }
+        // How far the shadow reaches past the popup's bounds on each side.
+        int Reach() const { return (std::max(0, blur) + 1) / 2; }
+        int MarginLeft() const { return IsVisible() ? std::max(0, Reach() - offset.x) : 0; }
+        int MarginTop() const { return IsVisible() ? std::max(0, Reach() - offset.y) : 0; }
+        int MarginRight() const { return IsVisible() ? std::max(0, Reach() + offset.x) : 0; }
+        int MarginBottom() const { return IsVisible() ? std::max(0, Reach() + offset.y) : 0; }
+    };
+
     enum class ClosePopupReason {
         Manual,
         EscapeKey,
@@ -116,6 +149,8 @@ namespace UltraCanvas {
         UCMouseCursor mouseCursor = UCMouseCursor::Default;
         std::string tooltip;
         std::shared_ptr<TooltipContent> tooltipContent;  // structured tooltip; wins over `tooltip`
+        std::string accessibleName;          // SetAccessibleName(); empty = the element's own
+        std::string accessibleDescription;   // SetAccessibleDescription(); empty = the tooltip
         UltraCanvasWindowBase* window = nullptr;
         ElementStateFlags stateFlags;
         Color backgroundColor = Colors::Transparent;
@@ -133,12 +168,15 @@ namespace UltraCanvas {
 
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         // NOTE: Passing non-zero w/h here stamps a CSS `size.width/height`
-        // on the element. Per CSS spec, an explicit width/height OVERRIDES
-        // parent stretch (grid cell, flex-grow, align-self: Stretch). For
-        // widgets you want the engine to size — children of a flex/grid
-        // container, or any widget that should stretch to its parent — use
-        // the no-size constructor (or pass 0, 0) and let the parent decide.
-        // Pass non-zero w/h only when you genuinely want a fixed-size box.
+        // on the element. An explicit width/height OVERRIDES the parent's
+        // stretch (align-items / justify-items: Stretch), as in CSS; the
+        // element's own align-self / justify-self: Stretch still stretches it,
+        // and flex-grow still grows the main axis. For widgets you want the
+        // engine to size — children of a flex/grid container, or any widget
+        // that should stretch to its parent — use the no-size constructor
+        // (or pass 0, 0) and let the parent decide; the parent stretches
+        // only when its layout asks for it. Pass non-zero w/h only when you
+        // genuinely want a fixed-size box.
         UltraCanvasUIElement(const std::string& idstr,
                              float x, float y, float w, float h) {
             id = idstr;
@@ -161,10 +199,16 @@ namespace UltraCanvas {
             stateFlags.Reset();
         }
 
+        // Border-box, as the full-rect constructor above: a widget's width
+        // and height are its whole box, padding and border included, however
+        // it was constructed. (This one used to keep the engine's content-box
+        // default, so the same widget with the same size came out larger by
+        // its padding and border when built without a position.)
         explicit UltraCanvasUIElement(const std::string& idstr = "",
                              float w = 0, float h = 0) {
             id = idstr;
             finalBounds = Rect2Df{0.f, 0.f, w, h};
+            box.boxSizing = CSSLayout::BoxSizing::BorderBox;
             if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
             if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             stateFlags.Reset();
@@ -239,6 +283,12 @@ namespace UltraCanvas {
         // their own surface and composited above the window content, so the
         // compositor uses this to work out what stacks above what.
         bool IsPopupElement() const { return isPopup; }
+
+        // The drop shadow the window paints under this element while it is
+        // open as a popup. None by default; a menu returns its style's.
+        // Popups are composited over the window with their alpha, so a popup
+        // that leaves its corners transparent shows them rounded.
+        virtual PopupShadow GetPopupShadow() const { return PopupShadow(); }
 
         virtual Point2Df GetPositionInWindow() const;
         Rect2Df GetBoundsInWindow() const {
@@ -505,8 +555,39 @@ namespace UltraCanvas {
         // UltraCanvasAccessibility.h): its role, its name, and for text its
         // text interface (null for elements without text to navigate).
         virtual AccessibleRole GetAccessibleRole() const { return AccessibleRole::Unknown; }
-        virtual std::string GetAccessibleName() const { return ""; }
+        // An element's own name comes from what it shows (a button's text, a
+        // checkbox's label); SetAccessibleName() replaces it - for an icon
+        // button, a field whose label is a separate element, or a panel.
+        // Overrides return GetAccessibleNameOverride() when it is set.
+        virtual std::string GetAccessibleName() const { return accessibleName; }
+        void SetAccessibleName(const std::string& name);
+        const std::string& GetAccessibleNameOverride() const { return accessibleName; }
+        // Longer help, read after the name: SetAccessibleDescription(), else
+        // the tooltip.
+        virtual std::string GetAccessibleDescription() const;
+        void SetAccessibleDescription(const std::string& description) { accessibleDescription = description; }
         virtual IAccessibleText* GetAccessibleTextInterface() { return nullptr; }
+        // Checked, pressed or switched on; NotToggleable for anything else.
+        virtual AccessibleToggleState GetAccessibleToggleState() const { return AccessibleToggleState::NotToggleable; }
+        // A slider's, spin button's or progress bar's value; false without one.
+        virtual bool GetAccessibleRange(AccessibleRange& range) const { (void)range; return false; }
+        // Sets that value as the user would (callbacks fire); false when it
+        // cannot be set.
+        virtual bool SetAccessibleValue(double value) { (void)value; return false; }
+        // The current value as text, where it is not a number: a combo box's
+        // item, a text field's content (never a password field's). Empty for none.
+        virtual std::string GetAccessibleValueText() const { return ""; }
+        // Replaces that text as the user would (a text field's content);
+        // false where it cannot be set.
+        virtual bool SetAccessibleValueText(const std::string& text) { (void)text; return false; }
+        // The element's default action, as a screen reader offers it: "press"
+        // for a button, "toggle" for a checkbox, "select" for a radio button.
+        // Empty for none. DoAccessibleAction() performs it as a click would.
+        virtual std::string GetAccessibleActionName() const { return ""; }
+        virtual bool DoAccessibleAction() { return false; }
+        // Tells the platform bridges about a change (ValueChanged,
+        // StateChanged, NameChanged, ...). Cheap when nobody listens.
+        void NotifyAccessibility(AccessibilityEventType type);
         // True for a field whose content is a secret. The bridges report it
         // as a password field (UI Automation's IsPassword, AT-SPI's password
         // text role), so a screen reader says "password" and echoes stars
@@ -556,7 +637,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);
-        virtual bool OnEventFilter(const UCEvent& event) { return false; };
+        virtual bool OnEventFilter(const UCEvent& event) { (void)event; return false; };
 
         void SetEventCallback(std::function<bool(const UCEvent&)> callback);
 
@@ -593,6 +674,29 @@ namespace UltraCanvas {
         virtual void OnPopupOpened() {
             if (onPopupOpened) onPopupOpened();
         }
+
+    public:
+        // ===== THEME =====
+        // An element that follows the theme takes its colours from the
+        // current UltraCanvasTheme now and again whenever the theme changes
+        // (the application forwards UltraCanvasTheme::SetCurrent to every
+        // element of its windows). Off by default: an element styled by
+        // hand keeps its look. An element with a style built by FromTheme
+        // overrides ApplyTheme to set that style.
+        void SetFollowTheme(bool follow) {
+            followTheme = follow;
+            if (follow) ApplyTheme(UltraCanvasTheme::Current());
+        }
+        bool GetFollowTheme() const { return followTheme; }
+        virtual void ApplyTheme(const UltraCanvasTheme& theme) { (void)theme; }
+        // The theme changed: a following element re-styles; a container
+        // passes it on to its children
+        virtual void OnThemeChanged(const UltraCanvasTheme& theme) {
+            if (followTheme) ApplyTheme(theme);
+        }
+
+    private:
+        bool followTheme = false;
     };
 
 // ===== FACTORY SYSTEM =====

@@ -3,8 +3,9 @@
 // Greedy spiral placement over an occupancy grid (wordcloud2.js-style),
 // with geometric shape masks, image masks and a center image the words
 // flow around.
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-07-22
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasWordCloudDiagram.h"
@@ -73,26 +74,26 @@ UltraCanvasWordCloudElement::~UltraCanvasWordCloudElement() {
 
 void UltraCanvasWordCloudElement::AddWord(const std::string& text, double weight) {
     words.emplace_back(text, weight);
-    InvalidateLayout();
+    DropLayoutCache();
     RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::AddWord(const WordCloudWord& word) {
     words.push_back(word);
-    InvalidateLayout();
+    DropLayoutCache();
     RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetWords(const std::vector<WordCloudWord>& newWords) {
     words = newWords;
-    InvalidateLayout();
+    DropLayoutCache();
     RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::ClearWords() {
     words.clear();
     placedWords.clear();
-    InvalidateLayout();
+    DropLayoutCache();
     RequestRedraw();
 }
 
@@ -196,7 +197,7 @@ void UltraCanvasWordCloudElement::SetWordsFromText(const std::string& text,
     for (const auto& [word, count] : ranked) {
         words.emplace_back(word, count);
     }
-    InvalidateLayout();
+    DropLayoutCache();
     RequestRedraw();
 }
 
@@ -205,155 +206,155 @@ void UltraCanvasWordCloudElement::SetWordsFromText(const std::string& text,
 // =============================================================================
 
 void UltraCanvasWordCloudElement::SetScaling(WordCloudScaling s) {
-    scaling = s; InvalidateLayout(); RequestRedraw();
+    scaling = s; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetFontSizeRange(float minSize, float maxSize) {
     minFontSize = std::max(1.0f, minSize);
     maxFontSize = std::max(minFontSize, maxSize);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRelativeScaling(float rs) {
     relativeScaling = std::clamp(rs, 0.0f, 1.0f);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetMaxWords(int maxWords) {
     layoutMaxWords = std::max(1, maxWords);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetFontFamily(const std::string& family) {
-    fontFamily = family; InvalidateLayout(); RequestRedraw();
+    fontFamily = family; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetFontWeight(FontWeight weight) {
-    fontWeight = weight; InvalidateLayout(); RequestRedraw();
+    fontWeight = weight; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetFontSlant(FontSlant slant) {
-    fontSlant = slant; InvalidateLayout(); RequestRedraw();
+    fontSlant = slant; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRotationMode(WordCloudRotationMode mode) {
-    rotationMode = mode; InvalidateLayout(); RequestRedraw();
+    rotationMode = mode; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRotationRange(float minDeg, float maxDeg) {
     minRotationDeg = minDeg;
     maxRotationDeg = std::max(minDeg, maxDeg);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRotationSteps(int steps) {
     rotationSteps = std::max(1, steps);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRotationAngles(const std::vector<float>& angles) {
-    rotationAngles = angles; InvalidateLayout(); RequestRedraw();
+    rotationAngles = angles; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRotateRatio(float ratio) {
     rotateRatio = std::clamp(ratio, 0.0f, 1.0f);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetColorMode(WordCloudColorMode mode) {
-    colorMode = mode; InvalidateLayout(); RequestRedraw();
+    colorMode = mode; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetColorPalette(const std::vector<Color>& palette) {
     if (!palette.empty()) colorPalette = palette;
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetWordColor(const Color& color) {
-    defaultWordColor = color; InvalidateLayout(); RequestRedraw();
+    defaultWordColor = color; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetColorGradient(const Color& low, const Color& high) {
     gradientLowColor = low;
     gradientHighColor = high;
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetColorImage(const std::string& path) {
-    colorImagePath = path; InvalidateLayout(); RequestRedraw();
+    colorImagePath = path; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetShape(WordCloudShape s) {
-    shape = s; InvalidateLayout(); RequestRedraw();
+    shape = s; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetSpiral(WordCloudSpiral s) {
-    spiral = s; InvalidateLayout(); RequestRedraw();
+    spiral = s; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetGridSize(int px) {
     gridSize = std::max(1, px);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetWordPadding(float px) {
     wordPadding = std::max(0.0f, px);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetEllipticity(float e) {
     ellipticity = std::clamp(e, 0.1f, 2.0f);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetSpiralStep(float step) {
     spiralStep = std::max(0.5f, step);
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetCloudCenter(float fx, float fy) {
     cloudCenter = Point2Dd(std::clamp(fx, 0.0f, 1.0f), std::clamp(fy, 0.0f, 1.0f));
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetShrinkToFit(bool enable) {
-    shrinkToFit = enable; InvalidateLayout(); RequestRedraw();
+    shrinkToFit = enable; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetDrawOutOfBound(bool enable) {
-    drawOutOfBound = enable; InvalidateLayout(); RequestRedraw();
+    drawOutOfBound = enable; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetShuffleWords(bool enable) {
-    shuffleWords = enable; InvalidateLayout(); RequestRedraw();
+    shuffleWords = enable; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRepeatWords(bool enable) {
-    repeatWords = enable; InvalidateLayout(); RequestRedraw();
+    repeatWords = enable; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetRandomSeed(uint32_t seed) {
-    randomSeed = seed; InvalidateLayout(); RequestRedraw();
+    randomSeed = seed; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetMaskImage(const std::string& path) {
-    maskImagePath = path; InvalidateLayout(); RequestRedraw();
+    maskImagePath = path; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::ClearMaskImage() {
     maskImagePath.clear();
     maskPixmap.reset();
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetMaskInvert(bool invert) {
-    maskInvert = invert; InvalidateLayout(); RequestRedraw();
+    maskInvert = invert; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetMaskThresholds(uint8_t alphaThreshold, uint8_t whiteThreshold) {
     maskAlphaThreshold = alphaThreshold;
     maskWhiteThreshold = whiteThreshold;
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetShowMaskImage(bool show, float opacity) {
@@ -363,7 +364,7 @@ void UltraCanvasWordCloudElement::SetShowMaskImage(bool show, float opacity) {
 }
 
 void UltraCanvasWordCloudElement::SetCenterImage(const WordCloudCenterImage& image) {
-    centerImage = image; InvalidateLayout(); RequestRedraw();
+    centerImage = image; DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetCenterImage(const std::string& path, float sizeRatio,
@@ -372,13 +373,13 @@ void UltraCanvasWordCloudElement::SetCenterImage(const std::string& path, float 
     centerImage.imagePath = path;
     centerImage.sizeRatio = sizeRatio;
     centerImage.blockMode = blockMode;
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::ClearCenterImage() {
     centerImage = WordCloudCenterImage();
     centerPixmap.reset();
-    InvalidateLayout(); RequestRedraw();
+    DropLayoutCache(); RequestRedraw();
 }
 
 void UltraCanvasWordCloudElement::SetEnableHover(bool enable) {
@@ -449,7 +450,7 @@ void UltraCanvasWordCloudElement::Recolor() {
 // LAYOUT PIPELINE
 // =============================================================================
 
-void UltraCanvasWordCloudElement::InvalidateLayout() {
+void UltraCanvasWordCloudElement::DropLayoutCache() {
     layoutDirty = true;
 }
 

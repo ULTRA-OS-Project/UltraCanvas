@@ -156,7 +156,8 @@ Network scanners and printers are found over DNS-SD. One DNS-SD cannot reach
 — on another subnet — is named in `ULTRACANVAS_ESCL_SCANNERS` or
 `ULTRACANVAS_IPP_PRINTERS` (a comma-separated list of addresses) before
 DeviceExplorer starts. A driverless printer that a CUPS queue already reaches
-is listed once, under CUPS.
+is listed once, under CUPS; on Windows, one the machine already has a print
+queue for is listed once, under the Windows spooler.
 
 Planned categories (microphones, speakers, storage, serial, Bluetooth, GPIO …)
 appear in the tree automatically once IODeviceManager has a backend for them;
@@ -229,4 +230,4 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
-| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB or through a WSD port, it does not speak IPP, or a firewall blocks port 631. |
+| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB, it does not speak IPP, or a firewall blocks port 631. |

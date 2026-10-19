@@ -1,3 +1,37 @@
+#### 2026-10-15 *0.5.0*
+- **Desktop → At sign-in (Windows) is a choice of three:** *The Windows
+  desktop*, *UltraDesktop beside Explorer* (what the switch did before:
+  started now and at every sign-in, Explorer's taskbar hidden) and
+  *UltraDesktop instead of Explorer* - the whole desktop from the next
+  sign-in, with the tray icons and sign out on UltraDesktop itself, and
+  Explorer started in its place should UltraDesktop fail (framework changelog:
+  `desktopshell-instead-of-explorer`). The choice always shows what is set, and
+  a change that could not be made is said and undone on the page.
+
+#### 2026-10-14 *0.4.1*
+- **The desktop settings file is found in Application Support on macOS.**
+  UltraDesktop keeps `desktop.json` there now (UltraDesktop changelog 0.3.1);
+  the settings app reads and writes the same file through the same framework
+  rule, so the two never disagree about where it is.
+
+#### 2026-10-13 *0.4.0*
+- **Desktop → At sign-in (Windows): UltraDesktop in place of the Windows
+  desktop.** On switches over at once and for every sign-in after. Off brings
+  the Windows desktop back at once, with the taskbar as it was. A note on the
+  page tells you how to get back when the desktop does not come up. The row
+  only appears on Windows.
+- **Desktop → RAM disc can be emptied.** An empty field now means no RAM disc
+  button, instead of keeping the previous folder.
+
+#### 2026-10-12 *0.3.1*
+- **One UOS-Settings at a time.** Starting UOS-Settings while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of opening a second copy. Two starts
+  at the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UOS-Settings is already running"*. Command-line modes
+  (`--version`) are unaffected. Framework: `UltraCanvasSingleInstance`
+  (framework changelog: `instance-lock`).
+
 #### 2026-10-05 *0.3.0*
 - **Trusted certificates names each device.** The list showed only the
   address a key is kept under, so two printers on one subnet read as two

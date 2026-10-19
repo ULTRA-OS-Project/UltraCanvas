@@ -9,48 +9,43 @@
  {
    iface->get_item_type = pango_font_family_get_item_type;
    iface->get_n_items = pango_font_family_get_n_items;
---- a/pango/pangofc-fontmap.c
-+++ b/pango/pangofc-fontmap.c
-@@ -1444,7 +1444,7 @@
- }
- 
- static void
--pango_fc_font_map_list_model_init (GListModelInterface *iface)
-+pango_fc_font_map_list_model_init (GListModelInterface *iface, gpointer iface_data G_GNUC_UNUSED)
+--- a/pango/pango-attributes.c
++++ b/pango/pango-attributes.c
+@@ -1931,6 +1931,14 @@
+  *   which should be freed with [method@Pango.AttrList.unref].
+  *   Returns %NULL if @list was %NULL.
+  */
++/* wasm: pango_attribute_copy takes one argument and GCopyFunc two; a
++ * call through the cast traps on wasm's indirect-call signature check. */
++static gpointer
++copy_attribute (gconstpointer src, gpointer user_data G_GNUC_UNUSED)
++{
++  return pango_attribute_copy ((const PangoAttribute *) src);
++}
++
+ PangoAttrList *
+ pango_attr_list_copy (PangoAttrList *list)
  {
-   iface->get_item_type = pango_fc_font_map_get_item_type;
-   iface->get_n_items = pango_fc_font_map_get_n_items;
-@@ -3360,7 +3360,7 @@
- }
+@@ -1943,7 +1951,7 @@
+   if (!list->attributes || list->attributes->len == 0)
+     return new;
  
- static void
--pango_fc_family_list_model_init (GListModelInterface *iface)
-+pango_fc_family_list_model_init (GListModelInterface *iface, gpointer iface_data G_GNUC_UNUSED)
- {
-   iface->get_item_type = pango_fc_family_get_item_type;
-   iface->get_n_items = pango_fc_family_get_n_items;
---- a/pango/pangocairo-fcfont.c
-+++ b/pango/pangocairo-fcfont.c
-@@ -96,7 +96,7 @@
- }
+-  new->attributes = g_ptr_array_copy (list->attributes, (GCopyFunc)pango_attribute_copy, NULL);
++  new->attributes = g_ptr_array_copy (list->attributes, copy_attribute, NULL);
  
- static void
--cairo_font_iface_init (PangoCairoFontIface *iface)
-+cairo_font_iface_init (PangoCairoFontIface *iface, gpointer iface_data G_GNUC_UNUSED)
- {
-   iface->create_font_face = pango_cairo_fc_font_create_font_face;
-   iface->create_base_metrics_for_context = pango_cairo_fc_font_create_base_metrics_for_context;
---- a/pango/pangocairo-fcfontmap.c
-+++ b/pango/pangocairo-fcfontmap.c
-@@ -88,7 +88,7 @@
+   return new;
  }
+--- a/pango/pango-context.c
++++ b/pango/pango-context.c
+@@ -722,7 +722,7 @@
  
- static void
--cairo_font_map_iface_init (PangoCairoFontMapIface *iface)
-+cairo_font_map_iface_init (PangoCairoFontMapIface *iface, gpointer iface_data G_GNUC_UNUSED)
- {
-   iface->set_resolution = pango_cairo_fc_font_map_set_resolution;
-   iface->get_resolution = pango_cairo_fc_font_map_get_resolution_cairo;
+   update_metrics_from_items (metrics, language, sample_str, text_len, items);
+ 
+-  g_list_foreach (items, (GFunc)pango_item_free, NULL);
++  for (GList *_it = items; _it != NULL; _it = _it->next) pango_item_free ((PangoItem *) _it->data);
+   g_list_free (items);
+ 
+   g_object_unref (current_fonts);
 --- a/pango/pango-fontmap.c
 +++ b/pango/pango-fontmap.c
 @@ -48,7 +48,7 @@
@@ -71,17 +66,6 @@
  {
    iface->get_item_type = pango_font_map_get_item_type;
    iface->get_n_items = pango_font_map_get_n_items;
---- a/pango/pango-context.c
-+++ b/pango/pango-context.c
-@@ -722,7 +722,7 @@
- 
-   update_metrics_from_items (metrics, language, sample_str, text_len, items);
- 
--  g_list_foreach (items, (GFunc)pango_item_free, NULL);
-+  for (GList *_it = items; _it != NULL; _it = _it->next) pango_item_free ((PangoItem *) _it->data);
-   g_list_free (items);
- 
-   g_object_unref (current_fonts);
 --- a/pango/pango-item.c
 +++ b/pango/pango-item.c
 @@ -101,7 +101,7 @@
@@ -104,6 +88,28 @@
    g_slist_free (ot->attrs);
    g_slice_free (OpenTag, ot);
  }
+--- a/pango/pangocairo-fcfont.c
++++ b/pango/pangocairo-fcfont.c
+@@ -96,7 +96,7 @@
+ }
+ 
+ static void
+-cairo_font_iface_init (PangoCairoFontIface *iface)
++cairo_font_iface_init (PangoCairoFontIface *iface, gpointer iface_data G_GNUC_UNUSED)
+ {
+   iface->create_font_face = pango_cairo_fc_font_create_font_face;
+   iface->create_base_metrics_for_context = pango_cairo_fc_font_create_base_metrics_for_context;
+--- a/pango/pangocairo-fcfontmap.c
++++ b/pango/pangocairo-fcfontmap.c
+@@ -88,7 +88,7 @@
+ }
+ 
+ static void
+-cairo_font_map_iface_init (PangoCairoFontMapIface *iface)
++cairo_font_map_iface_init (PangoCairoFontMapIface *iface, gpointer iface_data G_GNUC_UNUSED)
+ {
+   iface->set_resolution = pango_cairo_fc_font_map_set_resolution;
+   iface->get_resolution = pango_cairo_fc_font_map_get_resolution_cairo;
 --- a/pango/pangocairo-font.c
 +++ b/pango/pangocairo-font.c
 @@ -631,7 +631,7 @@
@@ -126,3 +132,23 @@
    g_slist_free (fcfont->metrics_by_lang);
  
    fontmap = g_weak_ref_get ((GWeakRef *) &fcfont->fontmap);
+--- a/pango/pangofc-fontmap.c
++++ b/pango/pangofc-fontmap.c
+@@ -1444,7 +1444,7 @@
+ }
+ 
+ static void
+-pango_fc_font_map_list_model_init (GListModelInterface *iface)
++pango_fc_font_map_list_model_init (GListModelInterface *iface, gpointer iface_data G_GNUC_UNUSED)
+ {
+   iface->get_item_type = pango_fc_font_map_get_item_type;
+   iface->get_n_items = pango_fc_font_map_get_n_items;
+@@ -3360,7 +3360,7 @@
+ }
+ 
+ static void
+-pango_fc_family_list_model_init (GListModelInterface *iface)
++pango_fc_family_list_model_init (GListModelInterface *iface, gpointer iface_data G_GNUC_UNUSED)
+ {
+   iface->get_item_type = pango_fc_family_get_item_type;
+   iface->get_n_items = pango_fc_family_get_n_items;

@@ -1,0 +1,36 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 1440x860. --><title>Editor layout — preview</title>
+<style>html,body{margin:0;height:860px;background:var(--bg-000)} .uv-app{height:860px;grid-template-rows:40px 541px auto} .uv-viewer{overflow:hidden;flex:none;height:469px} .uv-viewer__img{height:auto;width:100%;max-width:700px} .srch{margin:8px 8px 0;display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--bg-200);color:var(--ink-faint);font-size:12px}
+.fxrow{display:flex;align-items:center;gap:8px;height:28px;padding:0 6px;border-radius:var(--radius-sm);background:var(--bg-200);font-size:12px}
+.safe{position:absolute;inset:10%;border:1px dashed rgba(255,255,255,.35)}</style></head>
+<body>
+<div class="uv uv-app" id="app"></div>
+<script>
+  var U = UltraVideo, I = U.icon;
+  function g(ic, t, cls) { return '<button class="uv-btn uv-btn--ghost uv-btn--icon ' + (cls || '') + '" title="' + t + '">' + I(ic) + '</button>'; }
+  var assets = [['Beach_wide.mp4', '0:12', 0, 1], ['Forest_walk.mp4', '0:24', 1, 1], ['IMG_2041.jpg', 'photo', 2, 1], ['Interview_A.mov', '3:41', 3, 1], ['Snow_ridge.mp4', '0:18', 4, 0], ['Sunset.mp4', '0:09', 5, 1], ['Drone_pass.mp4', '0:31', 4, 1], ['Harbour.mp4', '0:15', 0, 0]];
+  var bin = assets.map(function (a, i) { return '<div class="uv-asset' + (i === 1 ? ' is-selected' : '') + '"><div class="uv-asset__thumb uv-shot-' + a[2] + '"><span class="uv-asset__dur">' + a[1] + '</span>' + (a[3] ? '<span class="uv-asset__used"></span>' : '') + '</div><div class="uv-asset__name">' + a[0] + '</div></div>'; }).join('');
+  var appbar = '<div class="uv-appbar"><span class="uv-appbar__title">Summer trip</span><span class="uv-cap">1920 × 1080 · 25 fps · Saved</span>' + g('undo', 'Undo (Ctrl+Z)') + g('redo', 'Redo (Ctrl+Shift+Z)') +
+    '<span class="uv-toolbar__spacer"></span><button class="uv-btn uv-btn--primary">' + I('export') + 'Export</button></div>';
+  var left = '<div class="uv-panel"><div class="uv-panel__head"><span class="uv-tab is-on">' + I('film', 'uv-ico--sm') + 'Media</span><span class="uv-tab">Music</span><span class="uv-tab">Titles</span><span class="uv-tab">Effects</span></div>' +
+    '<div class="srch">' + I('search', 'uv-ico--sm') + 'Search media</div><div class="uv-bin">' + bin + '</div></div>';
+  var mid = '<div class="uv-panel"><div class="uv-panel__head"><span class="uv-insp__title" style="padding-left:4px">Viewer</span><span class="uv-toolbar__spacer"></span><button class="uv-btn uv-btn--ghost">Fit ' + I('chevronDown', 'uv-ico--sm') + '</button></div>' +
+    '<div class="uv-viewer"><div class="uv-viewer__img uv-shot-1"><div class="safe"></div></div></div>' +
+    '<div class="uv-transport">' + g('toStart', 'Start (Home)') + g('stepBack', 'Previous frame (←)') + '<button class="uv-btn uv-btn--icon" title="Play (Space)">' + I('play') + '</button>' + g('stepFwd', 'Next frame (→)') + g('toEnd', 'End (End)') +
+    '<span class="uv-toolbar__spacer"></span><span class="uv-tc uv-tc--lg">00:00:11:05</span><span class="uv-cap uv-mono">/ 00:00:30:00</span><span class="uv-toolbar__spacer"></span>' + g('speaker', 'Volume') + g('fit', 'Full screen (F11)') + '</div></div>';
+  function prop(k, v) { return '<div class="uv-prop"><span class="uv-prop__k">' + k + '</span>' + v + '</div>'; }
+  function slider(p) { return '<span class="uv-slider"><span class="uv-slider__fill" style="width:' + p + '%"></span><span class="uv-slider__knob" style="left:' + p + '%"></span></span>'; }
+  var right = '<div class="uv-panel"><div class="uv-panel__head"><span class="uv-tab is-on">Clip</span><span class="uv-tab">Audio</span><span class="uv-tab">Project</span></div><div class="uv-insp">' +
+    '<div class="uv-insp__sec"><span class="uv-insp__title">Forest_walk.mp4</span>' + prop('In', '<span class="uv-tc">00:00:02:10</span>') + prop('Out', '<span class="uv-tc">00:00:10:20</span>') + prop('Duration', '<span class="uv-mono" style="font-size:12px">5.5 s on timeline</span>') + '</div>' +
+    '<div class="uv-insp__sec">' + prop('Speed', '<span class="uv-row" style="flex-wrap:nowrap">' + slider(42) + '<span class="uv-mono" style="font-size:12px">1.50×</span></span>') + prop('Volume', '<span class="uv-row" style="flex-wrap:nowrap">' + slider(80) + '<span class="uv-mono" style="font-size:12px">−2 dB</span></span>') + prop('Mute', '<button class="uv-btn uv-btn--ghost uv-btn--icon">' + I('speaker') + '</button>') + '</div>' +
+    '<div class="uv-insp__sec"><span class="uv-insp__title">Effects</span><div class="fxrow">' + I('fx', 'uv-ico--sm') + '<span style="flex:1">Warm film</span>' + I('eye', 'uv-ico--sm') + '</div><div class="fxrow">' + I('title', 'uv-ico--sm') + '<span style="flex:1">Title · Opening</span>' + I('eye', 'uv-ico--sm') + '</div><button class="uv-btn">' + I('plus') + 'Add effect</button></div>' +
+    '<div class="uv-insp__sec" style="border:0"><span class="uv-insp__title">Transition in</span>' + prop('Type', '<button class="uv-btn" style="justify-content:space-between">Cross dissolve ' + I('chevronDown', 'uv-ico--sm') + '</button>') + prop('Length', '<span class="uv-tc">00:00:01:00</span>') + '</div></div></div>';
+  var tb = '<div class="uv-toolbar">' + g('select', 'Select (V)', 'is-on') + g('blade', 'Blade (B)') + g('ripple', 'Trim (T)') + g('slip', 'Slip (Y)') + '<span class="uv-toolbar__sep"></span>' + g('split', 'Split (S)') + g('trash', 'Delete') + g('marker', 'Marker (M)') +
+    '<span class="uv-toolbar__sep"></span>' + g('magnet', 'Magnetic (P)', 'is-on') + g('snap', 'Snapping (N)', 'is-on') + g('beat', 'Beats (Shift+B)', 'is-on') + '<span class="uv-toolbar__spacer"></span>' +
+    g('zoomOut', 'Zoom out') + '<span class="uv-zoom"><span class="uv-zoom__fill" style="width:42%"></span><span class="uv-zoom__knob" style="left:42%"></span></span>' + g('zoomIn', 'Zoom in') + g('fit', 'Fit') + '</div>';
+  document.getElementById('app').innerHTML = appbar + '<div class="uv-work">' + left + mid + right + '</div><div class="uv-dock"><div class="uv-splitter"></div>' + tb + '<div id="tl"></div></div>';
+  U.timeline(document.getElementById('tl'), U.demoModel());
+</script>
+</body>
+</html>

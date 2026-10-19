@@ -521,65 +521,10 @@ void VisionDialog::RunCapability() {
 }
 
 // ===================================================================
-// TranslatorDialog (ITranslator)
+// Translation moved to its own dedicated dialog, built like the Chat
+// window (endpoint picker + Settings, no service-dialog chrome):
+// see UltraAITranslatorDialog.h / .cpp.
 // ===================================================================
-
-TranslatorDialog::TranslatorDialog()
-    : UltraAIServiceDialog("Translation",
-        "Translate one line of text per line of input. Source language "
-        "is auto-detected when left empty.") {}
-
-long TranslatorDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListTranslatorProviders());
-
-    AddDialogElement(MakeLabel("tr-text-lbl", kMargin, y,
-                               kFormWidth, kLabelHeight,
-                               "Texts (one per line)"));
-    y += kLabelHeight + 2;
-    input1_ = MakeTextArea("tr-text", kMargin, y, kFormWidth, 80,
-                        "ich bin der schnelle fuchs");
-    AddDialogElement(input1_);
-    y += 80 + kRowGap;
-
-    AddDialogElement(MakeLabel("tr-tgt-lbl", kMargin, y,
-                               kFormWidth, kLabelHeight,
-                               "Target language (BCP-47)"));
-    y += kLabelHeight + 2;
-    input2_ = MakeInput("tr-tgt", kMargin, y, 120, kRowHeight, "fr");
-    AddDialogElement(input2_);
-    y += kRowHeight + kRowGap;
-    return y;
-}
-
-void TranslatorDialog::RunCapability() {
-    SetStatus("Running...");
-
-    Error createError;
-    auto tr = CreateTranslator({.providerId = SelectedProviderId()},
-                               &createError);
-    if (!tr) {
-        SetStatus("Failed to create Translator: " + createError.message);
-        return;
-    }
-
-    TranslateRequest req;
-    req.texts = SplitLines(input1_ ? input1_->GetText() : "");
-    req.targetLanguage = input2_ ? input2_->GetText() : "en";
-    if (req.texts.empty()) {
-        SetStatus("Provide at least one input line"); return;
-    }
-
-    auto resp = tr->Translate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error);
-    for (size_t i = 0; i < resp.results.size(); ++i) {
-        const auto& r = resp.results[i];
-        os << "[" << r.detectedSourceLanguage << "->" << req.targetLanguage
-           << "]  " << r.text << "\n";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
-}
 
 // ===================================================================
 // VideoGenDialog (IVideoGen)

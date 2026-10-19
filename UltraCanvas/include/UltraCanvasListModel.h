@@ -87,6 +87,7 @@ namespace UltraCanvas {
         virtual bool SetData(const ListIndex& index, ListDataRole role, const ListDataValue& value) = 0;
 
         virtual ListColumnDef GetColumnDef(int column) const {
+            (void)column;
             return ListColumnDef("", 100);
         }
 

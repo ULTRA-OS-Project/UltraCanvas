@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasParliamentDiagram.cpp
 // Parliament (hemicycle) seat diagram implementation
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-09-10
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasParliamentDiagram.h"
@@ -54,7 +55,7 @@ namespace UltraCanvas {
     void UltraCanvasParliamentDiagram::AddParty(const ParliamentParty& party) {
         parties.push_back(party);
         if (parties.back().seats < 0) parties.back().seats = 0;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -70,7 +71,7 @@ namespace UltraCanvas {
         hoveredParty = SIZE_MAX;
         hoveredSeat = SIZE_MAX;
         selectedParty = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -81,7 +82,7 @@ namespace UltraCanvas {
         hoveredSeat = SIZE_MAX;
         if (selectedParty == index) selectedParty = SIZE_MAX;
         else if (selectedParty != SIZE_MAX && selectedParty > index) --selectedParty;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -90,14 +91,14 @@ namespace UltraCanvas {
         hoveredParty = SIZE_MAX;
         hoveredSeat = SIZE_MAX;
         selectedParty = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasParliamentDiagram::SetPartySeats(size_t index, int seats) {
         if (index >= parties.size()) return;
         parties[index].seats = std::max(0, seats);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -111,7 +112,7 @@ namespace UltraCanvas {
         if (index >= parties.size()) return;
         parties[index].government = government;
         // The Westminster blocks are filled by side, so this moves seats.
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -142,7 +143,7 @@ namespace UltraCanvas {
     void UltraCanvasParliamentDiagram::SetLayout(ParliamentLayout l) {
         if (layout == l) return;
         layout = l;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -150,7 +151,7 @@ namespace UltraCanvas {
         double clamped = std::clamp(degrees, 90.0, 360.0);
         if (arcSpanDegrees == clamped) return;
         arcSpanDegrees = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -158,7 +159,7 @@ namespace UltraCanvas {
         int clamped = std::max(0, rows);
         if (rowCount == clamped) return;
         rowCount = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -166,7 +167,7 @@ namespace UltraCanvas {
         double clamped = (ratio <= 0.0) ? 0.0 : std::clamp(ratio, 0.05, 0.9);
         if (innerRadiusRatio == clamped) return;
         innerRadiusRatio = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -174,7 +175,7 @@ namespace UltraCanvas {
         double clamped = std::clamp(fraction, 0.0, 0.8);
         if (seatGap == clamped) return;
         seatGap = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -182,7 +183,7 @@ namespace UltraCanvas {
         int clamped = std::max(0, columns);
         if (gridColumns == clamped) return;
         gridColumns = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -201,7 +202,7 @@ namespace UltraCanvas {
     void UltraCanvasParliamentDiagram::SetShowTotalLabel(bool show) {
         if (showTotalLabel == show) return;
         showTotalLabel = show;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -213,7 +214,7 @@ namespace UltraCanvas {
     void UltraCanvasParliamentDiagram::SetShowMajorityMarker(bool show) {
         if (showMajorityMarker == show) return;
         showMajorityMarker = show;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -237,32 +238,32 @@ namespace UltraCanvas {
     void UltraCanvasParliamentDiagram::SetShowSpeakerChair(bool show) {
         if (showSpeakerChair == show) return;
         showSpeakerChair = show;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasParliamentDiagram::SetLegendPosition(ParliamentLegendPosition position) {
         if (legendPosition == position) return;
         legendPosition = position;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasParliamentDiagram::SetTitleFontSize(float size) {
         titleFontSize = std::max(6.0f, size);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasParliamentDiagram::SetTotalFontSize(float size) {
         totalFontSize = std::max(6.0f, size);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasParliamentDiagram::SetLegendFontSize(float size) {
         legendFontSize = std::max(6.0f, size);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 

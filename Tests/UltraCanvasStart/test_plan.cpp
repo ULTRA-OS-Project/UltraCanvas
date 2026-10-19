@@ -1,11 +1,20 @@
 // Tests/UltraCanvasStart/test_plan.cpp
 // The plan, the SDK names and the report.
+// Version: 0.1.4 - an installed MSYS2 is updated first; RunStep streams its lines
+// Version: 0.1.3 - Windows without MSYS2: winget sets it up before pacman
+// Version: 0.1.2 - a check switched off is left out of the install
+// Version: 0.1.1 - the SDK download page and SdkUnpackedFolder
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "StartPlan.h"
+
+#include <algorithm>
+#include "StartGuide.h"
+#include "StartRunner.h"
 #include "StartSdk.h"
+#include "StartSystem.h"
 
 using namespace UltraCanvasStart;
 
@@ -30,8 +39,16 @@ TEST(SdkArtifactName_matches_the_workflow) {
                std::string("UltraCanvas-SDK-MacOS-0.9.147-arm64.tar.gz"));
     REQUIRE_EQ(SdkArchiveName(Platform::Windows, "0.9.147", "x86_64"),
                std::string("UltraCanvas-SDK-Windows-0.9.147-x86_64.zip"));
-    REQUIRE(SdkReleaseAssetUrl(Platform::Linux, "1.0.0", "arm64").find(
-        "/releases/download/v1.0.0/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.gz") != std::string::npos);
+    REQUIRE_EQ(SdkArchiveName(Platform::Linux, "0.9.147", "x86_64"),
+               std::string("UltraCanvas-SDK-Linux-0.9.147-x86_64.tar.xz"));
+    REQUIRE_EQ(SdkDownloadPage(), std::string("https://ultraos.eu/download-file/"));
+    REQUIRE_EQ(SdkUnpackedFolder("/home/me/Downloads/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.xz"),
+               std::string("/home/me/Downloads/UltraCanvas-SDK-Linux-1.0.0-arm64"));
+    REQUIRE_EQ(SdkUnpackedFolder("C:/dl/UltraCanvas-SDK-Windows-1.0.0-x86_64.zip"),
+               std::string("C:/dl/UltraCanvas-SDK-Windows-1.0.0-x86_64"));
+    REQUIRE_EQ(SdkUnpackedFolder("sdk.tar.gz"), std::string("sdk"));
+    REQUIRE_EQ(SdkReleasePage("0.9.211"),
+               std::string("https://github.com/ULTRA-OS-Project/UltraCanvas/releases/tag/v0.9.211"));
     REQUIRE(!FrameworkVersion().empty());
 }
 
@@ -63,6 +80,107 @@ TEST(BuildPlan_installs_only_what_the_checks_miss) {
     REQUIRE(pango);
     REQUIRE(!cmake);
 }
+
+TEST(BuildPlan_leaves_out_what_is_switched_off) {
+    const SystemProfile profile = UbuntuProfile();
+    Choices choices;
+    choices.platform = Platform::Linux;
+    std::vector<CheckResult> checks(2);
+    checks[0].dependencyId = "cairo"; checks[0].checked = true; checks[0].present = false;
+    checks[0].packageName = "libcairo2-dev";
+    checks[1].dependencyId = "pango"; checks[1].checked = true; checks[1].present = false;
+    checks[1].packageName = "libpango1.0-dev";
+
+    choices.SetSkipped("cairo", true);
+    choices.SetSkipped("cairo", true);
+    REQUIRE_EQ(choices.skipped.size(), size_t(1));
+    Plan plan = BuildPlan(profile, choices, checks);
+    REQUIRE_EQ(plan.MissingCount(), size_t(2));
+    REQUIRE_EQ(plan.SkippedCount(), size_t(1));
+    REQUIRE(plan.steps.front().kind == StepKind::Install);
+    bool cairo = false, pango = false;
+    for (const auto& a : plan.steps.front().argv) {
+        cairo |= a == "libcairo2-dev";
+        pango |= a == "libpango1.0-dev";
+    }
+    REQUIRE(!cairo);
+    REQUIRE(pango);
+    REQUIRE(RenderReport(plan).find("switched off, not installed") != std::string::npos);
+
+    // Both off: no install step at all.
+    choices.SetSkipped("pango", true);
+    plan = BuildPlan(profile, choices, checks);
+    REQUIRE(plan.steps.front().kind != StepKind::Install);
+
+    // Back on.
+    choices.SetSkipped("cairo", false);
+    REQUIRE(!choices.Skips("cairo"));
+    REQUIRE(BuildPlan(profile, choices, checks).steps.front().kind == StepKind::Install);
+}
+
+TEST(BuildPlan_on_Windows_without_MSYS2_sets_it_up_first) {
+    SystemProfile profile;
+    profile.platform = Platform::Windows;
+    profile.architecture = "x86_64";
+    REQUIRE(InstallingPackageManager(profile) == PackageManager::Msys2Pacman);
+    Choices choices;
+    choices.platform = Platform::Windows;
+    std::vector<CheckResult> checks(2);
+    checks[0].dependencyId = "cmake"; checks[0].checked = true;
+    checks[0].packageName = "mingw-w64-clang-x86_64-cmake";
+    checks[1].dependencyId = "git"; checks[1].checked = true; checks[1].present = true;
+    checks[1].packageName = "git";
+
+    const Plan plan = BuildPlan(profile, choices, checks);
+    REQUIRE(plan.steps.size() >= 4);
+    REQUIRE_EQ(plan.steps[0].argv[0], std::string("winget"));
+    REQUIRE(plan.steps[0].setsUpPackageManager);
+    REQUIRE_EQ(plan.steps[1].argv[0], std::string("C:/msys64/usr/bin/bash.exe"));
+    REQUIRE(plan.steps[1].mayFail);
+    REQUIRE(!plan.steps[2].mayFail);
+    const PlanStep& pacman = plan.steps[3];
+    REQUIRE(pacman.kind == StepKind::Install);
+    REQUIRE(!pacman.setsUpPackageManager);
+    REQUIRE_EQ(pacman.argv[0], std::string("C:/msys64/usr/bin/pacman.exe"));
+    REQUIRE_EQ(pacman.argv.back(), std::string("mingw-w64-clang-x86_64-cmake"));
+
+    const std::string preview = InstallPreview(plan);
+    REQUIRE(preview.find("MSYS2 is not installed: Install sets it up with winget") == 0);
+    REQUIRE(preview.find("\nwinget install --id MSYS2.MSYS2") != std::string::npos);
+    REQUIRE(preview.find("pacman.exe -S --needed --noconfirm mingw-w64-clang-x86_64-cmake") != std::string::npos);
+
+    // With MSYS2 there, no set-up steps.
+    profile.msysPrefix = "C:/msys64";
+    profile.packageManager = PackageManager::Msys2Pacman;
+    profile.packageManagerPath = "C:/msys64/usr/bin/pacman.exe";
+    const Plan found = BuildPlan(profile, choices, checks);
+    for (const auto& step : found.steps) REQUIRE(!step.setsUpPackageManager);
+    // ...but it is updated before pacman -S: old package lists 404.
+    REQUIRE(found.steps.size() >= 3);
+    REQUIRE_EQ(found.steps[0].argv[0], std::string("C:/msys64/usr/bin/bash.exe"));
+    REQUIRE_EQ(found.steps[0].argv.back(), std::string("pacman -Syuu --noconfirm"));
+    REQUIRE(found.steps[0].mayFail);
+    REQUIRE(!found.steps[1].mayFail);
+    REQUIRE_EQ(found.steps[2].argv[0], std::string("C:/msys64/usr/bin/pacman.exe"));
+    REQUIRE(InstallPreview(found).find("Install updates MSYS2, installs the 1 missing") == 0);
+}
+
+#if !defined(_WIN32)
+TEST(RunStep_hands_over_the_lines_as_they_come) {
+    PlanStep step;
+    step.kind = StepKind::Install;
+    step.argv = { "/bin/sh", "-c", "printf 'one\\ntwo\\r'; printf 'err\\n' >&2; printf three" };
+    std::vector<std::string> lines;
+    const RunResult result = RunStep(step, UbuntuProfile(), [&](const std::string& line) { lines.push_back(line); });
+    REQUIRE(result.Succeeded());
+    REQUIRE_EQ(lines.size(), size_t(4));
+    REQUIRE(std::find(lines.begin(), lines.end(), "one") != lines.end());
+    REQUIRE(std::find(lines.begin(), lines.end(), "two") != lines.end());
+    REQUIRE(std::find(lines.begin(), lines.end(), "err") != lines.end());
+    REQUIRE_EQ(lines.back(), std::string("three"));
+    REQUIRE(result.output.find("one\ntwo") == 0);
+}
+#endif
 
 TEST(BuildPlan_for_another_platform_lists_everything) {
     const SystemProfile profile = UbuntuProfile();

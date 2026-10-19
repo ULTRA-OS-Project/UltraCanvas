@@ -7,8 +7,14 @@
 // Tools are stateless between activations except for what their options
 // hold; PaintToolOptions is the shared, user-editable state (brush sizes,
 // tolerances, shape style, …) that survives tool switches.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.3.1 - textControlDone: a Text option's list closed without a choice hands the
+//                  keyboard back to the text being typed
+// Version: 1.3.0 - the Text tool types on the canvas into a text layer: requestText with a box,
+//                  textOptionChanged, askRasterize; italic, underline and alignment options
+// Version: 1.2.1 - shortcutShift / ShortcutLabel: a tool's key can need Shift (the Eraser's Shift+X)
+// Version: 1.2.0 - Polyline, Arrow and Curve, the Lines group's tools beside Line
+// Version: 1.1.0 - WantsMagnifier: a tool that places things to the pixel asks for the magnifying glass
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -16,6 +22,7 @@
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 
 #include <functional>
 #include <memory>
@@ -27,7 +34,7 @@ namespace UltraCanvas {
 enum class PaintToolId {
     Move = 0, RectSelect, EllipseSelect, Lasso, MagicWand, Crop, Eyedropper,
     Pencil, Brush, Airbrush, Eraser, Clone, Smudge, Dodge, Burn,
-    Fill, Gradient, Line, Rectangle, Ellipse, Text, Zoom, Pan,
+    Fill, Gradient, Line, Polyline, Arrow, Curve, Rectangle, Ellipse, Text, Zoom, Pan,
     Count
 };
 
@@ -45,6 +52,9 @@ struct PaintToolOptions {
     bool  fillContiguous = true;
     bool  fillSampleMerged = false;
     float fillOpacity = 1.0f;
+    // Normal paints over the pixels; Replace sets them to the colour, its
+    // alpha included, which is how a fill makes an area transparent.
+    RasterPaint::FillCompositing fillCompositing = RasterPaint::FillCompositing::Blend;
 
     int   wandTolerance = 32;
     bool  wandContiguous = true;
@@ -53,7 +63,9 @@ struct PaintToolOptions {
     RasterPaint::GradientKind gradientKind = RasterPaint::GradientKind::Linear;
     float gradientOpacity = 1.0f;
 
-    float shapeStrokeWidth = 2.0f;
+    float shapeStrokeWidth = 2.0f;      // also the Lines group's width
+    float arrowHeadSize = 16.0f;        // px; at least three times the line width
+    bool  arrowBothEnds = false;
     bool  shapeStroke = true;
     bool  shapeFill = false;
     bool  shapeAntialias = true;
@@ -64,9 +76,13 @@ struct PaintToolOptions {
     int   eyedropperRadius = 0;
     bool  eyedropperMerged = true;
 
+    // The Text tool: what a new text starts in, and what the panel shows.
     std::string textFont = "Sans";
-    int   textSize = 32;
+    int   textSize = 32;              // pixels
     bool  textBold = false;
+    bool  textItalic = false;
+    bool  textUnderline = false;
+    int   textAlign = 0;              // 0 left, 1 centre, 2 right
 
     bool  moveSelectionOnly = true;
 
@@ -83,8 +99,22 @@ struct PaintToolContext {
     std::function<void(const RasterPixel&)> setForeground;
     std::function<void(const RasterPixel&)> setBackground;
     std::function<void(const std::string&)> setStatus;
-    // The text tool asks the window to show its dialog at an image point.
-    std::function<void(double, double)> requestText;
+    // The Text tool: start typing at an image point - into the text layer
+    // whose box is under it, or into a new text there. `boxWidth` > 0 when a
+    // box was dragged out: the lines wrap at that width.
+    std::function<void(double x, double y, double boxWidth)> requestText;
+    // A Text tool option changed - "font", "size", "bold", "italic",
+    // "underline" or "align": the window applies it to the text being typed
+    // (its selection, or what is typed next) or to the active text layer.
+    std::function<void(const std::string& option)> textOptionChanged;
+    // A Text tool option's list closed without a choice (Escape, or the item
+    // it already had): the window gives the keyboard back to the text being
+    // typed, if `control` still has it.
+    std::function<void(UltraCanvasUIElement& control)> textControlDone;
+    // A tool is about to paint on a text layer: the window offers to
+    // rasterize it (the tool does nothing this time). `action` names what
+    // was about to happen ("Paintbrush", "Fill").
+    std::function<void(const std::string& action)> askRasterize;
     // A tool changed something the option panel shows (e.g. brush size by
     // bracket keys): rebuild it.
     std::function<void()> refreshOptions;
@@ -92,8 +122,12 @@ struct PaintToolContext {
 
 class PaintTool {
 public:
-    PaintTool(PaintToolId toolId, std::string toolName, std::string icon, char key, std::string toolHint)
-        : id(toolId), name(std::move(toolName)), iconFile(std::move(icon)), shortcutKey(key), hint(std::move(toolHint)) {}
+    // `shift`: the shortcut is Shift + `key` - the Eraser's Shift+X, its
+    // plain X being the colour swap.
+    PaintTool(PaintToolId toolId, std::string toolName, std::string icon, char key, std::string toolHint,
+              bool shift = false)
+        : id(toolId), name(std::move(toolName)), iconFile(std::move(icon)), shortcutKey(key),
+          shortcutShift(shift), hint(std::move(toolHint)) {}
     virtual ~PaintTool() = default;
 
     virtual void Activate(PaintToolContext&) {}
@@ -119,12 +153,23 @@ public:
     // Radius of the brush outline to draw at the pointer (image pixels), 0 = none.
     virtual double CursorRadius(PaintToolContext&) const { return 0.0; }
     virtual bool CursorSquare(PaintToolContext&) const { return false; }
+    // True for a tool that places things to the pixel: while it is active
+    // the window shows the mouse pointer magnification glass (Settings >
+    // Display), a magnified view of the pixels around the pointer.
+    virtual bool WantsMagnifier() const { return false; }
 
     const PaintToolId id;
     const std::string name;
     const std::string iconFile;     // relative to media/icons/ultrapaint/
     const char shortcutKey;         // single letter, 0 for none
+    const bool shortcutShift;       // with Shift
     const std::string hint;         // status-bar text while active
+
+    // How the shortcut reads in a tooltip: "B", "Shift+X"; "" for none.
+    std::string ShortcutLabel() const {
+        if (!shortcutKey) return "";
+        return (shortcutShift ? "Shift+" : "") + std::string(1, shortcutKey);
+    }
 };
 
 // Every tool in palette order.
@@ -145,9 +190,11 @@ namespace PaintOptionWidgets {
                       const std::function<void(float)>& onChange, float labelWidth = 0);
     void AddCheckbox(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
                      bool checked, const std::function<void(bool)>& onChange);
-    void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
-                     const std::vector<std::string>& items, int selected,
-                     const std::function<void(int)>& onChange);
+    // Returns the dropdown, for a caller that styles it further.
+    UltraCanvasDropdown* AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
+                                     const std::vector<std::string>& items, int selected,
+                                     const std::function<void(int)>& onChange);
+    // A one-line hint under the controls, in quiet grey.
     void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text);
     // The rows every brush-like tool shares.
     void AddBrushOptions(UltraCanvasContainer& panel, const std::string& idPrefix, UCBrushSettings& s,

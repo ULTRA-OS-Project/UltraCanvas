@@ -8,8 +8,19 @@
 // ftplog::Transcript (UltraNetFtpLog.h): it is what feeds the caller's session
 // log, and what lets a failure quote the server's last reply even when nobody
 // is listening to the log.
-// Version: 0.4.0 - session log, specific failure messages, inactivity timeout
-// Last Modified: 2026-10-04
+//
+// A connection outlives the call that made it (ThreadConnections below): the
+// next call on the same thread to the same server, as the same user, takes it
+// up without connecting or logging in again. And a server that refused MLSD
+// is not asked for it again (ListingFormats). Before both, every folder an
+// FTP drive showed cost a login - two on a server without MLSD, such as
+// vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.7.1 - an upload or download also ends when its thread's abort
+//                  check says so (UltraNet_SetThreadAbortCheck)
+// Version: 0.7.0 - a call can be called off (isCancelled, UltraNet_SetThreadFtpCancel)
+// Version: 0.6.0 - SFTP with a private key
+// Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetFtp.h"
@@ -17,13 +28,17 @@
 #include "UltraNetHttpEasy.h"   // MapCurlError (private helpers)
 #include "UltraNetFtpQuote.h"   // the text of DELE / RNFR-RNTO / MKD / RMD
 #include "UltraNetFtpLog.h"     // the session log
+#include "UltraNetFtpInternal.h"
 
 #include <curl/curl.h>
 
+#include <cctype>
 #include <cstdio>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include "../../include/UltraCanvasPathUtf8.h"
 
@@ -33,11 +48,152 @@ using ultranet_internal::ftplog::Channel;
 using ultranet_internal::ftplog::Transcript;
 
 // What the diagnostics chain names as the component that failed.
-constexpr const char* kComponent = "UltraNet FTP 0.4.0";
+constexpr const char* kComponent = "UltraNet FTP 0.5.0";
 
 // The log sink of calls made on this thread without an onLog of their own
 // (UltraNet_SetThreadFtpLog).
 thread_local UltraNetFtpLogCallback t_threadLog;
+
+// The "call it off" question of calls made on this thread without an
+// isCancelled of their own (UltraNet_SetThreadFtpCancel), and the one the call
+// running now asks - set by ApplyCommonOptions, read by the progress callback.
+// Per thread, because a call runs start to end on the thread that made it.
+thread_local std::function<bool()> t_threadCancel;
+thread_local std::function<bool()> t_callCancel;
+// Whether the call running now reports its bytes (ApplyProgressCallback): the
+// file transfers do, a listing or a DELE that only installed the callback to
+// be called off does not.
+thread_local bool t_callReports = false;
+
+// ===== Connections kept open between calls =====
+// libcurl keeps a finished transfer's connection in a pool for the next
+// transfer to the same server and user - but the pool belongs to the easy
+// handle, and every call here makes its own and frees it at the end, so the
+// connection went with it. A share object holding the pool
+// (CURL_LOCK_DATA_CONNECT) outlives the handles that attach it.
+//
+// One per thread, because libcurl does not support sharing connections
+// between threads that run transfers at the same time - and one thread
+// making call after call is the case worth speeding up: a file manager's
+// drive worker listing one folder after another. libcurl itself decides
+// whether a kept connection fits (same scheme, host, port, user, password
+// and TLS settings), notices one the server has closed in the meantime, and
+// drops one idle for longer than two minutes; the server's own idle timeout
+// closes it from the other side. Closing the pool sends QUIT, which libcurl
+// waits on for two seconds at most.
+
+// Every thread's pool, so that UltraNet_Shutdown can close them before
+// curl_global_cleanup. Never destroyed: a thread can end - and its
+// ThreadConnections with it - after static destruction has begun.
+struct KeptPools {
+    std::mutex mutex;
+    std::unordered_set<CURLSH**> slots;   // each thread's ThreadConnections::share_
+};
+
+KeptPools& Kept() {
+    static KeptPools* pools = new KeptPools;
+    return *pools;
+}
+
+class ThreadConnections {
+public:
+    ThreadConnections() = default;
+    ThreadConnections(const ThreadConnections&) = delete;
+    ThreadConnections& operator=(const ThreadConnections&) = delete;
+    ~ThreadConnections() { Close(); }
+
+    // The share this thread's calls attach, made on first use; null when
+    // libcurl cannot make one, which costs the reuse and nothing else.
+    CURLSH* Share() {
+        KeptPools& kept = Kept();
+        std::lock_guard<std::mutex> lk(kept.mutex);
+        if (share_) return share_;
+        CURLSH* share = curl_share_init();
+        if (!share) return nullptr;
+        // No lock callbacks: only this thread ever attaches it.
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+        share_ = share;
+        kept.slots.insert(&share_);
+        return share_;
+    }
+
+    // Closes this thread's kept connections. The QUIT is said outside the
+    // lock: every thread's next call takes it, and one server slow to answer
+    // must not hold up the calls to the others.
+    void Close() {
+        CURLSH* share = nullptr;
+        {
+            KeptPools& kept = Kept();
+            std::lock_guard<std::mutex> lk(kept.mutex);
+            kept.slots.erase(&share_);
+            share = share_;
+            share_ = nullptr;
+        }
+        if (share) curl_share_cleanup(share);
+    }
+
+private:
+    CURLSH* share_ = nullptr;   // guarded by Kept().mutex
+};
+
+thread_local ThreadConnections t_connections;
+
+// ===== What each server has said it cannot do =====
+// A server that answers MLSD with "500 Unknown command" says the same to
+// every folder, so after the first refusal its listings go straight to LIST.
+// Remembered for the life of the process, per server and user.
+struct ListingFormats {
+    std::mutex mutex;
+    std::unordered_set<std::string> withoutMlsd;
+};
+
+ListingFormats& Formats() {
+    static ListingFormats* formats = new ListingFormats;
+    return *formats;
+}
+
+// "ftp://erika@files.example.org:2121" for "ftp://files.example.org:2121/pub/"
+// signed in as erika: the scheme and the authority, in lower case, without a
+// password the URL may carry, and with the user the options sign in as.
+std::string ServerKey(const std::string& url, const UltraNetFtpOptions& opt) {
+    std::size_t start = url.find("://");
+    std::string scheme = start == std::string::npos ? std::string() : url.substr(0, start);
+    start = start == std::string::npos ? 0 : start + 3;
+    std::size_t end = url.find('/', start);
+    if (end == std::string::npos) end = url.size();
+    std::string authority = url.substr(start, end - start);
+    std::string user = opt.credentials.username;
+    const std::size_t at = authority.rfind('@');
+    if (at != std::string::npos) {
+        if (user.empty()) user = authority.substr(0, authority.find(':'));
+        authority.erase(0, at + 1);
+    }
+    for (char& c : scheme) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (char& c : authority) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return scheme + "://" + user + "@" + authority;
+}
+
+bool ServerRefusesMlsd(const std::string& key) {
+    ListingFormats& f = Formats();
+    std::lock_guard<std::mutex> lk(f.mutex);
+    return f.withoutMlsd.count(key) > 0;
+}
+
+void RememberServerRefusesMlsd(const std::string& key) {
+    ListingFormats& f = Formats();
+    std::lock_guard<std::mutex> lk(f.mutex);
+    f.withoutMlsd.insert(key);
+}
+
+// The replies that say the server does not have the command at all, rather
+// than that it will not list this folder: 500 unknown command, 502 not
+// implemented, 504 not implemented for that parameter. A 550 is a refusal of
+// the folder, and LIST will hear the same.
+bool IsUnknownCommandReply(int code) {
+    return code == 500 || code == 502 || code == 504;
+}
 
 std::size_t WriteToFile(char* data, std::size_t size, std::size_t nmemb, void* ud) {
     std::FILE* fp = static_cast<std::FILE*>(ud);
@@ -70,6 +226,9 @@ Transcript MakeTranscript(const UltraNetFtpOptions& opt, const std::string& url)
     return Transcript(opt.onLog ? opt.onLog : t_threadLog, IsSftpUrl(url));
 }
 
+int ReportTransferProgress(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
+                           curl_off_t ultotal, curl_off_t ulnow);
+
 void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
     if (!opt.credentials.username.empty()) {
         curl_easy_setopt(h, CURLOPT_USERNAME, opt.credentials.username.c_str());
@@ -78,6 +237,20 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
     if (opt.useTls) {
         curl_easy_setopt(h, CURLOPT_USE_SSL,
                          opt.implicitTls ? CURLUSESSL_ALL : CURLUSESSL_TRY);
+    }
+    // SFTP with a key: the key first, the password after it when there is
+    // one. Without a key libcurl's default (every method it has) stands, so
+    // an sftp:// server that takes a password keeps working as before. The
+    // options only matter to sftp:// and are ignored by the FTP handlers.
+    if (!opt.sshPrivateKeyFile.empty()) {
+        curl_easy_setopt(h, CURLOPT_SSH_PRIVATE_KEYFILE, opt.sshPrivateKeyFile.c_str());
+        if (!opt.sshPublicKeyFile.empty())
+            curl_easy_setopt(h, CURLOPT_SSH_PUBLIC_KEYFILE, opt.sshPublicKeyFile.c_str());
+        if (!opt.sshKeyPassphrase.empty())
+            curl_easy_setopt(h, CURLOPT_KEYPASSWD, opt.sshKeyPassphrase.c_str());
+        long methods = CURLSSH_AUTH_PUBLICKEY;
+        if (!opt.credentials.password.empty()) methods |= CURLSSH_AUTH_PASSWORD;
+        curl_easy_setopt(h, CURLOPT_SSH_AUTH_TYPES, methods);
     }
     curl_easy_setopt(h, CURLOPT_FTP_USE_EPSV, opt.passiveMode ? 1L : 0L);
     curl_easy_setopt(h, CURLOPT_FTP_CREATE_MISSING_DIRS,
@@ -105,6 +278,20 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 #endif
     }
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    // A call that can be called off asks through the progress callback, which
+    // libcurl runs while bytes move and about once a second while they do
+    // not - so a transfer that has stalled is called off as promptly as one
+    // in full flow.
+    t_callCancel = opt.isCancelled ? opt.isCancelled : t_threadCancel;
+    t_callReports = false;
+    if (t_callCancel) {
+        curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
+        curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
+        curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
+    }
+    // The connection the last call on this thread left open, if it fits.
+    if (CURLSH* share = t_connections.Share())
+        curl_easy_setopt(h, CURLOPT_SHARE, share);
 }
 
 // Transfer progress for a file moving to or from a server.
@@ -120,6 +307,12 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 // this takes.
 int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dlnow,
                            curl_off_t ultotal, curl_off_t ulnow) {
+    // Called off - by this call's own question, or by the thread's owner
+    // wanting the thread back (UltraNet_SetThreadAbortCheck): libcurl ends the
+    // call with CURLE_ABORTED_BY_CALLBACK, which the result reports as
+    // Cancelled.
+    if ((t_callCancel && t_callCancel()) || UltraNet_ThreadAbortRequested()) return 1;
+    if (!t_callReports) return 0;
     const UltraNetTransferCallbacks cb = UltraNet_GetTransferCallbacks();
     if (cb.onDownloadProgress && dlnow > 0) {
         cb.onDownloadProgress(static_cast<int64_t>(dlnow),
@@ -129,12 +322,13 @@ int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dl
         cb.onUploadProgress(static_cast<int64_t>(ulnow),
                             static_cast<int64_t>(ultotal));
     }
-    return 0;   // non-zero would abort the transfer
+    return 0;   // non-zero aborts the transfer
 }
 
 // Turns the progress callback on for one handle. Only the two file transfers
 // use it: a listing or a DELE moves too little for anyone to watch.
 void ApplyProgressCallback(CURL* h) {
+    t_callReports = true;
     curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
     curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
     curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
@@ -168,7 +362,10 @@ public:
               : !opt.useTls     ? "none - plain FTP, password and data unencrypted"
               : opt.implicitTls ? "implicit (TLS from connect)"
                                 : "explicit (AUTH TLS; continues without it when refused)";
-        c.signIn = opt.credentials.username.empty() ? "anonymous" : "user name and password";
+        c.signIn = opt.credentials.username.empty()      ? "anonymous"
+                 : !opt.sshPrivateKeyFile.empty()         ? "user name and private key " + opt.sshPrivateKeyFile +
+                                                            (opt.credentials.password.empty() ? "" : ", then the password")
+                                                          : "user name and password";
     }
     ~DiagnosticsContext() { ultranet_curlerror::CurrentContext() = saved_; }
     DiagnosticsContext(const DiagnosticsContext&) = delete;
@@ -216,8 +413,10 @@ UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions
     }
     r.code    = MapFtpError(rc);
     r.success = false;
-    r.message = ultranet_internal::ftplog::FailureMessage(
-            detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
+    r.message = rc == CURLE_ABORTED_BY_CALLBACK
+            ? std::string("called off")   // the caller's isCancelled said so
+            : ultranet_internal::ftplog::FailureMessage(
+                      detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
     r.diagnostics = diagnostics;
     if (log.LastReplyCode() > 0) r.diagnostics += "Last server reply: " + log.LastReply() + "\n";
     return r;
@@ -276,6 +475,46 @@ UltraNetFtpLogCallback UltraNet_SetThreadFtpLog(UltraNetFtpLogCallback sink) {
     return previous;
 }
 
+std::function<bool()> UltraNet_SetThreadFtpCancel(std::function<bool()> isCancelled) {
+    std::function<bool()> previous = std::move(t_threadCancel);
+    t_threadCancel = std::move(isCancelled);
+    return previous;
+}
+
+void UltraNet_FtpCloseIdleConnections() {
+    t_connections.Close();
+}
+
+namespace ultranet_internal {
+
+// Called by UltraNet_Shutdown before curl_global_cleanup: every thread's kept
+// connections are closed, since libcurl may not be called once it is gone. A
+// thread that calls again afterwards starts a pool of its own.
+void CloseFtpConnections() {
+    std::vector<CURLSH*> shares;
+    {
+        KeptPools& kept = Kept();
+        std::lock_guard<std::mutex> lk(kept.mutex);
+        for (CURLSH** slot : kept.slots) {
+            if (*slot) shares.push_back(*slot);
+            *slot = nullptr;
+        }
+        kept.slots.clear();
+    }
+    for (CURLSH* share : shares) curl_share_cleanup(share);
+}
+
+namespace ftp {
+
+void ForgetServerListingFormats() {
+    ListingFormats& f = Formats();
+    std::lock_guard<std::mutex> lk(f.mutex);
+    f.withoutMlsd.clear();
+}
+
+} // namespace ftp
+} // namespace ultranet_internal
+
 // Listing parsers live in ultranet_internal::ftp:: rather than the anonymous
 // namespace so the test suite can call them directly with synthetic input.
 // See UltraNetFtpInternal.h for the public-to-test declarations.
@@ -292,6 +531,11 @@ namespace ultranet_internal::ftp {
 // Returns true if the line is a valid MLSD entry; false otherwise (caller
 // then tries other formats).
 bool ParseMlsdLine(const std::string& line, UltraNetFtpEntry& out) {
+    // The listed folder itself and its parent (type=cdir / pdir) are not
+    // entries of it, whatever name they carry: "." and "..", or the folder's
+    // own path ("type=cdir; /pub"), which would otherwise be shown as a
+    // subfolder called "/pub".
+    if (IsMlsdSelfOrParentLine(line)) return false;
     const std::size_t spaceAfterFacts = line.find(' ');
     if (spaceAfterFacts == std::string::npos) return false;
     const std::string facts = line.substr(0, spaceAfterFacts);
@@ -367,6 +611,40 @@ bool ParseMlsdLine(const std::string& line, UltraNetFtpEntry& out) {
     return true;
 }
 
+// Whether `line` is an MLSD line - facts, one space, a name - for the listed
+// folder itself or its parent: type=cdir / type=pdir, or the name "." / "..".
+bool IsMlsdSelfOrParentLine(const std::string& line) {
+    const std::size_t space = line.find(' ');
+    if (space == std::string::npos) return false;
+    std::string facts = line.substr(0, space);
+    if (facts.find('=') == std::string::npos) return false;
+    const std::string name = line.substr(space + 1);
+    if (name == "." || name == "..") return true;
+    for (char& c : facts) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    // As a whole fact: "type=cdir" at the start or after a ';'.
+    for (const char* type : {"type=cdir", "type=pdir"}) {
+        const std::size_t at = facts.find(type);
+        if (at == std::string::npos || (at > 0 && facts[at - 1] != ';')) continue;
+        const std::size_t end = at + std::string(type).size();
+        if (end == facts.size() || facts[end] == ';') return true;
+    }
+    return false;
+}
+
+// Whether `line` is a LIST line for "." or "..": a folder line whose name,
+// after the eight ls -l fields, is one of the two - what a server listing
+// like `ls -la` sends before the folder's entries.
+bool IsUnixSelfOrParentLine(const std::string& line) {
+    if (line.empty() || line[0] != 'd') return false;
+    std::istringstream is(line);
+    std::string field;
+    for (int i = 0; i < 8; ++i)
+        if (!(is >> field)) return false;
+    std::string name, more;
+    if (!(is >> name) || (is >> more)) return false;
+    return name == "." || name == "..";
+}
+
 // Parses a UNIX ls -l-style line (common LIST output from FTP servers,
 // also the format libcurl's SFTP emits). Example:
 //   "drwxr-xr-x 2 alice users 4096 Dec 15 12:00 myfolder"
@@ -439,6 +717,8 @@ std::vector<std::string> SplitLines(const std::string& body) {
 namespace {
 // Bring the parsers into the anonymous namespace's usage scope so the call
 // sites in UltraNet_FtpListDirectory remain unqualified.
+using ultranet_internal::ftp::IsMlsdSelfOrParentLine;
+using ultranet_internal::ftp::IsUnixSelfOrParentLine;
 using ultranet_internal::ftp::ParseMlsdLine;
 using ultranet_internal::ftp::ParseUnixLine;
 using ultranet_internal::ftp::SplitLines;
@@ -562,6 +842,11 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
     // is not the server refusing the command (WorthAnotherListing) is
     // returned as it is rather than repeated.
     //
+    // A server that does not know MLSD (500 / 502 / 504) is remembered as
+    // such (ListingFormats) and its later listings start at LIST. The second pass of one listing runs on the connection
+    // the first left open (ThreadConnections), so even the first refusal no
+    // longer costs a second login.
+    //
     // SFTP is handled by libcurl issuing its own listing; we just parse
     // whatever it returns (always UNIX ls -l style for libcurl/SFTP).
     auto runListing = [&](const char* customReq, bool dirListOnly,
@@ -586,28 +871,43 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
     auto isFtp = listUrl.rfind("ftp://", 0) == 0 ||
                  listUrl.rfind("ftps://", 0) == 0;
 
-    // Pass 1: MLSD (FTP/FTPS only)
-    if (isFtp) {
+    // Pass 1: MLSD (FTP/FTPS only, and not to a server known to refuse it)
+    const std::string server = ServerKey(listUrl, opt);
+    if (isFtp && !ServerRefusesMlsd(server)) {
         std::string body;
         CURLcode rc = CURLE_OK;
         UltraNetResult r = runListing("MLSD", false, body, rc);
         if (r) {
-            const std::vector<std::string> lines = SplitLines(body);
-            if (lines.empty()) return UltraNetResult::Ok();   // an empty folder
-            for (const auto& line : lines) {
+            // Lines that are neither an entry nor the folder's own "." / ".."
+            // (cdir / pdir): what says the reply was not MLSD after all.
+            bool unreadLine = false;
+            for (const auto& line : SplitLines(body)) {
                 UltraNetFtpEntry e;
                 if (ParseMlsdLine(line, e)) {
                     e.fullPath = listUrl + e.name;
                     out.push_back(std::move(e));
+                } else if (!IsMlsdSelfOrParentLine(line)) {
+                    unreadLine = true;
                 }
             }
-            if (!out.empty()) return UltraNetResult::Ok();
+            // Entries, or an empty folder: no lines at all, or only the
+            // folder's own and its parent's - which many servers send, and
+            // which used to send an empty folder round again with LIST.
+            if (!out.empty() || !unreadLine) return UltraNetResult::Ok();
             log.Step("The MLSD listing could not be read - asking again with LIST");
         } else if (!WorthAnotherListing(rc)) {
             return Finish(log, r, rc);
         } else {
-            log.Step("The server refused MLSD (" + r.message +
-                       ") - asking again with LIST");
+            // The reply to MLSD itself: a 500 to an earlier command (TYPE,
+            // say) says nothing about MLSD.
+            if (log.LastCommand() == "MLSD" && IsUnknownCommandReply(log.LastReplyCode())) {
+                RememberServerRefusesMlsd(server);
+                log.Step("The server refused MLSD (" + r.message +
+                           ") - asking again with LIST, and with LIST from now on");
+            } else {
+                log.Step("The server refused MLSD (" + r.message +
+                           ") - asking again with LIST");
+            }
         }
     }
 
@@ -617,17 +917,19 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
         CURLcode rc = CURLE_OK;
         UltraNetResult r = runListing(nullptr, false, body, rc);
         if (r) {
-            bool anyLine = false;
+            bool unreadLine = false;
             for (const auto& line : SplitLines(body)) {
                 if (line.rfind("total ", 0) == 0) continue;  // ls -l preamble
-                anyLine = true;
                 UltraNetFtpEntry e;
                 if (ParseUnixLine(line, e)) {
                     e.fullPath = listUrl + e.name;
                     out.push_back(std::move(e));
+                } else if (!IsUnixSelfOrParentLine(line)) {
+                    unreadLine = true;
                 }
             }
-            if (!out.empty() || !anyLine) return r;   // entries, or an empty folder
+            // Entries, or an empty folder - "." and ".." alone included.
+            if (!out.empty() || !unreadLine) return r;
             log.Step("The LIST listing could not be read - asking for the names only");
         } else if (!isFtp || !WorthAnotherListing(rc)) {
             // SFTP / other: surface the error rather than try DIRLISTONLY,
@@ -686,6 +988,19 @@ UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Ver
     curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
     curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
     ApplyCommonOptions(h.get(), opt);
+    // On FTP, a connection of its own, closed afterwards - never one an
+    // earlier call left open (ThreadConnections). libcurl sends quote
+    // commands BEFORE it changes into the URL's folder, so they run in
+    // whatever folder the connection is in, and they are written for the
+    // folder a login lands in (UltraNetFtpQuote.h). A kept connection is
+    // wherever the last listing left it: there "DELE photos/a.txt" looked for
+    // photos/photos/a.txt and failed with a 550 - or found a file of that name
+    // and deleted the wrong one. SFTP's quote commands carry the full path
+    // and may use any connection.
+    if (!IsSftpUrl(url)) {
+        curl_easy_setopt(h.get(), CURLOPT_FRESH_CONNECT, 1L);
+        curl_easy_setopt(h.get(), CURLOPT_FORBID_REUSE, 1L);
+    }
 
     CURLcode rc = CURLE_OK;
     UltraNetResult r = Perform(h.get(), plan.parentUrl, opt, log, &rc);

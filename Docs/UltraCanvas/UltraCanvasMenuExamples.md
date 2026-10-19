@@ -1,24 +1,71 @@
 # UltraCanvasMenu Documentation
 
+<!-- doc-check: void OpenWithDefaultApplication(); void onToggleStandardToolbar(bool); void onToggleFormattingToolbar(bool); void onToggleDrawingToolbar(bool); void SetShowHiddenFiles(bool on); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Class Structure](#class-structure)
+  - [Main Classes](#main-classes)
+- [Menu Types](#menu-types)
+  - [MenuType Enumeration](#menutype-enumeration)
+  - [MenuOrientation](#menuorientation)
+- [Menu Items](#menu-items)
+  - [MenuItemType](#menuitemtype)
+  - [MenuItemData Structure](#menuitemdata-structure)
+  - [Factory Methods for Menu Items](#factory-methods-for-menu-items)
+- [Menu Styling](#menu-styling)
+  - [MenuStyle Structure](#menustyle-structure)
+  - [The Panel](#the-panel)
+  - [Pre-built Themes](#pre-built-themes)
+- [Core Methods](#core-methods)
+  - [Construction and Initialization](#construction-and-initialization)
+  - [Item Management](#item-management)
+  - [Display Control](#display-control)
+  - [Submenu Management](#submenu-management)
+  - [Event Callbacks](#event-callbacks)
+- [Menu Builder Pattern](#menu-builder-pattern)
+- [Event Handling](#event-handling)
+  - [Keyboard Navigation](#keyboard-navigation)
+- [Usage Examples](#usage-examples)
+  - [Creating a Menu Bar](#creating-a-menu-bar)
+  - [Creating a Context Menu](#creating-a-context-menu)
+  - [Creating Hierarchical Menus](#creating-hierarchical-menus)
+  - [Radio Indicator Shape](#radio-indicator-shape)
+  - [Checkbox Indicator Shape](#checkbox-indicator-shape)
+  - [Icon and Indicator Columns](#icon-and-indicator-columns)
+  - [Icon Colours](#icon-colours)
+  - [Custom Styling](#custom-styling)
+- [Animation Support](#animation-support)
+- [Performance Considerations](#performance-considerations)
+- [Platform-Specific Notes](#platform-specific-notes)
+- [Thread Safety](#thread-safety)
+- [Dependencies](#dependencies)
+- [Known Limitations](#known-limitations)
+- [Best Practices](#best-practices)
+- [Future Enhancements](#future-enhancements)
+
 ## Overview
 
-**UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, animation support, and cross-platform compatibility.
+**UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.2.5  
-**Last Modified:** 2025-01-08  
+**Version:** 1.5.0 - `MenuStyle::FromTheme`  
+**Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework
 
 ## Features
 
 - **Multiple Menu Types**: Support for menu bars, popup menus, and submenus
 - **Flexible Orientation**: Vertical and horizontal layout options
-- **Rich Item Types**: Actions, separators, checkboxes, radio buttons, submenus, input fields, and custom items
+- **Rich Item Types**: Actions, separators, section headers, checkboxes, radio buttons and submenus (static or built on demand)
 - **Keyboard Navigation**: Full keyboard support with arrow keys, Enter, Escape
-- **Animation Support**: Smooth open/close animations with customizable duration
+- **Current desktop look**: Popups and submenus drawn the way Windows 11, macOS and GNOME draw them - a rounded panel on a soft drop shadow, inner padding, rounded highlights inset from the edges (see *The Panel* below)
 - **Theming**: Pre-built themes (Default, Dark, Flat) with extensive customization
-- **Icons & Shortcuts**: Support for item icons and keyboard shortcuts
-- **Event System**: Comprehensive callbacks for menu events
+- **Icons & Shortcuts**: Support for item icons, keyboard shortcuts and tooltips
+- **Event System**: Callbacks for menu open/close, item selection and hover
 - **Submenu Management**: Automatic positioning and cascade control
+- **Long Menus**: A menu taller than the window gets a scrollbar
 
 ## Class Structure
 
@@ -26,10 +73,10 @@
 
 ```cpp
 namespace UltraCanvas {
-    class UltraCanvasMenu : public UltraCanvasUIElement
-    struct MenuItemData
-    struct MenuStyle
-    class MenuBuilder
+    class UltraCanvasMenu;   // : public UltraCanvasUIElement
+    struct MenuItemData;
+    struct MenuStyle;
+    class MenuBuilder;
 }
 ```
 
@@ -54,17 +101,6 @@ enum class MenuOrientation {
 };
 ```
 
-### MenuState
-
-```cpp
-enum class MenuState {
-    Hidden,         // Menu is not visible
-    Opening,        // Animation: menu is opening
-    Visible,        // Menu is fully visible
-    Closing         // Animation: menu is closing
-};
-```
-
 ## Menu Items
 
 ### MenuItemType
@@ -76,8 +112,9 @@ enum class MenuItemType {
     Checkbox,       // Toggle item with checkbox
     Radio,          // Radio button (mutually exclusive within group)
     Submenu,        // Item with cascading submenu
-    Input,          // Text input field
-    Custom          // Custom rendered item
+    Input,          // Reserved: no text-input item is implemented, and there is no factory for one
+    Custom,         // Reserved: drawn like a plain item
+    Header          // Non-clickable section title
 };
 ```
 
@@ -90,57 +127,91 @@ struct MenuItemData {
     std::string label;              // Display text
     std::string shortcut;           // Keyboard shortcut text (e.g., "Ctrl+C")
     std::string iconPath;           // Path to icon image
-    
+    std::shared_ptr<UCImage> iconImage;  // Already-decoded icon; drawn instead of iconPath
+    std::string commandId;          // Stable id (e.g. "file.open") for saved menu layouts
+
     // State
     bool enabled = true;            // Item can be interacted with
     bool visible = true;            // Item is visible
     bool checked = false;           // For checkbox/radio items
     int radioGroup = 0;             // Radio button group ID
-    
+
     // Callbacks
-    std::function<void()> onClick;                          // Action items
-    std::function<void(bool)> onToggle;                    // Checkbox/radio
-    std::function<void(const std::string&)> onTextInput;   // Input items
-    
-    // Submenu
-    std::vector<MenuItemData> subItems;  // Child items for submenus
-    
+    std::function<void()> onClick;          // Action and radio items (and a clickable submenu entry)
+    std::function<void(bool)> onToggle;     // Checkbox items
+
+    // Submenu: static items, or a provider called each time the submenu opens
+    std::vector<MenuItemData> subItems;
+    std::function<std::vector<MenuItemData>()> subItemsProvider;
+
+    // Per-item font override (uses the menu's font if nullopt)
+    std::optional<FontStyle> font;
+
     // Custom data
     void* userData = nullptr;         // User-defined data
+
+    std::string tooltip;              // Hover hint (empty = no tooltip)
+    EllipsizeMode ellipsize = EllipsizeMode::EllipsizeMiddle;  // How a too-long label is shortened
+    int submenuMaxWidth = 0;          // Max width of the child menu (0 = MenuStyle::maxWidth)
+
+    // Constructors
+    MenuItemData() = default;
+    MenuItemData(const std::string& itemLabel);
+    MenuItemData(const std::string& itemLabel, std::function<void()> callback);
+    MenuItemData(const std::string& itemLabel, const std::string& itemShortcut, std::function<void()> callback);
+
+    bool HasSubmenu() const;
 };
 ```
 
 ### Factory Methods for Menu Items
 
+All are static members of `MenuItemData`. Each also has an overload that
+takes a `const FontStyle& font` just before the callback (or the item list),
+to give that item its own font.
+
 ```cpp
-// Create action item
-MenuItemData::Action(label, callback)
-MenuItemData::Action(label, iconPath, callback)
-MenuItemData::ActionWithShortcut(label, shortcut, callback)
-MenuItemData::ActionWithShortcut(label, shortcut, iconPath, callback)
+struct MenuItemData {
+    // Create action item
+    static MenuItemData Action(const std::string& label, std::function<void()> callback);
+    static MenuItemData Action(const std::string& label, const std::string& iconPath, std::function<void()> callback);
+    static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, std::function<void()> callback);
+    static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, const std::string& iconPath, std::function<void()> callback);
 
-// Create separator
-MenuItemData::Separator()
+    // Create separator
+    static MenuItemData Separator();
 
-// Create checkbox
-MenuItemData::Checkbox(label, checked, toggleCallback)
+    // Create a non-clickable section title
+    static MenuItemData Header(const std::string& label);
 
-// Create radio button
-MenuItemData::Radio(label, group, checked, toggleCallback)
+    // Create checkbox: the callback receives the new checked state
+    static MenuItemData Checkbox(const std::string& label, bool checked, std::function<void(bool)> callback);
 
-// Create submenu
-MenuItemData::Submenu(label, subItems)
-MenuItemData::Submenu(label, iconPath, subItems)
+    // Create radio button: the callback runs when the item is chosen
+    static MenuItemData Radio(const std::string& label, int group, bool checked, std::function<void()> callback);
 
-// A submenu whose parent entry is itself clickable: hovering opens the child
-// list as always, activating the entry runs onClick and closes the menu.
-// (The Filer's "Open with" opens the default application this way.)
+    // Create submenu
+    static MenuItemData Submenu(const std::string& label, const std::vector<MenuItemData>& items);
+    static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const std::vector<MenuItemData>& items);
+
+    // Create submenu whose items are built each time it opens
+    static MenuItemData Submenu(const std::string& label, std::function<std::vector<MenuItemData>()> provider);
+    static MenuItemData Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider);
+};
+```
+
+A submenu whose parent entry is itself clickable: hovering opens the child
+list as always, activating the entry runs `onClick` and closes the menu.
+(The Filer's "Open with" opens the default application this way.)
+
+```cpp
 MenuItemData openWith = MenuItemData::Submenu("Open with", appItems);
 openWith.onClick = [] { OpenWithDefaultApplication(); };
-
-// Create input field
-MenuItemData::Input(label, placeholder, inputCallback)
 ```
+
+There is no text-input menu item: `MenuItemType::Input` is reserved, and
+`MenuItemData` has no `Input()` factory. (One used to be declared without a
+definition, so a call compiled and then failed to link; it was removed.)
 
 ## Menu Styling
 
@@ -148,10 +219,11 @@ MenuItemData::Input(label, placeholder, inputCallback)
 
 ```cpp
 struct MenuStyle {
-    // Colors
+    // Colors. Highlights and lines may be translucent: they are drawn over
+    // the menu's own background.
     Color backgroundColor;      // Menu background
     Color borderColor;         // Border color
-    Color hoverBackgroundColor;          // Hover highlight
+    Color hoverColor;          // Hover highlight (a row's rounded highlight)
     Color hoverTextColor;      // Text color when hovered
     Color pressedColor;        // Pressed state color
     Color selectedColor;       // Selected item background
@@ -159,58 +231,139 @@ struct MenuStyle {
     Color textColor;          // Default text color
     Color shortcutColor;      // Shortcut text color
     Color disabledTextColor;  // Disabled item text
-    
+    Color headerTextColor;    // Header item text
+
     // Typography
-    std::string fontFamily;   // Font family name
-    float fontSize;           // Font size in points
-    FontWeight fontWeight;    // Font weight
-    
+    FontStyle font;           // Font family, size and weight
+
     // Dimensions
     int itemHeight;          // Height of menu items
     int iconSize;            // Icon dimensions
-    int paddingLeft;         // Left padding
-    int paddingRight;        // Right padding
-    int paddingTop;          // Top padding
-    int paddingBottom;       // Bottom padding
+    int paddingLeft;         // Space from a row's left end to its contents
+    int paddingRight;        // Space from a row's contents to its right end
+    int paddingTop;          // Panel padding above the first row (popup / submenu)
+    int paddingBottom;       // Panel padding below the last row (popup / submenu)
+    int itemInset;           // Gap between the panel's border and a row's highlight
+    int itemCornerRadius;    // Rounding of a row's highlight
     int iconSpacing;         // Space between icon and text
+    bool tintIcons;          // Every icon in the label's colour, coloured ones too (= MenuIconTint::AllIcons; default false)
     int shortcutSpacing;     // Space before shortcut text
     int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
-    int borderRadius;        // Corner radius
+    int borderRadius;        // Corner radius of the popup / submenu panel
+    int minWidth;            // Minimum menu width (0 = no minimum)
+    int maxWidth;            // Maximum menu width (0 = none; labels ellipsize beyond it)
     MenuRadioShape radioShape;  // Outline of a Radio item's indicator: Round (default) or Square
-    
+    MenuCheckboxShape checkboxShape;  // Outline of a Checkbox item's indicator: Square (default) or Round
+    MenuIconTint iconTint;   // Symbolic (default): grey icons take the text colour; Original; AllIcons
+
     // Submenu
     int submenuDelay;        // Hover delay before opening (ms)
-    int submenuOffset;       // Offset from parent menu
-    
+
     // Animation
-    bool enableAnimations;   // Enable open/close animations
-    float animationDuration; // Animation duration (seconds)
+    bool enableAnimations;   // Fade a popup in, panel and entries, as it opens (default false)
+    float animationDuration; // Length of the fade (seconds)
     
-    // Shadow
+    // Shadow (popups and submenus; painted by the window, outside the menu)
     bool showShadow;         // Display drop shadow
-    Color shadowColor;       // Shadow color
+    Color shadowColor;       // Shadow color where fully overlapped
     Point2Di shadowOffset;   // Shadow offset
-    int shadowBlur;          // Shadow blur radius
+    int shadowBlur;          // Width of the fade, centred on the panel's outline (as CSS)
+
+    // Scrollbar (for menus taller than the window)
+    ScrollbarStyle scrollbarStyle;
 };
+```
+
+### The Panel
+
+A popup or submenu is drawn the way current desktops draw context and
+drop-down menus - Windows 11 (WinUI's `MenuFlyout`), macOS and GNOME
+(libadwaita's popover menus) agree on it:
+
+- a **rounded panel** (`borderRadius`, 8 by default) with a thin,
+  low-contrast border;
+- a **soft drop shadow**, mostly below the panel (`shadowColor`,
+  `shadowBlur`, `shadowOffset`), so the menu reads as lifted off the window;
+- **inner padding** (`paddingTop`, `paddingBottom`) above the first row and
+  below the last;
+- rows whose **highlight is a rounded rectangle** (`itemCornerRadius`) inset
+  from the panel's sides (`itemInset`) in a neutral shade, not a full-width
+  coloured bar;
+- **shortcuts in a muted secondary colour**, right-aligned;
+- **separators as faint hairlines** across the panel.
+
+```
++-- border (borderRadius) ------------------+
+|               paddingTop                  |
+| itemInset (  row  1, highlighted  ) inset |
+| itemInset    row  2                 inset |
+|           -------- separator --------     |
+| itemInset    row  3                 inset |
+|               paddingBottom               |
++-------------------------------------------+
+```
+
+Inside a row the columns are as described under *Icon and Indicator
+Columns*: `paddingLeft`, the indicator and icon columns, the label, the
+shortcut, the submenu arrow, `paddingRight`.
+
+`Default()` follows Windows 11's mouse metrics: an 8 px panel radius, 4 px
+padding and inset, 4 px highlight radius, 28 px rows, a translucent black
+hover (`Color(0, 0, 0, 15)`) that darkens whatever background the menu has,
+and a shadow of `Color(0, 0, 0, 64)` fading over 18 px, 6 px down.
+
+The shadow is not part of the menu: the window paints it beneath the popup,
+outside the menu's surface (`UltraCanvasUIElement::GetPopupShadow`, which the
+menu answers from its style), so the menu's bounds are its panel and the
+shadow takes no clicks. The window blends every popup over its content with
+its alpha, which is what lets the panel's corners show the window behind
+them. A menubar has no panel: no padding, inset, radius or shadow - its
+items run edge to edge and only their highlight is rounded.
+
+To get the earlier square look back, take the panel's decoration off:
+
+```cpp
+MenuStyle square = MenuStyle::Default();
+square.borderRadius = 0;
+square.itemInset = 0;
+square.itemCornerRadius = 0;
+square.paddingTop = square.paddingBottom = 0;
+square.showShadow = false;
+menu->SetStyle(square);
 ```
 
 ### Pre-built Themes
 
+All are static members of `MenuStyle`:
+
 ```cpp
-// Light theme with subtle styling
-MenuStyle::Default()
+struct MenuStyle {
+    // Light theme with subtle styling
+    static MenuStyle Default();
 
-// Dark theme for dark interfaces
-MenuStyle::Dark()
+    // Dark theme for dark interfaces
+    static MenuStyle Dark();
 
-// Minimal flat design
-MenuStyle::Flat()
+    // Minimal flat design
+    static MenuStyle Flat();
+
+    // The framework theme's roles over Dark() or Default() by its dark flag
+    // (or over a base of your own): the menu agrees with the window's look
+    static MenuStyle FromTheme(const UltraCanvasTheme& theme);
+    static MenuStyle FromTheme(const UltraCanvasTheme& theme, const MenuStyle& base);
+};
 ```
 
+A menu asked to follow the theme (`menu->SetFollowTheme(true)`) takes
+`FromTheme` over its own style now and on every theme change; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
+
 `Dark()` and `Flat()` are `Default()` with colours (and, for `Flat()`, the
-border, corner radius and shadow) replaced — every metric is shared, so a menu
-keeps its shape when it changes theme. Build your own theme the same way:
+border, the panel's corner radius and the shadow) replaced — every metric is
+shared, so a menu keeps its shape when it changes theme. `Dark()` outlines its
+panel with a light hairline, which a dark border would lose against a dark
+window. Build your own theme the same way:
 
 ```cpp
 MenuStyle style = MenuStyle::Default();
@@ -225,57 +378,114 @@ menu->SetStyle(style);
 
 ```cpp
 // Create menu
-UltraCanvasMenu(identifier, x, y, width, height)
+UltraCanvasMenu(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasMenu(const std::string& identifier, float w, float h);   // position left to the layout
+explicit UltraCanvasMenu(const std::string& identifier);            // position and size left to the layout
 
 // Factory functions
-CreateMenu(identifier, x, y, width, height)
-CreateMenuBar(identifier, x, y, width)
+std::shared_ptr<UltraCanvasMenu> CreateMenu(const std::string& identifier, float x, float y, float w, float h);
+std::shared_ptr<UltraCanvasMenu> CreateMenuBar(const std::string& identifier, float x, float y, float w);  // 32 px high
+std::shared_ptr<UltraCanvasMenu> CreateMenuBar(const std::string& identifier);  // placed by the layout
 
 // Configuration
-SetMenuType(MenuType type)
-SetOrientation(MenuOrientation orient)
-SetStyle(const MenuStyle& style)
+void SetMenuType(MenuType type);
+MenuType GetMenuType() const;
+void SetOrientation(MenuOrientation orient);
+MenuOrientation GetOrientation() const;
+void SetStyle(const MenuStyle& menuStyle);
+const MenuStyle& GetStyle() const;
 ```
 
 ### Item Management
 
 ```cpp
 // Add items
-AddItem(const MenuItemData& item)
-InsertItem(int index, const MenuItemData& item)
+void AddItem(const MenuItemData& item);
+void InsertItem(int index, const MenuItemData& item);
 
 // Modify items
-UpdateItem(int index, const MenuItemData& item)
-RemoveItem(int index)
-Clear()
+void UpdateItem(int index, const MenuItemData& item);
+void RemoveItem(int index);
+void Clear();
 
 // Access items
-GetItems() const
-GetItem(int index)
+std::vector<MenuItemData>& GetItems();
+MenuItemData* GetItem(int index);
 ```
 
 ### Display Control
 
-```cpp
-// Show/hide menu
-Show()
-Hide()
-Toggle()
-IsMenuVisible() const
-GetMenuState() const
+A popup menu is opened in a window at a window-relative position, and closed
+again with `CloseMenu()`:
 
-// Context menu helpers
-ShowAt(int x, int y)
-ShowAt(const Point2Di& position)
+```cpp
+// Open as a popup; pos is window-relative (e.g. UCEvent::pointerWindow)
+void OpenMenu(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
+
+// Open for a widget whose bounds in the window are `anchor`: below it, or
+// above it when it does not fit below
+void OpenMenuAnchored(const Rect2Di& anchor, UltraCanvasWindowBase& window,
+                      const PopupElementSettings& settings, int gap = 2,
+                      MenuAnchorAlign align = MenuAnchorAlign::Left);
+
+// Close the popup
+void CloseMenu();
+```
+
+`OpenMenu` is for a context menu at the pointer: the menu's top-left corner
+goes at `pos`, and when it does not fit below `pos` it ends there instead.
+A menu that belongs to a widget - a drop-down button, a chip, a field -
+opens with `OpenMenuAnchored` and the widget's bounds, as GTK's popovers and
+Windows' `TrackPopupMenuEx` with an exclude rectangle place theirs: `gap`
+pixels below the widget, or, when it does not fit there and does above,
+ending `gap` pixels above it. It never covers the widget, and the caller
+does not size it - the menu measures itself, panel padding and border
+included. `MenuAnchorAlign::Right` lines the menu's right edge up with the
+widget's (a button at the right end of a toolbar); a menu wider than the
+room to the window's edge moves left to fit, as any menu does.
+
+```cpp
+void ShowAttachmentMenu(UltraCanvasMenu& menu, UltraCanvasUIElement& chip) {
+    UltraCanvasWindowBase* window = chip.GetWindow();
+    if (!window) return;
+    PopupElementSettings settings;
+    settings.popupOwner = chip.weak_from_this();   // clicks on the chip still reach it
+    menu.OpenMenuAnchored(chip.GetBoundsInWindow(), *window, settings);
+}
+```
+
+A menubar's drop-downs are anchored the same way to their item, so a bar at
+the foot of a window opens them upwards instead of over itself.
+
+```cpp
+struct PopupElementSettings {
+    bool closeByEscapeKey = true;      // Escape closes the menu
+    bool closeByClickOutside = true;   // a click outside closes the menu
+    std::weak_ptr<UltraCanvasUIElement> popupOwner;
+};
+```
+
+Opening runs `onMenuOpened`, closing runs `onMenuClosed`.
+
+An open menu, like any popup, can be shown at an opacity through its window
+(0 = not seen, 1 = the default). The whole panel is mixed with what lies
+beneath it; the menu is not repainted, and it still takes input:
+
+```cpp
+// bool UltraCanvasWindowBase::SetPopupOpacity(UltraCanvasUIElement& popup, float opacity);
+// float UltraCanvasWindowBase::GetPopupOpacity(const UltraCanvasUIElement& popup) const;
+void ShowHalfSeen(UltraCanvasMenu& menu) {
+    if (auto* win = menu.GetWindow()) win->SetPopupOpacity(menu, 0.5f);
+}
 ```
 
 ### Submenu Management
 
 ```cpp
-OpenSubmenu(int itemIndex)
-CloseActiveSubmenu()
-CloseAllSubmenus()
-CloseMenutree()
+void OpenSubmenu(int itemIndex);
+void CloseActiveSubmenu();
+void CloseAllSubmenus();
+void CloseMenutree();
 ```
 
 A submenu entry with `enabled = false` is drawn greyed out and does not open
@@ -283,12 +493,19 @@ its submenu — not on hover, not on click, not from the keyboard.
 
 ### Event Callbacks
 
+Public callback members; assign a function to each:
+
 ```cpp
-// Set event handlers
-OnMenuOpened(std::function<void()> callback)
-OnMenuClosed(std::function<void()> callback)
-OnItemSelected(std::function<void(int)> callback)
-OnItemHovered(std::function<void(int)> callback)
+std::function<void()> onMenuOpened;
+std::function<void()> onMenuClosed;
+std::function<void(int)> onItemSelected;   // index of the executed item
+std::function<void(int)> onItemHovered;    // index of the item under the pointer
+```
+
+```cpp
+menu->onItemSelected = [](int index) {
+    std::cerr << "Item " << index << " selected" << std::endl;
+};
 ```
 
 ## Menu Builder Pattern
@@ -296,7 +513,7 @@ OnItemHovered(std::function<void(int)> callback)
 The MenuBuilder class provides a fluent interface for constructing menus:
 
 ```cpp
-auto menu = MenuBuilder("FileMenu", 1, 0, 0)
+auto menu = MenuBuilder("FileMenu", 0, 0)
     .SetType(MenuType::PopupMenu)
     .SetStyle(MenuStyle::Dark())
     .AddAction("New", "Ctrl+N", []() { /* handler */ })
@@ -310,21 +527,29 @@ auto menu = MenuBuilder("FileMenu", 1, 0, 0)
     .Build();
 ```
 
+```cpp
+MenuBuilder(const std::string& identifier, float x, float y, float w = 150, float h = 100);
+```
+
+The builder also has `AddItem()`, `AddHeader()`, and an `AddSubmenu()` that
+takes an item provider.
+
 ## Event Handling
 
 The menu system handles the following events:
 
 - **Mouse Events**: MouseMove, MouseDown, MouseUp, MouseLeave
+- **Mouse Wheel**: Scrolls a menu that is taller than the window
 - **Keyboard Events**: Arrow keys for navigation, Enter/Space for selection, Escape to close
-- **Focus Events**: Automatic focus management for keyboard navigation
 
 ### Keyboard Navigation
 
 - **Up/Down Arrows**: Navigate vertical menus
 - **Left/Right Arrows**: Navigate horizontal menus or open/close submenus
 - **Enter/Space**: Execute selected item
-- **Escape**: Close menu
-- **Alt+Key**: Access items by mnemonic (if implemented)
+- **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default).
+  The application closes the topmost popup before the key reaches any element,
+  so an open submenu closes first and its parent stays open.
 
 ## Usage Examples
 
@@ -332,7 +557,7 @@ The menu system handles the following events:
 
 ```cpp
 // Create menu bar
-auto menuBar = CreateMenuBar("MainMenuBar", 1, 0, 0, windowWidth);
+auto menuBar = CreateMenuBar("MainMenuBar", 0, 0, windowWidth);
 
 // Add File menu
 menuBar->AddItem(MenuItemData::Submenu("File", {
@@ -361,16 +586,19 @@ menuBar->AddItem(MenuItemData::Submenu("Edit", {
 auto contextMenu = std::make_shared<UltraCanvasMenu>("ContextMenu", 0, 0, 200, 0);
 contextMenu->SetMenuType(MenuType::PopupMenu);
 
-// Add items with icons
-contextMenu->AddItem(MenuItemData::Action("📋 Copy", "Ctrl+C", []() {
+// Add items with shortcuts and icons. The icons are flat ones of
+// media/icons/menu/, not emoji in the label: an emoji draws only where a
+// colour emoji font is installed, and shows as a box of hex digits elsewhere.
+const std::string icons = GetResourcesDir() + "media/icons/menu/";
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", icons + "copy.svg", []() {
     std::cerr << "Copy action executed" << std::endl;
 }));
 
-contextMenu->AddItem(MenuItemData::Action("✂️ Cut", "Ctrl+X", []() {
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", icons + "cut.svg", []() {
     std::cerr << "Cut action executed" << std::endl;
 }));
 
-contextMenu->AddItem(MenuItemData::Action("📄 Paste", "Ctrl+V", []() {
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", icons + "paste.svg", []() {
     std::cerr << "Paste action executed" << std::endl;
 }));
 
@@ -382,14 +610,19 @@ contextMenu->AddItem(MenuItemData::Checkbox("Show Grid", true, [](bool checked) 
 }));
 
 // Show on right-click
-element->OnMouseDown([contextMenu](const UCEvent& event) {
-    if (event.button == MouseButton::Right) {
-        contextMenu->ShowAt(event.pointer.x, event.pointer.y);
-        return true;
+element->SetEventCallback([contextMenu, owner = element.get()](const UCEvent& event) {
+    if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Right) {
+        if (auto* win = owner->GetWindow()) {
+            contextMenu->OpenMenu(event.pointerWindow, *win, PopupElementSettings());
+            return true;
+        }
     }
     return false;
 });
 ```
+
+`SetEventCallback()` is run by the base `UltraCanvasUIElement::OnEvent()`; in a
+widget class that overrides `OnEvent()`, open the menu from that override.
 
 ### Creating Hierarchical Menus
 
@@ -430,6 +663,90 @@ centred on the row by its cap height rather than by its line box (which
 holds the ascender and descender space too), so the indicator and the
 visible text sit on one centre line whatever the item height.
 
+### Checkbox Indicator Shape
+
+A `Checkbox` item draws a tick inside a square box, as `UltraCanvasCheckbox`
+does. `MenuCheckboxShape::Round` draws the same tick, smaller, inside a
+circle - the outline a `Radio` item gets - for a menu whose indicators should
+all be round:
+
+```cpp
+MenuStyle style = MenuStyle::Default();
+style.checkboxShape = MenuCheckboxShape::Round;
+menu->SetStyle(style);
+```
+
+An application that wants round checkboxes in **every** menu it shows sets the
+default once, before it builds its windows. Every `MenuStyle` starts from it,
+so it also reaches menus an element builds for itself, such as the file
+display's context menu, which an application never gets to style:
+
+```cpp
+// UltraFiler's main(), after app.Initialize(...)
+SetDefaultMenuCheckboxShape(MenuCheckboxShape::Round);
+```
+
+Until an application calls it the default is `Square`, so nothing changes for
+one that never does.
+
+### Icon and Indicator Columns
+
+A vertical menu lines its labels up. When any visible item is a `Checkbox` or
+`Radio`, the menu has an indicator column; when any has an icon (`iconPath`
+or `iconImage`), it has an icon column beside that. Each column is
+`iconSize + iconSpacing` wide, and **every** row steps over both, so an
+`Action` without an icon starts its label where the others do:
+
+```
+| itemInset | paddingLeft | [indicator] | [icon] | label | gap | [shortcut] | [arrow] | paddingRight | itemInset |
+```
+
+An item can fill both columns: a checkbox with an icon shows the indicator,
+then the icon, then the label.
+
+```cpp
+MenuItemData hidden = MenuItemData::Checkbox("Hidden files", showHidden,
+        [this](bool on) { SetShowHiddenFiles(on); });
+hidden.iconPath = iconDir + "hidden-files.svg";   // tick + icon + label
+menu->AddItem(hidden);
+```
+
+A menubar (horizontal menu) lays each item out on its own and has no
+columns.
+
+### Icon Colours
+
+Menu icons are mostly line glyphs drawn in black or grey - what GTK calls
+*symbolic* icons, like the ones in `media/icons/menu`. Drawn as they are,
+they vanish on a dark menu. With `iconTint` at its default,
+`MenuIconTint::Symbolic`, the menu paints an icon drawn in one shade of grey
+in the entry's text colour instead, exactly as it paints the label: in
+`textColor`, in `hoverTextColor` while hovered, in `disabledTextColor` when
+the entry is disabled - so one set of icons serves the light and the dark
+theme. An icon with colour in it (an application's, a file type's), or in
+more than one shade - black and white, as a half-filled disc for a theme
+switch - keeps its colours, and such an icon on a disabled entry is drawn
+faded (35 % opacity).
+`MenuIconTint::Original` draws every icon as it is (the earlier behaviour);
+`MenuIconTint::AllIcons` paints coloured icons in the text colour too.
+
+```cpp
+MenuStyle style = MenuStyle::Dark();
+style.iconTint = MenuIconTint::Original;   // keep black icons black
+menu->SetStyle(style);
+```
+
+`MenuStyle::tintIcons = true` draws every icon in its label's colour,
+coloured ones too - the same as `MenuIconTint::AllIcons` - for a menu whose
+icons are all meant to be flat:
+
+```cpp
+auto tinted = std::make_shared<UltraCanvasMenu>("Tinted", 0, 0, 200, 0);
+MenuStyle style = MenuStyle::Default();
+style.tintIcons = true;
+tinted->SetStyle(style);
+```
+
 ### Custom Styling
 
 ```cpp
@@ -437,17 +754,19 @@ visible text sit on one centre line whatever the item height.
 MenuStyle customStyle;
 customStyle.backgroundColor = Color(40, 44, 52);
 customStyle.textColor = Color(171, 178, 191);
-customStyle.hoverBackgroundColor = Color(50, 54, 62);
+customStyle.hoverColor = Color(50, 54, 62);
 customStyle.hoverTextColor = Colors::White;
 customStyle.borderColor = Color(30, 34, 42);
-customStyle.fontSize = 14.0f;
+customStyle.font.fontSize = 14.0f;
 customStyle.itemHeight = 28;
 customStyle.paddingLeft = 12;
 customStyle.paddingRight = 12;
 customStyle.borderRadius = 6;
+customStyle.itemCornerRadius = 3;
 customStyle.showShadow = true;
 customStyle.shadowColor = Color(0, 0, 0, 120);
-customStyle.shadowOffset = Point2Di(4, 4);
+customStyle.shadowOffset = Point2Di(0, 4);
+customStyle.shadowBlur = 16;
 customStyle.enableAnimations = true;
 customStyle.animationDuration = 0.25f;
 
@@ -456,21 +775,24 @@ menu->SetStyle(customStyle);
 
 ## Animation Support
 
-Menus support smooth open/close animations when enabled:
+With `enableAnimations` set, a popup menu or submenu fades in over
+`animationDuration` seconds when it opens:
 
 ```cpp
-// Enable animations
+auto menu = CreateMenu("ContextMenu", 0, 0, 200, 0);
 MenuStyle style = MenuStyle::Default();
 style.enableAnimations = true;
 style.animationDuration = 0.2f;  // 200ms
 menu->SetStyle(style);
 ```
 
-Animation states:
-- **Opening**: Menu fades in and/or slides into position
-- **Closing**: Menu fades out and/or slides away
-- **Visible**: Menu is fully rendered
-- **Hidden**: Menu is not rendered
+The whole panel fades - background, border, shadow and entries together -
+over the window content beneath it. The menu opens its popup at opacity 0 and
+steps it to 1 about every frame with `UltraCanvasWindowBase::SetPopupOpacity`
+(see Display Control), so a step only composites the window again and does
+not repaint the menu. The menu bar does not animate, and closing is
+immediate. Animations are off by default; an `animationDuration` of 0 or less
+shows the menu in full at once.
 
 ## Performance Considerations
 
@@ -481,16 +803,11 @@ Animation states:
 
 ## Platform-Specific Notes
 
-The UltraCanvasMenu component uses platform-specific implementations for:
-- Native menu rendering (when available)
-- System colors and themes
-- Keyboard shortcuts and accelerators
-- Focus management
-
-Platform implementations are located in:
-- `/OS/Windows/UltraCanvasSupport.cpp`
-- `/OS/Linux/UltraCanvasSupport.cpp`
-- `/OS/MacOS/UltraCanvasSupport.cpp`
+Menus are drawn by UltraCanvas itself on every platform. The one
+platform-specific part is the shortcut text: it is passed through
+`GetDisplayShortcut()`, which on macOS shows it in Mac style
+(`UltraCanvas/OS/MacOS/UltraCanvasMacOSShortcutFormat.h`) and elsewhere returns
+it unchanged.
 
 ## Thread Safety
 
@@ -501,22 +818,22 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 - `UltraCanvasUIElement.h` - Base UI element class
 - `UltraCanvasCommonTypes.h` - Common type definitions
 - `UltraCanvasEvent.h` - Event system
-- `UltraCanvasKeyboardManager.h` - Keyboard input handling
 - `UltraCanvasRenderContext.h` - Rendering context
+- `UltraCanvasScrollbar.h` / `UltraCanvasSmoothScroll.h` - Scrolling for long menus
 
 ## Known Limitations
 
 1. Maximum submenu depth is implementation-defined (typically 10 levels)
-2. Custom item rendering requires overriding render methods
+2. `Custom` and `Input` items have no special drawing or behaviour yet
 3. Touch gesture support varies by platform
-4. IME input for Input type items is platform-dependent
+4. Only opening animates (see Animation Support)
 
 ## Best Practices
 
 1. **Reuse Menu Instances**: Create menus once and show/hide as needed
 2. **Use Factory Methods**: Leverage MenuItemData factory methods for consistency
 3. **Keyboard Shortcuts**: Always provide keyboard shortcuts for common actions
-4. **Accessibility**: Include mnemonics and ensure keyboard navigation works
+4. **Accessibility**: Ensure keyboard navigation works
 5. **Responsive Design**: Test menus at different screen resolutions
 6. **Memory Management**: Use shared_ptr for menu lifetime management
 7. **Event Handling**: Return true from event handlers to stop propagation

@@ -1,8 +1,9 @@
 // Plugins/Charts/UltraCanvasCircularProgressChart.cpp
 // Circular progress chart element: concentric progress rings ("activity
 // rings"), single progress ring and progress pie, all angle-encoded.
+// Version: 1.1.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.1.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-08
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasCircularProgressChart.h"
@@ -50,7 +51,7 @@ namespace UltraCanvas {
 
     size_t UltraCanvasCircularProgressChart::AddRing(const ProgressRing& ring) {
         rings.push_back(ring);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return rings.size() - 1;
     }
@@ -64,7 +65,7 @@ namespace UltraCanvas {
     void UltraCanvasCircularProgressChart::ClearRings() {
         rings.clear();
         hoveredRing = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -76,7 +77,7 @@ namespace UltraCanvas {
     bool UltraCanvasCircularProgressChart::SetRingValue(size_t index, double value) {
         if (index >= rings.size()) return false;
         rings[index].value = value;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return true;
     }
@@ -84,7 +85,7 @@ namespace UltraCanvas {
     bool UltraCanvasCircularProgressChart::SetRingColor(size_t index, const Color& color) {
         if (index >= rings.size()) return false;
         rings[index].color = color;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return true;
     }
@@ -95,7 +96,7 @@ namespace UltraCanvas {
         if (index >= rings.size()) return false;
         rings[index].minValue = std::min(minValue, maxValue);
         rings[index].maxValue = std::max(minValue, maxValue);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return true;
     }
@@ -106,19 +107,19 @@ namespace UltraCanvas {
 
     void UltraCanvasCircularProgressChart::SetSubStyle(CircularProgressStyle style) {
         subStyle = style;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasCircularProgressChart::SetStartAngle(float degrees) {
         startAngleDeg = degrees;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasCircularProgressChart::SetClockwise(bool on) {
         clockwise = on;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -159,7 +160,7 @@ namespace UltraCanvas {
 
     void UltraCanvasCircularProgressChart::SetColorPalette(const std::vector<Color>& palette) {
         colorPalette = palette.empty() ? DefaultPalette() : palette;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -293,7 +294,7 @@ namespace UltraCanvas {
         return area;
     }
 
-    void UltraCanvasCircularProgressChart::InvalidateLayout() {
+    void UltraCanvasCircularProgressChart::DropLayoutCache() {
         layoutValid = false;
     }
 

@@ -1626,8 +1626,8 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                             PathData outline;
                             if (BuildOutlinePath(e, outline))
                                 for (const auto& sub : FlattenPathData(outline)) {
-                                    std::vector<Matrix3x3> placements;
-                                    if (StampPlacements(sub.Points, *st, placements)) {
+                                    const std::vector<Matrix3x3> placements = BrushStampPlacements(sub.Points, *st);
+                                    if (!placements.empty()) {
                                         stampLines.push_back(sub.Points);
                                         stampPlacements.insert(stampPlacements.end(), placements.begin(), placements.end());
                                     }
@@ -1991,36 +1991,6 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                              Num(M.m[0][2]) + "," + Num(M.m[1][2]);
                     }
                     return m;
-                }
-
-                // The placement of stamp `i` along a polyline, as the renderer
-                // stamps it: translate to the point, rotate to the tangent,
-                // scale the stamp's height to the line width, centre it.
-                static bool StampPlacements(const std::vector<Point2Dd>& pts, const StrokeData& st,
-                                            std::vector<Matrix3x3>& out) {
-                    const BrushData& b = *st.Brush;
-                    const Rect2Dd sb = b.Stamp->GetBoundingBox();
-                    if (sb.width <= 0 || sb.height <= 0 || pts.size() < 2) return false;
-                    const double k = (std::max(0.5f, st.Width) * std::max(0.01f, b.Scale)) / sb.height;
-                    const double step = std::max(0.25, sb.width * k * std::max(0.05f, b.Spacing));
-                    std::vector<double> cum(pts.size(), 0.0);
-                    for (size_t i = 1; i < pts.size(); ++i)
-                        cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-                    const double total = cum.back();
-                    if (total <= 1e-9) return false;
-                    size_t seg = 1;
-                    int stamps = 0;
-                    for (double dist = 0; dist <= total + 1e-9 && stamps < 4000; dist += step, ++stamps) {
-                        while (seg + 1 < pts.size() && cum[seg] < dist) ++seg;
-                        const double segLen = cum[seg] - cum[seg - 1];
-                        const double u = segLen > 1e-12 ? std::min(1.0, std::max(0.0, (dist - cum[seg - 1]) / segLen)) : 0.0;
-                        const Point2Dd p(pts[seg - 1].x + (pts[seg].x - pts[seg - 1].x) * u,
-                                         pts[seg - 1].y + (pts[seg].y - pts[seg - 1].y) * u);
-                        const double angle = b.Rotate ? std::atan2(pts[seg].y - pts[seg - 1].y, pts[seg].x - pts[seg - 1].x) : 0.0;
-                        out.push_back(Matrix3x3::Translate(p.x, p.y) * Matrix3x3::Rotate(angle) * Matrix3x3::Scale(k, k) *
-                                      Matrix3x3::Translate(-(sb.x + sb.width / 2), -(sb.y + sb.height / 2)));
-                    }
-                    return !out.empty();
                 }
 
                 // TAG_FEATHER, an attribute of the object being written.

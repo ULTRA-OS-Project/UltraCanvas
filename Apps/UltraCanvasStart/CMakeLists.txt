@@ -1,18 +1,19 @@
 # Apps/UltraCanvasStart/CMakeLists.txt
 # UltraCanvasStart — sets a machine up for UltraCanvas development: finds out
-# what is installed, installs what is missing, fetches the prebuilt SDK,
+# what is installed, installs what is missing, unpacks the prebuilt SDK,
 # writes a project skeleton and explains how to work with an AI assistant.
 #
 # Two targets:
 #   UltraCanvasStartEngine  a static library: detection, the dependency table,
 #                           the checks, the plan, the scaffold. Links the
 #                           UltraCanvas core for RunProcessCaptured and the
-#                           hardware snapshot (and UltraNet for the SDK
-#                           download when it was built) but opens no window,
+#                           hardware snapshot but opens no window,
 #                           so the CLI modes and the test suite use it headless.
 #   UltraCanvasStart        the GUI application on top of it.
 #
-# Version: 0.1.0
+# Version: 0.1.3 - no UltraNet: the SDK is downloaded in the browser
+# Version: 0.1.2 - StartBuild (the skeleton compiled, for the Build step and the tests)
+# Version: 0.1.1 - StartGuide (the pages' prose as Markdown)
 # Author: UltraCanvas Framework / ULTRA OS
 
 if(NOT ULTRACANVAS_LIBRARY)
@@ -29,7 +30,9 @@ add_library(UltraCanvasStartEngine STATIC
     engine/StartSdk.cpp
     engine/StartProject.cpp
     engine/StartAi.cpp
+    engine/StartGuide.cpp
     engine/StartRunner.cpp
+    engine/StartBuild.cpp
 )
 set_target_properties(UltraCanvasStartEngine PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -39,23 +42,7 @@ target_include_directories(UltraCanvasStartEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_include_directories(UltraCanvasStartEngine PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
 target_link_libraries(UltraCanvasStartEngine PUBLIC ${ULTRACANVAS_LIBRARY})
-
-# The SDK download needs UltraNet. With a SHARED core UltraNet is absorbed
-# into libultracanvas and only its headers are needed; with a static core the
-# target is linked itself (the same logic UltraSocialEngine uses).
-if(TARGET UltraNet)
-    get_target_property(_ucstart_core_type ${ULTRACANVAS_LIBRARY} TYPE)
-    if(_ucstart_core_type STREQUAL "SHARED_LIBRARY")
-        target_include_directories(UltraCanvasStartEngine PRIVATE
-            $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-    else()
-        target_link_libraries(UltraCanvasStartEngine PUBLIC UltraNet)
-    endif()
-    target_compile_definitions(UltraCanvasStartEngine PRIVATE ULTRACANVASSTART_HAS_NET=1)
-    message(STATUS "  [✓] UltraCanvasStart engine - ENABLED, with SDK download (UltraNet)")
-else()
-    message(STATUS "  [✓] UltraCanvasStart engine - ENABLED, without SDK download (no UltraNet)")
-endif()
+message(STATUS "  [✓] UltraCanvasStart engine - ENABLED")
 
 # ── UltraCanvasStart GUI application ─────────────────────────────────────────
 add_executable(UltraCanvasStart

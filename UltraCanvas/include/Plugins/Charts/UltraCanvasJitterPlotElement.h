@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasJitterPlotElement.h
 // Jitter plot (strip plot) element with statistical overlays and hybrid modes
-// Version: 1.3.0
-// Last Modified: 2026-07-31
+// Version: 1.3.1
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 //
 // CHANGELOG 1.3.0 (minor - per-point encodings):
@@ -687,7 +687,7 @@ inline std::shared_ptr<UltraCanvasJitterPlotElement> CreateJitterPlotWithCategor
 
 **Basic Jitter Plot:**
 ```cpp
-auto jitter = CreateJitterPlotElement("jitter1", 1001, 50, 50, 600, 400);
+auto jitter = CreateJitterPlotElement("jitter1", 50, 50, 600, 400);
 jitter->SetCategories({"Group A", "Group B", "Group C"});
 jitter->AddCategoryData("Group A", {1.2, 1.5, 1.8, 2.1, 1.9});
 jitter->AddCategoryData("Group B", {2.5, 2.8, 3.1, 2.9, 3.2});
@@ -697,7 +697,7 @@ jitter->SetShowMedianMarker(true);
 
 **Jittered Box Plot with Grouping:**
 ```cpp
-auto jitter = CreateJitterPlotElement("jitter2", 1002, 50, 50, 600, 400);
+auto jitter = CreateJitterPlotElement("jitter2", 50, 50, 600, 400);
 jitter->SetHybridMode(JitterHybridMode::JitterBoxPlot);
 jitter->SetHueVariable("Treatment");
 jitter->SetDodgeEnabled(true, 0.8f);
@@ -707,7 +707,7 @@ jitter->AddCategoryData("Pre", values2, "Treated");
 
 **Gaussian Jitter with Statistics:**
 ```cpp
-auto jitter = CreateJitterPlotElement("jitter3", 1003, 50, 50, 600, 400);
+auto jitter = CreateJitterPlotElement("jitter3", 50, 50, 600, 400);
 jitter->SetJitterDistribution(JitterDistribution::Gaussian);
 jitter->SetJitterAmount(0.15f);
 jitter->SetPointAlpha(0.6f);

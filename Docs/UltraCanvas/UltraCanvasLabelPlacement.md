@@ -196,7 +196,7 @@ LabelShape parent;                 // the enclosing circle
 parent.isContainer = true;         // not a mark labels must avoid covering
 shapes.push_back(parent);
 
-label.containerShape = static_cast<int>(shapes.size() - 1);
+l.containerShape = static_cast<int>(shapes.size() - 1);   // l: the child's label
 ```
 
 ## Decluttering dense labels
@@ -205,7 +205,7 @@ A chart with hundreds of value labels cannot draw them all. Offer them all and
 let the solver decide:
 
 ```cpp
-for (...) {
+for (const Point2Dd& screenPos : valuePositions) {   // one per data value
     ShapeLabel l;
     l.usePointAnchor = true;
     l.anchorPoint    = screenPos;

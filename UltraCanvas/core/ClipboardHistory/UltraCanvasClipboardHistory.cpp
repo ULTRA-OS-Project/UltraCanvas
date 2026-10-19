@@ -2,8 +2,13 @@
 // The persistent clipboard history: SQLite index (UltraDatabase), payloads as
 // encrypted files named by a keyed hash, image thumbnails, retention, the
 // recorder lease. See include/UltraCanvasClipboardHistory.h.
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.2.1 - the key lives in the desktop's settings folder (UltraCanvasDesktopSettingsFolder):
+//                  Application Support on macOS, moved there from ~/.config once
+// Version: 1.2.0 - the policy's iconSide
+// Version: 1.1.2 - the folder is the framework's machine-local data root (UltraCanvasLocalDataFolderRoot)
+// Version: 1.1.1 - $XDG_DATA_HOME names the data folder on every platform, as for the applications
+// Version: 1.1.0 - the policy's previewStyle
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistory.h"
@@ -11,6 +16,8 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasFileError.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasDataFolder.h"       // UltraCanvasLocalDataFolderRoot
+#include "UltraCanvasSettingsFolder.h"   // UltraCanvasDesktopSettingsFolder
 #include "UltraCanvasPathUtf8.h"
 #include "DataFormats/UltraCanvasJSON.h"
 #include <UltraCrypt/UltraCryptCore.h>
@@ -355,6 +362,8 @@ JSONValue PolicyToJson(const ClipboardHistoryPolicy& policy) {
     root.Set("maxEntryBytes", static_cast<int64_t>(policy.maxEntryBytes));
     root.Set("recordingPaused", policy.recordingPaused);
     root.Set("imageThumbnails", policy.imageThumbnails);
+    root.Set("previewStyle", policy.previewStyle == ClipboardPreviewStyle::Classic ? "classic" : "modern");
+    root.Set("iconSide", policy.iconSide == ClipboardIconSide::Left ? "left" : "right");
     JSONValue excluded = JSONValue::MakeArray();
     for (const std::string& name : policy.excludedApplications) excluded.Append(JSONValue(name));
     root.Set("excludedApplications", std::move(excluded));
@@ -372,6 +381,8 @@ ClipboardHistoryPolicy PolicyFromJson(const JSONValue& root) {
             static_cast<int64_t>(policy.maxEntryBytes)), 1 << 10));
     policy.recordingPaused = root.Get("recordingPaused").GetBoolean(policy.recordingPaused);
     policy.imageThumbnails = root.Get("imageThumbnails").GetBoolean(policy.imageThumbnails);
+    if (root.Get("previewStyle").GetString("") == "classic") policy.previewStyle = ClipboardPreviewStyle::Classic;
+    if (root.Get("iconSide").GetString("") == "left") policy.iconSide = ClipboardIconSide::Left;
     const JSONValue& excluded = root.Get("excludedApplications");
     if (excluded.IsArray()) {
         policy.excludedApplications.clear();
@@ -533,6 +544,38 @@ bool IsWordCharacter(uint32_t cp) {
 }
 
 } // namespace
+
+std::vector<ClipboardEntryKind> PreferredClipboardKinds(const std::vector<std::string>& categories,
+                                                        const std::vector<std::string>& mimeTypes) {
+    using Kind = ClipboardEntryKind;
+    auto has = [&categories](const char* category) {
+        return std::find(categories.begin(), categories.end(), category) != categories.end();
+    };
+    // What it is, by the freedesktop menu categories. A viewer shows
+    // pictures; nothing is pasted into it.
+    const bool viewer = has("Viewer");
+    if (!viewer && (has("RasterGraphics") || has("2DGraphics") || has("VectorGraphics") ||
+                    has("3DGraphics") || has("Photography") || has("Graphics"))) {
+        return {Kind::Image, Kind::Colour};
+    }
+    if (has("FileManager")) return {Kind::Files};
+    if (has("TextEditor") || has("IDE") || has("Development") || has("TerminalEmulator")) {
+        return {Kind::Code, Kind::Text, Kind::Link};
+    }
+    if (has("WebBrowser")) return {Kind::Link, Kind::Text};
+
+    // What it opens, when the categories say nothing of the above.
+    size_t images = 0, texts = 0, others = 0;
+    for (const std::string& mime : mimeTypes) {
+        if (mime == "inode/directory") return {Kind::Files};
+        if (mime.rfind("image/", 0) == 0) ++images;
+        else if (mime.rfind("text/", 0) == 0) ++texts;
+        else ++others;
+    }
+    if (!viewer && images > 0 && texts == 0 && others == 0) return {Kind::Image, Kind::Colour};
+    if (texts > 0 && images == 0 && others == 0) return {Kind::Text, Kind::Code, Kind::Link};
+    return {};
+}
 
 std::vector<uint8_t> ClipboardImageFile(const ClipboardFormat& image, std::string& extension) {
     std::string format = image.mime.rfind("image/", 0) == 0 ? image.mime.substr(6) : "png";
@@ -819,31 +862,24 @@ UltraCanvasClipboardHistory::~UltraCanvasClipboardHistory() {
     Close();
 }
 
+// The framework's machine-local data root (UltraCanvasDataFolder.h): the
+// history is a store of copied blobs, not data that should roam with the
+// profile, so %LOCALAPPDATA% on Windows rather than the applications'
+// %APPDATA%; Application Support on macOS, ~/.local/share elsewhere, and
+// $XDG_DATA_HOME first everywhere.
 std::string UltraCanvasClipboardHistory::DefaultDirectory() {
-    fs::path root;
-#if defined(_WIN32)
-    if (const std::string local = GetEnvUtf8("LOCALAPPDATA"); !local.empty()) root = PathFromUtf8(local);
-#elif defined(__APPLE__)
-    if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) {
-        root = PathFromUtf8(home) / "Library" / "Application Support";
-    }
-#else
-    if (const std::string data = GetEnvUtf8("XDG_DATA_HOME"); !data.empty()) root = PathFromUtf8(data);
-    else if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) root = PathFromUtf8(home) / ".local" / "share";
-#endif
+    const fs::path root = UltraCanvasLocalDataFolderRoot();
     return root.empty() ? "" : PathToUtf8(root / "ultraos" / "clipboard");
 }
 
 // Beside the desktop's own settings, apart from the data it unlocks.
+// The desktop's settings folder (UltraCanvasSettingsFolder.h), beside
+// desktop.json: %APPDATA%\ultraos on Windows, Application Support/ultraos on
+// macOS, $XDG_CONFIG_HOME or ~/.config/ultraos elsewhere. On macOS a key an
+// earlier version kept under ~/.config is moved there once, with the folder.
 std::string UltraCanvasClipboardHistory::DefaultKeyPath() {
-    fs::path root;
-#if defined(_WIN32)
-    if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) root = PathFromUtf8(appData);
-#else
-    if (const std::string config = GetEnvUtf8("XDG_CONFIG_HOME"); !config.empty()) root = PathFromUtf8(config);
-    else if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) root = PathFromUtf8(home) / ".config";
-#endif
-    return root.empty() ? "" : PathToUtf8(root / "ultraos" / "clipboard.key");
+    const fs::path folder = UltraCanvasDesktopSettingsFolder();
+    return folder.empty() ? "" : PathToUtf8(folder / "clipboard.key");
 }
 
 bool UltraCanvasClipboardHistory::IsAvailable() {
@@ -1134,8 +1170,9 @@ std::vector<ClipboardHistoryEntry> UltraCanvasClipboardHistory::List(const Clipb
     std::vector<ClipboardHistoryEntry> result;
     if (!d.open) return result;
     UltraDbResultSet rows;
-    if (!d.Query(std::string("SELECT ") + kEntryColumns +
-                 " FROM entries WHERE deleted_at = 0 ORDER BY pinned DESC, last_used_at DESC, id DESC", {}, rows)) {
+    const char* order = query.newestFirst ? " ORDER BY last_used_at DESC, id DESC"
+                                          : " ORDER BY pinned DESC, last_used_at DESC, id DESC";
+    if (!d.Query(std::string("SELECT ") + kEntryColumns + " FROM entries WHERE deleted_at = 0" + order, {}, rows)) {
         return result;
     }
 

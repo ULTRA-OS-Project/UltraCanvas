@@ -2,6 +2,8 @@
 // The prebuilt SDK: the artifact CI publishes for each platform
 // (Docs/UltraCanvasSDK.md), how it is named, where it is found, and how an
 // archive of it is unpacked into a prefix an application's CMake can use.
+// Version: 0.2.0 - the SDK is downloaded from the UltraOS download page in the
+//                  browser; DownloadSdk and the direct asset URL are gone
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -17,28 +19,27 @@ namespace UltraCanvasStart {
 std::string SdkArtifactName(Platform platform, const std::string& version,
                             const std::string& architecture);
 
-// The archive's file name: .tar.gz on Linux and macOS, .zip on Windows.
+// The archive's file name: .tar.xz on Linux, .tar.gz on macOS, .zip on Windows.
 std::string SdkArchiveName(Platform platform, const std::string& version,
                            const std::string& architecture);
 
-// Where the artifacts are published: the repository's Actions page. The SDK
-// is a workflow artifact, so a browser signed in to GitHub downloads it; a
-// release asset of the same name is used when one exists.
+// Where the SDKs are published. SdkDownloadPage is the UltraOS download
+// page, opened in the browser: the programmer picks the archive SdkArchiveName
+// names and the Framework step unpacks it. The page decides how files are
+// served, so nothing here depends on an address per archive. SdkReleasePage
+// is the GitHub release tagged v<version>, where every release build of main
+// attaches the same six archives (.github/workflows/build.yml, publish-sdk).
 std::string SdkDownloadPage();
-std::string SdkReleaseAssetUrl(Platform platform, const std::string& version,
-                               const std::string& architecture);
-
-// Whether an UltraNet download is compiled in.
-bool SdkDownloadAvailable();
-
-// Downloads `url` to `localPath` (UTF-8). False with `error` set when the
-// download is unavailable or failed.
-bool DownloadSdk(const std::string& url, const std::string& localPath, std::string& error);
+std::string SdkReleasePage(const std::string& version);
 
 // The step that unpacks `archive` into `destination` (both UTF-8): tar on
 // Linux and macOS, tar as well on Windows 10 and later (bsdtar reads zip),
 // run through RunProcessCaptured.
 PlanStep UnpackStep(const std::string& archive, const std::string& destination);
+
+// The folder an archive unpacks to beside itself (UTF-8): the archive's path
+// without .zip, .tar.xz or .tar.gz - the artifact name, when the file kept it.
+std::string SdkUnpackedFolder(const std::string& archive);
 
 // The prefix an unpacked archive gives: destination/<artifact name>, where
 // lib/cmake/UltraCanvas/UltraCanvasConfig.cmake lives. Empty if not found.

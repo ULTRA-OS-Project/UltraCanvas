@@ -1,5 +1,7 @@
 # UltraCanvas Media Codec Registry
 
+<!-- doc-check: namespace MyApp { std::shared_ptr<UCAudio> DecodeMonkeysAudio(const std::string& path); std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts); UCVideoFramePtr GrabIvfPoster(const std::string& source, const VideoThumbnailRequest& req); } bool LooksLikeTransportStream(const std::string& path); VideoDecoderFactory openDecoder; -->
+
 `UltraCanvasMediaCodecRegistry.h` — the one place that knows which audio and
 video formats a build can handle, and the extension point for adding more.
 Video decoding is registered through its companion,

@@ -1,7 +1,17 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
+//                 (searchHighlightColor, HighlightMatches(text, caseSensitive))
+// Version: 3.13.0 - MarkdownHeadingSlug: GitHub-style heading anchors in markdown mode
+// Version: 3.12.0 - onFocusGained / onFocusLost, as the text input has them
+// Version: 3.11.0 - ApplyTheme: the light or dark preset, the surfaces and ink from the theme roles
+// Version: 3.10.0 - an input method's composition is drawn in the caret's line,
+//                 underlined, instead of in the input method's own window
+//                 (DrawsTextComposition, GetCompositionText)
+// Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
+//                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-18
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -14,6 +24,7 @@
 #include "UltraCanvasSpellChecker.h"
 #include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasSyntaxLineState.h"
+#include "UltraCanvasTimer.h"
 #include <algorithm>
 #include <string>
 #include <string_view>
@@ -109,7 +120,9 @@ namespace UltraCanvas {
         // List styling
         int listIndent = 20;
         std::string bulletCharacter = "\xe2\x80\xa2"; // UTF-8 bullet • (kept for compatibility)
-        // Nested bullet characters per nesting level (0=•, 1=◦, 2=▪, deeper levels repeat ▪)
+        // Nested bullet characters per nesting level (0=•, 1=◦, 2=▪, deeper levels repeat ▪).
+        // These three are drawn as shapes (the bundled UI font has no ◦ or ▪);
+        // any other string is drawn as text.
         std::array<std::string, 3> nestedBulletCharacters = {
             "\xe2\x80\xa2",         // level 0: • (U+2022 BULLET)
             "\xe2\x97\xa6",         // level 1: ◦ (U+25E6 WHITE BULLET)
@@ -236,6 +249,9 @@ namespace UltraCanvas {
         Color selectionColor;
         Color currentLineHighlightColor;
         Color cursorColor;
+        // Background of every search match (HighlightMatches); the current
+        // match is the selection, painted over it in selectionColor.
+        Color searchHighlightColor = Color(255, 200, 0, 110);
 
         // Placeholder hint shown when the document is empty
         Color placeholderColor = Color(150, 150, 150, 255);
@@ -438,9 +454,9 @@ namespace UltraCanvas {
     };
 
     // Display-math block: `$$` on a line of its own opens it, the next such line closes it.
-    // The opening fence and the source lines collapse to zero height in rendered form (the
-    // current line still shows its raw text while editing); the closing fence renders the
-    // whole formula, centred, from the source gathered off the collapsed lines above it.
+    // The opening fence and the source lines collapse to zero height in rendered form (with
+    // the caret anywhere in the block, all its lines show raw - see rawBlockLines); the closing
+    // fence renders the whole formula, centred, from the source gathered off the collapsed lines.
     struct MathBlockLayout : LineLayoutBase {
         std::string source;             // a collapsed source line's text
         std::shared_ptr<UltraCanvasInlineMath> math;   // set on the closing fence only
@@ -475,6 +491,17 @@ namespace UltraCanvas {
         // focus, so no caret is drawn and no key ever reaches them (see
         // SetDisplayOnly).
         bool AcceptsFocus() const override { return !displayOnly; }
+
+        // An input method's composition is shown in the caret's line,
+        // underlined, at the caret (TextComposition events), not in a window
+        // of its own. It is not part of GetText(), fires no onTextChanged and
+        // leaves no undo step; the committed text then arrives as typing. Not
+        // in hex mode, where a key is a hex digit and not text.
+        bool DrawsTextComposition() const override {
+            return !isReadOnly && !displayOnly && !IsDisabled() && editingMode != TextAreaEditingMode::Hex;
+        }
+        // The text being composed ("" when nothing is).
+        const std::string& GetCompositionText() const { return preeditText; }
         // Render method
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
@@ -493,6 +520,10 @@ namespace UltraCanvas {
 
         // Event handling
         virtual bool OnEvent(const UCEvent& event) override;
+        // The theme's roles over the light or dark token colours: the well
+        // behind the text, ink, the hover fill for the current line, the
+        // accent behind a selection, faint ink for line numbers
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void Invalidate();
         void InvalidateAllLineLayouts();
@@ -546,11 +577,18 @@ namespace UltraCanvas {
         void MoveCursorToEnd(bool selecting = false);
         void MoveCursorPageDown(bool selecting = false);
         void MoveCursorPageUp(bool selecting = false);
-        LineColumnIndex GetCursorPosition() {
+        LineColumnIndex GetCursorPosition() const {
             return cursorPosition;
         }
+        // Moves the caret to `pos`. With `selecting` the selection runs from
+        // its anchor to `pos`, as Shift+arrow extends it: the anchor is the
+        // start of the current selection, or the caret's old place when there
+        // is none. Without it the selection is left as it is (the selection
+        // methods set it and then place the caret through here).
         void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false) {
+            if (selecting && selectionStart.lineIndex < 0) selectionStart = cursorPosition;
             cursorPosition = pos;
+            if (selecting) selectionEnd = pos;
             isCursorMoved = true;
             RequestRedraw();
         }
@@ -630,7 +668,10 @@ namespace UltraCanvas {
         void IncrementalFind(const std::string& searchText, bool caseSensitive = false);
 
         void ReplaceText(const std::string& findText, const std::string& replaceText, bool all = false);
+        // Marks every match of searchText with style.searchHighlightColor. The
+        // marks follow edits (re-run on every text change) until ClearHighlights.
         void HighlightMatches(const std::string& searchText);
+        void HighlightMatches(const std::string& searchText, bool caseSensitive);
         void ClearHighlights();
 
         /// Count total occurrences of search text in document
@@ -648,7 +689,12 @@ namespace UltraCanvas {
         bool CanRedo() const;
 
         // Properties
-        void SetReadOnly(bool readOnly) { isReadOnly = readOnly; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        void SetReadOnly(bool readOnly) {
+            isReadOnly = readOnly;
+            if (readOnly) ClearComposition();   // nothing is composed into a read-only area
+            isNeedRecalculateVisibleArea = true;
+            RequestRedraw();
+        }
         bool IsReadOnly() const { return isReadOnly; }
 
         // Hides/shows the blinking caret without affecting focus or selection.
@@ -866,6 +912,14 @@ namespace UltraCanvas {
         // Shift+Enter for a new line. Runs on the UI thread.
         std::function<bool(const UCEvent&)> onBeforeKeyDown;
 
+        // Called when the area takes the keyboard focus, and when it loses it -
+        // the same two the text input has, so a host that commits a field when
+        // it is left treats a single line and a paragraph alike. Runs on the UI
+        // thread, after the area's own handling (the caret hidden, the text
+        // settled), so the callback reads the final text.
+        std::function<void()> onFocusGained;
+        std::function<void()> onFocusLost;
+
         // Called just before a check is queued, with the exact text about to be
         // checked. Lets the host rebuild content-dependent options: in
         // particular SpellCheckOptions::shouldSkipRange, whose byte ranges have
@@ -907,6 +961,10 @@ namespace UltraCanvas {
         // (the widget itself no longer draws the cursor).
         void UpdateCaret(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
+        // Ticks on the vertical track for every search match and the current
+        // match, so matches outside the view can be seen.
+        void DrawScrollbarSearchMarks(IRenderContext* context, int trackX, int trackY,
+                                      int trackWidth, int trackHeight);
         // Fills a scrollbar track or thumb, rounded per style.scrollbarCornerRadius.
         void FillScrollbarRect(IRenderContext* context, const Rect2Dd& r);
         int ScrollbarWidth() const { return std::max(1, style.scrollbarWidth); }
@@ -941,11 +999,16 @@ namespace UltraCanvas {
 
         // parse the line text and create/update line layout
         void UpdateLineLayouts(IRenderContext* ctx);
+        // Fills rawBlockLines when the caret sits in a MarkdownHybrid display-math block.
+        void UpdateRawMathBlockLines(IRenderContext* ctx);
 
         // parse the line text and create line layout
         std::unique_ptr<LineLayoutBase> MakeLineLayout(IRenderContext* ctx, int lineIndex);
-        // parse the plain line text and setup line layout
-        std::unique_ptr<LineLayoutBase> MakePlainLineLayout(IRenderContext* ctx, int lineIndex);
+        // parse the plain line text and setup line layout. With `withComposition`
+        // an input method's composition, if any, is spliced in at the caret
+        // (the caret's line only; the layout of the line being edited).
+        std::unique_ptr<LineLayoutBase> MakePlainLineLayout(IRenderContext* ctx, int lineIndex,
+                                                            bool withComposition = false);
         // The syntax state line `lineIndex` starts in: what the cached layout
         // of the line above left open, less a string or line comment when a
         // real line break (not a length split) separates them.
@@ -974,6 +1037,8 @@ namespace UltraCanvas {
         // and markdownAnchorBacklinks. Run lazily when markdownIndexDirty is true — which
         // RebuildText() and SetText() both raise.
         void RebuildMarkdownIndex();
+        // GitHub-style anchor id of a heading's text (after the leading #s).
+        static std::string MarkdownHeadingSlug(const std::string& headingText);
         bool markdownIndexDirty = true;
 
         // Normalize per-column widths across every row of a contiguous table span. Each cell's
@@ -1071,6 +1136,22 @@ namespace UltraCanvas {
         // MarkdownHybrid current line. When the cursor enters a line, this line gets text
         // and used in rendering and measuring
         std::unique_ptr<LineLayoutBase> currentLine;
+        // MarkdownHybrid display-math block holding the caret: every other line of it
+        // (fences and LaTeX source) is shown raw too, since in rendered form those lines
+        // collapse to zero height. rawBlockLines[k] stands in for line rawBlockStart + k;
+        // the caret's own slot is null (currentLine covers it).
+        std::vector<std::unique_ptr<LineLayoutBase>> rawBlockLines;
+        int rawBlockStart = -1;
+
+        // Input method composition: the text being composed and its caret (a
+        // byte offset into it). Shown in currentLine at the caret, never in
+        // `lines`. compositionColumn is where it sits in currentLine's layout
+        // (a codepoint), set when that layout is built.
+        std::string preeditText;
+        int preeditCursor = 0;
+        int compositionColumn = -1;
+        bool HandleComposition(const UCEvent& event);
+        void ClearComposition();
 
         // Cursor / selection state is LineColumnIndex (codepoint-based); see fields above.
         float computedLineHeight = 12;
@@ -1164,6 +1245,12 @@ namespace UltraCanvas {
         // inside the current selection. When selection changes, ReconcileLayoutState
         // invalidates the union of old+new selected line ranges so MakeLineLayout runs again.
         void ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex);
+        // Search-match backgrounds of one line, applied before the selection so
+        // the current match (the selection) shows over them.
+        void ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex);
+        // Paints [startCp, endCp) of a real line (codepoints) in color.
+        void ApplyLineBackgroundRange(LineLayoutBase* ll, int lineIndex,
+                                      int startCp, int endCp, const Color& color);
         // Kept as no-op stubs — attribute application happens during rebuild, not in-place patching.
         void ApplySelectionAttributes();
         void ClearSelectionAttributes(int logicalLine);
@@ -1186,6 +1273,21 @@ namespace UltraCanvas {
         
         // Search highlights (grapheme positions: start, end)
         std::vector<std::pair<int, int>> searchHighlights;
+        // The same matches split per line, sorted by line, for the text views.
+        struct SearchHighlightSegment { int lineIndex; int startCp; int endCp; };
+        std::vector<SearchHighlightSegment> searchHighlightSegments;
+        // Term and case of the live highlights; empty when none are shown.
+        std::string searchHighlightText;
+        bool searchHighlightCaseSensitive = false;
+        void RecomputeSearchHighlights();
+        void BuildSearchHighlightSegments();
+        // A document this big re-finds its marks once typing pauses, not on
+        // every keystroke: each search is a full pass over the text.
+        static constexpr size_t searchHighlightDeferBytes = 256 * 1024;
+        static constexpr unsigned int searchHighlightDeferMs = 200;
+        TimerId searchHighlightTimer = InvalidTimerId;
+        void ScheduleSearchHighlightRecompute();
+        void CancelSearchHighlightRecompute();
 
         // Undo/Redo stacks. Positions are stored as LineColumnIndex (authoritative since Step 8b).
         struct TextState {

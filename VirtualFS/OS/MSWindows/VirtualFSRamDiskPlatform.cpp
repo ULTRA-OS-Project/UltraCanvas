@@ -23,9 +23,9 @@
 // the disc was then neither found by its name nor listed. The fallback
 // takes the same limit, so a name does not work on one machine and fail on
 // the next only because ImDisk is installed there.
-// Version: 1.2.0 - names fit the NTFS volume label; labels read wide,
-//                  foreign labels not listed
-// Last Modified: 2026-10-05
+// Version: 1.4.0 - PlatformPreferredBacking; create reads the kept answer;
+//                  labels are read from local drives only
+// Last Modified: 2026-10-13
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -140,17 +140,39 @@ std::string NameFromVolumeLabel(const std::string& label) {
     return IsValidName(name) ? name : std::string();
 }
 
-// Finds the drive letter hosting the ImDisk disc with this name, or '\0'.
-char FindImDiskDrive(const std::string& name) {
-    const std::string wanted = VolumeLabelFor(name);
+// The drive roots ("D:\\" ...) whose volume label is worth reading to find
+// an ImDisk disc: the letters FindFreeDriveLetter hands out, D: to Z:, that
+// hold a local disk. GetVolumeInformationW on a mapped network drive whose
+// server is gone, or on a CD or floppy drive with nothing in it, blocks for
+// as long as the redirector or the drive takes to give up - seconds, every
+// time a disc is listed or created - and none of those can be an ImDisk
+// disc, which is a fixed (or, mounted with -o rem, removable) local volume.
+// GetDriveTypeW answers from the mount table without touching the device.
+// A: and B: are left out with them: a floppy drive with no disc spins up
+// before it says so, and no ImDisk disc of ours is ever given either.
+std::vector<std::string> ImDiskCandidateRoots() {
+    std::vector<std::string> roots;
     const DWORD mask = ::GetLogicalDrives();
-    for (int i = 0; i < 26; ++i) {
+    for (int i = 3; i < 26; ++i) {  // D: to Z:
         if ((mask & (1UL << i)) == 0) {
             continue;
         }
-        const std::string root = std::string(1, static_cast<char>('A' + i)) + ":\\";
+        const wchar_t root[] = { static_cast<wchar_t>(L'A' + i), L':', L'\\', L'\0' };
+        const UINT type = ::GetDriveTypeW(root);
+        if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE && type != DRIVE_RAMDISK) {
+            continue;
+        }
+        roots.push_back(std::string(1, static_cast<char>('A' + i)) + ":\\");
+    }
+    return roots;
+}
+
+// Finds the drive letter hosting the ImDisk disc with this name, or '\0'.
+char FindImDiskDrive(const std::string& name) {
+    const std::string wanted = VolumeLabelFor(name);
+    for (const std::string& root : ImDiskCandidateRoots()) {
         if (ReadVolumeLabel(root) == wanted) {
-            return static_cast<char>('A' + i);
+            return root[0];
         }
     }
     return '\0';
@@ -185,7 +207,10 @@ VirtualFSResult PlatformCreate(const std::string& name,
                                uint64_t sizeBytes,
                                VirtualFSRamDisk& outDisk) {
     // --- Preferred: a real RAM disc through ImDisk ---------------------
-    if (HaveImDisk()) {
+    // The once-per-process answer (VirtualFS_GetPreferredRamDiskBacking),
+    // not HaveImDisk() again: that spawns a shell for `where imdisk`, and
+    // the caller has usually asked already to decide what to offer.
+    if (VirtualFS_GetPreferredRamDiskBacking() == VirtualFSRamDiskBacking::ImDisk) {
         if (FindImDiskDrive(name) != '\0') {
             return VirtualFSResult::AlreadyExists;
         }
@@ -256,14 +281,11 @@ VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
 std::vector<VirtualFSRamDisk> PlatformList() {
     std::vector<VirtualFSRamDisk> discs;
 
-    // ImDisk discs, found by their volume label.
-    const DWORD mask = ::GetLogicalDrives();
-    for (int i = 0; i < 26; ++i) {
-        if ((mask & (1UL << i)) == 0) {
-            continue;
-        }
-        const std::string drive = std::string(1, static_cast<char>('A' + i)) + ":";
-        const std::string root = drive + "\\";
+    // ImDisk discs, found by their volume label - on the local drives only
+    // (ImDiskCandidateRoots), so a network drive whose server is away does
+    // not hold the listing up.
+    for (const std::string& root : ImDiskCandidateRoots()) {
+        const std::string drive = root.substr(0, 2);
         const std::string name = NameFromVolumeLabel(ReadVolumeLabel(root));
         if (name.empty()) {
             continue;
@@ -303,11 +325,12 @@ std::vector<VirtualFSRamDisk> PlatformList() {
     return discs;
 }
 
-} // namespace RamDiskDetail
-
-VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking() {
-    return RamDiskDetail::HaveImDisk() ? VirtualFSRamDiskBacking::ImDisk
-                                       : VirtualFSRamDiskBacking::DiskFallback;
+// A shell for `where imdisk` - seconds on a loaded machine, which is why
+// the core asks once and keeps the answer.
+VirtualFSRamDiskBacking PlatformPreferredBacking() {
+    return HaveImDisk() ? VirtualFSRamDiskBacking::ImDisk
+                        : VirtualFSRamDiskBacking::DiskFallback;
 }
 
+} // namespace RamDiskDetail
 } // namespace VirtualFS

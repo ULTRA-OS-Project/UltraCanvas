@@ -1,8 +1,18 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
-// Version: 1.1.0
-// Last Modified: 2026-09-26
+// Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
+// Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
+//                  password-protected .docx
+// Version: 1.6.0 - RequestDocumentPassword; OpenTextDocument and LoadTextDocument open
+//                  password-protected .docx files
+// Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
+//                  AddTextDocumentLoadTypes, SaveTextDocument, AddTextDocumentSaveTypes
+// Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
+//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
+//                  AddImageSaveTypes
+// Version: 1.3.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -11,11 +21,17 @@
 #include "UltraCanvasAudio.h"
 #include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
+#include "UltraCanvasPresentationPptx.h"    // .pptx, read as an outline
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
+#include "UltraCanvasVectorRaster.h"    // RasterizeVectorDocument: a drawing saved as a bitmap
+#include "UltraCanvasRasterDocument.h"  // ... written through the image writer
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
+#include <map>
 #include <fstream>
 
 #include <algorithm>
@@ -158,10 +174,20 @@ namespace UltraCanvas {
         config.dialogType       = type;
         config.initialDirectory = opts.initialDirectory;
         config.defaultFileName  = opts.defaultFileName;
+        config.defaultExtension = opts.defaultExtension;
         config.showHiddenFiles  = opts.showHiddenFiles;
         config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
         config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;
         config.confirmOverwrite = opts.confirmOverwrite;
+        config.hoverIconMenu    = opts.hoverIconMenu;
+        // The framework dialog adds what it accepts to the recent files
+        // itself (FileDialogConfig::addToRecent); the native path below does
+        // it here.
+        config.addToRecent      = opts.registerAsRecent;
+        config.saveSettingsButton = opts.saveSettingsButton;
+        config.imageWidth       = opts.imageWidth;
+        config.imageHeight      = opts.imageHeight;
+        config.imageIsDrawing   = opts.imageIsDrawing;
         // A folder has no file filter; a file dialog takes the caller's (the
         // dialog lists every file when there are none).
         if (type != FileDialogType::SelectFolder) config.filters = opts.filters;
@@ -224,8 +250,8 @@ namespace UltraCanvas {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::Open, "Open File"),
                 opts.parentWindow,
-                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
-                    deliver(dr, paths.empty() ? std::string() : paths.front());
+                [onResult](DialogResult dr, const std::vector<std::string>& paths) {
+                    if (onResult) onResult(dr, paths.empty() ? std::string() : paths.front());
                 });
             return;
         }
@@ -256,7 +282,7 @@ namespace UltraCanvas {
         if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::OpenMultiple, "Open Files"),
-                opts.parentWindow, deliver);
+                opts.parentWindow, onResult);
             return;
         }
 
@@ -271,6 +297,15 @@ namespace UltraCanvas {
     void UltraCanvasFileLoader::SaveFileDialog(
             const FileDialogOptions& opts,
             std::function<void(DialogResult, const std::string&)> onResult) {
+        SaveFileDialog(opts, [onResult](DialogResult dr, const std::string& path,
+                                        const FileSaveImageSize&) {
+            if (onResult) onResult(dr, path);
+        });
+    }
+
+    void UltraCanvasFileLoader::SaveFileDialog(
+            const FileDialogOptions& opts,
+            std::function<void(DialogResult, const std::string&, const FileSaveImageSize&)> onResult) {
 
         const bool registerAsRecent = opts.registerAsRecent;
         auto deliver = [registerAsRecent, onResult](DialogResult dr,
@@ -278,16 +313,28 @@ namespace UltraCanvas {
             if (dr == DialogResult::OK && registerAsRecent) {
                 NotifyRecentFile(result);
             }
-            if (onResult) onResult(dr, result);
+            // The platform's dialog has no Settings: the picture's own size.
+            if (onResult) onResult(dr, result, FileSaveImageSize());
         };
 
         if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
-            ShowFrameworkFileDialog(
-                FileConfigFrom(opts, FileDialogType::Save, "Save File"),
-                opts.parentWindow,
-                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
-                    deliver(dr, paths.empty() ? std::string() : paths.front());
-                });
+            // As ShowFrameworkFileDialog, but the size chosen in the dialog's
+            // Settings is read before the dialog goes.
+            auto dialog = UltraCanvasDialogManager::CreateFileDialog(
+                    FileConfigFrom(opts, FileDialogType::Save, "Save File"));
+            UltraCanvasDialogManager::ShowDialog(
+                dialog,
+                [dialog = dialog.get(), onResult](DialogResult result) {
+                    std::string path;
+                    FileSaveImageSize size;
+                    if (result == DialogResult::OK) {
+                        path = dialog->GetSelectedFilePath();
+                        size = dialog->GetSaveImageSize();
+                    }
+                    if (path.empty()) result = DialogResult::Cancel;
+                    if (onResult) onResult(result, path, size);
+                },
+                opts.parentWindow);
             return;
         }
 
@@ -412,6 +459,48 @@ namespace UltraCanvas {
         return UltraCanvasSupportedFormats::GetSaveExtensions(category);
     }
 
+    namespace {
+        // A format's extension and its aliases: one dialog filter's worth.
+        std::vector<std::string> ExtensionsOf(const MediaFormatInfo& format) {
+            std::vector<std::string> extensions = {format.extension};
+            extensions.insert(extensions.end(), format.aliases.begin(), format.aliases.end());
+            return extensions;
+        }
+
+        // The Save dialog starts on its first type: the one the proposed
+        // name ends in goes there, so the two agree ("drawing.svg" opens on
+        // SVG, not on the alphabet's first vector type).
+        void PutDefaultTypeFirst(FileDialogOptions& opts) {
+            std::string ext = PathToUtf8(PathFromUtf8(opts.defaultFileName).extension());
+            if (ext.size() < 2) return;
+            ext = ext.substr(1);
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            auto holds = [&ext](const FileFilter& filter) {
+                return std::find(filter.extensions.begin(), filter.extensions.end(), ext) != filter.extensions.end();
+            };
+            auto it = std::find_if(opts.filters.begin(), opts.filters.end(), holds);
+            if (it != opts.filters.end() && it != opts.filters.begin())
+                std::rotate(opts.filters.begin(), it, it + 1);
+        }
+    } // namespace
+
+    void UltraCanvasFileLoader::AddLoadTypes(FileDialogOptions& opts, const std::string& label,
+                                             std::initializer_list<MediaFormatCategory> categories) {
+        std::vector<std::string> extensions;
+        for (MediaFormatCategory category : categories)
+            for (const std::string& ext : GetSupportedLoadExtensions(category))
+                if (std::find(extensions.begin(), extensions.end(), ext) == extensions.end())
+                    extensions.push_back(ext);
+        if (!extensions.empty()) opts.AddFilter(label, extensions);
+    }
+
+    void UltraCanvasFileLoader::AddSaveTypes(FileDialogOptions& opts, MediaFormatCategory category) {
+        for (const MediaFormatInfo& format : GetSupportedFormats(category))
+            if (format.canSave) opts.AddFilter(format.description, ExtensionsOf(format));
+        PutDefaultTypeFirst(opts);
+    }
+
     // ===== VECTOR DOCUMENTS =====
 
     std::shared_ptr<VectorStorage::VectorDocument> UltraCanvasFileLoader::LoadVectorDocument(
@@ -437,17 +526,68 @@ namespace UltraCanvas {
         return doc;
     }
 
+    namespace {
+        std::string LowerExtensionOf(const std::string& extensionOrPath) {
+            std::string ext = extensionOrPath;
+            if (ext.find('.') != std::string::npos || ext.find('/') != std::string::npos ||
+                ext.find('\\') != std::string::npos) {
+                ext = PathToUtf8(PathFromUtf8(extensionOrPath).extension());
+                if (ext.empty() && !extensionOrPath.empty() && extensionOrPath[0] == '.') ext = extensionOrPath;
+            }
+            if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return ext;
+        }
+
+        // A vector writer's type as the Save dialog lists it.
+        std::string VectorTypeName(const std::string& ext) {
+            static const std::map<std::string, std::string> names = {
+                {"pdf", "PDF"}, {"ai", "Adobe Illustrator"}, {"eps", "EPS"}, {"ps", "PostScript"},
+                {"cdr", "CorelDRAW"}, {"svg", "SVG"}, {"svgz", "SVG (compressed)"}, {"xar", "Xara XAR"},
+                {"dxf", "DXF"}, {"dwg", "DWG"}, {"emf", "EMF"}, {"wmf", "WMF"}};
+            auto it = names.find(ext);
+            if (it != names.end()) return it->second;
+            std::string upper = ext;
+            for (char& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            return upper;
+        }
+    }
+
     bool UltraCanvasFileLoader::SaveVectorDocument(const VectorStorage::VectorDocument& document,
                                                    const std::string& filePath, std::string& outError,
                                                    std::vector<std::string>* notes) {
+        return SaveVectorDocument(document, filePath, FileSaveImageSize(), outError, notes);
+    }
+
+    bool UltraCanvasFileLoader::SaveVectorDocument(const VectorStorage::VectorDocument& document,
+                                                   const std::string& filePath, const FileSaveImageSize& size,
+                                                   std::string& outError, std::vector<std::string>* notes) {
         outError.clear();
-        std::string ext = PathToUtf8(PathFromUtf8(filePath).extension());
-        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
-        for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (notes) notes->clear();
+        const std::string ext = LowerExtensionOf(filePath);
         const auto writable = SavableVectorExtensions();
         if (std::find(writable.begin(), writable.end(), ext) == writable.end()) {
-            outError = writable.empty()
+            if (!ext.empty() && CanSaveImage(ext)) {
+                // A bitmap: the page drawn at the size asked for - a drawing
+                // has no pixel size of its own, so it is sharp at any - and
+                // written with the format's save settings.
+                const Size2Di natural = GetVectorDocumentPixelSize(document);
+                VectorRasterOptions options;
+                options.width = size.IsOriginal() ? natural.width : size.width;
+                options.height = size.IsOriginal() ? natural.height : size.height;
+                auto layer = RasterizeVectorDocument(document, options, outError);
+                if (!layer) return false;
+                UCRasterDocument picture(layer->GetWidth(), layer->GetHeight(), RasterPixel(0, 0, 0, 0));
+                picture.AddLayer(layer);
+                return picture.SaveToFile(filePath, outError);
+            }
+            // The extension picks the format, so a name without one (saved
+            // under "All files") has none to pick.
+            outError = writable.empty() && !CanSaveImage(ext)
                        ? "No vector file writers are installed (RegisterVectorFormatsPlugin was not called)."
+                       : ext.empty()
+                       ? "The file name has no extension, so there is no format to save it in. "
+                         "Add one, such as .svg, or choose the file type."
                        : "No writer for ." + ext;
             return false;
         }
@@ -463,6 +603,38 @@ namespace UltraCanvas {
         return ok;
     }
 
+    Size2Di UltraCanvasFileLoader::GetVectorDocumentPixelSize(const VectorStorage::VectorDocument& document) {
+        Rect2Dd page = document.ViewBox;
+        if (!(page.width > 0) || !(page.height > 0)) page = Rect2Dd(0, 0, document.Size.width, document.Size.height);
+        if (!(page.width > 0) || !(page.height > 0)) return Size2Di(0, 0);
+        constexpr double kPixelsPerPoint = 96.0 / 72.0;
+        return Size2Di(std::max(1, static_cast<int>(std::lround(page.width * kPixelsPerPoint))),
+                       std::max(1, static_cast<int>(std::lround(page.height * kPixelsPerPoint))));
+    }
+
+    bool UltraCanvasFileLoader::CanSaveImage(const std::string& extensionOrPath) {
+        const std::string ext = LowerExtensionOf(extensionOrPath);
+        if (ext.empty()) return false;
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Bitmap))
+            if (format.canSave && format.MatchesExtension(ext)) return true;
+        return false;
+    }
+
+    void UltraCanvasFileLoader::AddImageSaveTypes(FileDialogOptions& opts) {
+        AddSaveTypes(opts, MediaFormatCategory::Bitmap);
+    }
+
+    void UltraCanvasFileLoader::AddVectorDocumentSaveTypes(FileDialogOptions& opts,
+                                                           const VectorStorage::VectorDocument& document,
+                                                           bool withBitmaps) {
+        for (const std::string& ext : SavableVectorExtensions()) opts.AddFilter(VectorTypeName(ext), ext);
+        PutDefaultTypeFirst(opts);
+        if (!withBitmaps) return;
+        AddImageSaveTypes(opts);
+        const Size2Di page = GetVectorDocumentPixelSize(document);
+        opts.SetDrawingSize(page.width, page.height);
+    }
+
     std::vector<std::string> UltraCanvasFileLoader::GetVectorLoadExtensions() {
         return PreviewableVectorExtensions();
     }
@@ -476,14 +648,23 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UCRichDocument> UltraCanvasFileLoader::LoadTextDocument(
-            const std::string& filePath, std::string& outError) {
+            const std::string& filePath, std::string& outError, const std::string& password) {
         outError.clear();
+
+        // A PowerPoint deck reads as an outline of its slides. A protected one
+        // is a compound file whose content shows only once decrypted, so it
+        // goes by its extension.
+        if (IsPptxPackage(filePath) || (IsPptxExtension(filePath) && IsEncryptedOfficePackage(filePath))) {
+            PptxPresentation deck;
+            if (!ReadPptxPresentation(filePath, deck, outError, password)) return nullptr;
+            return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
+        }
 
         // Package formats (and renamed/legacy files) go by content signature.
         WordDocumentFormat format = DetectWordDocumentFormat(filePath);
         if (format != WordDocumentFormat::Unknown) {
             auto document = std::make_shared<UCRichDocument>();
-            if (!UCWordDocumentIO::Load(filePath, *document, outError)) {
+            if (!UCWordDocumentIO::Load(filePath, *document, outError, password)) {
                 return nullptr;
             }
             return document;
@@ -502,6 +683,46 @@ namespace UltraCanvas {
             UCRichDocument::FromMarkdown(text, baseDirectory));
     }
 
+    namespace {
+        // The document types LoadTextDocument reads: the Word document reader's
+        // (ODT, DOCX, DOC, LaTeX), PowerPoint decks as outlines, and the
+        // Markdown text path's.
+        bool TextDocumentReads(const MediaFormatInfo& format) {
+            if (WordDocumentFormatFromExtension(format.extension) != WordDocumentFormat::Unknown) return true;
+            if (IsPptxExtension(format.extension)) return true;
+            return format.extension == "md" || format.extension == "txt";
+        }
+
+        // ... and the ones SaveTextDocument writes.
+        bool TextDocumentWrites(const MediaFormatInfo& format) {
+            const WordDocumentFormat type = WordDocumentFormatFromExtension(format.extension);
+            return format.canSave && (type == WordDocumentFormat::Odt || type == WordDocumentFormat::Docx);
+        }
+    } // namespace
+
+    void UltraCanvasFileLoader::AddTextDocumentLoadTypes(FileDialogOptions& opts) {
+        std::vector<MediaFormatInfo> formats;
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document))
+            if (format.canLoad && TextDocumentReads(format)) formats.push_back(format);
+        std::vector<std::string> all;
+        for (const MediaFormatInfo& format : formats)
+            for (const std::string& ext : ExtensionsOf(format)) all.push_back(ext);
+        if (all.empty()) return;
+        opts.AddFilter("Documents", all);
+        for (const MediaFormatInfo& format : formats) opts.AddFilter(format.description, ExtensionsOf(format));
+    }
+
+    bool UltraCanvasFileLoader::SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
+                                                 std::string& outError, const std::string& password) {
+        return UCWordDocumentIO::Save(filePath, document, outError, password);
+    }
+
+    void UltraCanvasFileLoader::AddTextDocumentSaveTypes(FileDialogOptions& opts) {
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document))
+            if (TextDocumentWrites(format)) opts.AddFilter(format.description, ExtensionsOf(format));
+        PutDefaultTypeFirst(opts);
+    }
+
     void UltraCanvasFileLoader::OpenTextDocument(
             const FileDialogOptions& opts,
             std::function<void(const FileLoadResult&, std::shared_ptr<UCRichDocument>)> onResult) {
@@ -509,29 +730,109 @@ namespace UltraCanvas {
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Open Document";
         if (effective.filters.empty()) {
-            effective
-                .AddFilter("Documents",
-                           std::vector<std::string>{"odt", "docx", "doc", "tex", "md", "markdown", "txt"})
-                .AddFilter("OpenDocument Text (*.odt)", "odt")
-                .AddFilter("Word Document (*.docx)", "docx")
-                .AddFilter("LaTeX Document (*.tex)", "tex")
-                .AddFilter("Markdown (*.md)", std::vector<std::string>{"md", "markdown"})
-                .AddFilter("Plain Text (*.txt)", "txt")
-                .AddFilter("All files (*.*)", "*");
+            AddTextDocumentLoadTypes(effective);
+            effective.AddFilter("All files (*.*)", "*");
         }
 
-        OpenFileDialog(effective, [onResult](DialogResult r, const std::string& path) {
-            FileLoadResult loadResult;
-            loadResult.dialogResult = r;
-            std::shared_ptr<UCRichDocument> document;
-
-            if (r == DialogResult::OK && !path.empty()) {
-                document = LoadTextDocument(path, loadResult.loadError);
+        UltraCanvasWindowBase* parent = effective.parentWindow;
+        OpenFileDialog(effective, [onResult, parent](DialogResult r, const std::string& path) {
+            if (r != DialogResult::OK || path.empty()) {
+                FileLoadResult loadResult;
+                loadResult.dialogResult = r;
+                if (onResult) onResult(loadResult, nullptr);
+                return;
             }
-            if (onResult) {
-                onResult(loadResult, document);
-            }
+            RequestDocumentPassword(path, parent,
+                [onResult, path](bool proceed, const std::string& password) {
+                    FileLoadResult loadResult;
+                    loadResult.dialogResult = proceed ? DialogResult::OK : DialogResult::Cancel;
+                    std::shared_ptr<UCRichDocument> document;
+                    if (proceed) document = LoadTextDocument(path, loadResult.loadError, password);
+                    if (onResult) onResult(loadResult, document);
+                });
         });
+    }
+
+    namespace {
+        // One round of RequestDocumentPassword's prompt; `notice` (the last
+        // attempt's error) heads the prompt after a wrong password.
+        void AskDocumentPassword(const std::string& filePath, UltraCanvasWindowBase* parent,
+                                 const std::string& notice,
+                                 std::function<void(bool, const std::string&)> onResult) {
+            const std::string name = PathToUtf8(PathFromUtf8(filePath).filename());
+            const std::string prompt = (notice.empty() ? std::string() : notice + ".\n") +
+                                       "\"" + name + "\" is password-protected. Password:";
+            UltraCanvasDialogManager::ShowInputDialog(prompt, "Password", "", InputType::Password,
+                [filePath, parent, onResult](DialogResult result, const std::string& password) {
+                    if (result != DialogResult::OK) {
+                        onResult(false, "");
+                        return;
+                    }
+                    std::string error;
+                    switch (CheckOfficePassword(filePath, password, error)) {
+                        case OfficeDecryptStatus::WrongPassword:
+                        case OfficeDecryptStatus::PasswordRequired:
+                            AskDocumentPassword(filePath, parent, error, onResult);
+                            return;
+                        default:
+                            // Right, or a failure the loader reports in its own words.
+                            onResult(true, password);
+                            return;
+                    }
+                }, parent);
+        }
+    } // namespace
+
+    namespace {
+        // One round of RequestNewDocumentPassword: the password, then the
+        // same again; `notice` heads the first prompt after a failed round.
+        void AskNewDocumentPassword(UltraCanvasWindowBase* parent, const std::string& notice,
+                                    std::function<void(bool, const std::string&)> onResult) {
+            const std::string prompt = (notice.empty() ? std::string() : notice + "\n") +
+                                       "Password to protect the file with:";
+            UltraCanvasDialogManager::ShowInputDialog(prompt, "Save with Password", "", InputType::Password,
+                [parent, onResult](DialogResult result, const std::string& password) {
+                    if (result != DialogResult::OK) {
+                        onResult(false, "");
+                        return;
+                    }
+                    if (password.empty()) {
+                        AskNewDocumentPassword(parent, "The password cannot be empty.", onResult);
+                        return;
+                    }
+                    UltraCanvasDialogManager::ShowInputDialog("Type the password again:", "Save with Password", "",
+                        InputType::Password,
+                        [parent, onResult, password](DialogResult again, const std::string& repeated) {
+                            if (again != DialogResult::OK) {
+                                onResult(false, "");
+                            } else if (repeated != password) {
+                                AskNewDocumentPassword(parent, "The two passwords differ.", onResult);
+                            } else {
+                                onResult(true, password);
+                            }
+                        }, parent);
+                }, parent);
+        }
+    } // namespace
+
+    void UltraCanvasFileLoader::RequestNewDocumentPassword(
+            UltraCanvasWindowBase* parent,
+            std::function<void(bool proceed, const std::string& password)> onResult) {
+        if (onResult) AskNewDocumentPassword(parent, "", std::move(onResult));
+    }
+
+    void UltraCanvasFileLoader::RequestDocumentPassword(
+            const std::string& filePath, UltraCanvasWindowBase* parent,
+            std::function<void(bool proceed, const std::string& password)> onResult) {
+        if (!onResult) return;
+        // With no password the check stops at the header: PasswordRequired
+        // for a file it can open, without deriving any key.
+        std::string error;
+        if (CheckOfficePassword(filePath, "", error) == OfficeDecryptStatus::PasswordRequired) {
+            AskDocumentPassword(filePath, parent, "", std::move(onResult));
+        } else {
+            onResult(true, "");
+        }
     }
 
 #if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)

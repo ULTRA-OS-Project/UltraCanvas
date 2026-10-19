@@ -8,8 +8,10 @@
 // bound to the selected shape's fill. The page is the reference for what
 // the framework provides (Docs/UltraCanvas/UltraCanvasVectorCanvas.md) and
 // what an application adds on top.
+// Version: 1.0.1 - Undo and Redo use the shared line icons ArtCreator's
+//                  toolbar uses, not Texter's thin outlines
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -504,9 +506,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
 
     auto editor = std::make_shared<DemoVectorEditor>();
 
-    // The toolbar carries icons, not words - the same set ArtCreator uses
-    // (media/icons/artcreator and media/icons/texter), with the name and its
-    // shortcut in the tooltip. Labels are off, so a button is its icon.
+    // The toolbar carries icons, not words - the ones ArtCreator's toolbar
+    // uses: its own (media/icons/artcreator) and, for Undo and Redo, the
+    // framework's shared line icons (media/icons/menu). Both are drawn on a
+    // 24 px grid, the size a toolbar shows them at, so their lines land on
+    // whole pixels. The name and its shortcut are in the tooltip; labels are
+    // off, so a button is its icon.
     auto toolbar = std::make_shared<UltraCanvasToolbar>("VCToolbar", 10, 88, 980, 36);
     {
         ToolbarAppearance app = toolbar->GetAppearance();
@@ -515,7 +520,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
     }
 
     const std::string artIcons = NormalizePath(GetResourcesDir() + "media/icons/artcreator/");
-    const std::string textIcons = NormalizePath(GetResourcesDir() + "media/icons/texter/");
+    const std::string lineIcons = NormalizePath(GetResourcesDir() + "media/icons/menu/");
 
     auto addTool = [&](const std::string& id, const std::string& icon, const std::string& tip,
                        DemoVectorEditor::Tool t) {
@@ -528,8 +533,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
     addTool("vcEllipse", "ellipse.svg", "Ellipse - drag to draw", DemoVectorEditor::Tool::Ellipse);
     addTool("vcFreehand", "freehand.svg", "Freehand - drag to draw a curve", DemoVectorEditor::Tool::Freehand);
     toolbar->AddSeparator();
-    toolbar->AddButton("vcUndo", "", textIcons + "undo.svg", [editor]() { editor->history.Undo(); })->SetTooltip("Undo (Ctrl+Z)");
-    toolbar->AddButton("vcRedo", "", textIcons + "redo.svg", [editor]() { editor->history.Redo(); })->SetTooltip("Redo (Ctrl+Y)");
+    toolbar->AddButton("vcUndo", "", lineIcons + "undo.svg", [editor]() { editor->history.Undo(); })->SetTooltip("Undo (Ctrl+Z)");
+    toolbar->AddButton("vcRedo", "", lineIcons + "redo.svg", [editor]() { editor->history.Redo(); })->SetTooltip("Redo (Ctrl+Y)");
     toolbar->AddSeparator();
     toolbar->AddButton("vcDelete", "", artIcons + "delete.svg", [editor]() { editor->DeleteSelection(); })->SetTooltip("Delete (Del)");
     toolbar->AddButton("vcDuplicate", "", artIcons + "duplicate.svg", [editor]() { editor->Duplicate(); })->SetTooltip("Duplicate (Ctrl+D)");

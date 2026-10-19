@@ -15,7 +15,7 @@ Changelog and version: [`Docs/UltraNetMonitor/CHANGELOG.md`](../../Docs/UltraNet
 |---|---|
 | `ui/UltraNetMonitorModels.*` | The five `IListModel`s: one row per connection, per process, per recorded flow, per named address, per connection event |
 | `ui/UltraNetMonitorPaths.*` | Where the activity store lives by default (the per-user data directory) |
-| `ui/UltraNetMonitorWindow.*` | The window: the *Live* tab's split pane, the *History*, *Names* and *Events* tabs, the Record toggle, the snapshot thread |
+| `ui/UltraNetMonitorWindow.*` | The window: the *Live* tab's split pane, the *History*, *Names* and *Events* tabs, the Record toggle, the *Info…* dialog, the snapshot thread |
 | `main.cpp` | GUI bootstrap, the name and event sources, and the command line: `--list`, `--by-app` (both with `--csv`), `--names`, `--events`, `--capabilities`, `--record`, `--history`, `--dns`, `--events-history`, `--totals`, `--store-stats`, `--purge` |
 | `UltraNetMonitor.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraNetMonitor.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |
 
@@ -31,8 +31,8 @@ An antivirus mail shield, a VPN client or a local proxy takes an
 application's connections on 127.0.0.1 and makes the real ones itself, so
 the socket table shows two unrelated processes. The *Via* column decodes
 that chain: on the client's connection, the local process it goes to
-("→ AvastSvc (4720)"); on the proxy's accepted socket, the client
-("← thunderbird (4120)"); on the proxy's own outbound connections, the
+("to AvastSvc (4720)"); on the proxy's accepted socket, the client
+("from thunderbird (4120)"); on the proxy's own outbound connections, the
 applications it serves ("for thunderbird (4120)") - the last is an
 inference, labelled as such in the tooltip, since the table cannot tell
 which client caused one particular outbound connection. The process
@@ -125,7 +125,10 @@ UltraNetMonitor --purge --yes                  # irreversible
 Not elevated, only this user's processes can be attributed: on Linux and
 Windows other users' sockets still appear, as *(unattributed)*; on macOS
 they do not appear at all, because sockets there are enumerated per process.
-The status line says how many processes could not be inspected. The *Sent*
+The status line says how many processes could not be inspected, and *Info…*
+on the toolbar says why - with the backend and its limits, every name and
+event source with its count or the error it failed with, and the notes from
+start-up; the tabs' status lines only name a source that failed. The *Sent*
 and *Received* columns are filled on Linux (netlink `sock_diag`) and show a
 dash — never a zero — where a backend collects no counter. A browser that
 resolves over HTTPS on its own never asks the system resolver, so neither

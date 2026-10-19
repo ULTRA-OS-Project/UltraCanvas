@@ -9,8 +9,9 @@
 // The test builds a throwaway icon theme and points XDG_DATA_HOME at it, so
 // it asserts against icons it put there rather than against whatever the
 // machine running it happens to have installed.
+// Version: 1.1.1 - UltraPaint claims UltraCanvas layered images (image/x-ultracanvas-bitmap)
 // Version: 1.1.0
-// Last Modified: 2026-09-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopEntry.h"
@@ -101,6 +102,8 @@ int main() {
                   "Icon=testapp\n"
                   "Terminal=false\n"
                   "MimeType=text/plain;text/markdown;\n"
+                  "Categories=Utility;TextEditor;\n"
+                  "StartupWMClass=example-editor\n"
                   "\n"
                   "[Desktop Action New]\n"
                   "Name=New Window\n"
@@ -115,6 +118,9 @@ int main() {
     CheckEqual(entry.program, "/bin/sh", "the program it runs (from TryExec)");
     Check(entry.mimeTypes.size() == 2 && entry.mimeTypes[0] == "text/plain",
           "the MIME types it handles");
+    Check(entry.categories.size() == 2 && entry.categories[1] == "TextEditor",
+          "the categories it belongs to");
+    CheckEqual(entry.startupWMClass, "example-editor", "the window class its windows carry");
     Check(!entry.terminal && !entry.noDisplay && !entry.hidden,
           "the flags it does not set");
     // The action group below the main one must not overwrite anything.
@@ -239,6 +245,12 @@ int main() {
           "and the 3D models it renders a view of");
     Check(handles("application/x-ultracanvas-raster"),
           "and its own layered project files");
+    Check(handles("image/x-ultracanvas-bitmap"),
+          "and UltraCanvas layered images (*.ucd)");
+    Check(std::find(paint.categories.begin(), paint.categories.end(), "RasterGraphics") !=
+                  paint.categories.end(),
+          "it is a bitmap editor by its categories");
+    CheckEqual(paint.startupWMClass, "UltraPaint", "its windows' class");
     Check(paint.mimeTypes.size() > 20,
           "the whole list survives parsing (got " +
                   std::to_string(paint.mimeTypes.size()) + " types)");

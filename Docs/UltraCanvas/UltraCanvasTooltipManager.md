@@ -1,8 +1,23 @@
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.4.0  
+**Version:** 2.5.0 - `TooltipStyle::FromTheme`; the manager's style is the one every tooltip shown without one takes  
 **Last Modified:** 2026-10-05  
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Overview](#overview)
+- [Basic Usage](#basic-usage)
+  - [Including the Header](#including-the-header)
+  - [Automatic tooltips](#automatic-tooltips)
+  - [Showing a tooltip manually](#showing-a-tooltip-manually)
+- [TooltipContent Reference](#tooltipcontent-reference)
+- [TooltipStyle Reference](#tooltipstyle-reference)
+  - [Presets](#presets)
+  - [Soft shadow](#soft-shadow)
+- [Manager API Reference](#manager-api-reference)
+- [Rendering Integration Notes](#rendering-integration-notes)
+- [Dependencies](#dependencies)
 
 ## Overview
 
@@ -224,7 +239,15 @@ struct TooltipStyle {
 ```cpp
 static TooltipStyle TooltipStyle::Dark();   // the default dark theme
 static TooltipStyle TooltipStyle::Light();  // white background, dark text
+static TooltipStyle TooltipStyle::FromTheme(const UltraCanvasTheme& theme);   // Dark() or Light() by the theme, its roles over it
 ```
+
+A tooltip shown without a style takes the manager's
+(`UltraCanvasTooltipManager::SetStyle`, static; `GetStyle` reads it) - the
+framework's dark tooltip until one is set. The application sets it from
+the theme whenever the theme changes (`UltraCanvasTheme::SetCurrent`), so
+tooltips agree with the window's look without the application's help; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
 
 ### Soft shadow
 
@@ -284,6 +307,11 @@ static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow mar
 - Tooltip text is laid out with Pango markup; the text passed in is wrapped
   in a `<span>` carrying `fontSize`/`fontFamily`, so tooltip strings may
   themselves contain markup (e.g. `<b>`, `<span foreground="...">`).
+- Text wider than `maxWidth` (less the padding) wraps at word boundaries and,
+  where a word alone is too long - a URL, a file path, a hash - between any
+  two of its characters. The box is sized to the wrapped text, so nothing a
+  tooltip draws runs past its border. Over-wide table cells wrap the same way
+  inside their column.
 
 ## Dependencies
 

@@ -10,7 +10,6 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasWindow.h"
-#include "Plugins/SVG/UltraCanvasSVGPlugin.h"
 #include <iostream>
 #include <memory>
 #include <functional>

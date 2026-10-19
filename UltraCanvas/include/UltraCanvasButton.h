@@ -1,7 +1,12 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.5.0
-// Last Modified: 2026-08-03
+// Version: 2.9.0 - ButtonVariant (Standard, Ghost, Primary, Selected): FromTheme maps the
+//                 theme onto a button's part; SetThemeVariant on the element
+// Version: 2.8.0 - ButtonStyle::FromTheme, ApplyTheme
+// Version: 2.7.1 - GetIconWidth / GetIconHeight
+// Version: 2.7.0 - onDoubleClick
+// Version: 2.6.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,6 +39,14 @@ namespace UltraCanvas {
     };
 
 // ===== SPLIT BUTTON STYLE =====
+    // A button's part in the window, which FromTheme maps the theme onto:
+    // Standard - the raised surface with the control border (a text button);
+    // Ghost - no fill at rest, the hover and pressed fills (an icon button in
+    // a bar); Primary - the accent fill with text on it (the one main
+    // action); Selected - a ghost button in its on state (the active tool, a
+    // toggle that is on): the soft accent fill with the accent for its ink
+    enum class ButtonVariant { Standard, Ghost, Primary, Selected };
+
     struct SplitButtonStyle {
         // Enable split button mode
         bool enabled = false;
@@ -116,6 +129,20 @@ namespace UltraCanvas {
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
         Point2Df shadowOffset = Point2Di(0, 0);
+
+        // The theme's roles, by the button's variant - Standard: the raised
+        // surface at rest, the hover and pressed fills, ink, the control
+        // border, the focus ring; Ghost: no fill at rest, the hover and
+        // pressed fills ("button.ghost-hover", "button.ghost-pressed" where
+        // a theme names them), ink; Primary: the accent, its hover, text on
+        // it ("button.primary", "button.primary-hover", "button.on-primary");
+        // Selected: the soft accent fill, the accent for the ink
+        // ("button.selected", "button.on-selected") - over a base's own
+        // shape (sizes, fonts, flags), or a default one
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base,
+                                     ButtonVariant variant = ButtonVariant::Standard);
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ButtonStyle()); }
+        static ButtonStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -123,11 +150,12 @@ namespace UltraCanvas {
 // ===== MAIN BUTTON CLASS =====
     class UltraCanvasButton : public UltraCanvasUIElement {
     private:
-        std::string text = "Button";
+        std::string text;
         // Byte offset in `text` of the underlined mnemonic character, -1 = none.
         int mnemonicIndex = -1;
         std::shared_ptr<UCImage> icon;
         ButtonStyle style;
+        ButtonVariant themeVariant = ButtonVariant::Standard;
         ButtonIconPosition iconPosition = ButtonIconPosition::Left;
 
         // Icon properties
@@ -137,6 +165,13 @@ namespace UltraCanvas {
         // State
         bool canToggled = false;
         bool canAcceptFocus = true;
+        // Grow-to-fit: the width the caller gave the button, and the width
+        // it was grown to (or -1 when it is at its given width).
+        bool growToFitText = true;
+        float declaredWidth = -1.f;
+        float grownWidth = -1.f;
+        float fitMinWidth = -1.f;   // the min-width the fit set, -1 when none
+        float relayoutForMinWidth = -1.f;   // the minimum a relayout was last asked for
 
         // Cached layout calculations
         Rect2Df iconRect;
@@ -148,13 +183,17 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
+        // The label defaults to none. It used to be "Button", which an
+        // icon-only button left out of its arguments then carried: laid out
+        // as icon + text, its icon sat at the left padding instead of in the
+        // middle.
         UltraCanvasButton(const std::string& identifier,
                           float x, float y, float w, float h,
-                          const std::string& buttonText = "Button");
+                          const std::string& buttonText = "");
 
         UltraCanvasButton(const std::string& identifier,
                           float w, float h,
-                          const std::string& buttonText = "Button")
+                          const std::string& buttonText = "")
             : UltraCanvasButton(identifier, -1, -1, w, h, buttonText) {};
 
         UltraCanvasButton(const std::string& identifier, const std::string& buttonText)
@@ -197,6 +236,25 @@ namespace UltraCanvas {
         void SetText(const std::string& buttonText);
         std::string GetText() const { return text; }
 
+        // A button with text never comes out narrower than its text: a fixed
+        // width given in the constructor or SetSize() is the least it takes,
+        // and it grows when the text (a translation, a larger font) needs
+        // more. On by default; turn it off for a button that must keep its
+        // width and may cut its text. Buttons without text are not affected.
+        void SetGrowToFitText(bool grow);
+        bool GetGrowToFitText() const { return growToFitText; }
+
+        // ===== ACCESSIBILITY =====
+        // A push button, or a toggle button with its pressed state. Named by
+        // SetAccessibleName(), else its text, else - an icon button - its
+        // tooltip. A screen reader's "press" clicks it as a mouse would.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Button; }
+        std::string GetAccessibleName() const override;
+        std::string GetAccessibleDescription() const override;
+        AccessibleToggleState GetAccessibleToggleState() const override;
+        std::string GetAccessibleActionName() const override { return canToggled ? "toggle" : "press"; }
+        bool DoAccessibleAction() override;
+
         // ===== MNEMONIC (ACCELERATOR) SUPPORT =====
         // A mnemonic marks one character of the label as the key that activates
         // the button; it is drawn underlined so the shortcut is visible. The
@@ -217,6 +275,8 @@ namespace UltraCanvas {
         void SetIcon(std::shared_ptr<UCImage> image);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
+        int GetIconWidth() const { return iconWidth; }
+        int GetIconHeight() const { return iconHeight; }
         void SetUseIconAsMask(bool useAsMask);
         void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }
@@ -251,6 +311,11 @@ namespace UltraCanvas {
         std::function<void()> onPress;      // When button is pressed down
         std::function<void()> onRelease;    // When button is released
         std::function<void(bool isPressed)> onToggle;      // When button is pressed down
+        // A left double-click. Set, it takes the double-click instead of the
+        // second press it otherwise counts as (the first click has already
+        // pressed, clicked or toggled the button): a list row that selects on
+        // a click and renames or opens on a double-click.
+        std::function<void()> onDoubleClick;
         std::function<void()> onSecondaryClick;  // For secondary section click
         // Right (secondary) mouse button pressed over the button; args are window-relative
         // coordinates, suitable for popping up a context menu there.
@@ -270,6 +335,15 @@ namespace UltraCanvas {
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ButtonStyle::FromTheme(theme, GetStyle(), themeVariant)); }
+        // The button's part in the window for the theme (Standard unless
+        // set); a following button re-styles at once, so an active tool
+        // switches between Ghost and Selected with this alone
+        void SetThemeVariant(ButtonVariant variant) {
+            themeVariant = variant;
+            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+        }
+        ButtonVariant GetThemeVariant() const { return themeVariant; }
         bool AcceptsFocus() const override { return canAcceptFocus; }
         void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
 
@@ -278,6 +352,9 @@ namespace UltraCanvas {
         // Content-box size (text + primary icon + split secondary section),
         // excluding padding/border. Used by MeasureOwnContent/ComputeIntrinsicSizes.
         Size2Df MeasureContentSize(IRenderContext* rc) const;
+        // Widens a fixed-width button to its text (see SetGrowToFitText), or
+        // returns it to its given width; true when the width changed.
+        bool FitWidthToText(IRenderContext* rc);
         void CalculateLayout();
         void CalculateSplitLayout();
         bool IsPointInPrimarySection(int x, int y) const;
@@ -300,7 +377,7 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasButton> CreateButton(
             const std::string& identifier, float x, float y, float w, float h,
-            const std::string& text = "Button") {
+            const std::string& text = "") {
         return std::make_shared<UltraCanvasButton>(identifier, x, y, w, h, text);
     }
 

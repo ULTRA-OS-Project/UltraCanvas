@@ -1,7 +1,7 @@
 // VirtualFS/include/VirtualFS/VirtualFSRamDisk.h
 // OS-visible RAM disc provisioning for VirtualFS
-// Version: 1.1.0 - VirtualFS_GetMaxRamDiskNameLength
-// Last Modified: 2026-10-05
+// Version: 1.2.0 - VirtualFS_GetPreferredRamDiskBacking answers once per process
+// Last Modified: 2026-10-13
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -126,10 +126,18 @@ bool VirtualFS_IsTrueRamDiskAvailable();
 std::size_t VirtualFS_GetMaxRamDiskNameLength();
 
 /**
- * @brief The backing VirtualFS_CreateRamDisk() would choose right now.
+ * @brief The backing VirtualFS_CreateRamDisk() would choose.
  *
  * Lets callers warn before creating anything (e.g. "no RAM disc driver
  * installed; scratch data will be written to disk").
+ *
+ * The system is asked once, the first time this (or
+ * VirtualFS_IsTrueRamDiskAvailable()) is called, and the answer is kept for
+ * the life of the process. The probe launches a process on Windows and
+ * macOS (`where imdisk`, `command -v hdiutil`) and can take seconds, so an
+ * application with a user interface makes that first call from a background
+ * thread at start-up; every later call, from any thread, answers at once. A
+ * driver installed while the process runs is seen at the next start.
  */
 VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking();
 

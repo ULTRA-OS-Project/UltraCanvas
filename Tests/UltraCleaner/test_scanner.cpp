@@ -6,6 +6,7 @@
 #include "test_framework.h"
 #include "test_support.h"
 
+#include "UltraCleanerPaths.h"     // NormalizeForCompare
 #include "UltraCleanerScanner.h"
 
 #include <filesystem>
@@ -76,8 +77,28 @@ TEST(ScannerHonoursTheAgeFilter) {
     const ScanReport report = scanner.Scan({ ContentsRule(cache, /*minAgeDays=*/7) });
 
     REQUIRE_EQ(report.totalItems, static_cast<size_t>(1));
-    REQUIRE(report.items[0].path == stale);
+    // Compared the way the engine compares paths: on Windows the scanner
+    // joins the root and the name with a backslash, where TempTree wrote '/'.
+    REQUIRE(NormalizeForCompare(report.items[0].path) == NormalizeForCompare(stale));
     (void)fresh;
+}
+
+// Until the guard kept both spellings of a root, everything under a root
+// reached through a link was refused as outside the roots - on macOS, every
+// temp-file rule, since $TMPDIR and /tmp both sit behind /var-style links.
+TEST(ScannerFindsItemsUnderARootReachedThroughASymlink) {
+    TempTree tree;
+    tree.File("real/cache/a.bin", 10);
+    std::error_code ec;
+    std::filesystem::create_directory_symlink(
+        UltraCanvas::PathFromUtf8(tree.Path("real")),
+        UltraCanvas::PathFromUtf8(tree.Path("link")), ec);
+    if (ec) return;   // filesystem without symlinks (some CI Windows runners)
+
+    Scanner scanner;
+    const ScanReport report = scanner.Scan({ ContentsRule(tree.Path("link/cache")) });
+    REQUIRE_EQ(report.totalItems, static_cast<size_t>(1));
+    REQUIRE_EQ(report.skippedProtected, static_cast<size_t>(0));
 }
 
 TEST(ScannerHonoursExcludeNames) {
@@ -243,4 +264,36 @@ TEST(ScannerStopsWhenCancelled) {
         scanner.Scan({ ContentsRule(cache) }, {},
                      [&](const ScanProgress&) { scanner.RequestCancel(); });
     REQUIRE(report.cancelled);
+}
+
+TEST(ScannerReportsNoBlockedLocationsWhenNothingRefuses) {
+    TempTree tree;
+    const std::string cache = tree.Dir("cache");
+    tree.File("cache/a.bin", 10);
+
+    Scanner scanner;
+    const ScanReport report = scanner.Scan(
+        { ContentsRule(cache), ContentsRule("/no/such/directory/anywhere") });
+    REQUIRE_EQ(report.blockedPaths, static_cast<size_t>(0));
+    REQUIRE(report.blockedRules.empty());
+    REQUIRE(BlockedAccessAdvice(report).empty());
+}
+
+TEST(BlockedAccessAdviceNamesTheCountAndTheRules) {
+    ScanReport report;
+    report.blockedPaths = 3;
+    report.blockedRules = { "Sandboxed application cache", "Safari cache" };
+
+    const std::string advice = BlockedAccessAdvice(report);
+    REQUIRE(advice.find("3 locations") != std::string::npos);
+    REQUIRE(advice.find("Sandboxed application cache, Safari cache") != std::string::npos);
+
+    report.blockedPaths = 1;
+    REQUIRE(BlockedAccessAdvice(report).find("1 location ") != std::string::npos);
+
+    // Only macOS has a settings page that lets the cleaner in, and only there
+    // does the advice send the user to it.
+    const bool macOS = CurrentPlatform() == CleanerPlatform::MacOS;
+    REQUIRE_EQ(advice.find("Full Disk Access") != std::string::npos, macOS);
+    REQUIRE_EQ(BlockedAccessSettingsUrl().empty(), !macOS);
 }

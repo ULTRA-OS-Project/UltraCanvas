@@ -1,5 +1,7 @@
 # UltraCanvasGradientEditor
 
+<!-- doc-check: VectorStorage::LinearGradientData fill; -->
+
 A gradient ramp editor: the stops of a gradient on a horizontal strip.
 Click a stop to select it, drag it along the strip to move it, double-click
 the strip to add a stop with the ramp's colour there, drag a stop away

@@ -3,16 +3,20 @@
 // single summary strip: provider letter, account name, and three counters
 // (new today · unread before · waiting for reply). With several accounts it is
 // a row of card tiles carrying the same information, one per account; the
-// selected tile drives the mail view below.
+// selected tile drives the mail view below. The tiles are the items of an
+// UltraCanvasToolbar with item reordering on, so a tile dragged sideways
+// takes another place, and onReorderAccounts gives the new order.
+// Version: 0.5.0 - the tiles can be dragged into another order (onReorderAccounts)
 // Version: 0.4.0 - SetSelected: the highlight moves without rebuilding the tiles
 //                  (a rebuild from a tile's own click destroyed that tile, and
 //                  the account id its handler was holding, mid-click)
 // Version: 0.3.0
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasToolbar.h"
 
 #include "UltraMailTypes.h"
 
@@ -48,6 +52,12 @@ public:
 
     // Fired when a tile is clicked (multi-account mode).
     std::function<void(const std::string& accountId)> onSelectAccount;
+    // Fired when a tile was dragged to another place: every account id, in
+    // the tiles' new order. The tiles are in it already.
+    std::function<void(const std::vector<std::string>& accountIds)> onReorderAccounts;
+
+    // The row that holds the tiles (multi-account mode; null otherwise).
+    std::shared_ptr<UltraCanvas::UltraCanvasToolbar> TileRow() const { return tileRow_; }
 
 private:
     static const AccountStatus& StatusFor(const std::vector<AccountStatus>& status,
@@ -58,6 +68,7 @@ private:
                     const std::string& selectedAccountId);
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
+    std::shared_ptr<UltraCanvas::UltraCanvasToolbar>   tileRow_;
     // The tiles by account (multi-account mode), for SetSelected.
     std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasContainer>> tiles_;
 };

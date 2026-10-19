@@ -16,9 +16,12 @@
 //   <data>/ultraos/clipboard/blobs/ab/….bin  one file per payload, named by a keyed hash, encrypted
 //   <data>/ultraos/clipboard/thumbs/….png    96 × 96 thumbnails of images
 //   <config>/ultraos/clipboard.key           the 256-bit key, owner-only, kept apart from the data
-// <data> is $XDG_DATA_HOME (~/.local/share), %LOCALAPPDATA% on Windows and
-// ~/Library/Application Support on macOS; <config> is the folder the
-// desktop's own settings use.
+// <data> is $XDG_DATA_HOME when it is set, on every platform (as for the
+// applications' data folders, UltraCanvasDataFolder.h), else ~/.local/share,
+// %LOCALAPPDATA% on Windows (a machine-local store, so not the applications'
+// roaming %APPDATA%) and ~/Library/Application Support on macOS; <config> is
+// the folder the desktop's own settings use (UltraCanvasDesktopSettingsFolder:
+// %APPDATA%, Application Support on macOS, $XDG_CONFIG_HOME or ~/.config).
 //
 // Titles, texts and payloads are encrypted with XChaCha20-Poly1305 when
 // UltraCrypt has libsodium. That protects a copy of the data folder and a
@@ -31,8 +34,9 @@
 // time, the holder of the recorder lease (AcquireRecorder).
 //
 // Not thread-safe: use one instance from one thread.
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.2.0 - ClipboardHistoryPolicy::iconSide: the row's icons left or right of its text
+// Version: 1.1.0 - ClipboardHistoryPolicy::previewStyle: how UltraClipboard previews an image
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -112,6 +116,22 @@ struct ClipboardHistoryQuery {
     std::vector<ClipboardEntryKind> kinds;   // empty = all
     bool pinnedOnly = false;
     size_t limit = 0;                        // 0 = all
+    // Most recently used first, pinned or not (List puts the pinned ones
+    // first otherwise): "the last image copied".
+    bool newestFirst = false;
+};
+
+// How UltraClipboard previews an image whose thumbnail the pointer rests on.
+enum class ClipboardPreviewStyle : int {
+    Classic = 0,   // the picture alone, floating over the middle of the list
+    Modern = 1     // a pane over the right part of the list, with the viewer's info line
+};
+
+// Where a row's action icons (Copy, Edit, Save as, Delete) stand: after the
+// item's text at the row's right edge, or between the thumbnail and the text.
+enum class ClipboardIconSide : int {
+    Right = 0,
+    Left = 1
 };
 
 // Shared by every process that opens the history (kept in the database).
@@ -122,6 +142,8 @@ struct ClipboardHistoryPolicy {
     uint64_t maxEntryBytes = 64ull << 20;
     bool recordingPaused = false;
     bool imageThumbnails = true;
+    ClipboardPreviewStyle previewStyle = ClipboardPreviewStyle::Modern;
+    ClipboardIconSide iconSide = ClipboardIconSide::Right;
     std::vector<std::string> excludedApplications;
 
     static ClipboardHistoryPolicy Defaults();
@@ -271,6 +293,16 @@ enum class ClipboardTextEdit {
     Sentence     // The first letter of each sentence capitalised, the rest lower
 };
 std::string EditClipboardText(const std::string& text, ClipboardTextEdit edit);
+
+// The kinds of entry a program takes when something is pasted into it, most
+// wanted first, from its desktop entry's Categories= and MimeType=
+// (UCDesktopEntry): images and colours for a graphics editor, files for a
+// file manager, code and text for an editor, an IDE or a terminal, links and
+// text for a browser. Empty when nothing says - the history is then offered
+// as it is. UltraDesktop's quick panel puts these first for the window that
+// Super+V was pressed over.
+std::vector<ClipboardEntryKind> PreferredClipboardKinds(const std::vector<std::string>& categories,
+                                                        const std::vector<std::string>& mimeTypes);
 
 // An image entry as a file another program opens (UltraClipboard hands images
 // to UltraPaint this way): its bytes - a Windows CF_DIB gains the BMP file

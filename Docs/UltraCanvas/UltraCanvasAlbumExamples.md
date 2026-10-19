@@ -1,5 +1,27 @@
 # UltraCanvasAlbum Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Album Layout Designs (research)](#album-layout-designs-research)
+- [Class Reference](#class-reference)
+  - [Construction & Factory](#construction--factory)
+  - [Items](#items)
+  - [Automatic video poster frames](#automatic-video-poster-frames)
+  - [Pictures saved over](#pictures-saved-over)
+  - [Configuration](#configuration)
+  - [Image fit](#image-fit)
+  - [Hover video preview](#hover-video-preview)
+  - [Hover animation preview (GIF / animated WebP)](#hover-animation-preview-gif--animated-webp)
+  - [Actions & modes](#actions--modes)
+  - [Image corners](#image-corners)
+  - [Subtitle links](#subtitle-links)
+  - [Events](#events)
+- [Interaction](#interaction)
+- [Demo](#demo)
+
 ## Overview
 
 **UltraCanvasAlbum** is a self-rendered media gallery widget for displaying
@@ -13,7 +35,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.7.0
+**Version:** 1.9.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -65,8 +87,12 @@ derived to fill the available width.
 ### Construction & Factory
 
 ```cpp
-UltraCanvasAlbum(const std::string& id, float x, float y, float w, float h);
+UltraCanvasAlbum(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasAlbum(const std::string& identifier, float w, float h);
+explicit UltraCanvasAlbum(const std::string& identifier);
+```
 
+```cpp
 auto album = CreateAlbum("media-album", 20, 80, 940, 560);
 ```
 
@@ -78,6 +104,9 @@ struct AlbumItem {
     std::string thumbnailPath;  // explicit cover / poster (falls back to mediaPath)
     std::string title;          // primary caption line
     std::string subtitle;       // secondary line (artist, date, duration, ...)
+    std::string description;    // longer related text (full-size view)
+    std::string link;           // optional link target for the subtitle row
+    std::string linkIconPath;   // optional icon drawn before the link text
     std::string id;             // optional stable id for callbacks
     AlbumMediaType mediaType = AlbumMediaType::Photo;  // Photo | Video | Music
     Point2Df focusPoint{0.5f, 0.5f};   // 0..1 crop / zoom focus
@@ -85,8 +114,12 @@ struct AlbumItem {
     bool     featured = false;         // promoted in the Mosaic layout
 };
 
-album->AddItem({ "media/images/landscape.jpg", "", "Mountain Dawn",
-                 "Photo · 2024", "", AlbumMediaType::Photo });
+AlbumItem photo;
+photo.mediaPath = "media/images/landscape.jpg";
+photo.title     = "Mountain Dawn";
+photo.subtitle  = "Photo · 2024";
+photo.mediaType = AlbumMediaType::Photo;
+album->AddItem(photo);
 ```
 
 Video and music items draw `thumbnailPath` (cover art / poster frame) plus a
@@ -137,6 +170,17 @@ How it behaves:
 `UltraCanvasVideoThumbnail` (`include/UltraCanvasVideoThumbnail.h`) is the engine
 behind this and can be called directly when an app *does* want to keep poster
 files on disk — see its own docs.
+
+### Pictures saved over
+
+A photo edited and saved over while the album shows it is drawn as it is now,
+within a couple of seconds and without the app doing anything. Each paint
+hands the paths of the pictures it drew to an
+[`UltraCanvasImageFileWatch`](UltraCanvasImageFileWatch.md), whose worker
+thread checks those files every 1.5 s; a changed one is dropped from the
+shared image cache and the album relayouts (the new picture may have another
+shape) and repaints. Nothing touches the disk on the paint path for it, and
+only the tiles on screen are checked.
 
 ### Configuration
 
@@ -323,7 +367,7 @@ yt.linkIconPath = "media/icons/youtube.svg";
 album->AddItem(yt);
 
 album->onLinkClicked = [album](size_t i){
-    OpenInBrowser(album->GetItems()[i].link);
+    OpenURL(album->GetItems()[i].link);    // UltraCanvasUtils.h
 };
 ```
 
@@ -333,6 +377,7 @@ album->onLinkClicked = [album](size_t i){
 std::function<void(size_t)> onItemClicked;       // single click / tap
 std::function<void(size_t)> onItemActivated;     // double click: open / play
 std::function<void(size_t,size_t)> onItemsReordered;  // (from, to) — edit modes
+std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;  // a tile dragged past the edge (edit modes)
 std::function<void(size_t)> onItemRemoved;       // after RemoveItem
 std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 ```
@@ -343,6 +388,12 @@ std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 - **Double-click** → `onItemActivated` (open / play).
 - **Right-click** (or the kebab icon) → per-item action menu.
 - **Drag** a tile (edit / admin) → reorder; fires `onItemsReordered`.
+- **Drag** a tile past the album's edge (edit / admin) → the reorder ends
+  and `onItemDraggedOut(index, windowPos)` fires once, with the pointer's
+  window position. The app carries the item on from there with the window's
+  own mouse events - a media bin hands its file to a timeline's drop path,
+  say. Set the callback only where that is wanted; without it a drag that
+  leaves the album is simply a reorder that ends where the pointer returns.
 - **Mouse wheel** → scroll (vertical for grids, horizontal for the filmstrip).
 
 ## Demo

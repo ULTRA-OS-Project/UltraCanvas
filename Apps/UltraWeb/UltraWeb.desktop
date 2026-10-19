@@ -1,0 +1,22 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraWeb: the application menu entry, and the
+# name the icon is resolved by. `Icon=UltraWeb` is an icon *name*, looked up
+# through the installed icon themes; the install rules put
+# media/appicon/UltraWeb.png into share/icons/hicolor/256x256/apps and
+# media/appicon/UltraWeb.svg into share/icons/hicolor/scalable/apps. The
+# window and taskbar icon come from the same PNG through main.cpp.
+#
+# Exec takes the address to open; --check is for the command line.
+Type=Application
+Version=1.5
+Name=UltraWeb
+GenericName=Web Browser
+Comment=Run WebAssembly apps built on UltraCanvas
+Exec=UltraWeb %u
+TryExec=UltraWeb
+Icon=UltraWeb
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraWeb
+Categories=Network;WebBrowser;
+Keywords=web;browser;wasm;webassembly;apps;

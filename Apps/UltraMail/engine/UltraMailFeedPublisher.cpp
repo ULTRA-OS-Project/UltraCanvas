@@ -1,9 +1,11 @@
 // Apps/UltraMail/engine/UltraMailFeedPublisher.cpp
 // See UltraMailFeedPublisher.h.
+// Version: 0.2.0 - Notify and the click on a notification
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailFeedPublisher.h"
 
+#include <algorithm>
 #include <chrono>
 
 #ifdef ULTRAMAIL_HAVE_ULTRAMESSAGE
@@ -20,6 +22,9 @@ int64_t NowSeconds() {
                std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+// The clicks of this many recent notifications are still answered.
+constexpr size_t kNotificationsRemembered = 50;
+
 } // namespace
 
 FeedPublisher::FeedPublisher() = default;
@@ -34,6 +39,12 @@ bool FeedPublisher::Compiled() {
 #else
     return false;
 #endif
+}
+
+void FeedPublisher::SetBusPath(const std::string& busPath, const std::string& journalPath) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    busPath_ = busPath;
+    journalPath_ = journalPath;
 }
 
 void FeedPublisher::SetEnabled(bool enabled) {
@@ -88,7 +99,9 @@ bool FeedPublisher::EnsureConnectedLocked() {
     UltraMsgConnectOptions options;
     options.appId = "org.ultraos.ultramail";
     options.displayName = "UltraMail";
-    options.deliverOnUIThread = false;   // this endpoint only posts
+    options.deliverOnUIThread = false;   // posts; its one subscription runs on the bus thread
+    options.busPath = busPath_;
+    options.journalPath = journalPath_;
     UltraMsgResult error;
     UltraMsgHandle handle = UltraMsg_Connect(options, &error);
     if (handle == UltraMsgInvalidHandle) {
@@ -97,6 +110,19 @@ bool FeedPublisher::EnsureConnectedLocked() {
     }
     endpoint_ = static_cast<uint64_t>(handle);
     lastError_.clear();
+    // The click on one of UltraMail's notifications comes back as an action
+    // naming it. On the bus thread: this endpoint delivers there.
+    UltraMsgSubscribeOptions subscribe;
+    subscribe.onWorkerThread = true;
+    UltraMsg_Subscribe(handle, UltraMsgTopics::SystemNotificationAction,
+                       [this](const UltraMsgMessage& m) {
+                           const UltraCanvas::JSONValue* id = m.body.Find("notificationId");
+                           const UltraCanvas::JSONValue* action = m.body.Find("actionId");
+                           if (!id || !id->IsString()) return;
+                           HandleNotificationAction(id->GetString(),
+                                                    action && action->IsString() ? action->GetString() : "");
+                       },
+                       subscribe);
     return true;
 #else
     lastError_ = "built without UltraMessage";
@@ -151,6 +177,63 @@ bool FeedPublisher::Publish(const MessageEnvelope& m) {
 #else
     return false;
 #endif
+}
+
+std::string FeedPublisher::Notify(const MailNotification& notification) {
+#ifdef ULTRAMAIL_HAVE_ULTRAMESSAGE
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!EnsureConnectedLocked()) return std::string();
+    UltraMessage::SystemNotification n;
+    n.appId = "org.ultraos.ultramail";
+    n.appName = "UltraMail";
+    n.category = "email.arrived";
+    n.summary = notification.summary;
+    n.body = notification.body;
+    n.icon = notification.iconPath;
+    n.actions = {{"default", "Open"}};
+    UltraCanvas::JSONValue body = UltraMessage::MakeSystemNotification(n);
+    body.Set("accountId", notification.accountId);
+    // The desktop entry (UltraMail.desktop) lets the notification server
+    // name and badge the notification as UltraMail's.
+    body.Set("desktopEntry", "UltraMail");
+    UltraMsgSendOptions options;
+    options.flags = UltraMsgFlag_NoJournal;
+    std::string id;
+    UltraMsgResult r = UltraMsg_Post(static_cast<UltraMsgHandle>(endpoint_), UltraMsgTopics::SystemNotification,
+                                     body, options, &id);
+    if (!r) {
+        lastError_ = r.message;
+        if (r.code == UltraMsgResultCode::NotConnected) {
+            UltraMsg_Disconnect(static_cast<UltraMsgHandle>(endpoint_));
+            endpoint_ = 0;
+        }
+        return std::string();
+    }
+    std::lock_guard<std::mutex> actionLock(actionMutex_);
+    notified_.push_back(id);
+    while (notified_.size() > kNotificationsRemembered) notified_.pop_front();
+    return id;
+#else
+    (void)notification;
+    std::lock_guard<std::mutex> lock(mutex_);
+    lastError_ = "built without UltraMessage";
+    return std::string();
+#endif
+}
+
+void FeedPublisher::SetOnNotificationAction(NotificationActionFn handler) {
+    std::lock_guard<std::mutex> lock(actionMutex_);
+    onAction_ = std::move(handler);
+}
+
+void FeedPublisher::HandleNotificationAction(const std::string& notificationId, const std::string& actionId) {
+    NotificationActionFn handler;
+    {
+        std::lock_guard<std::mutex> lock(actionMutex_);
+        if (std::find(notified_.begin(), notified_.end(), notificationId) == notified_.end()) return;
+        handler = onAction_;
+    }
+    if (handler) handler(notificationId, actionId);
 }
 
 void FeedPublisher::Disconnect() {

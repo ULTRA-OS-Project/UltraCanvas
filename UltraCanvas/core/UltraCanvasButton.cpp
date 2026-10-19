@@ -1,16 +1,37 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.6.0
-// Last Modified: 2026-08-03
+// Version: 2.11.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
+// Version: 2.11.0 - FromTheme by ButtonVariant
+// Version: 2.10.0 - ButtonStyle::FromTheme
+// Version: 2.9.1 - SetTextAlign is honoured: DrawText aligns as style.textAlign says
+// Version: 2.9.0 - onDoubleClick takes a left double-click instead of a second press
+// Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
+//                  centred half a pixel off was resampled and blurred
+// Version: 2.7.0
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasImage.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 
 namespace UltraCanvas {
+    namespace {
+        // An icon drawn off the pixel grid is resampled across pixel
+        // boundaries and every edge in it blurs - a 22 px icon centred in
+        // an odd-width button sat half a pixel off, its 1-2 px lines and
+        // dashes smeared over two rows. The rectangle's corner is moved onto
+        // the nearest whole pixel of the surface; its size is kept.
+        Rect2Df SnapToPixelGrid(IRenderContext* ctx, const Rect2Df& r) {
+            const Point2Dd device = ctx->UserToDevice(Point2Dd(r.x, r.y));
+            const Point2Dd snapped = ctx->DeviceToUser(Point2Dd(std::round(device.x), std::round(device.y)));
+            return Rect2Df(static_cast<float>(snapped.x), static_cast<float>(snapped.y), r.width, r.height);
+        }
+    }
+
 
 // ===== CONSTRUCTOR =====
     UltraCanvasButton::UltraCanvasButton(const std::string& identifier,
@@ -100,8 +121,46 @@ namespace UltraCanvas {
     }
 
 // ===== TEXT & ICON METHODS =====
+    // ===== ACCESSIBILITY =====
+    std::string UltraCanvasButton::GetAccessibleName() const {
+        if (!GetAccessibleNameOverride().empty()) return GetAccessibleNameOverride();
+        if (!text.empty()) return text;
+        return GetTooltip();   // an icon button says what it does in its tooltip
+    }
+
+    std::string UltraCanvasButton::GetAccessibleDescription() const {
+        // The tooltip of an icon button is already its name.
+        if (GetAccessibleNameOverride().empty() && text.empty()) return accessibleDescription;
+        return UltraCanvasUIElement::GetAccessibleDescription();
+    }
+
+    AccessibleToggleState UltraCanvasButton::GetAccessibleToggleState() const {
+        if (!canToggled) return AccessibleToggleState::NotToggleable;
+        return IsPressed() ? AccessibleToggleState::On : AccessibleToggleState::Off;
+    }
+
+    bool UltraCanvasButton::DoAccessibleAction() {
+        if (IsDisabled() || !IsVisible()) return false;
+        if (canToggled) {
+            SetPressed(!IsPressed());
+            if (onToggle) onToggle(IsPressed());
+            NotifyAccessibility(AccessibilityEventType::StateChanged);
+            RequestRedraw();
+            return true;
+        }
+        if (onPress) onPress();
+        if (onRelease) onRelease();
+        // The primary section of a split button: its left edge.
+        UCEvent click;
+        click.pointer = Point2Di(0, 0);
+        Click(click);
+        return true;
+    }
+
     void UltraCanvasButton::SetText(const std::string& buttonText) {
+        const bool renamed = text != buttonText;
         text = buttonText;
+        if (renamed && GetAccessibleNameOverride().empty()) NotifyAccessibility(AccessibilityEventType::NameChanged);
         // The old index points into the previous string and would underline an
         // unrelated character; owners re-apply the mnemonic after setting text.
         mnemonicIndex = -1;
@@ -298,19 +357,26 @@ namespace UltraCanvas {
         rc->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
         rc->SetFontSize(style.fontSize);
 
-        if (!text.empty()) {
+        // An icon placed Center is drawn instead of the text.
+        const bool textShown = !text.empty() && !(HasIcon() && iconPosition == ButtonIconPosition::Center);
+        if (textShown) {
             Size2Di textSize = rc->GetTextLineDimensions(text);
             contentW += textSize.width;
             contentH = std::max(contentH, (float)textSize.height);
         }
 
-        // Primary icon
+        // Primary icon: beside the text it adds to the width, above or below
+        // it to the height (the width is then the wider of the two).
         if (HasIcon()) {
-            contentW += iconWidth;
-            contentH = std::max(contentH, (float)iconHeight);
-            if (!text.empty() &&
-                (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
-                contentW += style.iconSpacing;
+            const bool stacked = textShown &&
+                (iconPosition == ButtonIconPosition::Top || iconPosition == ButtonIconPosition::Bottom);
+            if (stacked) {
+                contentW = std::max(contentW, (float)iconWidth);
+                contentH += iconHeight + style.iconSpacing;
+            } else {
+                contentW += iconWidth;
+                contentH = std::max(contentH, (float)iconHeight);
+                if (textShown) contentW += style.iconSpacing;
             }
         }
 
@@ -348,6 +414,72 @@ namespace UltraCanvas {
         return Size2Df(contentW, contentH);
     }
 
+    void UltraCanvasButton::SetGrowToFitText(bool grow) {
+        if (growToFitText == grow) return;
+        growToFitText = grow;
+        if (FitWidthToText(GetRenderContext())) InvalidateLayout();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasButton::FitWidthToText(IRenderContext* rc) {
+        using CSSLayout::DimensionUnit;
+        const bool isFixed = size.width.unit == DimensionUnit::Pixels;
+        const bool isGrown = grownWidth > 0.f && isFixed && size.width.value == grownWidth;
+        // A width set since the last fit (SetSize, a style) is the new given width.
+        if (isFixed && !isGrown) {
+            declaredWidth = size.width.value;
+            grownWidth = -1.f;
+        }
+        if (!rc) return false;
+
+        // The border-box width the text needs; 0 when there is nothing to fit.
+        float needed = 0.f;
+        const bool hasText =
+            (!text.empty() && !(HasIcon() && iconPosition == ButtonIconPosition::Center)) ||
+            (style.splitStyle.enabled && !style.splitStyle.secondaryText.empty());
+        if (growToFitText && hasText) {
+            rc->PushState();
+            Size2Df content = MeasureContentSize(rc);
+            rc->PopState();
+            needed = content.width + style.shadowOffset.x;
+            if (box.boxSizing == CSSLayout::BoxSizing::BorderBox) {
+                needed += GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+            }
+            needed = std::ceil(needed);
+        }
+
+        bool changed = false;
+
+        // The text width is also the least a flex row may shrink the button
+        // to (CSS's min-width: auto). A minimum the application set is kept.
+        const bool ownMin = !boxConstraints || boxConstraints->minWidth.isAuto() ||
+            (fitMinWidth > 0.f && boxConstraints->minWidth.unit == DimensionUnit::Pixels &&
+             boxConstraints->minWidth.value == fitMinWidth);
+        if (ownMin) {
+            if (needed > 0.f && needed != fitMinWidth) {
+                if (!boxConstraints) boxConstraints = CSSLayout::BoxConstraints{};
+                boxConstraints->minWidth = CSSLayout::Dimension::Px(needed);
+                fitMinWidth = needed;
+                changed = true;
+            } else if (needed <= 0.f && fitMinWidth > 0.f) {
+                boxConstraints->minWidth = CSSLayout::Dimension::Auto();
+                fitMinWidth = -1.f;
+                changed = true;
+            }
+        }
+
+        // A fixed width grows to the text and returns when the text shrinks.
+        if (isFixed) {
+            const float target = std::max(declaredWidth, needed);
+            if (target != size.width.value) {
+                size.width = CSSLayout::Dimension::Px(target);
+                grownWidth = target > declaredWidth ? target : -1.f;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     Size2Df UltraCanvasButton::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
                                                  const CSSLayout::LayoutContext& /*ctx*/) {
         IRenderContext* rc = GetRenderContext();
@@ -356,6 +488,7 @@ namespace UltraCanvas {
             // the block path resolves from size.width/height or the constraints.
             return Size2Df(0.f, 0.f);
         }
+        FitWidthToText(rc);
         // A button doesn't wrap, so the content size is width-independent.
         rc->PushState();
         Size2Df content = MeasureContentSize(rc);
@@ -371,6 +504,7 @@ namespace UltraCanvas {
             return;
         }
 
+        FitWidthToText(rc);
         const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
         const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
 
@@ -695,21 +829,23 @@ namespace UltraCanvas {
         // follow the text color so the icon tracks the button state.
         Color maskColor = (style.iconMaskColor.a != 0) ? style.iconMaskColor : textColor;
 
+        const Rect2Df rect = SnapToPixelGrid(ctx, iconRect);
+
         // Dim icon when disabled
         if (GetPrimaryState() == ElementState::Disabled) {
             ctx->PushState();
             ctx->SetAlpha(0.35f);
             if (style.useIconAsMask) {
-                ctx->DrawMask(maskColor, *icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawMask(maskColor, *icon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*icon.get(), rect, ImageFitMode::Contain);
             }
             ctx->PopState();
         } else {
             if (style.useIconAsMask) {
-                ctx->DrawMask(maskColor, *icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawMask(maskColor, *icon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*icon.get(), rect, ImageFitMode::Contain);
             }
         }
     }
@@ -725,21 +861,23 @@ namespace UltraCanvas {
             // TODO: Apply color tinting to icon
         }
 
+        const Rect2Df rect = SnapToPixelGrid(ctx, secondaryIconRect);
+
         // Dim icon when disabled
         if (GetPrimaryState() == ElementState::Disabled) {
             ctx->PushState();
             ctx->SetAlpha(0.35f);
             if (style.useIconAsMask) {
-                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             }
             ctx->PopState();
         } else {
             if (style.useIconAsMask) {
-                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             }
         }
     }
@@ -783,7 +921,9 @@ namespace UltraCanvas {
         const bool useMarkup = HasMnemonic();
         ctx->SetTextIsMarkup(useMarkup);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextAlignment(TextAlignment::Center);
+        // style.textAlign (SetTextAlign): Center unless the application asked
+        // otherwise - a list of flat buttons reads as a list only left-aligned.
+        ctx->SetTextAlignment(style.textAlign);
 
         const std::string drawnText = useMarkup ? BuildMnemonicMarkup() : text;
 
@@ -940,6 +1080,17 @@ namespace UltraCanvas {
 
 // ===== MAIN RENDER METHOD =====
     void UltraCanvasButton::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // A layout that read the width or min-width before the button
+        // measured its text (a flex row's base size and minimum) gets the
+        // fitted width on the next pass. Once per minimum: a parent that
+        // forces a narrower box (a fixed grid column) must not be asked
+        // again on every frame.
+        bool relayout = FitWidthToText(ctx);
+        if (fitMinWidth > 0.f && GetWidth() + 0.5f < fitMinWidth && relayoutForMinWidth != fitMinWidth) {
+            relayoutForMinWidth = fitMinWidth;
+            relayout = true;
+        }
+        if (relayout) InvalidateLayout();
         if (style.splitStyle.enabled) {
             DrawSplitButton(ctx);
         } else {
@@ -1023,6 +1174,11 @@ namespace UltraCanvas {
                         }
                         return false;
                     }
+                    if (event.type == UCEventType::MouseDoubleClick &&
+                        event.button == UCMouseButton::Left && onDoubleClick) {
+                        onDoubleClick();
+                        return true;
+                    }
                     if (IsPressed() && canToggled) {
                         SetPressed(false);
                     } else {
@@ -1033,6 +1189,7 @@ namespace UltraCanvas {
                     if (canToggled && onToggle) {
                         onToggle(IsPressed());
                     }
+                    if (canToggled) NotifyAccessibility(AccessibilityEventType::StateChanged);
                     RequestRedraw();
                     return true;
                 }
@@ -1087,9 +1244,54 @@ namespace UltraCanvas {
                     return true;
                 }
                 break;
+
+            default:
+                break;
         }
 
         return false;
     }
 
+
+    ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base, ButtonVariant variant) {
+        ButtonStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.focusedColor = r.focus;
+        s.disabledTextColor = r.inkFaint;
+        switch (variant) {
+            case ButtonVariant::Ghost:
+                s.normalColor = Colors::Transparent;
+                s.hoverColor = theme.Role("button.ghost-hover", r.hover);
+                s.pressedColor = theme.Role("button.ghost-pressed", r.pressed);
+                s.disabledColor = Colors::Transparent;
+                s.borderColor = Colors::Transparent;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = r.ink;
+                break;
+            case ButtonVariant::Primary:
+                s.normalColor = theme.Role("button.primary", r.accent);
+                s.hoverColor = theme.Role("button.primary-hover", r.accentHover);
+                s.pressedColor = s.hoverColor;
+                s.disabledColor = r.panel;
+                s.borderColor = Colors::Transparent;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = theme.Role("button.on-primary", r.onAccent);
+                break;
+            case ButtonVariant::Selected:
+                s.normalColor = theme.Role("button.selected", r.accentSoft);
+                s.hoverColor = s.normalColor;
+                s.pressedColor = theme.Role("button.ghost-pressed", r.pressed);
+                s.disabledColor = Colors::Transparent;
+                s.borderColor = Colors::Transparent;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = theme.Role("button.on-selected", r.accent);
+                break;
+            default:
+                s.normalColor = r.raised;
+                s.hoverColor = r.hover;
+                s.pressedColor = r.pressed;
+                s.disabledColor = r.panel;
+                s.borderColor = r.lineStrong;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = r.ink;
+                break;
+        }
+        return s;
+    }
 } // namespace UltraCanvas

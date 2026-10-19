@@ -1,6 +1,12 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-02 - GetRequiredWidth (the width the widest row on show needs)
+// Last Modified: 2026-10-15 - SetFilterText: show only the rows matching a text, expanded
+//                to them, and put the tree back when the filter ends (TreeNode::IsShown)
+//                (2026-10-13: the tree takes the keyboard focus; arrows, Page Up/Down,
+//                Home, End, Enter and Space act on the focused tree (UCKeys, every platform))
+//                (2026-10-12: GetDropTargetNode, the row a drag would drop on)
+//                (2026-10-08: default bodies mark unused parameters (void))
+//                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -61,15 +67,17 @@ enum class TreeSortMode {
 };
 
 // ===== SCROLL-TO-TOP BUTTON STYLE =====
-// Look and thresholds of the floating "move to the top" button that the tree
-// draws over the bottom-right corner of its content area once the rows overflow
-// the visible area and the view has been scrolled down.
-// See UltraCanvasTreeView::SetShowScrollToTopButton().
+// Look and thresholds of the floating buttons the tree draws over the
+// bottom-right corner of its content area: "move to the top" (once the rows
+// overflow the visible area and the view has been scrolled down) and, stacked
+// directly above it, "go to the selected entry" (while the selected row is out
+// of view). Both buttons share this style.
+// See UltraCanvasTreeView::SetShowScrollToTopButton() and
+// UltraCanvasTreeView::SetShowScrollToSelectionButton().
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
-    int   margin          = 8;     // gap between the button and the content edges
-    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
-    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    int   margin          = 8;     // gap between a button and the content edges / the other button
+    int   minHiddenRows   = 3;     // top button: show only when MORE than this many rows are out of view
     float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
     Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);  // translucent so rows stay readable
     Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
@@ -157,6 +165,14 @@ public:
     // Lazy-loading callers swap a placeholder child for the real children on
     // expansion; without this the node would silently snap shut.
     bool wasExpandedBeforeEmptied = false;
+    // Set by UltraCanvasTreeView::SetFilterText on a row the filter leaves
+    // out. It is kept apart from data.visible, which is the application's: a
+    // filter must neither show a row the application hid nor forget that the
+    // application hid it once the filter ends.
+    bool hiddenByFilter = false;
+    // Whether the node was expanded when the filter began - the state it
+    // goes back to when the filter ends.
+    bool expandedBeforeFilter = false;
     int level;                    // Depth in tree (0 = root level)
     bool selected;
     bool hovered;
@@ -176,6 +192,11 @@ public:
     TreeNode* FindDescendant(const std::string& nodeId);
 
     TreeNode* FirstChild() { return children.empty() ? nullptr : children[0].get(); };
+    // The first child on show (IsShown) - under a filter, perhaps not the first.
+    TreeNode* FirstShownChild() {
+        for (auto& child : children) if (child->IsShown()) return child.get();
+        return nullptr;
+    }
 
     // Sort direct children alphabetically (case-insensitive) by data.text.
     // recursive=true also sorts every descendant level. ascending=false reverses.
@@ -198,6 +219,11 @@ public:
     bool IsExpanded() const { return state == TreeNodeState::Expanded; }
     
     bool IsVisible() const;
+
+    // The row itself is on show: hidden neither by the application
+    // (data.visible) nor by the tree's filter. Says nothing about whether its
+    // parents are expanded - that is IsVisible().
+    bool IsShown() const { return data.visible && !hiddenByFilter; }
     
     // ===== UTILITY METHODS =====
     int GetVisibleChildCount() const;
@@ -216,6 +242,11 @@ private:
     std::vector<TreeNode*> selectedNodes;
     TreeNode* hoveredNode;
     TreeNode* focusedNode;
+
+    // SetFilterText: the text rows are matched against (empty: no filter)
+    // and how many rows' own text matched it.
+    std::string filterText;
+    int filterMatchCount = 0;
     
     // Visual properties
     int rowHeight;                  // Height of each row in pixels
@@ -247,6 +278,11 @@ private:
     Color checkboxBorderColor = Color(0x70, 0x70, 0x78);       // check flag box outline
     Color checkboxCheckColor = Color(0x21, 0x7A, 0x35);        // tick / mixed square
     Color dropTargetColor = Color(0x33, 0x99, 0xFF, 0x66); // drag-drop target row
+    // The dashed outline round the focused row while the tree holds the
+    // keyboard focus. Transparent (the default) picks a colour that shows on
+    // the row: white on the selection background, the selection colour on
+    // any other row.
+    Color focusRingColor = Colors::Transparent;
 
     // The node currently highlighted as a drag-and-drop target, if any.
     TreeNode* dropTargetNode = nullptr;
@@ -269,7 +305,11 @@ private:
     // Floating "move to the top" button (bottom-right of the content area)
     bool showScrollToTopButton = true;   // feature is on by default
     bool scrollToTopHovered = false;     // pointer currently over the button
-    TreeScrollToTopStyle scrollToTopStyle;
+    TreeScrollToTopStyle scrollToTopStyle;   // shared by both floating buttons
+
+    // Floating "go to the selected entry" button, stacked above the top button
+    bool showScrollToSelectionButton = true;   // feature is on by default
+    bool scrollToSelectionHovered = false;     // pointer currently over the button
 
     // Interaction state
 //    bool isDragging;               // Currently dragging scrollbar
@@ -277,6 +317,10 @@ private:
 //    Point2Di lastMousePos;          // Last mouse position
     
 public:
+    // ===== ACCESSIBILITY =====
+    // A tree; like a list view, its nodes are drawn rather than elements.
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Tree; }
+
     // ===== EVENTS AND CALLBACKS =====
     std::function<void(TreeNode*)> onNodeSelected;
     std::function<void(TreeNode*)> onNodeDoubleClicked;
@@ -294,6 +338,11 @@ public:
     std::function<bool(TreeNode* target)> onFilesDragAccept;
     std::function<bool(TreeNode* target,
                        const std::vector<std::string>& files)> onFilesDroppedOnNode;
+    // The row a drag over the tree would drop on right now - the one drawn
+    // highlighted, which onFilesDragAccept accepted - or null. For a drag
+    // that carries no files and so ends without a Drop (the file dialog's
+    // Save icon, UltraCanvasFileDragIcon): its owner asks here on release.
+    TreeNode* GetDropTargetNode() const { return dropTargetNode; }
     // Right mouse button released over a node. The event is passed along so a
     // handler can open a context menu at the pointer (event.pointerWindow).
     // A right press never changes the selection — the menu acts on the node
@@ -336,6 +385,9 @@ public:
     void ClearSelection();
     const std::vector<TreeNode*>& GetSelectedNodes() const { return selectedNodes; }
     TreeNode* GetFirstSelectedNode() const { return selectedNodes.empty() ? nullptr : selectedNodes[0]; }
+    // The row the arrow keys continue from: the last row clicked or reached by
+    // key. Null until a row was clicked or a key moved into the tree.
+    TreeNode* GetFocusedNode() const { return focusedNode; }
     
     // ===== EXPANSION MANAGEMENT =====
     void ExpandNode(TreeNode* node);
@@ -350,6 +402,27 @@ public:
     void ToggleNode(TreeNode* node);
     void ExpandAll();
     void CollapseAll();
+
+    // ===== FILTER =====
+    // Show only the rows whose text contains `text` - in any case and any
+    // script - with the rows above them, expanded so every match is on
+    // screen, and the rows below a match (a heading that matches keeps its
+    // entries; expand it to see them). The other rows are hidden, not
+    // removed, and the tree scrolls to the top. An empty text ends the
+    // filter: every row comes back, the tree takes back the expanded state it
+    // had before the filter began, and the selected row - perhaps one picked
+    // while filtering - is scrolled into view. Setting the same text again
+    // applies it again, e.g. after rows were added. Only rows already in the
+    // tree are searched: a lazily-loaded node's children are found once they
+    // are loaded. A row the application hid (TreeNodeData::visible) stays
+    // hidden either way. No callback fires: the rows the filter opens are not
+    // the user's doing.
+    void SetFilterText(const std::string& text);
+    void ClearFilter() { SetFilterText(std::string()); }
+    const std::string& GetFilterText() const { return filterText; }
+    bool IsFiltered() const { return !filterText.empty(); }
+    // How many rows' own text the filter matches (0 when there is no filter).
+    int GetFilterMatchCount() const { return filterMatchCount; }
 
     // ===== VISUAL PROPERTIES =====
     void SetRowHeight(int height) { rowHeight = height; UpdateScrollbars(); }
@@ -434,6 +507,10 @@ public:
     // ===== COLOR PROPERTIES =====
     void SetSelectionColor(const Color &color) { selectionColor = color; }
     void SetHoverColor(const Color &color) { hoverColor = color; }
+    // The focus ring's colour; Colors::Transparent restores the automatic
+    // choice (white on a selected row, the selection colour elsewhere).
+    void SetFocusRingColor(const Color &color) { focusRingColor = color; RequestRedraw(); }
+    const Color& GetFocusRingColor() const { return focusRingColor; }
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
@@ -466,6 +543,10 @@ public:
     void ScrollBy(int deltaY);
     // Jump back to the first row (animated when the scrollbar has smooth scrolling on).
     void ScrollToTop();
+    // Bring the first selected node into the middle of the view, expanding its
+    // collapsed ancestors first (animated when the scrollbar has smooth
+    // scrolling on). Does nothing without a selection.
+    void ScrollToSelection();
 
     // ===== MEASURING =====
     // The width the tree needs to show its widest row in full: from its left
@@ -482,8 +563,7 @@ public:
     // A floating "move to the top" button drawn over the bottom-right corner of
     // the content area. It appears once the view is scrolled down AND more than
     // TreeScrollToTopStyle::minHiddenRows rows are outside the visible area, and
-    // slides up as the view nears the end of the list so it never covers the last
-    // TreeScrollToTopStyle::keepClearRows rows. Enabled by default.
+    // always rests in that corner. Enabled by default.
     void SetShowScrollToTopButton(bool show);
     bool GetShowScrollToTopButton() const { return showScrollToTopButton; }
 
@@ -498,9 +578,38 @@ public:
     // Element-local rect the button occupies right now; empty when not active.
     Rect2Di GetScrollToTopButtonRect() const;
 
+    // ===== SCROLL-TO-SELECTION BUTTON =====
+    // A floating "go to the selected entry" button (a dot with an arrow pointing
+    // at it), stacked directly above the scroll-to-top button's corner slot. It
+    // appears while a node is selected and its row is not fully on screen -
+    // scrolled away, or hidden under a collapsed parent. Clicking it calls
+    // ScrollToSelection(). Shares the scroll-to-top button's style. Enabled by
+    // default.
+    void SetShowScrollToSelectionButton(bool show);
+    bool GetShowScrollToSelectionButton() const { return showScrollToSelectionButton; }
+
+    // True while the button is actually on screen.
+    bool IsScrollToSelectionButtonActive() const;
+
+    // Element-local rect the button occupies right now; empty when not active.
+    Rect2Di GetScrollToSelectionButtonRect() const;
+
 
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
+    // The tree takes the keyboard focus - by Tab, or by a click on it - and
+    // while it holds it the arrow keys move the selection: Up / Down to the
+    // previous / next row, Left collapses or goes to the parent, Right expands
+    // or goes to the first child, Page Up / Page Down move a page of rows,
+    // Home / End go to the first / last row, Enter toggles a parent (and fires
+    // onNodeDoubleClicked), Space toggles the check flag or selects the row.
+    // The row the keys continue from carries a dashed focus ring while the
+    // tree is focused (SetFocusRingColor), so it is told from a row that is
+    // merely selected.
+    // With no row focused yet, Down / Home start at the first row and Up / End
+    // at the last. A handled key returns true so a scrolling parent does not
+    // act on it too.
+    bool AcceptsFocus() const override { return true; }
     
     // ===== RENDERING =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -539,7 +648,7 @@ protected:
     // of the normal background/expander/label. Return true if the row was fully
     // handled, in which case RenderNode skips its own drawing for this node.
     virtual bool RenderNodeFullRow(IRenderContext* ctx, TreeNode* node, int nodeY,
-                                   const Rect2Di& contentRect, int rowWidth) { return false; }
+                                   const Rect2Di& contentRect, int rowWidth) { (void)ctx; (void)node; (void)nodeY; (void)contentRect; (void)rowWidth; return false; }
 
     // Draw the row's content to the right of the expander/left-icon. The base draws
     // a single text run + optional right icon (Classic). Subclasses override to draw
@@ -554,7 +663,7 @@ protected:
     // every layout/scroll/hit-test calculation below becomes a no-op. A subclass
     // (e.g. UltraCanvasColumnsTreeView) overrides both to draw column titles.
     virtual int  GetHeaderHeight() const { return 0; }
-    virtual void RenderHeader(IRenderContext* ctx, const Rect2Di& headerRect) {}
+    virtual void RenderHeader(IRenderContext* ctx, const Rect2Di& headerRect) { (void)ctx; (void)headerRect; }
 
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }
@@ -572,6 +681,15 @@ private:
     // to find the pointers a subtree removal invalidates.
     static void CollectSubtree(TreeNode* node, std::vector<TreeNode*>& out);
 
+    // ===== FILTER =====
+    // Record every node's expanded state before a filter begins.
+    static void SaveExpansionBeforeFilter(TreeNode* node);
+    // Apply filterText to `node` and its subtree; `ancestorMatches` when a row
+    // above it matched. Returns whether the node or a row below it matched.
+    bool FilterSubtree(TreeNode* node, bool ancestorMatches);
+    // Show every row again and restore the expanded state saved before.
+    static void EndFilter(TreeNode* node);
+
     // ===== SCROLLBAR MANAGEMENT =====
     void CreateScrollbar();
 
@@ -579,11 +697,20 @@ private:
 
     int GetTotalVisibleHeight();
 
-    // ===== SCROLL-TO-TOP BUTTON =====
+    // ===== FLOATING SCROLL BUTTONS =====
     void RenderScrollToTopButton(IRenderContext* ctx);
-    // Consume pointer events that land on the button (hover tracking + click).
+    void RenderScrollToSelectionButton(IRenderContext* ctx);
+    // Rounded backdrop shared by both floating buttons.
+    void RenderFloatingButtonFrame(IRenderContext* ctx, const Rect2Di& r, bool hovered);
+    // The rect of the floating button in corner slot `slot` (0 = bottom-right
+    // corner, 1 = directly above it).
+    Rect2Di GetFloatingButtonSlotRect(int slot) const;
+    // Consume pointer events that land on either button (hover tracking + click).
     // Returns true when the event was handled and must not reach the rows.
     bool HandleScrollToTopButtonEvent(const UCEvent& event);
+    // Display y (content coordinates) of `node`, or -1 when its row is not on
+    // show (a collapsed or hidden ancestor, or filtered out).
+    int FindShownNodeY(const TreeNode* node) const;
 
     int GetNodeDisplayY(TreeNode* node);
     
@@ -647,17 +774,29 @@ private:
     bool HandleMouseUp(const UCEvent& event);
     bool HandleMouseDoubleClick(const UCEvent& event);
     bool HandleMouseWheel(const UCEvent& event);
-    void HandleKeyDown(const UCEvent& event);
+    bool HandleKeyDown(const UCEvent& event);
     bool HandleDragOver(const UCEvent& event);
     bool HandleDrop(const UCEvent& event);
     
     void NavigateUp();
     void NavigateDown();
+    // Page Up / Page Down: as many rows as the view shows at once, clamped to
+    // the first / last row.
+    void NavigatePageUp();
+    void NavigatePageDown();
+    // Select `node`, make it the row the keys continue from, scroll it into
+    // view and, with SetAutoExpandSelectedNode(true), open it. Every key that
+    // moves the selection ends here.
+    void MoveFocusTo(TreeNode* node);
     // An open parent the arrow keys pass over under "jump to first entry".
     bool IsSteppedOverByKeys(const TreeNode* node) const;
     
+    // The rows on show, top to bottom: the hidden root is not one of them, and
+    // neither is anything under a collapsed parent.
+    std::vector<TreeNode*> GetVisibleNodeList();
     TreeNode* GetPreviousVisibleNode(TreeNode* current);
     TreeNode* GetNextVisibleNode(TreeNode* current);
+    TreeNode* GetFirstVisibleNode();
     TreeNode* GetLastVisibleNode();
 
     // When a parent node (one that has children) is the bottom-most visible row,
@@ -733,6 +872,11 @@ public:
 
     TreeViewBuilder& SetScrollToTopButtonStyle(const TreeScrollToTopStyle& style) {
         treeView->SetScrollToTopButtonStyle(style);
+        return *this;
+    }
+
+    TreeViewBuilder& SetShowScrollToSelectionButton(bool show) {
+        treeView->SetShowScrollToSelectionButton(show);
         return *this;
     }
 

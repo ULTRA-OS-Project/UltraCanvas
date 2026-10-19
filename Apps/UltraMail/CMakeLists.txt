@@ -44,87 +44,12 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSyncScheduler.cpp
     engine/UltraMailContactCollector.cpp
     engine/UltraMailFeedPublisher.cpp
+    engine/UltraMailNewMail.cpp
+    engine/UltraMailTrace.cpp
+    engine/UltraMailOneTimeCode.cpp
+    engine/UltraMailPaths.cpp
+    engine/UltraMailResultText.cpp
 )
-
-# ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────
-# The Google / Yahoo / Microsoft OAuth *client* a shipped build signs in as, baked into
-# the binary as the lowest-priority fallback (Set() / env / oauth.ini override
-# it — see OAuthApps::Get). Empty by default, so a plain dev/CI/test build bakes
-# in nothing and behaves exactly as before. To ship a preconfigured build,
-# either -D these on the configure line (e.g. from CI secrets) or drop a local,
-# gitignored cmake/oauth.local.cmake that set()s them — see
-# Docs/UltraMail/AccountSetup.md and cmake/oauth.local.cmake.example.
-set(ULTRAMAIL_GOOGLE_CLIENT_ID     "" CACHE STRING "Baked-in Google OAuth client id")
-set(ULTRAMAIL_GOOGLE_CLIENT_SECRET "" CACHE STRING "Baked-in Google OAuth client secret")
-set(ULTRAMAIL_YAHOO_CLIENT_ID     "" CACHE STRING "Baked-in Yahoo OAuth client id")
-set(ULTRAMAIL_MICROSOFT_CLIENT_ID  "" CACHE STRING "Baked-in Microsoft OAuth client id")
-option(ULTRAMAIL_OAUTH_OBFUSCATE "XOR-obfuscate baked-in OAuth credentials" ON)
-# High-bit key so ASCII credentials never XOR to a NUL (which truncates a C
-# string). Anti-scraping friction only — the key ships in the same binary.
-set(ULTRAMAIL_OAUTH_XOR_KEY "183" CACHE STRING "XOR key for baked-in credential obfuscation (1..255)")
-
-# A build machine's real credentials, kept out of the repo. When present it
-# set(... CACHE ... FORCE)s the three vars above.
-set(_um_oauth_local "${CMAKE_SOURCE_DIR}/cmake/oauth.local.cmake")
-if(EXISTS "${_um_oauth_local}")
-    include("${_um_oauth_local}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_um_oauth_local}")
-endif()
-
-set(_um_oauth_tmpl "${CMAKE_CURRENT_SOURCE_DIR}/engine/UltraMailOAuthDefaults.h.in")
-set(_um_oauth_hdr  "${CMAKE_CURRENT_BINARY_DIR}/generated/UltraMailOAuthDefaults.h")
-set(_um_oauth_have OFF)
-if(ULTRAMAIL_GOOGLE_CLIENT_ID OR ULTRAMAIL_GOOGLE_CLIENT_SECRET
-   OR ULTRAMAIL_YAHOO_CLIENT_ID OR ULTRAMAIL_MICROSOFT_CLIENT_ID)
-    set(_um_oauth_have ON)
-endif()
-
-if(_um_oauth_have AND ULTRAMAIL_OAUTH_OBFUSCATE)
-    # Obfuscated: a Python helper does the per-byte XOR and writes the header.
-    # Credentials pass through the environment, never the command line, so they
-    # stay out of any process listing.
-    find_program(ULTRAMAIL_PYTHON3 NAMES python3 python)
-    if(NOT ULTRAMAIL_PYTHON3)
-        message(FATAL_ERROR "UltraMail: baked-in OAuth credentials with obfuscation "
-            "need python3. Install it, or reconfigure with -DULTRAMAIL_OAUTH_OBFUSCATE=OFF.")
-    endif()
-    set(_um_oauth_gen "${CMAKE_SOURCE_DIR}/scripts/generate_oauth_defaults.py")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env
-                "UM_GOOGLE_ID=${ULTRAMAIL_GOOGLE_CLIENT_ID}"
-                "UM_GOOGLE_SECRET=${ULTRAMAIL_GOOGLE_CLIENT_SECRET}"
-                "UM_YAHOO_ID=${ULTRAMAIL_YAHOO_CLIENT_ID}"
-                "UM_MICROSOFT_ID=${ULTRAMAIL_MICROSOFT_CLIENT_ID}"
-                "${ULTRAMAIL_PYTHON3}" "${_um_oauth_gen}"
-                --template "${_um_oauth_tmpl}"
-                --out "${_um_oauth_hdr}"
-                --xor-key "${ULTRAMAIL_OAUTH_XOR_KEY}"
-        RESULT_VARIABLE _um_oauth_rc)
-    if(NOT _um_oauth_rc EQUAL 0)
-        message(FATAL_ERROR "UltraMail: generating ${_um_oauth_hdr} failed (${_um_oauth_rc}).")
-    endif()
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${_um_oauth_tmpl}" "${_um_oauth_gen}")
-    message(STATUS "  [✓] UltraMail OAuth client - BAKED IN (obfuscated)")
-else()
-    # Empty (dev/test) or plain: configure_file, no Python dependency.
-    if(_um_oauth_have)
-        set(UM_GOOGLE_ID_C     "\"${ULTRAMAIL_GOOGLE_CLIENT_ID}\"")
-        set(UM_GOOGLE_SECRET_C "\"${ULTRAMAIL_GOOGLE_CLIENT_SECRET}\"")
-        set(UM_YAHOO_ID_C     "\"${ULTRAMAIL_YAHOO_CLIENT_ID}\"")
-        set(UM_MICROSOFT_ID_C  "\"${ULTRAMAIL_MICROSOFT_CLIENT_ID}\"")
-        message(STATUS "  [✓] UltraMail OAuth client - BAKED IN (plain)")
-    else()
-        set(UM_GOOGLE_ID_C     "\"\"")
-        set(UM_GOOGLE_SECRET_C "\"\"")
-        set(UM_YAHOO_ID_C     "\"\"")
-        set(UM_MICROSOFT_ID_C  "\"\"")
-    endif()
-    set(UM_OBFUSCATED "0")
-    set(UM_XOR_KEY    "0")
-    configure_file("${_um_oauth_tmpl}" "${_um_oauth_hdr}" @ONLY)
-endif()
 
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})
 set_target_properties(UltraMailEngine PROPERTIES
@@ -132,8 +57,7 @@ set_target_properties(UltraMailEngine PROPERTIES
     OUTPUT_NAME "ultramail_engine")
 target_compile_features(UltraMailEngine PUBLIC cxx_std_20)
 target_include_directories(UltraMailEngine
-    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/engine
-    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 # Mail-account passwords live in UltraVault (Argon2id + XChaCha20-Poly1305 via
 # UltraCrypt), not in a format of UltraMail's own.
@@ -146,33 +70,13 @@ if(TARGET UltraMessage)
     target_link_libraries(UltraMailEngine PUBLIC UltraMessage)
     target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_ULTRAMESSAGE=1)
 endif()
-# UltraNet provides the MIME/HTTP/Base64 helpers the engine builds on.
-# With a STATIC UltraCanvas we link the UltraNet archive directly. With a SHARED
-# UltraCanvas, UltraNet is absorbed into (and exported by) libultracanvas — link
-# THAT instead, for two reasons:
-#   * linking the static archive too would put a second copy of the UltraNet
-#     symbols on consumers' link lines and collide with the DLL's exports;
-#   * the engine's UltraNet_* references must resolve from the ultracanvas import
-#     lib, and GNU ld resolves left-to-right, so libultracanvas has to appear
-#     AFTER libultramail_engine. Expressing the dependency here lets CMake order
-#     them for every consumer (the UltraMail app and the headless engine test).
-# (ULTRACANVAS_BUILD_SHARED can be force-enabled inside the UltraCanvas
-# subdirectory scope, so query the resolved target type instead of the option.)
+# UltraNet provides the MIME/HTTP/Base64 helpers the engine builds on. Its
+# home resolves to the shared core, which has absorbed the module and exports
+# its API, or to the archive under a static core (UltraCanvas/CMakeLists.txt,
+# "MODULE HOMES"); either way the engine names the module and CMake puts the
+# library after libultramail_engine on every consumer's link line.
 if(TARGET UltraNet)
-    set(_uc_core_shared FALSE)
-    if(TARGET ${ULTRACANVAS_LIBRARY})
-        get_target_property(_uc_core_type ${ULTRACANVAS_LIBRARY} TYPE)
-        if(_uc_core_type STREQUAL "SHARED_LIBRARY")
-            set(_uc_core_shared TRUE)
-        endif()
-    endif()
-    if(_uc_core_shared)
-        target_link_libraries(UltraMailEngine PUBLIC ${ULTRACANVAS_LIBRARY})
-        target_include_directories(UltraMailEngine PUBLIC
-            $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-    else()
-        target_link_libraries(UltraMailEngine PUBLIC UltraNet)
-    endif()
+    target_link_libraries(UltraMailEngine PUBLIC UltraNet)
 endif()
 
 message(STATUS "  [✓] UltraMail engine - ENABLED (target: UltraMailEngine)")
@@ -211,6 +115,14 @@ set(ULTRAMAIL_UI_SOURCES
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})
+# One UltraMail per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraMail)
+# Windows Release builds open no console window (the GUI subsystem), like the
+# other apps' (root CMakeLists.txt, "Hide console window on Windows Release
+# builds"). The timing trace still goes to trace.log in the data folder, and
+# into the console of a prompt UltraMail is started from. Debug builds keep
+# their console.
+ultracanvas_windows_gui_app(UltraMail)
 # Plugins (SMTP/IMAP DSOs) resolve symbols back from the executable at runtime.
 set_target_properties(UltraMail PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(UltraMail PRIVATE

@@ -53,12 +53,12 @@ void UltraCanvasCSVImportDialog::Initialize(const std::string& filePath) {
 }
 
 void UltraCanvasCSVImportDialog::BuildLayout() {
-    layout.SetFlexColumn();
+    layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     layout.SetFlexGap(10);
     SetPadding(16);
 
     contentSection = std::make_shared<UltraCanvasContainer>("CSVImportContent", 0, 0, 628, 540);
-    contentSection->layout.SetFlexColumn();
+    contentSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     contentSection->layout.SetFlexGap(8);
 
     auto makeLabel = [](const std::string& id, const std::string& text, int w, bool bold) {
@@ -73,7 +73,7 @@ void UltraCanvasCSVImportDialog::BuildLayout() {
     contentSection->AddChild(makeLabel("lblImport", "Import", 200, true));
 
     auto charsetRow = std::make_shared<UltraCanvasContainer>("CharsetRow", 0, 0, 628, 28);
-    charsetRow->layout.SetFlexRow();
+    charsetRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     charsetRow->layout.SetFlexGap(8);
     charsetRow->AddChild(makeLabel("lblCharset", "Character set:", 110, false));
     encodingDropdown_ = std::make_shared<UltraCanvasDropdown>("EncodingDD", 0, 0, 240, 24);
@@ -85,7 +85,7 @@ void UltraCanvasCSVImportDialog::BuildLayout() {
     contentSection->AddChild(charsetRow);
 
     auto rowRow = std::make_shared<UltraCanvasContainer>("StartRowRow", 0, 0, 628, 28);
-    rowRow->layout.SetFlexRow();
+    rowRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rowRow->layout.SetFlexGap(8);
     rowRow->AddChild(makeLabel("lblFromRow", "From row:", 110, false));
     startRowInput_ = std::make_shared<UltraCanvasTextInput>("StartRowInput", 0, 0, 70, 24);
@@ -98,7 +98,7 @@ void UltraCanvasCSVImportDialog::BuildLayout() {
     contentSection->AddChild(makeLabel("lblSep", "Separator options", 300, true));
 
     auto sepRow1 = std::make_shared<UltraCanvasContainer>("SepRow1", 0, 0, 628, 24);
-    sepRow1->layout.SetFlexRow();
+    sepRow1->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     sepRow1->layout.SetFlexGap(16);
     tabCheck_       = MakeCheck("sepTab", "Tab", false);
     commaCheck_     = MakeCheck("sepComma", "Comma", true);
@@ -111,7 +111,7 @@ void UltraCanvasCSVImportDialog::BuildLayout() {
     contentSection->AddChild(sepRow1);
 
     auto sepRow2 = std::make_shared<UltraCanvasContainer>("SepRow2", 0, 0, 628, 24);
-    sepRow2->layout.SetFlexRow();
+    sepRow2->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     sepRow2->layout.SetFlexGap(8);
     otherCheck_ = MakeCheck("sepOther", "Other:", false);
     otherInput_ = std::make_shared<UltraCanvasTextInput>("OtherInput", 0, 0, 40, 24);
@@ -121,7 +121,7 @@ void UltraCanvasCSVImportDialog::BuildLayout() {
     contentSection->AddChild(sepRow2);
 
     auto sepRow3 = std::make_shared<UltraCanvasContainer>("SepRow3", 0, 0, 628, 28);
-    sepRow3->layout.SetFlexRow();
+    sepRow3->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     sepRow3->layout.SetFlexGap(8);
     mergeCheck_ = MakeCheck("mergeSep", "Merge delimiters", false);
     sepRow3->AddChild(mergeCheck_);
@@ -137,7 +137,7 @@ void UltraCanvasCSVImportDialog::BuildLayout() {
     contentSection->AddChild(makeLabel("lblOther", "Other options", 300, true));
 
     auto optRow = std::make_shared<UltraCanvasContainer>("OtherOptRow", 0, 0, 628, 24);
-    optRow->layout.SetFlexRow();
+    optRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     optRow->layout.SetFlexGap(16);
     quotedAsTextCheck_  = MakeCheck("quotedText", "Quoted field as text", false, 180);
     detectNumbersCheck_ = MakeCheck("detectNum", "Detect special numbers", true, 200);
@@ -156,7 +156,7 @@ void UltraCanvasCSVImportDialog::BuildLayout() {
 
     // ===== Buttons =====
     buttonSection = std::make_shared<UltraCanvasContainer>("CSVImportButtons", 0, 0, 628, 36);
-    buttonSection->layout.SetFlexRow();
+    buttonSection->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     buttonSection->layout.SetFlexGap(8);
     buttonSection->AddStretchSpacer(1);
 

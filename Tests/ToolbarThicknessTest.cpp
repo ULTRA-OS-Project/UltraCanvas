@@ -20,8 +20,11 @@
 // knows the shape, so a toolbar turned vertical kept the 800 px width as its
 // floor, and SetDimensions() never replaced it. Texter's markdown side bar
 // asked for 40 px and got 800, half the window.
-// Version: 1.1.0
-// Last Modified: 2026-09-25
+//
+// And a toolbar draws its buttons' icons at the size its appearance names
+// (ToolbarIconSize), not at 20 px whatever it said.
+// Version: 1.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -178,6 +181,48 @@ void TestBuilderHorizontalTakesItsHeight() {
                   std::to_string(status->finalBounds.height) + " px)");
 }
 
+bool IconIs(const std::shared_ptr<UltraCanvasButton>& b, int w, int h) {
+    return b && b->GetIconWidth() == w && b->GetIconHeight() == h;
+}
+
+std::string IconOf(const std::shared_ptr<UltraCanvasButton>& b) {
+    return b ? std::to_string(b->GetIconWidth()) + "x" + std::to_string(b->GetIconHeight()) : "none";
+}
+
+void TestIconSizes() {
+    std::printf("A toolbar's buttons draw their icons at the size its appearance names\n");
+
+    // Every button used to get 20 px whatever iconSize said, so a line icon
+    // drawn on a 24 px grid was scaled to 5/6 and blurred, and a 16 px set
+    // was blown up to 20.
+    auto toolbar = std::make_shared<UltraCanvasToolbar>("tb-icons", 0, 0, 0, 38);
+    auto button = toolbar->AddButton("b", "", "", nullptr);
+    auto toggle = toolbar->AddToggleButton("t", "", "", nullptr);
+    Check(IconIs(button, 24, 24) && IconIs(toggle, 24, 24),
+          "Medium, the default, is 24 x 24 (got " + IconOf(button) + ", " + IconOf(toggle) + ")");
+
+    const struct { ToolbarIconSize size; int px; const char* name; } sizes[] = {
+        { ToolbarIconSize::Small, 16, "Small" },     { ToolbarIconSize::Large, 32, "Large" },
+        { ToolbarIconSize::ExtraLarge, 48, "ExtraLarge" }, { ToolbarIconSize::Huge, 64, "Huge" },
+    };
+    for (const auto& s : sizes) {
+        ToolbarAppearance app = toolbar->GetAppearance();
+        app.iconSize = s.size;
+        toolbar->SetAppearance(app);
+        auto added = toolbar->AddButton(std::string("after-") + s.name, "", "", nullptr);
+        Check(IconIs(button, s.px, s.px) && IconIs(added, s.px, s.px),
+              std::string(s.name) + " is " + std::to_string(s.px) + " px, for the buttons already there and new ones (got " +
+                      IconOf(button) + ", " + IconOf(added) + ")");
+    }
+
+    ToolbarAppearance custom = toolbar->GetAppearance();
+    custom.iconSize = ToolbarIconSize::Custom;
+    custom.customIconWidth = 28;
+    custom.customIconHeight = 20;
+    toolbar->SetAppearance(custom);
+    Check(IconIs(button, 28, 20), "Custom is customIconWidth x customIconHeight (got " + IconOf(button) + ")");
+}
+
 } // namespace
 
 int main() {
@@ -187,6 +232,7 @@ int main() {
     TestVerticalTooNarrow();
     TestBuilderVerticalTakesItsWidth();
     TestBuilderHorizontalTakesItsHeight();
+    TestIconSizes();
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "ALL PASSED",
                 g_failures, g_failures == 1 ? "" : "s");
     return g_failures ? 1 : 0;

@@ -3,6 +3,29 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.7 - GuardQuitDuringTransfers: the last window asks before it
+//                   ends a cloud upload or download
+// Version: 0.12.6 - the cloud stores and service are shared (shared_ptr), so
+//                   the cloud link picker's uploads and sign-ins can hold them
+// Version: 0.12.5 - after the computer was switched on (the last connection to
+//                   a mail server more than ten minutes old), alerts about
+//                   failed background checks wait (SwitchOnQuiet, Settings >
+//                   Mail > Connection); the last connection is remembered in
+//                   the data folder (RememberConnected)
+// Version: 0.12.4 - HandleAddFolder / HandleDeleteFolder (the folder tree's
+//                   menu), the tree's content (Settings > Display > Treeview),
+//                   LoadAccounts / HandleReorderAccounts (the account order the
+//                   tiles were dragged into)
+// Version: 0.12.3 - HandleSenderListChange, ApplySenderLists: the sender menu's
+//                   trusted and blocked senders saved, and their mail judged again
+// Version: 0.12.2 - FinishStartup: the window and the stored mail first, the
+//                   plug-ins, the vault and the first check after it is shown
+// Version: 0.12.1 - the timing trace: the stages of the start and of an
+//                   account switch, and the frames that follow, with their
+//                   times (TraceFrame, UltraMailTrace.h)
+// Version: 0.12.0 - new mail on screen: a notification through UltraMessage
+//                   after a sync brings mail (BeginNewMail / AnnounceNewMail),
+//                   and its click opens the mail (OpenFromNotification)
 // Version: 0.11.0 - SwitchToAccount (the account's stored mail at once, its
 //                   inbox refreshed in the background); FetchMissingBody;
 //                   ForgetDownloadedMail on a change of incoming server
@@ -15,7 +38,7 @@
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -44,6 +67,7 @@
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailFeedPublisher.h"
+#include "UltraMailNewMail.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailOAuth.h"
 
@@ -59,6 +83,7 @@
 #include <ctime>
 #include <functional>
 #include <map>
+#include <optional>
 #include <memory>
 #include <set>
 #include <string>
@@ -102,6 +127,18 @@ public:
     bool ApplyNeedsAnswerRules();
 
 private:
+    // The start page, built the first time there is no account to show.
+    void EnsureStartPage();
+    // The rest of the start, once the window is on screen with the stored
+    // mail: the cloud accounts, the mail plug-ins, the vault, the cache
+    // pruning (on a thread), the sync timer and the first check. Idempotent;
+    // an action that needs any of it before then runs it first.
+    void FinishStartup();
+    // The timing trace (UltraMailTrace.h): every main-window frame that is
+    // slow, and the next few in full after the start or an account switch,
+    // with how long after it each came.
+    void TraceFrame(const UltraCanvas::WindowFrameTiming& timing);
+    void TraceNextFrames(const std::string& after, double sinceSeconds);
     // Build the account view (everything shown once an account exists).
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAccountView(float width, float height);
     // Size the start page and the account view to the window's client area.
@@ -274,6 +311,17 @@ private:
     // Forgets a compose window once it has closed (on the next UI turn, never
     // inside the window's own close callback).
     void RetireComposer(UltraCanvas::UltraCanvasWindow* window);
+    // The last window closing ends UltraMail, and with it an upload or a
+    // download the cloud link picker is running: the file does not arrive.
+    // Every window UltraMail opens gets this guard: a close that would end the
+    // application while the cloud service has a transfer under way
+    // (CloudService::TransfersInProgress) asks first - "An upload is still
+    // running — quit anyway?" - and only "Quit anyway" lets it through. A
+    // window that is not the last closes as it always did; the transfer
+    // carries on behind the ones still open.
+    void GuardQuitDuringTransfers(const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& window);
+    void AskQuitDuringTransfers(const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& window,
+                                const std::vector<UltraCloud::CloudService::Transfer>& transfers);
     // `draft` with the signature of the account it is sent from (its fromAddr)
     // put in - as account settings define it.
     Draft WithSignature(Draft draft, DraftPurpose purpose) const;
@@ -287,6 +335,13 @@ private:
     // clears \Seen. All non-blocking; failures surface an alert.
     void HandleDeleteMessage(const MessageEnvelope& env);
     void HandleJunkMessage(const MessageEnvelope& env);
+    // The sender menu's "Always trust this sender" / "Block this sender" /
+    // "Block everything from <domain>" and their undoing: the lists saved,
+    // and the sender's stored verdicts judged again.
+    void HandleSenderListChange(const std::string& entry, bool blockList, bool add);
+    // New lists in effect for the scan (Settings, or the menu): only the
+    // senders whose entry changed have their mail judged again.
+    void ApplySenderLists();
     void HandleMarkUnread(const MessageEnvelope& env);
     // Opening a message marks it read: updates the local store and the list row
     // immediately (optimistic), then pushes \Seen to the server in the
@@ -301,6 +356,19 @@ private:
                                                     const UltraNetMailOptions&)> op,
                           const std::string& actionName,
                           std::function<void()> onSuccess = nullptr);
+    // The folder tree's menu. Add folder asks for the name (`typed` fills the
+    // box again after a name that cannot be used) and makes the folder below
+    // `parent` - the account's top level when empty; Delete folder asks first
+    // and removes the folder with its mail from the server.
+    void HandleAddFolder(const std::string& accountId, const std::string& parent,
+                         const std::string& typed = std::string());
+    void HandleDeleteFolder(const std::string& accountId, const std::string& folder);
+    // The accounts from the store, in the order the reader dragged the tiles
+    // into (Preferences::accountOrder).
+    void LoadAccounts();
+    // The tiles were dragged into `order` (account ids): kept, and the tree
+    // follows.
+    void HandleReorderAccounts(const std::vector<std::string>& order);
     // Message-list menu actions.
     void HandleMoveMessage(const MessageEnvelope& env, const std::string& folder);
     void HandleNotJunk(const MessageEnvelope& env);
@@ -419,6 +487,23 @@ private:
     // from before the sleep and check every account shortly after, once the
     // network has had a moment to come back.
     void OnWokeFromSleep();
+    // At start and after a wake: when the last connection to a mail server
+    // is more than ten minutes old, the computer was most likely switched off,
+    // and alerts about failed background checks wait for the period chosen in
+    // Settings > Mail > Connection (SwitchOnQuiet). `when` names the moment in
+    // the timing trace.
+    void BeginSwitchOnQuiet(const std::string& when);
+    // A background check of the account failed: true when its alert is held
+    // back because that period is running (the account is checked again when
+    // it ends, and reported then if it still fails).
+    bool HoldForSwitchOn(const std::string& accountId);
+    // When the period ends, the accounts held back are checked once more, as
+    // a background sync.
+    void ScheduleSwitchOnRecheck();
+    void RecheckHeldAccounts();
+    // A mail server was reached: remember when, in the data folder too
+    // (kLastConnectedFileName), at most once every kLastConnectedWriteSec.
+    void RememberConnected();
     // Check every account now, as a background sync (no alerts for a network
     // that is not up yet - the offline grace applies).
     void SyncAllInBackground();
@@ -445,6 +530,17 @@ private:
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.
     void SyncAccounts(const std::vector<ScheduledAccount>& targets, bool userInitiated);
+    // Before a sync of the account's inbox: what it already holds, so the
+    // mail above that is news (NewMailTracker).
+    void BeginNewMail(const std::string& accountId);
+    // After it, done or failed: put a notification on screen for the new
+    // mail it stored (Settings > Display > Notifications), through
+    // UltraMessage, which hands it to the desktop's notification server.
+    void AnnounceNewMail(const std::string& accountId, const SyncOutcome& outcome);
+    // A click on one of those notifications: the window to the front and the
+    // mail it announced on screen - the message, or the account's inbox when
+    // it announced several.
+    void OpenFromNotification(const std::string& notificationId);
     // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
     IMailboxProtocolPlugin* ImapPlugin() const;
     // Explain that no mail can be fetched because the IMAP plug-in was not
@@ -480,9 +576,14 @@ private:
     // "Attach cloud link". The secrets live in the mail vault (vault_) under
     // "cloud.<accountId>.*"; MigrateCloudSecrets() carries the obfuscated
     // cloud-vault/ files of earlier releases into it once it is unlocked.
-    UltraCloud::AccountStore cloudAccounts_;
-    std::unique_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
-    std::unique_ptr<UltraCloud::CloudService> cloud_;
+    // Shared rather than owned: the service keeps the two stores alive, and
+    // the cloud link picker's uploads, listings and add-account sign-ins hold
+    // the service until they end - which can be after the compose window, or
+    // the application, has closed.
+    std::shared_ptr<UltraCloud::AccountStore> cloudAccounts_ =
+            std::make_shared<UltraCloud::AccountStore>();
+    std::shared_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
+    std::shared_ptr<UltraCloud::CloudService> cloud_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
     // Non-empty when a store the app needs could not be opened; the matching
@@ -503,6 +604,18 @@ private:
     // How soon an unreachable account is tried again while its grace period
     // runs, so mail arrives soon after the network does.
     static constexpr int64_t kOfflineRetrySec = 60;
+    // After the computer was switched on, the alerts of failed background
+    // checks wait for Settings > Mail > Connection's period (see
+    // SwitchOnQuiet). Keyed on NowMonotonicSec().
+    SwitchOnQuiet switchOn_;
+    bool          switchOnRecheckPending_ = false;
+    // When a mail server was last reached (wall clock, epoch seconds; 0 =
+    // never on record), kept in <data>/last-connected for the next start,
+    // and when that file was last written.
+    std::string lastConnectedPath_;
+    int64_t     lastConnected_        = 0;
+    int64_t     lastConnectedWritten_ = 0;
+    static constexpr int64_t kLastConnectedWriteSec = 60;
     // The locked-vault warning, once per run of locked rounds.
     bool vaultLockReported_ = false;
     // The last sync failure per account ("Could not fetch mail for …: reason"),
@@ -561,6 +674,11 @@ private:
     bool         wakeCheckPending_ = false;   // a post-wake sync is scheduled
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    // The answer to GuardQuitDuringTransfers' question: "Quit anyway" lets the
+    // close it repeats go through. While the question is open, a second close
+    // does not ask it again.
+    bool quitConfirmed_ = false;
+    bool quitQuestionOpen_ = false;
     // The account view root; hidden while the start page is up (no account
     // configured) and shown once the first account exists.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> accountView_;
@@ -610,8 +728,18 @@ private:
     std::vector<ComposeSession> composers_;
     SyncScheduler   scheduler_;
     // New mail to the desktop feed (UltraMessage mail.message); fed from the
-    // sync workers' progress callbacks.
+    // sync workers' progress callbacks. Also posts the new-mail notification.
     FeedPublisher   feed_;
+    // Which of the stored messages are news, per account, until its sync ends.
+    NewMailTracker  newMail_;
+    // What a click on a notification opens, by the notification's bus id
+    // (UI thread only).
+    struct NotificationTarget {
+        std::string accountId;
+        std::string folder;     // empty: the account's inbox
+        int64_t     uid = 0;    // 0: no single message
+    };
+    std::map<std::string, NotificationTarget> notificationTargets_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
     // The Contacts window while it is open (one at a time).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;
@@ -623,6 +751,15 @@ private:
     // Attachments open in the framework's media viewer (images, PDF, office
     // sheets, text, audio, video, fonts, …); one window, reused per attachment.
     std::unique_ptr<UltraCanvas::UltraCanvasMediaViewerWindow> attachmentViewer_;
+    bool            startupFinished_ = false;
+    // A body the message shown at start lacks, fetched by FinishStartup.
+    std::optional<MessageEnvelope> pendingBodyFetch_;
+    // TraceFrame: frames still to report in full, what they are timed from
+    // ("the click on work") and when that was (Trace::NowSeconds).
+    int             traceFramesLeft_ = 0;
+    int             traceFrameCount_ = 0;
+    std::string     traceAfter_;
+    double          traceSince_ = 0;
 };
 
 } // namespace UltraMail

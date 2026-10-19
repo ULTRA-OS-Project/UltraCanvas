@@ -1,7 +1,15 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.7
-// Last Modified: 2026-08-06
+// Version: 0.1.10
+// Last Modified: 2026-10-12
+// V0.1.10: The title-safe guide (VideoPlayerStyle::showSafeArea), dashed over
+//   the picture; a Pixels zoom relative to zoomReferenceHeight.
+// V0.1.9: The picture is placed by VideoPlayerStyle::videoFit (Contain, Cover,
+//   Pixels with zoomPercent) inside videoInset; Cover and Pixels are clipped to
+//   the element.
+// V0.1.8: A seek or volume drag captures the mouse, so its release arrives
+//   even off the player (the scrub stayed on before), and that release is
+//   reported as the player's.
 // V0.1.7: Loading a source resets the per-file frame state (shown frame, scrub
 //   throttle, time readout). The surface previously kept displaying the last
 //   frame of the previous file until the new one delivered a frame — which,
@@ -340,9 +348,44 @@ void UltraCanvasVideoPlayerElement::DrawVideoSurface(IRenderContext* ctx) {
                              style.backgroundColor, 0.0f, Color(0, 0, 0, 0), 0);
 
     if (haveFrame && framePixmap && framePixmap->IsValid()) {
-        Rect2Di fit = FitContain(videoRect, frameW, frameH);
+        const int inset = std::max(0, style.videoInset);
+        const Rect2Di area(videoRect.x + inset, videoRect.y + inset,
+                           std::max(1, videoRect.width - 2 * inset), std::max(1, videoRect.height - 2 * inset));
+        Rect2Di fit;
+        switch (style.videoFit) {
+            case VideoPlayerFit::Cover: {
+                const double s = std::max(static_cast<double>(area.width) / std::max(1, frameW),
+                                          static_cast<double>(area.height) / std::max(1, frameH));
+                const int w = static_cast<int>(frameW * s), h = static_cast<int>(frameH * s);
+                fit = Rect2Di(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
+                break;
+            }
+            case VideoPlayerFit::Pixels: {
+                double z = std::max(1.0f, style.zoomPercent) / 100.0;
+                if (style.zoomReferenceHeight > 0 && frameH > 0) z *= static_cast<double>(style.zoomReferenceHeight) / frameH;
+                const int w = static_cast<int>(frameW * z), h = static_cast<int>(frameH * z);
+                fit = Rect2Di(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
+                break;
+            }
+            default:
+                fit = FitContain(area, frameW, frameH);
+                break;
+        }
+        // a picture larger than the element (Cover, a zoom) stays inside it
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(videoRect.x, videoRect.y, videoRect.width, videoRect.height));
         ctx->DrawPixmap(*framePixmap, Rect2Dd(fit.x, fit.y, fit.width, fit.height),
                         ImageFitMode::Fill);
+        if (style.showSafeArea && fit.width > 0 && fit.height > 0) {
+            const double inset = std::clamp(static_cast<double>(style.safeAreaInset), 0.0, 0.45);
+            const double dx = fit.width * inset, dy = fit.height * inset;
+            ctx->SetStrokePaint(style.safeAreaColor);
+            ctx->SetStrokeWidth(1.0);
+            ctx->SetLineDash(UCDashPattern({4.0, 4.0}));
+            ctx->DrawRectangle(Rect2Dd(fit.x + dx, fit.y + dy, fit.width - 2 * dx, fit.height - 2 * dy));
+            ctx->SetLineDash(UCDashPattern());
+        }
+        ctx->PopState();
     } else {
         // No-signal placeholder
         std::string msg = player->IsLoaded() ? "Buffering..." : "No video loaded";
@@ -467,6 +510,9 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
             }
             if (Hit(seekBarRect, p)) {
                 draggingSeek = true;
+                // The release ends the scrub wherever it happens; uncaptured,
+                // one off the player never arrived and the scrub stayed on.
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
                 lastScrubSeekTime = NowSeconds();   // initial click seeks now; reset throttle
                 pendingScrubSeek = false;
                 float pct = std::clamp(static_cast<float>(p.x - seekBarRect.x) /
@@ -476,6 +522,7 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
             }
             if (volumeBarRect.width > 0 && Hit(volumeBarRect, p)) {
                 draggingVolume = true;
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
                 float pct = std::clamp(static_cast<float>(p.x - volumeBarRect.x) /
                                        std::max(1, volumeBarRect.width), 0.0f, 1.0f);
                 player->SetVolume(pct); RequestRedraw();
@@ -520,15 +567,19 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
             return false;
         }
 
-        case UCEventType::MouseUp:
+        case UCEventType::MouseUp: {
             // Always land the exact release position, even if the last move fell
             // inside the throttle window.
             if (draggingSeek && pendingScrubSeek) {
                 pendingScrubSeek = false;
                 Seek(pendingScrubSeconds);
             }
+            // A release that ended a drag was the player's; any other goes on
+            // to the elements around it.
+            const bool endedDrag = draggingSeek || draggingVolume;
             draggingSeek = draggingVolume = false;
-            return false;
+            return endedDrag;
+        }
 
         default:
             return false;

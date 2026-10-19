@@ -24,11 +24,20 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
-// Version: 1.1.0
-// Last Modified: 2026-09-30
+// Version: 1.1.5 - a held shortcut counts once on a server without detectable
+//                  auto-repeat: the release before each repeat is dropped
+// Version: 1.1.4 - ListScreens (RandR monitors); the wake pipes no longer
+//                  block: draining one after the wake hung Stop() for good
+// Version: 1.1.3 - DesktopReplacement, EndSession and the tray host (none of
+//                  them here: the session owns the desktop, the sign-out and
+//                  the tray, which on X11 is a protocol of its own)
+// Version: 1.1.2 - ListNativeApplications (none: desktop entries are the list);
+//                  ReplaceSystemDesktop (none: the session starts the desktop)
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -43,6 +52,7 @@
 #include <sstream>
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <atomic>
 #include <poll.h>
 #include <sys/stat.h>
@@ -51,6 +61,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/Xrandr.h>
 #include <X11/XKBlib.h>
 #include <cairo/cairo.h>
 
@@ -393,6 +404,24 @@ namespace {
         Atom interesting[5] = {None, None, None, None, None};
     };
 
+    // The pipe a Wake writes to and a Wait drains. Both ends do not block:
+    // the drain reads until the pipe is empty, which on a blocking pipe
+    // waits for a byte that never comes, and a full pipe already wakes.
+    bool OpenWakePipe(int fds[2]) {
+        if (::pipe(fds) != 0) return false;
+        for (int i = 0; i < 2; ++i) {
+            const int flags = ::fcntl(fds[i], F_GETFL);
+            if (flags < 0 || ::fcntl(fds[i], F_SETFL, flags | O_NONBLOCK) != 0 ||
+                ::fcntl(fds[i], F_SETFD, FD_CLOEXEC) != 0) {
+                ::close(fds[0]);
+                ::close(fds[1]);
+                fds[0] = fds[1] = -1;
+                return false;
+            }
+        }
+        return true;
+    }
+
 } // namespace
 
 // ===== BACKEND =====
@@ -516,6 +545,28 @@ bool GetScreenSize(int& width, int& height) {
     width = DisplayWidth(d, screen);
     height = DisplayHeight(d, screen);
     return width > 0 && height > 0;
+}
+
+// RandR's monitors - what the window code reads for each monitor's DPI.
+std::vector<DesktopScreenInfo> ListScreens() {
+    std::vector<DesktopScreenInfo> screens;
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    Display* d = QueryDisplay();
+    if (!d) return screens;
+    ScopedErrorHandler quiet;
+    int count = 0;
+    XRRMonitorInfo* monitors = XRRGetMonitors(d, DefaultRootWindow(d), True, &count);
+    for (int i = 0; monitors && i < count; ++i) {
+        DesktopScreenInfo screen;
+        screen.x = monitors[i].x;
+        screen.y = monitors[i].y;
+        screen.width = monitors[i].width;
+        screen.height = monitors[i].height;
+        screen.primary = monitors[i].primary != 0;
+        if (screen.width > 0 && screen.height > 0) screens.push_back(screen);
+    }
+    if (monitors) XRRFreeMonitors(monitors);
+    return screens;
 }
 
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
@@ -646,6 +697,37 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
     return true;
 }
 
+// Desktop entries are this platform's application list; the core reads them.
+bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+// No entry here has a shortcut; opened like any file should one ever come.
+bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+    return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
+}
+bool LaunchPackagedApplication(const std::string&, std::string& error) {
+    error = "Microsoft Store applications run on Windows only.";
+    return false;
+}
+
+// The session decides which desktop runs - on ULTRA OS, UltraDesktop's own
+// session file - so there is nothing for a program to switch.
+bool CanReplaceSystemDesktop(DesktopReplacement) { return false; }
+DesktopReplacement GetSystemDesktopReplacement() { return DesktopReplacement::Off; }
+bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, DesktopReplacement,
+                          std::string& error) {
+    error = "On this system the session starts the desktop; choose UltraDesktop's session at sign-in.";
+    return false;
+}
+bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
+bool IsSystemDesktopRunning() { return true; }              // whatever the session started is the system's
+
+// Signing out is the session manager's (logind, the display manager), which
+// this backend does not talk to yet.
+bool CanEndSession() { return false; }
+bool EndSession(SessionEnd, std::string& error) {
+    error = "Signing out, restarting and shutting down go through the session's own menu here.";
+    return false;
+}
+
 void ReadDeviceActivity(DesktopDeviceActivity& activity) {
     ProbeAudio(activity);
     ProbeCamera(activity);
@@ -663,7 +745,7 @@ MonitorState* MonitorOpen() {
     if (!d) return nullptr;
     auto* state = new MonitorState();
     state->display = d;
-    if (::pipe(state->wakePipe) != 0) {
+    if (!OpenWakePipe(state->wakePipe)) {
         XCloseDisplay(d);
         delete state;
         return nullptr;
@@ -749,6 +831,11 @@ struct ShortcutState {
     int wakePipe[2] = {-1, -1};
     KeyCode keycode = 0;
     unsigned int modifiers = 0;
+    bool down = false;   // the combination was pressed and its key is not let go yet
+    // The server sends a held key's repeats as presses alone. Without it
+    // each repeat is a release and a press, and ShortcutWait drops the
+    // release, or a held shortcut would count once per repeat.
+    bool detectableAutoRepeat = false;
 };
 
 ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
@@ -812,13 +899,18 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
         error = accelerator + " is taken by another program.";
         return nullptr;
     }
-    XSelectInput(d, DefaultRootWindow(d), KeyPressMask);
+    XSelectInput(d, DefaultRootWindow(d), KeyPressMask | KeyReleaseMask);
+    // A key held down repeats as presses alone, not press-release pairs, so a
+    // held combination is one press and one release.
+    Bool autoRepeatSupported = False;
+    XkbSetDetectableAutoRepeat(d, True, &autoRepeatSupported);
 
     auto* state = new ShortcutState();
     state->display = d;
+    state->detectableAutoRepeat = autoRepeatSupported == True;
     state->keycode = keycode;
     state->modifiers = modifiers;
-    if (::pipe(state->wakePipe) != 0) {
+    if (!OpenWakePipe(state->wakePipe)) {
         XCloseDisplay(d);
         delete state;
         error = "No pipe for the shortcut's thread.";
@@ -827,17 +919,40 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
     return state;
 }
 
+// The first half of an auto-repeat on a server without detectable
+// auto-repeat: the next queued event presses the same key at the same time.
+static bool IsRepeatRelease(ShortcutState* state, const XEvent& release) {
+    if (state->detectableAutoRepeat) return false;
+    Display* d = state->display;
+    if (XEventsQueued(d, QueuedAfterReading) == 0) return false;
+    XEvent next;
+    XPeekEvent(d, &next);
+    return next.type == KeyPress && next.xkey.keycode == release.xkey.keycode &&
+           next.xkey.time == release.xkey.time;
+}
+
+// The shortcut counts when its key is let go, not when it goes down. While
+// the key is down the passive grab holds the keyboard, and a window the
+// shortcut opens and focuses in that time is handed focus events by the grab
+// and its end (NotifyWhileGrabbed, NotifyUngrab) that the window manager may
+// follow by giving the focus back: the clipboard panel opened on Super+V shut
+// again at once, one press in two.
 bool ShortcutWait(ShortcutState* state) {
     if (!state || !state->display) return false;
     Display* d = state->display;
     for (;;) {
-        bool pressed = false;
+        bool released = false;
         while (XPending(d) > 0) {
             XEvent event;
             XNextEvent(d, &event);
-            if (event.type == KeyPress && event.xkey.keycode == state->keycode) pressed = true;
+            if (event.xkey.keycode != state->keycode) continue;
+            if (event.type == KeyPress) state->down = true;
+            else if (event.type == KeyRelease && state->down && !IsRepeatRelease(state, event)) {
+                state->down = false;
+                released = true;
+            }
         }
-        if (pressed) return true;
+        if (released) return true;
 
         pollfd fds[2];
         fds[0].fd = ConnectionNumber(d);
@@ -881,6 +996,23 @@ void ShortcutClose(ShortcutState* state) {
     if (state->wakePipe[1] >= 0) ::close(state->wakePipe[1]);
     delete state;
 }
+
+// ===== THE NOTIFICATION AREA =====
+// An X11 tray is the system-tray protocol (a selection and XEmbed) or
+// StatusNotifierItem over D-Bus, neither of which this backend hosts yet.
+
+struct TrayHostState {};
+
+TrayHostState* TrayHostOpen(std::string& error) {
+    error = "Hosting the notification area is not available on X11 yet.";
+    return nullptr;
+}
+bool TrayHostAttach(TrayHostState*, std::string&) { return false; }
+bool TrayHostWait(TrayHostState*) { return false; }
+void TrayHostWake(TrayHostState*) {}
+void TrayHostClose(TrayHostState*) {}
+std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState*) { return {}; }
+bool TrayHostClick(TrayHostState*, const std::string&, TrayClick) { return false; }
 
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas

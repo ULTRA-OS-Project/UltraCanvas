@@ -1,7 +1,21 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.8.1
-// Last Modified: 2026-08-31
+// Version: 1.16.0 - MenuStyle::FromTheme, ApplyTheme
+// Version: 1.15.0 - OpenMenuAnchored: a menu opens below a widget, or above it when it
+//                  does not fit below, without the caller sizing it; menubar drop-downs
+//                  flip above their item; MenuStyle::iconTint paints symbolic (grey)
+//                  icons in the entry's text colour, so they follow the theme;
+//                  tintIcons is iconTint's AllIcons, and Dark() leaves it off
+// Version: 1.14.0 - MenuStyle::tintIcons: icons drawn in the label's colour (on in Dark())
+// Version: 1.13.0 - a current-desktop look for popups and submenus (Windows 11, macOS,
+//                  GNOME): rounded panel with a soft drop shadow, inner padding, rounded
+//                  highlights inset from the edges, neutral hover, muted shortcuts;
+//                  MenuStyle::itemInset / itemCornerRadius
+// Version: 1.12.0 - a menu to screen readers
+// Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
+//                  MenuItemData::Input() declarations, never defined, are gone
+// Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,6 +23,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
 #include <vector>
@@ -57,7 +72,7 @@ namespace UltraCanvas {
         Checkbox,
         Radio,
         Submenu,
-        Input,
+        Input,      // Reserved: no text-input item is implemented, and there is no factory for one
         Custom,
         Header
     };
@@ -90,7 +105,6 @@ namespace UltraCanvas {
         // submenu entry only opens its list.
         std::function<void()> onClick;
         std::function<void(bool)> onToggle;
-//        std::function<void(const std::string&)> onTextInput;
 
         // Submenu items — either static (subItems) or lambda-provided (subItemsProvider).
         // If subItemsProvider is set, it is invoked each time the submenu opens,
@@ -145,8 +159,6 @@ namespace UltraCanvas {
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Submenu(const std::string& label, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
-        static MenuItemData Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback);
-        static MenuItemData Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback);
 
         bool HasSubmenu() const { return type == MenuItemType::Submenu; }
     };
@@ -159,57 +171,129 @@ namespace UltraCanvas {
         Square      // the same box a Checkbox item gets (the earlier look)
     };
 
+    // Outline of a Checkbox item's indicator. The tick inside is the same
+    // either way, so a round checkbox still reads as "on / off" rather than
+    // as one choice of several.
+    enum class MenuCheckboxShape {
+        Square,     // a box, as UltraCanvasCheckbox draws it (the default)
+        Round       // a circle, the outline a Round Radio item gets
+    };
+
+    // How an entry's icon is coloured (MenuStyle::iconTint).
+    enum class MenuIconTint {
+        // Icons drawn in one shade of grey - line glyphs such as the menu
+        // icons in media/icons/menu, which GTK calls "symbolic" - are painted
+        // in the entry's text colour, so they follow the theme, the hover and
+        // the disabled state as the label does: light on a dark menu, where
+        // their own black vanished. A coloured icon (an application's), or
+        // one in black and white, keeps its colours. The default.
+        Symbolic,
+        // Every icon in its own colours (the earlier behaviour).
+        Original,
+        // Every icon painted in the text colour, coloured ones too.
+        // (Not "Always": X11's X.h defines that name as a macro.)
+        AllIcons
+    };
+
+    // Which edges of a menu opened with OpenMenuAnchored line up with the
+    // anchor's.
+    enum class MenuAnchorAlign {
+        Left,       // the menu's left edge under the anchor's left edge (the default)
+        Right       // the menu's right edge under the anchor's right edge
+    };
+
+    // ===== APPLICATION-WIDE CHECKBOX SHAPE =====
+    // The checkboxShape every MenuStyle starts with. An application that wants
+    // one look in every menu it shows sets it once at start-up, and it reaches
+    // the menus elements build for themselves (a file display's context menu)
+    // as well as the application's own - UltraFiler draws only round
+    // indicators this way. Square until an application changes it, so
+    // nothing changes for one that never calls it.
+    void SetDefaultMenuCheckboxShape(MenuCheckboxShape shape);
+    MenuCheckboxShape GetDefaultMenuCheckboxShape();
+
     struct MenuStyle {
-        // Colors
-        Color backgroundColor = Color(248, 248, 248);
-        Color borderColor = Color(200, 200, 200);
-        Color hoverColor = Color(230, 240, 255);
-        Color hoverTextColor = Color(0, 0, 0, 255);
-        Color pressedColor = Color(210, 230, 255);
+        // Colors. Highlights and lines may be translucent: they are drawn
+        // over the menu's own background, so a translucent black hover reads
+        // as a darker shade of whatever background a menu is given.
+        Color backgroundColor = Color(249, 249, 249);
+        Color borderColor = Color(0, 0, 0, 36);
+        Color hoverColor = Color(0, 0, 0, 15);
+        Color hoverTextColor = Color(26, 26, 26);
+        Color pressedColor = Color(0, 0, 0, 10);
         Color selectedColor = Color(25, 118, 210, 50);
-        Color separatorColor = Color(220, 220, 220);
-        Color textColor = Colors::Black;
-        Color shortcutColor = Color(100, 100, 100, 255);
-        Color disabledTextColor = Color(150, 150, 150);
-        Color headerTextColor = Color(100, 100, 100);
+        Color separatorColor = Color(0, 0, 0, 24);
+        Color textColor = Color(26, 26, 26);
+        Color shortcutColor = Color(110, 110, 110);
+        Color disabledTextColor = Color(160, 160, 160);
+        Color headerTextColor = Color(110, 110, 110);
 
         // Typography
         FontStyle font;
 
-        // Dimensions
+        // Dimensions. A popup or submenu is a panel: borderWidth, then
+        // paddingTop / paddingBottom above the first and below the last row,
+        // and itemInset on both sides of every row. A row's highlight fills
+        // the row, rounded by itemCornerRadius, and its contents start
+        // paddingLeft inside it and end paddingRight before its right end.
+        // A menubar has no panel padding or inset: its items run edge to edge.
         int itemHeight = 28;
         int iconSize = 16;
-        int paddingLeft = 4;
-        int paddingRight = 4;
+        int paddingLeft = 10;
+        int paddingRight = 12;
         int paddingTop = 4;
         int paddingBottom = 4;
-        int iconSpacing = 6;
-        int shortcutSpacing = 20;
-        int separatorHeight = 8;
+        int itemInset = 4;          // Gap between the panel's border and a row's highlight
+        int itemCornerRadius = 4;   // Rounding of a row's highlight
+        int iconSpacing = 10;
+        // Every icon drawn in the label's colour, as a mask - coloured ones
+        // too: the same as iconTint = MenuIconTint::AllIcons. Off (the
+        // default) iconTint decides, and by default grey (symbolic) icons
+        // are drawn in the label's colour anyway.
+        bool tintIcons = false;
+        int shortcutSpacing = 24;
+        int separatorHeight = 9;
         int borderWidth = 1;
-        int borderRadius = 4;
+        int borderRadius = 8;       // Rounding of the popup / submenu panel
         int minWidth = 0;       // Minimum menu width (0 = no minimum)
         int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
         MenuRadioShape radioShape = MenuRadioShape::Round;   // Outline of a Radio item's indicator
+        MenuCheckboxShape checkboxShape = GetDefaultMenuCheckboxShape();   // Outline of a Checkbox item's indicator
+        MenuIconTint iconTint = MenuIconTint::Symbolic;   // How entry icons are coloured
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
 
-        // Animation
+        // Animation. When enabled, a popup or submenu fades in as a whole -
+        // background, border, shadow and entries - over animationDuration
+        // seconds as it opens, by stepping its opacity on the window
+        // (UltraCanvasWindowBase::SetPopupOpacity) from 0 to 1.
         bool enableAnimations = false;
         float animationDuration = 0.15f;
 
-        // Shadow
+        // Shadow: a soft drop shadow under a popup or submenu, painted by the
+        // window outside the menu's bounds (see PopupShadow). shadowColor is
+        // its colour where fully overlapped; it fades out over shadowBlur
+        // pixels centred on the panel's outline (half of it past the edge, as
+        // a CSS box-shadow's blur) and is moved by shadowOffset - down, so
+        // the panel reads as lifted towards the light. A menubar has none.
         bool showShadow = true;
-        Color shadowColor = Color(0, 0, 0, 100);
-        Point2Di shadowOffset = Point2Di(1, 1);
-        int shadowBlur = 4;
+        Color shadowColor = Color(0, 0, 0, 64);
+        Point2Di shadowOffset = Point2Di(0, 6);
+        int shadowBlur = 18;
 
         // Scrollbar (for overflow menus)
         ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
 
         static MenuStyle Default();
         static MenuStyle Dark();
+        // The theme's roles over Default(): the raised surface for the
+        // panel, hairlines, ink, muted ink for shortcuts and headers, faint
+        // ink when disabled, the hover and pressed fills, the accent tint
+        // behind the selected item. Dark() and Light differ in colour only.
+        static MenuStyle FromTheme(const UltraCanvasTheme& theme, const MenuStyle& base);
+        static MenuStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, theme.dark ? Dark() : Default()); }
+        static MenuStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         static MenuStyle Flat();
     };
 
@@ -230,6 +314,14 @@ namespace UltraCanvas {
 
         PopupElementSettings menuPopupSettings;
 
+        // What the open menu was placed against, in window coordinates: the
+        // widget OpenMenuAnchored was given, or the point OpenMenu was (a
+        // rectangle of no size). The menu opens anchorGap below it, or ends
+        // anchorGap above it when it fits there and not below.
+        Rect2Di anchorRect;
+        int anchorGap = 0;
+        MenuAnchorAlign anchorAlign = MenuAnchorAlign::Left;
+
         // Submenu management
         std::shared_ptr<UltraCanvasMenu> activeSubmenu;
         std::weak_ptr<UltraCanvasMenu> parentMenu;
@@ -248,12 +340,19 @@ namespace UltraCanvas {
         int clampedMenuHeight = 0;
         bool needsScrollbar = false;
 
-        // Animation
+        // Opening fade (MenuStyle::enableAnimations). Progress runs 0 -> 1 over
+        // style.animationDuration from OpenMenu(); 1 means fully shown. It is
+        // the popup's opacity on the window. Each timer tick reads the clock,
+        // so the fade follows real time however late a tick is.
         std::chrono::steady_clock::time_point animationStartTime;
-        float animationProgress = 0.0f;
+        float animationProgress = 1.0f;
+        TimerId animationTimerId = InvalidTimerId;
 
         // Events
     public:
+        // ===== ACCESSIBILITY =====
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Menu; }
+
         std::function<void()> onMenuOpened;
         std::function<void()> onMenuClosed;
         std::function<void(int)> onItemSelected;
@@ -272,6 +371,7 @@ namespace UltraCanvas {
                 : UltraCanvasMenu(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasMenu() {
+            StopAnimation();   // its timer captures `this`
             CloseAllSubmenus();
         }
 
@@ -289,6 +389,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(MenuStyle::FromTheme(theme, GetStyle())); }
 
         // ===== MENU TYPE AND CONFIGURATION =====
         void SetMenuType(MenuType type);
@@ -319,7 +420,22 @@ namespace UltraCanvas {
 
         MenuItemData* GetItem(int index);
 
+        // Opens the menu with its top-left corner at `pos` (window
+        // coordinates) - where a context menu goes, at the pointer. When it
+        // does not fit below `pos` it ends there instead, above it.
         void OpenMenu(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
+
+        // Opens the menu for a widget - a button, a chip, a field - whose
+        // bounds in the window are `anchor`: `gap` pixels below it, or, when
+        // it does not fit below and does above, ending `gap` pixels above it,
+        // so it never covers the widget (as GTK's popovers and Windows'
+        // TrackPopupMenuEx with an exclude rectangle place theirs). The menu
+        // measures itself: the caller does not size it. `align` picks which
+        // edges line up; a menu wider than the room to the window's right
+        // edge is moved left to fit, as any menu is.
+        void OpenMenuAnchored(const Rect2Di& anchor, UltraCanvasWindowBase& window,
+                              const PopupElementSettings& settings, int gap = 2,
+                              MenuAnchorAlign align = MenuAnchorAlign::Left);
         void CloseMenu();
 
         // Embedded mode: for composite components (e.g. AutoComplete) that
@@ -345,6 +461,10 @@ namespace UltraCanvas {
 
         bool ContainsInWindow(const Point2Df& point) override;
 
+        // The style's soft drop shadow, for a popup or submenu with
+        // showShadow; none for a menubar.
+        PopupShadow GetPopupShadow() const override;
+
     protected:
         void OnPopupClosed(ClosePopupReason reason) override;
 
@@ -364,9 +484,22 @@ namespace UltraCanvas {
 
         int CalculateItemWidth(const MenuItemData& item) const;
 
+        // The columns in front of the labels of a vertical menu: one for the
+        // Checkbox / Radio indicators when any visible item has one, one for
+        // icons when any has an icon. Every label starts after both, so the
+        // labels line up down the menu whichever items carry what.
+        struct LeadingColumns {
+            bool check = false;
+            bool icon = false;
+        };
+        LeadingColumns GetLeadingColumns() const;
+        LeadingColumns leadingColumns;   // taken at the start of each Render()
+
 
         // ===== POSITIONING =====
         Point2Di GetPositionSubmenu(const UltraCanvasMenu& submenu, int itemIndex);
+        // Opens the popup at `pos`, its anchor already recorded.
+        void ShowPopupAt(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
 
         // ===== RENDERING HELPERS =====
         void RenderItem(int index, const MenuItemData& item, IRenderContext* ctx);
@@ -374,8 +507,17 @@ namespace UltraCanvas {
         void RenderHeader(const MenuItemData& item, const Rect2Di& bounds, IRenderContext* ctx);
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
-        void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
-        void RenderShadow(IRenderContext* ctx);
+        // An entry's icon in `rect`, tinted with `textColor` when the style's
+        // iconTint says so (see MenuIconTint).
+        void RenderIcon(UCImage& icon, const MenuItemData& item, const Rect2Dd& rect,
+                        const Color& textColor, IRenderContext* ctx);
+        // Top of the first row of a vertical menu, before scrolling: the
+        // panel's border and its top padding.
+        int GetContentTop() const { return style.borderWidth + style.paddingTop; }
+        // Height of a row: separators have their own.
+        int GetRowHeight(const MenuItemData& item) const {
+            return item.type == MenuItemType::Separator ? style.separatorHeight : style.itemHeight;
+        }
 
         // ===== UTILITY METHODS =====
         Color GetItemBackgroundColor(int index, const MenuItemData& item) const;
@@ -418,6 +560,9 @@ namespace UltraCanvas {
         void BindScrollAnimator();
         void StartAnimation();
         void UpdateAnimation();
+        // Hands animationProgress to the window as this popup's opacity.
+        void ApplyAnimationOpacity();
+        void StopAnimation();
     };
 
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
@@ -510,38 +655,50 @@ namespace UltraCanvas {
     };
 
 // ===== STYLE FACTORY IMPLEMENTATIONS =====
+    // The look current desktops share for context and drop-down menus -
+    // Windows 11 (WinUI MenuFlyout), macOS and GNOME (libadwaita popover
+    // menus): a rounded panel lifted off the window by a soft shadow, a thin
+    // low-contrast border, a few pixels of padding inside it, rows whose
+    // highlight is a rounded rectangle inset from the panel's edges in a
+    // neutral shade, shortcuts in a muted secondary colour and separators as
+    // faint hairlines. Sizes follow Windows 11's mouse metrics (8 px panel
+    // radius, 4 px padding and inset, 4 px highlight radius).
     inline MenuStyle MenuStyle::Default() {
         MenuStyle style;
-        style.backgroundColor = Color(248, 248, 248, 255);
-        style.borderColor = Color(200, 200, 200, 255);
-        style.textColor = Color(0, 0, 0, 255);
-        style.hoverColor = Color(225, 240, 255, 255);
-        style.hoverTextColor = Color(0, 0, 0, 255);
-        style.pressedColor = Color(200, 220, 240, 255);
-        style.disabledTextColor = Color(150, 150, 150, 255);
-        style.shortcutColor = Color(100, 100, 100, 255);
-        style.separatorColor = Color(220, 220, 220, 255);
-        style.headerTextColor = Color(100, 100, 100, 255);
+        style.backgroundColor = Color(249, 249, 249, 255);
+        style.borderColor = Color(0, 0, 0, 36);
+        style.textColor = Color(26, 26, 26, 255);
+        style.hoverColor = Color(0, 0, 0, 15);
+        style.hoverTextColor = Color(26, 26, 26, 255);
+        style.pressedColor = Color(0, 0, 0, 10);
+        style.disabledTextColor = Color(160, 160, 160, 255);
+        style.shortcutColor = Color(110, 110, 110, 255);
+        style.separatorColor = Color(0, 0, 0, 24);
+        style.headerTextColor = Color(110, 110, 110, 255);
 
-        // FIXED: Proper default height for menu items
-        style.itemHeight = 24;  // Reduced from whatever was causing 44px
+        style.itemHeight = 28;
         style.paddingTop = 4;
         style.paddingBottom = 4;
-        style.paddingLeft = 8;
-        style.paddingRight = 8;
+        style.paddingLeft = 10;
+        style.paddingRight = 12;
+        style.itemInset = 4;
+        style.itemCornerRadius = 4;
 
         style.iconSize = 16;
-        style.iconSpacing = 6;
-        style.shortcutSpacing = 20;
+        style.iconSpacing = 10;
+        style.shortcutSpacing = 24;
         // The separator row holds a 1px line centred in it, so it needs a few
         // pixels of its own: at separatorHeight = 1 the line sits flush against
         // the neighbouring items and reads as a hairline rather than a divider.
-        style.separatorHeight = 7;
+        style.separatorHeight = 9;
         style.borderWidth = 1;
-        style.borderRadius = 0;
+        style.borderRadius = 8;
         style.font.fontSize = 11.0f;
 
-        style.showShadow = false;
+        style.showShadow = true;
+        style.shadowColor = Color(0, 0, 0, 64);
+        style.shadowOffset = Point2Di(0, 6);
+        style.shadowBlur = 18;
         style.enableAnimations = false;
         style.animationDuration = 0.2f;
 
@@ -552,29 +709,35 @@ namespace UltraCanvas {
         // Built on Default() so the themes differ in colour only: starting from a
         // bare MenuStyle gave the dark menu its own item height, padding, corner
         // radius, shadow and separator height, and the same menu changed shape
-        // when it changed theme.
+        // when it changed theme. A light hairline outlines the panel, which a
+        // dark border would lose against a dark window.
         MenuStyle style = Default();
-        style.backgroundColor = Color(45, 45, 45, 255);
-        style.borderColor = Color(70, 70, 70, 255);
+        style.backgroundColor = Color(44, 44, 44, 255);
+        style.borderColor = Color(255, 255, 255, 28);
         style.textColor = Colors::White;
         style.hoverTextColor = Colors::White;
-        style.hoverColor = Color(85, 85, 85, 255);
-        style.pressedColor = Color(110, 110, 110, 255);
+        style.hoverColor = Color(255, 255, 255, 22);
+        style.pressedColor = Color(255, 255, 255, 14);
         style.disabledTextColor = Color(120, 120, 120, 255);
-        style.shortcutColor = Color(170, 170, 170, 255);
-        style.separatorColor = Color(90, 90, 90, 255);
-        style.headerTextColor = Color(180, 180, 180, 255);
+        style.shortcutColor = Color(190, 190, 190, 255);
+        style.separatorColor = Color(255, 255, 255, 26);
+        style.headerTextColor = Color(190, 190, 190, 255);
+        style.shadowColor = Color(0, 0, 0, 110);
+        // A grey icon drawn for a light menu would vanish on this one: the
+        // default iconTint (Symbolic) draws it in the light text colour,
+        // and leaves a coloured icon - an application's - its colours.
         return style;
     }
 
     inline MenuStyle MenuStyle::Flat() {
+        // No panel decoration - no border, square corners, no shadow - on
+        // white; the rows keep Default()'s rounded, inset highlight.
         MenuStyle style = Default();
         style.backgroundColor = Colors::White;
         style.borderWidth = 0;
         style.borderRadius = 0;
         style.showShadow = false;
-        style.textColor = Colors::Black;
-        style.hoverColor = Color(240, 240, 240, 255);
+        style.hoverColor = Color(0, 0, 0, 12);
         return style;
     }
 
@@ -780,22 +943,5 @@ namespace UltraCanvas {
         item.subItemsProvider = std::move(provider);
         return item;
     }
-
-//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback) {
-//        MenuItemData item;
-//        item.type = MenuItemType::Input;
-//        item.label = label;
-//        item.onTextInput = callback;
-//        return item;
-//    }
-//
-//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback) {
-//        MenuItemData item;
-//        item.type = MenuItemType::Input;
-//        item.label = label;
-//        item.font = font;
-//        item.onTextInput = callback;
-//        return item;
-//    }
 
 } // namespace UltraCanvas

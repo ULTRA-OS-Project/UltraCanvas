@@ -1,10 +1,39 @@
 # UltraCanvasQRCode Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Enums](#enums)
+  - [Configuration Structures](#configuration-structures)
+  - [Content & Configuration](#content--configuration)
+  - [Styling](#styling)
+  - [Logo](#logo)
+  - [State & Inspection](#state--inspection)
+  - [Export](#export)
+  - [Free Functions — `QRCodeUtils`](#free-functions-—-qrcodeutils)
+- [Examples](#examples)
+  - [1. Basic QR Code from a URL](#1-basic-qr-code-from-a-url)
+  - [2. Choosing an Error-Correction Level](#2-choosing-an-error-correction-level)
+  - [3. Custom Colours, Size, and Module Style](#3-custom-colours-size-and-module-style)
+  - [4. A Foreground Gradient](#4-a-foreground-gradient)
+  - [5. Embedding a Centre Logo](#5-embedding-a-centre-logo)
+  - [6. Tuning the Style via `QRStyleConfig`](#6-tuning-the-style-via-qrstyleconfig)
+  - [7. Structured Content Helpers](#7-structured-content-helpers)
+  - [8. Exporting to Image and SVG](#8-exporting-to-image-and-svg)
+  - [9. Generating Without a Widget](#9-generating-without-a-widget)
+  - [10. Decoding an Image](#10-decoding-an-image)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasQRCode` is a 2D QR code widget that encodes a string into a QR matrix and renders it through the standard `IRenderContext`. It supports all four error-correction levels, version 1–40 matrices, fully customizable module/finder shapes, solid colours and gradients, an embedded centre logo with a quiet zone, and export to SVG or raster image formats. Generation is provided by free functions in the `QRCodeUtils` namespace, and (when a decoder backend such as libzbar is available) images can be scanned back into their data.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/Plugins/QRCode/UltraCanvasQRCode.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -177,28 +206,56 @@ bool ExportToImage(const std::string& filename,
                    QRImageFormat format,
                    int moduleSize = 10,
                    std::string* errorMessage = nullptr);
+// The type the name ends in: any picture type FileLoader writes (CanSaveImage)
+bool ExportToImage(const std::string& filename,
+                   int moduleSize = 10,
+                   std::string* errorMessage = nullptr);
 ```
 
 ### Free Functions — `QRCodeUtils`
 
+The free functions live in the nested namespace `UltraCanvas::QRCodeUtils`:
+
 ```cpp
-QRCodeData GenerateQRCode(const std::string& text,
-                          QRErrorCorrection ecl = QRErrorCorrection::Medium);
-QRCodeData GenerateQRCode(const std::string& text,
-                          const QRGeneratorConfig& config);
+namespace QRCodeUtils {   // inside namespace UltraCanvas
 
-bool ExportToSVG(const QRCodeData& data,
-                 const std::string& filename,
-                 int moduleSize = 10,
-                 const Color& foreground = Colors::Black,
-                 const Color& background = Colors::White);
+    QRCodeData GenerateQRCode(const std::string& text,
+                              QRErrorCorrection ecl = QRErrorCorrection::Medium);
+    QRCodeData GenerateQRCode(const std::string& text,
+                              const QRGeneratorConfig& config);
 
-std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
-                                         std::string* errorMessage = nullptr);
-bool IsDecoderAvailable();
+    bool ExportToSVG(const QRCodeData& data,
+                     const std::string& filename,
+                     int moduleSize = 10,
+                     const Color& foreground = Colors::Black,
+                     const Color& background = Colors::White);
+
+    // Decoding from an image file
+    std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
+                                             std::string* errorMessage = nullptr);
+
+    // Decoding from pixels already in memory (e.g. camera frames)
+    enum class QRPixelFormat {
+        Grayscale8,   // 1 byte per pixel
+        RGB24,        // 3 bytes, R G B
+        RGBA32,       // 4 bytes, R G B A  (what UCVideoFrame carries)
+        BGRA32        // 4 bytes, B G R A
+    };
+    std::vector<QRScanResult> ScanQRCodeImage(const std::uint8_t* pixels,
+                                              int width, int height,
+                                              int stride,           // 0 = tightly packed rows
+                                              QRPixelFormat format,
+                                              std::string* errorMessage = nullptr);
+    std::vector<QRScanResult> ScanQRCodeImage(const UCVideoFrame& frame,
+                                              std::string* errorMessage = nullptr);
+
+    bool IsDecoderAvailable();
+}
 ```
 
-Both scanners (`ScanQRCodeFile` and `ScanQRCodeImage`) come back empty in two
+`ScanQRCodeImage` exists so that camera frames can be scanned without writing
+them to disk; it reads the buffer only. Both scanners (`ScanQRCodeFile` and
+`ScanQRCodeImage`) come back empty in two
 distinct ways. An image with no code in it returns an empty vector and leaves
 `errorMessage` untouched; a scan that could not run at all — an unreadable
 file, no decoder built in, bad arguments — returns an empty vector with the
@@ -206,25 +263,28 @@ reason in `errorMessage`. Test the vector to report "nothing found" and the
 string to report a failure; never match the string's text.
 
 ```cpp
-// Structured-content builders
-std::string CreateURLContent(const std::string& url);
-std::string CreateEmailContent(const std::string& email,
-                               const std::string& subject = "",
-                               const std::string& body    = "");
-std::string CreateSMSContent(const std::string& phone,
-                             const std::string& message = "");
-std::string CreateTelContent(const std::string& phone);
-std::string CreateWiFiContent(const std::string& ssid,
-                              const std::string& password,
-                              const std::string& security = "WPA",
-                              bool hidden = false);
-std::string CreateVCardContent(const std::string& name,
-                               const std::string& phone,
-                               const std::string& email = "");
-std::string CreateGeoContent(double latitude, double longitude);
+namespace QRCodeUtils {   // inside namespace UltraCanvas
 
-bool IsNumeric(const std::string& text);
-bool IsAlphanumeric(const std::string& text);
+    // Structured-content builders
+    std::string CreateURLContent(const std::string& url);
+    std::string CreateEmailContent(const std::string& email,
+                                   const std::string& subject = "",
+                                   const std::string& body    = "");
+    std::string CreateSMSContent(const std::string& phone,
+                                 const std::string& message = "");
+    std::string CreateTelContent(const std::string& phone);
+    std::string CreateWiFiContent(const std::string& ssid,
+                                  const std::string& password,
+                                  const std::string& security = "WPA",
+                                  bool hidden = false);
+    std::string CreateVCardContent(const std::string& name,
+                                   const std::string& phone,
+                                   const std::string& email = "");
+    std::string CreateGeoContent(double latitude, double longitude);
+
+    bool IsNumeric(const std::string& text);
+    bool IsAlphanumeric(const std::string& text);
+}
 ```
 
 ## Examples
@@ -339,7 +399,7 @@ qr->SetContent(CreateGeoContent(37.7749, -122.4194));
 
 ### 8. Exporting to Image and SVG
 
-`ExportToImage` writes a raster file in the chosen format; `ExportToSVG` writes a vector file. `moduleSize` is the pixel size of one module.
+`ExportToImage` writes a raster file; `ExportToSVG` writes a vector file. `moduleSize` is the pixel size of one module. Given a format, `ExportToImage` adds its extension to the name when the name lacks it. Given none, it writes the type the name ends in: any picture type FileLoader writes (`UltraCanvasFileLoader::CanSaveImage`), ICO, TIFF and GIF included. An application's Save dialog offers those types with `AddImageSaveTypes`:
 
 ```cpp
 std::string err;
@@ -348,7 +408,21 @@ if (!qr->ExportToImage("ultracanvas_url.png", QRImageFormat::PNG, 12, &err)) {
 }
 
 qr->ExportToSVG("ultracanvas_url.svg", 10);
+
+// Every picture type this build writes, and SVG
+FileDialogOptions opts;
+opts.SetDefaultFileName("ultracanvas_url.png");
+UltraCanvasFileLoader::AddImageSaveTypes(opts);
+opts.AddFilter("SVG image", "svg");
+UltraCanvasFileLoader::SaveFileDialog(opts, [qr](DialogResult result, const std::string& path) {
+    std::string error;
+    if (result != DialogResult::OK) return;
+    const bool svg = path.size() > 4 && path.compare(path.size() - 4, 4, ".svg") == 0;
+    if (!(svg ? qr->ExportToSVG(path, 10) : qr->ExportToImage(path, 12, &error))) std::cerr << error << "\n";
+});
 ```
+
+Writing the raster file goes through libvips, so in the one build without it (a single-threaded WebAssembly program) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
 
 ### 9. Generating Without a Widget
 
@@ -370,7 +444,7 @@ if (data.valid) {
 
 ### 10. Decoding an Image
 
-When a decoder backend is built in, `ScanQRCodeFile` returns every QR code found in an image. Always gate on `IsDecoderAvailable()` first.
+When a decoder backend is built in, `ScanQRCodeFile` returns every QR code found in an image. Always gate on `IsDecoderAvailable()` first. Reading the image file also needs libvips; a build without it reports an error naming libvips, and `ScanQRCodeImage` on pixels you decoded yourself still works.
 
 ```cpp
 using namespace UltraCanvas;
@@ -397,7 +471,7 @@ if (QRCodeUtils::IsDecoderAvailable()) {
 - **Verify before relying on output**: check `IsValid()` (and `GetErrorMessage()` on failure) after setting content, especially for long payloads that may exceed the chosen version range.
 - **Maintain contrast**: keep a dark foreground on a light background. Decorative gradients and styled modules are fine, but extreme stylings (very low module scale, low contrast) reduce scan reliability.
 - **Gradients vs solid colours are exclusive**: setting a gradient overrides the foreground colour; call `ClearGradient()` before relying on `SetForegroundColor` again.
-- **Guard decoding**: always call `IsDecoderAvailable()` before `ScanQRCodeFile`, since decoding depends on an optional backend (e.g. libzbar).
+- **Guard decoding**: always call `IsDecoderAvailable()` before `ScanQRCodeFile`, since decoding depends on an optional backend (e.g. libzbar). `ScanQRCodeFile` and `ExportToImage` also need libvips to read and write the image file; without it they return an error instead of a result.
 
 ## See Also
 

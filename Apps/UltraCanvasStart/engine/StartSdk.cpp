@@ -1,14 +1,11 @@
 // Apps/UltraCanvasStart/engine/StartSdk.cpp
+// Version: 0.2.0 - SdkDownloadPage is the UltraOS download page; no download here
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartSdk.h"
 
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
-
-#if defined(ULTRACANVASSTART_HAS_NET)
-#include "UltraNet/UltraNetHttp.h"
-#endif
 
 #include <filesystem>
 
@@ -36,47 +33,20 @@ std::string SdkArtifactName(Platform platform, const std::string& version,
 
 std::string SdkArchiveName(Platform platform, const std::string& version,
                            const std::string& architecture) {
-    return SdkArtifactName(platform, version, architecture) +
-           (platform == Platform::Windows ? ".zip" : ".tar.gz");
+    // The extension the workflow's "Pack the SDK" step gives each platform.
+    switch (platform) {
+        case Platform::Windows: return SdkArtifactName(platform, version, architecture) + ".zip";
+        case Platform::Linux:   return SdkArtifactName(platform, version, architecture) + ".tar.xz";
+        default:                return SdkArtifactName(platform, version, architecture) + ".tar.gz";
+    }
 }
 
 std::string SdkDownloadPage() {
-    return std::string("https://github.com/") + kRepository + "/actions/workflows/build.yml?query=branch%3Amain";
+    return "https://ultraos.eu/download-file/";
 }
 
-std::string SdkReleaseAssetUrl(Platform platform, const std::string& version,
-                               const std::string& architecture) {
-    return std::string("https://github.com/") + kRepository + "/releases/download/v" +
-           version + "/" + SdkArchiveName(platform, version, architecture);
-}
-
-bool SdkDownloadAvailable() {
-#if defined(ULTRACANVASSTART_HAS_NET)
-    return true;
-#else
-    return false;
-#endif
-}
-
-bool DownloadSdk(const std::string& url, const std::string& localPath, std::string& error) {
-#if defined(ULTRACANVASSTART_HAS_NET)
-    UltraNetHttpOptions options = UltraNetHttpOptions::Default();
-    options.followRedirects = true;
-    const UltraNetResult result = UltraNet_HttpDownloadFile(url, localPath, options);
-    if (result.success) return true;
-    error = result.message;
-    if (result.httpStatus == 404) {
-        error = "No release asset at " + url + " (the SDK is published as a CI artifact; "
-                "download it from " + SdkDownloadPage() + " and unpack that file instead)";
-    }
-    return false;
-#else
-    (void)url;
-    (void)localPath;
-    error = "This build of UltraCanvasStart has no UltraNet; download the archive in a browser from " +
-            SdkDownloadPage();
-    return false;
-#endif
+std::string SdkReleasePage(const std::string& version) {
+    return std::string("https://github.com/") + kRepository + "/releases/tag/v" + version;
 }
 
 PlanStep UnpackStep(const std::string& archive, const std::string& destination) {
@@ -84,10 +54,22 @@ PlanStep UnpackStep(const std::string& archive, const std::string& destination) 
     step.kind = StepKind::Unpack;
     step.title = "Unpack the SDK";
     step.description = "Unpacks " + archive + " into " + destination;
-    // GNU tar on Linux and bsdtar on macOS and Windows 10+ all read a .tar.gz;
-    // bsdtar reads a .zip as well, and Windows ships it as tar.exe.
+    // GNU tar on Linux and bsdtar on macOS and Windows 10+ read a .tar.gz
+    // and a .tar.xz by their contents (-xf, no compression flag); bsdtar
+    // reads a .zip as well, and Windows ships it as tar.exe.
     step.argv = { "tar", "-xf", archive, "-C", destination };
     return step;
+}
+
+std::string SdkUnpackedFolder(const std::string& archive) {
+    for (const char* ext : { ".tar.xz", ".tar.gz", ".zip" }) {
+        const std::string suffix = ext;
+        if (archive.size() > suffix.size() &&
+            archive.compare(archive.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            return archive.substr(0, archive.size() - suffix.size());
+        }
+    }
+    return archive;
 }
 
 std::string FindSdkPrefix(const std::string& destination) {

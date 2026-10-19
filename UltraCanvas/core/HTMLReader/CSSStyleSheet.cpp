@@ -1,5 +1,10 @@
 // core/HTMLReader/CSSStyleSheet.cpp
-// CSS-subset parser: values, selectors, rules.
+// CSS-subset parser: values, selectors, rules - and the two pieces of
+// selector matching that are not about the tree (attribute operators, an+b).
+// Version: 1.7.0 - ParseImports: the @import rules at the head of a sheet
+// Version: 1.6.0 - AttributeValueMatches / NthPositionMatches: the matcher's
+//                  tree-independent halves, moved here from the style resolver
+//                  so the SVG reader's elements match through the same code
 // Version: 1.5.0 - structural pseudo-classes: :first-child, :last-child,
 //                  :only-child, :nth-child(an+b) / -last- / -of-type, :root,
 //                  :empty (dynamic ones such as :hover still drop the rule)
@@ -11,7 +16,7 @@
 //                  links that way); other pseudo-classes still drop the rule.
 // Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
 //                  reader and the other format parsers share one copy of it
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -19,6 +24,7 @@
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -609,6 +615,91 @@ bool StyleSheet::MediaMatches(const std::string& query, float widthPx) {
     return false;
 }
 
+std::vector<StyleImport> StyleSheet::ParseImports(const std::string& css) {
+    std::vector<StyleImport> imports;
+    const std::string text = StripComments(css);
+    auto startsWithWord = [&](size_t at, const char* word) {
+        const size_t n = std::strlen(word);
+        if (text.size() < at + n) return false;
+        for (size_t k = 0; k < n; ++k)
+            if (std::tolower(static_cast<unsigned char>(text[at + k])) != word[k]) return false;
+        return at + n == text.size() || !(std::isalnum(static_cast<unsigned char>(text[at + n])) ||
+                                          text[at + n] == '-');
+    };
+    size_t i = 0;
+    while (i < text.size()) {
+        while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+        if (i >= text.size()) break;
+        if (text.compare(i, 4, "<!--") == 0) { i += 4; continue; }
+        if (text.compare(i, 3, "-->") == 0)  { i += 3; continue; }
+        if (text[i] != '@') break;                       // the first rule ends the imports
+        const bool isImport = startsWithWord(i + 1, "import");
+        if (!isImport && !startsWithWord(i + 1, "charset") && !startsWithWord(i + 1, "layer")) break;
+        const size_t semi = text.find(';', i);
+        const size_t brace = text.find('{', i);
+        if (semi == std::string::npos || (brace != std::string::npos && brace < semi)) break;   // @layer x { ... }
+        if (!isImport) { i = semi + 1; continue; }
+
+        // @import url("a.css") screen;  @import "a.css";  @import url(a.css) layer(x) supports(...) print;
+        size_t j = i + 7;
+        while (j < semi && std::isspace(static_cast<unsigned char>(text[j]))) ++j;
+        std::string href;
+        bool ok = false;
+        if (j + 4 <= semi && std::tolower(static_cast<unsigned char>(text[j])) == 'u' &&
+            std::tolower(static_cast<unsigned char>(text[j + 1])) == 'r' &&
+            std::tolower(static_cast<unsigned char>(text[j + 2])) == 'l' && text[j + 3] == '(') {
+            j += 4;
+            while (j < semi && std::isspace(static_cast<unsigned char>(text[j]))) ++j;
+            char quote = 0;
+            if (j < semi && (text[j] == '"' || text[j] == '\'')) quote = text[j++];
+            while (j < semi && (quote ? text[j] != quote : (text[j] != ')' && !std::isspace(static_cast<unsigned char>(text[j]))))) {
+                if (text[j] == '\\' && j + 1 < semi) ++j;
+                href += text[j++];
+            }
+            if (quote && j < semi) ++j;
+            while (j < semi && std::isspace(static_cast<unsigned char>(text[j]))) ++j;
+            if (j < semi && text[j] == ')') { ++j; ok = true; }
+        } else if (j < semi && (text[j] == '"' || text[j] == '\'')) {
+            const char quote = text[j++];
+            while (j < semi && text[j] != quote) {
+                if (text[j] == '\\' && j + 1 < semi) ++j;
+                href += text[j++];
+            }
+            if (j < semi) { ++j; ok = true; }
+        }
+        if (ok && !href.empty()) {
+            // What follows: layer / layer(...) / supports(...) and the media list.
+            std::string rest = text.substr(j, semi - j);
+            std::string media;
+            size_t k = 0;
+            while (k < rest.size()) {
+                while (k < rest.size() && std::isspace(static_cast<unsigned char>(rest[k]))) ++k;
+                size_t e = k;
+                while (e < rest.size() && (std::isalnum(static_cast<unsigned char>(rest[e])) || rest[e] == '-')) ++e;
+                std::string word = rest.substr(k, e - k);
+                for (char& c : word) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (word == "layer" || word == "supports") {
+                    k = e;
+                    if (k < rest.size() && rest[k] == '(') {
+                        int depth = 0;
+                        for (; k < rest.size(); ++k) {
+                            if (rest[k] == '(') ++depth;
+                            else if (rest[k] == ')' && --depth == 0) { ++k; break; }
+                        }
+                    }
+                    continue;
+                }
+                media = rest.substr(k);
+                break;
+            }
+            while (!media.empty() && std::isspace(static_cast<unsigned char>(media.back()))) media.pop_back();
+            imports.push_back({ href, media });
+        }
+        i = semi + 1;
+    }
+    return imports;
+}
+
 void StyleSheet::ParseAppend(const std::string& css) {
     std::string text = StripComments(css);
 
@@ -685,6 +776,52 @@ void StyleSheet::ParseAppend(const std::string& css) {
 
         i = (close < text.size()) ? close + 1 : text.size();
     }
+}
+
+// ============================================================================
+// SELECTOR MATCHING - the tree-independent halves
+// ============================================================================
+
+bool AttributeValueMatches(const AttributeSelector& attr, const std::string& value) {
+    if (attr.op == 0) return true;
+    std::string have = value;
+    std::string want = attr.value;
+    if (attr.ignoreCase) {
+        for (char& ch : have) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        for (char& ch : want) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    switch (attr.op) {
+        case '=': return have == want;
+        case '^': return !want.empty() && have.compare(0, want.size(), want) == 0;
+        case '$': return !want.empty() && have.size() >= want.size() &&
+                         have.compare(have.size() - want.size(), want.size(), want) == 0;
+        case '*': return !want.empty() && have.find(want) != std::string::npos;
+        case '|': return have == want || have.compare(0, want.size() + 1, want + "-") == 0;
+        case '~': {
+            // One of the whitespace-separated words.
+            size_t pos = 0;
+            while (pos < have.size()) {
+                while (pos < have.size() && std::isspace(static_cast<unsigned char>(have[pos]))) ++pos;
+                size_t end = pos;
+                while (end < have.size() && !std::isspace(static_cast<unsigned char>(have[end]))) ++end;
+                if (end > pos && end - pos == want.size() && have.compare(pos, end - pos, want) == 0) {
+                    return true;
+                }
+                pos = end;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+bool NthPositionMatches(const PseudoClass& pc, int index, int count) {
+    if (index <= 0 || index > count) return false;
+    const int pos = pc.fromEnd ? count - index + 1 : index;
+    // pos == a*n + b for some n >= 0.
+    if (pc.a == 0) return pos == pc.b;
+    const int diff = pos - pc.b;
+    return diff % pc.a == 0 && diff / pc.a >= 0;
 }
 
 } // namespace HTML

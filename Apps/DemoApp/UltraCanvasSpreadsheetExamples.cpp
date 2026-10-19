@@ -1,13 +1,18 @@
 // Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
 // Demonstrates UltraCanvasSpreadsheet: an editable grid with an "Open" button
-// that loads spreadsheet files (.ods / .xlsx / .csv) through
+// that loads spreadsheet files (.ods / .xlsx / .xls / .csv) through
 // UltraCanvasFileLoader, column widths taken from the imported document (and
 // auto-fitted to the content when the document carries none), and the cell
 // formatting menu - alignment, number-format presets, colours and column/row
 // sizing - on the "Format" button and on a right-click in the grid - and the
 // header sort buttons that reorder just the selected block of rows.
+// A password-protected .xlsx asks for its password on Open, keeps it when it
+// is saved again as .xlsx, and an unprotected workbook saved as .xlsx is
+// offered a password.
+// Version: 1.3.0 - password-protected workbooks: opened, kept and offered on Save
+// Version: 1.2.0 - Open and Save offer FileLoader's spreadsheet types
 // Version: 1.1.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -130,19 +135,20 @@ namespace UltraCanvas {
 
         // ===== TOOLBAR: Open / Import / Save buttons + status label =====
         auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,
-                                                           "Open Spreadsheet File…");
+                                                           "Open Spreadsheet File");
         root->AddChild(openBtn);
 
         auto importBtn = std::make_shared<UltraCanvasButton>("ssImportBtn", 218, 50, 150, 30,
-                                                             "Import CSV…");
+                                                             "Import CSV");
         root->AddChild(importBtn);
 
         auto saveBtn = std::make_shared<UltraCanvasButton>("ssSaveBtn", 376, 50, 110, 30,
-                                                           "Save…");
+                                                           "Save");
         root->AddChild(saveBtn);
 
         auto formatBtn = std::make_shared<UltraCanvasButton>("ssFormatBtn", 494, 50, 130, 30,
-                                                             "Format Cells ▾");
+                                                             "Format Cells");
+        SetFlatButtonIcon(*formatBtn, "dropdown.svg", ButtonIconPosition::Right, 10);
         root->AddChild(formatBtn);
 
         auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 632, 56, 374, 22);
@@ -205,35 +211,47 @@ namespace UltraCanvas {
             statusRaw->RequestRedraw();
         };
 
+        // The password the open workbook was protected with (empty when it
+        // was not): saving it again as .xlsx keeps the protection, as Excel
+        // does.
+        auto filePassword = std::make_shared<std::string>();
+
         // ===== OPEN -> FileLoader -> LoadFromFile =====
         // Capture shared_ptrs so the grid/label stay valid for the async callback;
         // they are also owned by the container, so there is no ownership cycle
         // (the button does not own the container).
-        openBtn->onClick = [sheet, status, hint, describeGrid]() {
+        openBtn->onClick = [sheet, status, hint, describeGrid, filePassword]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open Spreadsheet File")
-                .AddFilter("Spreadsheet files", std::vector<std::string>{ "ods", "xlsx", "csv", "tsv" })
-                .AddFilter("OpenDocument Spreadsheet", "ods")
-                .AddFilter("Excel Workbook", "xlsx")
-                .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv" })
-                .AddFilter("All files", "*");
+            opts.SetTitle("Open Spreadsheet File");
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Spreadsheet files", {MediaFormatCategory::Spreadsheet});
+            opts.AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
-                [sheet, status, hint, describeGrid](DialogResult result, const std::string& path) {
+                [sheet, status, hint, describeGrid, filePassword](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
                         status->SetText("Open cancelled.");
                         status->RequestRedraw();
                         return;
                     }
-                    if (sheet->LoadFromFile(path)) {
-                        status->SetText("Loaded: " + path);
-                        hint->SetText(describeGrid(sheet.get()));
-                        hint->RequestRedraw();
-                    } else {
-                        status->SetText("Could not open file: " + sheet->GetLastError());
-                    }
-                    sheet->RequestRedraw();
-                    status->RequestRedraw();
+                    // A password-protected .xlsx asks for its password first;
+                    // any other file goes straight on.
+                    UltraCanvasFileLoader::RequestDocumentPassword(path, nullptr,
+                        [sheet, status, hint, describeGrid, filePassword, path](bool proceed,
+                                                                               const std::string& password) {
+                            if (!proceed) {
+                                status->SetText("Open cancelled.");
+                            } else if (sheet->LoadFromFile(path, password)) {
+                                *filePassword = password;
+                                status->SetText(password.empty() ? "Loaded: " + path
+                                                                 : "Loaded (password-protected): " + path);
+                                hint->SetText(describeGrid(sheet.get()));
+                                hint->RequestRedraw();
+                            } else {
+                                status->SetText("Could not open file: " + sheet->GetLastError());
+                            }
+                            sheet->RequestRedraw();
+                            status->RequestRedraw();
+                        });
                 });
         };
 
@@ -241,14 +259,14 @@ namespace UltraCanvas {
         // Pick a CSV/TSV file, then open the options dialog (charset, separators,
         // start row, number recognition) with a live preview. On accept the grid
         // is loaded with exactly the chosen settings.
-        importBtn->onClick = [sheet, status, hint, describeGrid]() {
+        importBtn->onClick = [sheet, status, hint, describeGrid, filePassword]() {
             FileDialogOptions opts;
             opts.SetTitle("Select CSV / TSV File")
                 .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv", "txt" })
                 .AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
-                [sheet, status, hint, describeGrid](DialogResult result, const std::string& path) {
+                [sheet, status, hint, describeGrid, filePassword](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
                         status->SetText("Import cancelled.");
                         status->RequestRedraw();
@@ -263,8 +281,9 @@ namespace UltraCanvas {
                         return;
                     }
                     ShowCSVImportDialog(path,
-                        [sheet, status, hint, describeGrid, path](const CSVImportOptions& options) {
+                        [sheet, status, hint, describeGrid, filePassword, path](const CSVImportOptions& options) {
                             if (sheet->LoadCSVWithOptions(path, options)) {
+                                filePassword->clear();   // a new workbook, not protected
                                 status->SetText("Imported: " + path);
                                 hint->SetText(describeGrid(sheet.get()));
                                 hint->RequestRedraw();
@@ -278,22 +297,18 @@ namespace UltraCanvas {
         };
 
         // ===== SAVE -> file dialog (all supported formats) =====
-        // Offer every format the engine can write: OpenDocument (.ods), Excel
-        // (.xlsx) and CSV / TSV. When the chosen name ends in .csv or .tsv we open the CSV
+        // Offer every format the engine can write - FileLoader's list: OpenDocument
+        // (.ods), Excel (.xlsx) and CSV / TSV. When the chosen name ends in .csv or .tsv we open the CSV
         // export options dialog (separator, quoting, charset, line ending) so the
         // text file is written exactly as the user wants; .ods saves directly.
-        saveBtn->onClick = [sheet, status]() {
+        saveBtn->onClick = [sheet, status, filePassword]() {
             FileDialogOptions opts;
-            opts.SetTitle("Save Spreadsheet As")
-                .SetDefaultFileName("spreadsheet.ods")
-                .AddFilter("OpenDocument Spreadsheet", "ods")
-                .AddFilter("Excel Workbook", "xlsx")
-                .AddFilter("CSV (comma separated)", "csv")
-                .AddFilter("TSV (tab separated)", "tsv")
-                .AddFilter("All files", "*");
+            opts.SetTitle("Save Spreadsheet As").SetDefaultFileName("spreadsheet.ods");
+            UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Spreadsheet);
+            opts.AddFilter("All files", "*");
 
             UltraCanvasFileLoader::SaveFileDialog(opts,
-                [sheet, status](DialogResult result, const std::string& path) {
+                [sheet, status, filePassword](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
                         status->SetText("Save cancelled.");
                         status->RequestRedraw();
@@ -326,14 +341,49 @@ namespace UltraCanvas {
                         return;
                     }
 
-                    // ODS (or no extension -> default to .ods).
-                    std::string savePath = ext.empty() ? path + ".ods" : path;
-                    if (sheet->SaveToFile(savePath)) {
-                        status->SetText("Saved: " + savePath);
-                    } else {
-                        status->SetText("Could not save file: " + sheet->GetLastError());
+                    auto save = [sheet, status, filePassword](const std::string& savePath,
+                                                              const std::string& password) {
+                        if (sheet->SaveToFile(savePath, password)) {
+                            *filePassword = password;
+                            status->SetText(password.empty() ? "Saved: " + savePath
+                                                             : "Saved (password-protected): " + savePath);
+                        } else {
+                            status->SetText("Could not save file: " + sheet->GetLastError());
+                        }
+                        status->RequestRedraw();
+                    };
+
+                    if (ext == ".xlsx") {
+                        // A protected workbook stays protected; an unprotected
+                        // one is offered a password.
+                        if (!filePassword->empty()) {
+                            save(path, *filePassword);
+                            return;
+                        }
+                        UltraCanvasDialogManager::ShowConfirmation(
+                            "Protect the workbook with a password?", "Save as Excel Workbook",
+                            [save, path](bool protect) {
+                                if (!protect) {
+                                    save(path, "");
+                                    return;
+                                }
+                                UltraCanvasFileLoader::RequestNewDocumentPassword(nullptr,
+                                    [save, path](bool proceed, const std::string& password) {
+                                        if (proceed) save(path, password);
+                                    });
+                            });
+                        return;
                     }
-                    status->RequestRedraw();
+
+                    // ODS (or no extension -> default to .ods). Only .xlsx
+                    // carries a password, so the protection is dropped here.
+                    const std::string savePath = ext.empty() ? path + ".ods" : path;
+                    const bool wasProtected = !filePassword->empty();
+                    save(savePath, "");
+                    if (wasProtected && sheet->GetLastError().empty()) {
+                        status->SetText("Saved without the password (only .xlsx keeps it): " + savePath);
+                        status->RequestRedraw();
+                    }
                 });
         };
 

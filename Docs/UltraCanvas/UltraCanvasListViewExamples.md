@@ -1,10 +1,47 @@
 # UltraCanvasListView Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Model / Delegate / Selection wiring](#model--delegate--selection-wiring)
+  - [Styling](#styling)
+  - [Column widths](#column-widths)
+  - [Scrolling](#scrolling)
+  - [Tooltips](#tooltips)
+- [Model Reference](#model-reference)
+  - [Data roles](#data-roles)
+  - [IListModel interface](#ilistmodel-interface)
+  - [UltraCanvasSimpleListModel (single column)](#ultracanvassimplelistmodel-single-column)
+  - [UltraCanvasMultiColumnListModel](#ultracanvasmulticolumnlistmodel)
+- [Delegate Reference](#delegate-reference)
+  - [IItemDelegate](#iitemdelegate)
+  - [UltraCanvasDefaultListDelegate](#ultracanvasdefaultlistdelegate)
+- [Selection Reference](#selection-reference)
+- [Events / Callbacks](#events--callbacks)
+- [Usage Examples](#usage-examples)
+  - [Simple single-selection list](#simple-single-selection-list)
+  - [Multi-column list with header](#multi-column-list-with-header)
+  - [Styled list with alternating rows and multi-select](#styled-list-with-alternating-rows-and-multi-select)
+  - [A list on a section card](#a-list-on-a-section-card)
+  - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
+  - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasListView** is a Model-View-Delegate list widget in the UltraCanvas framework. It cleanly separates data (the *model*), per-row drawing (the *delegate*), and selection state (the *selection*), allowing simple single-column lists, multi-column tables with headers, icon lists, and fully custom-painted rows to all share the same view class.
 
-**Version:** 1.0.0
+![UltraCanvasListView: the model, delegate and selection, wired through the view](UltraCanvasListView2.svg)
+
+Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
+
+**Version:** 1.0.2
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -50,7 +87,7 @@ Creates a list view at the given position and size. Until a model is attached th
 ### Model / Delegate / Selection wiring
 
 ```cpp
-void SetModel(IListModel* model);
+void SetModel(std::shared_ptr<IListModel> model);
 IListModel* GetModel() const;
 
 void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
@@ -60,7 +97,28 @@ void SetSelection(std::shared_ptr<IListSelection> selection);
 IListSelection* GetSelection() const;
 ```
 
-The view never owns the raw model pointer — callers keep the model alive (typically via a `std::shared_ptr` whose `.get()` is passed in). Delegates and selections are shared via `std::shared_ptr`.
+The view shares ownership of the model, the delegate and the selection: all three are passed as `std::shared_ptr`, and the getters return plain pointers for reading.
+
+`SetModel` puts the view's callbacks on the model (`onDataChanged`,
+`onRowChanged`, `onRowInserted`, `onRowRemoved`). The model may outlive the
+view - an application usually keeps it - so once the view is destroyed those
+callbacks do nothing; they are not taken off the model, because a
+`UltraCanvasListSortFilterProxy` chained on after the view keeps a copy of them
+and must go on hearing its source. A subclass that keeps something derived from
+the rows overrides `OnModelChanged()`, called after the view has taken in each
+change, instead of wrapping the model's callbacks itself (which would outlive
+it):
+
+```cpp
+class FittedList : public UltraCanvasListView {
+public:
+    using UltraCanvasListView::UltraCanvasListView;
+protected:
+    void OnModelChanged() override { columnStale = true; }   // measure again at the next paint
+private:
+    bool columnStale = true;
+};
+```
 
 ### Styling
 
@@ -142,14 +200,59 @@ struct ListViewStyle {
 };
 ```
 
+### Column widths
+
+```cpp
+void SetColumnWidth(int column, int width);   // this view only; the model keeps ListColumnDef::width
+int  GetColumnWidth(int column) const;        // the effective width
+bool ColumnsUserAdjusted() const;             // the user dragged a border: stop fitting
+
+// What fitting a column to its content takes, measured on the context the
+// view is painted on:
+int MeasureHeaderWidth(IRenderContext* ctx, int column) const;   // whole title + sort triangle
+int MeasureColumnTextWidth(IRenderContext* ctx, int column, const FontStyle& font) const;
+```
+
+`MeasureHeaderWidth` is the narrowest width at which the column's header shows
+its whole title in `headerFontSize`, with room for the sort triangle whether or
+not the column is the sorted one - so a fitted column keeps its width when the
+order changes, and a translated title is measured as it reads.
+`MeasureColumnTextWidth` is the widest `DisplayRole` text of the column's rows
+in `font`, without a delegate's padding; each distinct text is measured once
+and remembered, so a column of thousands of dates costs a few hundred
+measurements. UltraMail fits its Date column this way: the widest date in bold
+plus the 6 px its delegate leaves before the text, and at least the header.
+
+```cpp
+// A Date column (column 3) as wide as its widest date plus a 6 px gap, never
+// narrower than its header - measured where a render context is at hand.
+class DateFittedList : public UltraCanvasListView {
+public:
+    using UltraCanvasListView::UltraCanvasListView;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        if (ctx && !ColumnsUserAdjusted()) {
+            FontStyle font;
+            font.fontSize = 10;
+            const int dates = MeasureColumnTextWidth(ctx, 3, font);
+            SetColumnWidth(3, std::max(dates + 6, MeasureHeaderWidth(ctx, 3)));
+        }
+        UltraCanvasListView::Render(ctx, dirtyRect);
+    }
+};
+```
+
 ### Scrolling
 
 ```cpp
 void ScrollToRow(int row);
 void EnsureRowVisible(int row);
+void SetFocusedRow(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+`SetFocusedRow` is what the arrow keys do, from code: the keyboard's row and
+the selection go to `row`, which is scrolled into view, and Return then
+activates it (a dropdown's type-ahead moves its open list this way).
 Called before the view has been laid out (no height yet), `EnsureRowVisible`
 remembers the row and reveals it once the view has its size, so a list filled
 and selected while its window is still being built opens with that row in view.
@@ -403,10 +506,17 @@ std::function<void(int row)> onItemDoubleClicked;
 std::function<void(int row)> onItemActivated;
 std::function<void(const std::vector<int>&)> onSelectionChanged;
 std::function<void(int row)> onItemHovered;
+// A key pressed in the view, before the view's own handling (the arrows,
+// Return): true consumes it. A dropdown's open list routes typed letters to
+// the dropdown's type-ahead this way.
+std::function<bool(const UCEvent&)> onKeyDown;
 
 // Cell-level (multi-column aware). posInCell is relative to the cell's
 // top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
-// the rows area.
+// the rows area. The hover follows the rows when they scroll under a still
+// pointer (a wheel scroll, EnsureRowVisible): the row highlight moves, and
+// onItemHovered and onCellHovered are reported again for the row now under
+// the pointer, so a preview hung on them follows the scroll too.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
 
@@ -422,9 +532,11 @@ std::function<void(int row, const UCEvent& event)> onContextMenu;
 
 `onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
 
-`onHeaderClicked` is where sorting is wired up: re-order the model by the
+`onHeaderClicked` is where sorting is wired up: re-order the rows by the
 column, toggling the direction when it is already the sort column, then tell
-the view which column is sorted so the header shows it. A header press no
+the view which column is sorted so the header shows it. The ready-made way to
+re-order is to show the model through an
+[`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md). A header press no
 longer counts as a click on "no row", so it leaves the selection alone.
 
 `onContextMenu` is where a right-click menu is wired up. The view has
@@ -432,14 +544,27 @@ already selected the row under the pointer, so the handler reads the
 selection (or `row`) and opens a popup menu at the pointer:
 
 ```cpp
-listView->onContextMenu = [this](int row, const UCEvent& event) {
-    contextMenu_ = std::make_shared<UltraCanvasMenu>("listCtx", 0, 0, 200, 0);
-    contextMenu_->SetMenuType(MenuType::PopupMenu);
-    contextMenu_->AddItem(MenuItemData::Submenu("Export", {
-        MenuItemData::Action("As CSV…", [this]() { ExportCsv(); }),
-    }));
-    PopupElementSettings settings;
-    contextMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+class FileListPanel {
+public:
+    FileListPanel(UltraCanvasWindowBase& window,
+                  std::shared_ptr<UltraCanvasListView> listView)
+        : window_(&window), listView_(std::move(listView)) {
+        listView_->onContextMenu = [this](int row, const UCEvent& event) {
+            contextMenu_ = std::make_shared<UltraCanvasMenu>("listCtx", 0, 0, 200, 0);
+            contextMenu_->SetMenuType(MenuType::PopupMenu);
+            contextMenu_->AddItem(MenuItemData::Submenu("Export", {
+                MenuItemData::Action("As CSV…", [this]() { ExportCsv(); }),
+            }));
+            PopupElementSettings settings;
+            contextMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+        };
+    }
+
+private:
+    void ExportCsv();                                // your export code
+    UltraCanvasWindowBase* window_;
+    std::shared_ptr<UltraCanvasListView> listView_;
+    std::shared_ptr<UltraCanvasMenu> contextMenu_;   // keeps the open menu alive
 };
 ```
 
@@ -447,9 +572,14 @@ Keep the menu in a member: `OpenMenu` shows it, and a menu that goes out of
 scope at the end of the handler closes before it is seen.
 
 ```cpp
-listView->onHeaderClicked = [view = listView.get(), model](int column) {
+// The view shows a sorting proxy over the source model
+auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(model);
+listView->SetModel(proxy);
+
+listView->onHeaderClicked = [view = listView.get(), proxy](int column) {
     bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
-    model->SortBy(column, ascending);          // however your model orders its rows
+    proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                          : ListSortOrder::Descending);
     view->SetSortIndicator(column, ascending); // ▲ or ▼ in that header cell
 };
 ```
@@ -576,6 +706,27 @@ styledList->onSelectionChanged = [statusLabel, styledModel](const std::vector<in
 };
 ```
 
+### A list on a section card
+
+A list inside a `GroupBoxVisualStyle::SectionCard()` (see
+`UltraCanvasGroupBoxExamples.md`) takes the framework's list-row colours: a
+soft grey under the pointer, a light tint of the accent blue behind the
+selected row - the rows of UltraMail's message list and UltraPaint's layer
+list. On the light tint the selected row keeps its dark text.
+
+```cpp
+auto cardList = std::make_shared<UltraCanvasListView>("CardList", 0, 0, 260, 200);
+ListViewStyle cardStyle;
+cardStyle.backgroundColor          = Colors::SectionCardBackground;
+cardStyle.hoverBackgroundColor     = Colors::ListRowHover;
+cardStyle.selectionBackgroundColor = Colors::ListRowSelected;
+cardList->SetStyle(cardStyle);
+
+auto cardDelegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+cardDelegate->SetSelectedTextColor(Colors::TextDefault);
+cardList->SetDelegate(cardDelegate);
+```
+
 ### Icon list with a customized delegate
 
 ```cpp
@@ -606,6 +757,132 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 };
 ```
 
+### A custom delegate with clickable cells (the domain dashboard)
+
+The last section of the DemoApp's *List View* page, *Custom Delegate: Domain
+Dashboard* (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`), is a table whose
+cells are more than text: a link, a status, an action, a sparkline, a figure, a
+plan and a row-menu button. A list view does not hold elements per row; one
+`IItemDelegate` paints every cell from the model, and the view's cell
+callbacks make parts of the cells clickable. That is what keeps it fast at any
+size: only the rows on screen are painted (the *Add 1,000 domains* button
+under the table shows it).
+
+The model keeps records and answers text and tooltips per column; the delegate
+reads the record directly for what is not text (the sparkline's history):
+
+<!-- doc-check:
+struct DomainRecord { std::string domain; bool active = true; bool insightsEnabled = false; std::vector<float> history; int visitors = 0; std::string plan = "Free"; };
+enum DomainColumn { ColDomain, ColStatus, ColInsights, ColTrend, ColVisitors, ColPlan, ColMenu, ColCount };
+enum { kCellPadding = 10 };
+const Color kLinkColor(0, 102, 204);
+const Color kTextColor(40, 40, 40);
+void DrawSparkline(IRenderContext* ctx, const std::vector<float>& values, const Rect2Dd& box);
+std::shared_ptr<UltraCanvasListView> list;
+-->
+
+```cpp
+class DomainListModel : public IListModel {
+public:
+    std::vector<DomainRecord> rows;   // domain, active, history, visitors, plan
+    int GetRowCount() const override { return static_cast<int>(rows.size()); }
+    int GetColumnCount() const override { return ColCount; }
+    ListColumnDef GetColumnDef(int column) const override;   // titles, widths, header tooltips
+    ListDataValue GetData(const ListIndex& index, ListDataRole role) const override;
+    bool SetData(const ListIndex&, ListDataRole, const ListDataValue&) override { return false; }
+    bool SortBy(int column, bool ascending);                  // reorders rows, NotifyDataChanged()
+    void RowChanged(int row) { NotifyRowChanged(row); }
+};
+
+class DomainRowDelegate : public IItemDelegate {
+public:
+    int hoverRow = -1, hoverColumn = -1;
+    bool hoverOnTarget = false;
+
+    void RenderItem(IRenderContext* ctx, const IListModel* model, int row, int column,
+                    const ListItemStyleOption& option) override {
+        const auto* domains = dynamic_cast<const DomainListModel*>(model);
+        if (!domains || row < 0 || row >= domains->GetRowCount()) return;
+        const Rect2Dd cell(option.columnX + kCellPadding, option.rect.y,
+                           option.columnWidth - 2 * kCellPadding, option.rect.height);
+        if (column == ColTrend) {                         // not text: draw it
+            DrawSparkline(ctx, domains->rows[row].history, cell);
+            return;
+        }
+        ctx->SetTextAlignment(option.columnAlignment);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(column == ColDomain ? kLinkColor : kTextColor);   // and status green, ...
+        ctx->DrawTextInRect(GetStringValue(model->GetData({row, column},
+                                           ListDataRole::DisplayRole)), cell);
+    }
+    int GetRowHeight(const IListModel*, int) const override { return 44; }
+
+    // Whether a cell-local point is on what the cell lets you click: the
+    // link's or "Enable"'s text (its width measured while painting), or ⋮.
+    bool OnTarget(const DomainListModel& model, int row, int column, const Point2Di& inCell) const;
+};
+```
+
+The view paints the row background (selection, hover) before the delegate
+runs, so the delegate draws content only. The default selection is a strong
+blue; a dashboard with coloured text sets a light one in its `ListViewStyle`
+(`selectionBackgroundColor`) so the colours stay readable.
+
+Clicks and hover come per cell, with the point inside the cell - the same
+space the delegate painted in - so the handler can tell the link text from the
+empty part of its cell:
+
+```cpp
+struct DashboardState {                                   // what the callbacks share
+    std::shared_ptr<DomainListModel> model;
+    std::shared_ptr<DomainRowDelegate> delegate;
+    UltraCanvasListView* list = nullptr;                  // raw: the view owns the callbacks
+    int sortColumn = -1;
+    bool sortAscending = true;
+    void OpenRowMenu(const std::string& domain, const Point2Di& at);
+};
+auto state = std::make_shared<DashboardState>();
+state->list = list.get();
+
+list->onCellHovered = [state](int row, int column, const Point2Di& inCell) {
+    state->delegate->hoverOnTarget = row >= 0 && state->delegate->OnTarget(*state->model, row, column, inCell);
+    state->delegate->hoverRow = row;
+    state->delegate->hoverColumn = column;
+    state->list->SetMouseCursor(state->delegate->hoverOnTarget ? UCMouseCursor::Hand
+                                                               : UCMouseCursor::Default);
+    state->list->RequestRedraw();                         // the link underlines
+};
+list->onCellClicked = [state](int row, int column, const Point2Di& inCell) {
+    if (!state->delegate->OnTarget(*state->model, row, column, inCell)) return;
+    if (column == ColDomain) OpenURL("https://" + state->model->rows[row].domain);
+    if (column == ColMenu)
+        state->OpenRowMenu(state->model->rows[row].domain,
+                           UltraCanvasApplication::GetInstance()->GetCurrentEvent().pointerWindow);
+};
+list->onContextMenu = [state](int row, const UCEvent& event) {   // right-click a row
+    if (row >= 0) state->OpenRowMenu(state->model->rows[row].domain, event.pointerWindow);
+};
+list->onHeaderClicked = [state](int column) {             // the model orders its rows
+    if (column == ColMenu) return;
+    state->sortAscending = state->sortColumn == column ? !state->sortAscending : true;
+    state->sortColumn = column;
+    if (state->model->SortBy(column, state->sortAscending))
+        state->list->SetSortIndicator(column, state->sortAscending);
+};
+```
+
+`state` is a small struct the callbacks share; it holds the list view as a raw
+pointer, because the view owns the callbacks that hold `state` (a
+`shared_ptr` back to the view would be a cycle). The menu's actions find their
+row again by name when they run: sorting or removing rows while a menu is open
+moves the row it was opened on.
+
+What a delegate gives up is a real element per cell: the "Enable" action and
+the ⋮ button are drawn and hit-tested, not `UltraCanvasButton`s, so they do not
+take the keyboard focus one by one - the row does. That is how list views on
+every desktop do it. When each row needs live controls of its own (a text
+field, a slider), use a container of elements instead, for a short list.
+
 ## Keyboard Navigation
 
 | Key                | Action                              |
@@ -626,6 +903,13 @@ rebuilt or re-sorted the rows and selected the one the user was on, Down moves
 to the row below that one. `ResetSelection()` clears the focus as well, so the
 first Down after it selects the first row.
 
+A list view takes the keyboard focus (Tab, a click) by default. A list that is
+part of another element turns that off with `SetAcceptsFocus(false)`, so the
+focus stays with the element - the dropdown does this for its popup list, which
+would otherwise take the focus on a click and then close with it. The keys
+above still work such a list while the window hands them to it (an open popup
+gets them when nothing focused takes them).
+
 ## Best Practices
 
 1. **Keep the model alive for as long as the view uses it.** The view stores a raw pointer; if the model is destroyed first, the view will read freed memory.
@@ -636,6 +920,7 @@ first Down after it selects the first row.
 
 ## See Also
 
+- DemoApp → *List View*, section 5 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
 - [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display

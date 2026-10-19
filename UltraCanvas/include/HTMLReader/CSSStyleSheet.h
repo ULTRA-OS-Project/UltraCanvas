@@ -4,14 +4,20 @@
 // descendant chains, the box-model / typography / color properties, and a
 // specificity-ordered cascade. Framework-independent: value types here are
 // plain structs; HTMLElementBuilder maps them onto CSSLayout/widget types.
+// Version: 1.4.0 - StyleSheet::ParseImports: a sheet's @import rules (href,
+//                  media), for whoever loads the sheets to fetch and inline them
+// Version: 1.3.0 - selector matching lives here, for any tree: SelectorMatches /
+//                  CompoundMatches / MatchingRules over a Traits type (the HTML
+//                  DOM's is NodeSelectorTraits; the SVG reader supplies its own)
 // Version: 1.2.0 - structural pseudo-classes (:first-child, :last-child,
 //                  :nth-child() and the -of-type forms, :only-child, :root, :empty)
 // Version: 1.1.0 - attribute selectors ([a], [a=v], ~= ^= $= *= |=)
 // Version: 1.0.0
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <optional>
@@ -100,6 +106,14 @@ struct Selector {
     int Specificity() const;   // id*10000 + class*100 + tag
 };
 
+// One @import rule: the sheet it names, as written (url("x") or "x"), and
+// the media query list after it ("" for all media). layer() and supports()
+// conditions are dropped: the sheet applies as if they held.
+struct StyleImport {
+    std::string href;
+    std::string media;
+};
+
 struct Rule {
     std::vector<Selector> selectors;
     std::vector<Declaration> declarations;
@@ -129,6 +143,13 @@ public:
     // holds on a screen `widthPx` wide. Unknown media features do not match.
     static bool MediaMatches(const std::string& query, float widthPx);
 
+    // The @import rules at the head of `css`, in order. As in CSS, only
+    // those before the first other rule count (@charset and @layer
+    // statements may come between); the rest are ignored. ParseAppend skips
+    // @import itself: the caller fetches each sheet and parses it first, so
+    // its rules come before the importing sheet's in the cascade.
+    static std::vector<StyleImport> ParseImports(const std::string& css);
+
     // Parse a bare declaration list — the content of a style="" attribute.
     static std::vector<Declaration> ParseDeclarationList(const std::string& text);
 
@@ -139,6 +160,120 @@ private:
 
 // Lowercase-trim helper shared by parser and resolver.
 std::string TrimLower(const std::string& text);
+
+// ---- Matching ----
+//
+// Whether a selector matches an element is decided here, once, for every
+// tree the framework styles: the HTML DOM (HTMLStyleResolver, through
+// NodeSelectorTraits in HTMLStyleResolver.h) and any other tree of elements
+// with names, ids, classes and attributes - the Vector plugin's SVG reader
+// holds tinyxml2 elements. A tree takes part by supplying a Traits type with
+// these static members; nothing here depends on the tree's node type.
+//
+//   using Element = <the tree's element type>;
+//   static bool TagIs(const Element&, const std::string& lowerTag);
+//       The element's name, without a namespace prefix, is this name. The
+//       parser lower-cases type selectors, so a camelCase vocabulary (SVG's
+//       linearGradient) compares case-insensitively.
+//   static bool IdIs(const Element&, const std::string& id);
+//   static bool HasClass(const Element&, const std::string& name);
+//       Exact: class names and ids keep their case, in CSS and here.
+//   static bool GetAttribute(const Element&, const std::string& lowerName,
+//                            std::string& value);
+//       False when the attribute is absent. The parser lower-cases the name.
+//   static bool IsLink(const Element&);     // <a href>: :link / :any-link
+//   static bool IsRoot(const Element&);     // the document element: :root
+//   static bool IsEmpty(const Element&);    // no child elements, no text: :empty
+//   static bool SiblingPosition(const Element&, bool ofType, int& index, int& count);
+//       The element's 1-based position among its parent's element children
+//       (those of the same name when ofType) and how many there are; false
+//       when it has no parent.
+//   static const Element* Parent(const Element&);   // nullptr at the top
+//
+// The attribute operators and the an+b arithmetic are plain functions, so
+// the templates stay small and that logic exists once.
+
+// Whether `value` satisfies the selector's operator ([a=v], ~= ^= $= *= |=,
+// the `i` flag); a bare [a] is satisfied by any value.
+bool AttributeValueMatches(const AttributeSelector& attr, const std::string& value);
+
+// Whether the 1-based position `index` of `count` siblings is one of the
+// positions an :nth-* pseudo-class names (from the end for its -last- forms).
+bool NthPositionMatches(const PseudoClass& pc, int index, int count);
+
+// One compound selector ("p.first[lang]") against the element itself.
+template <class Traits>
+bool CompoundMatches(const SimpleSelector& part, const typename Traits::Element& e) {
+    if (!part.tag.empty() && part.tag != "*" && !Traits::TagIs(e, part.tag)) return false;
+    if (!part.id.empty() && !Traits::IdIs(e, part.id)) return false;
+    for (const auto& cls : part.classes) {
+        if (!Traits::HasClass(e, cls)) return false;
+    }
+    if (part.link && !Traits::IsLink(e)) return false;
+    for (const auto& pc : part.pseudos) {
+        if (pc.kind == PseudoClass::Kind::Root) {
+            if (!Traits::IsRoot(e)) return false;
+            continue;
+        }
+        if (pc.kind == PseudoClass::Kind::Empty) {
+            if (!Traits::IsEmpty(e)) return false;
+            continue;
+        }
+        int index = 0, count = 0;
+        if (!Traits::SiblingPosition(e, pc.ofType, index, count)) return false;
+        if (!NthPositionMatches(pc, index, count)) return false;
+    }
+    for (const auto& attr : part.attributes) {
+        std::string value;
+        if (!Traits::GetAttribute(e, attr.name, value)) return false;
+        if (!AttributeValueMatches(attr, value)) return false;
+    }
+    return true;
+}
+
+// A whole selector: its last compound against the element, the ones before
+// it against ancestors, nearest last, in order (the parser reads `>` as a
+// descendant combinator, so this is the only relation).
+template <class Traits>
+bool SelectorMatches(const Selector& selector, const typename Traits::Element& e) {
+    if (selector.path.empty()) return false;
+    if (!CompoundMatches<Traits>(selector.path.back(), e)) return false;
+    int index = static_cast<int>(selector.path.size()) - 2;
+    for (const typename Traits::Element* ancestor = Traits::Parent(e);
+         index >= 0 && ancestor; ancestor = Traits::Parent(*ancestor)) {
+        if (CompoundMatches<Traits>(selector.path[static_cast<size_t>(index)], *ancestor)) --index;
+    }
+    return index < 0;
+}
+
+// The rules of `sheet` that match `e`, in cascade order: weakest first, by
+// the specificity of the rule's best matching selector, then by source order.
+// Applying their declarations in this order, the normal ones first and the
+// !important ones after, is the cascade within the author origin; what
+// style="" adds on top is the caller's (see HTMLStyleResolver.cpp).
+template <class Traits>
+std::vector<const Rule*> MatchingRules(const StyleSheet& sheet, const typename Traits::Element& e) {
+    struct Match {
+        int specificity;
+        int order;
+        const Rule* rule;
+    };
+    std::vector<Match> matches;
+    for (const auto& rule : sheet.rules) {
+        int best = -1;
+        for (const auto& selector : rule.selectors) {
+            if (SelectorMatches<Traits>(selector, e)) best = std::max(best, selector.Specificity());
+        }
+        if (best >= 0) matches.push_back({best, rule.sourceOrder, &rule});
+    }
+    std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
+        return a.specificity != b.specificity ? a.specificity < b.specificity : a.order < b.order;
+    });
+    std::vector<const Rule*> rules;
+    rules.reserve(matches.size());
+    for (const auto& m : matches) rules.push_back(m.rule);
+    return rules;
+}
 
 } // namespace HTML
 } // namespace UltraCanvas

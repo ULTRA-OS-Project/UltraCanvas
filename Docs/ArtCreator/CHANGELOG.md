@@ -1,3 +1,259 @@
+#### 2026-10-19 *0.8.1*
+- **The right panel in cards, as UltraPaint's.** Icon, colour, tool options,
+  gradient, line and layers are each a white card (the framework's SectionCard
+  group box) on the panel's light page, as in UltraPaint - with a smaller,
+  quieter caption than UltraPaint's, as the caption only names the section.
+  The layer buttons are flat, as UltraPaint's.
+- **A tool's cards only while it is active.** *Tool Options* shows the
+  active tool's options and is gone for a tool without any (Zoom, Push);
+  the *Gradient* card (the fill's ramp, captioned *Fill* before - the Fill
+  tool's options carry that name already) shows under them with the Fill
+  tool, and the
+  *Line* card (width, arrowheads, profile, brush) with the tools that draw
+  lines - Pen, Freehand and Straight Line - and with the Selector or the
+  Shape Editor while a line (a straight line, polyline or open path) is
+  selected, so its arrowheads, profile and brush are set without changing
+  tools.
+- **Transform bar fixes.**
+  - The *lock* button now also holds when the selection is scaled with the
+    mouse: a corner handle scales width and height alike (shift frees it for
+    that drag), and an edge handle scales the other way by as much, about
+    the middle of its edge. Without the lock, shift on a corner keeps the
+    ratio as before.
+  - The two *%* fields have no up / down arrows any more: a percentage is
+    typed (the arrow keys and the wheel still step it by 1).
+  - Every field steps by 1: one unit of the page's unit (centimetres and
+    inches too, which stepped by a tenth), 1 % and 1 deg for rotation and
+    shear (were 15 and 5 deg).
+
+#### 2026-10-17 *0.8.0*
+- **A transform bar for the selection.** A bar under the toolbar shows and
+  sets the selected objects' position, size, scale, rotation and shear, as
+  Xara's selector bar does:
+  - a *reference point* picker on the left - nine points for the corners,
+    edge midpoints and centre of the selection - says which point stays put
+    when the selection is resized, rotated or sheared, and which point X and
+    Y give the place of;
+  - *X* / *Y* move that point to the position typed; *W* / *H* make the
+    selection that wide or high; the two *%* fields scale it by a
+    percentage and go back to 100;
+  - the *lock* button keeps the aspect ratio: with it down, changing the
+    width changes the height in proportion, and the other way round;
+  - *rotation* and *shear* show one object's own angles (counter-clockwise,
+    and how far its top leans to the right) and set them; with several
+    objects selected they show 0 and turn or shear by what is typed. The
+    rotation counts on past 180 deg while the same objects stay selected -
+    holding the up arrow from 165 shows 180, 195, ... 345, not -165 - and a
+    typed angle turns the shortest way to it.
+
+  Lengths are in the page's unit (*File > Document Setup*), or in icon
+  pixels in icon mode, and follow a drag as it happens. Every change is one
+  step of undo - a held arrow key, the arrow buttons clicked or the wheel
+  turned in one go too: the drawing follows each step, and *Undo* takes the
+  whole run back (framework: `UltraCanvasSpinner::onStepsFinished`). The reference point picker is a new framework element
+  (framework changelog: `reference-point-picker`).
+
+#### 2026-10-17 *0.7.3*
+- **The colour picker stays as it was left.** ArtCreator opens the picker
+  with the design chosen in its list and the channels open or folded as they
+  were when it was last used. It keeps them in a settings file of its own,
+  `config.ini` in the UltraCanvas settings folder
+  (`~/.config/UltraCanvas/ArtCreator/` on Linux), as `picker.design`
+  (`circle`, `square`, `rectangle` or `sliders`) and `picker.channels`
+  (`open` or `folded`) - the names UltraPaint's settings use - saved as the
+  picker changes (framework changelog: `colour-picker-design-names`).
+
+#### 2026-10-16 *0.7.2*
+- **The colour panel takes less room.** The picker in the right-hand panel
+  folds its channels away: the HSV / HSL / RGB tabs and the channel sliders
+  sit under a *Channels* row that opens them, so the panel starts with the
+  hue ring, the swatches and the hex field, and the active tool's options
+  move up into view. A list top right switches the picker between the colour
+  circle, the slider and square, the colour rectangle and the two sliders
+  (hue and brightness); the picker is as tall as what it shows, so the
+  panels below move up and down with it (framework changelog:
+  `colour-picker-toolbox`).
+
+#### 2026-10-15 *0.7.1*
+- **The colour picker is light, like the panel it sits in.** The picker in
+  the right-hand panel was the framework's default dark one - a charcoal
+  block with a red accent in the middle of the light grey panel. It now takes
+  the framework's `ColorPickerStyle::Light()` on the panel's own grey: white
+  fields with grey hairline outlines, near-black text and a blue accent, the
+  same picker UltraPaint and UltraFiler show (framework changelog:
+  `section-card-and-light-picker`).
+
+#### 2026-10-14 *0.7.0*
+- **Icon mode: draw an icon for the size it is shown at.** An icon shown at
+  24 px is sharp only where its straight edges land on whole pixels; drawn
+  by eye, a line half a pixel off turns into a grey two-pixel smear. Icon
+  mode puts the pixels of the target size on the page:
+  - *File > New Icon* makes a square page of 16, 20, 24, 28, 32, 40, 48,
+    64, 96, 128 or 256 px - up to a macOS Dock or taskbar icon - one
+    document unit a pixel, so it saves as an SVG of `viewBox="0 0 24 24"`
+    like the framework's icons. Opening a square SVG of one of those sizes
+    starts icon mode at its size; *View > Icon Size* and the panel's Size
+    check any drawing at an icon size.
+  - A pixel grid: a line every pixel once the view is close enough, a
+    darker one every 4 px (8 from 40 px, 16 from 128 px). Rulers and the
+    status bar count in the icon's pixels; the arrow keys nudge by one.
+  - Snapping that knows the line width: lines an odd number of pixels wide
+    are drawn on pixel centres, even ones and fills on pixel edges, and new
+    lines are a whole number of pixels wide.
+  - *Arrange > Snap to Pixels* (Ctrl+Shift+P) does the same to shapes
+    already drawn - the selection, or everything - through the framework's
+    new `VectorEdit::SnapToPixels` (framework changelog, pending entry
+    `vector-snap-to-pixels`).
+  - An *Icon* panel at the top of the right panel, shown in icon mode: the
+    page drawn at the icon's size on a light and a dark ground, enlarged up
+    to eight times with every soft pixel - one the drawing only partly
+    covers - outlined in red, and a count of them. *Mark soft* tints the
+    same pixels on the page when zoomed in.
+  - *Export* writes the icon at its size unless another is chosen, its file
+    name starting as a `.png`.
+  - *Object* has line widths in pixels beside those in points: 1, 2, 3 and
+    4 px, the icon's own pixels in icon mode - so a line covers whole pixel
+    rows - and 96 DPI pixels (0.75 pt) otherwise.
+- **The tool palette groups its tools, as UltraPaint's does.** Tools of a
+  kind share one button, so the palette shows 8 buttons for its 19 tools
+  and fits a short window without scrolling. The button shows the tool last
+  picked from its group; resting the pointer on it folds out a bar with the
+  whole group, and a click there picks a tool. A small triangle in a
+  button's corner marks a group. The groups, top to bottom:
+  - *Select* - Selector, Shape Editor
+  - *Draw* - Pen, Freehand, Straight Line
+  - *Shapes* - Rectangle, Ellipse, Quick Shape
+  - Text
+  - *Fill* - Fill, Transparency
+  - *Effects* - Shadow, Feather, Contour, Bevel (drawn around a shape)
+  - *Blend and Mould* (shapes made into new ones)
+  - *View* - Zoom, Push
+
+  A tool's key picks it as before and shows it in its group's button (the
+  framework's `AddToolGroup`, as in UltraPaint 0.2.16).
+
+#### 2026-10-14 *0.6.12*
+- **One ArtCreator at a time.** Opening a file while ArtCreator is already
+  running opens it in the running copy (in a new window) instead of starting a
+  second one; starting it without a file brings the open window forward. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"ArtCreator is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-13 *0.6.11*
+- **Export as a bitmap, at any size.** File > Export offers PNG, JPEG, WebP,
+  AVIF, HEIC, TIFF, GIF, QOI and Windows icons beside the vector formats -
+  each one this build can write: the Export dialog's types and the save are
+  the framework's FileLoader (`AddVectorDocumentSaveTypes`,
+  `SaveVectorDocument` with a size), so a format a plugin adds appears here
+  too (AVIF and HEIC need libheif's encoders; ICO and QOI are the
+  framework's own). A drawing has no pixel size of its own, so the
+  Export dialog's Settings for them open on the page at 96 DPI (an A4 page at
+  794 x 1123 pixels) and take any other size, Keep proportions keeping the
+  page's shape; the page is then drawn at that size, not drawn small and
+  stretched, so it is as sharp at 8000 pixels as at 800. The format's save
+  settings apply (JPEG quality, PNG compression ...). A PNG keeps what the
+  page leaves transparent; a JPEG is laid on white; an icon holds the page
+  fitted into 16, 32, 48 and 256 pixel squares. The status bar says the
+  size written (framework changelog, pending entry
+  `save-size-for-drawings-and-the-viewer`: `SetDrawingSize`,
+  `RasterizeVectorDocument`, the ICO and QOI savers).
+
+#### 2026-10-12 *0.6.10*
+- **Sharp icons, drawn for the size they are shown at.** The icons were drawn
+  on a 24-unit grid with 1.8-unit strokes and shown at 22 px in the tool
+  palette, 20 px in the toolbar and 16 px in the menus. At none of those
+  sizes did a line land on whole pixels, so every edge was resampled into a
+  two-pixel grey smear: the marching ants, alignment bars and arrange arrows
+  ran together, and "1:1" was unreadable in a menu. They are redrawn, as
+  UltraPaint's were, in three sets with 2 px (1 px in the menus) strokes on
+  whole pixels:
+  - the 19 tools at 28 px in 36 px palette buttons (`media/icons/artcreator/28/`).
+    Blend is now a stepped series of circles, Transparency a checkerboard,
+    Shape Editor an outline pointer with a node, Pen a nib, Quick Shape a star.
+    Line, Rectangle, Ellipse, Text, Fill, Zoom and Push are UltraPaint's
+    drawings;
+  - the 60 toolbar and panel icons at 24 px (`media/icons/artcreator/`), shown
+    at 24 px now: every toolbar drew its icons at 20 (framework changelog:
+    `toolbar-icon-size`), and so does the DemoApp's vector example, which uses
+    this set;
+  - a 16 px set for every menu entry (`media/icons/artcreator/16/`), 72 icons
+    in one style. It replaces the mix of the shared menu set and the 24 px
+    icons shrunk to 16, and adds icons where entries had none: the line widths
+    show their thickness, and Rulers, Grid, Guides, the four Snap options and
+    Clear Guides have their own.
+- **Flat palette and toolbar buttons**, as in UltraPaint: no box around a
+  button, a soft grey under the pointer and the active tool on light blue.
+  Where the window is too short for every tool, the palette scrolls instead of
+  squeezing the buttons.
+
+#### 2026-10-11 *0.6.9*
+- **One flat icon style throughout.** Every icon is now a one-tone line
+  drawing in the style of the rest of the app:
+  - New, Open, Save, Quit, Undo, Redo, Cut, Copy, Paste and the zoom
+    buttons use the framework's flat menu icons instead of the heavier black
+    set borrowed from Texter.
+  - The Fill, Transparency, Shadow, Feather, Contour, Bevel, Blend, Mould
+    and Shape Editor tools are redrawn: they were grey tones, gradients and
+    white fills, and Fill showed as a black block. Fill is now a paint pail,
+    Transparency a checkerboard, Feather a feather, Mould a bent grid.
+  - Actual size reads "1:1" in a frame, where "100" looked like "(00".
+- **Icons on the menu items.** New Window, Save As, Export, Document Setup,
+  Duplicate, Delete, Select All / None, the four stacking orders, Group,
+  Ungroup, both mirrors, the six alignments, Centre on Page, the four
+  distribute modes, the four ways to combine shapes, ClipView, Convert to
+  Editable Shapes, No Fill, No Line, every Layer command, the zoom commands
+  and About each have one. 25 of them are new
+  (`media/icons/artcreator/`).
+- **The Shape Editor's "Line ⇄ curve" button reads "Line / curve".** The
+  UI font has no "⇄", which showed as a box of hex digits on Windows.
+- **The Arrange menu opens.** It closed again at once: taller than the
+  window, it was placed over the menu bar, and the release of the click that
+  opened it picked one of its rows. It now opens under the bar and scrolls
+  (UltraCanvas 0.9.249 anchors a menu bar's drop-downs to their item).
+
+#### 2026-10-07 *0.6.8*
+- **Save as and Export keep the file type you chose.** Both added an
+  extension of their own to a name typed without one - `.xar` on Save as,
+  `.pdf` on Export - whatever type was chosen, so "drawing" with SVG chosen
+  was saved as Xara, after the dialog had asked about replacing "drawing"
+  rather than that file. The save dialog now gives the name the chosen
+  type's extension itself (UltraCanvas 0.9.176, PR #694), so ArtCreator saves
+  the name it hands back as it is. A name without an extension saved under
+  "All files" is refused with a message saying it needs one.
+
+#### 2026-10-07 *0.6.7*
+- **Arrowheads are saved in SVG files.** An arrow drawn with the line
+  gallery's arrowheads lost them when saved as SVG: every other program, and
+  ArtCreator itself on reopening, showed a bare line. They are now saved as
+  SVG markers, so browsers, Inkscape and UltraFiler's thumbnails draw them,
+  and reopening the file in ArtCreator gives back the arrowheads you chose,
+  still editable in the line panel. The fix is in the framework's SVG writer
+  (`Docs/UltraCanvas/changelog.d/svg-export-arrowheads.md`).
+- **Tapered lines and brushes are saved in SVG files.** A line with a width
+  profile (taper, thick-thin, ...) was saved with an even width, and a
+  brushed line as a plain stroke. Both are now saved as the shapes they
+  draw, so other programs show them as ArtCreator does, and reopening the
+  file in ArtCreator gives back the line with its profile or brush, still
+  editable. Also in the framework's SVG writer
+  (`Docs/UltraCanvas/changelog.d/svg-export-width-profiles-brushes.md`).
+
+#### 2026-10-06 *0.6.6*
+- **SVG files styled with CSS open in their colours.** A drawing that sets
+  its fills, strokes, corner radii and text styles from a `<style>` block
+  (diagram tools and hand-written SVG do) opened with every such shape black
+  and the status bar saying "SVG import: `<style>` is not supported,
+  skipped": an architecture diagram's light grey page came in as a black
+  one. The style sheet now applies. The fix is in the framework's SVG reader
+  (`Docs/UltraCanvas/changelog.d/svg-import-style-sheets.md`).
+- **Arrowheads on imported SVG lines.** Lines that end in an SVG marker -
+  the arrows connecting the boxes of a diagram - opened as bare lines, with
+  "`<marker>` is not supported, skipped" in the status bar. The marker is
+  now drawn: each line and its arrowheads come in as one group, so the arrow
+  moves as one object, and ungrouping it gives the arrowhead as an editable
+  shape. Also in the framework's SVG reader
+  (`Docs/UltraCanvas/changelog.d/svg-import-markers.md`).
+
 #### 2026-10-06 *0.6.5*
 - **Copy and paste work with other programs.** Copy and Paste only ever
   used ArtCreator's own in-app list of objects: nothing copied here could be

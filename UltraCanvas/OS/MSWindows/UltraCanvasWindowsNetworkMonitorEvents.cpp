@@ -140,11 +140,15 @@ public:
         }
         if (status != ERROR_SUCCESS) {
             session_ = 0;
-            const bool denied = status == ERROR_ACCESS_DENIED;
-            return NetworkMonitorResult::Error(
-                denied ? NetworkMonitorResultCode::PermissionDenied : NetworkMonitorResultCode::IoError,
-                "Starting the ETW session: error " + std::to_string(status) +
-                (denied ? " (an elevated token is needed to trace the kernel's network events)" : ""));
+            // Access denied is the everyday case - the monitor was started
+            // unelevated - so it says what to do, not what Windows said.
+            if (status == ERROR_ACCESS_DENIED) {
+                return NetworkMonitorResult::Error(NetworkMonitorResultCode::PermissionDenied,
+                    "Needs an elevated run: Windows lets only an administrator trace the kernel's network "
+                    "events, so only the snapshot differ reports events until the monitor is run as administrator");
+            }
+            return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError,
+                "Starting the ETW session: error " + std::to_string(status));
         }
         status = ::EnableTraceEx2(session_, &kKernelNetworkProvider, EVENT_CONTROL_CODE_ENABLE_PROVIDER,
                                   TRACE_LEVEL_INFORMATION, 0, 0, 0, nullptr);

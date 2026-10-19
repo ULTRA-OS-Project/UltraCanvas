@@ -1,8 +1,8 @@
 // core/UltraCanvasThumbnailDiskCache.cpp
 // Thumbnails kept as files between runs. See UltraCanvasThumbnailDiskCache.h
 // for what is stored and why.
-// Version: 1.1.0
-// Last Modified: 2026-10-03
+// Version: 1.2.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasThumbnailDiskCache.h"
@@ -142,29 +142,14 @@ namespace {
         return directory + "/" + HexOf(HashRequest(request)) + ".ucth";
     }
 
-    // Size and modification time of the file the thumbnail is of. Both zero
-    // when it cannot be read, which never matches a stored header — an
-    // unreadable source is always a miss, never a stale hit.
-    bool DescribeSource(const std::string& path, uint64_t& size, int64_t& time) {
-        std::error_code ec;
-        const fs::path file = PathFromUtf8(path);
-        const auto bytes = fs::file_size(file, ec);
-        if (ec) return false;
-        const auto written = fs::last_write_time(file, ec);
-        if (ec) return false;
-        size = static_cast<uint64_t>(bytes);
-        time = static_cast<int64_t>(written.time_since_epoch().count());
-        return true;
-    }
-
     bool ValidHeader(const Header& header, const Request& request,
-                     uint64_t sourceSize, int64_t sourceTime) {
+                     const SourceStamp& source) {
         return header.magic == kMagic
             && header.version == kFormatVersion
             && header.endian == kEndianTag
             && header.blobSize > 0
-            && header.sourceSize == sourceSize
-            && header.sourceTime == sourceTime
+            && header.sourceSize == source.size
+            && header.sourceTime == source.time
             && header.pathHash == HashText(request.sourcePath,
                                            1469598103934665603ull)
             && header.width == request.width
@@ -207,6 +192,12 @@ namespace {
 
 } // namespace
 
+SourceStamp StampSource(const std::string& path) {
+    // Unreadable is an invalid stamp, which Load() treats as a miss and
+    // Store() refuses: an unreadable source is never a stale hit.
+    return StampFile(path);
+}
+
 bool IsEnabled() { return g_enabled.load(); }
 
 void SetEnabled(bool enabled) { g_enabled.store(enabled); }
@@ -244,9 +235,8 @@ std::vector<uint8_t> Load(const Request& request) {
     const std::string directory = ResolveDirectory();
     if (directory.empty()) return {};
 
-    uint64_t sourceSize = 0;
-    int64_t sourceTime = 0;
-    if (!DescribeSource(request.sourcePath, sourceSize, sourceTime)) return {};
+    const SourceStamp source = StampSource(request.sourcePath);
+    if (!source.valid) return {};
 
     const std::string path = FilePathFor(directory, request);
     FileHandle handle(OpenFile(path, "rb"));
@@ -254,7 +244,7 @@ std::vector<uint8_t> Load(const Request& request) {
 
     Header header;
     if (std::fread(&header, sizeof header, 1, handle.file) != 1) return {};
-    if (!ValidHeader(header, request, sourceSize, sourceTime)) {
+    if (!ValidHeader(header, request, source)) {
         // Either the source changed under it or the file is from another
         // build. Both mean this entry can never be a hit again, so it goes
         // now rather than waiting two weeks to be swept: the same tile is
@@ -277,21 +267,25 @@ std::vector<uint8_t> Load(const Request& request) {
     return blob;
 }
 
-bool Store(const Request& request, const std::vector<uint8_t>& blob) {
+bool Store(const Request& request, const std::vector<uint8_t>& blob,
+           const SourceStamp& madeFrom) {
     if (!g_enabled.load() || blob.empty() || request.sourcePath.empty()) return false;
     if (request.width <= 0 || request.height <= 0) return false;
     if (blob.size() > 0xFFFFFFFFull) return false;
+    if (!madeFrom.valid) return false;
     const std::string directory = ResolveDirectory();
     if (directory.empty()) return false;
 
-    uint64_t sourceSize = 0;
-    int64_t sourceTime = 0;
-    if (!DescribeSource(request.sourcePath, sourceSize, sourceTime)) return false;
+    // The source moved on while the thumbnail was being made: the blob may
+    // show what the file held before, and recording it would make that the
+    // answer for what the file holds now. The tile asks again after the
+    // change anyway (the folder watch rescans), and that decode stores.
+    if (StampSource(request.sourcePath) != madeFrom) return false;
 
     Header header;
     header.blobSize = static_cast<uint32_t>(blob.size());
-    header.sourceSize = sourceSize;
-    header.sourceTime = sourceTime;
+    header.sourceSize = madeFrom.size;
+    header.sourceTime = madeFrom.time;
     header.pathHash = HashText(request.sourcePath, 1469598103934665603ull);
     header.width = request.width;
     header.height = request.height;

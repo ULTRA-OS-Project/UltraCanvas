@@ -411,6 +411,23 @@ std::string EsclScannerIdentity(const std::vector<std::string>& txtRecords,
     return name.empty() ? std::string() : "host:" + name;
 }
 
+bool FillInEsclIdentity(IODeviceInfo& info, const EsclScannerDescription& described) {
+    bool changed = false;
+    auto fill = [&changed](std::string& field, const std::string& value) {
+        if (!field.empty() || value.empty()) return;
+        field = value;
+        changed = true;
+    };
+    fill(info.model, described.makeAndModel);
+    fill(info.serialNumber, described.serialNumber);
+    if ((info.name.empty() || info.name == info.connectionPath) &&
+        !described.makeAndModel.empty() && info.name != described.makeAndModel) {
+        info.name = described.makeAndModel;
+        changed = true;
+    }
+    return changed;
+}
+
 std::string EsclInstanceFromServiceName(const std::string& serviceName) {
     return DnsSdInstanceName(serviceName, {"._uscan._tcp", "._uscans._tcp"});
 }

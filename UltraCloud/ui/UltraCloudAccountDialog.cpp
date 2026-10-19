@@ -1,7 +1,8 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.4.0 - the form is a UltraCanvasFormLayout grid, not a row of
-//                  flex containers with hard-coded caption widths
-// Last Modified: 2026-09-22
+// Version: 0.7.1 - a private key row for SFTP
+// Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
+//                  until it ends
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
@@ -20,6 +21,7 @@
 
 #include <UltraCloud/UltraCloudOAuth.h>
 
+#include <atomic>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -63,7 +65,19 @@ std::vector<std::shared_ptr<ICloudProvider>> OrderedProviders() {
 void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
                           std::function<void(const Account&)> onAdded,
                           std::function<bool(const std::string& providerId)> providerFilter,
-                          const std::string& title) {
+                          const std::string& title, AddAccountWatch watch) {
+    // Not owned: an aliasing pointer with no owner, so the caller's promise
+    // to keep the service alive is what keeps it alive, as it always was.
+    std::shared_ptr<CloudService> unowned(std::shared_ptr<CloudService>(), &service);
+    ShowAddAccountDialog(parent, std::move(unowned), std::move(onAdded),
+                         std::move(providerFilter), title, std::move(watch));
+}
+
+void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService> service,
+                          std::function<void(const Account&)> onAdded,
+                          std::function<bool(const std::string& providerId)> providerFilter,
+                          const std::string& title, AddAccountWatch watch) {
+    if (!service) return;
     DialogConfig config;
     config.title      = title.empty() ? "Add cloud account" : title;
     config.width      = 520;
@@ -140,6 +154,12 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     password->SetPlaceholder("password or app password");
     auto passwordRow = addRow("cloudAccPass", "Password", password);
 
+    // SFTP with a key: the private key file's path; the password above is
+    // then its passphrase (and the server's password, failing the key).
+    auto keyFile = CreateTextInput("cloudAccKey", 0, 0, 0, UiStyle::kControlHeight);
+    keyFile->SetPlaceholder("~/.ssh/id_ed25519 (sftp:// only; optional)");
+    auto keyRow = addRow("cloudAccKey", "Private key", keyFile);
+
     auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 0, UiStyle::kControlHeight);
     publicUrl->SetPlaceholder("https://files.example.org/pub (links = this URL + path)");
     auto publicRow = addRow("cloudAccPublic", "Public URL", publicUrl);
@@ -178,7 +198,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
 
     // Show only the rows the chosen provider needs. OAuth providers sign in
     // through the browser: no user / password rows, and the button says so.
-    auto applyProvider = [providers, serverRow, publicRow, passwordRow, userRow, provider,
+    auto applyProvider = [providers, serverRow, publicRow, passwordRow, userRow, keyRow, provider,
                           hint, addBtn]() {
         int idx = provider->GetSelectedIndex();
         if (idx < 0 || idx >= static_cast<int>(providers.size())) return;
@@ -189,17 +209,20 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         publicRow.SetVisible(id == "webdav");
         userRow.SetVisible(!caps.needsOAuth);
         passwordRow.SetVisible(!caps.needsOAuth && id != "memory");
+        keyRow.SetVisible(id == "ftp");
         if (caps.needsOAuth) {
             addBtn->SetText("Sign in in browser");
-            hint->SetText(HasOAuthApp(id)
+            hint->SetText(CanSignIn(id)
                 ? "Your browser opens " + p->DisplayName() + "'s sign-in page; come back here when it says you are done."
-                : "No OAuth client id is configured for " + p->DisplayName()
-                  + " — set ULTRACLOUD_" + id + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
+                : "The sign-in service is off and no OAuth client id is configured for " + p->DisplayName()
+                  + " — set ULTRACLOUD_OAUTH_SERVICE_URL or ULTRACLOUD_" + id
+                  + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
         } else {
             addBtn->SetText("Add account");
             hint->SetText(id == "nextcloud"
                 ? "Nextcloud: create an app password under Settings → Security and use it here."
                 : id == "webdav" ? "Links need a public URL that serves the same folder as the DAV root."
+                : id == "ftp" ? "ftp://, ftps://, ftpes:// or sftp://. An SFTP key: its file above, the passphrase as the password."
                 : "");
         }
     };
@@ -220,8 +243,13 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
 
     // The result travels from the worker to the close callback through here.
     auto added = std::make_shared<Account>();
+    // Set when the dialog goes without an account - Cancel, or the window's
+    // close box. A sign-in still running is called off then: it neither holds
+    // its thread waiting on the browser nor stores an account the user has
+    // given up on.
+    auto gaveUp = std::make_shared<std::atomic<bool>>(false);
 
-    addBtn->onClick = [=, &service]() {
+    addBtn->onClick = [=]() {
         int idx = provider->GetSelectedIndex();
         if (idx < 0 || idx >= static_cast<int>(providers.size())) return;
         Account a;
@@ -235,14 +263,15 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         Credentials c;
         c.username = a.username;
         c.password = password->GetText();
+        c.privateKeyFile = a.providerId == "ftp" ? keyFile->GetText() : std::string();
 
         const auto caps = providers[static_cast<std::size_t>(idx)]->Capabilities();
         if (caps.needsServerUrl && a.serverUrl.empty()) { status->SetText("Enter the server URL."); return; }
         if (!caps.needsOAuth && a.username.empty() && a.providerId != "memory") {
             status->SetText("Enter the user name."); return;
         }
-        if (caps.needsOAuth && !HasOAuthApp(a.providerId)) {
-            status->SetText("No OAuth client id configured for this provider."); return;
+        if (caps.needsOAuth && !CanSignIn(a.providerId)) {
+            status->SetText("The sign-in service is off and no OAuth client id is configured for this provider."); return;
         }
 
         status->SetTextColor(Color(60, 60, 60, 255));
@@ -253,13 +282,25 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         // open the consent page in the system browser and wait for the
         // loopback redirect.
         const bool oauth = caps.needsOAuth;
-        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, &service]() mutable {
+        // The thread holds the service until the sign-in has ended: a sign-in
+        // can wait minutes on the browser, and the dialog - or the window that
+        // opened it - can be gone long before.
+        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, service, watch,
+                     gaveUp]() mutable {
+            std::function<bool()> previousCancel = SetThreadSignInCancel(
+                    [gaveUp, hostCancelled = watch.cancelled]() {
+                        return gaveUp->load() || (hostCancelled && hostCancelled());
+                    });
+            if (watch.onBegin) watch.onBegin(a);
             Result r = oauth
-                ? service.SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
-                : service.AddAccount(a, c, /*verify=*/true);
+                ? service->SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
+                : service->AddAccount(a, c, /*verify=*/true);
+            if (watch.onEnd) watch.onEnd(a, r);
+            SetThreadSignInCancel(std::move(previousCancel));
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             auto finish = [weak, dlg, added, addBtn, status, a, r]() {
                 if (weak.expired()) return;   // dialog already closed
+                if (r.code == ResultCode::Cancelled) return;   // closed meanwhile
                 if (r) { *added = a; dlg->CloseDialog(DialogResult::OK); return; }
                 status->SetTextColor(Color(180, 40, 40, 255));
                 status->SetText(r.message);
@@ -268,12 +309,19 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
             if (app) app->PostToUIThread(finish); else finish();
         }).detach();
     };
-    cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
+    cancelBtn->onClick = [dlg, gaveUp]() {
+        gaveUp->store(true);
+        dlg->CloseDialog(DialogResult::Cancel);
+    };
 
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [added, onAdded](DialogResult result) {
-            if (result == DialogResult::OK && onAdded && !added->accountId.empty()) onAdded(*added);
+        [added, onAdded, gaveUp](DialogResult result) {
+            if (result == DialogResult::OK && onAdded && !added->accountId.empty()) {
+                onAdded(*added);
+                return;
+            }
+            gaveUp->store(true);   // the close box: as Cancel
         },
         parent);
 }

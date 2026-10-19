@@ -1,3 +1,309 @@
+#### 2026-10-16 *0.2.25*
+- **The colour panel takes less room, and stays as it was left.** The
+  picker in the Colour card folds its channels away: the HSV / HSL / RGB
+  tabs and the channel sliders sit under a *Channels* row that opens them,
+  so the panel starts with the hue ring, the swatches and the hex field, and
+  the active tool's options card moves up into view. A list top right
+  switches the picker between the colour circle, the slider and square, the
+  colour rectangle and the two sliders (hue and brightness); the picker is
+  as tall as what it shows, so the card and the cards below move up and down
+  with it. UltraPaint opens the picker with the design and the channels it
+  was left with: the settings file keeps them as `picker.design` and
+  `picker.channels` (framework changelog: `colour-picker-toolbox`).
+
+#### 2026-10-16 *0.2.24*
+- **Layered images in the UCD format.** *Save As* offers *UltraCanvas layered
+  image (.ucd)* beside the *UltraPaint project*: an UltraCanvas Document
+  (UCD 2.1) that keeps every layer - its pixels, name, visibility, lock,
+  opacity and blend mode - and a text layer's words as text, so it opens as
+  text again, with a thumbnail of the picture straight after its header that
+  UltraFiler and UltraViewer show without opening the layers. Open takes it
+  too, and a `.ucd` dropped on UltraPaint's icon opens (MIME type
+  `image/x-ultracanvas-bitmap`, told from other UltraCanvas documents by its
+  signature). The two layered formats now come from the framework's format
+  inventory (*Layered images*) instead of a list of UltraPaint's own
+  (framework changelog, pending entry `ucd-layered-images`).
+- **Escape in the Text tool's lists leaves you typing.** Opening the *Font*
+  or *Align* list while typing a text and closing it with Escape - or with
+  the entry it already had - left the keyboard on the list's button, so what
+  was typed next went nowhere until the text was clicked again. The keys now
+  go back to the text, as they do after picking a font; Tab or a click
+  elsewhere still moves them where they were sent.
+- **The text being typed stays on its box when the document changes before
+  the window has redrawn.** A change to the document (a layer added, the
+  canvas resized) between a window resize and the next redraw moved the view
+  without telling the window, so the editor could sit off its text until the
+  next redraw (framework changelog, pending entry
+  `paint-surface-reports-document-moves`).
+
+#### 2026-10-15 *0.2.23*
+- **Text is typed on the image, and stays text.** The Text tool no longer
+  asks for its words in a window and stamps them into the active layer: a
+  click on the canvas starts a text there (a drag, a box its lines wrap in)
+  and the words appear as they are typed - in their font, size and colour,
+  at the view's zoom, where they will be. The editor is the framework's
+  WYSIWYG element laid over the canvas, and the same element draws the text
+  into its layer, so what is typed is exactly what the layer gets, at any
+  zoom. Escape, Ctrl+Enter or a click outside finishes it.
+  - **Rich text:** bold, italic, underline, size, font and colour apply to the
+    selection or to what is typed next, so one text can mix them; alignment
+    (left, centre, right) per paragraph; Ctrl+B / I / U while typing.
+  - **Every installed font** is offered, not Sans / Serif / Monospace: the
+    *Font* list holds every scalable family on the system (with the bundled
+    ones), and typing the start of a name in the open list jumps to it,
+    spaces and all (*"liberation s"* for Liberation Serif).
+  - **A text layer** ("T" in the Layers panel) keeps the words until it is
+    merged: click it with the Text tool, or *Layer > Edit Text*, to change
+    them; with the Text tool active the options and the colour change a
+    whole text layer; the Move tool moves it as text. *Merge Down*,
+    *Flatten*, scaling, flipping and rotating make it pixels; painting,
+    filling or filtering it asks first whether to rasterize it (*Layer >
+    Rasterize Layer*), and Undo makes it text again.
+  - **Projects keep it:** a `.ucraster` stores a text layer's words as an
+    OpenDocument text beside its PNG, so it opens as text again (a missing
+    font on another machine changes nothing until the text is edited).
+  Framework: text layers, `RenderTextLayer`, `GetInstalledFontFamilies`,
+  dropdown type-ahead (framework changelog, pending entry `text-layers`).
+- **The canvas re-centres when the window is resized.** Growing the window
+  left the image where it was, off to one side of the new space, until the
+  next change to the document snapped it to the middle. It is now centred
+  again as the window changes size, at the same zoom; an image larger than
+  the view keeps the spot that was in the middle of it, and text being typed
+  stays on its box (framework changelog, pending entry
+  `paint-surface-follows-resize`).
+
+#### 2026-10-15 *0.2.22*
+- **The right-hand panel in UltraMail's look.** Colour, the active tool's
+  options and Layers were bold headings over loose controls on a grey strip,
+  with the colour picker a dark block with a red accent in the middle of it.
+  Each is now a white card - a group box with a quiet grey caption over a
+  hairline, rounded corners and a hairline border - on a light page, the same
+  colours and metrics UltraMail's folder, message list and message cards use.
+  The picker takes the card's white, hairline fields and the accent blue; the
+  layer list reads as a list (no box around each name, a soft grey under the
+  pointer and the active layer on the light blue); the seven layer buttons are
+  flat, like the main toolbar's, and fit the panel - the last one, *Layer
+  properties*, was cut off at its edge, and the panel grew a horizontal
+  scrollbar for it; the tool card is captioned with the tool's name, and Zoom
+  and Pan, which have nothing to set, say so instead of showing an empty card;
+  and the hints under a tool's options (*"[ and ] change the size"*) are quiet
+  grey rather than one more bold line. The cards, the layer rows' tints and
+  the picker's style are the framework's (`GroupBoxVisualStyle::SectionCard()`,
+  `Colors::ListRowHover` / `ListRowSelected`, `ColorPickerStyle::Light()`;
+  framework changelog:
+  `section-card-and-light-picker`), shared with UltraMail and UltraFiler
+  rather than copied, and the picker in *Adjust > Colour to Alpha* takes the
+  same light style, so the two pickers read as one control.
+
+#### 2026-10-14 *0.2.21*
+- **One UltraPaint at a time.** Opening a file while UltraPaint is already
+  running opens it in the running copy (in a new window) instead of starting a
+  second one; starting it without a file brings the open window forward. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"UltraPaint is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-13 *0.2.20*
+- **Open, Save As and Export offer every format this build has.** The
+  editor kept lists of its own: Save As offered PNG, JPEG, WebP, TIFF, AVIF
+  and BMP, Export one "Images" entry, and Open a fixed set of extensions. They
+  are now the framework's FileLoader lists - every bitmap type this build
+  reads for Open, Import and a drop, and every type it writes, each named,
+  for Save As and Export (beside the UltraPaint project) - so GIF, HEIC,
+  QOI, icons and whatever a libvips build or plugin adds are offered, and a
+  type this build cannot write (an AVIF without libheif's encoder) is not
+  (framework changelog, pending entry `save-size-for-drawings-and-the-viewer`).
+
+#### 2026-10-12 *0.2.19*
+- **Sharp toolbar and layer-panel icons.** Fit to Window, Actual Pixels, New
+  Layer and Export in the toolbar, and the seven buttons above the layer list,
+  were still the old 24-unit drawings with 1.8-unit strokes, shown at 20 px:
+  every line blurred, Actual Pixels read "100", and New Layer, Delete Layer
+  and Merge Down were a plus, a bin and an arrow with nothing of a layer about
+  them. They are redrawn like the tools, with 2 px strokes on whole pixels:
+  the layer buttons show a layer with a plus, a minus, an arrow up or down, a
+  copy, a merge or its settings, Actual Pixels reads "1:1", and the toolbars
+  draw them at the 24 px they are drawn for (framework changelog:
+  `toolbar-icon-size`).
+
+#### 2026-10-12 *0.2.18*
+- **Export opens on what was chosen.** The image export dialog after Export's
+  file dialog now opens on the format of the name given there (it opened on
+  PNG whatever the name, and "photo.jpg" was written as a PNG under a .jpg
+  name), with that format's save settings - the ones the Save dialog's
+  Settings button edits, and which Export's Save stores back - and at the
+  size chosen in those Settings, since Export now tells the Save dialog the
+  picture's size too (framework, pending changelog entry
+  "save-settings-followups").
+
+#### 2026-10-12 *0.2.17*
+- **Save As can write the picture at another size.** The Save dialog is told
+  the picture's size, so the Settings button on the type row - new in the
+  framework's Save dialog - opens a bitmap type's settings with a Size
+  row first: width x height in pixels, opened on the picture's own size, with
+  Keep proportions. The file is written at the size chosen there; the open
+  picture keeps its own size, and the next Save As starts on it again. The
+  rest of the type's settings (JPEG quality, PNG compression ...) are the
+  framework's per-format save settings, which a plain Save already follows
+  (framework, pending changelog entry "save-dialog-file-icon-and-settings").
+
+#### 2026-10-12 *0.2.16*
+- **The tool palette groups its tools.** Tools of a kind share one button,
+  so the palette shows 13 buttons for its 26 tools, where it showed 23 for
+  23, and fits a shorter window without scrolling. Resting the pointer on a button folds out a bar beside it with
+  the whole group, and a click there picks a tool; a click on the button
+  itself still picks the tool it shows. A small triangle in a button's
+  corner marks a group. The groups, top to bottom:
+  - *Select* - Rectangle Select, Ellipse Select, Lasso, Magic Wand
+  - *Pen* - Paintbrush, Pencil, Airbrush
+  - *Lines* - Line, Polyline, Arrow, Curve
+  - *Shapes* - Rectangle, Ellipse
+  - *Morph* - Smudge, Clone Stamp (they reshape the pixels already there)
+  - *Shading* - Dodge, Burn
+
+  then Move, Crop, Eyedropper, Eraser, *Fill* (Fill, Gradient), Text and
+  *View* (Zoom, Pan). A tool's shortcut key picks it as before and shows it
+  in its group's button.
+- **Three new line tools: Polyline, Arrow and Curve**, in the Lines group
+  beside Line, all in the foreground colour at the shared line width.
+  - *Polyline* (`Y`): click to add corners; double-click or Enter ends the
+    line, a click on the first corner closes it into a shape (filled in the
+    background colour with *Fill a closed shape*). Backspace takes the last
+    corner back, Escape cancels, Shift constrains a segment to 45°. The
+    first press can be dragged to pull out the first segment, as with Line.
+  - *Arrow* (`V`): drag from the tail to the tip; a filled head at the tip,
+    or at both ends. *Head size* in pixels, never less than three times the
+    line width.
+  - *Curve* (`J`): drag a straight line, then drag or click twice to bend
+    it - the first bend pulls the whole curve, the second its far half.
+    Enter keeps it as it is, Escape cancels.
+
+  A line in progress is kept when another tool is picked. Each is drawn in
+  one pass, so a translucent colour is no darker where a polyline turns or
+  where an arrow's shaft meets its head (framework changelog:
+  `raster-paint-curves-arrows`).
+- **Shift+X picks the Eraser.** The README promised it, but the Eraser had
+  no working shortcut at all: plain `X` is the colour swap, and the tool
+  keys ignored any letter pressed with Shift. A tool's key can now ask for
+  Shift, and the Eraser's tooltip says *Shift+X*.
+- **Settings > Display > Tool palette: an adaptive or a static toolbar.**
+  Adaptive (the default): a group's button shows the tool last picked from
+  it. Static: it always shows the group's main tool, stays highlighted while
+  any tool of the group is in use, and the bar marks which one. The choice
+  applies at once and is saved (`palette.toolbar = adaptive | static` in
+  `config.ini`). *Restore defaults* restores the page shown. The fold-out
+  is the framework's new tool group (framework changelog:
+  `toolbar-tool-groups`).
+
+#### 2026-10-12 *0.2.15*
+- **A magnifying glass for the rectangle selection.** While the Rectangle
+  Select tool is active a small view sits in a corner of the canvas and shows
+  the pixels around the pointer at two, three or four times the view's own
+  zoom, with a translucent diagonal crosshair that leaves the centre pixel -
+  the one under the pointer - clear, so a selection can be started and ended
+  on the exact pixel. The rubber band and the selection outline show in it
+  too, and the pixel grid from 8x. It keeps out of the way: when the pointer
+  comes within 48 px of it, it moves to the corner farthest from the pointer.
+  It takes no clicks, so a drag can pass under it. The framework's paint
+  surface grew a loupe mode for it, and the raster document takes several
+  observers now - the editing view, the glass and the window's panels each
+  listen on their own instead of chaining behind one another's slot
+  (framework changelog: `paint-surface-loupe-mode`,
+  `raster-document-listeners`).
+- **Edit > Settings...** opens UltraPaint's settings window: a tree of pages
+  on the left, so far *Display > Mouse pointer magnification glass* - on or
+  off, the magnification (2x / 3x / 4x) and the window size (100-400 px). A
+  change applies at once and is saved to
+  `UltraCanvasSettingsFolder()/UltraPaint/config.ini`
+  (`~/.config/UltraCanvas/UltraPaint/config.ini` on Linux); *Restore
+  defaults* puts the three back. The menu entry has a 16 px icon like the
+  rest (`media/icons/ultrapaint/16/settings.svg`).
+
+#### 2026-10-11 *0.2.14*
+- **Sharp, clearer tool icons.** The palette's icons were drawn on a 24-unit
+  grid with thin 1.8-unit strokes and shown at 22 px, half a pixel off: every
+  line fell between two pixels, the selection icons' dashes ran together and
+  several tools looked alike. All 23 are redrawn with 2 px strokes whose
+  straight edges sit on whole pixels, in two sets - `media/icons/ultrapaint/28/`
+  for the palette, shown at 28 px in 36 px buttons, and the 24-unit set for
+  24 px and smaller (menus). The rectangle, ellipse and lasso selections are
+  marching ants with gaps of 3 px or more, so they stay apart at 16 px; the
+  eyedropper, pencil, brush, airbrush (a spray can), clone stamp (a stamp),
+  smudge (a fingertip on a smear), dodge, burn, fill (the bucket with a
+  solid drop), gradient (a real gradient), line and text icons are each
+  their own shape. The framework now draws a button's icon on whole pixels
+  (framework changelog: `button-icon-pixel-grid`). Where the window is too
+  short for every tool's button, the palette scrolls instead of squeezing
+  them.
+- **Flat buttons.** The tool palette and the toolbar no longer draw a box
+  around each button: a soft grey rounded highlight marks the button under
+  the pointer and a light blue one the active tool.
+- **Every menu entry has an icon.** All 80 entries of File, Edit, Image,
+  Layer, Select, Adjust, Filter, View and Help - each adjustment and filter
+  included, found by its id - show an icon from a new 16 px set
+  (`media/icons/ultrapaint/16/`): a 16-unit grid with 1 px lines on whole
+  pixels, sharp at the menus' 16 px, in one style instead of Texter's filled
+  icons beside UltraPaint's line ones. They are drawn in one shade of grey,
+  so the menus paint them in the entry's text colour, greyed when disabled.
+- **Double-clicking a layer's name no longer crashes.** Each row's button
+  selected its layer and rebuilt the layer list at once, from inside its own
+  click - the rebuild destroyed the button while it was still handling the
+  click, and the next thing it did crashed UltraPaint (double-clicking
+  *Layer 2* after *New Layer* did it every time). The list is now rebuilt
+  once the click has been handled (`ScheduleLayerPanelRebuild`), and the
+  framework keeps a widget alive while it handles an event (framework
+  changelog: `keep-element-alive-during-event`). The side panel no longer
+  jumps 16 px when a layer is clicked with the panel scrolled to its end.
+- **Rename a layer by double-clicking its name.** The first click selects
+  the layer as before; the double-click puts a text field with the name,
+  selected, in its place. Enter or a click anywhere else keeps the new name,
+  Escape the old one, and an empty name is ignored. A rename is one undo step
+  ("Rename Layer"), as from Layer > Properties. The name buttons' tooltip
+  says *Double-click to rename*. Built on the button's new `onDoubleClick`
+  (framework changelog: `button-on-double-click`).
+
+#### 2026-10-10 *0.2.13*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraPaint --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+
+#### 2026-10-09 *0.2.12*
+- **The Fill tool can make an area transparent.** Filling with a colour
+  whose alpha is 0 did nothing at all: the fill only ever painted over the
+  pixels, and a colour with no alpha adds nothing, so the layer never became
+  transparent and the checkerboard never showed through. The Fill options
+  have a *Mode* now: *Normal* paints over as before, *Replace* puts the
+  colour in the pixels' place, alpha included - alpha 0 clears the area,
+  alpha 128 leaves it half transparent in that colour. In Normal mode a
+  fully transparent colour no longer looks like an ignored click: the status
+  bar says nothing was filled and points at Replace. The framework side is
+  in `Docs/UltraCanvas/changelog.d/raster-fill-replace.md`.
+
+#### 2026-10-08 *0.2.11*
+- **Paste offers the last picture copied when the clipboard holds none.**
+  Copy a picture, then a line of text, and Paste said "Nothing to paste".
+  Now Paste - and Paste as New Image - asks: "There is no picture on the
+  clipboard. Paste the image copied 5 min ago (1920 x 1080 pixels)?", the
+  newest image of the clipboard history UltraDesktop keeps. It is pasted
+  only when asked. Without a clipboard history Paste is as before; UltraPaint
+  never starts one.
+- **Edit > Paste Last Copied Image (Ctrl+Alt+V)** takes that picture without
+  asking, whatever the clipboard holds.
+
+#### 2026-10-07 *0.2.10*
+- **Save as keeps the file type you chose.** Save as added `.png` to a name
+  typed without an extension, whatever type was chosen: "photo" with JPEG
+  chosen was saved as a PNG called `photo.png`, after the dialog had asked
+  about replacing "photo" rather than that file. The save dialog now gives
+  the name the chosen type's extension itself (UltraCanvas 0.9.176, PR #694),
+  so UltraPaint saves the name it hands back as it is. A name without an
+  extension saved under "All files" is refused with a message saying it
+  needs one, instead of quietly becoming a PNG.
+
 #### 2026-10-06 *0.2.9*
 - **Paste takes an image file copied in a file manager.** Copying a picture
   file in UltraFiler, Explorer, Finder or Files and pressing Ctrl+V in

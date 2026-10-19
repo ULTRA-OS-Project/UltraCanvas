@@ -1,14 +1,16 @@
 // Plugins/Documents/Word/UltraCanvasWordFormatInternal.h
 // Small helpers shared by the ODT and DOCX readers/writers. Internal to the
 // Word document module — not installed, not part of the public API.
-// Version: 1.1.0
-// Last Modified: 2026-09-09
+// Version: 1.1.1 - <cstdlib> for std::strtof, which libc++ no longer brings in
+//                  through <string> (MSYS2 CLANG64, 2026-10-09)
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 

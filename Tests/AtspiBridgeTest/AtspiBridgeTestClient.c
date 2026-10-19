@@ -4,8 +4,8 @@
  * reads the document through the Text interface, checks that the password
  * field is reported as one, moves the caret and checks the events the
  * application sends back. Exits 0 when every check passes.
- * Version: 1.1.0
- * Last Modified: 2026-10-05
+ * Version: 1.2.0
+ * Last Modified: 2026-10-08
  * Author: UltraCanvas Framework */
 
 #include <atspi/atspi.h>
@@ -107,6 +107,51 @@ int main(void) {
     AtspiAccessible* secret = findRole(app, ATSPI_ROLE_PASSWORD_TEXT, 0);
     check("the password field is password text", secret != NULL);
     check("whose text cannot be read", secret && atspi_accessible_get_text_iface(secret) == NULL);
+
+    /* The common widgets. libatspi caches names and states; each read after
+       a change clears the cache first, as the change event would. */
+    AtspiAccessible* button = findRole(app, ATSPI_ROLE_PUSH_BUTTON, 0);
+    gchar* buttonName = button ? atspi_accessible_get_name(button, NULL) : NULL;
+    check("a button is a push button named by its text", buttonName && !strcmp(buttonName, "Apply"));
+    AtspiAction* press = button ? atspi_accessible_get_action_iface(button) : NULL;
+    gchar* pressName = press ? atspi_action_get_action_name(press, 0, NULL) : NULL;
+    check("...whose one action is press", press && atspi_action_get_n_actions(press, NULL) == 1 &&
+                                          pressName && !strcmp(pressName, "press"));
+    AtspiAccessible* label = findRole(app, ATSPI_ROLE_LABEL, 0);
+    gchar* before = label ? atspi_accessible_get_name(label, NULL) : NULL;
+    check("a label is named by its text", before && !strcmp(before, "Idle"));
+    check("pressing the button clicks it", press && atspi_action_do_action(press, 0, NULL));
+    if (label) atspi_accessible_clear_cache(label);
+    gchar* after = label ? atspi_accessible_get_name(label, NULL) : NULL;
+    check("...as the label it changes shows", after && !strcmp(after, "Applied"));
+
+    AtspiAccessible* checkbox = findRole(app, ATSPI_ROLE_CHECK_BOX, 0);
+    gchar* boxName = checkbox ? atspi_accessible_get_name(checkbox, NULL) : NULL;
+    check("a checkbox is a check checkbox named by its label", boxName && !strcmp(boxName, "Wrap lines"));
+    AtspiStateSet* boxStates = checkbox ? atspi_accessible_get_state_set(checkbox) : NULL;
+    check("...checkable and unchecked", boxStates && atspi_state_set_contains(boxStates, ATSPI_STATE_CHECKABLE) &&
+                                        !atspi_state_set_contains(boxStates, ATSPI_STATE_CHECKED));
+    AtspiAction* toggle = checkbox ? atspi_accessible_get_action_iface(checkbox) : NULL;
+    check("its action ticks it", toggle && atspi_action_do_action(toggle, 0, NULL));
+    if (checkbox) atspi_accessible_clear_cache(checkbox);
+    boxStates = checkbox ? atspi_accessible_get_state_set(checkbox) : NULL;
+    check("...and it is then checked", boxStates && atspi_state_set_contains(boxStates, ATSPI_STATE_CHECKED));
+
+    AtspiAccessible* slider = findRole(app, ATSPI_ROLE_SLIDER, 0);
+    gchar* sliderName = slider ? atspi_accessible_get_name(slider, NULL) : NULL;
+    check("a slider is a slider with the name it was given", sliderName && !strcmp(sliderName, "Volume"));
+    AtspiValue* value = slider ? atspi_accessible_get_value_iface(slider) : NULL;
+    check("...whose value and range can be read", value && atspi_value_get_current_value(value, NULL) == 40.0 &&
+          atspi_value_get_minimum_value(value, NULL) == 0.0 && atspi_value_get_maximum_value(value, NULL) == 100.0);
+    check("...and set", value && atspi_value_set_current_value(value, 70.0, NULL) &&
+                        atspi_value_get_current_value(value, NULL) == 70.0);
+
+    AtspiAccessible* field = findRole(app, ATSPI_ROLE_ENTRY, 0);
+    gchar* fieldName = field ? atspi_accessible_get_name(field, NULL) : NULL;
+    check("a text field is an entry named by its placeholder", fieldName && !strcmp(fieldName, "Name"));
+    AtspiText* fieldText = field ? atspi_accessible_get_text_iface(field) : NULL;
+    gchar* typed = fieldText ? atspi_text_get_text(fieldText, 0, -1, NULL) : NULL;
+    check("...whose text can be read", typed && !strcmp(typed, "Ada"));
 
     AtspiText* text = atspi_accessible_get_text_iface(doc);
     check("it has the Text interface", text != NULL);

@@ -88,6 +88,14 @@ struct ScanReport {
     size_t totalItems = 0;
     size_t skippedProtected = 0;
     size_t unreadablePaths = 0;               // permission denied etc.
+    // Locations the operating system itself refused (IsSystemRefusal), kept
+    // apart from unreadablePaths because the user can lift it: on macOS it
+    // is the privacy protection, which from macOS 27 refuses every other
+    // developer's app container without asking - the sandboxed-cache rule
+    // found nothing and said nothing until this was counted. `blockedRules`
+    // names the rules that met one, by title, in scan order.
+    size_t blockedPaths = 0;
+    std::vector<std::string> blockedRules;
     bool cancelled = false;
 
     const CategorySummary* Find(CleanCategory category) const;
@@ -100,5 +108,16 @@ void SummarizeReport(ScanReport& report);
 // "1.4 GB" / "512 KB" / "0 bytes" — decimal units, one decimal place above
 // a kilobyte. Used by the GUI and the CLI alike so both agree.
 std::string FormatByteSize(uint64_t bytes);
+
+// What to tell the user about `report.blockedPaths`: how many locations the
+// system kept the scan out of, which rules they belong to and, on macOS, how
+// to let UltraCleaner in (Full Disk Access). Empty when nothing was refused.
+// Shared by the GUI and the CLI.
+std::string BlockedAccessAdvice(const ScanReport& report);
+
+// The system settings page that lifts those refusals, as a URL the desktop
+// opens - Privacy & Security > Full Disk Access on macOS. Empty on platforms
+// that have no such page.
+std::string BlockedAccessSettingsUrl();
 
 } // namespace UltraCleaner

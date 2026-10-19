@@ -9,8 +9,9 @@
 //   3. Repository        - the lane view every git client shows: newest commit
 //                          at the top, ref chips, subject column, dark theme.
 //
+// Version: 1.0.1 - the file-list provider no longer owns the graph it is stored on
 // Version: 1.0.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -536,7 +537,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
 
         // The demo has no repository behind it, so it stands in for the
         // providers an application would wire to UltraCanvasGitRepository.
-        graph->SetFileListProvider([graph](const std::string& sha) {
+        // Stored on the graph, so it names the graph raw (a shared_ptr would
+        // keep the graph alive for ever).
+        graph->SetFileListProvider([graph = graph.get()](const std::string& sha) {
             const GitGraphCommit* commit = graph->GetCommit(sha);
             std::vector<GitGraphFileChange> files;
             if (!commit) return files;

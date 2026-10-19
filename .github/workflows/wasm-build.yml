@@ -1,84 +1,299 @@
 name: WebAssembly build
 
-# Builds the WebAssembly backend's demo app with Emscripten, so OS/WASM/ and
-# the core's __EMSCRIPTEN__ branches get compiled somewhere other than one
-# developer's machine.
+# Builds the demo application (UltraCanvasDemo.html) and the WebAssembly
+# backend's validation apps (wasm-demo and the ultraos.eu front page) with
+# Emscripten, so OS/WASM/, the core's __EMSCRIPTEN__ branches and the demo's
+# get compiled somewhere other than one developer's machine.
 #
-# Manual dispatch only, on purpose: the wasm sysroot (glib, cairo, pango,
-# fontconfig, harfbuzz, libvips and their dependencies) takes the better part
-# of an hour to cross-compile and needs Ubuntu source packages, so it does not
-# belong in the per-PR matrix. The sysroot is cached on the hash of the
-# script and its patches; a warm run only builds the framework and the demo.
-# Run it from the Actions tab against a branch whenever a change touches
-# UltraCanvas/OS/WASM/ or the EMSCRIPTEN branches of the CMake files.
+# Four variants, one job each, so the "Demo sizes" tables answer what a
+# visitor downloads and which lever shrinks it (Phase 0 of
+# Docs/Research/UltraPressDesignProposal.md): the baseline (-O2, threads,
+# libvips, every bundled font), MinSizeRel (-Os), the four fonts the front
+# page uses instead of the fourteen, and a single-threaded build against a
+# sysroot built without -pthread (no SharedArrayBuffer, so no isolation
+# headers on the host). libvips is part of UltraCanvas, so there is no
+# variant without it but the single-threaded one, where it cannot run. The
+# four-fonts variant is a measurement that may fail to build or link; it
+# never fails the run.
+# The single-threaded one is required: it is the build a static host
+# without cross-origin isolation headers must serve, and since run 24 it
+# builds and passes its smoke test like the baseline.
+#
+# Runs on a pull request, and on a push to main, that touches what the
+# browser build is made of (the paths below): the backend, the sysroot
+# script and its patches, the CMake files with their EMSCRIPTEN branches,
+# the image loader with its libvips-free roads, the demo. Everything else
+# leaves it alone: the wasm sysroot (glib, cairo, pango, fontconfig,
+# harfbuzz, libvips and their dependencies) takes the better part of an hour
+# to cross-compile and needs Ubuntu source packages, but it is cached on the
+# hash of the script and its patches, so a run on a warm cache only builds
+# the framework and the demo, about 25 minutes for the four variants. A
+# manual dispatch from the Actions tab still works, against any branch,
+# with the Emscripten version as its one input.
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/wasm-build.yml'
+      - 'UltraCanvas/OS/WASM/**'
+      - 'cmake/UltraCanvasWasmSysroot.cmake'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
+      - 'UltraCanvas/libspecific/Cairo/**'
+      - 'UltraCanvas/third_party/stb/**'
+      - 'Apps/DemoApp/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wasm-build.yml'
+      - 'UltraCanvas/OS/WASM/**'
+      - 'cmake/UltraCanvasWasmSysroot.cmake'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
+      - 'UltraCanvas/libspecific/Cairo/**'
+      - 'UltraCanvas/third_party/stb/**'
+      - 'Apps/DemoApp/**'
   workflow_dispatch:
     inputs:
+      # Pinned, not 'latest': latest moves to a new release, major ones
+      # included, on emsdk's schedule, and the sysroot cache below is keyed on
+      # this string, so under 'latest' a new compiler kept linking against a
+      # sysroot built by whichever release 'latest' named first. Raise it
+      # together with the version named in UltraCanvas/OS/WASM/README.md.
       emsdk_version:
-        description: 'Emscripten SDK version (see OS/WASM/README.md for the validated one)'
+        description: 'Emscripten SDK version (default: the one UltraCanvas/OS/WASM/README.md names)'
         required: false
-        default: 'latest'
+        default: '6.0.11'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+env:
+  # The dispatch input, or the pinned default on a pull request or push.
+  EMSDK_VERSION: ${{ inputs.emsdk_version || '6.0.11' }}
+
 jobs:
   wasm:
+    name: wasm (${{ matrix.variant }})
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: baseline
+            threads: 1
+            configure: -DCMAKE_BUILD_TYPE=Release
+            experimental: false
+          - variant: min-size
+            threads: 1
+            configure: -DCMAKE_BUILD_TYPE=MinSizeRel
+            experimental: false
+          - variant: four-fonts
+            threads: 1
+            configure: -DCMAKE_BUILD_TYPE=Release "-DUC_WASM_FONTS=Ubuntu-R.ttf;Ubuntu-B.ttf;Ubuntu-RI.ttf;Ubuntu-BI.ttf"
+            experimental: true
+          # Without libvips: it runs every image on a worker thread, which a
+          # program built without -pthread cannot start (run 23 ended every
+          # page on GLib's "error 'Not supported' during 'pthread_create'"),
+          # so the library's CMake leaves it out of a single-threaded build -
+          # the one build UltraCanvas has without it. Required, not
+          # experimental: a static host serves this one.
+          - variant: single-thread
+            threads: 0
+            configure: -DCMAKE_BUILD_TYPE=Release -DULTRACANVAS_WASM_THREADS=OFF
+            experimental: false
     env:
-      SYSROOT: ${{ github.workspace }}/wasm-sysroot
+      # One sysroot per thread setting: objects built with -pthread do not
+      # link without it, so the two never share a directory or a cache key.
+      SYSROOT: ${{ github.workspace }}/wasm-sysroot-threads${{ matrix.threads }}
     steps:
       - uses: actions/checkout@v5
 
       - name: Install host tools
+        # A stalled mirror is retried by scripts/ci-apt.sh; this is the backstop.
+        timeout-minutes: 20
         run: |
           # deb-src entries for the fontconfig / pixman / cairo / pango
           # source packages the sysroot script fetches with apt-get source.
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake meson ninja-build gperf pkg-config \
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install --no-install-recommends \
+            build-essential cmake ninja-build gperf pkg-config \
             python3 curl git dpkg-dev
+          # meson from PyPI, not apt: the sysroot's glib (wasm-vips-2.89.3)
+          # needs meson 1.4 or newer and Ubuntu 24.04 packages 1.3.2.
+          pipx install meson==1.12.1
+          meson --version
 
+      # emsdk itself, not mymindstorm/setup-emsdk: v14 of that action targets
+      # Node.js 20, which the runners no longer run, and it only wrapped these
+      # same commands. The later steps get what the action exported: emsdk and
+      # emcc on PATH, EMSDK and EMSDK_NODE. Not cached - the download is a
+      # minute or two on a manually dispatched job, while a cached toolchain
+      # would take a share of the repository's 10 GB cache from the Build
+      # workflow's ccache.
       - name: Set up Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: ${{ inputs.emsdk_version }}
-          actions-cache-folder: emsdk-cache
+        timeout-minutes: 15
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          cd "$RUNNER_TEMP/emsdk"
+          ./emsdk install "$EMSDK_VERSION"
+          ./emsdk activate "$EMSDK_VERSION"
+          source ./emsdk_env.sh
+          echo "$EMSDK" >> "$GITHUB_PATH"
+          echo "$EMSDK/upstream/emscripten" >> "$GITHUB_PATH"
+          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+          echo "EMSDK_NODE=$EMSDK_NODE" >> "$GITHUB_ENV"
+          emcc --version
 
+      # Restore and save are separate steps so a sysroot is kept as soon as it
+      # is built: the combined action saves only when the whole job passes, so
+      # a demo that failed to configure or compile threw away ~20 minutes of
+      # sysroot and the next run built it again.
       - name: Restore wasm sysroot
         id: sysroot-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.SYSROOT }}
-          key: wasm-sysroot-${{ runner.os }}-${{ inputs.emsdk_version }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
+          key: wasm-sysroot-${{ runner.os }}-${{ env.EMSDK_VERSION }}-threads${{ matrix.threads }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
 
       - name: Build wasm sysroot
         if: steps.sysroot-cache.outputs.cache-hit != 'true'
         working-directory: UltraCanvas/OS/WASM
+        env:
+          WASM_THREADS: ${{ matrix.threads }}
         run: ./build-wasm-sysroot.sh "$SYSROOT" "${{ runner.temp }}/wasm-sysroot-build"
 
-      - name: Configure demo
-        working-directory: UltraCanvas/OS/WASM/demo
+      - name: Save wasm sysroot
+        if: steps.sysroot-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.SYSROOT }}
+          key: ${{ steps.sysroot-cache.outputs.cache-primary-key }}
+
+      # CMake's pkg-config is the host's (/usr/bin/pkg-config), and emcmake
+      # does not hand it EM_PKG_CONFIG_PATH: with that alone, run 2 of this
+      # workflow built the whole sysroot and then found no cairo. So the
+      # sysroot goes on PKG_CONFIG_PATH, and PKG_CONFIG_LIBDIR keeps the
+      # host's own .pc files out of a wasm build.
+      #
+      # The repository root, not OS/WASM/demo: under emcmake the root's
+      # WebAssembly defaults block leaves the core library and
+      # UltraCanvasDemo.html, and BUILD_WASM_DEMOS adds the two validation
+      # apps to the same build, so the library is compiled once for all three.
+      - name: Configure
         env:
           EM_PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
-        run: emcmake cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
+          PKG_CONFIG_LIBDIR: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
+        run: emcmake cmake -B build-wasm -S . ${{ matrix.configure }} -DBUILD_WASM_DEMOS=ON
 
-      - name: Build demo
-        working-directory: UltraCanvas/OS/WASM/demo
-        run: cmake --build build --parallel
+      # A job count, not a bare --parallel: under the Makefile generator that
+      # is `make -j` with no limit, and run 3 of this workflow had hundreds of
+      # emcc processes going at once until the kernel killed them for memory.
+      - name: Build
+        run: cmake --build build-wasm --parallel "$(nproc)"
 
-      - name: Upload demo
-        uses: actions/upload-artifact@v4
+      # What a visitor downloads: each page's .wasm, .js and .data, raw and
+      # as a server would compress them (gzip, and Brotli when the runner
+      # has it). The .wasm carries the framework with cairo, pango, glib,
+      # fontconfig, libvips and the bundled fonts in the .data, so this
+      # table is the number every "UltraCanvas as a web page" decision rests
+      # on (Docs/Research/UltraPressDesignProposal.md §4.3). UltraCanvasDemo
+      # is the whole element catalogue with its samples; the two validation
+      # apps are what a small page costs. Measurement only: it never fails
+      # the job. No separate worker file (<page>.ww.js): emsdk 6.0.11 puts
+      # the pthread worker into the .js, as run 11 of this workflow showed.
+      - name: Demo sizes
+        continue-on-error: true
+        working-directory: build-wasm
+        env:
+          # Through the environment, not interpolated into the script: the
+          # four-fonts configure string holds semicolons, which the shell
+          # read as command separators (run 12).
+          CONFIGURE: ${{ matrix.configure }}
+        run: |
+          kb() { du -k "$1" | cut -f1; }
+          mb() { awk -v k="$1" 'BEGIN { printf "%.2f MB", k / 1024 }'; }
+          gz() { gzip -9 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; }
+          br() { if command -v brotli >/dev/null; then brotli -q 11 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; else echo "n/a"; fi; }
+          {
+            echo "### WebAssembly demo sizes: ${{ matrix.variant }} (emsdk ${{ env.EMSDK_VERSION }}, \`$CONFIGURE\`)"
+            echo ""
+            echo "| File | Raw | gzip -9 | brotli -q 11 |"
+            echo "|---|---:|---:|---:|"
+            for demo in UltraCanvasDemo wasm-demo ultraos-frontpage; do
+              total=0
+              for f in "$demo".wasm "$demo".js "$demo".data "$demo".ww.js; do
+                [ -f "$f" ] || continue
+                k=$(kb "$f"); total=$((total + k))
+                echo "| $f | $(mb "$k") | $(gz "$f") | $(br "$f") |"
+              done
+              echo "| **$demo, all files** | **$(mb "$total")** | | |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # One folder with the three pages and serve.py, so the artifact works
+      # as unzipped: run `python3 serve.py 8080` in it and open
+      # UltraCanvasDemo.html, wasm-demo.html or ultraos-frontpage.html (the
+      # pages need the server's cross-origin isolation headers, see
+      # UltraCanvas/OS/WASM/README.md). A worker file is copied when an
+      # emsdk emits one again; without it the threads would not start.
+      - name: Collect the pages
+        run: |
+          mkdir wasm-demo
+          cp UltraCanvas/OS/WASM/demo/serve.py wasm-demo/
+          for page in UltraCanvasDemo wasm-demo ultraos-frontpage; do
+            cp "build-wasm/$page".{html,js,wasm,data} wasm-demo/
+            [ -f "build-wasm/$page.ww.js" ] && cp "build-wasm/$page.ww.js" wasm-demo/
+          done
+          ls -l wasm-demo
+
+      - name: Upload the pages
+        uses: actions/upload-artifact@v6
         with:
-          name: wasm-demo
-          path: |
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.html
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.js
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.wasm
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.data
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.ww.js
+          name: wasm-demo-${{ matrix.variant }}
+          path: wasm-demo
           if-no-files-found: error
+
+      # The pages opened in the runner's Google Chrome, headless, served by
+      # serve.py as a visitor's host would serve them: each must present a
+      # frame and keep a clean console. A page whose builder threw says
+      # "Error creating example for ..." there and fails the job, which is
+      # how the JPEG page's blank came to light (#845) - after the download.
+      # The variant that builds a reduced catalogue (single-thread, without
+      # libvips) skips the pages that catalogue does not register.
+      # Playwright's package only; the browser is the runner's.
+      - name: Smoke test the pages in Chrome
+        env:
+          SMOKE_CHANNEL: chrome
+          SMOKE_OUT: smoke-${{ matrix.variant }}
+          CONFIGURE: ${{ matrix.configure }}
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          pages="UltraCanvasDemo.html wasm-demo.html ultraos-frontpage.html
+                 UltraCanvasDemo.html?component=svg
+                 UltraCanvasDemo.html?component=piecharts"
+          case "$CONFIGURE" in
+            *ULTRACANVAS_WASM_THREADS=OFF*) ;;
+            *) pages="$pages
+                 UltraCanvasDemo.html?component=pngimages
+                 UltraCanvasDemo.html?component=jpegimages
+                 UltraCanvasDemo.html?component=tiffimages
+                 UltraCanvasDemo.html?component=webpimages
+                 UltraCanvasDemo.html?component=gifimages
+                 UltraCanvasDemo.html?component=bmpimages" ;;
+          esac
+          # shellcheck disable=SC2086
+          node UltraCanvas/OS/WASM/demo/smoke.mjs wasm-demo $pages
+
+      - name: Upload the smoke screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wasm-smoke-${{ matrix.variant }}
+          path: smoke-${{ matrix.variant }}
+          if-no-files-found: ignore

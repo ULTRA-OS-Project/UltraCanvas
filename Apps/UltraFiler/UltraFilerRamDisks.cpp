@@ -1,6 +1,6 @@
 // Apps/UltraFiler/UltraFilerRamDisks.cpp
 // The RAM discs behind "+ Drive > RAM disc...". See UltraFilerRamDisks.h.
-// Version: 1.0.1 - the name length comes from VirtualFS
+// Version: 1.1.0 - BuiltIn
 // Author: UltraCanvas Framework
 
 #include "UltraFilerRamDisks.h"
@@ -76,6 +76,14 @@ std::string CreateErrorText(VirtualFSResult result, const std::string& name,
 #endif  // ULTRAFILER_HAS_RAMDISK
 
 }  // namespace
+
+bool BuiltIn() {
+#ifdef ULTRAFILER_HAS_RAMDISK
+    return true;
+#else
+    return false;
+#endif
+}
 
 bool Available() {
 #ifdef ULTRAFILER_HAS_RAMDISK

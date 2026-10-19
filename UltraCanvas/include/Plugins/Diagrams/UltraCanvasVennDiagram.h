@@ -89,7 +89,7 @@ struct VennRegion {
         
         std::string name;
         for (size_t i = 0; i < circleIndices.size(); ++i) {
-            if (i > 0) name += " ∩ ";
+            if (i > 0) name += " & ";   // the UI font has no "∩"
             name += circles[circleIndices[i]].label;
         }
         return name;

@@ -1,8 +1,8 @@
 // include/UltraCanvasSpacer.h
 // Invisible widget that takes layout space. Used to replace the old
 // `AddSpacing(n)` / `AddStretch(n)` phantom items with real children.
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.1.1
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -15,7 +15,8 @@ namespace UltraCanvas {
         // Fixed-size spacer (AddSpacing equivalent).
         // For a row layout, set w > 0 and h = 0 — the spacer takes w px
         // along the main axis and 0 along the cross axis. The cross-axis
-        // size resolves from align-items/align-self (Stretch by default).
+        // size is 0 unless the container (align-items) or the spacer
+        // (align-self) asks for Stretch.
         //
         // INTENTIONAL EXCEPTION to the standard (identifier, x, y, w, h, ...)
         // constructor pattern: a spacer has no content and no identity, so it

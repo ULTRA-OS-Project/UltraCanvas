@@ -1,8 +1,9 @@
 // VideoFX/core/VideoFXFilterBuilder.h
 // Internal: turns typed VideoFX effects into backend filter-graph text.
 // Pure string code with no FFmpeg dependency, so it is unit-tested directly.
-// Version: 0.2.0
-// Last Modified: 2026-09-29
+// Version: 0.16.0 - IsOverlayEffect, BuildOverlayEffectGraph: an overlay's effects round its alpha
+// Version: 0.3.0
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -50,6 +51,19 @@ std::string TransitionName(VideoFXTransitionType type);
 
 // ===== overlays =====
 
+// Whether an image or video overlay takes this effect on its picture
+// (VideoFXOverlay::effects): colour and detail, which keep its size
+bool IsOverlayEffect(VideoFXEffectType type);
+
+// An overlay's effects as a graph fragment from the source pad `input` to
+// the pad `output`, its alpha split off before them and merged back after
+// ("[in]format=rgba,split[a][b];[b]alphaextract[al];[a]<effects>[c];[c][al]alphamerge[out];").
+// Labels are made from `prefix`, unique in the graph. "" when there are no
+// effects. False with `error` for an effect it does not take or a bad value.
+bool BuildOverlayEffectGraph(const std::vector<VideoFXEffect>& effects, const std::string& input,
+                             const std::string& output, const std::string& prefix,
+                             std::string& graph, std::string& error);
+
 // Check an overlay's values; `segmentDuration` 0 = unknown
 bool ValidateOverlay(const VideoFXOverlay& overlay, double segmentDuration, std::string& error);
 
@@ -79,6 +93,10 @@ std::string BuildTextOverlayFilter(const VideoFXOverlay& overlay, int outWidth, 
 void BuildImageOverlayFilters(const VideoFXOverlay& overlay, int outWidth, int outHeight, int imageHeight,
                               const std::string& frameRate, double segmentDuration,
                               std::string& inputChain, std::string& overlayFilter);
+// The input chain and overlay filter of a video overlay whose frames are
+// fed upright and RGBA at `videoHeight` pixels, timed on the segment's clock
+void BuildVideoOverlayFilters(const VideoFXOverlay& overlay, int outWidth, int outHeight, int videoHeight,
+                              double segmentDuration, std::string& inputChain, std::string& overlayFilter);
 
 } // namespace Internal
 } // namespace VideoFX

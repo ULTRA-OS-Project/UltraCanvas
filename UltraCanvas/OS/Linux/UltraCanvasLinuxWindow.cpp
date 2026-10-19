@@ -1,7 +1,10 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.4.0 - WindowType::Desktop covers config.desktopArea when given
+// Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
+//                  sticky, out of taskbars, input hint off
 // Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
-// Last Modified: 2026-07-03
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -120,13 +123,16 @@ namespace UltraCanvas {
         }
 
         // The desktop window is the screen: whatever size was asked for, it
-        // covers the whole of it, from the top-left corner.
+        // covers the whole of it, from the top-left corner - or the area
+        // asked for (config.desktopArea), one monitor of it.
         if (config_.type == WindowType::Desktop) {
             RefreshDeviceScale();
-            config_.x = 0;
-            config_.y = 0;
-            config_.width  = std::max(1, PhysicalToLogical(DisplayWidth(display, screen)));
-            config_.height = std::max(1, PhysicalToLogical(DisplayHeight(display, screen)));
+            const bool area = config_.desktopArea.width > 0 && config_.desktopArea.height > 0;
+            config_.x = area ? config_.desktopArea.x : 0;
+            config_.y = area ? config_.desktopArea.y : 0;
+            config_.width  = std::max(1, PhysicalToLogical(area ? config_.desktopArea.width : DisplayWidth(display, screen)));
+            config_.height = std::max(1, PhysicalToLogical(area ? config_.desktopArea.height
+                                                                : DisplayHeight(display, screen)));
             config_.resizable = false;
         }
 
@@ -247,8 +253,40 @@ namespace UltraCanvas {
                             reinterpret_cast<unsigned char*>(states), 4);
         }
 
+        // A notification (a toast): typed so the manager stacks it above the
+        // other windows and leaves it out of taskbars and pagers, on every
+        // desktop, and with the input hint off so it never takes the focus
+        // from what the user is typing into. Undecorated, like a borderless
+        // window below. Where no manager runs, a freshly mapped window is on
+        // top anyway.
+        if (config_.type == WindowType::Notification) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom notificationTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&notificationTypeAtom), 1);
+            Atom stateAtom = XInternAtom(display, "_NET_WM_STATE", False);
+            Atom states[4] = {
+                XInternAtom(display, "_NET_WM_STATE_ABOVE", False),
+                XInternAtom(display, "_NET_WM_STATE_STICKY", False),
+                XInternAtom(display, "_NET_WM_STATE_SKIP_TASKBAR", False),
+                XInternAtom(display, "_NET_WM_STATE_SKIP_PAGER", False),
+            };
+            XChangeProperty(display, xWindow, stateAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(states), 4);
+            XWMHints* wmHints = XAllocWMHints();
+            if (wmHints) {
+                wmHints->flags = InputHint;
+                wmHints->input = False;
+                XSetWMHints(display, xWindow, wmHints);
+                XFree(wmHints);
+            }
+        }
+
         // Apply borderless style if requested (remove window decorations)
-        if (config_.type == WindowType::Borderless || config_.type == WindowType::Desktop) {
+        if (config_.type == WindowType::Borderless || config_.type == WindowType::Desktop ||
+            config_.type == WindowType::Notification) {
             struct {
                 unsigned long flags;
                 unsigned long functions;

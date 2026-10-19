@@ -5,12 +5,16 @@
 // block on the network — the OAuth flow for as long as the user takes in
 // the browser); results marshal back to the UI through a queue drained by
 // a main-thread timer. Texter-style app-composition class.
+// Version: 0.2.0 - UltraMail's first-run start page; the compose view fills
+//                  and follows the window
 // Version: 0.1.0 (Phase 1)
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraSocialAccountWizard.h"
 #include "UltraSocialComposeView.h"
+#include "UltraSocialStartPage.h"
 
 #include "UltraSocialCredentialVault.h"
 #include "UltraSocialStore.h"
@@ -54,6 +58,10 @@ private:
     void FlushOutbox();
     void RefreshHistory();
     void RefreshScheduled();
+    // Size the start page and the compose view to the client area.
+    void ResizeViews(float width, float height);
+    // The handle shown for an account id (the id itself when it is gone).
+    std::string HandleFor(const std::string& accountId) const;
 
     // Queue `action` for the main thread (drained by the UI timer).
     void RunOnUiThread(std::function<void()> action);
@@ -66,6 +74,7 @@ private:
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     AccountWizard wizard_;
+    StartPage startPage_;
     ComposeView composeView_;
 
     std::mutex uiQueueMutex_;

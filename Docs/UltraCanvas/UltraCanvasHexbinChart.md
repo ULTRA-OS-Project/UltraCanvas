@@ -1,5 +1,7 @@
 # UltraCanvasHexbinChart
 
+<!-- doc-check: std::vector<Point2Dd> loadPoints(); -->
+
 A hexagonal heatmap / hexbin chart: a grid of pointy-top hexagons whose colour
 encodes a value. It reuses [`UltraCanvasHeatmapChart`](UltraCanvasHeatmapChart.md)
 for data storage, colour mapping, value range and the colour bar — only the cell

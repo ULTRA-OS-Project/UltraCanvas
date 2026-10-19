@@ -42,17 +42,31 @@ message(STATUS "========================================")
 
 # ===== OPTIONS =====
 if (BUILD_DEMO_APP)
-    # On Linux the shipping and CI configuration is a SHARED core, and it has to
-    # be: only a shared libUltraCanvas lets -Wl,--exclude-libs (near the MuPDF
-    # link below) hide MuPDF's bundled lcms2mt fork from the system Little-CMS
-    # that libvips and the CDR plugin use. A static core skips that isolation, so
-    # MuPDF's ICC calls bind to the standard lcms2 and the PDF viewer SIGSEGVs.
+    # The shipping and CI configuration is a SHARED core on every desktop
+    # platform: one libUltraCanvas.so / .dylib / .dll that every application in
+    # the suite loads, with the UI-free modules (UltraNet, UltraWin, UltraCrypt,
+    # UltraVault, UltraDatabase, UltraMessage, NetworkMonitor, VirtualFS) folded
+    # into it whole - see "MODULE HOMES" below. A static core gives each of the
+    # ~20 applications its own copy of the framework and the modules: on macOS
+    # that was every .app carrying the whole framework, and on Linux and Windows
+    # an app that linked a module archive next to the shared core ended up with
+    # a second copy of that module's code and global state.
+    # On Linux it is also required for correctness: only a shared libUltraCanvas
+    # lets -Wl,--exclude-libs (near the MuPDF link below) hide MuPDF's bundled
+    # lcms2mt fork from the system Little-CMS that libvips and the CDR plugin
+    # use; a static core skips that isolation, so MuPDF's ICC calls bind to the
+    # standard lcms2 and the PDF viewer SIGSEGVs.
     # Default ON here so a plain `cmake ..` matches CI (which passes
-    # -DULTRACANVAS_BUILD_SHARED=ON); an explicit -D...=OFF still wins.
-    if(UNIX AND NOT APPLE AND NOT ANDROID)
-        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
-    else()
+    # -DULTRACANVAS_BUILD_SHARED=ON on every row); an explicit -D...=OFF still
+    # wins. Android keeps a static core (no suite there), and so does
+    # WebAssembly: a wasm "shared library" is a dynamic-linking side module,
+    # and the page is one statically linked program (the WASM block below
+    # forces it, whatever the cache holds). Windows forces it ON
+    # below whenever the LaTeX plug-in is built, whatever this says.
+    if(ANDROID OR EMSCRIPTEN)
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
+    else()
+        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
     endif()
 else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
@@ -79,11 +93,24 @@ option(ULTRACANVAS_PLUGIN_MODELS "Build 3D model formats plugin (3DS, OBJ, PLY, 
 set(ULTRACANVAS_LATEX_ENGINE "native" CACHE STRING "Default LaTeX typesetter: native or microtex")
 set_property(CACHE ULTRACANVAS_LATEX_ENGINE PROPERTY STRINGS native microtex)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
-# libvips is ON by default (desktop builds keep the hard requirement), but can
-# be opted out for platforms where its dependency graph is impractical
-# (Android, WASM). Without it, raster image loading/saving and PixelFX compile
-# to their HAS_LIBVIPS-guarded fallbacks; the QOI codec keeps working.
-option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
+# libvips is part of UltraCanvas on every platform: the desktops' packages,
+# Android's sysroot (OS/Android/packaging/vcpkg.json) and WebAssembly's
+# (OS/WASM/build-wasm-sysroot.sh) all have it, and there is no switch to build
+# without it. The one build that cannot have it is a single-threaded
+# WebAssembly program (ULTRACANVAS_WASM_THREADS=OFF below): libvips runs every
+# image on a worker thread. That build's raster pictures take the
+# HAS_LIBVIPS-guarded fallbacks: PNG through cairo's own reader, JPEG / BMP /
+# GIF through the bundled stb_image, SVG through the Vector plugin, QOI
+# written but not read.
+# WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
+# the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
+# single-threaded program that any static host can serve; it must link
+# against a sysroot built with WASM_THREADS=0 (OS/WASM/build-wasm-sysroot.sh),
+# std::thread fails at run time, so Album / Filer background scans do not
+# run, and libvips is left out (it runs every image on a worker thread; see
+# the WASM platform block below). Measured against each other by the
+# wasm-build workflow's variants.
+option(ULTRACANVAS_WASM_THREADS "WebAssembly: build with -pthread (Web Workers)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -174,6 +201,12 @@ endif()
 # vips) must come from a wasm sysroot on PKG_CONFIG_PATH under emcmake —
 # see OS/WASM/README.md.
 if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
+    # The wasm sysroot on CMAKE_FIND_ROOT_PATH, for the find_package(ZLIB)
+    # of the Models plugin (FBX, .blend) and the VirtualFS bridge; a no-op
+    # when the root CMakeLists.txt included it already.
+    include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmSysroot.cmake")
+    # One statically linked program: see the option above.
+    set(ULTRACANVAS_BUILD_SHARED OFF CACHE BOOL "Build shared library instead of static" FORCE)
     set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
     set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Enable audio playback & recording (requires backend lib)" FORCE)
     set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)" FORCE)
@@ -185,7 +218,32 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)" FORCE)
     set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" FORCE)
     set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)" FORCE)
+    # libvips evaluates every image on worker threads (its threadset starts
+    # one for the first decode), a program built without -pthread cannot
+    # start any (Emscripten's pthread_create answers ENOTSUP), and GLib
+    # treats that answer as a programming error: run 23 of wasm-build.yml
+    # ended every page of the single-threaded variant with "GLib-ERROR
+    # (g_system_thread_new): error 'Not supported' during 'pthread_create'"
+    # at the first icon. wasm-vips itself requires threads. So a
+    # single-threaded program is a libvips-free one: PNG through cairo's
+    # reader, JPEG / BMP / GIF through stb_image, SVG through the Vector
+    # plugin, QOI written but not read (ULTRACANVAS_HAS_VIPS, below).
+    if(NOT ULTRACANVAS_WASM_THREADS)
+        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, so it is left out (PNG through cairo's reader, JPEG / BMP / GIF through stb_image, SVG through the Vector plugin)")
+    endif()
 endif()
+
+# The switch that built without libvips is gone (see above). A build directory
+# that still carries it off says so instead of configuring a framework without
+# its image pipeline.
+if(DEFINED ULTRACANVAS_ENABLE_VIPS AND NOT ULTRACANVAS_ENABLE_VIPS AND NOT (EMSCRIPTEN AND NOT ULTRACANVAS_WASM_THREADS))
+    message(FATAL_ERROR "ULTRACANVAS_ENABLE_VIPS=OFF is gone: libvips is part of UltraCanvas on every "
+                        "platform. Drop the setting (cmake -U ULTRACANVAS_ENABLE_VIPS) and give the "
+                        "build libvips - Android: scripts/android-bootstrap-sysroot.sh; WebAssembly: "
+                        "UltraCanvas/OS/WASM/build-wasm-sysroot.sh. Only a single-threaded WebAssembly "
+                        "build (-DULTRACANVAS_WASM_THREADS=OFF) goes without it.")
+endif()
+unset(ULTRACANVAS_ENABLE_VIPS CACHE)
 
 
 # The core library links fmt::fmt, so it must resolve the dependency itself
@@ -254,21 +312,19 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
-# libvips - Image processing. Still REQUIRED when enabled, so a missing dev
-# package stays a loud configure error rather than a silently crippled build;
-# pass -DULTRACANVAS_ENABLE_VIPS=OFF to build without it.
-if(ULTRACANVAS_ENABLE_VIPS)
-    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
-endif()
-# Freeze the core-library decision now: plugin subdirectories (XAR, CDR, OCR,
+# libvips - image processing. REQUIRED wherever it can run, so a missing dev
+# package is a loud configure error rather than a silently crippled build; a
+# single-threaded WebAssembly program goes without it (see the WASM block).
+# The decision is frozen here: plugin subdirectories (XAR, CDR, OCR,
 # Vectorizer) run their own pkg_check_modules(LIBVIPS ...) later, and those
 # cached results leak back into this scope after add_subdirectory. Every
-# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) must use
-# this variable so a -DULTRACANVAS_ENABLE_VIPS=OFF core stays vips-free.
-if(ULTRACANVAS_ENABLE_VIPS AND LIBVIPS_FOUND)
-    set(ULTRACANVAS_HAS_VIPS TRUE)
-else()
+# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) uses this
+# variable, so the single-threaded WebAssembly core stays vips-free.
+if(EMSCRIPTEN AND NOT ULTRACANVAS_WASM_THREADS)
     set(ULTRACANVAS_HAS_VIPS FALSE)
+else()
+    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+    set(ULTRACANVAS_HAS_VIPS TRUE)
 endif()
 
 # librsvg - parse-once SVG documents (optional). With it, SVG files are parsed
@@ -280,6 +336,22 @@ if(LIBRSVG_FOUND)
     message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents enabled)")
 else()
     message(STATUS "  librsvg: NOT FOUND (SVG re-parses per rasterization via libvips)")
+endif()
+
+# libheif - asked which codecs it decodes (optional; only with libvips).
+# libvips' HEIF loader takes .heic, .heif and .avif wherever libheif is built
+# in, but libheif decodes a HEIC only with an HEVC decoder plug-in and an AVIF
+# only with an AV1 one, and it loads those separately. With libheif's headers
+# the format inventory asks it (VipsCanDecode) and offers HEIC or AVIF only
+# where they decode; without them it goes by the loader's file endings.
+if(ULTRACANVAS_HAS_VIPS)
+    pkg_check_modules(LIBHEIF libheif)
+endif()
+if(ULTRACANVAS_HAS_VIPS AND LIBHEIF_FOUND)
+    set(ULTRACANVAS_HAS_LIBHEIF TRUE)
+    message(STATUS "  libheif: ${LIBHEIF_VERSION} (HEIC / AVIF offered only where they decode)")
+else()
+    set(ULTRACANVAS_HAS_LIBHEIF FALSE)
 endif()
 
 # zbar - QR/barcode decoder (optional)
@@ -362,15 +434,28 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # has neither the framework nor its header, and the backend compiles the
     # enumeration out (__has_include) and reports no candidates there.
     find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
-    find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     # IOKit + CoreFoundation back the hardware probe
     # (OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp): the registry walk for GPUs,
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
+    # macOS 10.14, so it is looked up only when that surface is wanted, and an
+    # SDK without it turns the surface off instead of failing the configure -
+    # as a missing GLEW does on Windows. It was REQUIRED unconditionally, so
+    # even -DULTRACANVAS_ENABLE_GL=OFF could not configure without it. CI's
+    # "Verify OpenGL backend enabled" step still fails when CGL goes missing.
     if(ULTRACANVAS_ENABLE_GL)
-        set(ULTRACANVAS_HAS_CGL TRUE)
+        find_library(OPENGL_FRAMEWORK OpenGL)
+        if(OPENGL_FRAMEWORK)
+            set(ULTRACANVAS_HAS_CGL TRUE)
+        else()
+            message(WARNING "  OpenGL.framework NOT FOUND in the macOS SDK - disabling "
+                            "OpenGL surface support")
+            # Force the cache so the parent scope (demo GL sources) sees it too.
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
     # EGL + GLES 3 headers/libraries ship in every NDK sysroot; the GLES
@@ -450,6 +535,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBrushEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPaintSurface.cpp
+        # Text layers: the words drawn into a layer through the WYSIWYG element
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorRaster.cpp
         # The vector drawing viewer (VectorStorage::VectorDocument on screen,
         # zoom / pan / bounding-box selection). The model it shows is in
@@ -472,6 +559,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasButton.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBreadcrumb.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSyntaxTokenizer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabeledToggleBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCheckbox.cpp
@@ -482,6 +570,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordStrengthMeter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolGroupButton.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSmoothScroll.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
@@ -495,6 +584,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPagination.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRating.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasReferencePointPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStepper.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChip.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
@@ -547,14 +637,26 @@ set(ULTRACANVAS_CORE_SOURCES
         # Thumbnails that survive the process that made them, so a
         # folder costs its decode once rather than once per launch.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasThumbnailDiskCache.cpp
+        # Pictures a view keeps drawing (album, slideshow) follow a file
+        # saved over: checked on a worker, never on the paint path.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageFileWatch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
+        # Per-format save settings (JPEG quality, PNG compression ...) kept
+        # for every application, the dialog that edits them, and the Save
+        # dialog's draggable file icon.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileSaveSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileSaveSettingsDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDragIcon.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # One running copy per user: the single-instance lock. Platform
+        # backend under OS/<Platform>/.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasInstanceLock.cpp
         # Move to the Recycle Bin / Trash. Platform backend under
         # OS/<Platform>/; Android and WebAssembly get the fallback in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTrash.cpp
@@ -596,14 +698,19 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPluginLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
 
-        # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
-        # on top of the CSSLayout engine (used by the eBook subsystem).
+        # HTMLReader: the framework's one implementation of reading HTML and
+        # CSS - parser, DOM, CSS parser and selector matcher, cascade,
+        # DOM→element builder on the CSSLayout engine, HTML→UCRichDocument
+        # importer. Always built; the eBook engines, UltraMail and the Vector
+        # plugin's SVG reader use it. Docs/UltraCanvas/UltraCanvasHTMLReader.md.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLParser.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/CSSStyleSheet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLStyleResolver.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLElementBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLForms.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLRichDocumentImporter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLPageLoader.cpp
 
         # eBook foundation: chapter-oriented engine interface + ZIP/DEFLATE
         # container access (format engines register themselves here).
@@ -615,6 +722,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/MOBIEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/TXTEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookViewer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWebView.cpp
 
         # Hardware inventory and sensors (CPU/GPU/NPU/memory/storage/network/
         # USB/Bluetooth) plus the ready-made system-information panel. The probe
@@ -666,6 +774,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimelineModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTheme.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimecodeField.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoDevices.cpp
@@ -734,7 +846,6 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyMatrix.cpp
 
-        #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMap.cpp
@@ -748,6 +859,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasParliamentDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCircleDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTickerBoard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneDiagram.cpp
@@ -842,8 +954,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormulaFunctions.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXlsxIO.cpp
+        # Legacy Excel 5.0-2003 workbooks (.xls, BIFF5/BIFF8): the reader and
+        # the spreadsheet's LoadXLS
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXls.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXlsIO.cpp
         # Cell-formatting menu (alignment, number formats, colours, sizing)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormatMenu.cpp
         # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
@@ -890,6 +1007,15 @@ set(ULTRACANVAS_CORE_SOURCES
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
+        # The UCD v2 container (*.ucd): header, thumbnail, sections, INDX
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUCDContainer.cpp
+        # OLE2 compound files (the legacy Office containers: .doc, .xls)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCompoundFile.cpp
+        # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
+        # UltraCrypt - linked below, after the module is defined
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
+        # PowerPoint (.pptx) decks read as text: slides, shapes, tables, notes
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptx.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.
@@ -1029,8 +1155,11 @@ endif()
 # CUPS is the printing system on both Linux and macOS, with the same library
 # and the same API, so the backend is one file in core/ rather than a copy
 # under each platform directory that would drift apart. Without CUPS the
-# module still builds and simply registers no printer backend.
-if(UNIX)
+# module still builds and simply registers no printer backend. Not in the
+# browser, which has no printing system: the toolchain finds host programs,
+# so the host's cups-config answered for the wasm build and the link asked
+# for a -lcups that does not exist there.
+if(UNIX AND NOT EMSCRIPTEN)
     pkg_check_modules(ULTRACANVAS_CUPS QUIET cups)
     if(NOT ULTRACANVAS_CUPS_FOUND)
         # Older CUPS installs ship cups-config instead of a .pc file.
@@ -1313,6 +1442,7 @@ endif()
 
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/StbRasterDecode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
         # UltraCanvasPdfSurface: PDF output through the render context.
@@ -1325,9 +1455,13 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/QoiPixmapCodec.cpp
 )
 if(ULTRACANVAS_HAS_VIPS)
-    # vips foreign loader for QOI — consumes the codec symbols above.
+    # vips foreign loader and saver for QOI — consumes the codec symbols
+    # above — the framework's own Windows icon (.ico) loader and saver, and
+    # its GIF saver for a libvips without one.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
 endif()
 if(LIBRSVG_FOUND)
@@ -1400,8 +1534,10 @@ endif()
 # ULTRACANVAS_ENABLE_VIDEO is ON and a platform media framework is found, in
 # which case the platform-native backend replaces the null one).
 #   Linux  : GStreamer (which dispatches to V4L2 / VA-API under the hood)
-#   macOS  : AVFoundation   (TODO)
-#   Windows: Media Foundation (TODO)
+#   macOS  : AVFoundation
+#   Windows: Media Foundation
+#   Android: the NDK's MediaCodec / MediaExtractor / MediaMuxer, Camera2 and
+#            AAudio - all in the NDK sysroot, so nothing to cross-compile
 list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendNull.cpp
     # Always compiled: an application may register a video codec of its own on
@@ -1442,6 +1578,13 @@ if(ULTRACANVAS_ENABLE_VIDEO)
             PROPERTIES COMPILE_FLAGS "-fobjc-arc")
         set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
         message(STATUS "Video backend: AVFoundation")
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAndroid.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAndroidCapture.cpp
+        )
+        set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+        message(STATUS "Video backend: Android NDK media (MediaCodec + Camera2 + AAudio)")
     endif()
 endif()
 
@@ -1516,6 +1659,33 @@ target_include_directories(uc-yyjson PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson>)
 
 # ===== BUILD CORE LIBRARY =====
+# glibc declares the 64-bit file calls miniz prefers (fopen64, ftello64,
+# stat64 ...) only under _LARGEFILE64_SOURCE. Without it miniz takes its
+# generic stdio branch and says so with a #pragma message in every Linux
+# build. The definition is set on the file here (and where VirtualFS and the
+# tests compile it), never in the vendored source.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
+                 APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+endif()
+
+# VirtualFS compiles the same vendored miniz.c (its ZIP delete fast path) that
+# the spreadsheet, ZIP package and git code here use. A shared core absorbs
+# the VirtualFS archive whole ("MODULE HOMES" below), so that copy is the
+# DSO's, and compiling the file here as well would be a "multiple definition"
+# of every mz_* symbol - so it is left out, and the core's callers bind to
+# VirtualFS's copy. VirtualFS says whether it carries one (VIRTUALFS_HAS_MINIZ
+# in its interface). A static core keeps its own: there the linker takes the
+# first archive member that defines each symbol and extracts no second one.
+if(ULTRACANVAS_BUILD_SHARED AND TARGET VirtualFS)
+    get_target_property(_uc_vfs_defs VirtualFS INTERFACE_COMPILE_DEFINITIONS)
+    if(_uc_vfs_defs AND "VIRTUALFS_HAS_MINIZ" IN_LIST _uc_vfs_defs)
+        list(REMOVE_ITEM ULTRACANVAS_ALL_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c)
+        message(STATUS "miniz: compiled once, in VirtualFS (absorbed into the shared core)")
+    endif()
+    unset(_uc_vfs_defs)
+endif()
 if(ULTRACANVAS_BUILD_SHARED)
     add_library(${ULTRACANVAS_LIB_NAME} SHARED ${ULTRACANVAS_ALL_SOURCES})
 else()
@@ -1530,6 +1700,87 @@ if(ULTRACANVAS_BUILD_SHARED)
 else()
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC uc-yyjson)
 endif()
+
+# ===== MODULE HOMES =====
+# The UI-free modules (UltraNet, UltraWin, UltraCrypt, UltraVault,
+# NetworkMonitor, UltraDatabase, UltraMessage, and VirtualFS from its own
+# directory) are each built as a static archive, and where that archive's
+# code ends up depends on the core:
+#
+#   * SHARED core: the archive is pulled into libUltraCanvas WHOLE - every
+#     object, not just the ones the core's own code references - and kept
+#     PRIVATE, so the DSO exports the complete module API and nothing else
+#     links the archive. One copy of the module's code and global state per
+#     process, shared between every running application.
+#   * STATIC core: the archive is linked PUBLIC, so each consumer links it.
+#
+# Consumers never see the difference: the module's public name (UltraCrypt,
+# UltraDatabase, ...) is an INTERFACE target that resolves to the shared core
+# or to the archive, carries the module's headers and feature switches either
+# way, and is what applications, tests and the installed CMake package link.
+# The archive itself is uc-<module>, and only this file and the other
+# archives name it. A module archive must link other modules by THEIR archive
+# names (uc-vault, not UltraVault): the interface name links the shared core,
+# and an archive the core absorbs cannot depend on the core.
+#
+# Before this, an application that linked UltraDatabase or UltraVault next to
+# the shared core (UltraMail, UltraSocial, UltraFIBU, ...) got the archive on
+# its link line ahead of libUltraCanvas, so the linker took the module's
+# objects from the archive while the core carried its own - two registries,
+# two connection tables, and on Windows "multiple definition" errors.
+#
+# _ultracanvas_module_home(<name> <archive>) declares the home as each archive
+# is defined; _ultracanvas_absorb_modules(<archive>...) does the absorbing in
+# ONE call after the last module, because the order matters: CMake places a
+# static archive's dependencies after it on the link line and repeats an
+# archive that was already placed earlier, and a repeated archive under
+# --whole-archive is a "multiple definition" error. Listed dependents first
+# (uc-message before uc-database before uc-vault before uc-crypt), nothing is
+# repeated.
+function(_ultracanvas_module_home name archive)
+    add_library(${name} INTERFACE)
+    if(ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(${name} INTERFACE ${ULTRACANVAS_LIB_NAME})
+    else()
+        target_link_libraries(${name} INTERFACE ${archive})
+    endif()
+    # The module's headers and its feature switches (ULTRACRYPT_HAVE_SODIUM,
+    # ULTRAMESSAGE_HAVE_GIO, ...) travel with the public name in the build
+    # tree. The installed package carries the headers through its INCLUDES
+    # DESTINATION; a switch an installed consumer must see is set PUBLIC on the
+    # core as well, next to the module.
+    target_include_directories(${name} INTERFACE
+        "$<BUILD_INTERFACE:$<TARGET_PROPERTY:${archive},INTERFACE_INCLUDE_DIRECTORIES>>")
+    target_compile_definitions(${name} INTERFACE
+        "$<BUILD_INTERFACE:$<TARGET_PROPERTY:${archive},INTERFACE_COMPILE_DEFINITIONS>>")
+endfunction()
+
+function(_ultracanvas_absorb_modules)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        return()
+    endif()
+    foreach(archive IN LISTS ARGN)
+        if(NOT TARGET ${archive})
+            continue()
+        endif()
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,${archive}>")
+            # An archive's own dependency on another archive (uc-vault ->
+            # uc-crypt, uc-message -> uc-database) names that archive on the
+            # core's link line a second time, without the feature, and CMake
+            # refuses the mismatch unless told which one wins. Whole, always.
+            set_property(TARGET ${ULTRACANVAS_LIB_NAME} PROPERTY
+                "LINK_LIBRARY_OVERRIDE_${archive}" WHOLE_ARCHIVE)
+        else()
+            # Fallback for CMake < 3.24 (no $<LINK_LIBRARY:WHOLE_ARCHIVE>): force
+            # the archive in by file, plus the target for its usage requirements.
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:${archive}> -Wl,--no-whole-archive
+                ${archive})
+        endif()
+    endforeach()
+endfunction()
 
 # ===== SPELL CHECK BACKENDS =====
 # Every branch is optional; the service falls back to the next backend at
@@ -1610,7 +1861,10 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             PREFIX ""
             POSITION_INDEPENDENT_CODE ON
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/Elements)
-        if(WIN32)
+        # A shared core is linked, as the LaTeX module does: the module then
+        # records where its core symbols come from instead of relying on the
+        # host executable exporting them (which Windows PE cannot do at all).
+        if(WIN32 OR ULTRACANVAS_BUILD_SHARED)
             target_link_libraries(${uc_chart_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
         endif()
         message(STATUS "  [✓] chart module ${uc_chart_target}")
@@ -1689,6 +1943,26 @@ if(LIBRSVG_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
+if(ULTRACANVAS_HAS_LIBHEIF)
+    # Only libspecific/Cairo/ImageCairo.cpp includes libheif's header, so the
+    # define and the include path go on that one source: on the whole library
+    # they would recompile every object of it whenever libheif comes or goes.
+    # The compiler's own directories are left out, as CMake does for a
+    # target's: Debian's libheif names /usr/include/x86_64-linux-gnu, and as
+    # an -I ahead of the system paths it breaks <cstdlib>'s #include_next.
+    set(_uc_heif_includes ${LIBHEIF_INCLUDE_DIRS})
+    if(_uc_heif_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        list(REMOVE_ITEM _uc_heif_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    endif()
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+                 APPEND PROPERTY COMPILE_DEFINITIONS HAS_LIBHEIF=1)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+                 APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_heif_includes})
+    # PUBLIC, and its -L with it, as the vips libraries below: a static core
+    # never links them itself, the application does.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARIES})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARY_DIRS})
+endif()
 
 if(ZBAR_FOUND)
     foreach(_inc_dir ${ZBAR_INCLUDE_DIRS})
@@ -1741,8 +2015,27 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 # LLD does not, so without this every app that links the core (which re-exports
 # the vips libs PUBLIC) fails with "unable to find library -lvips". PUBLIC so the
 # -L rides along with the libraries, matching what the Vectorizer/OCR plugins do.
+# target_link_directories(<target> PUBLIC <dirs>...), build-interface only
+# under Emscripten. There the directories are the wasm sysroot's lib/, which
+# on CI sits inside the checkout (wasm-build.yml keeps it in the workspace),
+# and CMake refuses to generate an exported target whose
+# INTERFACE_LINK_DIRECTORIES holds a path under the source directory
+# ("which is prefixed in the source directory"; run 14 of wasm-build.yml, the
+# first to configure the repository root and so the first with the checkout
+# as the source directory). The installed package has no use for a build
+# machine's sysroot, so the install interface goes without them.
+function(_uc_public_link_directories target)
+    foreach(_uc_dir IN LISTS ARGN)
+        if(EMSCRIPTEN)
+            target_link_directories(${target} PUBLIC $<BUILD_INTERFACE:${_uc_dir}>)
+        else()
+            target_link_directories(${target} PUBLIC ${_uc_dir})
+        endif()
+    endforeach()
+endfunction()
+
 if(ULTRACANVAS_HAS_VIPS)
-    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBVIPS_LIBRARY_DIRS})
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME} ${LIBVIPS_LIBRARY_DIRS})
 endif()
 
 # Native folder watching: the define tells the core watcher that this platform
@@ -1755,6 +2048,10 @@ endif()
 # app can leave the "in use" display out entirely where nothing can answer.
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+endif()
+# The single-instance lock: the same arrangement for UltraCanvasInstanceLock.
+if(ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK)
 endif()
 # The trash: the same arrangement for UltraCanvasTrash. PUBLIC so an app can
 # leave "Move to Trash" out where there is none.
@@ -1769,7 +2066,22 @@ endif()
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
 if(TARGET VirtualFS)
-    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC VirtualFS::VirtualFS)
+    if(ULTRACANVAS_BUILD_SHARED)
+        # Absorbed whole, like the other modules ("MODULE HOMES" below), so
+        # the DSO exports the complete VirtualFS API and no application links
+        # the archive. Its headers and VIRTUALFS_HAS_* switches still reach
+        # consumers: UltraCanvasVirtualFSBridge.h includes them. An installed
+        # consumer gets them from the VirtualFS package the config re-finds.
+        # (The absorbing itself is the _ultracanvas_absorb_modules call below.)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+            "$<BUILD_INTERFACE:$<TARGET_PROPERTY:VirtualFS,INTERFACE_INCLUDE_DIRECTORIES>>")
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
+            "$<BUILD_INTERFACE:$<TARGET_PROPERTY:VirtualFS,INTERFACE_COMPILE_DEFINITIONS>>")
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} INTERFACE
+            "$<INSTALL_INTERFACE:VirtualFS::VirtualFS>")
+    else()
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC VirtualFS::VirtualFS)
+    endif()
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_VIRTUALFS)
     # The bridge calls zlib directly, so it needs the headers/library itself
     # (VirtualFS's find results are scoped to its own directory)
@@ -1815,20 +2127,39 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             ${FONTCONFIG_LIBRARIES}
     )
     # Core widgets (Album, Filer) spawn std::thread and libvips runs thread
-    # pools, so the whole program must be built with -pthread; exception
-    # handling must use the wasm EH instructions the sysroot libraries were
-    # compiled with (-fwasm-exceptions), not Emscripten's default
-    # abort-on-throw. PUBLIC so app executables inherit both.
+    # pools, so the whole program is built with -pthread unless
+    # ULTRACANVAS_WASM_THREADS is OFF (then against a sysroot built the same
+    # way); exception handling must use the wasm EH instructions the sysroot
+    # libraries were compiled with (-fwasm-exceptions), not Emscripten's
+    # default abort-on-throw. PUBLIC so app executables inherit both.
+    if(ULTRACANVAS_WASM_THREADS)
+        set(_uc_wasm_thread_compile -pthread)
+        # Growth with threads otherwise costs every JS-side heap access a
+        # check that the buffer was not replaced (Emscripten warns "-pthread
+        # + ALLOW_MEMORY_GROWTH may run non-wasm code slowly"). 1 uses the
+        # browser's growable SharedArrayBuffer where it exists (Chromium,
+        # Safari; Firefox from 154) and keeps the checked path elsewhere; 2
+        # would require it. Threaded builds only: Emscripten copies through
+        # a temporary buffer before handing shared memory to a Web API, but
+        # hands a single-threaded program's heap over directly, and with
+        # this option that heap is a resizable ArrayBuffer, which
+        # crypto.getRandomValues refuses ("must not be resizable") the
+        # first time anything asks for random bytes.
+        set(_uc_wasm_thread_link -pthread -sPTHREAD_POOL_SIZE=8 -sGROWABLE_ARRAYBUFFERS=1)
+    else()
+        set(_uc_wasm_thread_compile)
+        set(_uc_wasm_thread_link)
+        message(STATUS "WebAssembly: single-threaded build (ULTRACANVAS_WASM_THREADS=OFF)")
+    endif()
     target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC
-            -pthread
+            ${_uc_wasm_thread_compile}
             -fwasm-exceptions
     )
     # PUBLIC so app executables linked against the static core inherit the
     # Emscripten runtime settings the backend depends on.
     target_link_options(${ULTRACANVAS_LIB_NAME} PUBLIC
-            -pthread
+            ${_uc_wasm_thread_link}
             -fwasm-exceptions
-            -sPTHREAD_POOL_SIZE=8
             -sALLOW_MEMORY_GROWTH=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
@@ -1932,13 +2263,43 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     )
 endif()
 
+# ===== THE SHELL GUARD (Windows) =====
+# UltraCanvasShellGuard.exe: what an account's sign-in starts when an
+# UltraCanvas desktop runs instead of Explorer (UltraCanvasDesktopShell,
+# DesktopReplacement::Instead). It starts the desktop, restarts it after a
+# crash and brings Explorer back when the desktop cannot run, so it must
+# start when the desktop's own DLLs cannot: it links nothing of the
+# framework and takes its C++ runtime in statically, leaving only Windows'
+# own DLLs. Built beside the applications (the build root), where
+# ReplaceSystemDesktop looks for it and package-win.sh picks it up.
+if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    add_executable(UltraCanvasShellGuard WIN32
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/ShellGuard/UltraCanvasShellGuard.cpp)
+    # Header-only helpers alone (UltraCanvasDataFolder.h, UltraCanvasPathUtf8.h).
+    target_include_directories(UltraCanvasShellGuard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_features(UltraCanvasShellGuard PRIVATE cxx_std_20)
+    target_compile_definitions(UltraCanvasShellGuard PRIVATE UNICODE _UNICODE)
+    target_link_libraries(UltraCanvasShellGuard PRIVATE shell32 ole32 uuid advapi32 user32)
+    if(MINGW)
+        target_link_options(UltraCanvasShellGuard PRIVATE -static)
+    elseif(MSVC)
+        set_property(TARGET UltraCanvasShellGuard PROPERTY
+                     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+endif()
+
 # Same problem on Windows: vcpkg installs its import libraries under
 # vcpkg_installed/<triplet>/lib, which is not a default linker search directory. The pkg-config
 # dependencies (cairo/pango/glib/fontconfig/harfbuzz/freetype/tinyxml2/vips) are re-exported as
 # bare -l<name> usage requirements, so the -L dirs must propagate (PUBLIC) to every consumer (the
 # final .exe) exactly like on macOS above — otherwise lld-link reports "could not open 'cairo.lib'".
-if(WIN32)
-    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+# And under Emscripten: the wasm sysroot's lib/ is no default search directory of wasm-ld either.
+# With libvips on, LIBVIPS_LIBRARY_DIRS (PUBLIC, above) happened to carry it for every library;
+# the single-threaded WebAssembly build (no libvips) then failed to find pango, cairo, glib and the rest
+# (wasm-build.yml's no-vips variant, 2026-10-13).
+# (Build-interface only under Emscripten: _uc_public_link_directories above.)
+if(WIN32 OR EMSCRIPTEN)
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME}
             ${CAIRO_LIBRARY_DIRS}
             ${PANGO_LIBRARY_DIRS}
             ${FONTCONFIG_LIBRARY_DIRS}
@@ -2143,6 +2504,11 @@ if(ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${AVFOUNDATION_FRAMEWORK} ${COREMEDIA_FRAMEWORK} ${COREVIDEO_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        # All from the NDK sysroot (minSdk 26 has every one of them):
+        # mediandk = MediaCodec/Extractor/Muxer + AImageReader, camera2ndk =
+        # Camera2, aaudio = the audio device for playback and recording.
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC mediandk camera2ndk aaudio)
     endif()
 endif()
 
@@ -2192,34 +2558,47 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Cryptographic services (Masterfile_modules.md §8). Deliberately free of any
 # UI dependency so headless consumers — UltraVault, UltraDatabase, tools — can
 # link it without pulling in the widget layer.
-add_library(UltraCrypt STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp)
-target_include_directories(UltraCrypt PUBLIC
+# The archive is uc-crypt; UltraCrypt is its home (see "MODULE HOMES").
+add_library(uc-crypt STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp)
+set_target_properties(uc-crypt PROPERTIES OUTPUT_NAME "UltraCrypt")
+target_include_directories(uc-crypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
-target_compile_features(UltraCrypt PUBLIC cxx_std_20)
-set_target_properties(UltraCrypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(uc-crypt PUBLIC cxx_std_20)
+set_target_properties(uc-crypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The secure Base32 decoder delegates to the shared codec in UltraCanvasBase32.
-target_link_libraries(UltraCrypt PUBLIC UltraCanvasBase32)
+target_link_libraries(uc-crypt PUBLIC UltraCanvasBase32)
 if(SODIUM_FOUND)
-    target_compile_definitions(UltraCrypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
-    target_include_directories(UltraCrypt PRIVATE ${SODIUM_INCLUDE_DIRS})
-    target_link_directories(UltraCrypt PUBLIC ${SODIUM_LIBRARY_DIRS})
-    target_link_libraries(UltraCrypt PUBLIC ${SODIUM_LIBRARIES})
+    target_compile_definitions(uc-crypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
+    target_include_directories(uc-crypt PRIVATE ${SODIUM_INCLUDE_DIRS})
+    target_link_directories(uc-crypt PUBLIC ${SODIUM_LIBRARY_DIRS})
+    target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
+endif()
+_ultracanvas_module_home(UltraCrypt uc-crypt)
+# The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
+# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
+# Absorbed whole into a shared core by the _ultracanvas_absorb_modules call
+# below; a static core links the home, which is the archive, PUBLIC.
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraCrypt)
 endif()
 
 # Credential & secret storage (UltraAI/Docs/UltraVault.md). Memory and
 # encrypted-file backends on UltraCrypt; UI-free, so headless consumers
 # (UltraAI adapters, tools) link it without the widget layer.
-add_library(UltraVault STATIC
+add_library(uc-vault STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultDeviceKeyVault.cpp)
-target_include_directories(UltraVault PUBLIC
+set_target_properties(uc-vault PROPERTIES OUTPUT_NAME "UltraVault")
+target_include_directories(uc-vault PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
-target_compile_features(UltraVault PUBLIC cxx_std_20)
-set_target_properties(UltraVault PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(UltraVault PUBLIC UltraCrypt)
+target_compile_features(uc-vault PUBLIC cxx_std_20)
+set_target_properties(uc-vault PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(uc-vault PUBLIC uc-crypt)
+_ultracanvas_module_home(UltraVault uc-vault)
 
 # System-wide network activity (Docs/Modules/NetworkMonitor/README.md): the
 # operating system's socket table with process attribution. UI-free like
@@ -2254,18 +2633,55 @@ elseif(APPLE)
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
 endif()
-add_library(NetworkMonitor STATIC ${_uc_networkmonitor_sources})
-target_include_directories(NetworkMonitor PUBLIC
+add_library(uc-networkmonitor STATIC ${_uc_networkmonitor_sources})
+set_target_properties(uc-networkmonitor PROPERTIES OUTPUT_NAME "NetworkMonitor")
+target_include_directories(uc-networkmonitor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
-target_compile_features(NetworkMonitor PUBLIC cxx_std_20)
-set_target_properties(NetworkMonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(uc-networkmonitor PUBLIC cxx_std_20)
+set_target_properties(uc-networkmonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(WIN32)
     # IP Helper for the socket tables, Winsock for ntohs, advapi32 for the
     # owning user's name from the process token. Same header hygiene as the
     # core library, since this target does not inherit it.
-    target_link_libraries(NetworkMonitor PUBLIC iphlpapi ws2_32 advapi32)
-    target_compile_definitions(NetworkMonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(uc-networkmonitor PUBLIC iphlpapi ws2_32 advapi32)
+    target_compile_definitions(uc-networkmonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
+_ultracanvas_module_home(NetworkMonitor uc-networkmonitor)
+
+# WebAssembly modules for applications (UltraWeb, Docs/UltraWeb/UltraWeb.md):
+# compile, link host functions, run with a memory cap and a per-call time
+# limit. UI-free like NetworkMonitor. The engine is wasmtime's prebuilt C
+# API (cmake/UltraCanvasWasmtime.cmake), private to this library: no
+# wasmtime header reaches its users. Without an engine - the option off, or
+# a platform with no prebuilt library - the library still builds and every
+# call reports that there is no engine, so its users link everywhere.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MINGW)
+    # Windows (MSYS2 CLANG64 / CLANGARM64): wasmtime's C API is built from
+    # its source release with the native Rust toolchain.
+    set(_uc_wasm_host_default ON)
+else()
+    # Not yet built in CI on macOS; see UltraCanvasWasmtime.cmake.
+    set(_uc_wasm_host_default OFF)
+endif()
+option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})
+add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/WasmHost/UltraCanvasWasmHost.cpp)
+target_include_directories(WasmHost PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
+target_compile_features(WasmHost PUBLIC cxx_std_20)
+set_target_properties(WasmHost PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(ULTRACANVAS_ENABLE_WASM_HOST AND NOT EMSCRIPTEN AND NOT ANDROID)
+    include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmtime.cmake")
+    if(ULTRACANVAS_WASMTIME_FOUND)
+        target_link_libraries(WasmHost PRIVATE ${ULTRACANVAS_WASMTIME_PRELINK} UltraCanvas::wasmtime)
+        target_compile_definitions(WasmHost PRIVATE ULTRACANVAS_HAS_WASMTIME=1)
+        message(STATUS "  [✓] WasmHost - ENABLED (wasmtime ${ULTRACANVAS_WASMTIME_VERSION})")
+    else()
+        message(STATUS "  [−] WasmHost - no engine (no wasmtime C API for this platform; set ULTRACANVAS_WASMTIME_DIR)")
+    endif()
+else()
+    message(STATUS "  [−] WasmHost - no engine (ULTRACANVAS_ENABLE_WASM_HOST=OFF)")
 endif()
 
 if(ULTRACANVAS_ENABLE_NET)
@@ -2372,6 +2788,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetMime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Apps.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Service.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
@@ -2433,98 +2850,102 @@ if(ULTRACANVAS_ENABLE_NET)
             PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
 
-    add_library(UltraNet STATIC ${ULTRANET_SOURCES})
-    set_target_properties(UltraNet PROPERTIES
+    # The archive is uc-net; UltraNet is its home ("MODULE HOMES" above).
+    add_library(uc-net STATIC ${ULTRANET_SOURCES})
+    set_target_properties(uc-net PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultranet")
-    target_compile_features(UltraNet PUBLIC cxx_std_20)
-    target_include_directories(UltraNet
+    target_compile_features(uc-net PUBLIC cxx_std_20)
+    target_include_directories(uc-net
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             # vendored header-only libs (nlohmann/json for the JMAP plug-in & tests)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
-    target_link_libraries(UltraNet PUBLIC ${UC_CURL_LINK} Threads::Threads)
+    target_link_libraries(uc-net PUBLIC ${UC_CURL_LINK} Threads::Threads)
     # iconv converts mail text in any charset (ISO-2022-JP, Shift_JIS, GB18030,
     # KOI8-R, windows-125x, ...) to UTF-8. Part of the C library on glibc and
     # Android; libiconv on macOS and MSYS2 (already installed for Texter).
-    # Without it UltraNet still handles UTF-8 and Latin-1, as it always did.
+    # Without it uc-net still handles UTF-8 and Latin-1, as it always did.
     find_package(Iconv QUIET)
     if(Iconv_FOUND)
         message(STATUS "  [+] iconv - mail charsets beyond UTF-8 / Latin-1")
-        target_link_libraries(UltraNet PUBLIC Iconv::Iconv)
-        target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_ICONV=1)
+        target_link_libraries(uc-net PUBLIC Iconv::Iconv)
+        target_compile_definitions(uc-net PUBLIC ULTRANET_HAS_ICONV=1)
     else()
         message(STATUS "  [−] iconv - not found (mail text limited to UTF-8 / Latin-1)")
     endif()
     if(ULTRANET_HAS_CARES)
-        target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
-        target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})
+        target_compile_definitions(uc-net PUBLIC ULTRANET_HAS_CARES=1)
+        target_include_directories(uc-net PRIVATE ${CARES_INCLUDE_DIRS})
         # Put c-ares' pkg-config library dir on the link path so the transitive
         # -lcares resolves for consumers. Needed on Homebrew macOS (arm64), where
         # c-ares lives in a keg dir (/opt/homebrew/opt/c-ares/lib) that is NOT a
         # default linker search path; without this the UltraMail/demo link fails
         # with "ld: library 'cares' not found". PUBLIC so the -L propagates the
-        # same way the -l does (UltraNet is a STATIC archive resolved by its
+        # same way the -l does (uc-net is a STATIC archive resolved by its
         # consumers). No-op on Linux/Windows, where libcares is already on the
         # default search path. Mirrors the GStreamer pattern above.
-        target_link_directories(UltraNet PUBLIC ${CARES_LIBRARY_DIRS})
-        target_link_libraries(UltraNet PUBLIC ${CARES_LIBRARIES})
+        target_link_directories(uc-net PUBLIC ${CARES_LIBRARY_DIRS})
+        target_link_libraries(uc-net PUBLIC ${CARES_LIBRARIES})
     endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
+        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
         # No -lresolv: bionic has no separate resolver library (and the c-ares
         # path is mandatory here anyway).
-        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         # winhttp: system-proxy detection; ws2_32: getaddrinfo/getnameinfo/recv/send;
         # secur32: Schannel (AcquireCredentialsHandle etc.); crypt32: cert parsing;
         # dnsapi: DnsQuery for non-A/AAAA DNS records.
-        target_link_libraries(UltraNet PUBLIC
+        target_link_libraries(uc-net PUBLIC
             winhttp ws2_32 secur32 crypt32 dnsapi)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         find_library(CFNETWORK_FRAMEWORK CFNetwork REQUIRED)
         find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
         find_library(SYSTEM_CONFIG_FRAMEWORK SystemConfiguration REQUIRED)
         find_library(SECURITY_FRAMEWORK Security REQUIRED)
-        target_link_libraries(UltraNet PUBLIC
+        target_link_libraries(uc-net PUBLIC
             ${CFNETWORK_FRAMEWORK}
             ${CORE_FOUNDATION_FRAMEWORK}
             ${SYSTEM_CONFIG_FRAMEWORK}
             ${SECURITY_FRAMEWORK}
             resolv)
     endif()
-    target_compile_definitions(UltraNet PUBLIC ULTRACANVAS_HAS_NET=1)
-
-    # Let UltraCanvas itself link UltraNet so that components like FileLoader
-    # can call UltraNet_HttpDownloadFile when ULTRACANVAS_ENABLE_NET is on.
-    #
-    # In a shared build, libultracanvas is meant to be the single host that
-    # exports the whole UltraNet API: plug-ins (SMTP/IMAP/...) and apps import
-    # every UltraNet_* symbol from it and never link the static archive, so there
-    # is exactly one copy of UltraNet (and its global state) at runtime.
-    #
-    # A plain link only pulls the UltraNet objects that libultracanvas's own code
-    # references into the DLL, so WINDOWS_EXPORT_ALL_SYMBOLS would re-export only
-    # that arbitrary subset (e.g. UltraNet_Initialize but not UltraNet_MimeBuild /
-    # UltraNet_ParseUrl) — leaving consumers with undefined references. Force the
-    # ENTIRE archive in with --whole-archive so the complete API is present and
-    # exported. PRIVATE keeps the static archive off consumers' link lines (they
-    # import from the DLL); UltraNet's transitive deps/includes still propagate.
-    # A static ultracanvas keeps PUBLIC so consumers link the archive themselves.
-    if(ULTRACANVAS_BUILD_SHARED)
-        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                "$<LINK_LIBRARY:WHOLE_ARCHIVE,UltraNet>")
-        else()
-            # Fallback for CMake < 3.24 (no $<LINK_LIBRARY:WHOLE_ARCHIVE>): force
-            # the archive in by file, plus the target for its usage requirements.
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                -Wl,--whole-archive $<TARGET_FILE:UltraNet> -Wl,--no-whole-archive
-                UltraNet)
-        endif()
+    target_compile_definitions(uc-net PUBLIC ULTRACANVAS_HAS_NET=1)
+    # The OAuth2 sign-in service built into this UltraNet (Server/OAuthCallback
+    # is the service): the web service that holds the OAuth client
+    # registrations and receives the providers' redirects, so UltraMail and
+    # UltraCloud ship no client id or secret, only this address. The
+    # lowest-priority source - UltraNet_OAuth2SetSignInService(),
+    # ULTRANET_OAUTH_SERVICE_URL / ULTRAMAIL_OAUTH_SERVICE_URL in the
+    # environment and an oauth.ini's [service] url override it at run time
+    # (UltraNet/UltraNetOAuth2Apps.h). Empty = no built-in service; a
+    # gitignored cmake/oauth.local.cmake may set it for a private build.
+    set(ULTRANET_OAUTH_SERVICE_URL "https://oauth-callback.ultraos.eu"
+        CACHE STRING "The OAuth2 sign-in service built into UltraNet (empty = none)")
+    target_compile_definitions(uc-net PRIVATE
+        "ULTRANET_OAUTH_SERVICE_URL=\"${ULTRANET_OAUTH_SERVICE_URL}\"")
+    if(ULTRANET_OAUTH_SERVICE_URL)
+        message(STATUS "  [✓] UltraNet OAuth2 sign-in service - ${ULTRANET_OAUTH_SERVICE_URL}")
     else()
+        message(STATUS "  [−] UltraNet OAuth2 sign-in service - NONE (run-time configuration only)")
+    endif()
+    _ultracanvas_module_home(UltraNet uc-net)
+
+    # The core carries UltraNet so that components like FileLoader can call
+    # UltraNet_HttpDownloadFile when ULTRACANVAS_ENABLE_NET is on. A shared
+    # core absorbs the archive whole (the _ultracanvas_absorb_modules call
+    # below): libultracanvas is the single host that exports the complete
+    # UltraNet API, plug-ins (SMTP/IMAP/...) and apps import every UltraNet_*
+    # symbol from it, and there is exactly one copy of UltraNet and its global
+    # state at runtime. A plain link would pull in only the objects the core's
+    # own code references, and WINDOWS_EXPORT_ALL_SYMBOLS would re-export only
+    # that arbitrary subset (UltraNet_Initialize but not UltraNet_MimeBuild).
+    # A static core links the home, which is the archive, PUBLIC, so consumers
+    # link it themselves.
+    if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraNet)
     endif()
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NET=1)
@@ -2649,6 +3070,69 @@ if(ULTRACANVAS_ENABLE_NET)
     # directly - on Linux the UltraNetPluginHostImports test does, and on
     # Windows it also reads each DLL's import table, which catches a plug-in
     # that was given a core import library to link against.
+    #
+    # Linking the core *statically* into a plug-in is the other way to get
+    # it wrong, and neither check sees it: nothing is left undefined and
+    # nothing is imported - the plug-in carries its own copy of the core, with
+    # its own globals (the plug-in registry, the HTTP session pool, the TLS
+    # trust store), next to the host's. So a plug-in target that links a core
+    # library, directly or through another target, stops the configure here.
+    function(_ultranet_plugin_links_core target out)
+        set(_core ${ULTRACANVAS_LIB_NAME} UltraNet uc-net UltraCanvasTextUtils UltraCanvasAllFormats)
+        set(_queue ${target})
+        set(_seen "")
+        set(_found "")
+        while(_queue)
+            list(POP_FRONT _queue _t)
+            if(_t IN_LIST _seen OR NOT TARGET ${_t})
+                continue()
+            endif()
+            list(APPEND _seen ${_t})
+            get_target_property(_aliased ${_t} ALIASED_TARGET)
+            if(_aliased)
+                set(_t ${_aliased})
+            endif()
+            set(_libs "")
+            foreach(_prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+                get_target_property(_v ${_t} ${_prop})
+                if(_v)
+                    list(APPEND _libs ${_v})
+                endif()
+            endforeach()
+            foreach(_lib IN LISTS _libs)
+                # $<LINK_ONLY:x> and similar wrappers name the target last
+                string(REGEX REPLACE "^\\$<[A-Z_]+:(.*)>$" "\\1" _lib "${_lib}")
+                if(_lib IN_LIST _core)
+                    list(APPEND _found "${_t} -> ${_lib}")
+                elseif(TARGET ${_lib})
+                    list(APPEND _queue ${_lib})
+                endif()
+            endforeach()
+        endwhile()
+        set(${out} "${_found}" PARENT_SCOPE)
+    endfunction()
+    get_property(_ultranet_dirs DIRECTORY PROPERTY SUBDIRECTORIES)
+    foreach(_dir IN LISTS _ultranet_dirs)
+        if(NOT _dir MATCHES "/Plugins/UltraNet/")
+            continue()
+        endif()
+        get_property(_targets DIRECTORY ${_dir} PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(_plugin IN LISTS _targets)
+            get_target_property(_type ${_plugin} TYPE)
+            if(NOT _type STREQUAL "MODULE_LIBRARY" AND NOT _type STREQUAL "SHARED_LIBRARY")
+                continue()
+            endif()
+            _ultranet_plugin_links_core(${_plugin} _links)
+            if(_links)
+                message(FATAL_ERROR
+                    "UltraNet plug-in ${_plugin} links the core (${_links}). A plug-in "
+                    "reaches the core only through the UltraNetPluginHost table "
+                    "(Plugins/UltraNet/common/UltraNetPluginHostShim.cpp); linking it "
+                    "gives the plug-in a second copy of the core's state. Add what it "
+                    "needs to the host table instead.")
+            endif()
+        endforeach()
+    endforeach()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()
@@ -2689,47 +3173,41 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinVm.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinRdp.cpp
     )
-    add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
-    set_target_properties(UltraWin PROPERTIES
+    # The archive is uc-win; UltraWin is its home ("MODULE HOMES" above).
+    add_library(uc-win STATIC ${ULTRAWIN_SOURCES})
+    set_target_properties(uc-win PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultrawin")
-    target_compile_features(UltraWin PUBLIC cxx_std_20)
-    target_include_directories(UltraWin
+    target_compile_features(uc-win PUBLIC cxx_std_20)
+    target_include_directories(uc-win
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
     # uc-yyjson: the vendored JSON engine behind the QMP client (shared with
     # UltraCanvasJSON — one compiled copy, see the uc-yyjson definition).
-    target_link_libraries(UltraWin PUBLIC Threads::Threads uc-yyjson)
+    target_link_libraries(uc-win PUBLIC Threads::Threads uc-yyjson)
     if(ULTRAWIN_FREERDP_FOUND)
-        target_compile_definitions(UltraWin PRIVATE
+        target_compile_definitions(uc-win PRIVATE
             ULTRAWIN_HAS_FREERDP=${ULTRAWIN_FREERDP_MAJOR})
-        target_include_directories(UltraWin PRIVATE
+        target_include_directories(uc-win PRIVATE
             ${ULTRAWIN_FREERDP_INCLUDE_DIRS})
-        target_link_directories(UltraWin PUBLIC
+        target_link_directories(uc-win PUBLIC
             ${ULTRAWIN_FREERDP_LIBRARY_DIRS})
         # freerdp-clientN carries freerdp_client_load_addins (the channel
         # loader the RemoteApp session uses); freerdpN/winprN the core.
-        target_link_libraries(UltraWin PUBLIC
+        target_link_libraries(uc-win PUBLIC
             ${ULTRAWIN_FREERDP_LIBRARIES})
-        message(STATUS "  [✓] UltraWin RemoteApp client - ENABLED (FreeRDP ${ULTRAWIN_FREERDP_VERSION})")
+        message(STATUS "  [✓] uc-win RemoteApp client - ENABLED (FreeRDP ${ULTRAWIN_FREERDP_VERSION})")
     else()
-        message(STATUS "  [−] UltraWin RemoteApp client - DISABLED (freerdp3-dev/freerdp2-dev not found; VM-tier launches report NotSupported)")
+        message(STATUS "  [−] uc-win RemoteApp client - DISABLED (freerdp3-dev/freerdp2-dev not found; VM-tier launches report NotSupported)")
     endif()
 
-    # Same single-host export strategy as UltraNet: a shared libultracanvas
-    # re-exports the whole UltraWin API so apps import one copy of the module
-    # (and its process registry) at runtime.
-    if(ULTRACANVAS_BUILD_SHARED)
-        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                "$<LINK_LIBRARY:WHOLE_ARCHIVE,UltraWin>")
-        else()
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                -Wl,--whole-archive $<TARGET_FILE:UltraWin> -Wl,--no-whole-archive
-                UltraWin)
-        endif()
-    else()
+    _ultracanvas_module_home(UltraWin uc-win)
+    # Absorbed whole into a shared core by the _ultracanvas_absorb_modules
+    # call below, so apps import one copy of the module (and its process
+    # registry) at runtime; a static core links the home, which is the
+    # archive, PUBLIC.
+    if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraWin)
     endif()
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_ULTRAWIN=1)
@@ -2775,52 +3253,59 @@ if(ULTRACANVAS_ENABLE_DATABASE)
                       PATH_SUFFIXES postgresql postgresql/16 postgresql/15)
             find_library(LIBPQ_LIBRARIES NAMES pq)
         endif()
-        add_library(UltraDatabase STATIC ${ULTRADATABASE_SOURCES})
-        set_target_properties(UltraDatabase PROPERTIES
+        # The archive is uc-database; UltraDatabase is its home (see
+        # "MODULE HOMES" above).
+        add_library(uc-database STATIC ${ULTRADATABASE_SOURCES})
+        set_target_properties(uc-database PROPERTIES
             POSITION_INDEPENDENT_CODE ON
             OUTPUT_NAME "ultradatabase")
-        target_compile_features(UltraDatabase PUBLIC cxx_std_20)
-        target_include_directories(UltraDatabase
+        target_compile_features(uc-database PUBLIC cxx_std_20)
+        target_include_directories(uc-database
             PUBLIC
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                 $<INSTALL_INTERFACE:include/ultracanvas/include>)
-        target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
-        target_link_libraries(UltraDatabase PUBLIC Threads::Threads)
-        target_link_libraries(UltraDatabase PRIVATE ${SQLITE3_LIBRARIES})
+        target_include_directories(uc-database PRIVATE ${SQLITE3_INCLUDE_DIRS})
+        target_link_libraries(uc-database PUBLIC Threads::Threads)
+        target_link_libraries(uc-database PRIVATE ${SQLITE3_LIBRARIES})
         if(LIBPQ_LIBRARIES)
-            target_include_directories(UltraDatabase PRIVATE ${LIBPQ_INCLUDE_DIRS})
-            target_link_libraries(UltraDatabase PRIVATE ${LIBPQ_LIBRARIES})
+            target_include_directories(uc-database PRIVATE ${LIBPQ_INCLUDE_DIRS})
+            target_link_libraries(uc-database PRIVATE ${LIBPQ_LIBRARIES})
             if(LIBPQ_LIBRARY_DIRS)
-                target_link_directories(UltraDatabase PRIVATE ${LIBPQ_LIBRARY_DIRS})
+                target_link_directories(uc-database PRIVATE ${LIBPQ_LIBRARY_DIRS})
             endif()
-            target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
+            target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
             set(ULTRADATABASE_POSTGRES_NOTE " + PostgreSQL")
             # A server connection's `credentials` is an UltraVault key ("vault:…"),
             # never a literal password, so the driver reads it from the vault.
             # Without this link and define every password login refuses with
             # "UltraVault is not built in" - which it did until 0.9.66.
-            if(TARGET UltraVault)
-                target_link_libraries(UltraDatabase PRIVATE UltraVault)
-                target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_VAULT=1)
+            if(TARGET uc-vault)
+                target_link_libraries(uc-database PRIVATE uc-vault)
+                target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_VAULT=1)
                 string(APPEND ULTRADATABASE_POSTGRES_NOTE " (passwords from UltraVault)")
             endif()
         else()
             set(ULTRADATABASE_POSTGRES_NOTE " (no libpq: SQLite only)")
         endif()
-        target_compile_definitions(UltraDatabase PUBLIC ULTRACANVAS_HAS_DATABASE=1)
+        target_compile_definitions(uc-database PUBLIC ULTRACANVAS_HAS_DATABASE=1)
+        _ultracanvas_module_home(UltraDatabase uc-database)
 
         # The NetworkMonitor activity store (core/NetworkMonitor/
         # NetworkMonitorStore.cpp) records snapshots through UltraDatabase.
         # Linked here, after the target exists; without it the store compiles
         # to stubs that report NotSupported (ULTRACANVAS_HAS_DATABASE is the
         # switch, and it is PUBLIC on this target).
-        if(TARGET NetworkMonitor)
-            target_link_libraries(NetworkMonitor PUBLIC UltraDatabase)
+        if(TARGET uc-networkmonitor)
+            target_link_libraries(uc-networkmonitor PUBLIC uc-database)
         endif()
 
-        # Let UltraCanvas link UltraDatabase so components/apps can persist
-        # data through it when the module is enabled.
-        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
+        # The core carries UltraDatabase (whole, on a shared core - see "MODULE
+        # HOMES") so components/apps can persist data through it when the
+        # module is enabled; the switch is on the core so an installed
+        # consumer sees it too.
+        if(NOT ULTRACANVAS_BUILD_SHARED)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
+        endif()
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_DATABASE=1)
         message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION}${ULTRADATABASE_POSTGRES_NOTE})")
     endif()
@@ -2883,7 +3368,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         if(UM_GIO_FOUND)
             set(_um_gio_found TRUE)
             list(APPEND ULTRAMESSAGE_SOURCES
-                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp)
         endif()
     endif()
     # The Windows notification listener adapter reads the Action Center
@@ -2891,6 +3377,10 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     # package or the Windows SDK). Skipped where the headers are absent.
     set(_um_winrt_found FALSE)
     if(WIN32)
+        # The presenter puts applications' notifications on screen as tray
+        # balloons (Shell_NotifyIconW), which every Windows build has.
+        list(APPEND ULTRAMESSAGE_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp)
         include(CheckIncludeFileCXX)
         set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
         if(MSVC)
@@ -2906,53 +3396,81 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
         endif()
     endif()
+    # The macOS presenter puts applications' notifications in Notification
+    # Center (UserNotifications), or shows them through osascript where the
+    # broker runs outside an application bundle; every macOS build has it.
+    set(_um_macos_presenter FALSE)
+    if(APPLE AND NOT IOS)
+        set(_um_macos_presenter TRUE)
+        set(_um_macos_presenter_source
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm)
+        list(APPEND ULTRAMESSAGE_SOURCES ${_um_macos_presenter_source})
+        set_source_files_properties(${_um_macos_presenter_source}
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    endif()
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
     # (a static-library duplicate the linker resolves to one copy); with a
-    # SHARED core, take it from libultracanvas instead, exactly as
-    # UltraSocialEngine does, so the DSO stays the single home of the symbols.
-    get_target_property(_um_core_type ${ULTRACANVAS_LIB_NAME} TYPE)
-    if(NOT _um_core_type STREQUAL "SHARED_LIBRARY")
+    # SHARED core the archive is absorbed into libultracanvas, where the JSON
+    # objects already are, so the DSO stays the single home of the symbols.
+    # (The archive links no core either way: on a shared core it IS part of
+    # the core, and an archive the core absorbs cannot depend on the core.)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
         list(APPEND ULTRAMESSAGE_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp)
     endif()
-    add_library(UltraMessage STATIC ${ULTRAMESSAGE_SOURCES})
-    set_target_properties(UltraMessage PROPERTIES
+    # The archive is uc-message; UltraMessage is its home ("MODULE HOMES").
+    add_library(uc-message STATIC ${ULTRAMESSAGE_SOURCES})
+    set_target_properties(uc-message PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultramessage")
-    target_compile_features(UltraMessage PUBLIC cxx_std_20)
-    target_include_directories(UltraMessage
+    target_compile_features(uc-message PUBLIC cxx_std_20)
+    target_include_directories(uc-message
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
-    target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads)
-    if(_um_core_type STREQUAL "SHARED_LIBRARY")
-        target_link_libraries(UltraMessage PUBLIC ${ULTRACANVAS_LIB_NAME})
-    else()
-        target_link_libraries(UltraMessage PRIVATE uc-yyjson)
+    target_link_libraries(uc-message PUBLIC uc-database Threads::Threads)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(uc-message PRIVATE uc-yyjson)
     endif()
-    target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    target_compile_definitions(uc-message PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    if(WIN32)
+        target_link_libraries(uc-message PUBLIC shell32 user32)
+    endif()
+    if(_um_macos_presenter)
+        target_link_libraries(uc-message PUBLIC "-framework Foundation" "-framework UserNotifications")
+        target_compile_definitions(uc-message PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
+    endif()
+    _ultracanvas_module_home(UltraMessage uc-message)
     if(_um_gio_found)
         # PUBLIC on purpose: the test suite drives the adapter over D-Bus
-        # itself and takes gio and the switch from this target.
-        target_include_directories(UltraMessage PUBLIC ${UM_GIO_INCLUDE_DIRS})
-        target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
-        target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
-        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
-        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter via gio ${UM_GIO_VERSION})")
+        # itself and takes gio and the switch from this target - so on a
+        # shared core, where consumers link the core and not the archive,
+        # the home carries gio as well.
+        target_include_directories(uc-message PUBLIC ${UM_GIO_INCLUDE_DIRS})
+        target_link_directories(uc-message PUBLIC ${UM_GIO_LIBRARY_DIRS})
+        target_link_libraries(uc-message PUBLIC ${UM_GIO_LIBRARIES})
+        target_compile_definitions(uc-message PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
+        if(ULTRACANVAS_BUILD_SHARED)
+            target_link_directories(UltraMessage INTERFACE ${UM_GIO_LIBRARY_DIRS})
+            target_link_libraries(UltraMessage INTERFACE ${UM_GIO_LIBRARIES})
+        endif()
+        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter and presenter via gio ${UM_GIO_VERSION})")
     elseif(_um_winrt_found)
-        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
+        target_compile_definitions(uc-message PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
         if(MSVC)
-            target_link_libraries(UltraMessage PUBLIC windowsapp)
+            target_link_libraries(uc-message PUBLIC windowsapp)
         else()
             # C++/WinRT under GCC/Clang binds its imports by name: the WinRT
             # activation and string functions live in runtimeobject, COM in
             # ole32, BSTRs in oleaut32.
-            target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
+            target_link_libraries(uc-message PUBLIC runtimeobject ole32 oleaut32)
         endif()
-        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
     elseif(WIN32)
-        message(STATUS "  [✓] UltraMessage - ENABLED (no C++/WinRT headers: no notification adapter)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (tray presenter; no C++/WinRT headers: no notification listener)")
+    elseif(_um_macos_presenter)
+        message(STATUS "  [✓] UltraMessage - ENABLED (Notification Center presenter)")
     else()
         message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
     endif()
@@ -2969,7 +3487,8 @@ endif()
 # it is its own target rather than part of either.
 if(TARGET UltraMessage)
     add_library(UltraMessageCenter STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp)
     set_target_properties(UltraMessageCenter PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultramessagecenter")
@@ -2982,6 +3501,13 @@ if(TARGET UltraMessage)
     target_compile_definitions(UltraMessageCenter PUBLIC ULTRACANVAS_HAS_MESSAGECENTER=1)
     message(STATUS "  [✓] UltraMessageCenter - ENABLED")
 endif()
+
+# Every module archive is defined by now: fold them into a shared core, in one
+# call and dependents first (see "MODULE HOMES"). A static core links each
+# through its home instead. VirtualFS has no dependency on the others.
+_ultracanvas_absorb_modules(
+    uc-net uc-win uc-message uc-networkmonitor uc-database uc-vault uc-crypt
+    VirtualFS)
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
@@ -3211,8 +3737,11 @@ elseif(NOT ULTRACANVAS_PLUGIN_PDF)
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()
 
-# OCR Plugin
-if(ULTRACANVAS_PLUGIN_OCR)
+# OCR Plugin. It hands libvips images to tesseract (its CMakeLists.txt
+# requires vips), so the libvips-free single-threaded WebAssembly core skips it.
+if(ULTRACANVAS_PLUGIN_OCR AND NOT ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  [✗] OCR Plugin - DISABLED (needs libvips, which a single-threaded WebAssembly build has not got)")
+elseif(ULTRACANVAS_PLUGIN_OCR)
     pkg_check_modules(TESSERACT tesseract)
     pkg_check_modules(LEPTONICA lept)
     if(TESSERACT_FOUND AND LEPTONICA_FOUND)
@@ -3233,8 +3762,13 @@ else()
     message(STATUS "  [−] OCR Plugin - SKIPPED (disabled by option)")
 endif()
 
-# Vectorizer Plugin (raster → SVG via VTracer through a Rust shim)
-if(ULTRACANVAS_PLUGIN_VECTORIZER)
+# Vectorizer Plugin (raster → SVG via VTracer through a Rust shim). It loads
+# the raster it traces through PixelFX, which a core built with
+# the single-threaded WebAssembly build has not got (the link then fails on
+# PixelFX::PFXImage::FromFile), so such a core skips it.
+if(ULTRACANVAS_PLUGIN_VECTORIZER AND NOT ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  [✗] Vectorizer Plugin - DISABLED (needs libvips, which a single-threaded WebAssembly build has not got)")
+elseif(ULTRACANVAS_PLUGIN_VECTORIZER)
     find_program(CARGO_EXECUTABLE cargo)
     if(CARGO_EXECUTABLE)
         if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Vectorizer/CMakeLists.txt)
@@ -3450,6 +3984,9 @@ set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} 
 # Export the frozen core decision, not the (possibly plugin-polluted)
 # LIBVIPS_FOUND — the parent uses this to gate vips-dependent demo sources.
 set(LIBVIPS_FOUND ${ULTRACANVAS_HAS_VIPS} PARENT_SCOPE)
+# ULTRACANVAS_HAS_LIBHEIF — whether the format inventory can ask libheif which
+# HEIC / AVIF codecs decode (FileLoaderTypeListsTest holds it to that).
+set(ULTRACANVAS_HAS_LIBHEIF ${ULTRACANVAS_HAS_LIBHEIF} PARENT_SCOPE)
 set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 # Named individually as well, so an application can link one plugin without
 # taking every other format's code with it (UltraPaint wants the 3D readers).
@@ -3523,14 +4060,20 @@ set(_uc_export_targets
     UltraVault)
 # A static core keeps the JSON engine in its interface (consumers link the
 # archive themselves, see the uc-yyjson link above); a shared one folds it in.
+# The module homes (UltraCrypt, UltraVault, UltraDatabase) are exported either
+# way; on a static core they name their archives, which then go along, while
+# on a shared core they name the core, which has already absorbed them.
 if(NOT ULTRACANVAS_BUILD_SHARED)
-    list(APPEND _uc_export_targets uc-yyjson)
-    # UltraWin follows the same split as UltraNet below: PUBLIC on a static
-    # core, so the consumer links the archive and the package must name it;
-    # folded in whole-archive and PRIVATE on a shared one, where it needs no
-    # entry. Its own interface is Threads, uc-yyjson and the FreeRDP -l names.
+    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault)
+    if(TARGET uc-database)
+        list(APPEND _uc_export_targets uc-database)
+    endif()
+    # UltraWin: on a static core its home is in the core's link interface and
+    # names the archive, so both go along; on a shared core the archive is
+    # absorbed and the package needs no entry. The archive's own interface is
+    # Threads, uc-yyjson and the FreeRDP -l names.
     if(TARGET UltraWin)
-        list(APPEND _uc_export_targets UltraWin)
+        list(APPEND _uc_export_targets UltraWin uc-win)
     endif()
 endif()
 if(TARGET UltraDatabase)
@@ -3549,6 +4092,9 @@ set(_uc_package_blocked "")
 if(TARGET UltraNet)
     if(UC_CURL_LINK STREQUAL "CURL::libcurl")
         list(APPEND _uc_export_targets UltraNet)
+        if(NOT ULTRACANVAS_BUILD_SHARED)
+            list(APPEND _uc_export_targets uc-net)
+        endif()
         set(_uc_package_has_net ON)
     elseif(ULTRACANVAS_BUILD_SHARED)
         install(TARGETS libcurl_shared
@@ -3656,10 +4202,13 @@ endif()
 if(ULTRACANVAS_HAS_VIPS)
     message(STATUS "  libvips: ${LIBVIPS_vips_VERSION}")
 else()
-    message(STATUS "  libvips: DISABLED (raster image formats limited to built-in codecs)")
+    message(STATUS "  libvips: none - a single-threaded WebAssembly build (PNG through cairo, JPEG / BMP / GIF through stb_image)")
 endif()
 if(LIBRSVG_FOUND)
     message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents)")
+endif()
+if(ULTRACANVAS_HAS_LIBHEIF)
+    message(STATUS "  libheif: ${LIBHEIF_VERSION} (HEIC / AVIF offered only where they decode)")
 endif()
 # message(STATUS "  libgrapheme: 3.0.0 (bundled, Unicode 17.0.0)")
 message(STATUS "  Plugins: ${ULTRACANVAS_PLUGIN_TARGETS}")

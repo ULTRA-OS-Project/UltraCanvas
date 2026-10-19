@@ -31,6 +31,22 @@ The app opens on the sign-in page:
   code, paste it into **Login code** and choose **Submit**. That code is a
   one-time exchange code for the CLI, not your password.
 
+The chat view lists your chats on the left, newest first. **New chat**
+starts one; your first message gives it its title. Click a chat to see it
+again and carry on where it stopped: UltraClaude resumes the same Claude Code
+session, in the chat's own folder. **Delete chat** forgets the selected one.
+The list lives in the UltraCanvas settings folder, under `UltraClaude`
+(`chats.json` and one transcript file per chat); `UltraClaude --list-chats`
+prints it.
+
+Each chat in the list carries a badge with the lines its folder holds that
+the repository's default branch does not yet have - committed, uncommitted
+and new files together: in colour while there is work waiting to be PRed,
+a grey `0` once it is all in, nothing for a folder that is not a git
+repository. It is counted when the list opens, when you open a chat and
+after every answer. `UltraClaude --count-lines <folder>` prints the same
+number.
+
 In the chat view, pick the **Model**, the **Permissions** (what Claude may do
 in the folder without asking: *Ask* refuses tools that need permission,
 *Accept edits*, *Plan only*, *Allow everything*), and the **Folder** Claude
@@ -52,6 +68,9 @@ UltraClaude --print "Summarise README.md" --model sonnet --cwd ~/project
 | `engine/ClaudeCliProcess` | Starts one child process with piped stdin/stdout/stderr and hands stdout back line by line (POSIX `fork`/`execvp`, Windows `CreateProcessW` in a job object). `InputMode::KeepOpen` keeps stdin open for `WriteInput`, which is how the login code reaches `claude auth login`. |
 | `engine/ClaudeStreamParser` | Turns the CLI's `stream-json` lines into chat events: text deltas, tool calls, tool errors, the turn's result. |
 | `engine/ClaudeChatSession` | Builds the command line, writes the prompt to stdin as a stream-json message, keeps the session id and resumes it (`--resume`) on the next prompt. |
+| `engine/ChatStore` | The remembered chats (id, CLI session id, title, folder, model, permission mode, times) and their transcripts, on disk. |
+| `engine/RepoStatus` | Counts a folder's lines not in its default branch (fetch, `git diff --numstat` against the merge base, untracked files), with git's prompts off and network timeouts. |
+| `ui/ChatListView` | The chat list's model and delegate: the title and the lines-not-PRed badge per row. |
 | `ui/UltraClaudeWindow` | The sign-in page and the chat view. Events from the reader thread are queued and applied on the UI thread by a timer. |
 
 Each prompt runs:

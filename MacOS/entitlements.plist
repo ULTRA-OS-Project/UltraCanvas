@@ -3,6 +3,11 @@
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Every app in the suite is signed with these. The camera and microphone
+         entitlements are not here: package-macos.sh adds them per app, to
+         the apps listed in camera_usage / microphone_usage, together with
+         the matching usage description in their Info.plist. -->
+
     <!-- Required for Hardened Runtime (needed for notarization) -->
     <key>com.apple.security.cs.allow-jit</key>
     <false/>

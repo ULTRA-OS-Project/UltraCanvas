@@ -9,7 +9,12 @@ on another.
 
 Windows applications built from this repository are linked as **GUI-subsystem**
 executables (`set_target_properties(... WIN32_EXECUTABLE TRUE)` in
-`CMakeLists.txt`). A GUI-subsystem process is not given a console, so:
+`CMakeLists.txt`). That includes the apps whose command-line modes print into
+the prompt they were typed at (UltraDesktop, DeviceExplorer, UltraCleaner,
+UltraNetMonitor and a few more, listed there). Each of those has a console
+companion beside it, `<App>.com`, which a prompt runs for the bare name: it
+starts the `.exe`, waits and hands back the exit code (see *Console
+companions* below). A GUI-subsystem process is not given a console, so:
 
 - `std::cerr`, `printf` and the framework's `debugOutput` have nowhere to write;
 - an unhandled exception kills the process without printing anything;
@@ -451,7 +456,7 @@ indistinguishable from a hang.
 Both backends now do this — Linux through the `select()` in
 `CollectAndProcessNativeEvents()`, Windows through
 `UltraCanvasWindowsApplication::PollAndServiceFdWatches()`, which polls the
-registered Winsock sockets around the `MsgWaitForMultipleObjectsEx()` wait and
+registered Winsock sockets around the `MsgWaitForMultipleObjectsEx` wait and
 bounds that wait so level-triggered readiness is picked up promptly. **The
 Windows side arrived in 0.3.81; before that the Windows loop ignored fd-watches
 entirely while Linux honoured them.** A host built against an older Windows
@@ -461,6 +466,90 @@ than a missing piece of the backend.
 
 So: if a host application hangs before its first window on Windows, check what
 it is built against before looking anywhere else.
+
+## Slow to start, or a window that stays black
+
+A window is never shown black on Windows: `Show()` draws its first frame
+before the window appears (`UltraCanvasWindowBase::RenderBeforeShow()`, the
+layout and paint of `UpdateAndRender()` for a window not yet shown), and a
+window's surface starts in its `backgroundColor`. Before, `Show()` painted the
+window from a surface nothing had been drawn into - zeros, black - and the
+content came with the event loop's first frame. So what remains to find is
+why the window is late, and an application can help itself by doing before
+`Show()` only what its first frame shows, and the rest after it (UltraMail's
+`FinishStartup`).
+
+Nor does a cold font cache hold the first window any longer. The generated
+`fonts.conf` names `C:\Windows\Fonts` and the user's font folder; with a cold
+fontconfig cache (the first start on a computer, after Windows changed its
+fonts, after the cache was cleaned) fontconfig opens every font file in them
+before any text can be laid out - many seconds. So fontconfig starts with the
+bundled fonts alone (`fonts-startup.conf`) and the full set (`fonts.conf`) is
+scanned on a thread. `LoadBundledFontsNative()` waits up to 400 ms for it
+(`AdoptSystemFontsWithin`): a warm cache ends well within that, and the full
+set is used from the start. Otherwise the application starts with the bundled
+fonts and Windows' symbol fonts (Segoe UI Symbol, Segoe UI Emoji and Cambria
+Math, for the UI's marks, emoji and mathematical symbols), and every window
+switches to the full set when the scan ends - laid out and drawn again
+(`RefreshAfterFontChange()`), so a character the start's fonts lacked does not
+stay a box. `GetSystemFontScanStatus()` says which happened, and
+`SetSystemFontsSwitchedHandler()` hears of the switch.
+
+Text goes through Pango's fontconfig font map on every thread: the main
+thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
+set once it exists, so a worker thread (or libvips and librsvg laying out
+text) gets one too rather than Pango's Win32 map, which never reads fontconfig
+and draws a box for any character its font lacks. The debug log
+(`ULTRACANVAS_DEBUG_LOG`) names the map: "UltraCanvas: text font map
+PangoCairoFcFontMap ...".
+
+An application that starts but takes ten seconds to show anything - its
+console window alone on screen, or nothing - spends that time in one of
+three places: the framework's own initialisation, the application's start-up
+work, or the first frame. Two hooks tell them apart without a profiler; both
+work on every platform and in Release builds.
+
+**`UltraCanvasApplicationBase::GetStartupTimings()`** lists each step of
+`Initialize()` with its time, in the order they ran: `fontconfig setup`,
+`image subsystem`, `native backend`, `bundled and system fonts` (on Windows
+the scan of the system font folder, which takes seconds when fontconfig has
+to rebuild its cache), `clipboard`, `default window icon`. The same lines go to
+`debugOutput` ("UltraCanvas: startup step ... took N ms"), so
+`ULTRACANVAS_DEBUG_LOG` shows them too.
+
+**`UltraCanvasWindowBase::onFrameRendered`** is called after every frame that
+laid out or painted something, with a `WindowFrameTiming`: `layoutMs`
+(measure and arrange; 0 when the layout was still valid), `paintMs` (the
+elements in the dirty rectangles, and popups), `compositeMs` (popups, caret
+and tooltip onto the native surface), `dirtyRects` and `laidOut`. While it is
+unset nothing is timed.
+
+```cpp
+#include "UltraCanvasApplication.h"
+#include <iostream>
+
+int main() {
+    UltraCanvas::UltraCanvasApplication app;
+    if (!app.Initialize("MyApp")) return 1;
+    for (const auto& step : app.GetStartupTimings())
+        std::cerr << "startup step " << step.stage << ": " << step.ms << " ms\n";
+
+    UltraCanvas::WindowConfig config;
+    auto window = UltraCanvas::CreateWindow(config);
+    window->onFrameRendered = [](const UltraCanvas::WindowFrameTiming& frame) {
+        const double total = frame.layoutMs + frame.paintMs + frame.compositeMs;
+        if (total >= 100)
+            std::cerr << "slow frame: layout " << frame.layoutMs << " ms, painting "
+                      << frame.paintMs << " ms\n";
+    };
+    window->Show();
+    app.Run();
+}
+```
+
+UltraMail prints both, with its own steps, in its timing trace
+(`Apps/UltraMail/engine/UltraMailTrace.h`, `Docs/UltraMail/CHANGELOG.md`
+0.10.35).
 
 ## "Windows cannot access the specified device, path, or file"
 
@@ -618,17 +707,73 @@ void SetDebugOutputFile(const std::string& path); // redirect; "" returns to std
 void SetDebugOutputEnabled(bool enabled);
 ```
 
+Declared in `UltraCanvas/include/UltraCanvasApplication.h` and
+`UltraCanvasWindow.h` (every platform; see *Slow to start* above):
+
+```cpp
+void UltraCanvasWindowBase::RenderBeforeShow();   // a backend's Show() draws the first frame first
+bool AdoptSystemFontsWithin(int waitMs);           // Windows: the background font scan, if it ends in time
+SystemFontScanStatus GetSystemFontScanStatus();    // started, finished, succeeded, adoptedAtStart, ms
+void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler);
+struct StartupStageTiming { std::string stage; double ms; };
+const std::vector<StartupStageTiming>& UltraCanvasApplicationBase::GetStartupTimings() const;
+
+struct WindowFrameTiming { double layoutMs, paintMs, compositeMs; int dirtyRects; bool laidOut; };
+std::function<void(const WindowFrameTiming&)> UltraCanvasWindowBase::onFrameRendered;
+```
+
 Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 (Windows only; called for you by `UltraCanvasWindowsApplication::InitializeNative()`):
 
 ```cpp
+#include "../OS/MSWindows/UltraCanvasWindowsDiagnostics.h"   // from UltraCanvas/include
+
 bool        AttachParentConsole();
+bool        ReleaseOwnConsole();     // closes a console only this process is attached to, unless debugOutput is on
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
 void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
 void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 std::string DescribeWin32Error(unsigned long error);
 ```
+
+`InitializeNative()` attaches as the window opens, which is after `main()`
+has printed `--help`, `--version` or a bad argument. A target made a GUI
+program with `ultracanvas_windows_gui_app()` (`cmake/UltraCanvasWindowsGuiApp.cmake`)
+therefore also gets `OS/MSWindows/AppEntry/UltraCanvasWindowsAttachConsole.cpp`
+compiled in, which calls `AttachParentConsole()` before `main()`. It is part of
+the executable, not of the core: a DLL's static initialisers run under the
+loader lock.
+
+### Console companions
+
+A prompt waits for a console program and sees its exit code; for a GUI
+program it does neither. An application whose command line prints - a
+listing, a check, commands - is therefore made a GUI program with
+`ultracanvas_windows_console_companion(MyApp)` rather than
+`ultracanvas_windows_gui_app()`. That also builds `MyApp.com` beside
+`MyApp.exe` from `OS/MSWindows/AppEntry/UltraCanvasConsoleCompanion.cpp`: a
+small console program that starts the `.exe` with its own command line, waits
+for it and returns its exit code. It links nothing of the framework and its C++
+runtime statically, as Visual Studio's `devenv.com` does for `devenv.exe`.
+
+- cmd and PowerShell try `.COM` before `.EXE` (`PATHEXT`), so `MyApp --list`
+  typed at a prompt, or in a batch file, runs the companion. The prompt waits,
+  and `%ERRORLEVEL%` / `$LASTEXITCODE` is the application's.
+- The Start menu, Explorer, a double-click and the sign-in start `MyApp.exe`:
+  no console window opens.
+- Typed as `MyApp.exe`, it is the GUI program, and the prompt does not wait.
+- With all three standard handles on a console, the companion hands the
+  `.exe` none, and the `.exe` attaches to the console before `main()`. Input
+  and Ctrl+C then work as in a console program.
+- With any of them redirected (`> file`, a pipe, a script capturing the
+  output), the companion hands the `.exe` its three handles, and Ctrl+C ends
+  it.
+
+`ConsoleCompanionTest` (`Tests/ConsoleCompanionTest.cpp`, on the Windows CI
+rows) checks both cases on real Windows. For the console case it starts itself
+again in a hidden console of its own, types a line into it, reads the screen
+back and presses Ctrl+C there.
 
 An application embedding the framework in its own `WinMain` gets all of this by
 calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is

@@ -4,12 +4,15 @@
 // The properties under test are the ones that matter if the file is stolen or
 // modified: the seeds must never appear on disk in the clear, a wrong password
 // must fail closed, any edit to the file must be detected, and an interrupted
-// write must not destroy the previous vault.
+// write must not destroy the previous vault. Also where the vault lives by
+// default (VaultLocation.h), and that one moved there from where 0.2.6 kept
+// it still opens.
 //
 // Self-contained: no test framework, no UI stack.
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "../Apps/UltraAuthenticator/store/EncryptedFileStore.h"
+#include "../Apps/UltraAuthenticator/VaultLocation.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -65,6 +68,98 @@ static void WriteFileBytes(const std::string& path,
 static const char* kSeed = "otpauth://totp/Example:alice@example.com"
                            "?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Example";
 static const char* kPassword = "correct horse battery staple";
+
+// Compared as paths, so the separator the platform joins with does not matter.
+static bool SamePath(const std::string& actual, const std::filesystem::path& expected) {
+    return UltraCanvas::PathFromUtf8(actual).lexically_normal() == expected.lexically_normal();
+}
+
+// The default vault folder (VaultLocation.h): each platform's rule, where
+// 0.2.6 left the vault, and moving a real vault into place once - it opens
+// there with its password, the settings beside it come along, and a vault
+// already in place is never replaced.
+static void TestVaultLocation() {
+    std::printf("Vault location\n");
+    namespace fs = std::filesystem;
+    using UltraCanvas::PathToUtf8;
+
+    // Windows: %APPDATA% - ahead of HOME, which 0.2.6 preferred; without it,
+    // the folder %APPDATA% would have named.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "C:/Users/erika/AppData/Roaming", "C:/Users/erika"),
+                   fs::path("C:/Users/erika/AppData/Roaming") / "UltraAuthenticator"), "Windows: APPDATA ahead of HOME");
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "", "C:/Users/erika"),
+                   fs::path("C:/Users/erika") / "AppData" / "Roaming" / "UltraAuthenticator"), "Windows without APPDATA");
+    // macOS: Application Support, not ~/.local/share.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::MacOS, "", "", "/Users/erika"),
+                   fs::path("/Users/erika/Library/Application Support/UltraAuthenticator")), "macOS: Application Support");
+    // Linux and the rest: XDG, unchanged.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Unix, "", "", "/home/erika"),
+                   fs::path("/home/erika/.local/share/UltraAuthenticator")), "Linux: ~/.local/share");
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Unix, "", "C:/AppData", "/home/erika"),
+                   fs::path("/home/erika/.local/share/UltraAuthenticator")), "APPDATA means nothing outside Windows");
+    // XDG_DATA_HOME wins everywhere.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::MacOS, "/Volumes/data", "", "/Users/erika"),
+                   fs::path("/Volumes/data/UltraAuthenticator")), "XDG_DATA_HOME wins on macOS");
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "D:/portable", "C:/AppData", ""),
+                   fs::path("D:/portable/UltraAuthenticator")), "XDG_DATA_HOME wins on Windows");
+    Check(ResolveDataDir(DataDirPlatform::Unix, "", "", "").empty(), "no home: nothing");
+    Check(VaultPathIn("/data/UltraAuthenticator") == PathToUtf8(fs::path("/data/UltraAuthenticator") / "accounts.vault"),
+          "the vault file in the folder");
+
+    // Where 0.2.6 kept it: wherever HOME was set, except on Linux.
+    Check(LegacyDataDirs(DataDirPlatform::Unix, "/home/erika").empty(), "Linux kept its folder");
+    Check(LegacyDataDirs(DataDirPlatform::Windows, "").empty(), "Windows without HOME: nothing to move");
+    const auto mac = LegacyDataDirs(DataDirPlatform::MacOS, "/Users/erika");
+    Check(mac.size() == 1 && SamePath(mac[0], fs::path("/Users/erika/.local/share/UltraAuthenticator")),
+          "macOS: ~/.local/share/UltraAuthenticator");
+    const auto win = LegacyDataDirs(DataDirPlatform::Windows, "C:/Users/erika");
+    Check(win.size() == 1 && SamePath(win[0], fs::path("C:/Users/erika/.local/share/UltraAuthenticator")),
+          "Windows with HOME: ~/.local/share/UltraAuthenticator");
+
+    // A real vault in the old place moves whole, and opens in the new one.
+    const fs::path root   = fs::temp_directory_path() / UltraCanvas::PathFromUtf8("ultraauthenticator-location-ทดสอบ-🚀");
+    const fs::path legacy = root / "old" / "UltraAuthenticator";
+    const fs::path target = root / "new" / "UltraAuthenticator";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    fs::create_directories(legacy, ec);
+    {
+        EncryptedFileStore store;
+        Check(static_cast<bool>(store.Create(VaultPathIn(PathToUtf8(legacy)), Buf("correct horse"))),
+              "a vault in the old folder");
+        Check(static_cast<bool>(store.Put("account-1", Buf("JBSWY3DPEHPK3PXP"))), "with an entry");
+    }
+    {
+        std::ofstream settings(legacy / "settings.ini", std::ios::binary);
+        settings << "[lock]\nidle=300\n";
+    }
+    std::string error;
+    Check(SamePath(AdoptLegacyDataDir(PathToUtf8(target), {PathToUtf8(legacy)}, error), legacy),
+          "moved from the old folder");
+    Check(error.empty(), "moved without error");
+    Check(!fs::exists(legacy), "nothing left behind");
+    Check(fs::is_regular_file(target / "settings.ini"), "the settings came along");
+    {
+        EncryptedFileStore store;
+        UltraCryptSecureBuffer value;
+        Check(static_cast<bool>(store.Open(VaultPathIn(PathToUtf8(target)), Buf("correct horse"))) &&
+              static_cast<bool>(store.Get("account-1", value)) && BufferEquals(value, "JBSWY3DPEHPK3PXP"),
+              "the moved vault opens with its password");
+    }
+    // A second start finds it in place and moves nothing.
+    Check(AdoptLegacyDataDir(PathToUtf8(target), {PathToUtf8(legacy)}, error).empty() && error.empty(),
+          "nothing to move the second time");
+    // A vault already in place is never replaced by an old one.
+    const fs::path other = root / "older" / "UltraAuthenticator";
+    fs::create_directories(other, ec);
+    {
+        std::ofstream old(other / "accounts.vault", std::ios::binary);
+        old << "old";
+    }
+    Check(AdoptLegacyDataDir(PathToUtf8(target), {PathToUtf8(other)}, error).empty(), "a vault in place is kept");
+    Check(fs::is_regular_file(other / "accounts.vault"), "and the old one is untouched");
+    fs::remove_all(root, ec);
+}
 
 int main() {
     std::printf("Authenticator vault tests — backend: %s\n\n",
@@ -342,6 +437,8 @@ int main() {
     }
 
     std::filesystem::remove_all(dir, ec);
+
+    TestVaultLocation();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

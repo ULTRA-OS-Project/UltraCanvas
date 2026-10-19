@@ -25,6 +25,7 @@ set(ULTRASOCIAL_ENGINE_SOURCES
     engine/UltraSocialWebUtil.cpp
     engine/UltraSocialConnector.cpp
     engine/UltraSocialPublisher.cpp
+    engine/UltraSocialPaths.cpp
     engine/connectors/UltraSocialMastodonConnector.cpp
     engine/connectors/UltraSocialBlueskyConnector.cpp
     engine/connectors/UltraSocialTelegramConnector.cpp
@@ -47,25 +48,13 @@ target_link_libraries(UltraSocialEngine PUBLIC UltraDatabase)
 target_link_libraries(UltraSocialEngine PUBLIC UltraVault)
 
 # UltraCanvasJSON lives in the UltraCanvas core library; UltraNet supplies
-# HTTP/OAuth2/sockets. With a SHARED core, UltraNet is absorbed into (and
-# exported by) libultracanvas — link that alone and take UltraNet's headers
-# via its interface, mirroring UltraMailEngine's link logic.
-set(_uc_core_shared FALSE)
+# HTTP/OAuth2/sockets through its home, which is the shared core that
+# absorbed it or the archive under a static core ("MODULE HOMES" in
+# UltraCanvas/CMakeLists.txt). The module before the core: GNU ld resolves
+# left to right, and under a static core both are archives.
+target_link_libraries(UltraSocialEngine PUBLIC UltraNet)
 if(TARGET ${ULTRACANVAS_LIBRARY})
-    get_target_property(_uc_core_type ${ULTRACANVAS_LIBRARY} TYPE)
-    if(_uc_core_type STREQUAL "SHARED_LIBRARY")
-        set(_uc_core_shared TRUE)
-    endif()
-endif()
-if(_uc_core_shared)
     target_link_libraries(UltraSocialEngine PUBLIC ${ULTRACANVAS_LIBRARY})
-    target_include_directories(UltraSocialEngine PUBLIC
-        $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-else()
-    target_link_libraries(UltraSocialEngine PUBLIC UltraNet)
-    if(TARGET ${ULTRACANVAS_LIBRARY})
-        target_link_libraries(UltraSocialEngine PUBLIC ${ULTRACANVAS_LIBRARY})
-    endif()
 endif()
 # DataFormats/UltraCanvasJSON.h include root.
 target_include_directories(UltraSocialEngine PUBLIC
@@ -87,9 +76,12 @@ set(ULTRASOCIAL_UI_SOURCES
     ui/UltraSocialApp.cpp
     ui/UltraSocialAccountWizard.cpp
     ui/UltraSocialComposeView.cpp
+    ui/UltraSocialStartPage.cpp
 )
 
 add_executable(UltraSocial main.cpp ${ULTRASOCIAL_UI_SOURCES})
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraSocial)
 target_include_directories(UltraSocial PRIVATE
     ${ULTRACANVAS_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -105,5 +97,29 @@ target_compile_features(UltraSocial PRIVATE cxx_std_20)
 # The version shown in the window title: the first line of
 # Docs/UltraSocial/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
-target_compile_definitions(UltraSocial PRIVATE ULTRASOCIAL_VERSION="${ULTRASOCIAL_VERSION}")
+# One icon everywhere the app is drawn: main.cpp names this same file for the
+# window and taskbar icon; UCAPP_ICON_PATH is the fallback the core applies
+# when an app sets no icon of its own. The PNG is the 256 px render of
+# media/appicon/UltraSocial.svg.
+target_compile_definitions(UltraSocial PRIVATE
+        ULTRASOCIAL_VERSION="${ULTRASOCIAL_VERSION}"
+        UCAPP_ICON_PATH="media/appicon/UltraSocial.png")
+
+# Embed the app icon in the .exe (Windows only): Explorer and the Windows
+# taskbar read it off the binary, not from the window.
+ultracanvas_embed_app_icon(UltraSocial
+        "${CMAKE_SOURCE_DIR}/media/appicon/UltraSocial.png")
+
+# The freedesktop shortcut and the icon it names (`Icon=UltraSocial` is
+# resolved through the installed icon themes).
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    install(TARGETS UltraSocial RUNTIME DESTINATION bin)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraSocial.desktop
+            DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraSocial.png
+            DESTINATION share/icons/hicolor/256x256/apps)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraSocial.svg
+            DESTINATION share/icons/hicolor/scalable/apps)
+endif()
+
 message(STATUS "  [✓] UltraSocial GUI app - ENABLED (target: UltraSocial)")

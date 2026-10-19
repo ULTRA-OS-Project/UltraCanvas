@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.cpp
 // The clipboard quick panel. See UltraDesktopClipboardPanel.h.
+// Version: 0.1.1 - the row's icons follow the history's iconSide (left or right of the text)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -29,6 +30,7 @@ constexpr int kPanelWidth = 386;
 constexpr int kPanelHeight = 484;
 constexpr size_t kRecentShown = 10;   // unpinned entries when nothing is searched
 constexpr size_t kFoundShown = 40;
+constexpr size_t kTargetShown = 3;    // under "For <program>"
 
 // The right bar's palette (UltraDesktopWindow.cpp): the panel belongs to it.
 const Color kPanel(31, 31, 31);
@@ -56,8 +58,10 @@ bool UltraDesktopClipboardPanel::IsOpen() const {
     return open_ && window_;
 }
 
-void UltraDesktopClipboardPanel::Open(int rightX, int topY) {
+void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
+    target_ = std::move(target);
     if (IsOpen()) {
+        Reload();
         window_->RaiseAndFocus();
         return;
     }
@@ -282,9 +286,36 @@ void UltraDesktopClipboardPanel::Reload() {
     const int64_t selected = SelectedEntry();
     const std::string text = search_ ? search_->GetText() : "";
     std::vector<ClipboardHistoryEntry> shown;
+    ClipboardHistoryListModel::LeadSection lead;
     if (text.empty()) {
+        // What the program being pasted into takes: the most wanted kind
+        // first, the newest of each kind first within it.
+        std::vector<int64_t> leading;
+        if (!target_.kinds.empty()) {
+            ClipboardHistoryQuery wanted;
+            wanted.kinds = target_.kinds;
+            wanted.newestFirst = true;
+            std::vector<ClipboardHistoryEntry> matches = history_->List(wanted);
+            auto rank = [this](ClipboardEntryKind kind) {
+                return std::find(target_.kinds.begin(), target_.kinds.end(), kind) - target_.kinds.begin();
+            };
+            std::stable_sort(matches.begin(), matches.end(),
+                             [&rank](const ClipboardHistoryEntry& a, const ClipboardHistoryEntry& b) {
+                                 return rank(a.kind) < rank(b.kind);
+                             });
+            if (matches.size() > kTargetShown) matches.resize(kTargetShown);
+            for (auto& entry : matches) {
+                leading.push_back(entry.id);
+                shown.push_back(std::move(entry));
+            }
+            if (!leading.empty()) {
+                lead.title = EditClipboardText("For " + target_.name, ClipboardTextEdit::Upper);
+                lead.count = leading.size();
+            }
+        }
         size_t recent = 0;
         for (auto& entry : history_->List()) {
+            if (std::find(leading.begin(), leading.end(), entry.id) != leading.end()) continue;
             if (!entry.pinned && recent++ >= kRecentShown) continue;
             shown.push_back(std::move(entry));
         }
@@ -294,10 +325,16 @@ void UltraDesktopClipboardPanel::Reload() {
         query.limit = kFoundShown;
         shown = history_->List(query);
     }
-    model_->SetEntries(std::move(shown), ClipboardHistoryListModel::Sections::PinnedAndRecent);
-    if (recording_ && history_->IsOpen()) {
-        const bool recordingNow = !history_->GetPolicy().recordingPaused;
-        if (recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
+    model_->SetEntries(std::move(shown), ClipboardHistoryListModel::Sections::PinnedAndRecent, lead);
+    if (history_->IsOpen()) {
+        const ClipboardHistoryPolicy policy = history_->GetPolicy();
+        const bool recordingNow = !policy.recordingPaused;
+        if (recording_ && recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
+        // UltraClipboard's Settings, Display -> Icons: the row's icons left or right of its text.
+        if (const bool left = policy.iconSide == ClipboardIconSide::Left; left != rows_->Style().actionsLeftOfText) {
+            rows_->SetActionsLeftOfText(left);
+            list_->RequestRedraw();
+        }
     }
     if (model_->GetEntryCount() == 0) {
         if (status_ && removedId_ == 0) status_->SetText(text.empty() ? "Nothing copied yet" : "Nothing found");
@@ -305,9 +342,11 @@ void UltraDesktopClipboardPanel::Reload() {
         return;
     }
     if (status_ && removedId_ == 0) status_->SetText("");
-    // Keep the chosen entry chosen; otherwise the newest one (not a pinned
-    // one: what was just copied is what is wanted most).
+    // Keep the chosen entry chosen; otherwise the first one for the program
+    // being pasted into, or else the newest one (not a pinned one: what was
+    // just copied is what is wanted most).
     int row = selected ? model_->FindRow(selected) : -1;
+    if (row < 0 && lead.count > 0) row = model_->EntryRowFrom(0, 1);
     if (row < 0) {
         for (int r = 0; r < model_->GetRowCount(); ++r) {
             const ClipboardHistoryEntry* entry = model_->GetEntry(r);

@@ -2,8 +2,9 @@
 // Architectural space-planning adjacency diagram
 // Rooms as area-proportional circles, edges as solid/dashed adjacency links,
 // functional zones as dashed bounding regions.
+// Version: 1.1.1 - presses and clicks on the empty area are the diagram's
 // Version: 1.1.0
-// Last Modified: 2026-07-29
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h"
@@ -967,6 +968,11 @@ namespace UltraCanvas {
                         panStartOffY = panOffsetY;
                         return true;
                     }
+                    // A room or link is chosen on the release, and a release
+                    // on the empty area deselects: the press that starts the
+                    // click is the diagram's, or it would go on to the
+                    // elements around the diagram while the release acts.
+                    return true;
                 }
                 return false;
             }
@@ -997,11 +1003,12 @@ namespace UltraCanvas {
                     return true;
                 }
 
+                // Click on the empty area: deselect. The diagram's either way.
                 if (selectedRoomIdx >= 0 || selectedLinkIdx >= 0) {
                     selectedRoomIdx = selectedLinkIdx = -1;
                     RequestRedraw();
                 }
-                return false;
+                return true;
             }
 
             case UCEventType::MouseLeave: {

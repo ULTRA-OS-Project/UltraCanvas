@@ -186,7 +186,7 @@ void UltraCanvasCurvesDialog::UpdateReadout() {
         readoutLabel->SetText("Click to add a point \xE2\x80\x94 right-click removes one");
     } else {
         readoutLabel->SetText("Input " + std::to_string(in) +
-                              "  \xE2\x86\x92  Output " + std::to_string(out));
+                              ", output " + std::to_string(out));
     }
 }
 

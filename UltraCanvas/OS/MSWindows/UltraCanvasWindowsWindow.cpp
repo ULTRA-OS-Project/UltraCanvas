@@ -1,7 +1,16 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.5.0 - WindowType::Desktop on any monitor (config.desktopArea)
+// Version: 1.4.0 - WindowType::Desktop: undecorated, the primary monitor's
+//                  size, out of the taskbar and Alt+Tab, on every virtual
+//                  desktop, kept below every other window
+// Version: 1.3.0 - never shown black: the first frame is drawn before the
+//                  window appears, and a new surface starts in the window's
+//                  background colour instead of black
+// Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
-// Last Modified: 2026-10-05
+// Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -60,6 +69,14 @@ namespace UltraCanvas {
             DestroyWindow(hwnd);
             hwnd = nullptr;
             return false;
+        }
+
+        // A desktop window took the screen's size in CreateHWND, after the
+        // base had already sized this container from the config it was given:
+        // follow, or the bars and wallpaper are laid out for the smaller box
+        // and the rest of the screen stays unpainted.
+        if (config_.type == WindowType::Desktop) {
+            SetBounds(Rect2Di(0, 0, config_.width, config_.height));
         }
 
         // STEP 4: Initialize OLE drag-drop
@@ -161,6 +178,20 @@ namespace UltraCanvas {
             case WindowType::Fullscreen:
                 style = WS_POPUP;
                 break;
+            case WindowType::Notification:
+                // A toast: above everything, out of the taskbar and Alt+Tab,
+                // never activated (shown with SW_SHOWNOACTIVATE below).
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                break;
+            case WindowType::Desktop:
+                // The desktop itself: undecorated; a tool window, which keeps
+                // it out of the taskbar and Alt+Tab and shows it on every
+                // virtual desktop; held below every other window by
+                // WM_WINDOWPOSCHANGING. Sized to the screen below.
+                style = WS_POPUP;
+                exStyle = WS_EX_TOOLWINDOW;
+                break;
             default: // Standard
                 break;
         }
@@ -171,6 +202,16 @@ namespace UltraCanvas {
         if (!config_.maximizable) style &= ~WS_MAXIMIZEBOX;
         if (config_.alwaysOnTop)  exStyle |= WS_EX_TOPMOST;
 
+        // The desktop window is the screen: whatever size was asked for, it
+        // covers the primary monitor, which is the one at 0,0 - or the area
+        // asked for, another monitor (which may lie left of or above it).
+        const bool desktopArea = config_.type == WindowType::Desktop && config_.desktopArea.width > 0 &&
+                                 config_.desktopArea.height > 0;
+        if (config_.type == WindowType::Desktop) {
+            config_.x = desktopArea ? config_.desktopArea.x : 0;
+            config_.y = desktopArea ? config_.desktopArea.y : 0;
+        }
+
         // Seed the device scale from the monitor the window will open on. hwnd
         // doesn't exist yet, so QueryNativeDeviceScale() uses the monitor under
         // the configured position (GetDpiForMonitor / GetDpiForSystem). The
@@ -178,14 +219,24 @@ namespace UltraCanvas {
         // PHYSICAL px = logical × deviceScale.
         RefreshDeviceScale();
 
+        if (config_.type == WindowType::Desktop) {
+            const int physicalWidth = desktopArea ? config_.desktopArea.width : GetSystemMetrics(SM_CXSCREEN);
+            const int physicalHeight = desktopArea ? config_.desktopArea.height : GetSystemMetrics(SM_CYSCREEN);
+            config_.width  = std::max(1, PhysicalToLogical(physicalWidth));
+            config_.height = std::max(1, PhysicalToLogical(physicalHeight));
+            config_.resizable = false;
+            style &= ~WS_THICKFRAME;
+        }
+
         // Calculate window rect to get correct client area size (physical px)
         RECT rect = {0, 0, LogicalToPhysical(config_.width), LogicalToPhysical(config_.height)};
         AdjustWindowRectForDpi(&rect, style, exStyle);
 
         int winWidth = rect.right - rect.left;
         int winHeight = rect.bottom - rect.top;
-        int winX = (config_.x >= 0) ? config_.x : CW_USEDEFAULT;
-        int winY = (config_.y >= 0) ? config_.y : CW_USEDEFAULT;
+        // A desktop window's position is its monitor's, negative or not.
+        int winX = (config_.x >= 0 || config_.type == WindowType::Desktop) ? config_.x : CW_USEDEFAULT;
+        int winY = (config_.y >= 0 || config_.type == WindowType::Desktop) ? config_.y : CW_USEDEFAULT;
 
         std::wstring wTitle = UltraCanvasWindowsApplication::Utf8ToUtf16(config_.title);
 
@@ -263,6 +314,17 @@ namespace UltraCanvas {
         // resync to a different scale than the cairo-xlib surface on Linux.
         cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t *>(nativeSurface), 96.0, 96.0);
 
+        // A new image surface is all zeros - black - and WM_PAINT blits it as
+        // it is. Start it in the window's background colour, so whatever is
+        // shown before a frame has been drawn into it is never a black window.
+        if (cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface)) == CAIRO_STATUS_SUCCESS) {
+            cairo_t* fill = cairo_create(static_cast<cairo_surface_t *>(nativeSurface));
+            const Color& bg = config_.backgroundColor;
+            cairo_set_source_rgb(fill, bg.r / 255.0, bg.g / 255.0, bg.b / 255.0);
+            cairo_paint(fill);
+            cairo_destroy(fill);
+        }
+
         cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UltraCanvas Windows: Cairo surface error: "
@@ -297,8 +359,11 @@ namespace UltraCanvas {
                 }
             }
         } else {
-            // No window yet: use the monitor under the configured position.
-            POINT pt = { config_.x >= 0 ? config_.x : 0, config_.y >= 0 ? config_.y : 0 };
+            // No window yet: use the monitor under the configured position
+            // (a desktop window's is its monitor's, left of or above the
+            // primary at negative coordinates).
+            const bool placed = config_.type == WindowType::Desktop;
+            POINT pt = { config_.x >= 0 || placed ? config_.x : 0, config_.y >= 0 || placed ? config_.y : 0 };
             HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
             bool got = false;
             if (HMODULE shcore = LoadLibraryW(L"shcore.dll")) {
@@ -512,6 +577,17 @@ namespace UltraCanvas {
                 break;  // Let ProcessWindowMessage handle the event
             }
 
+            case WM_WINDOWPOSCHANGING: {
+                // The desktop window stays below every other window however it
+                // was activated: a click on the wallpaper or on a bar must not
+                // lift it over the applications.
+                if (config_.type == WindowType::Desktop) {
+                    auto* pos = reinterpret_cast<WINDOWPOS*>(lParam);
+                    if (!(pos->flags & SWP_NOZORDER)) pos->hwndInsertAfter = HWND_BOTTOM;
+                }
+                break;
+            }
+
             case WM_GETMINMAXINFO: {
                 auto* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
                 DWORD style = static_cast<DWORD>(GetWindowLongW(h, GWL_STYLE));
@@ -561,7 +637,12 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowsWindow::Show() {
         if (!_created || _windowVisible) return;
-        ShowWindow(hwnd, SW_SHOW);
+        // The first frame before the window appears: UpdateWindow below then
+        // puts the window on screen with its content. Shown first, it showed
+        // its empty surface - black - until the event loop drew the frame,
+        // for as long as anything kept the loop from getting there.
+        RenderBeforeShow();
+        ShowWindow(hwnd, config_.type == WindowType::Notification ? SW_SHOWNOACTIVATE : SW_SHOW);
         UpdateWindow(hwnd);
 
         _windowVisible = true;

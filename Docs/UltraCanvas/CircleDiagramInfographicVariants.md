@@ -1,5 +1,7 @@
 # Circle Diagram Infographics — Investigation
 
+<!-- doc-check: std::shared_ptr<UltraCanvasCircleDiagram> diagram; -->
+
 **Status:** **P1 implemented** — `UltraCanvasCircleDiagram` ships the Family A
 satellite designs (`SatelliteWheel`, `BandedWheel`), the full palette set, the
 hub, backbone and satellite fans, with the API documented in
@@ -313,8 +315,8 @@ enums plus a plain count**, never one enum encoding all three:
 enum class CircleDiagramDesign {        // structure — the §3 families
     SatelliteWheel,   // Family A: nodes + fanned satellites   (refs 1, 2)
     BandedWheel,      // Family A on a thick backbone band     (ref 2)
-    CardRing,         // Family B: nodes + dashed text cards   (ref 3)
-    PetalRing,        // Family F: overlapping discs, no ring
+    // CardRing       — Family B: nodes + dashed text cards (ref 3), lands in P2
+    // PetalRing      — Family F: overlapping discs, no ring, lands in P3
     Custom            // structure assembled from the primitives
 };
 

@@ -2,8 +2,9 @@
 // Demonstration of UltraCanvasAlert - modal, floating, can't-be-missed message
 // boxes built on the UltraCanvas dialog system. Each button below raises an
 // alert of a given severity; the result is echoed into the status label.
+// Version: 1.0.1 - points at the Notification Toast page for what must not interrupt
 // Version: 1.0.0
-// Last Modified: 2026-07-07
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -167,7 +168,7 @@ namespace UltraCanvas {
         };
 
         // ===== INSTRUCTIONS =====
-        auto instructions = CreateLabel("AlertInstructions", 260, 100, 700, 360);
+        auto instructions = CreateLabel("AlertInstructions", 260, 100, 700, 392);
         instructions->SetText(
                 "UltraCanvasAlert (include/UltraCanvasAlert.h)\n\n"
                 "One-liners (non-blocking, result via callback):\n"
@@ -189,7 +190,9 @@ namespace UltraCanvas {
                 "(Info/Question blue, Success green, Warning amber, Error red).\n\n"
                 "showIcon = false (or Plain()) drops the icon column entirely, so\n"
                 "the content spans the full width - use it when the alert body\n"
-                "carries its own graphic that has to sit in the middle.");
+                "carries its own graphic that has to sit in the middle.\n\n"
+                "For a message that must not interrupt: a toast - see the\n"
+                "Notification Toast page (UltraCanvasNotificationToast).");
         instructions->SetFontSize(11);
         instructions->SetBackgroundColor(Color(255, 255, 240));
         instructions->SetPadding(8);
