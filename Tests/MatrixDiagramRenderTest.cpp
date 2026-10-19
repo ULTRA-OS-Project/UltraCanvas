@@ -13,6 +13,7 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.5.1 - the dark theme darkens the competitive block, and a dark competitor stays visible on it
 // Version: 1.5.0 - the attribute gutter: L and House rows are hit across it, and hiding it gives the grid the width back
 // Version: 1.4.0 - the competitive-assessment block: its rows are hit as the needs, and it gives way when hidden
 // Version: 1.3.0 - pan and zoom keep the pointed-at cell put; keyboard navigation follows the screen; editing cycles levels
@@ -83,6 +84,16 @@ struct Canvas {
             }
         }
         return ink;
+    }
+
+    // The colour at (x, y), opaque.
+    Color PixelAt(int x, int y) const {
+        if (!cr) return Color(0, 0, 0, 0);
+        cairo_surface_t* s = cairo_get_target(cr);
+        cairo_surface_flush(s);
+        const unsigned char* data = cairo_image_surface_get_data(s);
+        const uint32_t p = reinterpret_cast<const uint32_t*>(data + y * cairo_image_surface_get_stride(s))[x];
+        return Color((p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF, 255);
     }
 
     void Save(const std::string& name) const {
@@ -336,6 +347,17 @@ void TestThemeKeepsSettings() {
     Check(diagram->GetStyle().cellBackground != defaults.cellBackground,
           "going dark changes the colours");
 
+    // Every band drawn on its own background goes dark with the grid, and
+    // what is drawn on it turns light - the House's blocks included.
+    const MatrixDiagramStyle& dark = diagram->GetStyle();
+    auto luma = [](const Color& c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; };
+    Check(luma(dark.competitiveBackground) < 90 && luma(dark.attributeBackground) < 90 &&
+          luma(dark.competitiveTickColor) < 120,
+          "going dark darkens the competitive block and the attribute gutter");
+    Check(luma(dark.improvementColor) > 160 && luma(dark.rankTextColor) > 120 &&
+          luma(dark.attributeTextColor) > 160,
+          "and lightens the direction arrows, the ranks and the attribute values");
+
     diagram->SetDarkTheme(false);
     const MatrixDiagramStyle& back = diagram->GetStyle();
     Check(back.tintCellsByLevel && back.alternateRowBands,
@@ -344,7 +366,10 @@ void TestThemeKeepsSettings() {
           "coming back keeps the sizes");
     Check(back.cellBackground == defaults.cellBackground &&
           back.labelColor == defaults.labelColor &&
-          back.hubBackground == defaults.hubBackground,
+          back.hubBackground == defaults.hubBackground &&
+          back.competitiveBackground == defaults.competitiveBackground &&
+          back.improvementColor == defaults.improvementColor &&
+          back.rollUpBarColor == defaults.rollUpBarColor,
           "coming back restores the light colours");
 }
 
@@ -608,6 +633,30 @@ void TestCompetitive() {
     int bareW = 0;
     FindCellCentre(*bare, Ref(0, 2, lastCol), kWidth, kHeight, bareCentre, bareW);
     Check(bareW > cellW, "a House without competitors keeps the whole width for its cells");
+
+    // In the dark theme the block is drawn dark like the grid beside it.
+    auto darkHouse = CreateMatrixDiagramElement("dark", 0, 0, kWidth, kHeight,
+                                                MatrixSamples::HouseOfQuality());
+    darkHouse->SetEnableTooltips(false);
+    darkHouse->SetDarkTheme(true);
+    darkHouse->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    canvas.Save("matrix-House-dark");
+    // Just inside the block's left edge, clear of its ticks and lines.
+    const Color inBlock = canvas.PixelAt(blockX + 3, centre.y);
+    Check(inBlock.r < 90 && inBlock.g < 90 && inBlock.b < 90,
+          "dark, the block's background is dark too (" + std::to_string(inBlock.r) + ", "
+          + std::to_string(inBlock.g) + ", " + std::to_string(inBlock.b) + ")");
+
+    // And the near-black "ours" line still shows on it: somewhere in the
+    // block there is a pixel as light as the label colour.
+    int light = 0;
+    for (int y = centre.y - 60; y < centre.y + 60; ++y) {
+        for (int x = blockX; x < kWidth && x < blockX + 200; ++x) {
+            const Color c = canvas.PixelAt(x, y);
+            if (c.r > 200 && c.g > 200 && c.b > 200) ++light;
+        }
+    }
+    Check(light > 20, "a competitor coloured for the light theme stays visible on the dark block");
 }
 
 // The attribute gutter stands between the row labels and the grid. Pointing

@@ -1,6 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
 // Matrix diagram element: item sets crossed in L, T, X, Y and House arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.5.1 - the dark theme recolours the competitive block, direction arrows, ranks and roll-up bars; a competitor too dark to see is drawn in the label colour
 // Version: 1.5.0 - the attribute gutter: a set's attribute columns between its row labels and the grid (L and House)
 // Version: 1.4.0 - the House of Quality's competitive-assessment block
 // Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
@@ -601,6 +602,7 @@ namespace UltraCanvas {
                                              double maxWidth, int maxLines) const;
         std::string BuildTooltip(const MatrixRef& ref) const;
         Color EffectiveLabelColor() const;
+        Color CompetitorColor(const MatrixCompetitor& competitor) const;
         bool  IsDimmed(const std::string& levelId) const;
     };
 

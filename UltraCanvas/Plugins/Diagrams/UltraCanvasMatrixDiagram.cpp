@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.5.1 - the dark theme recolours the competitive block, direction arrows, ranks and roll-up bars; a competitor too dark to see is drawn in the label colour
 // Version: 1.5.0 - the attribute gutter: a set's attribute columns between its row labels and the grid (L and House)
 // Version: 1.4.0 - the House of Quality's competitive-assessment block
 // Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
@@ -55,6 +56,12 @@ namespace UltraCanvas {
         to.headerBandBorderColor   = from.headerBandBorderColor;
         to.attributeBackground     = from.attributeBackground;
         to.attributeTextColor      = from.attributeTextColor;
+        to.rollUpBarColor          = from.rollUpBarColor;
+        to.rollUpTopBarColor       = from.rollUpTopBarColor;
+        to.rankTextColor           = from.rankTextColor;
+        to.improvementColor        = from.improvementColor;
+        to.competitiveBackground   = from.competitiveBackground;
+        to.competitiveTickColor    = from.competitiveTickColor;
     }
 
     void MatrixDiagramStyle::ApplyLightTheme() {
@@ -83,6 +90,12 @@ namespace UltraCanvas {
         headerBandBorderColor   = Color( 74,  80,  92, 255);
         attributeBackground     = Color( 43,  47,  56, 255);
         attributeTextColor      = Color(222, 228, 236, 255);
+        rollUpBarColor          = Color( 96, 150, 220, 255);
+        rollUpTopBarColor       = Color(232, 134,  66, 255);
+        rankTextColor           = Color(155, 162, 172, 255);
+        improvementColor        = Color(215, 220, 228, 255);
+        competitiveBackground   = Color( 42,  46,  55, 255);
+        competitiveTickColor    = Color( 62,  68,  80, 255);
     }
 
 // =============================================================================
@@ -482,7 +495,7 @@ namespace UltraCanvas {
                 ChartLegendEntry entry;
                 entry.id = "competitor:" + competitor.id;
                 entry.label = competitor.name.empty() ? competitor.id : competitor.name;
-                entry.color = competitor.color;
+                entry.color = CompetitorColor(competitor);
                 switch (competitor.mark) {
                     case MatrixMarkShape::Ring:     entry.swatch = LegendSwatch::Ring;   break;
                     case MatrixMarkShape::Square:
@@ -2287,7 +2300,7 @@ namespace UltraCanvas {
 
         // Lines first, markers on top; a highlighted competitor last of all.
         auto drawCompetitor = [&](const MatrixCompetitor& competitor, bool dimmed) {
-            Color line = competitor.color;
+            Color line = CompetitorColor(competitor);
             if (dimmed) line.a = static_cast<uint8_t>(line.a / 5);
             ctx->SetStrokePaint(line);
             ctx->SetStrokeWidth(style.competitiveLineWidth);
@@ -2307,7 +2320,7 @@ namespace UltraCanvas {
 
             MatrixLevel marker;
             marker.shape = competitor.mark;
-            marker.color = competitor.color;
+            marker.color = CompetitorColor(competitor);
             const double side = style.ratingMarkerRadius * 2.0 / std::max(0.05, style.markSize);
             for (int r = 0; r < pl.rows && r < needs->Count(); ++r) {
                 double value = 0.0;
@@ -2945,6 +2958,20 @@ namespace UltraCanvas {
 
     Color UltraCanvasMatrixDiagram::EffectiveLabelColor() const {
         return style.labelColor;
+    }
+
+    // A competitor's colour is the model's, chosen against one theme. When
+    // it would all but vanish on the block's background - the House sample's
+    // near-black "ours" on the dark theme - draw it in the label colour, which
+    // every theme keeps readable, rather than lose the line.
+    Color UltraCanvasMatrixDiagram::CompetitorColor(const MatrixCompetitor& competitor) const {
+        auto luma = [](const Color& c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; };
+        if (std::fabs(luma(competitor.color) - luma(style.competitiveBackground)) >= 60.0) {
+            return competitor.color;
+        }
+        Color readable = style.labelColor;
+        readable.a = competitor.color.a;
+        return readable;
     }
 
     std::string UltraCanvasMatrixDiagram::FormatTotal(double value) const {
