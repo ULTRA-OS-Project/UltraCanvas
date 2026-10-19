@@ -10,6 +10,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "UltraCanvasLinuxWindow.h"
+#include "UltraCanvasFileDragIcon.h"   // kDragMimeType of a save drag
 #include "UltraCanvasImage.h"
 #include "../libspecific/Cairo/RenderContextCairo.h"
 #include <iostream>
@@ -331,6 +332,12 @@ namespace UltraCanvas {
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
 
+        // A Save dialog's file icon dropped here: the element under the
+        // pointer names the folder, before the source is answered.
+        dragDropHandler.onSaveDrop = [this](const std::string& name, int x, int y) {
+            return DeliverSaveDrop(name, PhysicalToLogical(Point2Di{ x, y }));
+        };
+
         dragDropHandler.onDragEnter = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragEnter;
@@ -339,6 +346,11 @@ namespace UltraCanvas {
             // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
+            if (dragDropHandler.IsSaveDrag()) {
+                // A Save dialog's file icon: no files, its name.
+                event.dragMimeType = UltraCanvasFileDragIcon::kDragMimeType;
+                event.dragData = dragDropHandler.GetSaveDragName();
+            }
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
 
@@ -361,6 +373,11 @@ namespace UltraCanvas {
             // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
+            if (dragDropHandler.IsSaveDrag()) {
+                // A Save dialog's file icon: no files, its name.
+                event.dragMimeType = UltraCanvasFileDragIcon::kDragMimeType;
+                event.dragData = dragDropHandler.GetSaveDragName();
+            }
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };        
         XSync(display, False);
@@ -1160,6 +1177,12 @@ namespace UltraCanvas {
             const std::vector<std::string>& filePaths,
             std::function<void(bool accepted, bool moved)> onFinished) {
         return dragDropHandler.BeginSourceDrag(filePaths, std::move(onFinished));
+    }
+
+    bool UltraCanvasLinuxWindow::StartNativeSaveDrag(
+            const std::string& fileName,
+            std::function<void(const std::string& folder)> onFolder) {
+        return dragDropHandler.BeginSaveDrag(fileName, std::move(onFolder));
     }
 
 // ===== ACCESSORS =====

@@ -904,6 +904,26 @@ int main() {
                      over && now != start && std::filesystem::is_directory(PathFromUtf8(now), dec));
                 TEST("... and the row is no longer highlighted", tree->GetDropTargetNode() == nullptr);
             }
+            // Out of the window the drag is the platform's, and the window it
+            // lands on answers with a folder: a file display names the one
+            // under the pointer (DeliverSaveDrop, as the platform calls it).
+            if (listing) {
+                const Rect2Di lb = listing->GetBoundsInWindow();
+                const std::string named = run.dialog->DeliverSaveDrop(
+                        "untitled.png", Point2Di(lb.x + lb.width / 2, lb.y + lb.height / 2));
+                std::error_code dec;
+                TEST("A save drag dropped on a file display is told its folder",
+                     !named.empty() && std::filesystem::is_directory(PathFromUtf8(named), dec));
+                TEST("... and the display shows no drop after it", listing->GetIncomingDropFolder().empty());
+            }
+            if (icon && icon->onDroppedOnFolder) {
+                const std::filesystem::path other = PathFromUtf8(folder) / "Dropped elsewhere";
+                std::error_code dec;
+                std::filesystem::create_directories(other, dec);
+                icon->onDroppedOnFolder(PathToUtf8(other));
+                TEST("The folder another program names becomes the dialog's",
+                     Canonical(PathFromUtf8(ShownFolder(run))) == Canonical(other));
+            }
             run.dialog->CloseDialog(DialogResult::Cancel);
 
             // The Settings button: the type's settings, stored on OK.

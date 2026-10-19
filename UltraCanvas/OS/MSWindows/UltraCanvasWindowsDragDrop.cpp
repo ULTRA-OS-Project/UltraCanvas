@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsDragDrop.cpp
 // OLE IDropTarget implementation for drag-and-drop support
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.1.0
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindowsDragDrop.h"
@@ -12,6 +12,51 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
+    UINT SaveDragNameFormat() {
+        static const UINT format = RegisterClipboardFormatW(L"UltraCanvas Save Drag Name");
+        return format;
+    }
+
+    UINT SaveDragFolderFormat() {
+        static const UINT format = RegisterClipboardFormatW(L"UltraCanvas Save Drag Folder");
+        return format;
+    }
+
+    namespace {
+        FORMATETC HGlobalFormat(UINT cf) {
+            FORMATETC fmt = {};
+            fmt.cfFormat = static_cast<CLIPFORMAT>(cf);
+            fmt.ptd = nullptr;
+            fmt.dwAspect = DVASPECT_CONTENT;
+            fmt.lindex = -1;
+            fmt.tymed = TYMED_HGLOBAL;
+            return fmt;
+        }
+
+        HGLOBAL Utf8ToHGlobal(const std::string& text) {
+            HGLOBAL mem = GlobalAlloc(GHND, text.size() + 1);
+            if (!mem) return nullptr;
+            if (void* p = GlobalLock(mem)) {
+                std::memcpy(p, text.c_str(), text.size() + 1);
+                GlobalUnlock(mem);
+                return mem;
+            }
+            GlobalFree(mem);
+            return nullptr;
+        }
+
+        std::string HGlobalToUtf8(HGLOBAL mem) {
+            std::string text;
+            if (!mem) return text;
+            const SIZE_T size = GlobalSize(mem);
+            if (const char* p = static_cast<const char*>(GlobalLock(mem))) {
+                text.assign(p, strnlen(p, size));
+                GlobalUnlock(mem);
+            }
+            return text;
+        }
+    } // namespace
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
 
@@ -56,6 +101,9 @@ namespace UltraCanvas {
             IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) {
 
         acceptDrop = ContainsFileDropData(pDataObj);
+        // The Save dialog's file icon: no files, the name of one to be written.
+        saveDragName = (!acceptDrop && onSaveDrop) ? ReadSaveDragName(pDataObj) : std::string();
+        if (!saveDragName.empty()) acceptDrop = true;
         *pdwEffect = acceptDrop ? DROPEFFECT_COPY : DROPEFFECT_NONE;
 
         if (acceptDrop && onDragEnter) {
@@ -93,6 +141,7 @@ namespace UltraCanvas {
         }
 
         acceptDrop = false;
+        saveDragName.clear();
         return S_OK;
     }
 
@@ -102,6 +151,31 @@ namespace UltraCanvas {
         *pdwEffect = DROPEFFECT_NONE;
 
         if (!acceptDrop) {
+            return S_OK;
+        }
+
+        if (IsSaveDrag()) {
+            // The element under the pointer names the folder, before this
+            // returns: the source reads it back when DoDragDrop returns.
+            POINT clientPt = ScreenToClientPoint(pt);
+            const std::string name = saveDragName;
+            acceptDrop = false;
+            saveDragName.clear();
+            const std::string folder = onSaveDrop ? onSaveDrop(name, clientPt.x, clientPt.y)
+                                                  : std::string();
+            if (folder.empty()) return S_OK;
+            FORMATETC fmt = HGlobalFormat(SaveDragFolderFormat());
+            STGMEDIUM stg = {};
+            stg.tymed = TYMED_HGLOBAL;
+            stg.hGlobal = Utf8ToHGlobal(folder);
+            stg.pUnkForRelease = nullptr;
+            if (!stg.hGlobal) return S_OK;
+            // With fRelease the source owns the memory, even across processes.
+            if (SUCCEEDED(pDataObj->SetData(&fmt, &stg, TRUE))) {
+                *pdwEffect = DROPEFFECT_COPY;
+            } else {
+                ReleaseStgMedium(&stg);
+            }
             return S_OK;
         }
 
@@ -168,6 +242,16 @@ namespace UltraCanvas {
         }
 
         return paths;
+    }
+
+    std::string UltraCanvasWindowsDropTarget::ReadSaveDragName(IDataObject* pDataObj) {
+        FORMATETC fmt = HGlobalFormat(SaveDragNameFormat());
+        if (pDataObj->QueryGetData(&fmt) != S_OK) return std::string();
+        STGMEDIUM stg = {};
+        if (FAILED(pDataObj->GetData(&fmt, &stg))) return std::string();
+        std::string name = (stg.tymed == TYMED_HGLOBAL) ? HGlobalToUtf8(stg.hGlobal) : std::string();
+        ReleaseStgMedium(&stg);
+        return name;
     }
 
     POINT UltraCanvasWindowsDropTarget::ScreenToClientPoint(POINTL pt) {
@@ -312,6 +396,112 @@ namespace UltraCanvas {
     }
 
     HRESULT STDMETHODCALLTYPE UltraCanvasWindowsFileDataObject::EnumDAdvise(
+            IEnumSTATDATA** ppEnum) {
+        (void)ppEnum;
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+
+// =============================================================================
+// DRAG SOURCE — SAVE DRAG DATA OBJECT
+// =============================================================================
+
+    UltraCanvasWindowsSaveDataObject::UltraCanvasWindowsSaveDataObject(
+            const std::string& fileName)
+            : refCount(1)
+            , name(fileName) {
+    }
+
+    UltraCanvasWindowsSaveDataObject::~UltraCanvasWindowsSaveDataObject() = default;
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::QueryInterface(
+            REFIID riid, void** ppv) {
+        if (!ppv) return E_POINTER;
+        if (riid == IID_IUnknown || riid == IID_IDataObject) {
+            *ppv = static_cast<IDataObject*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    ULONG STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::AddRef() {
+        return InterlockedIncrement(&refCount);
+    }
+
+    ULONG STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::Release() {
+        LONG count = InterlockedDecrement(&refCount);
+        if (count == 0) delete this;
+        return count;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::GetData(
+            FORMATETC* format, STGMEDIUM* medium) {
+        if (!format || !medium) return E_POINTER;
+        if (QueryGetData(format) != S_OK) return DV_E_FORMATETC;
+        HGLOBAL mem = Utf8ToHGlobal(name);
+        if (!mem) return E_OUTOFMEMORY;
+        medium->tymed = TYMED_HGLOBAL;
+        medium->hGlobal = mem;
+        medium->pUnkForRelease = nullptr;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::GetDataHere(
+            FORMATETC* format, STGMEDIUM* medium) {
+        (void)format; (void)medium;
+        return E_NOTIMPL;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::QueryGetData(
+            FORMATETC* format) {
+        if (!format) return E_POINTER;
+        if (format->cfFormat != SaveDragNameFormat()) return DV_E_FORMATETC;
+        if (!(format->tymed & TYMED_HGLOBAL)) return DV_E_TYMED;
+        if (format->dwAspect != DVASPECT_CONTENT) return DV_E_DVASPECT;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::GetCanonicalFormatEtc(
+            FORMATETC* in, FORMATETC* out) {
+        (void)in;
+        if (!out) return E_POINTER;
+        out->ptd = nullptr;
+        return E_NOTIMPL;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::SetData(
+            FORMATETC* format, STGMEDIUM* medium, BOOL release) {
+        if (!format || !medium) return E_POINTER;
+        // Only the target's answer is taken: the folder it names.
+        if (format->cfFormat != SaveDragFolderFormat() || medium->tymed != TYMED_HGLOBAL)
+            return E_NOTIMPL;
+        droppedFolder = HGlobalToUtf8(medium->hGlobal);
+        if (release) ReleaseStgMedium(medium);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::EnumFormatEtc(
+            DWORD direction, IEnumFORMATETC** ppEnum) {
+        if (!ppEnum) return E_POINTER;
+        *ppEnum = nullptr;
+        if (direction != DATADIR_GET) return E_NOTIMPL;
+        FORMATETC fmt = HGlobalFormat(SaveDragNameFormat());
+        return SHCreateStdEnumFmtEtc(1, &fmt, ppEnum);
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::DAdvise(
+            FORMATETC* format, DWORD advf, IAdviseSink* sink, DWORD* connection) {
+        (void)format; (void)advf; (void)sink; (void)connection;
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::DUnadvise(DWORD connection) {
+        (void)connection;
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+
+    HRESULT STDMETHODCALLTYPE UltraCanvasWindowsSaveDataObject::EnumDAdvise(
             IEnumSTATDATA** ppEnum) {
         (void)ppEnum;
         return OLE_E_ADVISENOTSUPPORTED;

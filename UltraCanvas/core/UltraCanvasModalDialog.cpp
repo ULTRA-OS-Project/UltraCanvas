@@ -1822,6 +1822,11 @@ namespace UltraCanvas {
                 fileIcon->onDropped = [this](UltraCanvasUIElement* target, const Point2Di& point) {
                     OnFileIconDropped(target, point);
                 };
+                // Out of the dialog, onto a folder of UltraFiler (or another
+                // file manager that names it): the same as a folder here.
+                fileIcon->onDroppedOnFolder = [this](const std::string& folder) {
+                    SaveIntoDroppedFolder(folder);
+                };
                 iconBlock->AddChild(fileIcon);
 
                 fileIconCaption = std::make_shared<UltraCanvasLabel>(
@@ -2763,11 +2768,16 @@ namespace UltraCanvas {
                 break;
             }
         }
+        SaveIntoDroppedFolder(folder);
+    }
+
+    void UltraCanvasFileDialog::SaveIntoDroppedFolder(const std::string& folder) {
         if (folder.empty() || folder == currentDirectory) return;
         // A folder of an archive the listing is browsing is not a place a
         // file can be written to.
         std::error_code ec;
         if (!std::filesystem::is_directory(PathFromUtf8(folder), ec) || ec) return;
+        // The folder field, the listing and the tree all follow.
         GoToDirectory(folder, true);
     }
 

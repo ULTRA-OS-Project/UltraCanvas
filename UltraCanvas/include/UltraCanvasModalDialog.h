@@ -996,6 +996,9 @@ namespace UltraCanvas {
         // The icon was dropped on `target` at `windowPoint`: a folder of the
         // listing or the tree under it becomes the current folder.
         void OnFileIconDropped(UltraCanvasUIElement* target, const Point2Di& windowPoint);
+        // The folder the icon was dropped on - here, or in another window or
+        // program - becomes the one the file is saved in.
+        void SaveIntoDroppedFolder(const std::string& folder);
         // The Settings button: the save settings of the type being saved,
         // and the picture's size for this save when the caller gave it.
         void ShowSaveTypeSettings();

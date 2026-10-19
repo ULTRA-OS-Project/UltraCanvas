@@ -1,8 +1,8 @@
 // core/UltraCanvasFileDragIcon.cpp
 // The icon of a file about to be written, dragged onto a folder to say where
 // it goes. See UltraCanvasFileDragIcon.h.
-// Version: 1.0.0
-// Last Modified: 2026-10-12
+// Version: 1.1.0
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileDragIcon.h"
@@ -291,6 +291,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDragIcon::BeginDrag(const Point2Di& windowPoint) {
         dragging = true;
+        nativeRefused = false;
         dragPoint = ClampToWindow(windowPoint);
         MeasureBadge();
         ShowBadge(dragPoint);
@@ -299,6 +300,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDragIcon::UpdateDrag(const Point2Di& windowPoint) {
+        // Out of the window the drag goes on as the platform's, so it can be
+        // dropped on a folder of another window or program.
+        if (!IsInsideWindow(windowPoint) && !nativeRefused && HandOverToNativeDrag()) return;
         dragPoint = ClampToWindow(windowPoint);
         UltraCanvasUIElement* target = TargetAt(dragPoint);
         if (hoverTarget.lock().get() != target) {
@@ -332,6 +336,44 @@ namespace UltraCanvas {
         if (dropped) dropped(target, p);
         if (self.expired()) return;
         EndGesture();
+    }
+
+    bool UltraCanvasFileDragIcon::HandOverToNativeDrag() {
+        auto* win = GetWindow();
+        if (!win) return false;
+        // The window's own drag ends first: the platform's needs the pointer,
+        // and on Windows it runs to the drop before StartNativeSaveDrag
+        // returns.
+        const std::string name = fileName;
+        EndGesture();
+        std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+        const bool started = win->StartNativeSaveDrag(name,
+                [weakSelf](const std::string& folder) {
+                    auto self = weakSelf.lock();
+                    if (!self) return;   // the dialog closed meanwhile
+                    auto* icon = static_cast<UltraCanvasFileDragIcon*>(self.get());
+                    auto dropped = icon->onDroppedOnFolder;
+                    if (dropped && !folder.empty()) dropped(folder);
+                });
+        if (started) return true;
+        // No native drag here: the gesture carries on inside the window.
+        pressed = true;
+        dragging = true;
+        nativeRefused = true;
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            app->CaptureMouse(this);
+            mouseCaptured = true;
+        }
+        RequestRedraw();
+        return false;
+    }
+
+    bool UltraCanvasFileDragIcon::IsInsideWindow(const Point2Di& windowPoint) const {
+        auto* win = GetWindow();
+        if (!win) return true;
+        int ww = 0, wh = 0;
+        win->GetWindowSize(ww, wh);
+        return windowPoint.x >= 0 && windowPoint.y >= 0 && windowPoint.x < ww && windowPoint.y < wh;
     }
 
     void UltraCanvasFileDragIcon::CancelDrag() {
