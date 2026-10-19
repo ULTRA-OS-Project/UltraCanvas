@@ -6,8 +6,7 @@ DLLs, plus Resources/, lib/, Plugins/ and data/. This script copies that folder
 into a package layout and adds what an MSIX needs on top of it:
 
   AppxManifest.xml   the package identity, and one <Application> - one Start
-                     menu entry - for every application in APPS whose .exe is
-                     in dist/
+                     menu entry - for every application in dist/
   Assets/            the Start menu, taskbar and Store logos, rendered from
                      media/appicon/ with ImageMagick
 
@@ -21,12 +20,14 @@ One package for the whole suite, the way dist/ and the macOS suite folder are
 one: the applications share hundreds of DLLs, and a package per
 application would carry its own copy of all of them.
 
-A new application gets a row in APPS below. That is the whole job: its .exe is
-already in dist/ (package-win.sh copies every one), and its icon is the one
-CMake embeds (media/appicon/, ultracanvas_embed_app_icon).
+Which programs get a Start menu entry follows the rule the installer's Start
+menu follows (scripts/build-windows-installer.sh), so the two list the same
+applications: a desktop entry (Apps/*/*.desktop) makes one, and so does a GUI
+program without one. A new application needs nothing here.
 """
 
 import argparse
+import glob
 import os
 import re
 import shutil
@@ -34,7 +35,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -56,7 +57,7 @@ class FileTypes:
 class App:
     exe: str                  # file name in dist/, without .exe
     display_name: str         # Start menu name
-    icon: str                 # file in media/appicon/
+    icon: str                 # path of the PNG the logos are rendered from
     description: str
     file_types: List[FileTypes] = field(default_factory=list)
 
@@ -86,49 +87,128 @@ MEDIA_TYPES = FileTypes("ultracanvas.media", "Images, video, audio and documents
     ".pdf", ".epub", ".ucd",
 ])
 
-# Every application that gets a Start menu entry. An .exe in dist/ that is
-# not listed here (the command-line tools, the ULTRA OS desktop components)
-# still ships in the package; it just has no entry. A listed .exe that this
-# build did not produce is skipped, as package-macos.sh's package_if_built
-# does.
+# Explorer's "Open with", by program. A package declares file types by
+# extension, where a desktop entry's MimeType= names MIME types, so these are
+# written out here; Texter and UltraViewer are the two package-macos.sh
+# declares document types for. An extension may be claimed once.
+FILE_TYPES = {
+    "Texter": [TEXT_TYPES],
+    "UltraViewer": [MEDIA_TYPES],
+}
+
+# Who gets a Start menu entry. The rule is build-windows-installer.sh's (its
+# "THE START MENU"), so the installer and the package list the same
+# applications:
+#   - a program with a desktop entry (Apps/*/*.desktop, which the Linux menus
+#     read too), named as the entry names it, described by its Comment= and
+#     drawn with its Icon= from media/appicon/;
+#   - a GUI-subsystem program without one (Texter, UltraCanvasDemo,
+#     UltraFiler), under its own name;
+#   - never a console program without one (ultramsg, videofx): that is a
+#     command-line tool. Nor a console companion (<App>.com): the entry
+#     starts the .exe.
+# Every .exe ships in the package either way; one without an entry just has
+# nothing in the Start menu that starts it.
 #
-# Not listed until they keep their data in %APPDATA% on Windows: EmailCleaner
-# and UltraSocial. Both fall back to a folder under the working directory
-# ("./EmailCleaner"), and a packaged application starts in System32, so they
-# would quit on their first write. See "What changes inside a package" in
-# Docs/UltraCanvas/UltraCanvasWindowsMSIX.md.
-APPS = [
-    App("UltraCanvasDemo", "UltraCanvas Demo", "Demo.png",
-        "Every UltraCanvas element in one window, with its source code"),
-    App("Texter", "UltraCanvas Texter", "Texter.png",
-        "Text and source code editor", [TEXT_TYPES]),
-    App("UltraFiler", "UltraFiler", "UltraFiler.png",
-        "File manager with folder tree and media preview"),
-    App("UltraViewer", "UltraViewer", "UltraViewer.png",
-        "Viewer for images, video, audio, PDF and e-books", [MEDIA_TYPES]),
-    App("UltraPaint", "UltraPaint", "UltraPaint.png", "Bitmap editor"),
-    App("ArtCreator", "ArtCreator", "ArtCreator.png", "Vector drawing editor"),
-    App("UltraAIApp", "UltraAI", "UltraAI.png",
-        "AI capabilities: chat, speech, image, video and music generation"),
-    App("UltraMail", "UltraMail", "UltraMail.png", "Mail client"),
-    App("UltraCleaner", "UltraCleaner", "UltraCleaner.png",
-        "Removes temporary files, caches, logs and other leftovers"),
-    App("UltraClaude", "UltraClaude", "UltraClaude.png",
-        "Chat with Claude through the Claude Code command line"),
-    App("UltraNetMonitor", "UltraNetMonitor", "UltraNetMonitor.png",
-        "Which processes hold which network connections, live"),
-    App("DeviceExplorer", "DeviceExplorer", "DeviceExplorer.png",
-        "Printers, scanners, cameras and other connected devices"),
-    App("UltraAuthenticator", "UltraAuthenticator", "UltraAuthenticator.png",
-        "Two-factor authentication codes (TOTP and HOTP)"),
-    App("UltraPassword", "UltraPassword", "UltraPassword.png", "Password vault"),
-    App("UltraClipboard", "UltraClipboard", "UltraClipboard.png",
-        "Clipboard history: texts, links, colours, images and files"),
-    App("ultrafibu", "UltraFIBU", "UltraFIBU.png",
-        "Double-entry accounting for Germany: DATEV, UStVA, ELSTER"),
-    App("UltraCanvasStart", "UltraCanvasStart", "UltraCanvasStart.png",
-        "Sets this computer up for UltraCanvas development"),
-]
+# Not applications, as for the installer: UltraCanvasShellGuard is what
+# sign-in starts when UltraDesktop runs instead of Explorer.
+NOT_APPLICATIONS = {"UltraCanvasShellGuard"}
+
+# Listed by the installer, but not in a package. UltraDesktop's Windows modes
+# - beside Explorer (the Run key) and instead of it (Winlogon's Shell) - are
+# registry values under HKEY_CURRENT_USER, and a packaged program's writes
+# there land in the package's own registry, which sign-in never reads: the
+# switch would report success and do nothing. Its desktop entry says
+# NoDisplay too; the installer lists it anyway so it can be tried.
+NOT_IN_PACKAGE = {"UltraDesktop"}
+
+
+def pe_subsystem(path: str) -> int:
+    """The PE header's Subsystem: 2 = Windows GUI, 3 = console, 0 = no PE.
+
+    At the same offset in PE32 and PE32+: the optional header starts 24
+    bytes after "PE\\0\\0", and Subsystem is 68 bytes into it.
+    """
+    try:
+        with open(path, "rb") as f:
+            data = f.read(4096)
+    except OSError:
+        return 0
+    if len(data) < 64 or data[:2] != b"MZ":
+        return 0
+    pe = int.from_bytes(data[60:64], "little")
+    if pe + 94 > len(data) or data[pe:pe + 4] != b"PE\0\0":
+        return 0
+    return int.from_bytes(data[pe + 92:pe + 94], "little")
+
+
+def read_desktop_entries(repo_root: str) -> Dict[str, Dict[str, str]]:
+    """Apps/*/*.desktop by program name (lower case): Name, Comment, Icon.
+
+    Only the [Desktop Entry] group: the actions after it ("New Window") have
+    a Name= of their own.
+    """
+    entries = {}
+    for path in sorted(glob.glob(os.path.join(repo_root, "Apps", "*", "*.desktop"))):
+        fields = {}
+        group = ""
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("["):
+                    group = line
+                elif group == "[Desktop Entry]" and "=" in line:
+                    key, _, value = line.partition("=")
+                    fields.setdefault(key.strip(), value.strip())
+        exec_line = fields.get("Exec", "").split()
+        if not exec_line:
+            continue
+        program = os.path.basename(exec_line[0])
+        entries[program.lower()] = fields
+    return entries
+
+
+def embedded_icons(repo_root: str) -> Dict[str, str]:
+    """The icon CMake embeds in each target (ultracanvas_embed_app_icon)."""
+    icons = {}
+    pattern = re.compile(r"ultracanvas_embed_app_icon\(\s*(\S+)\s+\"[^\"]*/media/appicon/([^\"/]+)\"")
+    files = [os.path.join(repo_root, "CMakeLists.txt")]
+    files += glob.glob(os.path.join(repo_root, "Apps", "*", "CMakeLists.txt"))
+    for path in files:
+        with open(path, encoding="utf-8") as f:
+            for target, icon in pattern.findall(f.read()):
+                icons[target.lower()] = icon
+    return icons
+
+
+def find_apps(dist: str, repo_root: str) -> List[App]:
+    appicon_dir = os.path.join(repo_root, "media", "appicon")
+    entries = read_desktop_entries(repo_root)
+    cmake_icons = embedded_icons(repo_root)
+    apps = []
+    for exe_path in sorted(glob.glob(os.path.join(dist, "*.exe"))):
+        exe = os.path.splitext(os.path.basename(exe_path))[0]
+        if exe in NOT_APPLICATIONS:
+            continue
+        entry = entries.get(exe.lower())
+        if entry is None and pe_subsystem(exe_path) != 2:
+            continue                # a command-line tool
+        if exe in NOT_IN_PACKAGE:
+            print(f"  No Start menu entry in a package: {exe} (see NOT_IN_PACKAGE)")
+            continue
+        name = (entry or {}).get("Name") or exe
+        description = (entry or {}).get("Comment") or f"{name}, part of UltraCanvas"
+        # The entry's icon, else one named after the program, else the one
+        # CMake embeds in it (UltraCanvasDemo's is Demo.png), else the suite's.
+        candidates = []
+        if entry and entry.get("Icon"):
+            candidates.append(entry["Icon"] + ".png")
+        candidates += [exe + ".png", cmake_icons.get(exe.lower(), ""), "UltraCanvas.png"]
+        icon = next(os.path.join(appicon_dir, c) for c in candidates
+                    if c and os.path.isfile(os.path.join(appicon_dir, c)))
+        apps.append(App(exe, name, icon, description, FILE_TYPES.get(exe, [])))
+    return apps
+
 
 # dist/ files that do not belong in the package. uc-diagnose starts an .exe
 # from its own folder, which a packaged application's folder
@@ -402,14 +482,9 @@ def main() -> None:
         publisher = f"{publisher}, {UNSIGNED_PUBLISHER_OID}"
     version = msix_version(args.version)
 
-    apps = []
-    for app in APPS:
-        if os.path.isfile(os.path.join(args.dist, f"{app.exe}.exe")):
-            apps.append(app)
-        else:
-            print(f"  Not built, so no Start menu entry: {app.exe}")
+    apps = find_apps(args.dist, REPO_ROOT)
     if not apps:
-        fail(f"none of the applications in APPS is in {args.dist}/")
+        fail(f"no application in {args.dist}/ - nothing for the Start menu")
     check_unique(apps)
 
     print(f"Copying {args.dist}/ to {args.layout}/")
@@ -423,11 +498,9 @@ def main() -> None:
         fail(f"package icon {package_icon} not found")
     render_package_assets(magick, package_icon, assets)
     for app in apps:
-        icon = os.path.join(appicon_dir, app.icon)
-        if not os.path.isfile(icon):
-            fail(f"icon {icon} for {app.exe} not found")
-        render_app_assets(magick, icon, os.path.join(assets, app.app_id))
-        print(f"  {app.display_name}: {app.exe}.exe, Id {app.app_id}")
+        render_app_assets(magick, app.icon, os.path.join(assets, app.app_id))
+        print(f"  {app.display_name}: {app.exe}.exe, Id {app.app_id}, "
+              f"icon {os.path.basename(app.icon)}")
 
     manifest = build_manifest(
         apps, args.identity_name, publisher, args.publisher_display_name,
