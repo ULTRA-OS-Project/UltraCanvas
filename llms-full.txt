@@ -43525,33 +43525,35 @@ A comprehensive, self-contained media viewer widget
 (`include/UltraCanvasMediaViewer.h`, `core/UltraCanvasMediaViewer.cpp`).
 One widget displays every media kind the framework knows, chooses the right
 display view automatically from the file kind, and brings its own chrome: a
-folder breadcrumb, two toolbar rows (open / navigation / slideshow /
-transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
+folder breadcrumb, one compact toolbar (open / navigation / slideshow /
+transitions, then zoom / rotate / mirror / adjust / curves / save), an image
 adjustments panel and a bottom info bar with a Details panel.
 
-The toolbars are **icons with tooltips**, not captions, so two rows still fit
-the narrow preview pane UltraFiler gives the viewer. Every icon comes from the
+The toolbar is **flat, small (16 px) icons with tooltips**, not captions, so
+one row holds every control; a window too narrow for it scrolls the row (mouse
+wheel, or the chevron at its edge) instead of clipping it. Every icon comes from the
 framework's own set under `media/icons/` and is drawn as a mask, so it takes the
 toolbar's foreground colour and greys out with the button; hovering shows the
 caption, with the key where there is one:
 
-| Row | Icon | Tooltip |
+| Group | Icon | Tooltip |
 |---|---|---|
-| 1 | `folder-open` | Open a file or folder |
-| 1 | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
-| 1 | `slideshow` (toggle) | Slideshow (Space) |
-| 1 | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
-| 2 | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
-| 2 | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
-| 2 | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
-| 2 | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
-| 2 | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
-| 2 | `curves` | Curves |
-| 2 | `save` | Save as… |
-| 2 | `file-info` | Details |
+| Browse | `folder-open` | Open a file or folder |
+| Browse | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
+| Browse | `slideshow` (toggle) | Slideshow (Space) |
+| Browse | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
+| View | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
+| View | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
+| View | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
+| View | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
+| Edit | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
+| Edit | `curves` | Curves |
+| Edit | `save` | Save as… |
 
-Row 2 shows only the groups the file on show takes - see
-[Tools per kind of file](#tools-per-kind-of-file).
+The browse group is always there; the view and edit groups only as far as the
+file on show takes them - see
+[Tools per kind of file](#tools-per-kind-of-file). *Details* is not on the
+toolbar: its button sits at the right end of the info bar.
 
 The three dropdowns stay text because a value picker shows its value; the
 interval and transition ones start on the defaults. The Slideshow toggle
@@ -43586,7 +43588,7 @@ using it costs nothing in capability and gains two things:
   fallback.
 
 Embed it as UltraFiler does, with `SetTopBarsVisible(false)` for a pane too
-small for two toolbar rows (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
+small for the toolbar (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
 `UltraCanvasMediaViewer::IsSupportedMedia(path)` answers, before you load
 anything, whether this build can show a given file at all.
 
@@ -43626,7 +43628,7 @@ so the viewer gets full player control for free.
 
 ## Tools per kind of file
 
-The second toolbar row offers only the tools that mean something for the file
+The toolbar's view and edit groups offer only the tools that mean something for the file
 on show; the rest are hidden, not greyed, so a video or a spreadsheet is not
 handed colour sliders it cannot apply. Each load decides it, and a host with
 its own controls can ask the same question:
@@ -43645,10 +43647,10 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | PDF, e-book | yes | — | — | — |
 | Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
 
-*Details* is always there. Separators follow the groups, so none is left
-standing alone. Text, spreadsheet, font, 3D, video and audio views carry their
-own controls (the players' transport bar, the model's orbit and dolly), so the
-row is down to *Details* for them.
+Separators follow the groups, so none is left standing alone. Text,
+spreadsheet, font, 3D, video and audio views carry their own controls (the
+players' transport bar, the model's orbit and dolly), so the toolbar is down to
+the browse group for them; *Details* stays in the info bar for every kind.
 
 A drawing's pixels are only a rendering of it at the size it is shown, so it
 takes no gamma, colour or curve: the adjustments carry from one bitmap to the
@@ -43764,8 +43766,8 @@ thumbnail here; `UCRasterDocument` opens it with its layers.
 
 ## Details panel
 
-The **Details** button in the info bar (the `file-info` icon; the same icon
-sits at the end of the second toolbar row) opens a scrollable panel over the
+The **Details** button at the right end of the info bar (the `file-info`
+icon) opens a scrollable panel over the
 active view, for every media kind:
 file name, path and size, the kind-specific facts (dimensions, channels,
 colour space, dpi and loader for an image; title / author for an e-book; page
