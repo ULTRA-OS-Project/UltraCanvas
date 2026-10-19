@@ -5781,6 +5781,29 @@ else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ULTRAVIEWER SETTINGS TEST =====
+# UltraViewer's settings file (Apps/UltraViewer/UltraViewerSettings.h,
+# header-only): the minutes before Unlock's passwords are forgotten - the
+# default, never, and hand-edited values. Works in a temporary folder.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraViewerSettingsTest...")
+    add_executable(UltraViewerSettingsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraViewerSettingsTest.cpp
+    )
+    target_include_directories(UltraViewerSettingsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraViewer)
+    target_compile_features(UltraViewerSettingsTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraViewerSettingsTest PRIVATE UltraCanvas)
+    set_target_properties(UltraViewerSettingsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraViewerSettingsTest COMMAND UltraViewerSettingsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraViewerSettingsTest")
+else()
+    message(STATUS "  UltraViewerSettingsTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== SESSION LOCK TEST =====
 # Session-lock listeners hear a lock and an unlock once each; on Linux the
 # D-Bus backend turns a screensaver's ActiveChanged into those calls. That

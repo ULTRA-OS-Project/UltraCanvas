@@ -1578,6 +1578,10 @@ void UltraFilerWindow::ApplySettings() {
         else
             preview->SetPDFThumbnailWidthFraction(
                     settings.pdfThumbnailWidthPercent / 100.0f);
+        // Handling > Protected files: how long without input before the
+        // preview forgets Unlock's passwords (0: only a screen lock does).
+        preview->SetForgetPasswordsAfterIdle(
+                std::chrono::minutes(settings.forgetPasswordsAfterMinutes));
     }
     // Handling > Drag & Drop: every tab's folder display, so the choice holds
     // for tabs that were already open when it changed. The folder preview

@@ -80,6 +80,8 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.17.0 - SetSettingsAction: a host's settings, behind a gear at the right
+//                   end of the info bar
 // Version: 1.16.0 - Unlock's passwords are forgotten - and an unlocked file shown locked
 //                   again - when the desktop session locks or the window has had no
 //                   input for a while (SetForgetPasswordsAfterIdle); IsUnlocked, and
@@ -610,6 +612,13 @@ public:
     // kind, and the Details say so.
     bool IsUnlocked() const { return unlocked; }
 
+    // ===== HOST SETTINGS =====
+    // A gear at the right end of the info bar, beside Details, that runs
+    // `action` - the host's settings (UltraViewer's: how long before the
+    // passwords are forgotten). Hidden while no action is set; an empty one
+    // hides it again.
+    void SetSettingsAction(std::function<void()> action, const std::string& tooltip = "Settings");
+
     // ===== KEYBOARD =====
     // Give the widget the window keyboard focus, so the browsing keys work
     // without clicking into it first.
@@ -841,6 +850,8 @@ private:
     TimerId idleTimer = 0;
     SessionLockListenerId sessionLockListener = 0;
     std::shared_ptr<UltraCanvasButton> unlockButton;   // in the info bar
+    std::shared_ptr<UltraCanvasButton> settingsButton; // ... and the host's settings (SetSettingsAction)
+    std::function<void()> settingsAction;
 
     MediaAdjustments adjustments;
     // The tools the shown file takes (see GetAvailableTools()).

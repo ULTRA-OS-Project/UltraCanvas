@@ -22,6 +22,7 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.6.0 - SetSettingsAction: the gear in the info bar
 // Version: 1.5.0 - forgotten, and the file locked again, on a session lock, ForgetPasswords
 //                  and idleness; IsUnlocked and "unlocked" in the info bar
 // Version: 1.4.0 - Unlock's passwords kept for the folder: back, the same password, another
@@ -387,6 +388,20 @@ int main() {
                   "pdf-aes256-locked.pdf: the session locked - closed again, its note back");
             NotifySessionLockChanged(false);
         }
+    }
+
+    // ----- A host's settings, behind the gear in the info bar -----
+    std::cout << "\nThe host's settings\n";
+    {
+        Check(!Shown(*viewer, "MV_Settings"), "no settings action: no gear");
+        int opened = 0;
+        viewer->SetSettingsAction([&opened]() { ++opened; });
+        auto* gear = dynamic_cast<UltraCanvasButton*>(viewer->FindChildById("MV_Settings"));
+        Check(gear && gear->IsVisible(), "a settings action: the gear is up");
+        if (gear && gear->onClick) gear->onClick();
+        Check(opened == 1, "the gear runs the host's action");
+        viewer->SetSettingsAction(nullptr);
+        Check(!Shown(*viewer, "MV_Settings"), "an empty action hides it again");
     }
 
     // ----- The adjustments panel and the adjustments themselves -----

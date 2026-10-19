@@ -20,3 +20,6 @@
   - A file opened with its password says so: *unlocked* beside *PDF* or
     *UC DOCUMENT* in the info bar, the encryption in a PDF's Details, and
     `IsUnlocked()`.
+  - `SetSettingsAction(action)`: a gear at the right end of the info bar for
+    the host's settings, hidden until one is set - UltraViewer's *Forget
+    passwords after* lives behind it.

@@ -1179,7 +1179,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   with a lock of their own and tests call). Wired up by
   `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` in the **top-level** `CMakeLists.txt`;
   without it nothing is reported. Used by `UltraCanvasMediaViewer` to forget
-  Unlock's passwords. See `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
+  Unlock's passwords, and by UltraPaint for the passwords of a drop. See
+  `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
 
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
@@ -43955,6 +43956,17 @@ viewer->SetForgetPasswordsAfterIdle(std::chrono::minutes(2));   // a shared desk
 if (viewer->IsUnlocked()) { /* the shown file is protected, and open */ }
 ```
 
+**A host's settings.** `SetSettingsAction(action)` puts a gear at the right
+end of the info bar, beside Details, that runs `action`: UltraViewer opens
+its settings there - *Forget passwords after*, which it passes on to
+`SetForgetPasswordsAfterIdle`. The gear is hidden while no action is set, and
+an empty one hides it again; the optional second argument is its tooltip.
+
+```cpp
+viewer->SetSettingsAction([this]() { ShowSettings(); });   // the gear appears
+viewer->SetSettingsAction(nullptr);                        // ... and goes again
+```
+
 ```cpp
 if (viewer->IsLocked()) {
     viewer->Unlock();                      // asks, in a dialog
@@ -44161,7 +44173,7 @@ the user has stored any. An SVG has no pixel size of its own: it is offered as
 written by drawing it again at the size chosen - sharp at any size, where the
 picture shown would blur when stretched. The surface does it:
 
-<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; void ShowSettings(); -->
 ```cpp
 UltraCanvasMediaSurface* surface = viewer->GetSurface();
 const FileSavePicture picture = surface->GetSavePicture();   // turned as shown
@@ -60564,6 +60576,11 @@ RemoveSessionLockListener(listener);
 The [media viewer](UltraCanvasMediaViewer.md) is the first user: while it
 keeps a password Unlock was given, or shows a file opened with one, a lock
 forgets the passwords and puts the file back behind its Unlock button.
+UltraPaint listens while a drop of protected files holds the passwords given
+for it, and forgets them, so the files still to come ask again.
+
+A listener is best registered only while there is something to forget, as
+both do: the platform is watched only while one is registered.
 
 ## Calls
 

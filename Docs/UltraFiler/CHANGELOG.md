@@ -11,6 +11,10 @@
   and an unlocked preview says *unlocked* beside *PDF* in the info line
   (framework changelog, pending entries `media-viewer-unlock` and
   `session-lock`).
+- **Settings > Handling > Protected files.** How long UltraFiler may be left
+  alone before the preview forgets those passwords: a slider from *Never*
+  to 120 minutes, 10 by default. The screen lock forgets them whatever is
+  set.
 
 #### 2026-10-19 *1.77.0*
 - **Home button.** The navigation row has a Home button (a house) between

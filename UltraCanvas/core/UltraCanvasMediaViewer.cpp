@@ -1,6 +1,7 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.15.0 - SetSettingsAction: a gear in the info bar for the host's settings
 // Version: 1.14.0 - Unlock's passwords are forgotten, and an unlocked file locked again,
 //                   when the session locks or the window has been idle (ten minutes by
 //                   default); an unlocked file says "unlocked" in the info bar and Details
@@ -1590,6 +1591,19 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     detailsBtn->onClick = [this] { ToggleDetails(); };
     detailsBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bottomBar->AddChild(detailsBtn);
+
+    // The host's settings (SetSettingsAction); up only once there are some.
+    settingsButton = std::make_shared<UltraCanvasButton>("MV_Settings", 0, 0, 28, 20, "");
+    settingsButton->SetIcon(ViewerIconPath("settings.svg"));
+    settingsButton->SetIconSize(14, 14);
+    settingsButton->SetIconPosition(ButtonIconPosition::Center);
+    settingsButton->SetIconSpacing(0);
+    settingsButton->SetUseIconAsMask(true);
+    settingsButton->SetTooltip("Settings");
+    settingsButton->onClick = [this] { if (settingsAction) settingsAction(); };
+    settingsButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    settingsButton->SetVisible(false);
+    bottomBar->AddChild(settingsButton);
     AddChild(bottomBar);
 
     // ----- DETAILS PANEL (over the display area) -----
@@ -2801,6 +2815,14 @@ bool UltraCanvasMediaViewer::ForgetPasswordsIfIdle() {
     if (std::chrono::steady_clock::now() - lastActivity < forgetAfterIdle) return false;
     ForgetPasswords();
     return true;
+}
+
+void UltraCanvasMediaViewer::SetSettingsAction(std::function<void()> action, const std::string& tooltip) {
+    settingsAction = std::move(action);
+    if (!settingsButton) return;
+    settingsButton->SetTooltip(tooltip);
+    settingsButton->SetVisible(static_cast<bool>(settingsAction));
+    RequestRedraw();
 }
 
 void UltraCanvasMediaViewer::UpdateAbsenceWatch() {

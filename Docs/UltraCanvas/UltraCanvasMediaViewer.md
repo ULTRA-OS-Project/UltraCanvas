@@ -315,6 +315,17 @@ viewer->SetForgetPasswordsAfterIdle(std::chrono::minutes(2));   // a shared desk
 if (viewer->IsUnlocked()) { /* the shown file is protected, and open */ }
 ```
 
+**A host's settings.** `SetSettingsAction(action)` puts a gear at the right
+end of the info bar, beside Details, that runs `action`: UltraViewer opens
+its settings there - *Forget passwords after*, which it passes on to
+`SetForgetPasswordsAfterIdle`. The gear is hidden while no action is set, and
+an empty one hides it again; the optional second argument is its tooltip.
+
+```cpp
+viewer->SetSettingsAction([this]() { ShowSettings(); });   // the gear appears
+viewer->SetSettingsAction(nullptr);                        // ... and goes again
+```
+
 ```cpp
 if (viewer->IsLocked()) {
     viewer->Unlock();                      // asks, in a dialog
@@ -521,7 +532,7 @@ the user has stored any. An SVG has no pixel size of its own: it is offered as
 written by drawing it again at the size chosen - sharp at any size, where the
 picture shown would blur when stretched. The surface does it:
 
-<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; void ShowSettings(); -->
 ```cpp
 UltraCanvasMediaSurface* surface = viewer->GetSurface();
 const FileSavePicture picture = surface->GetSavePicture();   // turned as shown

@@ -15,6 +15,11 @@
   Unlock button. A file opened with its password says so: *unlocked* beside
   *PDF* (or *UC DOCUMENT*) in the bar at the bottom, and in the Details
   (framework changelog, pending entry `session-lock`).
+- **Settings: how long before the passwords are forgotten.** A gear at the
+  right end of the bottom bar opens UltraViewer's settings, where *Forget
+  passwords after* takes 1 minute to 2 hours, or *Never* (the screen lock
+  still forgets them). The choice applies at once and is kept in
+  `UltraViewer/config.ini` of the UltraCanvas settings folder.
 - **The viewer's own notes are dark.** What it says about a file it shows no
   picture of - a `.ucd`'s summary, a protected PDF's note - was printed on a
   white page in the dark window; it is in the viewer's colours now, laid out
