@@ -502,6 +502,16 @@ ai:
       # Not a system package: fetched via CMake FetchContent (or an existing
       # checkout via ULTRAAI_LLAMACPP_SOURCE_DIR) and built as static libs
       # when ULTRAAI_ADAPTER_LLAMACPP=ON. Off by default.
+    llama_server:
+      min_version: "release b11669 (UltraAI/runtime/src/LocalRuntimeBuiltinData.cpp pins the archives by SHA-256)"
+      purpose: "The inference engine the UltraAI local runtime downloads on demand and runs as a child process for the `local` provider (llama.cpp, MIT)"
+      required: false
+      priority: "medium"
+      platforms: ["linux", "macos", "windows"]
+      # Runtime only, never linked and never part of the build: the user's
+      # machine fetches the prebuilt release archive for its platform and
+      # accelerator from the gallery index when a model is first asked for
+      # (Docs/Modules/UltraAI/LocalRuntime.md).
 
 # ===== WEBASSEMBLY (WasmHost) =====
 #
