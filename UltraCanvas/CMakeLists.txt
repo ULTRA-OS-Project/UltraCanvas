@@ -354,6 +354,26 @@ else()
     set(ULTRACANVAS_HAS_LIBHEIF FALSE)
 endif()
 
+# poppler-glib - a password-protected PDF on a libvips older than 8.13
+# (Ubuntu 22.04 ships 8.12). libvips added pdfload's "password" in 8.13; an
+# older one ignores it (GObject warns of an unknown property) and opens every
+# PDF with no password, so the right password was reported as the wrong one.
+# There PixelFX::FileIO::LoadPdf opens a protected PDF through poppler-glib
+# itself - the library that libvips' pdfload is built on, and which libvips-dev
+# depends on - and renders it the way pdfload does. A libvips of 8.13 or later
+# needs none of this.
+set(ULTRACANVAS_PDF_PASSWORD_POPPLER FALSE)
+if(ULTRACANVAS_HAS_VIPS AND LIBVIPS_vips_VERSION AND LIBVIPS_vips_VERSION VERSION_LESS 8.13)
+    pkg_check_modules(POPPLER_GLIB poppler-glib)
+    if(POPPLER_GLIB_FOUND)
+        set(ULTRACANVAS_PDF_PASSWORD_POPPLER TRUE)
+        message(STATUS "  poppler-glib: ${POPPLER_GLIB_VERSION} (password-protected PDFs - libvips ${LIBVIPS_vips_VERSION} has no pdfload password)")
+    else()
+        message(WARNING "libvips ${LIBVIPS_vips_VERSION} has no pdfload \"password\" and poppler-glib was not found: "
+                        "password-protected PDFs will not open. Install libpoppler-glib-dev, or libvips 8.13 or later.")
+    endif()
+endif()
+
 # zbar - QR/barcode decoder (optional)
 pkg_check_modules(ZBAR zbar)
 if(ZBAR_FOUND)
@@ -1966,6 +1986,20 @@ if(ULTRACANVAS_HAS_LIBHEIF)
     # never links them itself, the application does.
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARIES})
     target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARY_DIRS})
+endif()
+if(ULTRACANVAS_PDF_PASSWORD_POPPLER)
+    # Only PixelFX.cpp includes poppler's header (see the poppler-glib block
+    # above); the define and include path go on that one source, as libheif's.
+    set(_uc_poppler_includes ${POPPLER_GLIB_INCLUDE_DIRS})
+    if(_uc_poppler_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        list(REMOVE_ITEM _uc_poppler_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    endif()
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
+                 APPEND PROPERTY COMPILE_DEFINITIONS ULTRACANVAS_PDF_PASSWORD_POPPLER=1)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
+                 APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_poppler_includes})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${POPPLER_GLIB_LIBRARIES})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${POPPLER_GLIB_LIBRARY_DIRS})
 endif()
 
 if(ZBAR_FOUND)

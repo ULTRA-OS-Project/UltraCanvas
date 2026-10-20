@@ -74325,6 +74325,11 @@ loader's wording (poppler says *"Document is encrypted"* for a missing and a
 wrong password alike): the refused PDF names an `/Encrypt` dictionary. A
 password given to a file that has none is ignored.
 
+libvips' `pdfload` takes a password from libvips 8.13 on. Built against an
+older one (Ubuntu 22.04 ships 8.12), the framework opens a protected PDF
+through poppler-glib instead - CMake looks for it only then - so the
+password works the same everywhere.
+
 ## Elements of a loaded drawing
 
 `RasterizeVectorElements` is the same job for a drawing that is already open:

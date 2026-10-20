@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.79.0*
+#### 2026-10-19 *1.83.0*
 - **The preview pane shows PDFs in the PDF view, and unlocks protected
   files.** A PDF in the preview pane had been a picture of its first page; it
   is the PDF view again, pages and all, and PDFs on a remote drive are still

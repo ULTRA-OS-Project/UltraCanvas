@@ -1887,7 +1887,7 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
         }
     }
     if (out.empty()) return;
-    KeepPasswordsOnlyFor(PathToUtf8(fs::path(UltraCanvas::PathFromUtf8(out.front())).parent_path()));
+    KeepPasswordsOnlyFor(PathToUtf8(UltraCanvas::PathFromUtf8(out.front()).parent_path()));
     playlist = std::move(out);
     currentIndex = std::min(startIndex, playlist.size() - 1);
     // Reflect the folder the (first) file lives in.
@@ -2855,7 +2855,7 @@ void UltraCanvasMediaViewer::UpdateAbsenceWatch() {
 
 void UltraCanvasMediaViewer::RememberPassword(const std::string& path, const std::string& password) {
     if (!rememberPasswords || password.empty()) return;
-    const std::string folder = PathToUtf8(fs::path(UltraCanvas::PathFromUtf8(path)).parent_path());
+    const std::string folder = PathToUtf8(UltraCanvas::PathFromUtf8(path).parent_path());
     KeepPasswordsOnlyFor(folder);
     passwordFolder = folder;
     // One buffer per distinct password, the newest first.
@@ -2888,7 +2888,7 @@ void UltraCanvasMediaViewer::RememberPassword(const std::string& path, const std
 void UltraCanvasMediaViewer::UnlockFromRememberedPasswords() {
     const std::string path = GetCurrentPath();
     if (!IsLocked() || path.empty() || rememberedPasswords.empty()) return;
-    if (!SameFolder(PathToUtf8(fs::path(UltraCanvas::PathFromUtf8(path)).parent_path()), passwordFolder)) return;
+    if (!SameFolder(PathToUtf8(UltraCanvas::PathFromUtf8(path).parent_path()), passwordFolder)) return;
     // The one that opened this file before, else - once - every one kept.
     std::vector<std::shared_ptr<UltraCryptSecureBuffer>> order;
     if (auto it = passwordForFile.find(path); it != passwordForFile.end()) order.push_back(it->second);
