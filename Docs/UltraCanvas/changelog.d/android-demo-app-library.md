@@ -22,3 +22,11 @@
   sysroot's link lists shows here and not in the static core), then fails if
   `libUltraCanvasDemo.so` does not export `ANativeActivity_onCreate` and every
   `Java_*` function. It also runs when `Apps/DemoApp/` changes now.
+- **The demo's OpenGL pages build for OpenGL ES on Android.** The 3D models,
+  shader and Zarch tabs and the 3D bubble chart included desktop `GL/gl.h`;
+  on Android they include `GLES3/gl3.h`, and their GLSL 3.30 shaders are
+  compiled as GLSL ES 3.00 (`#version 300 es` plus default precision; all 27
+  validate with glslangValidator). OpenGL ES has no `glPolygonMode`,
+  `glPointSize` or `GL_PROGRAM_POINT_SIZE`: the shader tab's point shader now
+  sets `gl_PointSize` itself, and on Android the models tab's Wireframe
+  toggle draws the model filled.
