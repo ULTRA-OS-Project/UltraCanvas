@@ -5,7 +5,8 @@
 //                   covers a Stale folder being fetched again
 // Version: 1.11.0 - one abort check per thread, the preview's cancel in it;
 //                   Revalidate goes ahead of the queue, and beside a running
-//                   transfer on a thread of its own
+//                   transfer on a thread of its own; a preview copy called
+//                   off leaves a cloud service's rate-limit wait too
 // Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off; a
 //                   failed download leaves no half-written file; an upload
 //                   under a name of its own; CachedListing, Revalidate
@@ -1411,6 +1412,9 @@ void UltraFilerRemoteDrives::CancelActivePreviewLocked(PreviewCancel why) {
     while (current < why &&
            !activePreviewCancel_->compare_exchange_weak(current, why)) {
     }
+    // A cloud drive's copy may be waiting out a service's rate limit on
+    // cond_ rather than moving bytes: wake it to see the flag.
+    cond_.notify_all();
 }
 
 void UltraFilerRemoteDrives::Stop() {
@@ -1646,10 +1650,14 @@ void UltraFilerRemoteDrives::WorkerMain() {
         UltraCloud::RateLimitPolicy rateLimit;
         rateLimit.maxRetries = job.isPrefetch ? 0 : 3;
         rateLimit.maxWaitSeconds = kRemoteRateLimitMaxWaitSeconds;
-        rateLimit.wait = [this](long long seconds) {
+        // A preview copy called off ends the wait as well
+        // (CancelActivePreviewLocked wakes it).
+        rateLimit.wait = [this, previewCancel](long long seconds) {
             std::unique_lock<std::mutex> lk(mutex_);
-            return !cond_.wait_for(lk, std::chrono::seconds(seconds),
-                                   [this]() { return shutdown_; });
+            return !cond_.wait_for(lk, std::chrono::seconds(seconds), [&]() {
+                return shutdown_ ||
+                       (previewCancel && previewCancel->load() != PreviewKeep);
+            });
         };
         UltraCloud::RateLimitPolicy previousRateLimit =
                 UltraCloud::SetThreadRateLimitPolicy(std::move(rateLimit));
