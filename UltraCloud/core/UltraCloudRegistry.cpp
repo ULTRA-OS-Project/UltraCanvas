@@ -1,6 +1,7 @@
 // UltraCloud/core/UltraCloudRegistry.cpp
+// Version: 0.2.0 - SetThreadDownloadContinues / DownloadContinues
 // Version: 0.1.0
-// Last Modified: 2026-09-03
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudProvider.h>
 #include <UltraCloud/UltraCloudMemory.h>
@@ -31,6 +32,18 @@ using UltraCanvas::PathToUtf8;
 #endif
 
 namespace UltraCloud {
+
+namespace {
+thread_local bool t_downloadContinues = false;
+} // namespace
+
+bool SetThreadDownloadContinues(bool continues) {
+    const bool previous = t_downloadContinues;
+    t_downloadContinues = continues;
+    return previous;
+}
+
+bool DownloadContinues() { return t_downloadContinues; }
 
 namespace {
 std::mutex& RegistryMutex() { static std::mutex m; return m; }

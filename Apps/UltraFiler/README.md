@@ -350,7 +350,11 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     called off when you ask the drive for anything else (and fetched again
     after that), when the selection moves to another file, and when the
     window closes - also while a cloud service makes it wait out a rate
-    limit.
+    limit. A copy that was called off part-way keeps what had arrived, and
+    the next fetch of that file continues from there instead of starting
+    over (FTP's REST, an HTTP Range; a server that cannot continue sends the
+    whole file). A partial copy is kept for a day, and 256 MB of them at
+    most - the newest first; the cache's sweep removes the rest.
   - **RAM discs.** *+ Drive > RAM disc...* asks for a name and a size and
     creates a disc in memory (VirtualFS's RAM disc API, wrapped by
     `UltraFilerRamDisks`), which then opens in the folder view and gets a row
