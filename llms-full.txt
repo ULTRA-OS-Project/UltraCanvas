@@ -18446,6 +18446,166 @@ what the test drives on any platform.
 - 1.0.0 (2026-10-01): first version.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasColorPaletteManager.md
+==============================================================================
+
+# UltraCanvas Color Palette Manager Documentation
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> card; std::shared_ptr<UltraCanvasColorPicker> picker; std::string savedLine; void SaveSetting(const std::string& value); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Keeping the palettes](#keeping-the-palettes)
+- [The palettes](#the-palettes)
+- [Selection and popups](#selection-and-popups)
+- [Style](#style)
+- [Callbacks](#callbacks)
+
+## Overview
+
+**UltraCanvasColorPaletteManager** is the set of colour palettes that sits
+under a [colour picker](UltraCanvasColorPicker.md): one or more rows of
+swatches, each row a palette, with a small button at the end of the rows to
+add more. It is what UltraPaint and ArtCreator show under the picker in their
+Colour card.
+
+- With **one** palette, its row ends in a **+** button.
+- With **several**, every row ends in a **−** that takes that palette away,
+  and the **last** row has the **+** under its **−**.
+- **+** opens the **palette gallery**: a popup of ready-made schemes, grouped
+  by kind (basics, moods, design systems, retro machines, indexed / GIF), each
+  with a preview of its colours, the number of colours and its own **+** that
+  adds it as a new row. A scheme already among the rows shows a check mark.
+  Clicking a preview adds it too.
+- A **left click** on a swatch picks its colour (`onColorSelected`); one
+  swatch is marked across all the rows.
+- A **right click** on a swatch opens a small **foreground-only** colour
+  picker next to it that sets that one entry of the palette, live, as it is
+  dragged. *Revert* puts the colour back; *Done*, Escape or a click outside
+  keep it.
+
+Palettes run from a few colours to a whole **256-colour GIF palette**; large
+ones wrap into a compact block (`UltraCanvasColorSwatchBar::SetWrap`) instead
+of shrinking to hairlines. The element sets its own height to its rows', so in
+a flex column what is below it moves as rows come and go.
+
+It is built from framework elements only: the rows are
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md)s, the buttons
+`UltraCanvasButton`s, the captions `UltraCanvasLabel`s and the entry editor an
+`UltraCanvasColorPicker` with `SetShowBackgroundColor(false)`.
+
+**File Location**: `include/UltraCanvasColorPaletteManager.h`
+**Implementation**: `core/UltraCanvasColorPaletteManager.cpp`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasColorPaletteManager.h"
+using namespace UltraCanvas;
+
+// Under the picker, as wide as it.
+auto palettes = CreateColorPaletteManager("palettes", 0, 0, 250);
+palettes->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+palettes->onColorSelected = [](const Color& c) {
+    // the host's foreground colour, e.g. picker->SetForegroundColor(c, false)
+    (void)c;
+};
+card->AddChild(palettes);
+```
+
+## Keeping the palettes
+
+The rows are the host's to keep. `onPalettesChanged` fires after every change
+(a row added or removed, an entry set), and the palettes go into one line of
+a settings file and back:
+
+```cpp
+palettes->onPalettesChanged = [m = palettes.get()]() {
+    SaveSetting(UltraCanvasColorPaletteManager::SerializePalettes(m->GetPalettes()));
+};
+
+std::vector<NamedColorPalette> saved;
+if (UltraCanvasColorPaletteManager::ParsePalettes(savedLine, saved)) palettes->SetPalettes(saved);
+```
+
+The line is `Name|RRGGBB,RRGGBB,...;Name|...`. `ParsePalettes` returns false,
+and leaves its output alone, for text that holds no palette.
+
+## The palettes
+
+```cpp
+struct NamedColorPalette {
+    std::string name;        // shown in the gallery and as the row's tooltip
+    std::string category;    // the gallery's group
+    std::vector<Color> colors;
+};
+
+void SetPalettes(const std::vector<NamedColorPalette>& palettes);
+const std::vector<NamedColorPalette>& GetPalettes() const;
+int  GetPaletteCount() const;
+void AddPalette(const NamedColorPalette& palette);   // a row at the end
+void RemovePalette(int index);                       // never the last one
+bool HasPalette(const std::string& name) const;
+void SetEntryColor(int palette, int entry, const Color& c, bool notify = true);
+
+static NamedColorPalette DefaultPalette();                       // six greys and twelve colours
+static const std::vector<NamedColorPalette>& PresetPalettes();   // what the gallery offers
+```
+
+There is always at least one row: setting no palettes, or a list of empty
+ones, leaves `DefaultPalette()`.
+
+The gallery's schemes:
+
+| Group | Palettes |
+|---|---|
+| Basics | Basic (18), Greys (16), Rainbow (24) |
+| Moods | Pastel, Earth, Skin tones, Sunset, Ocean, Forest, Neon |
+| Design systems | Material (19), Nord (16), Solarized (16) |
+| Retro | Game Boy (4), PICO-8 (16), Commodore 64 (16), VGA 16 |
+| Indexed (GIF) | Web-safe 216, GIF 256 (RGB 3-3-2), GIF 256 greys |
+
+## Selection and popups
+
+```cpp
+void SelectColor(const Color& c);   // marks the first swatch with it, any row
+void ClearSelection();
+
+void OpenPaletteGallery(const Rect2Df& anchorWindow);   // what "+" does
+void OpenEntryEditor(int palette, int entry, const Point2Di& windowPos);   // a right click
+void ClosePopups();
+```
+
+The gallery opens below its anchor (window coordinates), right-aligned with
+it, or above it when the window has no room below.
+
+## Style
+
+```cpp
+ColorPaletteManagerStyle s = palettes->GetManagerStyle();
+s.swatchSelectedBorder = Color(37, 99, 235, 255);
+s.editorPickerStyle = picker->GetStyle();   // the entry editor looks like the host's picker
+palettes->SetManagerStyle(s);
+```
+
+`ColorPaletteManagerStyle` holds the swatch outlines, the largest swatch size
+(the manager makes a row's swatches smaller and closer the more colours it
+has), the gaps, the micro buttons' size and colours, the popups' colours and
+corner radius, the accent of the gallery's add buttons, and the entry
+editor's picker style and scale.
+
+## Callbacks
+
+```cpp
+std::function<void(const Color&)> onColorSelected;   // a swatch was clicked
+std::function<void()>             onPalettesChanged; // added, removed, an entry set
+```
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 ==============================================================================
 
@@ -18463,6 +18623,7 @@ FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
   - [Light and dark styles](#light-and-dark-styles)
   - [Compact (sliders-only) variant](#compact-sliders-only-variant)
 - [Colour Space Helpers](#colour-space-helpers)
+- [Foreground-only picker](#foreground-only-picker)
 - [Interaction Summary](#interaction-summary)
 - [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
 
@@ -18649,6 +18810,9 @@ namespace UltraCanvas {
 
         void SetShowColorWheel(bool show);               // compact mode when false
         void SetShowAlpha(bool show);
+        // false: foreground only - one swatch, no swap arrow, the right
+        // button edits the same colour (a palette entry's editor)
+        void SetShowBackgroundColor(bool show);
 
         // Foreground = current swatch, Background = previous swatch.
         Color GetForegroundColor() const;
@@ -18787,6 +18951,24 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 // HSV -> RGB is provided by the existing global Color HSV(h, s, v, a) helper.
 ```
 
+## Foreground-only picker
+
+A picker that edits one colour - a palette entry, a single fill - has no
+background colour to offer. `SetShowBackgroundColor(false)` takes it away:
+only the foreground swatch is drawn, the swap arrow is gone, and the right
+button (on the colour controls and on the eyedropper) edits the foreground as
+the left one does, so `onBackgroundChanged` never fires.
+
+```cpp
+auto entryPicker = CreateColorPicker("entry", Color(229, 57, 53, 255), 0, 0, 212, 300);
+entryPicker->SetStyle(ColorPickerStyle::Light());
+entryPicker->SetShowBackgroundColor(false);
+entryPicker->SetAutoHeight(true);
+```
+
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+opens one in a popup when a palette swatch is right-clicked.
+
 ## Interaction Summary
 
 | Action | Result |
@@ -18875,7 +19057,7 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.0.0
+**Version**: 1.2.0
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -18889,6 +19071,10 @@ colours nobody can reach.
 - ✅ `onColorSelected` / `onCheckeredSelected` callbacks; right (Adjust) click
   raises `onColorAdjustSelected` — the background colour of a
   foreground/background picker
+- ✅ Optional **wrapping** (`SetWrap`) for large palettes — up to a 256-colour
+  GIF palette as a compact block; `HeightForWidth` sizes the element
+- ✅ `SetColorAt` edits one entry; `onColorContextClicked` reports a right
+  click with the entry's index, for a host that edits it in a popup
 - ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
 
 ## Quick Start
@@ -18982,6 +19168,26 @@ swatch) and let the layout stretch it across the width. The swatch edge is
 | Narrow | Swatches shrink towards `minSwatchSize`; below that the gaps close and the swatches keep shrinking, so every colour stays reachable |
 | Short | Swatches shrink to the height; the row stays a single line |
 
+### Wrapping
+
+A palette too large for one row wraps instead of shrinking to hairlines:
+
+```cpp
+auto gif = std::make_shared<UltraCanvasColorSwatchBar>("gif", 230, 10);
+std::vector<Color> colors(256, Colors::Black);   // a GIF's palette
+gif->SetColors(colors);
+gif->SetWrap(true);
+gif->SetElementSize(Size2Df(230, gif->HeightForWidth(230)));
+```
+
+In wrap mode the swatches stay at least `minSwatchSize`; the bar takes as many
+lines as that needs, shares the colours out evenly over them (16 on two lines
+are 8 + 8), and makes each swatch as large as the line's width allows up to
+`swatchSize`. The block starts at the top-left corner. `HeightForWidth(w)` is
+the height all the lines take at width `w`.
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+uses it for its palette rows.
+
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
 
@@ -18991,6 +19197,9 @@ needs to read as a bar of its own.
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+// right click with the entry's index and the window position; when set it
+// takes the right click instead of onColorAdjustSelected
+std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
 ```
 
 A right click does not move the selection outline (that tracks left clicks)
@@ -72727,6 +72936,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | Colour (wheel, SV area, hue × lightness field or colour + intensity sliders; optional design selector) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
+| Palette rows under a colour picker - add schemes from a gallery (up to 256-colour GIF palettes), remove rows, set an entry with a right click | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |

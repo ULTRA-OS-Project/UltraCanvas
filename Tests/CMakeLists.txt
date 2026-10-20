@@ -1144,6 +1144,29 @@ else()
     message(STATUS "  ColorPickerDragTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PALETTE MANAGER TEST =====
+# The palette rows under a colour picker: a wrapping swatch bar, the settings
+# line, "+" on the last row and "-" on every row once there are several, the
+# gallery adding a preset, and the foreground-only entry editor a right click
+# opens. The window part skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPaletteManagerTest...")
+    add_executable(ColorPaletteManagerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPaletteManagerTest.cpp
+    )
+    target_include_directories(ColorPaletteManagerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPaletteManagerTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPaletteManagerTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPaletteManagerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPaletteManagerTest COMMAND ColorPaletteManagerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPaletteManagerTest")
+else()
+    message(STATUS "  ColorPaletteManagerTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== COLOUR PICKER DESIGN SELECTOR TEST =====
 # The optional dropdown in the picker's top-right corner: three designs with
 # icons that load, the selection following SetWheelStyle, a choice switching

@@ -1,3 +1,20 @@
+#### 2026-10-19 *0.2.26*
+- **Colour palettes under the picker.** The row of swatches in the Colour
+  card is a palette manager now (the framework's
+  `UltraCanvasColorPaletteManager`). A small **+** at the end of the row
+  opens a gallery of colour schemes - basics, moods, design systems, retro
+  machines and indexed palettes up to a whole 256-colour GIF palette - and
+  each scheme's own **+** adds it as another row under the picker. With
+  several rows every row ends in a **−** that takes it away, and the **+**
+  moves to the last row. Large palettes wrap into a block of small swatches.
+- **A right click on a palette swatch edits it.** A small colour picker with
+  only the foreground colour opens next to the swatch and sets that entry
+  of the palette as it is dragged; *Revert* puts it back. (A right click on
+  a swatch used to set the background colour; the picker's own background
+  swatch still does that.)
+- The rows - with their edited colours - are kept in the settings file
+  (`picker.palettes`), so the palettes are there the next time.
+
 #### 2026-10-16 *0.2.25*
 - **The colour panel takes less room, and stays as it was left.** The
   picker in the Colour card folds its channels away: the HSV / HSL / RGB

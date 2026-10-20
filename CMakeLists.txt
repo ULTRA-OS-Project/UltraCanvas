@@ -763,6 +763,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
+            Apps/DemoApp/UltraCanvasColorPaletteManagerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
