@@ -14,10 +14,12 @@
 //     SetValue(150) then SetMaxValue(200) is 150 (it was 100), and a range
 //     shrunk under the value takes the value with it.
 //  4. LinearSegmented runs vertically: its lit bricks are at the bottom.
+//  5. A pointer label pushed to the edge keeps clear of it (flush with the
+//     clip, its antialiasing bled a pixel past it on cairo 1.16).
 //
 // Each gauge is drawn into a canvas with a margin round it; a pixel in the
 // margin that is not white was drawn outside the element.
-// Version: 1.0.0
+// Version: 1.1.0 - pointer labels keep clear of the edge
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
@@ -191,6 +193,18 @@ void TestSegmentedVertical() {
     Check(litLow > 40 && litHigh < litLow, "vertical bricks light from the bottom");
 }
 
+void TestLabelsClearOfEdge() {
+    std::cout << "5. pointer labels keep clear of the edge\n";
+    // "190 W - Peak" sits at 95 % of the bar: centred on its arrow it would
+    // run past the right edge, so it is pushed back inside.
+    Drawn d = Draw(Gauge(GaugeMode::LinearMultiPointer, 320, 160, false), 320, 160);
+    int edge = 0;
+    for (int y = 0; y < 160; ++y) {
+        for (int x : {0, 319}) edge += d.At(x, y) != 0xFFFFFF ? 1 : 0;
+    }
+    Check(edge == 0, "nothing in the outermost columns of a 320 x 160 LinearMultiPointer");
+}
+
 } // namespace
 
 int main() {
@@ -198,6 +212,7 @@ int main() {
     TestBarIsDrawn();
     TestValueFollowsRange();
     TestSegmentedVertical();
+    TestLabelsClearOfEdge();
     std::cout << (g_count - g_failures) << " of " << g_count << " checks passed\n";
     return g_failures == 0 ? 0 : 1;
 }

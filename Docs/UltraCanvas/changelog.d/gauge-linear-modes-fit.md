@@ -13,8 +13,9 @@
   - LinearWithArrow's value label sits under its arrow (it was a line lower,
     often outside the element), carries the unit, and stays inside at the
     ends; a narrow vertical one drops its min/max labels before its arrow.
-  - MultiPointer's labels stay inside the element, and one that would cover
-    another is left out; the tuner's station labels no longer cover the title
+  - MultiPointer's labels stay inside the element, 3 px clear of its edge
+    (flush with it, cairo 1.16 painted their last pixel outside), and one
+    that would cover another is left out; the tuner's station labels no longer cover the title
     or the value line.
   - The value follows the range: it was clamped only when set, so
     `SetValue(150)` then `SetMaxValue(200)` showed 100, and a range narrowed

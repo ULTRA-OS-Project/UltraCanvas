@@ -864,8 +864,13 @@ void UltraCanvasGaugeDiagramElement::DrawExternalPointers(
             float lx = vertical ? (pX + arrowSize + 6.0f) : (pX - d.width / 2.0f);
             // Above the arrow, which stands above the bar - DrawText takes the top.
             float ly = vertical ? (pY - d.height / 2.0f) : (pY - barH / 2.0f - 2.0f - arrowSize - 2.0f - d.height);
-            lx = std::max(static_cast<float>(bounds.x),
-                          std::min(lx, static_cast<float>(bounds.x + bounds.width) - d.width));
+            // 3 px inside the edge: a glyph's ink can stand a pixel past its
+            // advance, text flush with the clip loses its last column of
+            // subpixel antialiasing, and older cairo (1.16) paints that
+            // column one pixel past the clip.
+            constexpr float kInset = 3.0f;
+            lx = std::max(static_cast<float>(bounds.x) + kInset,
+                          std::min(lx, static_cast<float>(bounds.x + bounds.width) - kInset - d.width));
             ly = std::max(static_cast<float>(bounds.y),
                           std::min(ly, static_cast<float>(bounds.y + bounds.height) - d.height));
             const Rect2Df box(lx - 2.0f, ly, d.width + 4.0f, static_cast<float>(d.height));
