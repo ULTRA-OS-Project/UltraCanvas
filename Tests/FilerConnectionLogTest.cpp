@@ -357,6 +357,16 @@ int main() {
               "a stray percent sign is left as it is");
     }
 
+    std::printf("Status line steps\n");
+    {
+        Check(StatusStepText("We are completely uploaded and fine") == "Finishing the upload...",
+              "libcurl's note at the end of an upload is said in plain words");
+        Check(StatusStepText("Retrieving directory listing...") ==
+                      "Retrieving directory listing...",
+              "the client's own words are kept");
+        Check(StatusStepText("").empty(), "nothing stays nothing");
+    }
+
     std::printf("Formatting\n");
     {
         Check(FormatRemoteLogDuration(850) == "850 ms", "milliseconds");

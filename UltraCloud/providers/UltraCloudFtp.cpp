@@ -120,8 +120,8 @@ Result ClassifyFtpOutcome(const UltraNetResult& net, const std::string& what) {
         case UltraNetResultCode::NotFound:
             return Result::Error(ResultCode::NotFound, message, net.httpStatus);
         case UltraNetResultCode::Cancelled:
-            // The caller called it off (UltraNet_SetThreadFtpCancel): nobody
-            // refused anything.
+            // The caller called it off (its thread's abort check,
+            // UltraNet_SetThreadAbortCheck): nobody refused anything.
             return Result::Error(ResultCode::Cancelled, message, net.httpStatus);
         case UltraNetResultCode::InvalidUrl:
         case UltraNetResultCode::UnsupportedScheme:

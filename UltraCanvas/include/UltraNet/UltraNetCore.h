@@ -3,9 +3,11 @@
 // configuration, credentials, proxy descriptor, transfer stats, and the
 // initialize/shutdown/version entrypoints. Full surface defined in the
 // UltraNet Master Registry v1.0.0.
+// Version: 0.2.1 - the abort check is asked by every FTP call, and is the
+//                  thread's only one (UltraNet_SetThreadFtpCancel is gone)
 // Version: 0.2.0 - UltraNet_SetThreadAbortCheck: a running HTTP or FTP
 //                  transfer can be called off from outside it
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -339,14 +341,17 @@ UltraNetTransferCallbacks UltraNet_GetTransferCallbacks();
 // ============================================================================
 // Calling a transfer off from outside it. A thread that runs transfers - a
 // worker its application wants to stop without waiting for a large upload to
-// finish - sets a check for itself here. The synchronous HTTP requests and
-// the FTP uploads and downloads it makes ask it as they run (libcurl's
-// progress callback: as the bytes go by, and about once a second while the
-// server is silent) and end as UltraNetResultCode::Cancelled once it says
-// true. Per thread, because a synchronous request runs on its caller's
-// thread; asynchronous requests run on the multi worker and are cancelled
-// with UltraNet_CancelRequest instead. Returns the previous check, so a
-// caller can put it back; an empty function clears it.
+// finish, or that wants one download back the moment the user moves on -
+// sets a check for itself here. The synchronous HTTP requests and every FTP
+// call it makes (listings and DELE as well as transfers) ask it as they run
+// (libcurl's progress callback: as the bytes go by, and about once a second
+// while the server is silent) and end as UltraNetResultCode::Cancelled once
+// it says true. It is the thread's one such check: an FTP call's own
+// UltraNetFtpOptions::isCancelled is asked beside it. Per thread, because a
+// synchronous request runs on its caller's thread; asynchronous requests run
+// on the multi worker and are cancelled with UltraNet_CancelRequest instead.
+// Returns the previous check, so a caller can put it back; an empty function
+// clears it.
 // ============================================================================
 std::function<bool()> UltraNet_SetThreadAbortCheck(std::function<bool()> check);
 // Whether the calling thread's transfers are to stop now.

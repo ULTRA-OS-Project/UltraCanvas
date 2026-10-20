@@ -15,6 +15,9 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.8.0 - one thread check: UltraNet_SetThreadFtpCancel is gone; every
+//                  call asks its options' isCancelled and the thread's abort
+//                  check (UltraNet_SetThreadAbortCheck), listings and DELE too
 // Version: 0.7.1 - an upload or download also ends when its thread's abort
 //                  check says so (UltraNet_SetThreadAbortCheck)
 // Version: 0.7.0 - a call can be called off (isCancelled, UltraNet_SetThreadFtpCancel)
@@ -54,11 +57,10 @@ constexpr const char* kComponent = "UltraNet FTP 0.5.0";
 // (UltraNet_SetThreadFtpLog).
 thread_local UltraNetFtpLogCallback t_threadLog;
 
-// The "call it off" question of calls made on this thread without an
-// isCancelled of their own (UltraNet_SetThreadFtpCancel), and the one the call
-// running now asks - set by ApplyCommonOptions, read by the progress callback.
+// The "call it off" question of the call running now (its options'
+// isCancelled) - set by ApplyCommonOptions, read by the progress callback,
+// which also asks the thread's abort check (UltraNet_SetThreadAbortCheck).
 // Per thread, because a call runs start to end on the thread that made it.
-thread_local std::function<bool()> t_threadCancel;
 thread_local std::function<bool()> t_callCancel;
 // Whether the call running now reports its bytes (ApplyProgressCallback): the
 // file transfers do, a listing or a DELE that only installed the callback to
@@ -278,17 +280,16 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 #endif
     }
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
-    // A call that can be called off asks through the progress callback, which
+    // Every call can be called off - by its options' isCancelled, or by the
+    // thread's abort check - and asks through the progress callback, which
     // libcurl runs while bytes move and about once a second while they do
-    // not - so a transfer that has stalled is called off as promptly as one
-    // in full flow.
-    t_callCancel = opt.isCancelled ? opt.isCancelled : t_threadCancel;
+    // not: a listing waiting on a silent server is called off as promptly as
+    // a transfer in full flow. Only the transfers report bytes through it.
+    t_callCancel = opt.isCancelled;
     t_callReports = false;
-    if (t_callCancel) {
-        curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
-        curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
-        curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
-    }
+    curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
+    curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
+    curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
     // The connection the last call on this thread left open, if it fits.
     if (CURLSH* share = t_connections.Share())
         curl_easy_setopt(h, CURLOPT_SHARE, share);
@@ -414,7 +415,7 @@ UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions
     r.code    = MapFtpError(rc);
     r.success = false;
     r.message = rc == CURLE_ABORTED_BY_CALLBACK
-            ? std::string("called off")   // the caller's isCancelled said so
+            ? std::string("called off")   // isCancelled, or the thread's abort check
             : ultranet_internal::ftplog::FailureMessage(
                       detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
     r.diagnostics = diagnostics;
@@ -472,12 +473,6 @@ bool WorthAnotherListing(CURLcode rc) {
 UltraNetFtpLogCallback UltraNet_SetThreadFtpLog(UltraNetFtpLogCallback sink) {
     UltraNetFtpLogCallback previous = std::move(t_threadLog);
     t_threadLog = std::move(sink);
-    return previous;
-}
-
-std::function<bool()> UltraNet_SetThreadFtpCancel(std::function<bool()> isCancelled) {
-    std::function<bool()> previous = std::move(t_threadCancel);
-    t_threadCancel = std::move(isCancelled);
     return previous;
 }
 

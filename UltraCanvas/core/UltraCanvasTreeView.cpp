@@ -1,6 +1,8 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-15 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)
+// Last Modified: 2026-10-19 - a loading row (TreeNodeData::loading) slides a thin bar
+//                along its foot
+//                (2026-10-15: SetFilterText: rows hidden by a filter (TreeNode::IsShown))
 //                (2026-10-13: keys read UCKeys and work once the tree is focused; focus ring)
 //                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
 #include "UltraCanvasTreeView.h"
@@ -1048,6 +1050,7 @@ namespace UltraCanvas {
                                   contentRect.y + headerHeight,
                                   contentRect.width  - sbWidth,
                                   contentRect.height - headerHeight));
+            loadingDrawn = false;
             // Rows start below the (optional) fixed header band and scroll beneath it.
             int currentY = contentRect.y + headerHeight - scrollOffsetY;
             // One flag per drawn level, the top level included (pipes[0]) - see the
@@ -1061,6 +1064,8 @@ namespace UltraCanvas {
                 RenderChildNodes(ctx, rootNode.get(), currentY, -1, contentRect, pipes);
             }
             ctx->PopState();
+            // A loading row on screen keeps the bars sliding; none stops them.
+            UpdateLoadingTicks();
         }
 
         // Draw the fixed header band last so rows scrolled up are covered by it.
@@ -1392,12 +1397,69 @@ namespace UltraCanvas {
 
             // Draw the row's label/content (Classic single text run; subclasses draw columns).
             RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
+
+            // Its children being fetched: the bar along the foot of the row,
+            // from the icon to the right edge.
+            if (node->data.loading) {
+                DrawLoadingBar(ctx, slotEnd, nodeY, contentRect.x + nodeWidth - 4 - slotEnd);
+                loadingDrawn = true;
+            }
         }
 
         // Render children if expanded
         if (node->IsExpanded()) {
             RenderChildNodes(ctx, node, currentY, level, contentRect, pipes);
         }
+    }
+
+    // ===== LOADING ROWS =====
+
+    UltraCanvasTreeView::~UltraCanvasTreeView() {
+        // The timer's callback captures `this`.
+        if (loadingTimer != InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(loadingTimer);
+            loadingTimer = InvalidTimerId;
+        }
+    }
+
+    void UltraCanvasTreeView::DrawLoadingBar(IRenderContext *ctx, int x, int nodeY, int width) {
+        if (width <= 0) return;
+        // The folder display's bar in small: a faint track, and a segment a
+        // quarter of its width sliding across once every 1.2 s - a fetch has
+        // no total to fill towards, and the movement says it is still going.
+        const int height = 2;
+        const Rect2Di bar(x, nodeY + rowHeight - height - 1, width, height);
+        Color track = loadingBarColor;
+        track.a = 50;
+        if (loadingTimer == InvalidTimerId)
+            loadingSince = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - loadingSince).count();
+        const double phase = std::fmod(elapsed, 1.2) / 1.2;
+        const double segment = std::max(16.0, width / 4.0);
+        const double segX = bar.x - segment + phase * (bar.width + segment);
+        ctx->PushState();
+        ctx->ClipRect(bar);
+        ctx->SetFillPaint(track);
+        ctx->FillRectangle(Rect2Dd(bar));
+        ctx->SetFillPaint(loadingBarColor);
+        ctx->FillRectangle(Rect2Dd(segX, bar.y, segment, bar.height));
+        ctx->PopState();
+    }
+
+    void UltraCanvasTreeView::UpdateLoadingTicks() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        if (!loadingDrawn) {
+            if (loadingTimer != InvalidTimerId) {
+                app->StopTimer(loadingTimer);
+                loadingTimer = InvalidTimerId;
+            }
+            return;
+        }
+        if (loadingTimer != InvalidTimerId) return;
+        // 40 ms: a smooth slide; the frame it asks for decides whether to go on.
+        loadingTimer = app->StartTimer(40, true, [this](TimerId) { RequestRedraw(); });
     }
 
     // ===== CHECK FLAGS =====

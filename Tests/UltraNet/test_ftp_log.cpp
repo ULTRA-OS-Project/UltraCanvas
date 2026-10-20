@@ -12,6 +12,7 @@
 // loop on a thread).
 #include "test_framework.h"
 
+#include <UltraNet/UltraNetCore.h>   // UltraNet_SetThreadAbortCheck
 #include <UltraNet/UltraNetFtp.h>
 
 #include "../../UltraCanvas/core/UltraNet/UltraNetFtpLog.h"
@@ -878,10 +879,11 @@ TEST(ftp_log_a_stalled_call_is_called_off_by_its_options) {
     REQUIRE_EQ(server.Count("LIST"), 0);
 }
 
-// The same through the calling thread's question, for a caller whose options
-// are built by a layer in between (UltraCloud); and once it is cleared, the
-// next call runs to its end.
-TEST(ftp_log_the_thread_cancel_calls_off_calls_without_their_own) {
+// The same through the calling thread's abort check, for a caller whose
+// options are built by a layer in between (UltraCloud) - asked by a listing
+// too, not only by a transfer; and once it is cleared, the next call runs to
+// its end.
+TEST(ftp_log_the_thread_abort_check_calls_off_a_listing) {
     ScriptedFtpServer server;
     ScriptedFtpServer::Script script;
     script.stallData = true;
@@ -890,13 +892,13 @@ TEST(ftp_log_the_thread_cancel_calls_off_calls_without_their_own) {
     Collected c;
     std::atomic<bool> stop{true};
     std::function<bool()> previous =
-            UltraNet_SetThreadFtpCancel([&stop]() { return stop.load(); });
+            UltraNet_SetThreadAbortCheck([&stop]() { return stop.load(); });
     std::vector<UltraNetFtpEntry> entries;
     const auto started = std::chrono::steady_clock::now();
     const UltraNetResult r =
             UltraNet_FtpListDirectory(server.Url(), entries, TestOptions(c, 20000));
     const auto took = std::chrono::steady_clock::now() - started;
-    UltraNet_SetThreadFtpCancel(std::move(previous));
+    UltraNet_SetThreadAbortCheck(std::move(previous));
 
     // Cleared: a stalled call now waits for the inactivity limit as before.
     Collected after;

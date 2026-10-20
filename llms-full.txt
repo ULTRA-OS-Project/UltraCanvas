@@ -28916,16 +28916,30 @@ filer->remoteListingStatus = [drives](const std::string& path) {
 };
 ```
 
-It is asked after `remoteListing` answered with an empty listing, and again
-on every tick while the notice is up. A non-empty answer — "Connecting to
-Backup NAS (ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup
-NAS - 2 requests ahead" — puts a turning progress ring, **Loading folder**
-and that line in place of "Folder is empty!", and the words follow the fetch
-as the host's answer changes. An empty answer means the folder really is
-empty. Left unset, a folder being fetched shows as empty until the host's
-`Refresh()`, as before. The ring runs on a 50 ms application timer that stops
-as soon as the listing arrives, the folder changes or the widget is
-destroyed.
+It is asked after every `remoteListing` — an empty one, or one the host
+answered from its cache while it asks the server again — and again on every
+tick while it answers. A non-empty answer — "Connecting to Backup NAS
+(ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup NAS - 2
+requests ahead" — marks the folder as loading without covering it: a thin
+blue bar (`FilerStyle::loadingBarColor`, the accent blue) slides along the
+foot of the file area, just above the info bar, over whatever entries there
+are or an empty area; an empty folder's info bar says **Loading folder...**
+rather than "0 items", and "Folder is empty!" is not shown. The words are the
+host's to show — on its status line rather than over the files:
+
+```cpp
+filer->onListingPendingChanged = [statusLine](const std::string& status) {
+    statusLine->SetText(status);   // "" once the listing is in
+};
+// or read it when the status line is rebuilt: filer->GetListingPendingStatus()
+```
+
+`onListingPendingChanged` fires when the fetch starts, each time the host's
+answer changes, and with `""` once the listing is in. An empty answer means
+the listing is the folder as it is. Left unset, a folder being fetched shows
+as empty until the host's `Refresh()`, as before. The bar runs on a 40 ms
+application timer that repaints only its own strip, and stops as soon as the
+listing arrives, the folder changes or the widget is destroyed.
 ### Changing a remote folder
 
 Four more hooks let the host carry out the changes that act on the drive
@@ -30571,6 +30585,7 @@ reports what the system hides, not what the host asked for.
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
@@ -71961,7 +71976,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
 
 ## Contents
 
@@ -71992,6 +72007,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
   - [Basic Tree Creation](#basic-tree-creation)
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
+  - [Rows still loading](#rows-still-loading)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -72132,6 +72148,7 @@ struct TreeNodeData {
     const TreeCellData* GetCell(const std::string& colId) const;
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
+    bool loading = false;                  // children being fetched: a bar slides along the row's foot
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -72722,6 +72739,7 @@ void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
+void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
@@ -72734,6 +72752,8 @@ inherited from `UltraCanvasUIElement`.
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
+`SetLoadingBarColor` sets the bar a loading row slides along its foot (default
+the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
 
 ### Event Callbacks
 
@@ -72855,6 +72875,31 @@ treeView->onNodeExpanded = [](TreeNode* node) {
         LoadChildrenFromDisk(node);
     }
 };
+```
+
+### Rows still loading
+
+When children come from somewhere slow - a server, a long scan - the
+placeholder can stay hidden (`visible = false`: it still gives the row its
+expand button) and the row itself say it is waiting. `TreeNodeData::loading`
+makes the row slide a thin bar along its foot, from its icon to the right
+edge, in the tree's loading colour (`SetLoadingBarColor`, the accent blue by
+default) - the same sign the filer widget gives a folder being fetched. A
+40 ms timer keeps the bar moving while such a row is on screen and stops once
+none is drawn.
+
+```cpp
+TreeNodeData placeholder("remote/photos#placeholder", "...");
+placeholder.visible = false;               // the expand button, without a row
+treeView->AddNode("remote/photos", placeholder);
+
+treeView->onNodeExpanded = [treeView](TreeNode* node) {
+    node->data.loading = true;             // the bar slides until the answer is in
+    treeView->RequestRedraw();
+    StartFetch(node->data.nodeId);         // calls back on the UI thread
+};
+// ...when the children have arrived:
+//     add them, remove the placeholder, node->data.loading = false, RequestRedraw()
 
 // Handle right-click (open a context menu at the pointer)
 treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
@@ -84862,11 +84907,39 @@ Removed /up/.big.bin.part
 ```
 
 A part the server will not remove stays recorded for the next run; one whose
-server did not answer is asked again straight after a later call gets
-through (`kPendingCleanupTriesPerRun` times a run), and a listing then
-leaves out what was removed. An application has nothing to do for any of
-this; one that asks before it quits can say that what an upload sent is
-removed later (`partialUploadsRemain` on the account's provider).
+server did not answer - or whose step the thread called off, quitting - is
+asked again straight after a later call gets through
+(`kPendingCleanupTriesPerRun` times a run), and a listing then leaves out
+what was removed. An application has nothing to do for any of this; one that
+asks before it quits can say that what an upload sent is removed later
+(`partialUploadsRemain` on the account's provider).
+
+### An upload complete before its rename
+
+The connection can go - or the application quit - between the last byte and
+the rename. The whole file is then under the part name, and it is put in
+place rather than removed: the upload notes its record as complete
+(`PendingUpload::completedAt`; its error says *it is given that name the
+next time this account reaches the server*), and a part the folder lists at
+the file's full size counts as complete too - a process that ended in
+between (`IsCompletePart`). The next call that reaches the server gives it
+its name (`PlaceCompletePart`):
+
+| At the name | What happens |
+|---|---|
+| nothing (an old file set aside or not) | the part takes the name; a set-aside old file is removed |
+| a file, the upload finished within the hour (`kCompleteUploadReplacesSeconds`) | it replaces the file, as the upload was doing (`PutUploadInPlace`) |
+| a file, the upload older - or a folder | kept beside it as *name (2).ext* (`UploadKeptName`): what has the name may have been written since |
+| the server refuses the rename | the part is removed, as before |
+
+```text
+An upload of "big.bin" was complete when the server stopped answering, before it had its name: giving it that name (/up/.big.bin.part)
+"big.bin" is in place
+```
+
+A step that is called off or not answered is never taken for a refusal: the
+account does not go over to uploading straight to its names, and the record
+waits for the server to answer.
 
 ## Quick examples
 
@@ -84958,7 +85031,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault; the uploads' records: `AddPendingUpload`, `RemovePendingUpload`, `ListPendingUploads`, `SetUploadsDirect`, `UploadsDirect`), `MakeAccountId` |
-| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun` |
+| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun`; a complete upload whose rename was cut off: `IsCompletePart`, `CompletePartReplaces`, `kCompleteUploadReplacesSeconds`, `UploadKeptName`, `AtName` / `CompletePart` / `PlaceCompletePart` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory); `TransfersInProgress` - the uploads and downloads under way, for a host that asks before it quits |
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
@@ -84985,9 +85058,11 @@ large-upload paths are exercised with small thresholds
 (`SetUploadLimits(simpleLimit, chunkSize)` on the three hosted providers),
 so a 25-byte file walks the same start / append / finish, upload-session or
 resumable code as a multi-gigabyte one. The FTP uploads' part names, their
-records and the cleanup run against a fake FTP server that can refuse
-renames, deletes or dot names, hide dot names from a listing, break an
-upload part way or not answer (`test_uploads.cpp`). Chunks are read from disk as they are
+records, the cleanup and the placing of a complete upload whose rename was
+cut off run against a fake FTP server that can refuse renames, deletes or
+dot names, hide dot names from a listing, break an upload part way, stop
+answering once an upload is in, call a rename off or not answer at all
+(`test_uploads.cpp`). Chunks are read from disk as they are
 sent; a large upload never holds more than one chunk in memory.
 
 ## Roadmap
@@ -87817,11 +87892,14 @@ the call runs - as bytes move, and about once a second while none do, so a
 stalled transfer is called off as promptly as a busy one; once it answers
 true the call ends as `UltraNetResultCode::Cancelled` with the message
 *called off*, and a listing is not tried again in another format. It runs on
-the calling thread inside libcurl and must answer at once (an atomic flag). As
-with the log, a caller behind a layer that builds the options sets one for
-its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
-UltraFiler's drive worker uses it to stop a preview download the user is no
-longer waiting for.
+the calling thread inside libcurl and must answer at once (an atomic flag).
+Beside it every FTP call - listings and `DELE` as well as transfers - asks its
+thread's abort check, `UltraNet_SetThreadAbortCheck(fn)` (`UltraNetCore.h`,
+which returns the previous one), the same check the synchronous HTTP requests
+ask: a caller behind a layer that builds the options, and a thread that wants
+every call it makes stopped at once, set that one check. UltraFiler's drive
+worker uses it to stop a preview download the user is no longer waiting for,
+on an FTP drive or a cloud drive, and every transfer when the window closes.
 
 What a failure says, whether or not anyone reads the log:
 

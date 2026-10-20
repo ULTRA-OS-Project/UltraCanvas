@@ -29,8 +29,10 @@
 // for the session at hand, not an audit trail, and it never holds a password
 // - UltraNet writes PASS as "PASS ********" before a line gets here, and
 // UltraCloud logs no header, no body and no query value that carries a token.
+// Version: 1.3.0 - StatusStepText: libcurl's own notes in plain words on the
+//                  status line
 // Version: 1.2.0 - ShortHttpRequestText for the status line
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -264,6 +266,22 @@ inline const char* RemoteLogKindLabel(RemoteLogLine::Kind kind, bool http = fals
         case RemoteLogLine::Kind::Error:    return "Error:    ";
     }
     return "";
+}
+
+// A step of the connection as the status line shows it. Most are the
+// client's own words ("Retrieving directory listing...", "Logged in"), but
+// libcurl adds notes of its own that read as its internals, not as what is
+// happening - "We are completely uploaded and fine" while the server takes
+// the last of an upload: those are said in plain words. The connection log
+// keeps libcurl's note as it was.
+inline std::string StatusStepText(const std::string& step) {
+    static const struct { const char* note; const char* words; } kPlain[] = {
+        {"We are completely uploaded and fine", "Finishing the upload..."},
+    };
+    for (const auto& p : kPlain)
+        if (step.compare(0, std::char_traits<char>::length(p.note), p.note) == 0)
+            return p.words;
+    return step;
 }
 
 // A cloud drive's request as the status line shows it: the method, the host

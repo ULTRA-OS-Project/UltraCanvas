@@ -14,10 +14,12 @@
 // Connections are kept open between calls on one thread
 // (UltraNet_FtpCloseIdleConnections), and a server that refused MLSD is
 // listed with LIST from then on.
+// Version: 0.8.0 - UltraNet_SetThreadFtpCancel is gone: the thread's one check
+//                  is UltraNet_SetThreadAbortCheck, asked by every FTP call
 // Version: 0.7.0 - isCancelled / UltraNet_SetThreadFtpCancel: a call can be called off
 // Version: 0.6.0 - SFTP with a private key: sshPrivateKeyFile, sshPublicKeyFile, sshKeyPassphrase
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -95,7 +97,10 @@ struct UltraNetFtpOptions {
     // while none do; once it answers true the call ends as
     // UltraNetResultCode::Cancelled ("called off"). Runs on the calling
     // thread inside libcurl, so it must answer at once (an atomic flag).
-    // When empty, the calling thread's (UltraNet_SetThreadFtpCancel) is asked.
+    // The calling thread's abort check (UltraNet_SetThreadAbortCheck) is asked
+    // too, whether this is set or not - the way for a caller behind another
+    // layer (UltraFiler's drive worker calls UltraCloud, which builds these
+    // options itself) to call a call off.
     std::function<bool()> isCancelled;
 
     static UltraNetFtpOptions Default() { return {}; }
@@ -108,14 +113,6 @@ struct UltraNetFtpOptions {
 // which calls UltraNet - and so cannot hand an onLog down. Per thread, so
 // two workers never read each other's sessions. An empty callback clears it.
 UltraNetFtpLogCallback UltraNet_SetThreadFtpLog(UltraNetFtpLogCallback sink);
-
-// The same for calling a call off: FTP calls made on the CALLING THREAD whose
-// options carry no isCancelled of their own ask this one. Returns the previous
-// one so a caller can put it back; an empty function clears it. UltraFiler's
-// drive worker sets it per job, so a download the user no longer waits for -
-// a preview copy of a file they have moved away from - stops without the
-// layer in between (UltraCloud) having to carry a flag down.
-std::function<bool()> UltraNet_SetThreadFtpCancel(std::function<bool()> isCancelled);
 
 // Every call leaves its connection open, and the next call ON THE SAME THREAD
 // to the same server, as the same user with the same TLS settings, takes it
