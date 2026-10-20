@@ -1,4 +1,4 @@
-#### 2026-10-20 *1.78.0*
+#### 2026-10-20 *1.79.0*
 - **A preview copy that was called off continues where it stopped.** A
   picture or a model being fetched from a drive for the preview pane gives way
   when you ask the drive for something else, when the selection moves on and
@@ -11,6 +11,31 @@
   off) is still thrown away. Uses UltraCloud's new
   `SetThreadDownloadContinues` (framework changelog:
   `download-continues-partial-copy`).
+#### 2026-10-19 *1.78.0*
+- **A Save dialog's file icon dropped on a folder here names that folder.**
+  Dragging the Save dialog's file icon from another program, onto a folder
+  of the listing, the listing's empty space or a folder row of the tree,
+  now tells that dialog to save there. A drive's folders and the Pinned
+  header are not offered.
+
+#### 2026-10-19 *1.77.0*
+- **Home button.** The navigation row has a Home button (a house) between
+  Refresh and the split-view button. It opens the home folder of the host
+  system - `HOME` on Linux and macOS, `USERPROFILE` on Windows - in the active
+  folder display, from the History, Favorites and Computer views too.
+- **A copy, move or delete says what it did on the status line.** When a copy or move
+  ends - a paste, a drop onto a folder, Move to / Copy to - the status line
+  says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
+  "alt"`, `2 folders moved to "Archive"`, or `Copy cancelled - 2 of 5 items
+  copied to "alt"` after a Cancel in the progress window. A delete says so
+  the same way: `"report.pdf" moved to the Trash`, `3 files deleted`,
+  `3 of 5 items moved to the Recycle Bin (2 left)`. Before, a short
+  operation finished without a word: its refresh put the folder's item count
+  straight back on the line. Opening another folder ends the note early.
+  The progress window over a long copy or move is unchanged: it opens once the
+  operation has run for the time set in *Settings > Handling > File
+  operations* (2 seconds by default), the same window as Compress and Extract
+  (framework changelog, pending entry `filer-transfer-finished`).
 
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**

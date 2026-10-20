@@ -28,15 +28,23 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Icon (icon mode)   │
 │ pal- │ ┌──────────────────────────────────────┐    │ Colour (fill/line) │
-│ ette │ │                                       │    │ swatches           │
-│      │ │ pasteboard, page, grid, guides,       │    │ Fill (gradient     │
-│      │ │ the drawing, selection handles        │    │   ramp)            │
-│      │ │                                       │    │ Tool Options       │
+│ ette │ │                                       │    │   + swatches       │
+│      │ │ pasteboard, page, grid, guides,       │    │ Tool Options       │
+│      │ │ the drawing, selection handles        │    │ Gradient (Fill)    │
+│      │ │                                       │    │ Line (line tools)  │
 │      │ └──────────────────────────────────────┘    │ Layers             │
 ├──────┴────────────────────────────────────────────┴────────────────────┤
 │ status: pointer | zoom | selection | hint                              │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+Each section of the right panel is a card - the framework's SectionCard
+group box on the section page, as UltraPaint's - with a small caption.
+The cards that belong to a tool show only while it is active: *Tool
+Options* (captioned with the tool's name, and left out for a tool without
+options), *Gradient* (the fill's ramp) with the Fill tool, and *Line* with
+Pen, Freehand and Straight Line, or with the Selector or Shape Editor while
+a line (a straight line, polyline or open path) is selected.
 
 The colour picker has a list of designs in its corner - colour circle,
 slider and square, colour rectangle, or colour and brightness sliders - and
@@ -85,7 +93,7 @@ The wheel zooms about the pointer, shift + wheel pans, `+` / `-`, Ctrl+0
 fits the page, Ctrl+1 is 100 %. Drag a guide out of a ruler; alt-drag a
 guide to move it; drop it back on a ruler to delete it.
 
-The **Line** panel on the right holds the line gallery: the width, an
+The **Line** card on the right (shown with the line tools) holds the line gallery: the width, an
 arrowhead for each end (triangle, open arrow, circle, square, diamond,
 bar, and Xara's eight stock arrowheads drawn with Xara's own shapes and
 sizes) and their size, a width profile (taper to either end, both, bulge)
@@ -113,7 +121,9 @@ the selection and to every line drawn afterwards.
   scale in percent, rotation and shear, typed or stepped. The 3 x 3
   *reference point* picker on its left says which point of the selection
   the position is that of and stays put while it is resized, rotated or
-  sheared; the lock button keeps the aspect ratio. One object shows its own
+  sheared; the lock button keeps the aspect ratio, for the fields and for
+  the selector's handles alike (shift frees a corner handle). The
+  percentage fields have no arrows; every field steps by 1. One object shows its own
   angles; several show 0 and turn or shear by what is typed. Lengths are in
   the page's unit, or icon pixels in icon mode. A held arrow key or a turn
   of the wheel is one undo step.

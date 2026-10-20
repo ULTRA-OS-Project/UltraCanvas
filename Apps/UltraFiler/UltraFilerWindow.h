@@ -924,6 +924,12 @@ private:
     void ReloadChangedPreview();
     void ArmPreviewReloadTimer(unsigned int delayMs);
     void CancelPreviewReloadTimer();
+    // Puts a finished copy / move / delete on the status line for
+    // kTransferNoteMs (onTransferFinished / onDeleteFinished of every
+    // folder display).
+    void WireTransferNotice(UltraCanvasFilerWidget* target);
+    void ShowTransferNote(const std::string& message);
+    void ClearTransferNote();
     // Whether a file on a remote drive is previewed: pictures, vector
     // drawings and 3D models only, because showing one means downloading
     // it first. A video or a document there is opened, not previewed.
@@ -1145,6 +1151,13 @@ private:
     // or the download failed). Shown on the status line after the drop note
     // and cleared as soon as the selection moves.
     std::string remotePreviewNote;
+    // What the last copy, move or delete did - "3 files copied to \"alt\"",
+    // "\"report.pdf\" moved to the Trash" - said on
+    // the status line for kTransferNoteMs after it ends, so a drop or a paste
+    // whose window never came up still gets its confirmation.
+    std::string transferNote;
+    TimerId transferNoteTimer = InvalidTimerId;
+    static constexpr unsigned kTransferNoteMs = 6000;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;
