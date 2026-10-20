@@ -1665,9 +1665,18 @@ target_include_directories(uc-yyjson PUBLIC
 # generic stdio branch and says so with a #pragma message in every Linux
 # build. The definition is set on the file here (and where VirtualFS and the
 # tests compile it), never in the vendored source.
+#
+# Android's bionic has the same calls (from API 24; this project targets 26)
+# but never defines __USE_LARGEFILE64, the macro miniz picks that branch by,
+# whatever is asked of it - _LARGEFILE64_SOURCE does nothing there. So it is
+# named directly. The 64-bit calls are right on every ABI, the 32-bit ones
+# included, where the generic branch's off_t would stop at 2 GB.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
                  APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
+                 APPEND PROPERTY COMPILE_DEFINITIONS __USE_LARGEFILE64)
 endif()
 
 # VirtualFS compiles the same vendored miniz.c (its ZIP delete fast path) that
