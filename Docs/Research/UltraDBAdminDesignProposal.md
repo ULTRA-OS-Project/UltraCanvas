@@ -1,8 +1,9 @@
-# UltraDB Admin — a phpMyAdmin-style manager for UltraDatabase (Investigation and Proposal)
+# UltraDBAdmin — a phpMyAdmin-style manager for UltraDatabase (Investigation and Proposal)
 
 **Date:** 2026-10-20
-**Status:** Proposal — investigation only, no implementation yet
-**Scope:** a new application, `Apps/UltraDBAdmin` (working name), that does for
+**Status:** Proposal — investigation only, no implementation yet. Decisions
+2026-10-20: see §9.
+**Scope:** a new application, `Apps/UltraDBAdmin`, that does for
 every database UltraDatabase can reach what phpMyAdmin does for MySQL: browse
 and edit rows, see and change table structure, run SQL, search, import and
 export, look at relations, and administer the server. Also: what the
@@ -29,7 +30,9 @@ shared host offered. UltraCanvas already gives one on every platform, and a
 native client avoids what has made phpMyAdmin the most attacked admin page on
 the internet: a login form and a SQL console on a public URL. Remote servers
 are reached the way DBeaver, pgAdmin 4 desktop and TablePlus reach them —
-directly, over TLS, or through an SSH tunnel.
+directly, over TLS, or through an SSH tunnel. Where a browser is all there is, the
+same application runs compiled to WebAssembly against an authenticated relay
+on the server (§8.1) — still not a page that turns form fields into SQL.
 
 **Put the database knowledge in UltraDatabase, the windows in the app.** The
 application needs to list a database's tables, columns, keys, indexes, views,
@@ -226,9 +229,10 @@ second customer besides this app.
   `setlocale(LC_ALL, "")` — a comma-decimal desktop reads `3.14` as `3`. This
   app would be the first GUI program to show raw PostgreSQL floats, so the fix
   (`ParseFloatClassic`) has to land first.
-- **G8 — MySQL / MariaDB driver.** Over `libmariadb` (LGPL-2.1, which the
-  dependency policy has to accept: `Docs/Dependencies.md`,
-  `master_dependencies.yaml`, `THIRD_PARTY_LICENSES.md`), with `?`
+- **G8 — MySQL / MariaDB driver.** Over MariaDB Connector/C (`libmariadb`,
+  LGPL-2.1-or-later — accepted 2026-10-20; what that obliges is §9.1, and it
+  is recorded in `Docs/Dependencies.md`, `master_dependencies.yaml` and
+  `THIRD_PARTY_LICENSES.md` when the driver lands), with `?`
   placeholders natively, `ssl-mode=VERIFY_IDENTITY` by default and the vault
   for the password.
 - **G9 — SSH tunnel.** UltraNet's SSH plugin
@@ -362,7 +366,15 @@ TablePlus stage edits and commit on request, which is far safer. Proposal:
   (UltraMail, UltraFIBU, UltraSocial, EmailCleaner …), opened **read-only by
   default**, because writing to a live app's store behind its back is how
   support sessions corrupt data. Discovery reads each app's documented data
-  directory; it does not need the apps' code.
+  directory; it does not need the apps' code. **Writing is allowed only after
+  the owning app is confirmed closed and a backup copy has been taken**
+  (decided 2026-10-20): "Unlock for writing" checks that no process of that
+  app is running and that the file is not locked (SQLite's own lock, tried
+  with `BEGIN IMMEDIATE`), copies it with SQLite's online-backup API to
+  `<store>.ultradbadmin-<timestamp>.bak` beside it, and only then reopens the
+  connection read-write. The lock is held for the whole editing session, so
+  the app cannot start writing underneath; closing the tab releases it and
+  offers "Restore backup".
 - Open a SQLite file from the file manager or Open dialog (FileLoader's
   dialog; `.db`, `.sqlite`, `.sqlite3`).
 - Test connection, with the precise error (`UltraDbResult::message`,
@@ -456,7 +468,9 @@ pull those Stage 2 items forward rather than invent new ones.
 
 ## 7. Security
 
-- No network listener. The app is a client; there is no web login to attack.
+- No network listener in the desktop build. The app is a client; there is no
+  web login to attack. The browser build's relay (§8.1) is the one listener,
+  and it is designed around that.
 - TLS `VerifyFull` by default; lowering it is per connection and shown as a
   warning badge on the connection.
 - Passwords and SSH keys in UltraVault only; the settings file holds `vault:`
@@ -483,29 +497,109 @@ pull those Stage 2 items forward rather than invent new ones.
 | **3 — MySQL / MariaDB** | the driver (G8) with introspection; the app needs no change beyond engine-specific DDL spellings | 0, dependency approval |
 | **4 — relations & server** | ER view from the schema (fills the ER diagram's X4), routines/triggers, server tab through G10 for PostgreSQL then MySQL, SSH tunnel (G9), monitor charts | 2, G9, G10 |
 | **5 — comfort** | schema-aware completion, EXPLAIN view, database-wide search, data compare between two connections, saved query bookmarks | 4 |
+| **6 — browser build** | the same app compiled to WebAssembly, talking to the UltraDBAdmin relay on the server (§8.1) | 4 |
 
-Stage 1 alone already replaces the "install DB Browser for SQLite" step for
-supporting ULTRA OS apps.
+MySQL stays at stage 3, after editing: it is not the priority (decided
+2026-10-20). Stage 1 alone already replaces the "install DB Browser for
+SQLite" step for supporting ULTRA OS apps.
+
+### 8.1 The browser build and its relay
+
+Decided 2026-10-20: the browser-reachable form is **the same application
+compiled to WebAssembly**, not a separate web UI. A page in a browser cannot
+open a TCP connection to a database, and must not hold its password, so the
+drivers do not run in the browser at all:
+
+```
+Browser ── UltraDBAdmin.wasm ──WSS──► UltraDBAdmin relay (on the server) ──► UltraDatabase ──► SQLite / PostgreSQL / MySQL
+```
+
+- **One seam in the app.** Every database call the app makes goes through an
+  `IDbAdminBackend` in `engine/`: in the desktop build it calls `UltraDb_*`
+  directly; in the WASM build a `RelayBackend` sends the same requests
+  (introspect, query page, exec batch, cancel, begin / commit) over a
+  WebSocket (`UltraNetWebSocket.h`). The UI is identical in both. This is
+  why the seam has to exist from stage 1, even though the relay comes last.
+- **The relay** is a small headless program, `Apps/UltraDBAdmin/relay`,
+  linking UltraDatabase and nothing from the UI. It listens on TLS only;
+  authenticates with the ULTRA account (the UltraNet OAuth2 sign-in service
+  the other apps use), never a form of its own; and exposes **only the
+  connections configured on the server**, by name - the browser cannot name
+  a host, so the relay is not an open proxy into the network. Credentials
+  stay in the server's vault; the browser never sees a password.
+- **Permissions per user and connection** (read-only / read-write / admin),
+  enforced in the relay; read-only maps to the driver's read-only mode, not
+  to hidden buttons.
+- **Limits:** a statement time-out, a row cap per page, a rate limit, and an
+  audit log of every statement with the user who ran it.
+- **What the browser build cannot do:** open a local SQLite file from the
+  user's disk as a live connection (upload a copy instead), and SSH tunnels
+  (the relay is already on the inside).
+
+This is the only listener in the design, and the reason it is not a
+phpMyAdmin-style page: it carries no SQL from a form into a string, has no
+login page of its own, and reaches only an allow-list.
 
 ---
 
-## 9. Open questions
+## 9. Decisions (2026-10-20)
 
-1. **Name.** `UltraDB Admin` / `Apps/UltraDBAdmin` is a working name.
-   Alternatives: *UltraDB Studio*, *UltraSQL*.
-2. **Is a browser-reachable mode wanted?** For managing a database on an ULTRA
-   OS server from a machine without the app, the safe form is the same app
-   compiled to WebAssembly (the framework builds for it) talking to a small
-   authenticated relay on the server — not a phpMyAdmin-style PHP page.
-   Recommendation: not before stage 4, and only if there is a concrete need.
-3. **MySQL priority.** If the main use is MySQL/MariaDB hosting (the
-   phpMyAdmin audience), stage 3 should move before stage 2.
-4. **libmariadb's LGPL-2.1** is a new dependency licence class to accept for
-   the module (dynamic linking satisfies it; static linking on Windows/macOS
-   needs a relinking provision).
-5. **Writing to app stores.** Should the "Local apps" folder ever allow
-   writes? Recommendation: only after the app is confirmed closed, with a
-   backup copy taken first.
+| Question | Decision |
+|---|---|
+| Name | **`UltraDBAdmin`** (`Apps/UltraDBAdmin`) |
+| Browser-reachable mode | **Yes**: the same app compiled to WebAssembly, talking to an authenticated relay on the server - stage 6, §8.1 |
+| MySQL / MariaDB priority | **Not a priority**: stays stage 3, after editing |
+| libmariadb's LGPL-2.1 | **Accepted** - obligations below |
+| Writing to app stores | **Only after the owning app is confirmed closed, with a backup copy taken first** - §5.4 |
+
+### 9.1 What LGPL-2.1 obliges
+
+LGPL is not new to the project: Cairo, Pango, GTK, GLib, FFmpeg, libvips,
+libsndfile, OpenZWave and others are already LGPL-2.1 dependencies
+(`Docs/Dependencies.md`), and are shipped the same way libmariadb would be.
+UltraCanvas's own code stays MIT; the LGPL covers only the library.
+
+What a distributor of an UltraDBAdmin binary that links libmariadb must do:
+
+1. **Link it dynamically**, as a separate `.so` / `.dylib` / `.dll` the user
+   could replace with a modified build of the same interface (§6(b)). The
+   suite already does: the macOS triplets build everything shared
+   (`VCPKG_LIBRARY_LINKAGE dynamic`, `MacOS/deps/triplets/`), Linux uses the
+   system package, Windows MSYS2's DLLs. A **static** link would instead
+   oblige shipping the app's object files so the user can relink against a
+   changed libmariadb (§6(a)) - avoid it; CMake should ask for the shared
+   library by name, as the OpenZWave link does (`THIRD_PARTY_LICENSES.md`).
+2. **Ship the licence text** and a notice that the program uses libmariadb
+   under the LGPL-2.1 - an entry in `THIRD_PARTY_LICENSES.md` and in each
+   package's licence file.
+3. **Make libmariadb's source available** - the exact version shipped, with
+   any changes made to it - alongside the binary or by a written offer valid
+   for three years. Linking an unmodified upstream release and pointing to
+   its tagged source is the usual way.
+4. **Changes to libmariadb itself are LGPL** and must be published; the
+   UltraDatabase driver that *calls* it is not a modification and stays MIT.
+5. **Do not forbid** reverse engineering for debugging such modifications in
+   any end-user licence terms (§6).
+
+What it does not oblige: publishing UltraDBAdmin's or UltraCanvas's source,
+licensing them under the LGPL, or charging nothing.
+
+Two edge cases to note:
+
+- **Signed, sealed packages** (macOS notarised bundles, MSIX in `WindowsApps`)
+  make swapping the library awkward for the user. The project already ships
+  Cairo, Pango and FFmpeg in those same packages; libmariadb adds no new
+  exposure, but the question is the same one for all of them.
+- **The WebAssembly build links statically** - WASM has no shared libraries.
+  In this design it does not matter: the browser build contains no database
+  driver at all (§8.1); libmariadb runs only in the relay, a normal
+  dynamically linked server program.
+
+Why not MySQL's own client (libmysqlclient): it is GPL-2.0 with Oracle's
+FOSS exception, which is stricter for anyone redistributing a closed
+derivative. MariaDB Connector/C speaks to MySQL servers as well
+[unverified for MySQL 8.4's newest auth plugins; to be tested in CI against
+both servers].
 
 ---
 
