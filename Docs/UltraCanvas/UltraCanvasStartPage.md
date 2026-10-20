@@ -17,7 +17,7 @@ window (a site folder) and UltraFIBU's (a bookkeeping file) are both this
 page with their own words and their own "new" fields.
 
 **File Location**: `include/UltraCanvasStartPage.h`
-**Version**: 1.1.0
+**Version**: 1.1.1
 **Base Class**: `UltraCanvasContainer`
 **Author**: UltraCanvas Framework
 
@@ -29,7 +29,8 @@ page with their own words and their own "new" fields.
 - ✅ A **section of the application's own fields**, laid out row by row:
   a captioned field, a note, a button (`AddField`, `AddNote`, `AddButton`)
 - ✅ **Recent entries** as buttons: the last path part and the whole entry,
-  the whole entry as the tooltip where the button shortens it
+  shortened in the middle where it does not fit (the drive and the name
+  stay), the whole entry as the tooltip
 - ✅ The **action** as the theme's primary button, with a muted note under it
 - ✅ A **section** for the application's own fields: a heading and a
   container of the named height, the fields placed in it from (0, 0)

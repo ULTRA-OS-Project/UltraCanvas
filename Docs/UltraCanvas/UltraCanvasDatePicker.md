@@ -102,7 +102,7 @@ Useful methods:
 | `SetSelectionMode(mode)` | `Single` (typeable) / `Range` / `Multiple` / `Week` |
 | `SetDateFormat(fmt)` | Display & parse format (`yyyy MM dd` tokens) |
 | `SetAllowTextInput(bool)` | Toggle free-text entry (default on for `Single`) |
-| `SetPlaceholder(text)` | Empty-state hint |
+| `SetPlaceholder(text)` / `GetPlaceholder()` | Empty-state hint, set at any time |
 | `SetMinDate/SetMaxDate` | Hard bounds |
 | `SetDateEnabledPredicate(fn)` | Arbitrary per-date enable/disable |
 | `SetFirstDayOfWeek(0..6)` | 0=Sunday (default), 1=Monday |

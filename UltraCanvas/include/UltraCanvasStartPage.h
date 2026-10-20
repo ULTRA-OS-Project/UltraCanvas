@@ -42,6 +42,7 @@
 //   window->AddChild(page);
 //   window->SetWindowSize(620, page->PreferredHeight());
 //
+// Version: 1.1.1 - a recent entry too long for its button loses its middle, not its end
 // Version: 1.1.0 - AddField, AddNote and AddButton lay out a section's rows; a section grows with them
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -69,9 +70,10 @@ namespace UltraCanvas {
         void SetHint(const std::string& text);
 
         // The entries opened last, the first one first, each a button that
-        // shows its last path part and the whole entry (the whole entry as the
-        // tooltip, where the button shortens it) and calls `onPick` with the
-        // entry. At most `shown` of them; nothing is added for an empty list.
+        // shows its last path part and the whole entry (shortened in the
+        // middle where it does not fit, so the drive and the last part stay;
+        // the whole entry as the tooltip) and calls `onPick` with the entry.
+        // At most `shown` of them; nothing is added for an empty list.
         void SetRecent(const std::string& heading, const std::vector<std::string>& entries,
                        std::function<void(const std::string&)> onPick, int shown = 5);
 

@@ -1,5 +1,6 @@
 // core/UltraCanvasDatePicker.cpp
 // Implementation of UCDate, UltraCanvasCalendarView and UltraCanvasDatePicker.
+// Version: 1.1.0 - SetPlaceholder reaches the field after it was built
 #include "UltraCanvasDatePicker.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLabel.h"
@@ -1440,6 +1441,14 @@ namespace UltraCanvas {
         };
 
         SyncTextFromValue();
+    }
+
+    void UltraCanvasDatePicker::SetPlaceholder(const std::string& text) {
+        placeholder = text;
+        // The field is built once, with the hint of that moment; a hint set
+        // later has to be handed on, or "Select a date" stays.
+        if (textInput) textInput->SetPlaceholder(placeholder);
+        RequestRedraw();
     }
 
     bool UltraCanvasDatePicker::CanTypeInField() const {

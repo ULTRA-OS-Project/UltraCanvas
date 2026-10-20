@@ -113,6 +113,7 @@ int main() {
               start.AnlegenKnopf() != nullptr && start.AnlegenKnopf()->IsDisabled(),
           "without a company the button is greyed and the reason says so: " + start.Grund());
     Check(start.Firma() != nullptr && start.Beginn() != nullptr, "the fields are reachable");
+    Check(start.Beginn() != nullptr && start.Beginn()->GetPlaceholder() == "TT.MM.JJJJ", "the date field's hint is the German form");
     if (start.Firma()) {
         start.Firma()->SetText("Erika Muster e.K.");
         if (start.Firma()->onTextChanged) start.Firma()->onTextChanged(start.Firma()->GetText());

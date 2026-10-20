@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.12.0 - ButtonStyle::ellipsize: a text shortened in the middle or at the start goes through a layout
 // Version: 2.11.0 - FromTheme by ButtonVariant
 // Version: 2.10.0 - ButtonStyle::FromTheme
 // Version: 2.9.1 - SetTextAlign is honoured: DrawText aligns as style.textAlign says
@@ -319,6 +320,11 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetTextAlign(TextAlignment align) {
         style.textAlign = align;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetEllipsize(EllipsizeMode mode) {
+        style.ellipsize = mode;
         RequestRedraw();
     }
 
@@ -850,6 +856,27 @@ namespace UltraCanvas {
         ctx->SetTextAlignment(style.textAlign);
 
         const std::string drawnText = useMarkup ? BuildMnemonicMarkup() : text;
+        const double nudge = GetPrimaryState() == ElementState::Pressed ? 1.0 : 0.0;
+        const Rect2Dd rect(textRect.x + nudge, textRect.y + nudge, textRect.width, textRect.height);
+
+        // Shortened anywhere but at the end: DrawTextInRect cuts from the
+        // right only, so the text goes through a layout of the rectangle's
+        // width that cuts where the style says, placed as the alignment says.
+        if (style.ellipsize != EllipsizeMode::EllipsizeEnd && style.ellipsize != EllipsizeMode::EllipsizeNone) {
+            FontStyle font;
+            font.fontFamily = style.fontFamily;
+            font.fontSize = style.fontSize;
+            font.fontWeight = style.fontWeight;
+            auto layout = ctx->CreateTextLayout(drawnText, useMarkup);
+            layout->SetFontStyle(font);
+            layout->SetWrap(TextWrap::WrapNone);
+            layout->SetEllipsize(style.ellipsize);
+            layout->SetExplicitWidth(rect.width);
+            layout->SetAlignment(style.textAlign);
+            const double height = layout->GetLayoutHeight();
+            ctx->DrawTextLayout(*layout, Point2Dd(rect.x, rect.y + (rect.height - height) / 2));
+            return;
+        }
 
         //debugOutput << "btn draw text=" << text << " rect=" << textRect.x << "," << textRect.y << " " << textRect.width << "x" << textRect.height << std::endl;
         if (GetPrimaryState() == ElementState::Pressed) {

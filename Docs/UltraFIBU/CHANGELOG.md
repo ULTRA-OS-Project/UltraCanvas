@@ -1,3 +1,11 @@
+#### 2026-10-20 *0.24.9*
+- **The date field of the start window says *TT.MM.JJJJ* again.** The
+  framework's date picker kept its own "Select a date" whatever the
+  window set; fixed in the picker.
+- **The engine tests run on macOS and Windows too**, in the CI step the
+  start window test joined: the SQLite store, the invoice PDF, the DATEV
+  and CAMT files on each platform's own paths.
+
 #### 2026-10-20 *0.24.8*
 - **The start window's form is laid out by the page.** Firma, the start of
   the fiscal year, the chart of accounts, the note, the reason the button

@@ -1,5 +1,6 @@
 // include/UltraCanvasDatePicker.h
 // Calendar / date-selection widgets for UltraCanvas.
+// Version: 1.1.0 - SetPlaceholder reaches the field after it was built; GetPlaceholder
 //
 // This header provides two complementary widgets that cover the common
 // date-selection philosophies (see Docs/UltraCanvas/UltraCanvasDatePicker.md
@@ -491,7 +492,10 @@ namespace UltraCanvas {
 
         void SetDateFormat(const std::string& fmt) { dateFormat = fmt; SyncTextFromValue(); RequestRedraw(); }
         const std::string& GetDateFormat() const { return dateFormat; }
-        void SetPlaceholder(const std::string& text) { placeholder = text; RequestRedraw(); }
+        // The hint shown while no date is in: reaches the field, whenever it
+        // is set (until 2026-10 the field kept the hint it was made with).
+        void SetPlaceholder(const std::string& text);
+        const std::string& GetPlaceholder() const { return placeholder; }
 
         // Whether the user may type the date directly into the field.
         void SetAllowTextInput(bool allow);

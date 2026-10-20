@@ -80,6 +80,9 @@ int main() {
     Check(recent.size() == 5 && recent[0]->GetTooltip() == entries[0] &&
               recent[0]->GetText().find("site0") == 0 && recent[0]->GetText().find(entries[0]) != std::string::npos,
           "a button shows the last path part and the whole entry, the whole entry as its tooltip");
+    Check(recent.size() == 5 && recent[0]->GetStyle().ellipsize == EllipsizeMode::EllipsizeMiddle &&
+              recent[0]->GetStyle().textAlign == TextAlignment::Left,
+          "a long entry loses its middle, not its end, and reads from the left");
     Check(recent.size() == 5 && static_cast<int>(recent[0]->GetWidth()) == page->ContentWidth() &&
               recent[4]->GetY() > recent[0]->GetY(),
           "the buttons are as wide as the column, one under the other");

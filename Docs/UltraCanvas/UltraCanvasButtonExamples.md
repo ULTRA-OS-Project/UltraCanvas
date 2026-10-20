@@ -146,6 +146,7 @@ void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetFontSize(float size);
 void SetTextAlign(TextAlignment align);
+void SetEllipsize(EllipsizeMode mode);   // how a text that does not fit is shortened: End (default), Middle, Start
 
 // Layout configuration
 void SetPadding(float all);                                      // inherited from UltraCanvasUIElement
@@ -280,6 +281,7 @@ struct ButtonStyle {
     float fontSize = 12.0f;
     FontWeight fontWeight = FontWeight::Normal;
     TextAlignment textAlign = TextAlignment::Center;
+    EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;   // Middle keeps a path's first and last part
 
     int iconSpacing = 4;          // space between icon and text
     float cornerRadius = 3.0f;

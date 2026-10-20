@@ -13503,6 +13503,7 @@ void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetFontSize(float size);
 void SetTextAlign(TextAlignment align);
+void SetEllipsize(EllipsizeMode mode);   // how a text that does not fit is shortened: End (default), Middle, Start
 
 // Layout configuration
 void SetPadding(float all);                                      // inherited from UltraCanvasUIElement
@@ -13637,6 +13638,7 @@ struct ButtonStyle {
     float fontSize = 12.0f;
     FontWeight fontWeight = FontWeight::Normal;
     TextAlignment textAlign = TextAlignment::Center;
+    EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;   // Middle keeps a path's first and last part
 
     int iconSpacing = 4;          // space between icon and text
     float cornerRadius = 3.0f;
@@ -18778,7 +18780,7 @@ Useful methods:
 | `SetSelectionMode(mode)` | `Single` (typeable) / `Range` / `Multiple` / `Week` |
 | `SetDateFormat(fmt)` | Display & parse format (`yyyy MM dd` tokens) |
 | `SetAllowTextInput(bool)` | Toggle free-text entry (default on for `Single`) |
-| `SetPlaceholder(text)` | Empty-state hint |
+| `SetPlaceholder(text)` / `GetPlaceholder()` | Empty-state hint, set at any time |
 | `SetMinDate/SetMaxDate` | Hard bounds |
 | `SetDateEnabledPredicate(fn)` | Arbitrary per-date enable/disable |
 | `SetFirstDayOfWeek(0..6)` | 0=Sunday (default), 1=Monday |
@@ -58585,7 +58587,7 @@ window (a site folder) and UltraFIBU's (a bookkeeping file) are both this
 page with their own words and their own "new" fields.
 
 **File Location**: `include/UltraCanvasStartPage.h`
-**Version**: 1.1.0
+**Version**: 1.1.1
 **Base Class**: `UltraCanvasContainer`
 **Author**: UltraCanvas Framework
 
@@ -58597,7 +58599,8 @@ page with their own words and their own "new" fields.
 - ✅ A **section of the application's own fields**, laid out row by row:
   a captioned field, a note, a button (`AddField`, `AddNote`, `AddButton`)
 - ✅ **Recent entries** as buttons: the last path part and the whole entry,
-  the whole entry as the tooltip where the button shortens it
+  shortened in the middle where it does not fit (the drive and the name
+  stay), the whole entry as the tooltip
 - ✅ The **action** as the theme's primary button, with a muted note under it
 - ✅ A **section** for the application's own fields: a heading and a
   container of the named height, the fields placed in it from (0, 0)

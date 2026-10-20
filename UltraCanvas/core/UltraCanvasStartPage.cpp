@@ -1,5 +1,6 @@
 // UltraCanvas/core/UltraCanvasStartPage.cpp
 // See include/UltraCanvasStartPage.h.
+// Version: 1.1.1 - a recent entry too long for its button loses its middle, not its end
 // Version: 1.1.0 - AddField, AddNote and AddButton; a section grows with its rows
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -91,6 +92,9 @@ void UltraCanvasStartPage::SetRecent(const std::string& heading, const std::vect
         button->SetBorder(1, Colors::Transparent);
         button->SetCornerRadius(6);
         button->SetTextAlign(TextAlignment::Left);
+        // A path too long for the button loses its middle, so the last part
+        // and the drive or root stay readable; the tooltip has it whole.
+        button->SetEllipsize(EllipsizeMode::EllipsizeMiddle);
         button->SetPadding(0, 10);
         button->SetTooltip(entry);
         Follow(button, ButtonVariant::Standard);

@@ -1,5 +1,6 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.10.0 - ButtonStyle::ellipsize / SetEllipsize: a text that does not fit shortened in the middle or at the start
 // Version: 2.9.0 - ButtonVariant (Standard, Ghost, Primary, Selected): FromTheme maps the
 //                 theme onto a button's part; SetThemeVariant on the element
 // Version: 2.8.0 - ButtonStyle::FromTheme, ApplyTheme
@@ -109,6 +110,10 @@ namespace UltraCanvas {
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         TextAlignment textAlign = TextAlignment::Center;
+        // How a text that does not fit is shortened: from the right (the
+        // default), from the left, or in the middle - a path's first and
+        // last parts stay readable then.
+        EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;
 
         int iconSpacing = 4;  // Space between icon and text
         float cornerRadius = 3.0f;
@@ -280,6 +285,7 @@ namespace UltraCanvas {
                      FontWeight weight = FontWeight::Normal);
         void SetFontSize(float size);
         void SetTextAlign(TextAlignment align);
+        void SetEllipsize(EllipsizeMode mode);   // ButtonStyle::ellipsize
         void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
