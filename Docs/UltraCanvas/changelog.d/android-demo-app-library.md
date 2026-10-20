@@ -30,3 +30,16 @@
   `glPointSize` or `GL_PROGRAM_POINT_SIZE`: the shader tab's point shader now
   sets `gl_PointSize` itself, and on Android the models tab's Wireframe
   toggle draws the model filled.
+- **Android builds for API 28 (Android 9), the level its libraries need.**
+  vcpkg's Android triplets build the dependency sysroot for API 28, so glib,
+  fontconfig and libintl call libc functions bionic has only from 28 on
+  (`iconv`, `posix_spawn`, `pthread_attr_setinheritsched`,
+  `fgets_unlocked`) - the first link of an app said so. The framework built
+  for 26, which those libraries never supported; the build, the bootstrap
+  script, the syntax check and the Gradle template's `minSdk` now say 28.
+- **Android no longer calls two desktop backends it does not compile.** File
+  associations take the "not available" backend WebAssembly uses (handing a
+  file to another app is an Intent, still to be written), and the V4L2
+  camera backend registers on desktop Linux only. Video formats are listed
+  as Android's MediaCodec plays them, with MP4 the one the recorder writes,
+  instead of as GStreamer's.
