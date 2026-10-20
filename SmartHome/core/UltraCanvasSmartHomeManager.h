@@ -6,11 +6,16 @@
 #pragma once
 
 #include "UltraCanvasSmartHome.h"
+#include "SmartHomeAutomationEngine.h"
+#include "SmartHomeStore.h"
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <atomic>
 #include <queue>
 #include <condition_variable>
+#include <functional>
+#include <optional>
 
 namespace UltraCanvas {
 namespace SmartHome {
@@ -141,8 +146,41 @@ public:
     void DispatchError(int code, const std::string& message);
     
     // ===== PERSISTENCE =====
+    // A copy of the open store at `path` / open the store at `path`.
     bool SaveConfiguration(const std::string& path);
     bool LoadConfiguration(const std::string& path);
+
+    // ===== THE STORE (SmartHomeAPI::OpenStore and friends) =====
+    bool OpenStore(const std::string& path);
+    void CloseStore();
+    bool IsStoreOpen() const;
+    std::string GetStoreError() const;
+    bool ExportStore(const std::string& path) const;
+    std::vector<SmartHomeSensorReading> GetSensorHistory(const std::string& deviceId,
+                                                         uint64_t startMs, uint64_t endMs) const;
+
+    // ===== THE HOME =====
+    bool SetDeviceName(const std::string& deviceId, const std::string& name);
+    bool SetDeviceRoom(const std::string& deviceId, const std::string& room);
+    bool SetHomeLocation(double latitude, double longitude);
+    bool GetHomeLocation(double& latitude, double& longitude) const;
+    bool GetSunTimes(int64_t& sunrise, int64_t& sunset) const;
+    // A device attribute as the automation engine reads it (see
+    // SmartHomeAutomation in UltraCanvasSmartHome.h for the names).
+    std::optional<std::string> ReadDeviceAttribute(const std::string& deviceId,
+                                                   const std::string& attribute) const;
+
+    // ===== AUTOMATION RUNS AND THE EVENT LOG =====
+    bool RunAutomation(const std::string& automationId);
+    void RecordEvent(const SmartHomeEvent& event);
+    std::vector<SmartHomeEvent> GetEventLog(int64_t since, size_t limit) const;
+    void SetOnAutomationNotify(OnAutomationNotify callback);
+    void SetOnEvent(OnSmartHomeEvent callback);
+
+    // The clock automations run by, in seconds since the epoch. Tests set
+    // one of their own; nullptr goes back to the system clock.
+    void SetTimeSource(std::function<int64_t()> source);
+    int64_t Now() const;
     
     // ===== STATISTICS =====
     int GetTotalDeviceCount() const;
@@ -167,6 +205,13 @@ private:
     // Registers a device a backend reports, with the backend's device
     // object when it keeps one.
     void AdoptDevice(ISmartHomeProtocol* protocol, const SmartHomeDeviceInfo& info);
+    // The person's name and room over the backend's.
+    void ApplyOverrides(SmartHomeDeviceInfo& info) const;
+    // Sensor history: what a device reads now, when it moved past its
+    // deadband or 15 minutes have passed (store open only).
+    void RecordReadings(const std::string& deviceId);
+    void EnsureAutomationEngine();
+    void WakeAutomations();
     
     // State
     std::atomic<bool> initialized{false};
@@ -213,6 +258,31 @@ private:
     // Pairing state
     std::atomic<SmartHomeProtocolType> pairingProtocol;  // read on backend threads
     int pairingTimeout;
+
+    // The store, and what of it lives in memory
+    std::unique_ptr<SmartHomeStore> store;
+    std::map<std::string, SmartHomeDeviceOverride> overrides;   // under deviceMutex
+    mutable std::mutex locationMutex;
+    bool hasLocation = false;
+    double homeLatitude = 0.0, homeLongitude = 0.0;
+    struct RecordedReading { float value = 0; bool triggered = false; uint64_t timeMs = 0; };
+    std::map<std::string, RecordedReading> lastRecorded;        // under readingMutex
+    std::mutex readingMutex;
+
+    // Automations
+    std::unique_ptr<SmartHomeAutomationEngine> engine;
+    std::mutex automationWakeMutex;
+    std::condition_variable automationWake;
+    bool automationWakePending = false;                         // under automationWakeMutex
+    mutable std::mutex clockMutex;
+    std::function<int64_t()> timeSource;                        // under clockMutex
+
+    // The event log in memory (the store keeps the rest)
+    std::deque<SmartHomeEvent> recentEvents;                    // newest first
+    mutable std::mutex eventMutex;
+    mutable std::mutex callbackMutex;                           // the two below
+    OnAutomationNotify onAutomationNotify;
+    OnSmartHomeEvent onEvent;
 };
 
 } // namespace SmartHome

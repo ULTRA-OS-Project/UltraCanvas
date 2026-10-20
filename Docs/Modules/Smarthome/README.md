@@ -50,6 +50,16 @@ radio: 30 devices in 8 rooms answering commands and changing over time, for
 development, tests and demos. Enabling the `Simulated` protocol type
 through `SmartHomeAPI` brings it up.
 
+### Store and automations
+
+The home's own database, **smarthome.db** (UltraDatabase / SQLite): scenes,
+automations, the names and rooms given to devices, the home's location, the
+event log and sensor history. **Automations run** in the module: device,
+time, sunrise and sunset triggers, time, weekday and device conditions, and
+device commands, notifications, delays and scenes as actions. The trigger and
+condition forms are documented on `SmartHomeAutomation` in
+`SmartHome/include/UltraCanvasSmartHome.h`.
+
 ### Application
 
 **SmartHome Center** (`Apps/SmartHomeCenter`) is the home control window

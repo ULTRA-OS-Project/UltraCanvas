@@ -13,6 +13,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ui/SmartHomeCenterModel.h"
+#include "ui/SmartHomeCenterPaths.h"
 #include "ui/SmartHomeCenterWindow.h"
 
 #include "UltraCanvasSmartHome.h"
@@ -176,6 +177,13 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         const bool simulated = StartHome(demo);
+        // The home's own database: scenes, automations, names and rooms,
+        // the log and the history. Without one the window still works; it
+        // just forgets on exit, and says so in the log.
+        const std::string storePath = SmartHomeCenter::DefaultStorePath(simulated);
+        if (storePath.empty() || !SmartHomeAPI::Instance().OpenStore(storePath)) {
+            debugOutput << "SmartHome store not opened: " << SmartHomeAPI::Instance().GetStoreError() << std::endl;
+        }
         {
             SmartHomeCenter::SmartHomeCenterWindow window;
             if (!window.Initialize(simulated)) {

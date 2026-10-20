@@ -22,6 +22,7 @@ endif()
 add_executable(SmartHomeCenter
     main.cpp
     ui/SmartHomeCenterModel.cpp
+    ui/SmartHomeCenterPaths.cpp
     ui/SmartHomeCenterWindow.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h): it owns the radios.

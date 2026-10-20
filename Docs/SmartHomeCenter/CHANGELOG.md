@@ -17,5 +17,14 @@
   under the menu and in every device's details, and offers three events to
   stage: motion in the hallway, the patio door opening, water under the
   sink. *Add device* pairs a new simulated device after a few seconds.
+- **The home is kept, and automations run.** The window opens the
+  module's store (`smarthome.db` in the per-user data directory under
+  `ULTRA/SmartHome`, `smarthome-demo.db` for the demo home, so simulated
+  devices never mix with a real home): scenes and automations survive a
+  restart. The demo home starts with five automations - a water leak switches
+  the kettle and towel rail off and says so, smoke turns the hall light on,
+  motion lights the hall for two minutes, a patio door open for ten minutes
+  is reported, and the Evening scene runs fifteen minutes before sunset. What
+  they do shows in Activity with why they ran.
 - **Command line.** `--list` prints the home room by room and exits;
   `--page` and `--select` open the window on a page and a device.

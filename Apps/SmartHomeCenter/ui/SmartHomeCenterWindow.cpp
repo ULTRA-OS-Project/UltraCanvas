@@ -293,6 +293,7 @@ SmartHomeCenterWindow::~SmartHomeCenterWindow() {
     api.SetOnDeviceDiscover(nullptr);
     api.SetOnPairingComplete(nullptr);
     api.SetOnSmartHomeError(nullptr);
+    api.SetOnEvent(nullptr);
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(uiTimer_);
     }
@@ -345,7 +346,10 @@ bool SmartHomeCenterWindow::Initialize(bool demoHome) {
         LayoutForSize(static_cast<float>(width), static_cast<float>(height));
     };
 
-    if (demoHome_) CreateDemoScenes();
+    if (demoHome_) {
+        CreateDemoScenes();
+        CreateDemoAutomations();
+    }
     ConnectApi();
     ShowPage(Page::Home);
     ReloadAll();
@@ -1406,20 +1410,33 @@ void SmartHomeCenterWindow::ConnectApi() {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingNotes_.push_back("Error: " + message);
     });
+    // The engine's own log: automations that ran and why, their notices,
+    // scenes, problems. Device changes the window logs itself.
+    api.SetOnEvent([this](const SmartHomeEvent& event) {
+        if (event.Kind == "device") return;
+        std::lock_guard<std::mutex> lock(pendingMutex_);
+        pendingEvents_.push_back(event);
+    });
 }
 
 void SmartHomeCenterWindow::OnTimer() {
     std::set<std::string> ids;
     std::vector<std::string> notes;
+    std::vector<SmartHomeEvent> events;
     bool all = false;
     {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         ids.swap(pendingIds_);
         notes.swap(pendingNotes_);
+        events.swap(pendingEvents_);
         all = pendingAll_;
         pendingAll_ = false;
     }
     for (const std::string& note : notes) Log("SmartHome Center", "", note, note.rfind("Error", 0) == 0);
+    for (const SmartHomeEvent& event : events) {
+        const std::string who = event.Kind == "scene" ? "Scene" : event.Kind == "error" ? "SmartHome" : "Automation";
+        Log(who, "", event.Text, event.Kind == "error" || event.Text.rfind("Notice:", 0) == 0);
+    }
     if (all) {
         ReloadAll();
     } else if (!ids.empty()) {
@@ -1594,7 +1611,53 @@ void SmartHomeCenterWindow::AddDevice() {
 }
 
 void SmartHomeCenterWindow::ActivateScene(const std::string& sceneId, const std::string& name) {
-    if (SmartHomeAPI::Instance().ActivateScene(sceneId)) Log("Scene", "", "Ran \"" + name + "\"", false);
+    // The engine logs the activation; the Activity page shows it from there.
+    (void)name;
+    SmartHomeAPI::Instance().ActivateScene(sceneId);
+}
+
+void SmartHomeCenterWindow::CreateDemoAutomations() {
+    // What a home would set up first, in the demo home's devices: they run
+    // in the module's automation engine and show in Activity when they do.
+    // Created once; after that the store has them, with whatever the person
+    // changed.
+    auto& api = SmartHomeAPI::Instance();
+    if (!api.GetAutomations().empty()) return;
+    // From the API: the window's own list is not filled yet.
+    const auto devices = api.GetDevices();
+    auto idOf = [&](const char* name) {
+        for (const auto& d : devices) if (d.Name == name) return d.DeviceId;
+        return std::string();
+    };
+    const std::string leak = idOf("Under-sink leak sensor");
+    const std::string smoke = idOf("Kitchen smoke alarm");
+    const std::string motion = idOf("Hallway motion");
+    const std::string patio = idOf("Patio door");
+    const std::string hall = idOf("Hall light");
+    const std::string kettle = idOf("Kettle");
+    const std::string rail = idOf("Towel rail");
+    auto device = [](const std::string& id, const char* attribute, const char* value, int forMinutes = 0) {
+        std::string config = std::string(R"({"type":"device","deviceId":")") + id + R"(","attribute":")" +
+                             attribute + R"(","value":")" + value + "\"";
+        if (forMinutes > 0) config += ",\"forMinutes\":" + std::to_string(forMinutes);
+        return config + "}";
+    };
+    auto notify = [](const std::string& message) { return SmartHomeCommand{"", "notify", {{"message", message}}}; };
+
+    api.CreateAutomation({"center.leak", "Water leak", true, "device", device(leak, "triggered", "true"),
+                          {notify("Water under the kitchen sink - the kettle and towel rail are switched off"),
+                           {kettle, "turnOff", {}}, {rail, "turnOff", {}}}, {}});
+    api.CreateAutomation({"center.smoke", "Smoke alarm", true, "device", device(smoke, "triggered", "true"),
+                          {notify("Smoke in the kitchen"), {hall, "turnOn", {}}}, {}});
+    api.CreateAutomation({"center.hall", "Hall light on motion", true, "device", device(motion, "triggered", "true"),
+                          {{hall, "turnOn", {}}, {"", "delay", {{"seconds", "120"}}}, {hall, "turnOff", {}}}, {}});
+    api.CreateAutomation({"center.patio", "Patio door left open", true, "device", device(patio, "open", "true", 10),
+                          {notify("The patio door has been open for 10 minutes")}, {}});
+    api.CreateAutomation({"center.sunset", "Evening at sunset", true, "sunset", R"({"type":"sunset","offsetMinutes":-15})",
+                          {{"", "activateScene", {{"sceneId", kSceneEvening}}}}, {}});
+    // Sunset needs a place; the demo home stands in Berlin.
+    double latitude = 0, longitude = 0;
+    if (!api.GetHomeLocation(latitude, longitude)) api.SetHomeLocation(52.52, 13.405);
 }
 
 void SmartHomeCenterWindow::CreateDemoScenes() {

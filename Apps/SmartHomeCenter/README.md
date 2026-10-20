@@ -35,6 +35,7 @@ reporting, red for an alarm or a device that stopped answering.
 | Path | What is in it |
 |---|---|
 | `ui/SmartHomeCenterModel.*` | What a device and the home look like to a person, from `SmartHomeAPI` alone: the state line, the icon, active / alert, the summary figures, the `--list` text. No UI types. |
+| `ui/SmartHomeCenterPaths.*` | Where the store lives: the per-user data directory, `ULTRA/SmartHome/smarthome.db` (`smarthome-demo.db` for the demo home) |
 | `ui/SmartHomeCenterWindow.*` | The window: navigation, header, the four pages, the tiles, the inspector, the table models, the demo panel, the scenes the demo home starts with |
 | `main.cpp` | Bootstrap, starting the radios (or the demo home), the command line |
 | `SmartHomeCenter.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/SmartHomeCenter.png` / `.svg`) |
@@ -64,7 +65,7 @@ SmartHomeCenter --trigger "Under-sink leak sensor"   # demo home: stage a sensor
 
 ## Not yet
 
-From the proposal's roadmap, still to come: the home model with rooms the
-user edits, persistence (`smarthome.db`), automations that run, sensor
-history, the pairing wizard's per-protocol steps, a dark theme, and the hub
+The store and automations run in the module (`SmartHome/STATUS.md`). Still
+to come in the window: editing rooms, scenes and automations, history
+charts, the pairing wizard's per-protocol steps, a dark theme, and the hub
 service that keeps automations running with the window closed.

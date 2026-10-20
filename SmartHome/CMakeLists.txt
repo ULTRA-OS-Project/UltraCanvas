@@ -25,6 +25,8 @@
 set(SMARTHOME_SOURCES
     core/UltraCanvasSmartHomeManager.cpp
     core/SmartHomeProtocolRegistry.cpp
+    core/SmartHomeStore.cpp
+    core/SmartHomeAutomationEngine.cpp
     # The demo home: no radio, no third party, so it is always built and
     # always registered (SmartHomeProtocolType::Simulated).
     protocols/Simulated/SimulatedProtocol.cpp
@@ -192,6 +194,16 @@ if(ULTRACANVAS_LIBRARY)
     target_link_libraries(SmartHome PUBLIC ${ULTRACANVAS_LIBRARY})
 endif()
 
+# smarthome.db is an UltraDatabase (SQLite) store. Without SQLite the store
+# compiles to one that refuses to open, and everything else still works.
+if(TARGET uc-database)
+    target_link_libraries(SmartHome PRIVATE uc-database)
+    target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
+    message(STATUS "  [✓] SmartHome store - smarthome.db over UltraDatabase")
+else()
+    message(STATUS "  [−] SmartHome store - SKIPPED (UltraDatabase not built: no SQLite)")
+endif()
+
 # One definition per enabled backend, and its headers on the private include
 # path. SmartHomeProtocolRegistry.cpp reads these to decide what to register.
 foreach(_sh_proto ${_sh_backends})
@@ -350,6 +362,17 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     target_include_directories(SmartHomeSimulatedTest PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
     add_test(NAME SmartHomeSimulated COMMAND SmartHomeSimulatedTest)
+
+    # The store and the automation engine, on a clock the test sets.
+    add_executable(SmartHomeAutomationTest tests/AutomationTest.cpp)
+    target_link_libraries(SmartHomeAutomationTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeAutomationTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/core
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
+    if(TARGET uc-database)
+        target_compile_definitions(SmartHomeAutomationTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
+    endif()
+    add_test(NAME SmartHomeAutomation COMMAND SmartHomeAutomationTest)
 
     # Pure framing, so it builds whether or not the Zigbee backend is on.
     add_executable(SmartHomeAshCodecTest tests/AshCodecTest.cpp

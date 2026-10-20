@@ -112,6 +112,7 @@ private:
     Stat MakeStat(const std::string& id, const std::string& caption, const std::string& icon);
     Tile MakeTile(const DeviceView& view);
     void CreateDemoScenes();
+    void CreateDemoAutomations();
 
     // ===== DATA FLOW =====
     void ConnectApi();
@@ -205,6 +206,7 @@ private:
     std::set<std::string> pendingIds_;   // guarded by pendingMutex_
     bool pendingAll_ = true;             // guarded: the device set changed
     std::vector<std::string> pendingNotes_;   // guarded: pairing and errors, for the log
+    std::vector<UltraCanvas::SmartHome::SmartHomeEvent> pendingEvents_;   // guarded: the engine's log
 };
 
 } // namespace SmartHomeCenter
