@@ -66,7 +66,10 @@ protected:
     // caller calling it off, the disk full - removes what it wrote. No
     // whole-transfer time limit (a download is as long as the file is large)
     // but a stall limit, unless the request sets its own. `what` names it in
-    // a failure ("download /x").
+    // a failure ("download /x"). While the thread's downloads continue a
+    // partial copy (SetThreadDownloadContinues), a file already there is
+    // continued with a Range request - 206 appends, 200 starts it over, a 416
+    // naming its size means it was complete - and a failure leaves it.
     Result DownloadToFile(const Credentials& credentials, UltraNetHttpRequest request,
                           const std::string& localPath, const std::string& what) const;
     // Map an HTTP outcome onto a Result (2xx → Ok; 429, or a 503 / Google 403

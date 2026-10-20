@@ -340,7 +340,12 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     cache folder and shown in the preview pane. The copy is kept for two
     weeks after its last use and fetched again if the file changes on the
     server. Files over 64 MB are not fetched for a preview. Video, audio,
-    documents and text on a drive are not previewed.
+    documents and text on a drive are not previewed. A copy that was called
+    off part-way - to let a request of yours go first, because the selection
+    moved on, or because the window closed - keeps what had arrived, and the
+    next fetch of that file continues from there instead of starting over
+    (FTP's REST, an HTTP Range; a server that cannot continue sends the whole
+    file).
   - **RAM discs.** *+ Drive > RAM disc...* asks for a name and a size and
     creates a disc in memory (VirtualFS's RAM disc API, wrapped by
     `UltraFilerRamDisks`), which then opens in the folder view and gets a row

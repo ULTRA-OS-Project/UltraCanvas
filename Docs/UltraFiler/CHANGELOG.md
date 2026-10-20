@@ -1,3 +1,17 @@
+#### 2026-10-20 *1.78.0*
+- **A preview copy that was called off continues where it stopped.** A
+  picture or a model being fetched from a drive for the preview pane gives way
+  when you ask the drive for something else, when the selection moves on and
+  when the window closes; until now it then started from the first byte the
+  next time. What had arrived now stays in its `.part` file in the preview
+  cache, and the next fetch asks only for the rest - after the request it gave
+  way to, when you come back to the file, or in the next run. On an FTP drive
+  that is a REST at the partial size, on a cloud drive an HTTP Range; a server
+  that cannot continue sends the whole file. A copy that failed (not called
+  off) is still thrown away. Uses UltraCloud's new
+  `SetThreadDownloadContinues` (framework changelog:
+  `download-continues-partial-copy`).
+
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**
   Closing UltraFiler while a remote drive was copying dropped every upload

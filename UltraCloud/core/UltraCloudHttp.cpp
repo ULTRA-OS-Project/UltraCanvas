@@ -1,8 +1,9 @@
 // UltraCloud/core/UltraCloudHttp.cpp
+// Version: 0.6.0 - DownloadToFile continues a partial copy (SetThreadDownloadContinues)
 // Version: 0.5.0 - DownloadToFile: a download is written to disk as it arrives
 // Version: 0.4.0 - a throttled request is sent again after the wait the
 //                  service asks for (RateLimitPolicy)
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudHttp.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -207,6 +209,20 @@ Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
                                         const std::string& what) const {
     if (localPath.empty())
         return Result::Error(ResultCode::InvalidArgument, what + ": no local file given");
+    // As asked, for a second try from the start (a 416 below).
+    const UltraNetHttpRequest asked = request;
+
+    // Continuing a partial copy (SetThreadDownloadContinues): the bytes past
+    // its size are asked for (Range), and a 206 appends them. A server that
+    // ignores the range answers 200 with the whole file, which replaces it.
+    const bool continuing = DownloadContinues();
+    int64_t have = 0;
+    if (continuing) {
+        std::error_code ec;
+        const auto size = std::filesystem::file_size(UltraCanvas::PathFromUtf8(localPath), ec);
+        if (!ec) have = static_cast<int64_t>(size);
+    }
+    if (have > 0) request.options.resumeFromOffset = have;
 
     // Shared with the transfer's callbacks, which run on this thread inside
     // the request - once per try when a throttled request is sent again.
@@ -216,10 +232,18 @@ Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
         bool made = false;         // the file exists because of this download
         bool accepted = false;     // the answer being read is a 2xx
         bool writeFailed = false;
+        int64_t have = 0;          // the partial copy being continued
         std::vector<uint8_t> refusal;   // a non-2xx answer's body, for its reason
+        // 206 to a range: the rest, appended. Anything else is the whole
+        // file, from the start.
+        std::ios::openmode ModeFor(int status) const {
+            return std::ios::binary | (status == 206 && have > 0 ? std::ios::app
+                                                                 : std::ios::trunc);
+        }
     };
     auto target = std::make_shared<Target>();
     target->path = UltraCanvas::PathFromUtf8(localPath);
+    target->have = have;
     // A refusal's body is a few hundred bytes of JSON or XML; a service that
     // sends a page instead is not kept whole.
     static constexpr std::size_t kRefusalKept = 64 * 1024;
@@ -228,7 +252,7 @@ Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
         target->accepted = answer.statusCode >= 200 && answer.statusCode < 300;
         target->refusal.clear();
         if (!target->accepted || target->made) return true;
-        target->out.open(target->path, std::ios::binary | std::ios::trunc);
+        target->out.open(target->path, target->ModeFor(answer.statusCode));
         target->made = true;
         if (!target->out) {
             target->writeFailed = true;
@@ -268,7 +292,7 @@ Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
     // A transport that hands the body over whole instead of in chunks (a
     // test's fake, a stand-in): written now, the old way.
     if (!target->made && net && response.statusCode >= 200 && response.statusCode < 300) {
-        std::ofstream out(target->path, std::ios::binary | std::ios::trunc);
+        std::ofstream out(target->path, target->ModeFor(response.statusCode));
         target->made = true;
         out.write(reinterpret_cast<const char*>(response.body.data()),
                   static_cast<std::streamsize>(response.body.size()));
@@ -276,8 +300,27 @@ Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
         if (!out) target->writeFailed = true;
     }
 
-    auto discard = [&target]() {
-        if (!target->made) return;
+    // 416 to a range: the partial copy is not the start of this file - it is
+    // the whole of it (Content-Range "bytes */<size>" names its size), or the
+    // file on the server has changed. Done, or fetched again from the start.
+    if (have > 0 && response.statusCode == 416) {
+        const std::string range = response.headers.Get("Content-Range");
+        const std::size_t slash = range.find('/');
+        const long long total =
+                slash == std::string::npos ? -1 : std::atoll(range.c_str() + slash + 1);
+        if (total == have) return Result::Ok();
+        std::error_code ec;
+        std::filesystem::remove(target->path, ec);
+        const bool previous = SetThreadDownloadContinues(false);
+        Result again = DownloadToFile(credentials, asked, localPath, what);
+        SetThreadDownloadContinues(previous);
+        return again;
+    }
+
+    // What a failure leaves behind: nothing - unless the download continues a
+    // partial copy, whose caller keeps what has arrived for the next try.
+    auto discard = [&target, continuing]() {
+        if (!target->made || continuing) return;
         std::error_code ec;
         std::filesystem::remove(target->path, ec);
     };

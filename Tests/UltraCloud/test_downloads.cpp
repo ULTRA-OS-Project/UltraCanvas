@@ -187,3 +187,129 @@ TEST(downloads_a_body_handed_over_whole_is_written) {
     REQUIRE_EQ(ReadAll(dir / "a.txt"), std::string("all at once"));
     fs::remove_all(dir);
 }
+
+// ===== Continuing a partial copy (SetThreadDownloadContinues) =====
+
+namespace {
+
+// Sets the thread to continue downloads for as long as it lives.
+struct Continuing {
+    bool previous;
+    Continuing() : previous(SetThreadDownloadContinues(true)) {}
+    ~Continuing() { SetThreadDownloadContinues(previous); }
+};
+
+void WriteFile(const fs::path& p, const std::string& text) {
+    std::ofstream out(p, std::ios::binary);
+    out << text;
+}
+
+} // namespace
+
+TEST(downloads_continue_a_partial_copy_with_a_range) {
+    int64_t askedFrom = -1;
+    HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        askedFrom = req.options.resumeFromOffset;
+        return Stream(req, resp, 206, {"second ", "half"});
+    };
+    WebDavProvider webdav(fake);
+    Account a; a.serverUrl = "https://dav.example.org/files"; Credentials c;
+    const fs::path dir = Folder("continue");
+    WriteFile(dir / "movie.part", "first half, ");
+    Continuing continuing;
+    REQUIRE(webdav.Download(a, c, "/movie.mp4", UltraCanvas::PathToUtf8(dir / "movie.part")));
+    REQUIRE_EQ(askedFrom, static_cast<int64_t>(12));
+    REQUIRE_EQ(ReadAll(dir / "movie.part"), std::string("first half, second half"));
+    fs::remove_all(dir);
+}
+
+TEST(downloads_a_server_that_ignores_the_range_starts_the_file_over) {
+    HttpFn fake = [](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        return Stream(req, resp, 200, {"the whole file"});
+    };
+    WebDavProvider webdav(fake);
+    Account a; a.serverUrl = "https://dav.example.org/files"; Credentials c;
+    const fs::path dir = Folder("ignored-range");
+    WriteFile(dir / "f.part", "stale bytes");
+    Continuing continuing;
+    REQUIRE(webdav.Download(a, c, "/f", UltraCanvas::PathToUtf8(dir / "f.part")));
+    REQUIRE_EQ(ReadAll(dir / "f.part"), std::string("the whole file"));
+    fs::remove_all(dir);
+}
+
+TEST(downloads_a_416_naming_the_partial_size_means_it_was_complete) {
+    int calls = 0;
+    HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        ++calls;
+        resp.headers.Set("Content-Range", "bytes */8");
+        return Stream(req, resp, 416, {});
+    };
+    WebDavProvider webdav(fake);
+    Account a; a.serverUrl = "https://dav.example.org/files"; Credentials c;
+    const fs::path dir = Folder("complete");
+    WriteFile(dir / "f.part", "complete");
+    Continuing continuing;
+    REQUIRE(webdav.Download(a, c, "/f", UltraCanvas::PathToUtf8(dir / "f.part")));
+    REQUIRE_EQ(calls, 1);
+    REQUIRE_EQ(ReadAll(dir / "f.part"), std::string("complete"));
+    fs::remove_all(dir);
+}
+
+// A 416 for any other size: the file on the server is not the one the
+// partial copy came from - fetched again from the start, without a range.
+TEST(downloads_a_416_for_another_size_fetches_the_file_again) {
+    std::vector<int64_t> askedFrom;
+    HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        askedFrom.push_back(req.options.resumeFromOffset);
+        if (req.options.resumeFromOffset > 0) {
+            resp.headers.Set("Content-Range", "bytes */4");
+            return Stream(req, resp, 416, {});
+        }
+        return Stream(req, resp, 200, {"new"});
+    };
+    WebDavProvider webdav(fake);
+    Account a; a.serverUrl = "https://dav.example.org/files"; Credentials c;
+    const fs::path dir = Folder("changed");
+    WriteFile(dir / "f.part", "older and longer");
+    Continuing continuing;
+    REQUIRE(webdav.Download(a, c, "/f", UltraCanvas::PathToUtf8(dir / "f.part")));
+    REQUIRE_EQ(askedFrom.size(), static_cast<std::size_t>(2));
+    REQUIRE_EQ(askedFrom[1], static_cast<int64_t>(0));
+    REQUIRE_EQ(ReadAll(dir / "f.part"), std::string("new"));
+    fs::remove_all(dir);
+}
+
+// Lost part-way while continuing: what arrived stays, for the next try.
+TEST(downloads_a_continuing_download_lost_part_way_keeps_what_arrived) {
+    HttpFn fake = [](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        Stream(req, resp, 206, {"more"});
+        UltraNetResult r; r.success = false; r.code = UltraNetResultCode::ConnectionReset;
+        r.message = "Connection reset by peer";
+        return r;
+    };
+    WebDavProvider webdav(fake);
+    Account a; a.serverUrl = "https://dav.example.org/files"; Credentials c;
+    const fs::path dir = Folder("kept");
+    WriteFile(dir / "f.part", "some ");
+    Continuing continuing;
+    REQUIRE(!webdav.Download(a, c, "/f", UltraCanvas::PathToUtf8(dir / "f.part")));
+    REQUIRE_EQ(ReadAll(dir / "f.part"), std::string("some more"));
+    fs::remove_all(dir);
+}
+
+// Without the setting a file already there is replaced, and no range asked.
+TEST(downloads_without_continuing_a_file_there_is_replaced) {
+    int64_t askedFrom = -1;
+    HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        askedFrom = req.options.resumeFromOffset;
+        return Stream(req, resp, 200, {"fresh"});
+    };
+    WebDavProvider webdav(fake);
+    Account a; a.serverUrl = "https://dav.example.org/files"; Credentials c;
+    const fs::path dir = Folder("fresh");
+    WriteFile(dir / "f", "old content");
+    REQUIRE(webdav.Download(a, c, "/f", UltraCanvas::PathToUtf8(dir / "f")));
+    REQUIRE_EQ(askedFrom, static_cast<int64_t>(0));
+    REQUIRE_EQ(ReadAll(dir / "f"), std::string("fresh"));
+    fs::remove_all(dir);
+}

@@ -1,10 +1,12 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+// Version: 1.12.0 - a preview copy called off keeps its ".part" and the next try
+//                  continues it (UltraCloud::SetThreadDownloadContinues)
 // Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off; a
 //                   failed download leaves no half-written file; an upload
 //                   under a name of its own; CachedListing, Revalidate
 // Version: 1.9.0 - a running preview copy can be called off (CancelActivePreviewLocked)
 // Version: 1.8.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -946,13 +948,20 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
             break;
         }
         case RemoteOperation::Download: {
-            // The full local path was settled when the job was queued.
+            // The full local path was settled when the job was queued. A
+            // preview copy continues its ".part" file when an earlier try
+            // left one - called off for a request of the user's, or the
+            // window closed - rather than fetching the file from the start.
+            const bool previousContinues =
+                    UltraCloud::SetThreadDownloadContinues(job.isPreview);
             r = impl_->service->Download(accountId, remotePath, job.argument);
+            UltraCloud::SetThreadDownloadContinues(previousContinues);
             // A download that failed part way - the connection lost, the
             // window closed (Stop) - leaves no half a file behind: an FTP
             // download writes straight into it. The name was a free one when
-            // the job was queued, so what is there is this job's own.
-            if (!r.IsOk()) {
+            // the job was queued, so what is there is this job's own. A
+            // preview copy's ".part" is the worker's to keep or remove.
+            if (!r.IsOk() && !job.isPreview) {
                 std::error_code ec;
                 fs::remove(PathFromUtf8(job.argument), ec);
             }
@@ -1554,13 +1563,14 @@ void UltraFilerRemoteDrives::WorkerMain() {
             activeIsTransfer_ = false;
         }
 
-        // A preview copy called off: half a file is thrown away, and the
-        // window is told nothing - it either still waits for the copy, which
-        // is fetched again behind the request it gave way to, or no longer
-        // wants it.
+        // A preview copy called off: the window is told nothing - it either
+        // still waits for the copy, which is fetched again behind the request
+        // it gave way to, or no longer wants it. What has arrived stays in
+        // its ".part" file, and the next try continues from there: after the
+        // request it gave way to, when the selection comes back to the file,
+        // or in the next run (the preview cache's sweep removes one nobody
+        // comes back for).
         if (job.isPreview && calledOff != PreviewKeep) {
-            std::error_code ec;
-            fs::remove(UltraCanvas::PathFromUtf8(job.argument), ec);   // half a file
             if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
             std::size_t left = 0;
             {
@@ -1569,8 +1579,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 if (calledOff == PreviewYield && !shutdown_) {
                     // Behind what the user asked for, still pending: the pane
                     // is still waiting for it, and onPreviewCopyReady fires
-                    // once it is in. Fetched from the start again - the
-                    // provider has no way to resume a download.
+                    // once it is in.
                     queue_.push_back(job);
                 } else {
                     // Asked for again if the selection comes back to it.
