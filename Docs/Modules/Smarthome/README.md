@@ -44,3 +44,14 @@
 ### Protocol Support
 
 Ready for integration with: **Matter**, **Thread**, **Zigbee**, **Z-Wave**, **WiFi**, **Bluetooth**
+
+The **simulated demo home** (`SmartHome/protocols/Simulated`) needs no
+radio: 30 devices in 8 rooms answering commands and changing over time, for
+development, tests and demos. Enabling the `Simulated` protocol type
+through `SmartHomeAPI` brings it up.
+
+### Application
+
+**SmartHome Center** (`Apps/SmartHomeCenter`) is the home control window
+built on this module: rooms and device tiles, scenes, energy, activity. It
+opens the demo home when no radio is enabled.

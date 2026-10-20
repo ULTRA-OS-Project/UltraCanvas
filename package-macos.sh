@@ -898,7 +898,7 @@ DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagr
 # substituted) when the module is absent - and their dialogs carry only their
 # own status and error text. An app added to the bundle list keeps LaTeX by
 # default; add it here only after checking the same.
-NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer)
+NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer SmartHomeCenter)
 
 # True when the app $1 is in NO_LATEX_APPS.
 app_without_latex() {
@@ -1545,6 +1545,15 @@ package_if_built "DeviceExplorer" build_app_bundle \
     "DeviceExplorer" \
     "com.cloverleaf.DeviceExplorer" \
     "media/appicon/DeviceExplorer.png" \
+    "public.app-category.utilities" \
+    ""
+
+# Package SmartHome Center
+package_if_built "SmartHomeCenter" build_app_bundle \
+    "SmartHomeCenter" \
+    "SmartHomeCenter" \
+    "com.cloverleaf.SmartHomeCenter" \
+    "media/appicon/SmartHomeCenter.png" \
     "public.app-category.utilities" \
     ""
 

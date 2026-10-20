@@ -2093,11 +2093,11 @@ namespace UltraCanvas {
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/PixelFX"); });
 #endif
-        // Specification only — no SmartHome sources, no build target, none of the
-        // widgets in Docs/Modules/Smarthome/README.md exist yet. "Planned", not
-        // "PartiallyImplemented": there is nothing partial to show.
+        // The engine, its widgets (SmartHome/ui) and the SmartHome Center app
+        // exist and run on the simulated demo home; the radio backends build
+        // but have met no hardware yet (SmartHome/STATUS.md).
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
-                               ImplementationStatus::Planned,
+                               ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
         // The dialogs every application asks the system for: Open / Save /
         // Select folder (UltraCanvasFileLoader), Print (RequestPrintSettings +

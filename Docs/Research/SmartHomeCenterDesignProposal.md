@@ -1,7 +1,10 @@
 # SmartHome Center — the home control application for ULTRA OS (Proposal)
 
 **Date:** 2026-10-20
-**Status:** Proposal, not yet implemented
+**Status:** Phase 0 started (2026-10-20): the simulated backend (§4.7) is
+in `SmartHome/protocols/Simulated/`, and a first `Apps/SmartHomeCenter` runs
+on it. The window is assembled from framework elements directly rather than
+from the `SmartHomeUI` widgets, which still paint their own controls (§4.8).
 **Scope:** a new application, `Apps/SmartHomeCenter`, on top of the existing
 `SmartHome` engine and `SmartHomeUI` widget library. This document also
 covers what those two libraries still need before an application can stand

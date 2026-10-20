@@ -703,6 +703,18 @@ if(BUILD_DEVICEEXPLORER)
     add_subdirectory(Apps/DeviceExplorer)
 endif()
 
+# ===== SMARTHOME CENTER =====
+# The home control window on the SmartHome module: rooms, devices, scenes,
+# energy and activity. With no radio enabled it opens the module's simulated
+# demo home. Needs the SmartHome module (BUILD_SMARTHOME, above) and its
+# SmartHomeUI target's UI library.
+option(BUILD_SMARTHOME_CENTER "Build the SmartHome Center application" ON)
+if(BUILD_SMARTHOME_CENTER AND BUILD_SMARTHOME)
+    message(STATUS "")
+    message(STATUS "── Building SmartHome Center ──")
+    add_subdirectory(Apps/SmartHomeCenter)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -2456,8 +2468,8 @@ endif()
 #
 # The apps whose command-line modes print into the prompt they were typed at
 # - DeviceExplorer (--list), UltraCleaner (--scan), UltraNetMonitor (--list),
-# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print) and
-# UltraDesktop (--windows) - are GUI programs as well, each with a console
+# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print),
+# UltraDesktop (--windows) and SmartHomeCenter (--list) - are GUI programs as well, each with a console
 # companion beside it (ultracanvas_windows_console_companion()): <App>.com,
 # which cmd and PowerShell run for the bare name, starts the .exe, waits for
 # it and returns its exit code. So the prompt waits as for a console program,
@@ -2476,7 +2488,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     unset(_uc_gui_app)
     foreach(_uc_console_app
             DeviceExplorer UltraCleaner UltraNetMonitor UltraCanvasStart UltraWeb
-            UltraClaude UltraDesktop)
+            UltraClaude UltraDesktop SmartHomeCenter)
         if(TARGET ${_uc_console_app})
             ultracanvas_windows_console_companion(${_uc_console_app})
         endif()

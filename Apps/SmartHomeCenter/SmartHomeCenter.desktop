@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for SmartHome Center. `Icon=SmartHomeCenter` is an
+# icon name, resolved through the icon themes the install rules put
+# media/appicon/SmartHomeCenter.{png,svg} into. It opens no files.
+Type=Application
+Version=1.5
+Name=SmartHome Center
+GenericName=Home Control
+Comment=Control the lights, heating, locks and blinds of your home
+Exec=SmartHomeCenter
+TryExec=SmartHomeCenter
+Icon=SmartHomeCenter
+Terminal=false
+StartupNotify=true
+StartupWMClass=SmartHomeCenter
+Categories=Utility;HomeAutomation;
+Keywords=smart home;home automation;lights;heating;thermostat;lock;matter;zigbee;z-wave;knx;thread;

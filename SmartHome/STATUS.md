@@ -138,6 +138,45 @@ Two were found by actually building and running the module for the first time:
   The member is gone; `Show()` and `Hide()` drive `SetVisible()`, so there is
   one answer. `tests/WidgetTest.cpp` asserts the two agree.
 
+### The simulated home, and what it found (2026-10-20)
+
+`protocols/Simulated/` is a backend with no radio: the demo home of the
+SmartHome Center proposal (`Docs/Research/SmartHomeCenterDesignProposal.md`
+§4.7). 30 devices in 8 rooms, each a real `ISmartLight` / `ISmartThermostat`
+/ ... object, on a clock that moves them. It is always built, registered by
+`RegisterBuiltinProtocols()` under its own `SmartHomeProtocolType::Simulated`,
+and `tests/SimulatedTest.cpp` drives it through the facade (51 checks, under
+`de_DE.UTF-8`, clean under ThreadSanitizer).
+
+It was the first backend ever to run end to end through the manager, and it
+found these, all fixed:
+
+- **Deadlock on the first join.** `RegisterDevice` called
+  `DispatchDeviceDiscover` with `deviceMutex` held; that function locks it
+  again. `UpdateDeviceInfo` and `UpdateDeviceState` dispatched under it too,
+  so any callback that read the API back would have deadlocked. Every
+  dispatch now runs with no registry lock held.
+- **Devices a backend has at start-up were never registered** - only joins
+  were, and a backend resuming a saved network (Zigbee's `networkInit`, the
+  demo home) has devices before anyone joins. `EnableProtocol` adopts
+  `GetPairedDevices()` once its callbacks are wired.
+- A join registered **no device object** (`nullptr`), pairing **never
+  completed** (nothing called `DispatchPairingComplete`), and an update
+  **never refreshed** the registry's copy of the info, so `GetDevices()`
+  reported every device as it was when it joined.
+- **Every state query returned an empty struct**: `GetLightState` and the
+  rest were `return {}`. They read the device objects now; the facade gains
+  `GetBlindPosition`, `GetBatteryLevel`, `GetPowerUsage`, `GetEnergyUsage`,
+  and `SmartHomeDeviceInfo` a `Room`.
+- `SetThermostatTarget` wrote `std::to_string(float)`, which is
+  "23,500000" under a comma-decimal locale.
+- `DisableProtocol` left the protocol's devices in the registry.
+
+Still open in the engine (the proposal's phase 0): persistence
+(`SaveConfiguration` is a TODO), the home model with user rooms, automation
+evaluation (`EvaluateAutomations` is a TODO) and sensor history
+(`GetSensorHistory` returns nothing).
+
 ### Known latent bug
 
 `MatterProtocol::SubscribeAttribute` stores its callback in
