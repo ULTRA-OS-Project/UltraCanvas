@@ -973,6 +973,7 @@ UltraFilerWindow::~UltraFilerWindow() {
             app->StopTimer(retiredReapTimer);
         retiredReapTimer = InvalidTimerId;
     }
+    StopTreeFetchTimer();   // its callback captures the window too
     // The log window lives on its own, but its Clear button calls back here.
     if (connectionLogRefreshTimer != InvalidTimerId) {
         if (auto* app = UltraCanvasApplication::GetInstance())
@@ -4581,6 +4582,11 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // used for remote paths.
     if (IsRemoteFilerPath(path)) {
         LoadRemoteTreeChildren(path, /*listingReady=*/false);
+        // Expanded by the user and not in yet: the status bar says what it
+        // waits for - a folder being read ahead reports nothing of its own.
+        if (TreeNode* row = folderTree ? folderTree->FindNode(path) : nullptr;
+            row && row->data.loading)
+            WatchTreeFetch(path);
         return;
     }
     // Once per node: the placeholder is only a hint that a scan is due, and a
@@ -7016,6 +7022,40 @@ void UltraFilerWindow::OpenConnectionLog() {
     UpdateConnectionLogButton();
 }
 
+void UltraFilerWindow::WatchTreeFetch(const std::string& path) {
+    treeFetchPath = path;
+    UpdateStatusBar();
+    if (treeFetchTimer != InvalidTimerId) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    // A quarter of a second: the step and the seconds waited follow the
+    // fetch, as the display's own wait does.
+    treeFetchTimer = app->StartTimer(250, true, [this](TimerId) {
+        const TreeNode* row = folderTree ? folderTree->FindNode(treeFetchPath) : nullptr;
+        if (!row || !row->data.loading) {
+            treeFetchPath.clear();
+            StopTreeFetchTimer();
+        }
+        UpdateStatusBar();
+    });
+}
+
+void UltraFilerWindow::StopTreeFetchTimer() {
+    if (treeFetchTimer == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(treeFetchTimer);
+    treeFetchTimer = InvalidTimerId;
+}
+
+std::string UltraFilerWindow::TreeFetchStatus() const {
+    if (treeFetchPath.empty() || !remoteDrives || !folderTree) return {};
+    const TreeNode* row = folderTree->FindNode(treeFetchPath);
+    if (!row || !row->data.loading) return {};
+    if (filer && filer->GetPath() == treeFetchPath && !historyShown && !favoritesShown &&
+        !computerShown)
+        return {};
+    return remoteDrives->ListingStatus(treeFetchPath);
+}
+
 void UltraFilerWindow::ScheduleConnectionLogRefresh() {
     std::shared_ptr<UltraFilerConnectionLogWindow> logWindow = connectionLogWindow.lock();
     if (!logWindow || logWindow->GetState() == WindowState::Closed) return;
@@ -7057,10 +7097,21 @@ void UltraFilerWindow::UpdateStatusBar() {
     // window the user cannot see for themselves. The folder's own wait goes
     // after it, unless the drive is busy reading a folder - most likely that
     // one, said already.
+    // A drive's folder the user expanded in the tree, still being fetched:
+    // what it waits for - said like the drive's activity, since a folder
+    // read ahead has none of its own to report.
+    const std::string treeWait = TreeFetchStatus();
     if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
-        statusLabel->SetText(pending.empty() || remoteActivity.kind == RemoteActivity::Kind::Listing
-                                     ? activity
-                                     : activity + "    |    " + pending);
+        std::string text = activity;
+        if (remoteActivity.kind != RemoteActivity::Kind::Listing) {
+            if (!pending.empty()) text += "    |    " + pending;
+            if (!treeWait.empty()) text += "    |    " + treeWait;
+        }
+        statusLabel->SetText(text);
+        return;
+    }
+    if (!treeWait.empty()) {
+        statusLabel->SetText(treeWait);
         return;
     }
     // What a drop onto a drive could not send. Held until the next drop or the

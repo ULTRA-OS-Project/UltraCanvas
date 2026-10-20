@@ -87535,7 +87535,15 @@ remove a folder - is the exception on FTP: it always logs in on a connection
 of its own and closes it, because libcurl sends those commands before it
 changes folder, and they name the entry from the folder a login lands in; on
 a kept connection that a listing left in a subfolder they would name another
-file.
+file. A server that takes one connection per address or user (vsftpd's
+`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
+away - *421 There are too many connections from your internet address.*,
+or a 530 saying the maximum number of clients is reached - while the
+thread's kept one is open. Turned away so before any of its commands was
+sent, the change closes the kept connection and is sent again: at once, and
+after 0.3 s and 1 s more if the server is still counting the closed one
+(the waits end early when the call is called off). The log says *The server
+takes one connection at a time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.
