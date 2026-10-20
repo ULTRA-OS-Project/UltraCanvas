@@ -7,6 +7,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.11.0 - the palette rows under the picker (UltraCanvasColorPaletteManager):
+//                   palettes added from a gallery, an entry set with a right click
 // Version: 1.10.0 - the right panel in SectionCard group boxes with small captions, as
 //                   UltraPaint's; a tool's cards (Tool Options, Gradient, Line) only while it
 //                   is active (UpdateToolCards)
@@ -36,7 +38,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasColorPicker.h"
-#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasColorPaletteManager.h"
 #include "UltraCanvasGradientEditor.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasReferencePointPicker.h"
@@ -249,7 +251,7 @@ private:
     std::shared_ptr<UltraCanvasContainer>       rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>     colorPicker;
     ArtCreatorSettings                          settings;
-    std::shared_ptr<UltraCanvasColorSwatchBar>  swatches;
+    std::shared_ptr<UltraCanvasColorPaletteManager> palettes;   // the palette rows under the picker
     std::shared_ptr<UltraCanvasGradientEditor>  ramp;
     // The right panel's cards (SectionCard group boxes, as UltraPaint's).
     std::shared_ptr<UltraCanvasGroupBox>        optionsPanel;

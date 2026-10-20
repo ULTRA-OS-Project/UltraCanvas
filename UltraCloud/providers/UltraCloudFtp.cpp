@@ -1,10 +1,11 @@
 // UltraCloud/providers/UltraCloudFtp.cpp
+// Version: 0.7.0 - a download continues a partial copy (SetThreadDownloadContinues)
 // Version: 0.6.0 - partialUploadsRemain; an upload reports when the server
 //                  created the file, or refused to (internal::UploadReport)
 // Version: 0.5.0 - a transfer called off is Cancelled, not a server refusal
 // Version: 0.4.0 - SFTP with a private key (Credentials::privateKeyFile)
 // Version: 0.2.0 - a failure carries UltraNet's diagnostics
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudFtp.h>
 
@@ -13,11 +14,15 @@
 // Reused rather than written again: they are tested on their own, and two
 // copies of percent-encoding is how the two drift apart.
 #include <UltraCloud/UltraCloudWebDav.h>
+#include <UltraCloud/UltraCloudProvider.h>   // DownloadContinues
+
+#include <UltraCanvasPathUtf8.h>
 
 #include "core/UltraCloudInternal.h"   // UploadReport
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -115,8 +120,8 @@ Result ClassifyFtpOutcome(const UltraNetResult& net, const std::string& what) {
         case UltraNetResultCode::NotFound:
             return Result::Error(ResultCode::NotFound, message, net.httpStatus);
         case UltraNetResultCode::Cancelled:
-            // The caller called it off (UltraNet_SetThreadFtpCancel): nobody
-            // refused anything.
+            // The caller called it off (its thread's abort check,
+            // UltraNet_SetThreadAbortCheck): nobody refused anything.
             return Result::Error(ResultCode::Cancelled, message, net.httpStatus);
         case UltraNetResultCode::InvalidUrl:
         case UltraNetResultCode::UnsupportedScheme:
@@ -352,8 +357,28 @@ Result FtpProvider::Download(const Account& account, const Credentials& credenti
     if (!ops_.download)
         return Result::Error(ResultCode::Unsupported, "no FTP download function");
 
-    const UltraNetResult net = ops_.download(FtpUrl(account, remotePath, false), localPath,
-                                             OptionsFor(account, credentials));
+    UltraNetFtpOptions options = OptionsFor(account, credentials);
+    // Continuing a partial copy (SetThreadDownloadContinues): REST at its
+    // size, the rest appended. A server that will not continue refuses the
+    // REST, and the file is fetched from the start instead.
+    int64_t have = 0;
+    if (DownloadContinues()) {
+        std::error_code ec;
+        const auto size = std::filesystem::file_size(UltraCanvas::PathFromUtf8(localPath), ec);
+        if (!ec) have = static_cast<int64_t>(size);
+    }
+    if (have > 0) {
+        options.resumeTransfer = true;
+        options.resumeOffset = have;
+    }
+    const std::string url = FtpUrl(account, remotePath, false);
+    UltraNetResult net = ops_.download(url, localPath, options);
+    if (!net.success && have > 0 &&
+        ClassifyFtpOutcome(net, "download").code == ResultCode::Server) {
+        options.resumeTransfer = false;
+        options.resumeOffset = 0;
+        net = ops_.download(url, localPath, options);
+    }
     return FromFtp(net, "download " + NormalizePath(remotePath));
 }
 

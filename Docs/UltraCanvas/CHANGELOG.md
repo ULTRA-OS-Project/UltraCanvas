@@ -1,3 +1,264 @@
+#### 2026-10-20 *0.9.353*
+- **Filer widget: a remote folder being fetched no longer covers the file
+  area.** While `remoteListingStatus` answered, the widget drew a turning
+  ring, *Loading folder* and the host's status line in the middle of the
+  display. Now it slides a thin bar along the foot of the file area, just
+  above the info bar (`FilerStyle::loadingBarColor`, the accent blue
+  `Color(37, 99, 235)`), over whatever the folder shows, and hands the line
+  to the host for its status bar: `GetListingPendingStatus()`, and
+  `onListingPendingChanged(status)` when it starts, changes and ends (`""`).
+  `remoteListingStatus` is now asked after every remote listing, not only an
+  empty one, so a host can show the bar over entries it answered from its
+  cache while it asks the server again. An empty folder's info bar says
+  *Loading folder...* rather than *0 items* meanwhile. The bar's 40 ms timer
+  repaints only its own 3-pixel strip.
+- **UltraCloud: an upload that was complete when the connection went is put
+  in place, not removed.** An upload to an FTP or SFTP server goes to a
+  hidden part name and is renamed into place once the last byte is in
+  (`UltraCloudUploads.h`); a connection that died between the two left the
+  whole file under the part name, and the next call on the account removed
+  it like any unfinished upload. Now `CloudService` notes the pending upload
+  as complete (`PendingUpload::completedAt`, account-store migration 4) and
+  the next call that reaches the server gives it its name
+  (`PlaceCompletePart`) - also when the process ended in between and the
+  folder lists the part at the file's full size. A file that has the name by
+  then is replaced when the upload finished within
+  `kCompleteUploadReplacesSeconds` (an hour: it was replacing that file) and
+  otherwise kept, the upload put beside it as *name (2).ext*
+  (`UploadKeptName`), so a file written there since is never lost; an old
+  file set aside for the replace is removed once the new one has its name.
+  Only a server that refuses the rename still has the part removed. The
+  upload's error says it: *it is given that name the next time this account
+  reaches the server*. A step called off by the thread's abort check (the
+  application quitting) counts as unanswered, never as a refusal: the
+  account does not go over to uploading straight to its names, and nothing
+  is sent again. `uploads_a_complete_*` in `Tests/UltraCloud` cover
+  each case against the fake FTP server.
+- **UltraNet: one per-thread check calls an FTP call off.**
+  `UltraNet_SetThreadFtpCancel` is gone; `UltraNet_SetThreadAbortCheck`
+  (`UltraNetCore.h`), which the synchronous HTTP requests and the FTP
+  transfers already asked, is now asked by every FTP call - listings and
+  `DELE`/`RNFR` too - beside the call's own `UltraNetFtpOptions::isCancelled`.
+  A thread that wants its calls stopped sets that one check. UltraFiler's
+  drive worker folds its quit-time abort and its preview-copy cancel into
+  it, which also calls a preview download off on a cloud drive, not only on
+  an FTP one. `ftp_log_the_thread_abort_check_calls_off_a_listing` covers it.
+- **Tree view: a row whose children are being fetched can say so.**
+  `TreeNodeData::loading` makes a row slide a thin bar along its foot, from
+  its icon to the right edge, in the tree's loading colour
+  (`SetLoadingBarColor` / `GetLoadingBarColor`, the accent blue
+  `Color(37, 99, 235)` by default) - the sign the filer widget gives a remote
+  folder being fetched. A lazy-loading host keeps its placeholder child only
+  for the expand button, hidden (`visible = false`), instead of showing a
+  "..." row. A 40 ms timer keeps the bars moving while a loading row is drawn
+  and stops with the first frame that draws none, and in the destructor
+  (`UltraCanvasTreeView` now has one). UltraFiler's folder tree uses it for
+  a remote drive's folders.
+
+#### 2026-10-20 *0.9.352*
+- **New element: `UltraCanvasColorPaletteManager`** - the colour palettes
+  under a colour picker. Rows of swatches, one per palette: with one palette
+  its row ends in a small **+**; with several, every row ends in a **−** that
+  takes it away and the last row has the **+** under its **−**. **+** opens a
+  gallery popup of ready-made schemes grouped by kind - basics, moods
+  (pastel, earth, skin tones, sunset, ocean, forest, neon), design systems
+  (Material, Nord, Solarized), retro machines (Game Boy, PICO-8, Commodore
+  64, VGA 16) and indexed palettes up to 256 colours for a GIF (web-safe
+  216, RGB 3-3-2, 256 greys) - each with a preview, its colour count and
+  its own **+**. A left click on a swatch picks its colour; a right click
+  opens a small foreground-only colour picker that sets that one entry,
+  live, with *Revert* and *Done*. The element sets its own height to its
+  rows; `SerializePalettes` / `ParsePalettes` keep them in one settings
+  line. Doc: `Docs/UltraCanvas/UltraCanvasColorPaletteManager.md`; test:
+  `ColorPaletteManagerTest`.
+- **`UltraCanvasColorSwatchBar` 1.2.0: wrapping.** `SetWrap(true)` runs a
+  large palette on as many lines as it takes to keep its swatches at least
+  `minSwatchSize`, the colours shared out evenly over the lines, and
+  `HeightForWidth` says how tall that is - a 256-colour palette is a block,
+  not a hairline. `SetColorAt` edits one entry; `onColorContextClicked`
+  reports a right click with the entry's index and the window position.
+  `GetEffectiveSwatchSize` answers for a wrapping bar too.
+- **`UltraCanvasColorPicker` 1.9.0: `SetShowBackgroundColor(false)`** - a
+  foreground-only picker for editing one colour: the background swatch and
+  the swap arrow are gone, and the right button and the eyedropper's right
+  click edit the foreground as the left ones do.
+- **Demo app: Widgets > Colour Palettes**, next to the Colour Picker: the
+  manager under a picker (as in UltraPaint), several rows of retro and mood
+  schemes, and the indexed 216- and 256-colour palettes as wrapped blocks.
+- **Matrix diagram: the attribute gutter (C4).** A row set can now carry a few
+  plain-text facts per item - a head count, an owner, a Y/N flag - beside its
+  relationships. `MatrixItemSet::columns` names the columns and
+  `MatrixItem::attributes` holds each item's values; an `L` or a `House` draws
+  them as a gutter of text columns between the row labels and the grid.
+  - Each column is as wide as its header or its widest value, up to
+    `MatrixDiagramStyle::maxAttributeColumnWidth`. Pointing into the gutter
+    selects the whole row, and a row's tooltip lists its values, which is
+    where the `T`, `X` and `Y` shapes show them.
+  - `SetShowAttributes(false)` hides the gutter and gives the grid its width
+    back. The values round-trip through JSON. `Validate()` warns when an item
+    has more values than its set has columns.
+  - The `ImprovementTools` sample's departments now carry Staff and
+    Facilitator columns, and the DemoApp has an **Attribute columns** switch.
+- **Matrix diagram: the C shape (a cube of three sets).** `MatrixShape::C`
+  relates three lists at once. Every cell is one item from each list, such as
+  a defect type on a production line in a shift, which no pair of two-way
+  panels can express.
+  - `MatrixPanel::depthSetId` makes panel 0 a cube. `SetCubeCell` and
+    `SetCubeCellAt` set its cells. `FindCell`, `LevelAt` and `ClearCell` take
+    a defaulted depth. `DepthScore` totals one slice. `RowScore` and
+    `ColumnScore` sum through all slices.
+  - The cube is drawn exploded: one isometric slice per depth item, stacked
+    and outlined by the cube's side edges, so no cell is hidden behind
+    another. Hovering a cell lights its row and column in every slice. Each
+    slice's label lights the slice and fires the new `onSliceClick`.
+    `Page Up` and `Page Down` move the selection between slices.
+  - JSON carries cubes. The CSV forms refuse them, because a table has no
+    third axis. `Validate()` checks that the three sets differ and that every
+    depth is in range.
+  - New sample: `MatrixSamples::DefectCube()`, shown on a **C-Shaped (Cube)**
+    tab in the DemoApp.
+- **Matrix diagram: the House of Quality stayed partly light in the dark
+  theme.** `SetDarkTheme(true)` left the competitive-assessment block's
+  background and tick lines at their light colours. It also left the
+  direction-of-improvement arrows dark grey, so they vanished on the dark
+  grid. The theme now covers every colour in `MatrixDiagramStyle`, including
+  the roll-up bars and rank text, and `SetDarkTheme(false)` restores them.
+  A competitor whose own colour is too dark to read on the block is drawn in
+  the label colour instead, as the House sample's near-black "Our bicycle"
+  was.
+- **Matrix diagram: near-black marks disappeared in the dark theme.** The
+  "High" level of `MatrixScale::HighMediumLow()` is near-black, so on the
+  dark grid the X-shaped sample's strongest marks were close to invisible.
+  A level colour too close to the cell background is now drawn in the label
+  colour, in the mark, the cell tint and the legend swatch alike, as a
+  competitor's line in the House already was. Closeness is measured as RGB
+  distance, so saturated colours keep their hue, and nothing changes in the
+  light theme.
+
+#### 2026-10-20 *0.9.351*
+- **The Windows applications now also come as an MSIX package, the format the
+  Microsoft Store recommends.** `package-win-msix.sh` turns the `dist/` folder
+  that `package-win.sh` builds into one package for the whole suite.
+  `scripts/make_msix_layout.py` writes the manifest. It gives each application
+  its own Start menu entry, under the same rule as the installer's Start menu:
+  a desktop entry (`Apps/*/*.desktop`) makes one, and so does a GUI program
+  without one. It gives Texter and UltraViewer file associations for
+  Explorer's *Open with*. It also renders the Start menu and taskbar logos
+  from `media/appicon/` at every scale and taskbar size, including the
+  unplated taskbar icons. The script has three modes:
+  - `test`: unsigned. Windows 11 installs it with
+    `Add-AppxPackage -AllowUnsigned`.
+  - `store`: unsigned, with Partner Center's identity. The Store signs it, so
+    no certificate is needed.
+  - `signed`: signed with our own certificate, for distribution outside the
+    Store.
+
+  CI builds the test package on both Windows legs and uploads it as
+  `UltraCanvas-Windows-MSIX-<version>-<arch>`. Release builds also build the
+  Store package once the repository has the `MSIX_*` Actions variables.
+  `Docs/UltraCanvas/UltraCanvasWindowsMSIX.md` compares MSIX with submitting
+  the NSIS installer: MSIX needs no certificate, while the installer route
+  needs every `.exe` and `.dll` signed with a CA-issued one. It covers the
+  modes, the Store submission, and what behaves differently inside a
+  package. UltraDesktop gets no Start menu entry in the package: it takes
+  over the desktop through `HKEY_CURRENT_USER` registry values, and a
+  package keeps those writes to itself.
+
+#### 2026-10-20 *0.9.350*
+- **UltraCloud: cloud downloads go to disk as they arrive** (UltraCloudHttp
+  0.6.0, `HttpProviderBase::DownloadToFile`). Dropbox, OneDrive, Google Drive
+  and WebDAV / Nextcloud downloads held the whole file in memory and wrote it
+  afterwards, so every download cost its own size in memory and a file larger
+  than the process could spare could not be fetched at all. They also ran
+  under `Send`'s two-minute whole-transfer limit, which a large file on a
+  slow line could not meet. The body of a 2xx answer is now written chunk by
+  chunk (UltraNet's `onDataChunk`), with no whole-transfer limit and a
+  30-second stall limit instead. A refusal's body is still kept for its
+  reason, so Google Drive's rate-limit 403 is still recognised and waited
+  out, and nothing is written for it. A download that fails part-way - the
+  connection lost, the caller calling it off, the disk full - removes what
+  it wrote. `test_downloads.cpp`: streamed, refused, lost part-way, a file
+  that cannot be made, throttled then answered, and a body handed over whole.
+- **UltraCloud: a download can continue a partial copy**
+  (`SetThreadDownloadContinues` / `DownloadContinues`, UltraCloudProvider
+  0.4.0). While the calling thread says so, `Download` treats a file already
+  at the target path as the first part of the remote file and asks only for
+  the rest.
+  - FTP (UltraCloudFtp 0.7.0): UltraNet's resume - REST at the partial size,
+    the rest appended. A server that refuses the REST (a Server-class
+    failure) is asked again for the whole file.
+  - HTTP (`HttpProviderBase::DownloadToFile`, UltraCloudHttp 0.7.0): a Range
+    request (`resumeFromOffset`). 206 appends; 200 - the server ignored the
+    range - replaces the file; a 416 naming the partial size means it was
+    complete; a 416 for another size fetches the file again from the start.
+  - A download that fails while continuing leaves what has arrived, for the
+    next try; the caller decides when a partial copy is thrown away.
+  - A thread setting rather than a parameter, so `ICloudProvider`, which
+    provider plug-ins are built against, keeps its layout; a provider that
+    does not read it downloads the whole file, which is still correct.
+  - Tests: six continuing cases in `test_downloads.cpp`, and
+    `ftp_a_continuing_download_resumes_at_the_partial_size` in
+    `test_ftp.cpp`.
+- **Uploads are sent from the file as they go, not read into memory first.**
+  - UltraNet HTTP 0.4.0: `UltraNetHttpRequest::bodyFilePath`, with
+    `bodyFileOffset` / `bodyFileLength` for one range of the file. The
+    synchronous path streams it through libcurl's read callback, with a seek
+    callback for a redirect or an authentication retry, and sends it with a
+    Content-Length; the method stays the request's own (a PUT stays a PUT).
+    A file that cannot be opened, or a range past its end, fails before
+    anything is sent. The async path (`UltraNet_HttpRequestAsync`) streams it
+    the same way: the request owns the open file for the length of the
+    transfer and libcurl reads it on the multi worker.
+    `test_body_file.cpp` sends a whole file, a range, a 3 MB file and a file
+    that is not there to an echo server on loopback.
+  - UltraCloud: a WebDAV / Nextcloud upload held the whole file in memory
+    however large it was, and ran under a two-minute whole-transfer limit;
+    Dropbox held up to 150 MB, and every upload-session chunk (8 - 10 MB on
+    Dropbox, Google Drive and OneDrive) was copied into memory before it was
+    sent. All of them now name the file, or the chunk's range of it, instead.
+    Google Drive's multipart upload, at most 5 MB, still frames its bytes in
+    memory. A whole-file WebDAV PUT and a Dropbox simple upload have no
+    whole-transfer limit and a 30-second stall limit. `DropboxProvider::Content`
+    gave way to `ContentFromFile`. The provider tests read a body named by
+    file through `test_request_body.h`.
+
+#### 2026-10-20 *0.9.349*
+- **UltraCloud: a request its caller called off is `ResultCode::Cancelled`,
+  not a network failure** (`HttpProviderBase::FromHttp`, UltraCloudHttp
+  0.5.0). A cloud drive's download that the thread's abort check
+  (`UltraNet_SetThreadAbortCheck`) ended - UltraFiler calling off a preview
+  copy nobody waits for any more - reported `Network: Callback aborted`, also
+  when the service had already answered 200 and the body was cut short. It
+  now reads "called off", as an FTP transfer called off already did.
+  `test_dropbox.cpp` checks it, and that nothing is written.
+
+#### 2026-10-19 *0.9.348*
+- **Save dialog: dragging the file icon onto a folder in UltraFiler now sets
+  the save folder.** The icon's drag stopped at the dialog's border, so a drop
+  on UltraFiler did nothing. Out of the dialog it now carries on as a native
+  save drag (`UltraCanvasWindowBase::StartNativeSaveDrag`) that asks the
+  window it lands on for a folder. On Windows a private clipboard format is
+  answered through `IDataObject::SetData`, and on X11 the drag uses XDS
+  (`XdndDirectSave0`). The dialog then opens that folder, and the path, the
+  listing and the folder tree all follow. On the receiving side an
+  UltraCanvas window delivers the drop at once
+  (`UltraCanvasWindowBase::DeliverSaveDrop`, `UCEvent::dropFolderReply`). A
+  file display names the folder under the pointer, and a tree names the
+  folder of the row (`UltraCanvasTreeView::onDropFolderOfNode`).
+  `UltraCanvasFileDragIcon::onDroppedOnFolder` reports the result. macOS has
+  no native drag source yet, so there the drag still stays in the dialog.
+- **The file dialog shows its folder as a breadcrumb, as UltraFiler does.**
+  The path text field is gone. A leading *Computer* lists the drives, and
+  each folder segment opens that folder or, from its drop-down, a folder
+  inside it. Hovering shows the whole path, and a path is typed in the name
+  field.
+- **The Save dialog shows the picture's size under the file type.** When
+  the caller gives the picture's size, a bitmap type shows the pixels and
+  the proportions, for example `640 × 480 pixels (4:3)`. The pixels follow a
+  size chosen in Settings. A vector type shows the proportions alone,
+  `(4:3)`. Proportions that don't reduce to short numbers are written as a
+  decimal, `(1.78:1)`.
+
 #### 2026-10-19 *0.9.347*
 - **Media viewer: one compact toolbar instead of two rows.** The browse /
   slideshow controls and the zoom / rotate / mirror / adjust / curves / save

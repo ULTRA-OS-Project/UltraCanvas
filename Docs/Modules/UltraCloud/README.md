@@ -335,11 +335,39 @@ Removed /up/.big.bin.part
 ```
 
 A part the server will not remove stays recorded for the next run; one whose
-server did not answer is asked again straight after a later call gets
-through (`kPendingCleanupTriesPerRun` times a run), and a listing then
-leaves out what was removed. An application has nothing to do for any of
-this; one that asks before it quits can say that what an upload sent is
-removed later (`partialUploadsRemain` on the account's provider).
+server did not answer - or whose step the thread called off, quitting - is
+asked again straight after a later call gets through
+(`kPendingCleanupTriesPerRun` times a run), and a listing then leaves out
+what was removed. An application has nothing to do for any of this; one that
+asks before it quits can say that what an upload sent is removed later
+(`partialUploadsRemain` on the account's provider).
+
+### An upload complete before its rename
+
+The connection can go - or the application quit - between the last byte and
+the rename. The whole file is then under the part name, and it is put in
+place rather than removed: the upload notes its record as complete
+(`PendingUpload::completedAt`; its error says *it is given that name the
+next time this account reaches the server*), and a part the folder lists at
+the file's full size counts as complete too - a process that ended in
+between (`IsCompletePart`). The next call that reaches the server gives it
+its name (`PlaceCompletePart`):
+
+| At the name | What happens |
+|---|---|
+| nothing (an old file set aside or not) | the part takes the name; a set-aside old file is removed |
+| a file, the upload finished within the hour (`kCompleteUploadReplacesSeconds`) | it replaces the file, as the upload was doing (`PutUploadInPlace`) |
+| a file, the upload older - or a folder | kept beside it as *name (2).ext* (`UploadKeptName`): what has the name may have been written since |
+| the server refuses the rename | the part is removed, as before |
+
+```text
+An upload of "big.bin" was complete when the server stopped answering, before it had its name: giving it that name (/up/.big.bin.part)
+"big.bin" is in place
+```
+
+A step that is called off or not answered is never taken for a refusal: the
+account does not go over to uploading straight to its names, and the record
+waits for the server to answer.
 
 ## Quick examples
 
@@ -423,7 +451,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry, and the SFTP private key's path), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
-| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
+| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
@@ -431,7 +459,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault; the uploads' records: `AddPendingUpload`, `RemovePendingUpload`, `ListPendingUploads`, `SetUploadsDirect`, `UploadsDirect`), `MakeAccountId` |
-| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun` |
+| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun`; a complete upload whose rename was cut off: `IsCompletePart`, `CompletePartReplaces`, `kCompleteUploadReplacesSeconds`, `UploadKeptName`, `AtName` / `CompletePart` / `PlaceCompletePart` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory); `TransfersInProgress` - the uploads and downloads under way, for a host that asks before it quits |
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
@@ -458,9 +486,11 @@ large-upload paths are exercised with small thresholds
 (`SetUploadLimits(simpleLimit, chunkSize)` on the three hosted providers),
 so a 25-byte file walks the same start / append / finish, upload-session or
 resumable code as a multi-gigabyte one. The FTP uploads' part names, their
-records and the cleanup run against a fake FTP server that can refuse
-renames, deletes or dot names, hide dot names from a listing, break an
-upload part way or not answer (`test_uploads.cpp`). Chunks are read from disk as they are
+records, the cleanup and the placing of a complete upload whose rename was
+cut off run against a fake FTP server that can refuse renames, deletes or
+dot names, hide dot names from a listing, break an upload part way, stop
+answering once an upload is in, call a rename off or not answer at all
+(`test_uploads.cpp`). Chunks are read from disk as they are
 sent; a large upload never holds more than one chunk in memory.
 
 ## Roadmap

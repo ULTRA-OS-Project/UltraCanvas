@@ -203,6 +203,20 @@ UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetRespons
 });
 UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
 UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
+
+// An upload streamed from a file: the body is read as it is sent, never held
+// in memory whole. bodyFileOffset / bodyFileLength send one range of the
+// file - an upload session's chunk. A file that cannot be opened, or a range
+// past its end, fails before anything is sent. The async path streams it
+// the same way, from the multi worker.
+UltraNetHttpRequest up;
+up.url = "https://dav.example.com/files/movie.mp4";
+up.method = UltraNetHttpMethod::Put;
+up.bodyFilePath = "/home/me/movie.mp4";
+up.options.timeoutMs = -1;            // as long as the file is large
+up.options.stallTimeoutMs = 30000;
+UltraNetResponse upResp;
+UltraNet_HttpRequest(up, upResp);
 ```
 
 ```cpp
@@ -410,11 +424,14 @@ the call runs - as bytes move, and about once a second while none do, so a
 stalled transfer is called off as promptly as a busy one; once it answers
 true the call ends as `UltraNetResultCode::Cancelled` with the message
 *called off*, and a listing is not tried again in another format. It runs on
-the calling thread inside libcurl and must answer at once (an atomic flag). As
-with the log, a caller behind a layer that builds the options sets one for
-its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
-UltraFiler's drive worker uses it to stop a preview download the user is no
-longer waiting for.
+the calling thread inside libcurl and must answer at once (an atomic flag).
+Beside it every FTP call - listings and `DELE` as well as transfers - asks its
+thread's abort check, `UltraNet_SetThreadAbortCheck(fn)` (`UltraNetCore.h`,
+which returns the previous one), the same check the synchronous HTTP requests
+ask: a caller behind a layer that builds the options, and a thread that wants
+every call it makes stopped at once, set that one check. UltraFiler's drive
+worker uses it to stop a preview download the user is no longer waiting for,
+on an FTP drive or a cloud drive, and every transfer when the window closes.
 
 What a failure says, whether or not anyone reads the log:
 

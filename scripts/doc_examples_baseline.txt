@@ -184,12 +184,10 @@ Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void ZoomTo
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `FitColumns(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `GetStageCounts(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::prose names `FT_Load_Glyph(`, which no header declares
-Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::'MatrixItem::attributes' does not exist (no member named 'attributes' in 'UltraCanvas::MatrixItem')
-Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::'MatrixItemSet::columns' does not exist (no member named 'columns' in 'UltraCanvas::MatrixItemSet')
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `bool ImportMatrixCsv(const std::string& csv, MatrixModel& out)` - the header has: bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel = 0);
-Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `void ClearCell(const std::string& rowId, const std::string& colId, int panel = 0)` - the header has: bool ClearCell(int panel, int row, int col);
+Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `void ClearCell(const std::string& rowId, const std::string& colId, int panel = 0)` - the header has: bool ClearCell(int panel, int row, int col, int depth = -1);
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `void SetCell(const std::string& rowId, const std::string& colId, const std::string& levelId, int panel = 0)` - the header has: bool SetCell(int panel, const std::string& rowItemId,
 Docs/UltraCanvas/UltraCanvasMindMapProposal.md::expected expression
 Docs/UltraCanvas/UltraCanvasMindMapProposal.md::prose names `CollapseToLevel(`, which no header declares

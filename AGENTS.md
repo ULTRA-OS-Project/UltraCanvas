@@ -487,6 +487,21 @@ framework on top. The rules:
   whole `UltraCanvas` folder to Applications. Say so wherever the macOS
   install is described.
 
+### Packaging a new app for Windows (MSIX)
+
+`package-win.sh` copies every `.exe` into `dist/`, and the zip, the installer
+and the MSIX (`package-win-msix.sh`) are all built from that one folder. The
+MSIX is one package for the whole suite. **Never give an app its own MSIX:**
+it would carry a copy of all the shared DLLs. An app gets its Start menu
+entry in the MSIX under the installer's rule, read from the same sources:
+its desktop entry (`Apps/<App>/<App>.desktop`: `Name=`, `Comment=`, `Icon=`)
+or, without one, a GUI-subsystem `.exe`. So a new app needs nothing added for
+the MSIX. Inside the package, the app's folder is read-only, it starts in
+System32 rather than its own folder, and its registry writes stay inside the
+package. Read *What changes inside a package* in
+`Docs/UltraCanvas/UltraCanvasWindowsMSIX.md` before an app writes next to its
+`.exe`, opens a relative path, or registers itself with Windows.
+
 ## Versioning
 
 The **first line of a changelog is the single source of truth** for a version,

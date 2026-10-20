@@ -95,6 +95,10 @@ namespace UltraCanvas {
         // applications. Called with a mouse button held down.
         bool StartNativeFileDrag(const std::vector<std::string>& filePaths,
                                  std::function<void(bool accepted, bool moved)> onFinished = nullptr) override;
+        // Native XDS source: the Save dialog's file icon dragged onto a
+        // folder of another window or program.
+        bool StartNativeSaveDrag(const std::string& fileName,
+                                 std::function<void(const std::string& folder)> onFolder) override;
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;
 

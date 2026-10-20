@@ -1054,26 +1054,34 @@ void ArtCreatorWindow::BuildRightPanel() {
     colorPicker->onBackgroundChanging = [this](const Color& c) { lineColour = c; ApplyLineColour(c, false); };
     colourPanel->AddChild(colorPicker);
 
-    swatches = CreateColorSwatchBar("ac-swatches", 0, 0, cardInner, 44);
-    swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // The palettes under the picker: rows of swatches, more added from the
+    // gallery behind the "+" at the end of the last row, and a right click
+    // sets one entry. Remembered between starts (picker.palettes).
+    palettes = CreateColorPaletteManager("ac-palettes", 0, 0, cardInner);
+    palettes->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     // Outlined as the picker above them outlines its fields, so a white
     // swatch still shows its edge on the white card.
     const ColorPickerStyle& pickerStyle = colorPicker->GetStyle();
-    ColorSwatchBarStyle swatchStyle = swatches->GetStyle();
-    swatchStyle.border         = pickerStyle.fieldBorderColor;
-    swatchStyle.hoverBorder    = pickerStyle.mutedTextColor;
-    swatchStyle.selectedBorder = pickerStyle.accentColor;
-    swatches->SetStyle(swatchStyle);
-    swatches->onColorSelected = [this](const Color& c) {
+    ColorPaletteManagerStyle paletteStyle = palettes->GetManagerStyle();
+    paletteStyle.swatchBorder         = pickerStyle.fieldBorderColor;
+    paletteStyle.swatchHoverBorder    = pickerStyle.mutedTextColor;
+    paletteStyle.swatchSelectedBorder = pickerStyle.accentColor;
+    paletteStyle.accentColor          = pickerStyle.accentColor;
+    paletteStyle.editorPickerStyle    = pickerStyle;
+    palettes->SetManagerStyle(paletteStyle);
+    std::vector<NamedColorPalette> saved;
+    if (UltraCanvasColorPaletteManager::ParsePalettes(settings.palettes, saved)) palettes->SetPalettes(saved);
+    palettes->onColorSelected = [this](const Color& c) {
         fillColour = c;
         colorPicker->SetForegroundColor(c, false);
         ApplyFillColour(c, true);
     };
-    // Right click on a swatch sets the line (background) colour.
-    swatches->onColorAdjustSelected = [this](const Color& c) {
-        colorPicker->SetBackgroundColor(c, true);
+    palettes->onPalettesChanged = [this]() {
+        // The file holds what this window has, as RememberColourPicker.
+        settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+        settings.Save();
     };
-    colourPanel->AddChild(swatches);
+    colourPanel->AddChild(palettes);
     rightPanel->AddChild(colourPanel);
 
     // ----- tool options: captioned with the active tool's name -----

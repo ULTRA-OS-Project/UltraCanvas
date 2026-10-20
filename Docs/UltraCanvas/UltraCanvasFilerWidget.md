@@ -1234,16 +1234,30 @@ filer->remoteListingStatus = [drives](const std::string& path) {
 };
 ```
 
-It is asked after `remoteListing` answered with an empty listing, and again
-on every tick while the notice is up. A non-empty answer — "Connecting to
-Backup NAS (ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup
-NAS - 2 requests ahead" — puts a turning progress ring, **Loading folder**
-and that line in place of "Folder is empty!", and the words follow the fetch
-as the host's answer changes. An empty answer means the folder really is
-empty. Left unset, a folder being fetched shows as empty until the host's
-`Refresh()`, as before. The ring runs on a 50 ms application timer that stops
-as soon as the listing arrives, the folder changes or the widget is
-destroyed.
+It is asked after every `remoteListing` — an empty one, or one the host
+answered from its cache while it asks the server again — and again on every
+tick while it answers. A non-empty answer — "Connecting to Backup NAS
+(ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup NAS - 2
+requests ahead" — marks the folder as loading without covering it: a thin
+blue bar (`FilerStyle::loadingBarColor`, the accent blue) slides along the
+foot of the file area, just above the info bar, over whatever entries there
+are or an empty area; an empty folder's info bar says **Loading folder...**
+rather than "0 items", and "Folder is empty!" is not shown. The words are the
+host's to show — on its status line rather than over the files:
+
+```cpp
+filer->onListingPendingChanged = [statusLine](const std::string& status) {
+    statusLine->SetText(status);   // "" once the listing is in
+};
+// or read it when the status line is rebuilt: filer->GetListingPendingStatus()
+```
+
+`onListingPendingChanged` fires when the fetch starts, each time the host's
+answer changes, and with `""` once the listing is in. An empty answer means
+the listing is the folder as it is. Left unset, a folder being fetched shows
+as empty until the host's `Refresh()`, as before. The bar runs on a 40 ms
+application timer that repaints only its own strip, and stops as soon as the
+listing arrives, the folder changes or the widget is destroyed.
 ### Changing a remote folder
 
 Four more hooks let the host carry out the changes that act on the drive
@@ -2540,6 +2554,12 @@ A drop on a folder of a **remote** drive goes through `remoteUpload` with that
 folder, and a drive's entries dropped on a local folder through
 `remoteDownload`, exactly as a drop on the folder the view shows does.
 
+A Save dialog's file icon dragged in from another window or program brings no
+file: its `Drop` carries `UCEvent::dropFolderReply`, and the view answers
+with the folder under the pointer (or the folder it shows) - the file is then
+saved there ([The file icon](UltraCanvasFileDialog.md#the-file-icon)). A
+remote drive's folder is no answer: there is no local disk to write to.
+
 ### Drag overlay
 
 The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
@@ -2883,6 +2903,7 @@ reports what the system hides, not what the host asked for.
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |

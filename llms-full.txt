@@ -18528,6 +18528,166 @@ what the test drives on any platform.
 - 1.0.0 (2026-10-01): first version.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasColorPaletteManager.md
+==============================================================================
+
+# UltraCanvas Color Palette Manager Documentation
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> card; std::shared_ptr<UltraCanvasColorPicker> picker; std::string savedLine; void SaveSetting(const std::string& value); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Keeping the palettes](#keeping-the-palettes)
+- [The palettes](#the-palettes)
+- [Selection and popups](#selection-and-popups)
+- [Style](#style)
+- [Callbacks](#callbacks)
+
+## Overview
+
+**UltraCanvasColorPaletteManager** is the set of colour palettes that sits
+under a [colour picker](UltraCanvasColorPicker.md): one or more rows of
+swatches, each row a palette, with a small button at the end of the rows to
+add more. It is what UltraPaint and ArtCreator show under the picker in their
+Colour card.
+
+- With **one** palette, its row ends in a **+** button.
+- With **several**, every row ends in a **−** that takes that palette away,
+  and the **last** row has the **+** under its **−**.
+- **+** opens the **palette gallery**: a popup of ready-made schemes, grouped
+  by kind (basics, moods, design systems, retro machines, indexed / GIF), each
+  with a preview of its colours, the number of colours and its own **+** that
+  adds it as a new row. A scheme already among the rows shows a check mark.
+  Clicking a preview adds it too.
+- A **left click** on a swatch picks its colour (`onColorSelected`); one
+  swatch is marked across all the rows.
+- A **right click** on a swatch opens a small **foreground-only** colour
+  picker next to it that sets that one entry of the palette, live, as it is
+  dragged. *Revert* puts the colour back; *Done*, Escape or a click outside
+  keep it.
+
+Palettes run from a few colours to a whole **256-colour GIF palette**; large
+ones wrap into a compact block (`UltraCanvasColorSwatchBar::SetWrap`) instead
+of shrinking to hairlines. The element sets its own height to its rows', so in
+a flex column what is below it moves as rows come and go.
+
+It is built from framework elements only: the rows are
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md)s, the buttons
+`UltraCanvasButton`s, the captions `UltraCanvasLabel`s and the entry editor an
+`UltraCanvasColorPicker` with `SetShowBackgroundColor(false)`.
+
+**File Location**: `include/UltraCanvasColorPaletteManager.h`
+**Implementation**: `core/UltraCanvasColorPaletteManager.cpp`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasColorPaletteManager.h"
+using namespace UltraCanvas;
+
+// Under the picker, as wide as it.
+auto palettes = CreateColorPaletteManager("palettes", 0, 0, 250);
+palettes->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+palettes->onColorSelected = [](const Color& c) {
+    // the host's foreground colour, e.g. picker->SetForegroundColor(c, false)
+    (void)c;
+};
+card->AddChild(palettes);
+```
+
+## Keeping the palettes
+
+The rows are the host's to keep. `onPalettesChanged` fires after every change
+(a row added or removed, an entry set), and the palettes go into one line of
+a settings file and back:
+
+```cpp
+palettes->onPalettesChanged = [m = palettes.get()]() {
+    SaveSetting(UltraCanvasColorPaletteManager::SerializePalettes(m->GetPalettes()));
+};
+
+std::vector<NamedColorPalette> saved;
+if (UltraCanvasColorPaletteManager::ParsePalettes(savedLine, saved)) palettes->SetPalettes(saved);
+```
+
+The line is `Name|RRGGBB,RRGGBB,...;Name|...`. `ParsePalettes` returns false,
+and leaves its output alone, for text that holds no palette.
+
+## The palettes
+
+```cpp
+struct NamedColorPalette {
+    std::string name;        // shown in the gallery and as the row's tooltip
+    std::string category;    // the gallery's group
+    std::vector<Color> colors;
+};
+
+void SetPalettes(const std::vector<NamedColorPalette>& palettes);
+const std::vector<NamedColorPalette>& GetPalettes() const;
+int  GetPaletteCount() const;
+void AddPalette(const NamedColorPalette& palette);   // a row at the end
+void RemovePalette(int index);                       // never the last one
+bool HasPalette(const std::string& name) const;
+void SetEntryColor(int palette, int entry, const Color& c, bool notify = true);
+
+static NamedColorPalette DefaultPalette();                       // six greys and twelve colours
+static const std::vector<NamedColorPalette>& PresetPalettes();   // what the gallery offers
+```
+
+There is always at least one row: setting no palettes, or a list of empty
+ones, leaves `DefaultPalette()`.
+
+The gallery's schemes:
+
+| Group | Palettes |
+|---|---|
+| Basics | Basic (18), Greys (16), Rainbow (24) |
+| Moods | Pastel, Earth, Skin tones, Sunset, Ocean, Forest, Neon |
+| Design systems | Material (19), Nord (16), Solarized (16) |
+| Retro | Game Boy (4), PICO-8 (16), Commodore 64 (16), VGA 16 |
+| Indexed (GIF) | Web-safe 216, GIF 256 (RGB 3-3-2), GIF 256 greys |
+
+## Selection and popups
+
+```cpp
+void SelectColor(const Color& c);   // marks the first swatch with it, any row
+void ClearSelection();
+
+void OpenPaletteGallery(const Rect2Df& anchorWindow);   // what "+" does
+void OpenEntryEditor(int palette, int entry, const Point2Di& windowPos);   // a right click
+void ClosePopups();
+```
+
+The gallery opens below its anchor (window coordinates), right-aligned with
+it, or above it when the window has no room below.
+
+## Style
+
+```cpp
+ColorPaletteManagerStyle s = palettes->GetManagerStyle();
+s.swatchSelectedBorder = Color(37, 99, 235, 255);
+s.editorPickerStyle = picker->GetStyle();   // the entry editor looks like the host's picker
+palettes->SetManagerStyle(s);
+```
+
+`ColorPaletteManagerStyle` holds the swatch outlines, the largest swatch size
+(the manager makes a row's swatches smaller and closer the more colours it
+has), the gaps, the micro buttons' size and colours, the popups' colours and
+corner radius, the accent of the gallery's add buttons, and the entry
+editor's picker style and scale.
+
+## Callbacks
+
+```cpp
+std::function<void(const Color&)> onColorSelected;   // a swatch was clicked
+std::function<void()>             onPalettesChanged; // added, removed, an entry set
+```
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 ==============================================================================
 
@@ -18545,6 +18705,7 @@ FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
   - [Light and dark styles](#light-and-dark-styles)
   - [Compact (sliders-only) variant](#compact-sliders-only-variant)
 - [Colour Space Helpers](#colour-space-helpers)
+- [Foreground-only picker](#foreground-only-picker)
 - [Interaction Summary](#interaction-summary)
 - [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
 
@@ -18731,6 +18892,9 @@ namespace UltraCanvas {
 
         void SetShowColorWheel(bool show);               // compact mode when false
         void SetShowAlpha(bool show);
+        // false: foreground only - one swatch, no swap arrow, the right
+        // button edits the same colour (a palette entry's editor)
+        void SetShowBackgroundColor(bool show);
 
         // Foreground = current swatch, Background = previous swatch.
         Color GetForegroundColor() const;
@@ -18869,6 +19033,24 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 // HSV -> RGB is provided by the existing global Color HSV(h, s, v, a) helper.
 ```
 
+## Foreground-only picker
+
+A picker that edits one colour - a palette entry, a single fill - has no
+background colour to offer. `SetShowBackgroundColor(false)` takes it away:
+only the foreground swatch is drawn, the swap arrow is gone, and the right
+button (on the colour controls and on the eyedropper) edits the foreground as
+the left one does, so `onBackgroundChanged` never fires.
+
+```cpp
+auto entryPicker = CreateColorPicker("entry", Color(229, 57, 53, 255), 0, 0, 212, 300);
+entryPicker->SetStyle(ColorPickerStyle::Light());
+entryPicker->SetShowBackgroundColor(false);
+entryPicker->SetAutoHeight(true);
+```
+
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+opens one in a popup when a palette swatch is right-clicked.
+
 ## Interaction Summary
 
 | Action | Result |
@@ -18957,7 +19139,7 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.0.0
+**Version**: 1.2.0
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -18971,6 +19153,10 @@ colours nobody can reach.
 - ✅ `onColorSelected` / `onCheckeredSelected` callbacks; right (Adjust) click
   raises `onColorAdjustSelected` — the background colour of a
   foreground/background picker
+- ✅ Optional **wrapping** (`SetWrap`) for large palettes — up to a 256-colour
+  GIF palette as a compact block; `HeightForWidth` sizes the element
+- ✅ `SetColorAt` edits one entry; `onColorContextClicked` reports a right
+  click with the entry's index, for a host that edits it in a popup
 - ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
 
 ## Quick Start
@@ -19064,6 +19250,26 @@ swatch) and let the layout stretch it across the width. The swatch edge is
 | Narrow | Swatches shrink towards `minSwatchSize`; below that the gaps close and the swatches keep shrinking, so every colour stays reachable |
 | Short | Swatches shrink to the height; the row stays a single line |
 
+### Wrapping
+
+A palette too large for one row wraps instead of shrinking to hairlines:
+
+```cpp
+auto gif = std::make_shared<UltraCanvasColorSwatchBar>("gif", 230, 10);
+std::vector<Color> colors(256, Colors::Black);   // a GIF's palette
+gif->SetColors(colors);
+gif->SetWrap(true);
+gif->SetElementSize(Size2Df(230, gif->HeightForWidth(230)));
+```
+
+In wrap mode the swatches stay at least `minSwatchSize`; the bar takes as many
+lines as that needs, shares the colours out evenly over them (16 on two lines
+are 8 + 8), and makes each swatch as large as the line's width allows up to
+`swatchSize`. The block starts at the top-left corner. `HeightForWidth(w)` is
+the height all the lines take at width `w`.
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+uses it for its palette rows.
+
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
 
@@ -19073,6 +19279,9 @@ needs to read as a bar of its own.
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+// right click with the entry's index and the window position; when set it
+// takes the right click instead of onColorAdjustSelected
+std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
 ```
 
 A right click does not move the selection outline (that tracks left clicks)
@@ -26838,7 +27047,10 @@ FILE: Docs/UltraCanvas/UltraCanvasFileDialog.md
 open / save / select-folder dialog. It is built from elements, the same on
 every platform:
 
-- a path field with an **Up** button and six view buttons (Details, List and
+- the folder shown as a breadcrumb, as in UltraFiler (a leading **Computer**
+  whose drop-down lists the drives, then one segment per folder: a click
+  opens it, its drop-down lists the folders inside; the whole path on
+  hover), with an **Up** button and six view buttons (Details, List and
   four icon sizes);
 - a folder tree (Home, the user's places and every mounted drive, loaded as
   each node is expanded) beside the listing of the current folder, which is an
@@ -26974,8 +27186,8 @@ between folders.
   (`FileDialogOptions::SetConfirmOverwrite(false)`).
 - **Select folder** lists folders only. Select Folder (OK) answers the folder highlighted in
   the listing, else the folder being shown.
-- Return in the path field goes to the folder typed there. A file path opens
-  its folder and puts the name into the name field.
+- A path is typed in the name field: a folder typed there (absolute, or
+  relative to the folder shown) is opened on Return.
 
 Keyboard handling (Tab order, Enter, Escape, mnemonics) is the same as every
 modal dialog: see [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md).
@@ -27061,8 +27273,19 @@ tree (a place or a drive). Released there, the dialog opens that folder; the
 name stays as it was, so OK (or Return) then saves into it. A release over
 anything else, over a file, or onto a folder inside an archive the listing is
 browsing changes nothing, and Escape ends the drag without closing the
-dialog. The drag stays inside the dialog: there is no file yet to hand to
-another window.
+dialog.
+
+Dragged **out of the dialog**, the icon carries on as a native drag
+(`UltraCanvasWindowBase::StartNativeSaveDrag`): dropped on a folder of
+UltraFiler - a folder of its listing, the empty space of the listing (the
+folder it shows), or a folder row of its tree - that window names the folder
+and the dialog opens it, exactly as a drop on its own listing does: the
+breadcrumb, the listing and the tree all follow, and Save then writes there.
+On Windows the drag carries a private clipboard format that the target
+answers through `IDataObject::SetData`; on X11 it speaks XDS
+(`XdndDirectSave0`), so a file manager that does too names its folder the
+same way. A drop on anything that names no folder changes nothing. macOS has
+no native drag source yet: there the badge stops at the dialog's border.
 
 The icon is an element of its own, `UltraCanvasFileDragIcon`
 (`UltraCanvasFileDragIcon.h`), for any other save box that wants one. It
@@ -27096,7 +27319,23 @@ icon->onDropped = [listing = listing.get(), tree = tree.get()](UltraCanvasUIElem
 row->AddChild(icon);
 ```
 
-A press that is released without moving is a click (`onClick`).
+A press that is released without moving is a click (`onClick`). A drag
+taken out of the window and dropped on a folder another window or program
+names goes to `onDroppedOnFolder`, with that folder:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasFileDragIcon> icon; void SaveInto(const std::string& folder); -->
+```cpp
+icon->onDroppedOnFolder = [](const std::string& folder) { SaveInto(folder); };
+```
+
+The window it is dropped on answers through the element under the pointer:
+`UltraCanvasWindowBase::DeliverSaveDrop` hands that element a `Drop` with
+`dragMimeType` = `kDragMimeType`, the name in `dragData` and
+`UCEvent::dropFolderReply` set, at once rather than through the event queue,
+and the element calls `dropFolderReply(folder)` while it runs. A file display
+answers by itself (the folder under the pointer, never a remote drive's); a
+tree answers through `onDropFolderOfNode` for a row `onFilesDragAccept`
+accepts.
 
 ## Save settings
 
@@ -27190,6 +27429,16 @@ and the other follows the picture's shape; off: both are free). The row is
 there for every pixel format, so BMP, ICO and QOI - which have no settings of
 their own - get a Settings dialog with the size alone. Defaults puts the
 picture's size back with the rest.
+
+With the size given, a line under the type says what is written. For a
+**bitmap type** that is the pixels and the proportions,
+`640 × 480 pixels (4:3)`, at the size chosen in the Settings once one is
+chosen. For a **vector type** it is the proportions alone, `(4:3)`. The
+proportions are the smallest whole numbers (16:9, 3:2). When those would be
+long (1366 × 768 is 683:384) they are written as a decimal instead,
+`(1.78:1)`. The types are told apart by the loader's inventory
+(`UltraCanvasFileLoader::CanSaveImage`, `GetVectorSaveExtensions`). A type
+that is neither, such as a text file, shows no line.
 
 The size is **not** a setting of the format: it belongs to this picture, so
 it is not stored and the next Save starts on the next picture's own size. It
@@ -28664,16 +28913,30 @@ filer->remoteListingStatus = [drives](const std::string& path) {
 };
 ```
 
-It is asked after `remoteListing` answered with an empty listing, and again
-on every tick while the notice is up. A non-empty answer — "Connecting to
-Backup NAS (ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup
-NAS - 2 requests ahead" — puts a turning progress ring, **Loading folder**
-and that line in place of "Folder is empty!", and the words follow the fetch
-as the host's answer changes. An empty answer means the folder really is
-empty. Left unset, a folder being fetched shows as empty until the host's
-`Refresh()`, as before. The ring runs on a 50 ms application timer that stops
-as soon as the listing arrives, the folder changes or the widget is
-destroyed.
+It is asked after every `remoteListing` — an empty one, or one the host
+answered from its cache while it asks the server again — and again on every
+tick while it answers. A non-empty answer — "Connecting to Backup NAS
+(ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup NAS - 2
+requests ahead" — marks the folder as loading without covering it: a thin
+blue bar (`FilerStyle::loadingBarColor`, the accent blue) slides along the
+foot of the file area, just above the info bar, over whatever entries there
+are or an empty area; an empty folder's info bar says **Loading folder...**
+rather than "0 items", and "Folder is empty!" is not shown. The words are the
+host's to show — on its status line rather than over the files:
+
+```cpp
+filer->onListingPendingChanged = [statusLine](const std::string& status) {
+    statusLine->SetText(status);   // "" once the listing is in
+};
+// or read it when the status line is rebuilt: filer->GetListingPendingStatus()
+```
+
+`onListingPendingChanged` fires when the fetch starts, each time the host's
+answer changes, and with `""` once the listing is in. An empty answer means
+the listing is the folder as it is. Left unset, a folder being fetched shows
+as empty until the host's `Refresh()`, as before. The bar runs on a 40 ms
+application timer that repaints only its own strip, and stops as soon as the
+listing arrives, the folder changes or the widget is destroyed.
 ### Changing a remote folder
 
 Four more hooks let the host carry out the changes that act on the drive
@@ -29970,6 +30233,12 @@ A drop on a folder of a **remote** drive goes through `remoteUpload` with that
 folder, and a drive's entries dropped on a local folder through
 `remoteDownload`, exactly as a drop on the folder the view shows does.
 
+A Save dialog's file icon dragged in from another window or program brings no
+file: its `Drop` carries `UCEvent::dropFolderReply`, and the view answers
+with the folder under the pointer (or the folder it shows) - the file is then
+saved there ([The file icon](UltraCanvasFileDialog.md#the-file-icon)). A
+remote drive's folder is no answer: there is no local disk to write to.
+
 ### Drag overlay
 
 The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
@@ -30313,6 +30582,7 @@ reports what the system hides, not what the host asked for.
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
@@ -42902,7 +43172,8 @@ and the weights behind those symbols roll up into per-row and per-column totals.
 form header band, cell tint, hover bands that run across panels, a ranked bar
 strip for the column totals, and spreadsheet import - and Phase 4: pan and
 zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
-the House's competitive-assessment block. See
+the House's competitive-assessment block, the attribute gutter and the `C`
+shape (a cube of three sets). Every shape in the proposal is built. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Contents
@@ -42915,7 +43186,9 @@ the House's competitive-assessment block. See
   - [The X shape](#the-x-shape)
   - [The Y shape](#the-y-shape)
   - [The House of Quality](#the-house-of-quality)
+  - [The C shape (cube)](#the-c-shape-cube)
   - [The form header band](#the-form-header-band)
+  - [The attribute gutter](#the-attribute-gutter)
 - [Relationship scales](#relationship-scales)
 - [Roll-ups](#roll-ups)
 - [Presentation](#presentation)
@@ -43001,8 +43274,9 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 | `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
 | `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
 | `MatrixShape::House` | 2 | 1–2 | the QFD House of Quality: an L plus the correlation roof |
+| `MatrixShape::C` | 3 | 1 | A × B × C — every cell relates one item of each of three sets |
 
-An `X`, `Y` or `House` whose model the shape cannot place (see *Validation*)
+An `X`, `Y`, `House` or `C` whose model the shape cannot place (see *Validation*)
 falls back to the `L` layout of panel 0 rather than drawing nothing, so its
 data is still visible.
 
@@ -43141,6 +43415,58 @@ and gives the cells its width back.
 
 `MatrixSamples::HouseOfQuality()` is a complete example.
 
+### The C shape (cube)
+
+`MatrixShape::C` relates three lists at once. Each cell is one item from each
+list: a defect type, on a production line, in a shift. Two-way panels can't
+hold that. Defects × lines can say the weld line has misalignment, and
+defects × shifts can say the night shift does, but neither can say that the
+misalignment happens on the weld line at night. The cube's single panel takes
+a third, **depth** set, and its cells take a depth index:
+
+<!-- doc-check: MatrixScale occurrence; -->
+
+```cpp
+MatrixModel cube;
+cube.shape = MatrixShape::C;
+cube.AddSet("defects", "Defect types", {"Scratches", "Dents", "Misalignment"});
+cube.AddSet("lines",   "Production lines", {"Press", "Weld", "Paint"});
+cube.AddSet("shifts",  "Shifts", {"Early", "Late", "Night"});
+cube.AddPanel("defects", "lines", occurrence).depthSetId = "shifts";
+
+cube.SetCubeCell(0, "Misalignment", "Weld", "Night", "frequent");   // by item ids
+cube.SetCubeCellAt(0, 2, 1, 1, "rare");                             // by index
+std::string level = cube.LevelAt(0, 2, 1, 2);                       // "frequent"
+double night = cube.DepthScore(0, 2);                               // one slice's total
+```
+
+`FindCell`, `LevelAt` and `ClearCell` take the depth as a last argument. It
+defaults to `-1`, which means a two-way panel's cell. Each form finds only its
+own kind of cell. `SetCellAt` refuses a cube panel's cell, and `SetCubeCellAt`
+refuses a two-way panel's. `RowScore` and `ColumnScore` sum through every
+slice. `DepthScore` sums one slice.
+
+A solid cube would show only its outer faces, and none of the cells inside, so
+the diagram draws it **exploded**. Each depth item gets one flat isometric
+slice, the first on top, stacked with a gap of `style.cubeSliceGap` cells and
+joined by the cube's left and right edges. Row labels run along the top
+slice's upper-left edge and column labels along its upper-right edge, as a Y's
+arms do. Each slice's depth item is named in a box at its right corner, and
+the depth set's title stands on end beside those boxes. The cell size is the
+largest at which the whole stack fits.
+
+Hovering a cell lights its row and column in every slice, which shows where
+the same pair sits across the depth set. Hovering or clicking a depth label
+lights its slice and fires `onSliceClick`. A cell's `MatrixRef` carries its
+`depth`, and a whole slice is a ref with only `panel` and `depth`
+(`IsSlice()`). `Page Up` and `Page Down` move the selected cell to the same
+place one slice up or down.
+
+A table has no third axis: `ExportMatrixCsv` returns an empty string for a cube
+and `ImportMatrixCsv` refuses one. JSON carries the cube whole. The panel's
+`"depth"` names the depth set, and each cell's `"depth"` names its depth item.
+`MatrixSamples::DefectCube()` is the worked example.
+
 ### The form header band
 
 Many printed matrix diagrams carry a form header — PROJECT, AREA, TITLE, TEAM,
@@ -43155,6 +43481,34 @@ x.headerFields = {
 };
 xDiagram->SetShowHeaderBand(true);   // the default; false hides it
 ```
+
+### The attribute gutter
+
+A row item often carries a few plain facts beside its relationships: a head
+count, an owner, a Y/N flag. Name the columns on the set and give each item its
+values in the same order; an `L` or a `House` draws them as a gutter of text
+columns between the row labels and the grid (and the House's importance column):
+
+<!-- doc-check: MatrixModel tools; -->
+
+```cpp
+MatrixItemSet& departments = tools.sets[0];
+departments.columns = {"Staff", "Facilitator"};
+departments.items[0].attributes = {"12", "N"};
+departments.items[1].attributes = {"18"};          // Facilitator left blank
+std::string staff = departments.AttributeOf(0, 0); // "12"; "" when out of range
+diagram->SetShowAttributes(true);                  // the default; false hides it
+```
+
+Values are text, read by people and never parsed. Each column is as wide as its
+header or its widest value, up to `style.maxAttributeColumnWidth`; longer values
+are ellipsised. Pointing into the gutter reports the whole row, as its label does,
+and a row's tooltip lists its values - which is where a `T`, `X` or `Y` shows
+them, since their labels have no room beside them for a gutter. Hiding the gutter
+gives the grid its width back. The values travel in JSON (`"columns"` on the set,
+`"attributes"` on the item); the CSV forms leave them out. An item with more
+values than its set has columns validates with a warning, and the extras are not
+drawn.
 
 ## Relationship scales
 
@@ -43260,6 +43614,7 @@ style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
 style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
 style.cellTintAlpha = 56;          // ... this faintly, under the mark
+style.maxAttributeColumnWidth = 90; // the attribute gutter's widest column
 diagram->SetStyle(style);
 ```
 
@@ -43273,12 +43628,20 @@ else: sizes, fonts and switches such as `alternateRowBands` or
 so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
 and `ApplyLightTheme()` do the same to a style you hold.
 
+Level and competitor colours belong to the model, not the theme. When one is
+too close to what it is drawn on to be seen, it is drawn in the label colour
+instead. One case is the near-black "High" of `MatrixScale::HighMediumLow()`
+on the dark grid. The legend swatch follows the mark. Closeness is measured
+as distance in RGB, so a saturated red or blue that is as dark as the grid
+keeps its own colour.
+
 ## Interaction
 
 ```cpp
 diagram->onCellClick = [](const MatrixRef& ref) { /* ref.panel/row/col */ };
 diagram->onRowClick    = [](int panel, int index, const MatrixItem& item) { };
 diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
+diagram->onSliceClick  = [](int panel, int depth, const MatrixItem& item) { };   // C only
 ```
 
 `MatrixRef` identifies a cell (`IsCell()`), or a whole row or column when the
@@ -43318,7 +43681,8 @@ The diagram takes the focus when clicked. Then:
 | Key | Does |
 |---|---|
 | arrows | move the selected cell one step, in the direction the key points *on screen* - also on a turned X quadrant, a Y rhombus and the House roof |
-| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel |
+| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel (a C's next slice) |
+| `Page Up` / `Page Down` | a C only: the same cell one slice up / down |
 | `Space` / `Enter` | edit the cell (when editable), and fire `onCellClick` |
 | `Delete` | clear the cell (when editable) |
 | `Escape` | clear the selection |
@@ -43400,11 +43764,11 @@ if (!ImportMatrixTable(sheetCsv, MatrixScale::QFD(), imported,
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+`MatrixSamples::ImprovementTools()` (L, with an attribute gutter), `MatrixSamples::EmployeeAllocation()`
 (T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
 `MatrixSamples::SupplyChain()` (X, with a form header),
-`MatrixSamples::DesignTraceability()` (Y) and `MatrixSamples::HouseOfQuality()`
-(House) build the models the demo shows
+`MatrixSamples::DesignTraceability()` (Y), `MatrixSamples::HouseOfQuality()`
+(House) and `MatrixSamples::DefectCube()` (C) build the models the demo shows
 (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
@@ -43422,8 +43786,12 @@ a left/right set with a top/bottom one and that no two panels claim the same
 quadrant; for a `Y`, that every panel crosses two different sets among the first
 three and that no pair appears twice; for a `House`, that panel 0 crosses two
 different sets and any further panel is the symmetric roof over its columns.
-A cell of a symmetric panel on or below the diagonal is an error. `warnings` collects things that are drawable but
-suspicious, such as an empty item set.
+A cell of a symmetric panel on or below the diagonal is an error. For a `C`, panel 0
+must be a cube over three different sets, and every cube cell's depth must be in
+range. A depth set in any other shape is an error, and so is a depth on a two-way
+panel's cell. `warnings` collects things that are drawable but
+suspicious, such as an empty item set or an item with more attribute values than
+its set has columns.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
 items and level ids, so `Validate()` mainly matters when you have assembled a
@@ -71404,7 +71772,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
 
 ## Contents
 
@@ -71435,6 +71803,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
   - [Basic Tree Creation](#basic-tree-creation)
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
+  - [Rows still loading](#rows-still-loading)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -71575,6 +71944,7 @@ struct TreeNodeData {
     const TreeCellData* GetCell(const std::string& colId) const;
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
+    bool loading = false;                  // children being fetched: a bar slides along the row's foot
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -72165,6 +72535,7 @@ void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
+void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
@@ -72177,6 +72548,8 @@ inherited from `UltraCanvasUIElement`.
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
+`SetLoadingBarColor` sets the bar a loading row slides along its foot (default
+the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
 
 ### Event Callbacks
 
@@ -72199,6 +72572,10 @@ std::function<bool(TreeNode* target,
 // onFilesDragAccept accepted), or null - for a drag that carries no files and
 // ends without a Drop, such as the file dialog's Save icon.
 TreeNode* GetDropTargetNode() const;
+// The local folder a node stands for ("" for none), asked when a Save
+// dialog's file icon from another window or program is dropped on a node
+// onFilesDragAccept accepts (a Drop carrying UCEvent::dropFolderReply).
+std::function<std::string(TreeNode* node)> onDropFolderOfNode;
 // Right mouse button released over a node; the event carries the pointer
 // position (event.pointerWindow) for placing a context menu. A right press
 // never changes the selection.
@@ -72294,6 +72671,31 @@ treeView->onNodeExpanded = [](TreeNode* node) {
         LoadChildrenFromDisk(node);
     }
 };
+```
+
+### Rows still loading
+
+When children come from somewhere slow - a server, a long scan - the
+placeholder can stay hidden (`visible = false`: it still gives the row its
+expand button) and the row itself say it is waiting. `TreeNodeData::loading`
+makes the row slide a thin bar along its foot, from its icon to the right
+edge, in the tree's loading colour (`SetLoadingBarColor`, the accent blue by
+default) - the same sign the filer widget gives a folder being fetched. A
+40 ms timer keeps the bar moving while such a row is on screen and stops once
+none is drawn.
+
+```cpp
+TreeNodeData placeholder("remote/photos#placeholder", "...");
+placeholder.visible = false;               // the expand button, without a row
+treeView->AddNode("remote/photos", placeholder);
+
+treeView->onNodeExpanded = [treeView](TreeNode* node) {
+    node->data.loading = true;             // the bar slides until the answer is in
+    treeView->RequestRedraw();
+    StartFetch(node->data.nodeId);         // calls back on the UI thread
+};
+// ...when the children have arrived:
+//     add them, remove the placeholder, node->data.loading = false, RequestRedraw()
 
 // Handle right-click (open a context menu at the pointer)
 treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
@@ -72791,6 +73193,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | Colour (wheel, SV area, hue × lightness field or colour + intensity sliders; optional design selector) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
+| Palette rows under a colour picker - add schemes from a gallery (up to 256-colour GIF palettes), remove rows, set an entry with a right click | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
@@ -72871,7 +73274,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two to four item sets crossed in an L, T, X or Y, or a QFD House of Quality, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, a QFD House of Quality, or three at once in a C (cube), cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
@@ -76929,6 +77332,214 @@ back and presses Ctrl+C there.
 An application embedding the framework in its own `WinMain` gets all of this by
 calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is
 required.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasWindowsMSIX.md
+==============================================================================
+
+# Packaging the Windows Applications as MSIX
+
+How the Windows build becomes one MSIX package, with a Start menu entry for
+each application. This page covers building the package in each of its three
+modes, putting it into the Microsoft Store, and what changes for an
+application once it runs from a package.
+
+The zip and the installer that `package-win.sh` builds stay as they are. The
+MSIX is built from the same `dist/` folder, so all three ship the same files.
+The MSIX adds a manifest and the logos.
+
+## Which route to the Store
+
+The Microsoft Store takes a Win32 application in two shapes, and both are
+open to this repository now that `package-win.sh --installer` builds an NSIS
+installer (`Windows/Installer/UltraCanvasSetup.nsi`). That installer is per
+user, needs no administrator rights, and installs silently with `/S`.
+
+| | MSIX (this page) | EXE installer (`UltraCanvas-Setup-Windows-*.exe`) |
+|---|---|---|
+| What we upload | the `.msix` itself, to Partner Center | a URL to the installer on our own server, plus its silent switch (`/S`) |
+| Code signing | **the Store signs it**: no certificate needed | the installer **and every `.exe` and `.dll` in it** must be signed with a certificate from a CA in Microsoft's Trusted Root Program. `dist/` holds hundreds of DLLs, including about 130 ImageMagick coder modules. The signing scripts make only a self-signed certificate today |
+| Hosting | Microsoft's CDN | ours, at a versioned URL whose file must never change after submission (a GitHub release asset can be one) |
+| Updates | the Store delivers them | a new versioned URL for each release |
+| UltraDesktop in place of the Windows desktop | **not possible**: see *What changes inside a package* | works: the installer even offers it on its finish page |
+| UltraFiler's *Delete as administrator* | only with a capability the Store grants on request | works |
+
+What decides it is the certificate. With MSIX, the suite can be in the Store
+without buying one, but UltraDesktop cannot take over the desktop from the
+Store version. The installer route keeps everything working, but needs a
+CA-issued code-signing certificate and a signature on each of several hundred
+files. The two routes can coexist: the installer from our own download page,
+the MSIX in the Store.
+
+## Building it
+
+Run it in the MSYS2 CLANG64 (x64) or CLANGARM64 (arm64) shell, after the
+normal Windows packaging:
+
+```bash
+./package-win.sh --no-sign          # builds dist/
+./package-win-msix.sh               # --mode test, the default
+```
+
+The package lands in `dist-msix/` as
+`UltraCanvas-Windows-<version>-<arch>[-test|-store].msix`. The version comes
+from the first line of `Docs/UltraCanvas/CHANGELOG.md`, with a `.0` appended,
+because MSIX takes four numbers and the Store reserves the fourth. The
+architecture is the one `dist/` was built for.
+
+It needs the Windows SDK (`makeappx.exe`, `makepri.exe`, `signtool.exe`),
+Python 3 and ImageMagick. The script finds the newest SDK under
+`Program Files (x86)\Windows Kits\10\bin`. If the SDK is somewhere else, set
+`WINDOWS_SDK_BIN` to the folder that holds `makeappx.exe`. The GitHub x64 and
+ARM64 Windows runners have all three tools installed.
+
+### The three modes
+
+| Mode | Signed? | Identity | Install it with | For |
+|---|---|---|---|---|
+| `--mode test` (default) | no | ours, plus Microsoft's "unsigned" OID | `Add-AppxPackage -AllowUnsigned <file>` in an **elevated** PowerShell, Windows 11 only | trying a build as a packaged app; never distribute it |
+| `--mode store` | no | Partner Center's: `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`, `MSIX_PUBLISHER_DISPLAY_NAME` | the Store | uploading to Partner Center, which signs it |
+| `--mode signed` | yes, with `MSIX_SIGN_PFX` + `MSIX_SIGN_PASSWORD` or `MSIX_SIGN_THUMBPRINT` | `MSIX_PUBLISHER` = the certificate's subject, exactly | double-click | distribution outside the Store |
+
+In a package, the publisher is a certificate subject (`CN=...`), and Windows
+refuses a signature whose certificate subject differs from it in any letter.
+This is why `store` mode refuses to run without Partner Center's values:
+an upload with any other identity is rejected. In `signed` mode, set
+`MSIX_PUBLISHER` to the subject of the certificate you sign with.
+
+`--mode signed` with the self-signed certificate from `SignUltraDemo.ps1`
+produces a package that installs only on a machine that trusts that
+certificate. To trust it, import it into *Local Machine > Trusted People*.
+This is fine for a test machine, but it is no way to ship to users.
+
+### CI
+
+`build.yml` builds the test package on both Windows legs of every run and
+uploads it as `UltraCanvas-Windows-MSIX-<version>-<arch>`. A release build
+(main) also builds the Store package, once the repository has Partner
+Center's identity in its Actions **variables**:
+
+| Variable | Partner Center, the app's *Product identity* page |
+|---|---|
+| `MSIX_IDENTITY_NAME` | *Package/Identity/Name* |
+| `MSIX_PUBLISHER` | *Package/Identity/Publisher* (`CN=` and a GUID) |
+| `MSIX_PUBLISHER_DISPLAY_NAME` | *Package/Properties/PublisherDisplayName* |
+
+These values are public: they are written into every package. Keep them in
+variables, not secrets.
+
+## Into the Store
+
+1. In Partner Center, create the app and reserve its name. Copy the three
+   identity values above into the repository's Actions variables.
+2. Let a release build run, or run `--mode store` locally. Take
+   `UltraCanvas-Windows-<version>-x86_64-store.msix` and the `arm64` one.
+3. In the submission's *Packages* page, upload both. The Store offers each
+   device the one that matches its architecture.
+4. In the submission, the *runFullTrust* capability asks for a reason. Give
+   this one: these are desktop (Win32) applications.
+5. Each later submission needs a higher version. The framework version rises
+   with every release, so this happens without extra steps.
+
+## What changes inside a package
+
+The applications run as ordinary full-trust Win32 programs, but Windows
+handles four things differently for a packaged program. The table says how
+each one affects the applications in this repository as of this writing.
+
+| Inside a package | Effect here |
+|---|---|
+| The install folder (`C:\Program Files\WindowsApps\...`) is **read-only** | Fine. Everything next to the `.exe` is only read: `Resources/`, `data/`, `lib/`, `Plugins/`, `cacert.pem`. Fonts, caches, crash dumps and settings go to `%APPDATA%` / `%LOCALAPPDATA%`. The one exception is the ImageMagick coder repair (`UltraCanvasCoderModuleRepair.cpp`), which renames coders in place. It does nothing on a `package-win.sh` package, because that script already renamed them. |
+| Registry writes under `HKEY_CURRENT_USER` **stay inside the package** | **UltraDesktop** takes over the desktop through two such values: the `Run` key (beside Explorer) and Winlogon's `Shell` (instead of Explorer, through UltraCanvasShellGuard). From a package both land in the package's own registry, which sign-in never reads. The switch would report success and do nothing, so the package gives UltraDesktop no Start menu entry (`NOT_IN_PACKAGE` in the script); the installer is the way to get it. Nothing else writes the registry. File associations come from the manifest, and OAuth sign-in uses a loopback listener, not a URL scheme. |
+| The program starts with **System32 as its working folder**, not its own folder | **UltraNet's default plug-in folder** is the relative `Plugins/UltraNet` (`UltraNetPlugins.cpp`). UltraMail sets an absolute one and works. Printer and scanner discovery over the network (mDNS, used by DeviceExplorer) finds no plug-in. **The file dialog** opens in the working folder the first time (`UltraCanvasModalDialog.cpp`), which is System32. A package cannot set the working folder; Microsoft's Package Support Framework can, but the fix belongs in those two places. |
+| Writes to `%APPDATA%` / `%LOCALAPPDATA%` are kept per package | Fine within the package. All the applications share one package, so they still see each other's settings (`%APPDATA%\UltraCanvas`, `%APPDATA%\ultraos`). They read what an unpackaged copy wrote before. |
+
+Two more points:
+
+- **Elevation.** UltraFiler's *Delete as administrator* restarts its own
+  `.exe` with `runas`. A packaged program can do that only with the
+  restricted capability `allowElevation`. Microsoft grants it to Store apps
+  only on request, with a written justification, so the manifest does not
+  declare it. Inside the package, that command fails. Declaring it is a
+  one-line change in `build_manifest`, and it is fine for a sideloaded
+  (`--mode signed`) package.
+- **Non-ASCII file names.** When a file type association opens a file,
+  Windows passes the file to the application as its first argument. Texter
+  reads that argument from the narrow `__argv`, and its root CMake target
+  embeds no UTF-8 manifest. On a machine whose code page cannot hold a
+  name, that name arrives mangled. UltraViewer embeds the manifest and is
+  fine on Windows 10 1903 and later.
+
+## What is in the package
+
+`scripts/make_msix_layout.py` builds the package layout from `dist/`:
+
+- **Everything in `dist/`**, except `uc-diagnose.bat` / `.ps1`. Those start an
+  `.exe` from its own folder, and Windows does not allow that inside
+  `C:\Program Files\WindowsApps`.
+- **`AppxManifest.xml`**: the identity, and one `<Application>` (one Start
+  menu entry) for each application. Which programs are applications follows
+  the installer's Start menu rule (`scripts/build-windows-installer.sh`), so
+  the two list the same programs:
+  - a program with a desktop entry (`Apps/*/*.desktop`) is one, under the
+    entry's `Name=`, with its `Comment=` as the description and its `Icon=`
+    from `media/appicon/`;
+  - a GUI program without a desktop entry (Texter, UltraCanvasDemo,
+    UltraFiler) is one under its own name, with the icon CMake embeds in it;
+  - a console program without a desktop entry (`ultramsg`, `videofx`) is a
+    command-line tool and is not one, and neither is UltraCanvasShellGuard.
+
+  The one difference from the installer is UltraDesktop (previous section).
+  A program without an entry still ships in the package.
+- **File associations** for Texter (text and source code) and UltraViewer
+  (images, video, audio, PDF, e-books, `.ucd`). These put the applications in
+  Explorer's *Open with* list, the way `package-macos.sh` declares their
+  document types on macOS. The package never makes them the default; only
+  the user does. A package names file types by extension, not by MIME type,
+  so `FILE_TYPES` in the script spells them out. Windows refuses some
+  extensions in a package (`.bat`, `.cmd`, `.js`, `.ps1` and others that run
+  code), so they are left out.
+- **`Assets/`**: the Start menu, taskbar and Store logos, rendered from
+  `media/appicon/` (the same PNGs CMake embeds in each `.exe`). They come in
+  each display scale (`scale-100` to `scale-400`) and at each exact taskbar
+  size (`targetsize-16` to `-256`). The exact-size icons also come in
+  `altform-unplated` versions, so the taskbar draws the icon itself and not
+  the icon on an accent-coloured square.
+- **`resources.pri`**: built by `makepri`. It tells Windows which of those
+  files to draw at which size.
+
+The whole suite is one package, because the applications share the same
+hundreds of DLLs. A package per application would carry its own copy of all
+of them. The macOS suite folder was made one shared folder for the same
+reason (see *Packaging a new app for macOS* in `AGENTS.md`).
+
+### Adding an application
+
+Nothing to do here. A new application with a desktop entry, or built as a
+GUI program, gets its Start menu entry in the package as it does in the
+installer. The Application Id is the `.exe` name with everything but letters
+and digits removed, so `UOS-Settings` becomes `UOSSettings`, and the script
+refuses two programs that end up with the same Id. Opening file types from
+Explorer is the one thing to add by hand, in `FILE_TYPES`.
+
+### Checking a manifest without Windows
+
+`makeappx` runs only on Windows. Microsoft's open-source
+[MSIX SDK](https://github.com/microsoft/msix-packaging) builds a `makemsix`
+on Linux and macOS that validates `AppxManifest.xml` against the same
+schemas. Build it with `./makelinux.sh --pack --skip-tests`. It needs ICU,
+and CMake 3.29 or newer. Run it on a layout from `make_msix_layout.py`:
+
+```bash
+python3 scripts/make_msix_layout.py --dist dist --layout /tmp/layout \
+    --pri-root /tmp/pri --pri-config /tmp/priconfig.xml --version 0.9.347 \
+    --arch x64 --identity-name ULTRAOSDevelopment.UltraCanvas \
+    --publisher "CN=Test" --publisher-display-name Test --unsigned-test
+LD_LIBRARY_PATH=<sdk>/.vs/lib <sdk>/.vs/bin/makemsix pack -d /tmp/layout -p /tmp/t.msix
+```
+
+A manifest that breaks the schema fails here with the line and the rule it
+broke, for example an Application Id with a `-` in it.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWordCloudExamples.md
@@ -84027,11 +84638,39 @@ Removed /up/.big.bin.part
 ```
 
 A part the server will not remove stays recorded for the next run; one whose
-server did not answer is asked again straight after a later call gets
-through (`kPendingCleanupTriesPerRun` times a run), and a listing then
-leaves out what was removed. An application has nothing to do for any of
-this; one that asks before it quits can say that what an upload sent is
-removed later (`partialUploadsRemain` on the account's provider).
+server did not answer - or whose step the thread called off, quitting - is
+asked again straight after a later call gets through
+(`kPendingCleanupTriesPerRun` times a run), and a listing then leaves out
+what was removed. An application has nothing to do for any of this; one that
+asks before it quits can say that what an upload sent is removed later
+(`partialUploadsRemain` on the account's provider).
+
+### An upload complete before its rename
+
+The connection can go - or the application quit - between the last byte and
+the rename. The whole file is then under the part name, and it is put in
+place rather than removed: the upload notes its record as complete
+(`PendingUpload::completedAt`; its error says *it is given that name the
+next time this account reaches the server*), and a part the folder lists at
+the file's full size counts as complete too - a process that ended in
+between (`IsCompletePart`). The next call that reaches the server gives it
+its name (`PlaceCompletePart`):
+
+| At the name | What happens |
+|---|---|
+| nothing (an old file set aside or not) | the part takes the name; a set-aside old file is removed |
+| a file, the upload finished within the hour (`kCompleteUploadReplacesSeconds`) | it replaces the file, as the upload was doing (`PutUploadInPlace`) |
+| a file, the upload older - or a folder | kept beside it as *name (2).ext* (`UploadKeptName`): what has the name may have been written since |
+| the server refuses the rename | the part is removed, as before |
+
+```text
+An upload of "big.bin" was complete when the server stopped answering, before it had its name: giving it that name (/up/.big.bin.part)
+"big.bin" is in place
+```
+
+A step that is called off or not answered is never taken for a refusal: the
+account does not go over to uploading straight to its names, and the record
+waits for the server to answer.
 
 ## Quick examples
 
@@ -84115,7 +84754,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry, and the SFTP private key's path), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
-| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
+| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
@@ -84123,7 +84762,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault; the uploads' records: `AddPendingUpload`, `RemovePendingUpload`, `ListPendingUploads`, `SetUploadsDirect`, `UploadsDirect`), `MakeAccountId` |
-| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun` |
+| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun`; a complete upload whose rename was cut off: `IsCompletePart`, `CompletePartReplaces`, `kCompleteUploadReplacesSeconds`, `UploadKeptName`, `AtName` / `CompletePart` / `PlaceCompletePart` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory); `TransfersInProgress` - the uploads and downloads under way, for a host that asks before it quits |
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
@@ -84150,9 +84789,11 @@ large-upload paths are exercised with small thresholds
 (`SetUploadLimits(simpleLimit, chunkSize)` on the three hosted providers),
 so a 25-byte file walks the same start / append / finish, upload-session or
 resumable code as a multi-gigabyte one. The FTP uploads' part names, their
-records and the cleanup run against a fake FTP server that can refuse
-renames, deletes or dot names, hide dot names from a listing, break an
-upload part way or not answer (`test_uploads.cpp`). Chunks are read from disk as they are
+records, the cleanup and the placing of a complete upload whose rename was
+cut off run against a fake FTP server that can refuse renames, deletes or
+dot names, hide dot names from a listing, break an upload part way, stop
+answering once an upload is in, call a rename off or not answer at all
+(`test_uploads.cpp`). Chunks are read from disk as they are
 sent; a large upload never holds more than one chunk in memory.
 
 ## Roadmap
@@ -86761,6 +87402,20 @@ UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetRespons
 });
 UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
 UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
+
+// An upload streamed from a file: the body is read as it is sent, never held
+// in memory whole. bodyFileOffset / bodyFileLength send one range of the
+// file - an upload session's chunk. A file that cannot be opened, or a range
+// past its end, fails before anything is sent. The async path streams it
+// the same way, from the multi worker.
+UltraNetHttpRequest up;
+up.url = "https://dav.example.com/files/movie.mp4";
+up.method = UltraNetHttpMethod::Put;
+up.bodyFilePath = "/home/me/movie.mp4";
+up.options.timeoutMs = -1;            // as long as the file is large
+up.options.stallTimeoutMs = 30000;
+UltraNetResponse upResp;
+UltraNet_HttpRequest(up, upResp);
 ```
 
 ```cpp
@@ -86968,11 +87623,14 @@ the call runs - as bytes move, and about once a second while none do, so a
 stalled transfer is called off as promptly as a busy one; once it answers
 true the call ends as `UltraNetResultCode::Cancelled` with the message
 *called off*, and a listing is not tried again in another format. It runs on
-the calling thread inside libcurl and must answer at once (an atomic flag). As
-with the log, a caller behind a layer that builds the options sets one for
-its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
-UltraFiler's drive worker uses it to stop a preview download the user is no
-longer waiting for.
+the calling thread inside libcurl and must answer at once (an atomic flag).
+Beside it every FTP call - listings and `DELE` as well as transfers - asks its
+thread's abort check, `UltraNet_SetThreadAbortCheck(fn)` (`UltraNetCore.h`,
+which returns the previous one), the same check the synchronous HTTP requests
+ask: a caller behind a layer that builds the options, and a thread that wants
+every call it makes stopped at once, set that one check. UltraFiler's drive
+worker uses it to stop a preview download the user is no longer waiting for,
+on an FTP drive or a cloud drive, and every transfer when the window closes.
 
 What a failure says, whether or not anyone reads the log:
 
