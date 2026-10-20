@@ -1,5 +1,7 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.4.0 - a settable empty-state message (SetEmptyMessage), centred
+//                  on the chart's own background
 // Version: 1.3.0 - axis ticks at whole steps (1, 2, 2.5 or 5 x 10^n) with the grid
 //                  on them; ComputeChartAxisTicks; CalculateRawDataBounds
 // Version: 1.2.1 - a left press is taken only when it starts a pan
@@ -121,6 +123,12 @@ namespace UltraCanvas {
         bool showGrid = true;
         bool showAxes = true;
         Color gridColor = Color(220, 220, 220, 255);
+
+        // What a chart with no data says, centred: a line and an optional
+        // second, smaller one under it.
+        std::string emptyMessage = "No data to display";
+        std::string emptyDetail;
+        Color emptyMessageColor = Color(128, 128, 128, 255);
 
         // X-axis label configuration
         XAxisLabelMode xAxisLabelMode = XAxisLabelMode::NumericValue;
@@ -264,6 +272,25 @@ namespace UltraCanvas {
             gridColor = color;
             RequestRedraw();
         }
+
+        // What the chart says while it has no data ("No data to display"
+        // unless set), with an optional smaller line under it - "Connect a
+        // meter to see readings". An empty message draws the background
+        // alone.
+        void SetEmptyMessage(const std::string& message, const std::string& detail = "") {
+            if (message == emptyMessage && detail == emptyDetail) return;
+            emptyMessage = message;
+            emptyDetail = detail;
+            RequestRedraw();
+        }
+        const std::string& GetEmptyMessage() const { return emptyMessage; }
+        const std::string& GetEmptyDetail() const { return emptyDetail; }
+
+        void SetEmptyMessageColor(const Color& color) {
+            emptyMessageColor = color;
+            RequestRedraw();
+        }
+        const Color& GetEmptyMessageColor() const { return emptyMessageColor; }
 
         void SetShowGrid(bool show) {
             showGrid = show;

@@ -13,7 +13,7 @@
   The Energy page is the framework's bar chart run sideways, one row per
   plug drawing power, biggest at the top, on an axis marked at whole watts;
   idle plugs are left out and counted under the title, and when every plug
-  is idle the card says "Nothing is drawing power" instead of bare axes.
+  is idle the chart says "Nothing is drawing power" instead of bare axes.
 - **The demo home.** With no radio enabled the window opens the simulated
   home of the SmartHome module (30 devices in 8 rooms), says so in a panel
   under the menu and in every device's details, and offers three events to

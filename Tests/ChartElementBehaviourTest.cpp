@@ -23,6 +23,10 @@
 // 12. Axis ticks fall on whole steps (1, 2, 2.5, 5 x 10^n) and the grid on
 //     them; a bar chart whose smallest value is 0 starts its axis at 0 (it
 //     was padded to -5 % first); a fixed value range; horizontal bars.
+// 13. A chart with no data says what SetEmptyMessage set (a line and a
+//     smaller one under it), centred, in SetEmptyMessageColor, on the
+//     chart's own background (it was a fixed grey with the text placed
+//     60 px left of the middle); an empty message leaves the background.
 // 11. Eleven charts and diagrams defined a private InvalidateLayout() that
 //     only cleared their own cache. It overrode the layout engine's, so a
 //     framework invalidation (a new size, visibility) never reached the
@@ -30,6 +34,7 @@
 //
 // Pictures are drawn into an offscreen surface and read back pixel by pixel;
 // plot areas and ranges are read through a probe subclass.
+// Version: 1.5.0 - the empty-state message
 // Version: 1.4.0 - whole-step ticks; bars from zero with a zero value; value range; horizontal bars
 // Version: 1.3.0 - a framework invalidation of any of eleven charts reaches the parent
 // Version: 1.2.0 - a press is taken only when it starts a pan; bad CSV rows are skipped
@@ -630,6 +635,56 @@ void TestAxisTicksAndBars() {
           "a point with its own colour is drawn in it");
 }
 
+void TestEmptyMessage() {
+    std::cout << "13. the empty-state message\n";
+    const Color background(250, 246, 230, 255);
+    // The box round every pixel that is not the background.
+    struct Ink { int left = 1 << 30, right = -1, top = 1 << 30, bottom = -1, darkest = 255 * 3; Color tone; };
+    auto draw = [&](const std::shared_ptr<UltraCanvasLineChartElement>& chart, Ink& ink) {
+        Canvas canvas(400, 200);
+        chart->Render(canvas.ctx.get(), Rect2Df(0, 0, 400, 200));
+        for (int y = 0; y < 200; ++y) {
+            for (int x = 0; x < 400; ++x) {
+                const Color c = canvas.At(x, y);
+                if (Near(c, background, 3)) continue;
+                ink.left = std::min(ink.left, x);
+                ink.right = std::max(ink.right, x);
+                ink.top = std::min(ink.top, y);
+                ink.bottom = std::max(ink.bottom, y);
+                if (c.r + c.g + c.b < ink.darkest) { ink.darkest = c.r + c.g + c.b; ink.tone = c; }
+            }
+        }
+        return Near(canvas.At(3, 3), background, 3) && Near(canvas.At(396, 196), background, 3);
+    };
+    auto chart = std::make_shared<UltraCanvasLineChartElement>("empty", 0, 0, 400, 200);
+    chart->SetBackgroundColor(background);
+    Check(chart->GetEmptyMessage() == "No data to display", "a new chart says \"No data to display\"");
+
+    Ink plain;
+    Check(draw(chart, plain), "with no data the chart paints its own background (was a fixed grey)");
+    Check(plain.right > 0 && std::abs((plain.left + plain.right) / 2 - 200) <= 6,
+          "and the message is centred (was 60 px left of the middle)");
+
+    chart->SetEmptyMessage("Nothing is drawing power", "All 5 metered plugs are idle.");
+    chart->SetEmptyMessageColor(Color(20, 90, 200, 255));
+    Ink two;
+    draw(chart, two);
+    Check(two.top < 100 && two.bottom > 100 && two.bottom - two.top > 24,
+          "a message and its detail make two lines across the middle");
+    Check(std::abs((two.left + two.right) / 2 - 200) <= 6, "centred");
+    Check(Near(two.tone, Color(20, 90, 200), 40), "in the colour set");
+
+    chart->SetEmptyMessage("");
+    Ink none;
+    Check(draw(chart, none) && none.right < 0, "an empty message draws the background alone");
+
+    chart->SetDataSource(Ramp(5));
+    Canvas canvas(400, 200);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, 400, 200));
+    Check(!Near(canvas.At(200, 100), background, 3) || !Near(canvas.At(300, 120), background, 3),
+          "with data the chart is drawn, not the message");
+}
+
 int main() {
     fs::path dir = fs::temp_directory_path() / "uc_chart_element_test";
     fs::create_directories(dir);
@@ -645,6 +700,7 @@ int main() {
     TestHoverRingOnThePoint();
     TestInvalidationReachesParent();
     TestAxisTicksAndBars();
+    TestEmptyMessage();
 
     std::error_code ec;
     fs::remove_all(dir, ec);

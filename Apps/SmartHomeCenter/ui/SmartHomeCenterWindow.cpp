@@ -1314,6 +1314,7 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildEnergyPage() {
     energyChart_->SetPlotAreaColor(kSurface);
     energyChart_->SetGridColor(Color(236, 239, 245));
     energyChart_->SetSeriesName("Power");
+    energyChart_->SetEmptyMessageColor(kMuted);
     energyChart_->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t) {
         return point.label + ": " + FormatPower(static_cast<float>(point.y)) +
                ", " + FormatEnergy(static_cast<float>(point.value)) + " metered";
@@ -1322,29 +1323,6 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildEnergyPage() {
     Grow(energyChart_);
     card->AddChild(energyChart_);
 
-    // In place of the chart when no plug draws power: a chart with no bars
-    // would be bare axes.
-    energyIdle_ = Column("shcEnergyIdle", 10);
-    energyIdle_->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-    energyIdle_->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    Grow(energyIdle_);
-    auto badge = Row("shcEnergyIdleBadge", 0);
-    badge->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-    badge->SetBorderRadius(14);
-    badge->SetBackgroundColor(kIdle.soft);
-    Fixed(badge, 54, 54);
-    auto icon = CreateImageElement("shcEnergyIdleIcon", 28, 28);
-    icon->LoadFromFile(iconsDir_ + "plug.svg");
-    icon->SetFitMode(ImageFitMode::Contain);
-    icon->SetTintColor(kIdle.fg);
-    Fixed(icon, 28, 28);
-    badge->AddChild(icon);
-    energyIdle_->AddChild(badge);
-    energyIdle_->AddChild(Text("shcEnergyIdleTitle", "Nothing is drawing power", 15, kInk, true, 22));
-    energyIdleText_ = Text("shcEnergyIdleText", "", 12, kMuted, false, 18);
-    energyIdle_->AddChild(energyIdleText_);
-    energyIdle_->SetVisible(false);
-    card->AddChild(energyIdle_);
     page->AddChild(card);
     return page;
 }
@@ -1379,14 +1357,14 @@ void SmartHomeCenterWindow::UpdateEnergy() {
         energyChart_->SetDataSource(energyData_);
     }
     const size_t idle = metered - bars.size();
-    // Every plug idle: the message in place of the chart. No plugs at all
-    // keeps the chart, whose empty state says there is no data.
+    // With no bars the chart says why, in place of bare axes.
     const bool allIdle = metered > 0 && bars.empty();
-    energyChart_->SetVisible(!allIdle);
-    energyIdle_->SetVisible(allIdle);
-    if (allIdle) {
-        energyIdleText_->SetText(metered == 1 ? std::string("The metered plug is idle.")
-                                              : "All " + std::to_string(metered) + " metered plugs are idle.");
+    if (metered == 0) {
+        energyChart_->SetEmptyMessage("No metered plugs", "Plugs that measure power show up here.");
+    } else {
+        energyChart_->SetEmptyMessage("Nothing is drawing power",
+                                      metered == 1 ? std::string("The metered plug is idle.")
+                                                   : "All " + std::to_string(metered) + " metered plugs are idle.");
     }
     energyNoteText_->SetText(idle == 0 || allIdle ? std::string(kEnergyNote)
                              : std::string(kEnergyNote) + " " + std::to_string(idle) +

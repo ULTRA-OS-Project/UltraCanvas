@@ -79,6 +79,8 @@ fits the axis to the data again.
 | plotAreaColor | Color | Color(250, 250, 250, 255) | Background color of plot area |
 | showGrid | bool | true | Whether to display grid lines |
 | gridColor | Color | Color(220, 220, 220, 255) | Color of grid lines |
+| emptyMessage, emptyDetail | std::string | "No data to display", "" | What the chart says, centred, while it has no data (`SetEmptyMessage(text, detail)`); an empty text draws the background alone |
+| emptyMessageColor | Color | Color(128, 128, 128, 255) | Colour of that message (`SetEmptyMessageColor`) |
 | enableTooltips | bool | true | Enable interactive tooltips |
 | enableZoom | bool | false | Kept, but the bar chart does not zoom: the wheel goes to the parent |
 | enablePan | bool | false | Kept, but the bar chart does not pan |

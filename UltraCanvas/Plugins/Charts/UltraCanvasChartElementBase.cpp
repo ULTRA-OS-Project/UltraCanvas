@@ -568,19 +568,33 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext* ctx) {
-        // Use existing IRenderContext functions
-        ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(GetLocalBounds());
+        if (!ctx) return;
+        const Rect2Di local = GetLocalBounds();
+        // The chart's own background, as with data (it was a fixed grey).
+        if (showBackground) ctx->DrawFilledRectangle(local, backgroundColor);
+        if (emptyMessage.empty() && emptyDetail.empty()) return;
 
-        ctx->SetTextPaint(Color(128, 128, 128, 255));
-        ctx->SetFontSize(14.0f);
-
-        std::string emptyText = "No data to display";
-        // Calculate center position (simplified)
-        double textX = static_cast<double>(GetWidth()) / 2 - 60;
-        double textY = static_cast<double>(GetHeight()) / 2;
-
-        ctx->DrawText(emptyText, {textX, textY});
+        ctx->PushState();
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(emptyMessageColor);
+        // The message, and the detail under it, centred as one block.
+        constexpr double kMessageHeight = 20.0, kDetailHeight = 18.0, kGap = 2.0;
+        const bool twoLines = !emptyMessage.empty() && !emptyDetail.empty();
+        const double block = twoLines ? kMessageHeight + kGap + kDetailHeight
+                                      : (emptyMessage.empty() ? kDetailHeight : kMessageHeight);
+        double y = local.y + (local.height - block) / 2.0;
+        const double x = local.x + 8.0, width = std::max(0.0, local.width - 16.0);
+        if (!emptyMessage.empty()) {
+            ctx->SetFontSize(14.0f);
+            ctx->DrawTextInRect(emptyMessage, Rect2Dd(x, y, width, kMessageHeight));
+            y += kMessageHeight + kGap;
+        }
+        if (!emptyDetail.empty()) {
+            ctx->SetFontSize(12.0f);
+            ctx->DrawTextInRect(emptyDetail, Rect2Dd(x, y, width, kDetailHeight));
+        }
+        ctx->PopState();
     }
 
     bool UltraCanvasChartElementBase::HandleMouseMove(const UCEvent& event) {
