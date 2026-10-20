@@ -13,7 +13,12 @@
 //
 // Connections are kept open between calls on one thread
 // (UltraNet_FtpCloseIdleConnections), and a server that refused MLSD is
-// listed with LIST from then on.
+// listed with LIST from then on. A change (delete, rename, make or remove a
+// folder) runs on an FTP connection of its own; a server that turns that one
+// away for "too many connections" while the thread keeps another open has
+// the kept one closed and the change sent again.
+// Version: 0.8.1 - a change turned away for "too many connections" closes the
+//                  thread's kept connection and is sent again
 // Version: 0.8.0 - UltraNet_SetThreadFtpCancel is gone: the thread's one check
 //                  is UltraNet_SetThreadAbortCheck, asked by every FTP call
 // Version: 0.7.0 - isCancelled / UltraNet_SetThreadFtpCancel: a call can be called off
