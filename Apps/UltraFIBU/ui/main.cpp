@@ -19,6 +19,7 @@
 //
 // One window per user: a second start of the window brings the running one
 // forward and ends (UltraCanvasSingleInstance.h). Commands are not affected.
+// Version: 0.2.3 - the bookkeepings opened last are remembered for the start window
 // Version: 0.2.2 - one UltraFIBU window per user: a second start brings the
 //                  running window forward instead of opening another copy
 // Version: 0.2.1
@@ -28,11 +29,15 @@
 #include "UltraFIBUCli.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasPathUtf8.h"      // PathToUtf8
+#include "UltraCanvasRecentList.h"    // the files opened last
+#include "UltraCanvasSettingsFolder.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"   // GetResourcesDir, NormalizePath
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 
 namespace {
@@ -86,13 +91,22 @@ int main(int argc, char** argv) {
     UltraFIBU::FibuApp fibu;
     UltraFIBU::StartFenster start;
 
+    // The files opened last, for the start window: one per line under the
+    // settings folder, the last opened first (UltraCanvasRecentList.h).
+    const std::filesystem::path einstellungen = UltraCanvas::UltraCanvasSettingsFolder();
+    const std::string zuletztDatei = einstellungen.empty()
+        ? std::string() : UltraCanvas::PathToUtf8(einstellungen / "UltraFIBU" / "zuletzt");
+
     // Open a file in the main window. Returns why not, or an empty string.
     // The main window is built and shown here, before anything closes the
-    // start window: the application ends when it has no window left.
-    auto oeffne = [&fibu](const std::string& pfad) -> std::string {
+    // start window: the application ends when it has no window left. A file
+    // that opened is remembered for the start window's list.
+    auto oeffne = [&fibu, zuletztDatei](const std::string& pfad) -> std::string {
         std::string fehler;
         if (!fibu.Initialisieren(pfad, fehler)) return fehler;
         fibu.FensterBauen()->Show();
+        UltraCanvas::RememberRecent(zuletztDatei,
+                                    UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(pfad).lexically_normal()));
         return std::string();
     };
 
@@ -124,7 +138,8 @@ int main(int argc, char** argv) {
     }
 
     start.onDateiGewaehlt = oeffne;
-    start.Bauen(hinweis, datenbank)->Show();
+    start.onDateiVergessen = [zuletztDatei](const std::string& pfad) { UltraCanvas::ForgetRecent(zuletztDatei, pfad); };
+    start.Bauen(hinweis, datenbank, UltraCanvas::LoadRecentList(zuletztDatei))->Show();
     instanz.ListenRaise();   // a later start brings the window forward
     app.Run();
     instanz.Close();         // before the windows go

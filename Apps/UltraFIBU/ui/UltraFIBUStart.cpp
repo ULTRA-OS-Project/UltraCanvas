@@ -1,6 +1,7 @@
 // Apps/UltraFIBU/ui/UltraFIBUStart.cpp
 // The start window. See the header for why it asks so little.
 //
+// Version: 0.2.0 - the bookkeepings opened last, offered first
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUStart.h"
@@ -9,6 +10,9 @@
 #include "UltraCanvasModalDialog.h"   // FileFilter
 
 #include "UltraFIBUStore.h"   // DateiExistiert
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+
+#include <algorithm>
 
 // ULTRAFIBU_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraFIBU/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -31,6 +35,7 @@ constexpr int   kHoehe  = 640;
 constexpr float kRand   = 24.0f;
 constexpr float kZeile  = 28.0f;
 constexpr float kLabelB = 190.0f;
+constexpr int   kZuletztMax = 5;   // buttons for the files opened last
 
 std::vector<FileFilter> BuchhaltungsFilter() {
     // The type spelled out: FileFilter also takes a single pattern string, and
@@ -42,13 +47,16 @@ std::vector<FileFilter> BuchhaltungsFilter() {
 } // namespace
 
 std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinweis,
-                                                       const std::string& vorschlag) {
+                                                       const std::string& vorschlag,
+                                                       const std::vector<std::string>& zuletzt) {
     vorschlag_ = vorschlag;
+    const int gezeigt = static_cast<int>(std::min<size_t>(zuletzt.size(), kZuletztMax));
+    const int zuletztHoehe = gezeigt == 0 ? 0 : 30 + gezeigt * (static_cast<int>(kZeile) + 6) + 10;
 
     WindowConfig config;
     config.title  = "UltraFIBU " ULTRAFIBU_VERSION;
     config.width  = kBreite;
-    config.height = kHoehe;
+    config.height = kHoehe + zuletztHoehe;
     fenster_ = CreateWindow(config);
 
     float y = kRand;
@@ -64,6 +72,36 @@ std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinwei
     grundText->SetWrap(TextWrap::WrapWord);
     fenster_->AddChild(grundText);
     y += 50;
+
+    // ---- the ones opened last, the last one first ----
+    if (gezeigt > 0) {
+        auto zuletztTitel = CreateLabel("startZuletztTitel", kRand, y, kBreite - 2 * kRand, 24,
+                                        "Zuletzt geöffnet");
+        zuletztTitel->SetFontSize(14);
+        fenster_->AddChild(zuletztTitel);
+        y += 30;
+        for (int i = 0; i < gezeigt; ++i) {
+            const std::string pfad = zuletzt[static_cast<size_t>(i)];
+            const std::string datei = PathToUtf8(PathFromUtf8(pfad).filename());
+            auto knopf = CreateButton("startZuletzt" + std::to_string(i), kRand, y, kBreite - 2 * kRand, kZeile,
+                                      (datei.empty() ? pfad : datei) + "  \xE2\x80\x93  " + pfad);
+            knopf->SetTextAlign(TextAlignment::Left);
+            knopf->SetPadding(0, 10);
+            knopf->SetTooltip(pfad);   // the whole path, where the button shortens it
+            knopf->SetOnClick([this, pfad]() {
+                if (DateiExistiert(pfad) && EnthaeltBuchhaltung(pfad)) {
+                    Uebergeben(pfad);
+                    return;
+                }
+                // Gone since, or emptied: said here, and dropped from the list.
+                Melden("\"" + pfad + "\" gibt es nicht mehr, oder es ist keine Buchhaltung mehr darin.", true);
+                if (onDateiVergessen) onDateiVergessen(pfad);
+            });
+            fenster_->AddChild(knopf);
+            y += kZeile + 6;
+        }
+        y += 10;
+    }
 
     // ---- open an existing one ----
     auto oeffnenKnopf = CreateButton("startOeffnen", kRand, y, 300, kZeile,

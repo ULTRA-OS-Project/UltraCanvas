@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.8.3 - the address checked as typed, said under the field
 // Version: 0.8.2 - the site's settings in the property pane
 // Version: 0.8.0 - the look: the theme's colours, light or dark, remembered in the settings folder
 // Version: 0.7.4 - the rich editor's toolbar: the formatting discoverable
@@ -290,7 +291,22 @@ bool EditorWindow::SetSiteProperty(const std::string& name, const std::string& v
     RenderPreview();
     if (name == "name") RebuildSide();   // the column's title is the site's name
     else SetStatus("Unsaved changes");
+    if (name == "url") SayAddress();
     return true;
+}
+
+void EditorWindow::SayAddress() {
+    std::shared_ptr<UltraCanvasLabel> note = urlNote.lock();
+    if (!note) return;
+    if (IsSiteAddress(site.url)) {
+        note->SetText("The published site's root; every page's canonical link, the sitemap and the feed are built from it.");
+        FollowTheme(note, LabelVariant::Muted);
+    } else {
+        note->SetText("Not an address yet: it starts with https:// and names the host, like https://example.org, "
+                      "with no trailing slash. A publish would write this into every page.");
+        note->SetFollowTheme(false);
+        note->SetTextColor(UltraCanvasTheme::Current().roles.danger);
+    }
 }
 
 void EditorWindow::AddBlock(const std::string& type) {
@@ -919,7 +935,23 @@ void EditorWindow::RebuildProperties() {
         };
         siteInput("SiteName", "Name", "name", site.name);
         siteInput("SiteTagline", "Tagline (under the name, and in the feed)", "tagline", site.tagline);
-        siteInput("SiteUrl", "Address (https://..., the published site's root)", "url", site.url);
+        field("SiteUrl", "Address");
+        {
+            auto edit = CreateTextInput("SiteUrl", 0, 0, 0, 32);
+            edit->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
+            edit->SetFontSize(14);
+            edit->SetFollowTheme(true);
+            edit->SetText(site.url);
+            edit->onTextChanged = [this](const std::string& text) { Later([this, text]() { SetSiteProperty("url", text); }); };
+            properties->AddChild(edit);
+            properties->AddChild(Gap(4));
+            // The rule, under the field, in the error colour while it is broken.
+            auto note = Caption("SiteUrlNote", "", LabelVariant::Muted, 12, false);
+            properties->AddChild(note);
+            properties->AddChild(Gap(10));
+            urlNote = note;
+            SayAddress();
+        }
         siteInput("SiteLanguage", "Language (two letters, en or de)", "language", site.language);
         siteInput("SiteOwner", "Owner (the organisation named in the feed and the structured data)", "owner", site.owner);
         properties->AddChild(Gap(6));

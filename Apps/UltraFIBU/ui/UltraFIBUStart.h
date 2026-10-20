@@ -21,6 +21,7 @@
 // only lets one pick a first of a month. Refusing the 15th after it was typed
 // would be the same rule, told later.
 //
+// Version: 0.2.0 - the bookkeepings opened last, offered first (UltraCanvasRecentList.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -39,6 +40,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraFIBU {
 
@@ -53,12 +55,18 @@ public:
     // window already exists by then: the application ends the moment it has
     // no window left, and closing this one first would end it.
     std::function<std::string(const std::string&)> onDateiGewaehlt;
+    // Called with a file of the recent list that is gone, or holds no
+    // bookkeeping any more, so the caller drops it from the list.
+    std::function<void(const std::string&)> onDateiVergessen;
 
     // `hinweis` says why this window is showing instead of a bookkeeping, so
     // the user is not left guessing what went wrong. `vorschlag` is a path to
     // offer when setting up - the one that was given and did not exist.
+    // `zuletzt` are the files opened last, the last one first; the five
+    // newest become buttons above the open button.
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> Bauen(const std::string& hinweis,
-                                                          const std::string& vorschlag);
+                                                          const std::string& vorschlag,
+                                                          const std::vector<std::string>& zuletzt = {});
 
     void Schliessen();
 

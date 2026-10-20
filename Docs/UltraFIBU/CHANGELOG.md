@@ -1,3 +1,13 @@
+#### 2026-10-20 *0.24.5*
+- **The bookkeepings opened last, in the start window.** The window
+  remembers the files it opened (`<settings folder>/UltraFIBU/zuletzt`,
+  eight at most, the last first, through the framework's
+  `UltraCanvasRecentList.h`) and the start window offers the five newest
+  as buttons under *Zuletzt geöffnet*, the whole path in a tooltip; a file
+  that is gone, or holds no bookkeeping any more, is said so and dropped
+  from the list. The Windows installer now gives UltraFIBU a Start-menu
+  entry, which starts it this way.
+
 #### 2026-10-12 *0.24.4*
 - **One UltraFIBU at a time.** Starting the UltraFIBU window while it is
   already running - with or without a file - brings the open window forward

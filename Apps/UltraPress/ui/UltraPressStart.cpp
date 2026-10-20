@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressStart.cpp
 // See UltraPressStart.h.
+// Version: 0.8.3 - a recent site's button names its whole path in a tooltip
 // Version: 0.8.2 - the sites opened last, offered first
 // Version: 0.8.1
 // Author: UltraCanvas Framework / ULTRA OS
@@ -99,6 +100,7 @@ std::shared_ptr<UltraCanvasWindow> StartWindow::Build(const std::string& hint, c
             button->SetCornerRadius(6);
             button->SetTextAlign(TextAlignment::Left);
             button->SetPadding(0, 10);
+            button->SetTooltip(dir);   // the whole path, where the button shortens it
             FollowTheme(button, ButtonVariant::Standard);
             button->onClick = [this, dir]() {
                 if (HoldsSite(dir)) {

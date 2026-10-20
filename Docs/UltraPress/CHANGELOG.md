@@ -1,3 +1,19 @@
+#### 2026-10-20 *0.8.3*
+- **The address is checked as typed.** `IsSiteAddress` in the model says
+  what a site's address has to be - `https://` or `http://`, a host with a
+  dot in it or `localhost`, no spaces, no trailing slash - and the Site
+  settings pane says under the field, in the error colour, when the typed
+  one is not that yet; `ultrapress check` and the editor's validation
+  report it too, so a slip is seen before the first publish writes it into
+  every page's canonical link, the sitemap and the feed.
+- **A recent site's button names its whole path in a tooltip**, where the
+  button shortens it and two sites share a folder name.
+- **The recent list is the framework's.** `UltraCanvasRecentList.h` keeps
+  it now (one entry per line in a settings file, the newest first, eight
+  by default); UltraPress normalises its folders and reads the list
+  through it, and UltraFIBU's start window takes the same list for its
+  bookkeeping files.
+
 #### 2026-10-15 *0.8.2*
 - **The site's settings in the window.** *Site settings…* in the side
   column puts the site itself into the property pane: its name, tagline,

@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
+// Version: 0.8.0 - IsSiteAddress
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
 // Version: 0.5.0 - "hosting" in site.json
 // Version: 0.1.0
@@ -42,6 +43,23 @@ Block& Block::Set(const std::string& name, JSONValue value) {
 }
 
 // ----- Text in a block ----------------------------------------------------------------
+
+bool IsSiteAddress(const std::string& url) {
+    std::string rest;
+    if (url.rfind("https://", 0) == 0) rest = url.substr(8);
+    else if (url.rfind("http://", 0) == 0) rest = url.substr(7);
+    else return false;
+    if (rest.empty() || rest.back() == '/') return false;
+    const size_t slash = rest.find('/');
+    std::string host = slash == std::string::npos ? rest : rest.substr(0, slash);
+    const size_t colon = host.find(':');
+    if (colon != std::string::npos) host = host.substr(0, colon);
+    if (host.empty() || host.front() == '.' || host.back() == '.') return false;
+    for (char c : url) {
+        if (c == ' ' || c == '\t' || c == '\n' || c == '"' || c == '<' || c == '>') return false;
+    }
+    return host == "localhost" || host.find('.') != std::string::npos;
+}
 
 std::vector<std::string> SplitParagraphs(const std::string& text) {
     std::vector<std::string> out;

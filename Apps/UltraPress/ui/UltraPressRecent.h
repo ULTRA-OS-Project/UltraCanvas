@@ -1,8 +1,11 @@
 // Apps/UltraPress/ui/UltraPressRecent.h
-// The sites opened last, for the start window to offer: one folder per
-// line in <settings folder>/UltraPress/recent, the last opened first, at
-// most eight. A folder is remembered when the editor opens it and forgotten
-// when the start window finds no site in it any more.
+// The sites opened last, for the start window to offer: the framework's
+// recent list (UltraCanvasRecentList.h) in <settings folder>/UltraPress/
+// recent, one folder per line, the last opened first, at most eight. A
+// folder is remembered when the editor opens it and forgotten when the start
+// window finds no site in it any more; its spelling is normalised here, so
+// "site/" and "./site" are one entry.
+// Version: 0.8.3 - over the framework's UltraCanvasRecentList.h
 // Version: 0.8.2
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

@@ -4,6 +4,7 @@
 // a renderer can refuse what it does not know. The predefined blocks of the
 // brief are the sections of the ultraos.eu front page generalised
 // (Docs/Research/UltraPressDesignProposal.md §5.1, §7.3).
+// Version: 0.8.0 - ValidateSite: the site's url has to be an address (IsSiteAddress)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
