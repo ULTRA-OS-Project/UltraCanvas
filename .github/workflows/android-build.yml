@@ -14,6 +14,15 @@ name: Android build
 # part of an hour to build from nothing; vcpkg's binary cache keeps every
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
+#
+# Also once a week on main, to keep that cache warm for everyone. A cache a
+# pull request saves can be read by that pull request alone; only main's are
+# shared. Main otherwise builds this only when the Android build itself
+# changes, so most pull requests found nothing there and each rebuilt all 46
+# libraries from source on its first run. The weekly run restores main's
+# cache, which also keeps GitHub from evicting it after 7 days unused; when
+# eviction has come first, the scheduled run pays for the cold build, not a
+# pull request. It saves only what it built.
 
 on:
   pull_request:
@@ -34,10 +43,16 @@ on:
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
   workflow_dispatch:
+  # Mondays 03:17 UTC: off the hour, when GitHub's scheduler is least
+  # crowded. A schedule always runs on the default branch.
+  schedule:
+    - cron: '17 3 * * 1'
 
+# A newer push cancels a pull request's run in progress; on main nothing is
+# cancelled, so the weekly run and a push's run each finish (as build.yml).
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   android:
