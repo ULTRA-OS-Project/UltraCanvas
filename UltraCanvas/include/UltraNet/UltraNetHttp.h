@@ -1,6 +1,8 @@
 // include/UltraNet/UltraNetHttp.h
 // HTTP / HTTPS surface for UltraNet: synchronous variants plus async via a
 // curl_multi worker thread (see core/UltraNet/UltraNetHttpAsync.cpp).
+// Version: 0.4.0 - bodyFilePath / bodyFileOffset / bodyFileLength: a body sent
+//                  from a file as it goes
 // Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -120,6 +122,17 @@ struct UltraNetHttpRequest {
     std::string customMethod;       // used when method == Custom
     UltraNetHttpHeaders headers;
     std::vector<uint8_t> body;
+    // Optional. Send the body from this file (UTF-8 path) as it goes, rather
+    // than from `body`, which is then ignored - a file is uploaded as large
+    // as the disk allows, without first being read into memory.
+    // bodyFileOffset / bodyFileLength send one range of it (an upload
+    // session's chunk); a length of -1 sends from the offset to the end. A
+    // file that cannot be opened, or is shorter than the range, fails the
+    // request before anything is sent - on the async path, as an
+    // onComplete with transferError set and no handle. Both paths stream it.
+    std::string bodyFilePath;
+    int64_t bodyFileOffset = 0;
+    int64_t bodyFileLength = -1;
     UltraNetHttpOptions options;
 
     // Optional. When set, libcurl chunks are streamed to this callback in

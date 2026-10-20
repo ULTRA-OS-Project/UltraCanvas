@@ -1,3 +1,90 @@
+#### 2026-10-20 *0.9.351*
+- **The Windows applications now also come as an MSIX package, the format the
+  Microsoft Store recommends.** `package-win-msix.sh` turns the `dist/` folder
+  that `package-win.sh` builds into one package for the whole suite.
+  `scripts/make_msix_layout.py` writes the manifest. It gives each application
+  its own Start menu entry, under the same rule as the installer's Start menu:
+  a desktop entry (`Apps/*/*.desktop`) makes one, and so does a GUI program
+  without one. It gives Texter and UltraViewer file associations for
+  Explorer's *Open with*. It also renders the Start menu and taskbar logos
+  from `media/appicon/` at every scale and taskbar size, including the
+  unplated taskbar icons. The script has three modes:
+  - `test`: unsigned. Windows 11 installs it with
+    `Add-AppxPackage -AllowUnsigned`.
+  - `store`: unsigned, with Partner Center's identity. The Store signs it, so
+    no certificate is needed.
+  - `signed`: signed with our own certificate, for distribution outside the
+    Store.
+
+  CI builds the test package on both Windows legs and uploads it as
+  `UltraCanvas-Windows-MSIX-<version>-<arch>`. Release builds also build the
+  Store package once the repository has the `MSIX_*` Actions variables.
+  `Docs/UltraCanvas/UltraCanvasWindowsMSIX.md` compares MSIX with submitting
+  the NSIS installer: MSIX needs no certificate, while the installer route
+  needs every `.exe` and `.dll` signed with a CA-issued one. It covers the
+  modes, the Store submission, and what behaves differently inside a
+  package. UltraDesktop gets no Start menu entry in the package: it takes
+  over the desktop through `HKEY_CURRENT_USER` registry values, and a
+  package keeps those writes to itself.
+
+#### 2026-10-20 *0.9.350*
+- **UltraCloud: cloud downloads go to disk as they arrive** (UltraCloudHttp
+  0.6.0, `HttpProviderBase::DownloadToFile`). Dropbox, OneDrive, Google Drive
+  and WebDAV / Nextcloud downloads held the whole file in memory and wrote it
+  afterwards, so every download cost its own size in memory and a file larger
+  than the process could spare could not be fetched at all. They also ran
+  under `Send`'s two-minute whole-transfer limit, which a large file on a
+  slow line could not meet. The body of a 2xx answer is now written chunk by
+  chunk (UltraNet's `onDataChunk`), with no whole-transfer limit and a
+  30-second stall limit instead. A refusal's body is still kept for its
+  reason, so Google Drive's rate-limit 403 is still recognised and waited
+  out, and nothing is written for it. A download that fails part-way - the
+  connection lost, the caller calling it off, the disk full - removes what
+  it wrote. `test_downloads.cpp`: streamed, refused, lost part-way, a file
+  that cannot be made, throttled then answered, and a body handed over whole.
+- **UltraCloud: a download can continue a partial copy**
+  (`SetThreadDownloadContinues` / `DownloadContinues`, UltraCloudProvider
+  0.4.0). While the calling thread says so, `Download` treats a file already
+  at the target path as the first part of the remote file and asks only for
+  the rest.
+  - FTP (UltraCloudFtp 0.7.0): UltraNet's resume - REST at the partial size,
+    the rest appended. A server that refuses the REST (a Server-class
+    failure) is asked again for the whole file.
+  - HTTP (`HttpProviderBase::DownloadToFile`, UltraCloudHttp 0.7.0): a Range
+    request (`resumeFromOffset`). 206 appends; 200 - the server ignored the
+    range - replaces the file; a 416 naming the partial size means it was
+    complete; a 416 for another size fetches the file again from the start.
+  - A download that fails while continuing leaves what has arrived, for the
+    next try; the caller decides when a partial copy is thrown away.
+  - A thread setting rather than a parameter, so `ICloudProvider`, which
+    provider plug-ins are built against, keeps its layout; a provider that
+    does not read it downloads the whole file, which is still correct.
+  - Tests: six continuing cases in `test_downloads.cpp`, and
+    `ftp_a_continuing_download_resumes_at_the_partial_size` in
+    `test_ftp.cpp`.
+- **Uploads are sent from the file as they go, not read into memory first.**
+  - UltraNet HTTP 0.4.0: `UltraNetHttpRequest::bodyFilePath`, with
+    `bodyFileOffset` / `bodyFileLength` for one range of the file. The
+    synchronous path streams it through libcurl's read callback, with a seek
+    callback for a redirect or an authentication retry, and sends it with a
+    Content-Length; the method stays the request's own (a PUT stays a PUT).
+    A file that cannot be opened, or a range past its end, fails before
+    anything is sent. The async path (`UltraNet_HttpRequestAsync`) streams it
+    the same way: the request owns the open file for the length of the
+    transfer and libcurl reads it on the multi worker.
+    `test_body_file.cpp` sends a whole file, a range, a 3 MB file and a file
+    that is not there to an echo server on loopback.
+  - UltraCloud: a WebDAV / Nextcloud upload held the whole file in memory
+    however large it was, and ran under a two-minute whole-transfer limit;
+    Dropbox held up to 150 MB, and every upload-session chunk (8 - 10 MB on
+    Dropbox, Google Drive and OneDrive) was copied into memory before it was
+    sent. All of them now name the file, or the chunk's range of it, instead.
+    Google Drive's multipart upload, at most 5 MB, still frames its bytes in
+    memory. A whole-file WebDAV PUT and a Dropbox simple upload have no
+    whole-transfer limit and a 30-second stall limit. `DropboxProvider::Content`
+    gave way to `ContentFromFile`. The provider tests read a body named by
+    file through `test_request_body.h`.
+
 #### 2026-10-20 *0.9.349*
 - **UltraCloud: a request its caller called off is `ResultCode::Cancelled`,
   not a network failure** (`HttpProviderBase::FromHttp`, UltraCloudHttp

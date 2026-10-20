@@ -4,6 +4,7 @@
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
+#include "test_request_body.h"
 
 #include <UltraCloud/UltraCloudGoogleDrive.h>
 
@@ -22,7 +23,8 @@ UltraNetResult Ok() { UltraNetResult r; r.success = true; return r; }
 void Answer(UltraNetResponse& resp, int status, const std::string& body) {
     resp.statusCode = status; resp.body.assign(body.begin(), body.end());
 }
-std::string Body(const UltraNetHttpRequest& req) { return std::string(req.body.begin(), req.body.end()); }
+// Uploads name their file rather than carry its bytes: read either way.
+std::string Body(const UltraNetHttpRequest& req) { return RequestBody(req); }
 std::string Decoded(const std::string& url) { return UltraNet_UrlDecode(url); }
 
 // A tiny fake Drive: root → Docs (folder f1) → report.pdf (file x1).

@@ -1,9 +1,10 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
+// Version: 0.4.0 - OpenBodyFile / ApplyBodyFile: a request body read from a file as it is sent
 // Version: 0.3.2 - a synchronous transfer ends when its thread's abort check
 //                  says so (UltraNet_SetThreadAbortCheck)
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNetHttpEasy.h"
@@ -289,6 +290,101 @@ bool WriteSink::RestartFile() {
     resumeOffset = 0;
     received = 0;
     return file != nullptr;
+}
+
+void BodyFileSource::Close() {
+    if (file) std::fclose(file);
+    file = nullptr;
+}
+
+namespace {
+
+bool SeekFile(std::FILE* fp, int64_t offset) {
+#if defined(_WIN32)
+    return _fseeki64(fp, offset, SEEK_SET) == 0;
+#else
+    return fseeko(fp, static_cast<off_t>(offset), SEEK_SET) == 0;
+#endif
+}
+
+int64_t FileSize(std::FILE* fp) {
+#if defined(_WIN32)
+    if (_fseeki64(fp, 0, SEEK_END) != 0) return -1;
+    return _ftelli64(fp);
+#else
+    if (fseeko(fp, 0, SEEK_END) != 0) return -1;
+    return static_cast<int64_t>(ftello(fp));
+#endif
+}
+
+std::size_t ReadBodyCallback(char* buffer, std::size_t size, std::size_t nitems,
+                             void* userdata) {
+    BodyFileSource* source = static_cast<BodyFileSource*>(userdata);
+    const int64_t left = source->length - source->sent;
+    if (!source->file || left <= 0) return 0;
+    const std::size_t want = static_cast<std::size_t>(
+            std::min<int64_t>(left, static_cast<int64_t>(size * nitems)));
+    const std::size_t got = std::fread(buffer, 1, want, source->file);
+    // A file that shrank under the upload: stop rather than send short.
+    if (got == 0) return CURL_READFUNC_ABORT;
+    source->sent += static_cast<int64_t>(got);
+    return got;
+}
+
+int SeekBodyCallback(void* userdata, curl_off_t offset, int origin) {
+    BodyFileSource* source = static_cast<BodyFileSource*>(userdata);
+    if (origin != SEEK_SET || offset < 0 || offset > source->length || !source->file)
+        return CURL_SEEKFUNC_CANTSEEK;
+    if (!SeekFile(source->file, source->start + static_cast<int64_t>(offset)))
+        return CURL_SEEKFUNC_FAIL;
+    source->sent = static_cast<int64_t>(offset);
+    return CURL_SEEKFUNC_OK;
+}
+
+} // namespace
+
+UltraNetResult OpenBodyFile(const UltraNetHttpRequest& request, BodyFileSource& source) {
+    source.Close();
+    if (request.bodyFilePath.empty()) return UltraNetResult::Ok();
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(request.bodyFilePath, "rb");
+    if (!fp) {
+        return UltraNetResult::Error(UltraNetResultCode::NotFound,
+                                     "cannot open the file to send: " + request.bodyFilePath);
+    }
+    source.file = fp;
+    const int64_t size = FileSize(fp);
+    const int64_t start = std::max<int64_t>(0, request.bodyFileOffset);
+    int64_t length = request.bodyFileLength < 0 ? size - start : request.bodyFileLength;
+    if (size < 0 || start > size || length < 0 || start + length > size) {
+        source.Close();
+        return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                     "the file to send is shorter than the range asked for: " +
+                                         request.bodyFilePath);
+    }
+    if (!SeekFile(fp, start)) {
+        source.Close();
+        return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                     "cannot read the file to send: " + request.bodyFilePath);
+    }
+    source.start = start;
+    source.length = length;
+    source.sent = 0;
+    return UltraNetResult::Ok();
+}
+
+void ApplyBodyFile(CURL* easy, BodyFileSource* source) {
+    if (!source || !source->file) return;
+    // POST is libcurl's way to send a body of a known size from a callback;
+    // the method itself is still the one ConfigureEasyHandle set
+    // (CURLOPT_CUSTOMREQUEST), so a PUT stays a PUT.
+    curl_easy_setopt(easy, CURLOPT_POST, 1L);
+    curl_easy_setopt(easy, CURLOPT_POSTFIELDS, nullptr);
+    curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE,
+                     static_cast<curl_off_t>(source->length));
+    curl_easy_setopt(easy, CURLOPT_READFUNCTION, &ReadBodyCallback);
+    curl_easy_setopt(easy, CURLOPT_READDATA, source);
+    curl_easy_setopt(easy, CURLOPT_SEEKFUNCTION, &SeekBodyCallback);
+    curl_easy_setopt(easy, CURLOPT_SEEKDATA, source);
 }
 
 UltraNetResult OpenOutputFile(const UltraNetHttpOptions& options, WriteSink& sink) {

@@ -1,6 +1,7 @@
 // core/UltraNet/UltraNetHttpEasy.h
 // Private helpers shared by UltraNetHttp.cpp (sync) and
 // UltraNetHttpAsync.cpp (async). Not part of the public include surface.
+// Version: 0.4.0 - BodyFileSource: a request body read from a file
 // Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -62,6 +63,31 @@ namespace ultranet_internal {
         // ignored the range and is sending the whole body.
         bool RestartFile();
     };
+
+    // A request body read from a file as libcurl sends it
+    // (UltraNetHttpRequest::bodyFilePath): the open file and the range of it
+    // that is the body. Owns the file.
+    struct BodyFileSource {
+        std::FILE* file = nullptr;
+        int64_t start = 0;      // where the range begins in the file
+        int64_t length = 0;     // how long it is
+        int64_t sent = 0;       // how much of it libcurl has read so far
+        BodyFileSource() = default;
+        BodyFileSource(const BodyFileSource&) = delete;
+        BodyFileSource& operator=(const BodyFileSource&) = delete;
+        ~BodyFileSource() { Close(); }
+        void Close();
+    };
+
+    // Opens request.bodyFilePath into `source` and settles the range: Ok and
+    // nothing done when the request names no file; an error when the file
+    // cannot be opened or is shorter than the range asks for.
+    UltraNetResult OpenBodyFile(const UltraNetHttpRequest& request,
+                                BodyFileSource& source);
+    // Points `easy` at `source` for its request body: the read callback, a
+    // seek callback (libcurl rewinds for a redirect or an authentication
+    // retry) and the body's size, so it is sent with a Content-Length.
+    void ApplyBodyFile(CURL* easy, BodyFileSource* source);
 
     // Opens options.outputFilePath into the sink when it is set: truncated,
     // or appended with resumeOutputFile, in which case the file's size

@@ -1,18 +1,22 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.12.0 - a changed folder is marked Stale, not dropped, so the display
+// Version: 1.14.0 - a changed folder is marked Stale, not dropped, so the display
 //                   keeps its files while it is fetched again; listings the
 //                   user looks at go ahead of queued transfers; ListingStatus
 //                   covers a Stale folder being fetched again
-// Version: 1.11.0 - one abort check per thread, the preview's cancel in it;
+// Version: 1.13.0 - one abort check per thread, the preview's cancel in it;
 //                   Revalidate goes ahead of the queue, and beside a running
-//                   transfer on a thread of its own; a preview copy called
-//                   off leaves a cloud service's rate-limit wait too
+//                   transfer on a thread of its own
+// Version: 1.12.0 - a preview copy called off keeps its ".part" and the next try
+//                  continues it (UltraCloud::SetThreadDownloadContinues); the
+//                  cache's sweep keeps a partial copy a day, 256 MB of them at most
+// Version: 1.11.0 - a preview copy is called off through the thread's abort check,
+//                  so on a cloud drive (HTTP) too, and out of a rate-limit wait
 // Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off; a
 //                   failed download leaves no half-written file; an upload
 //                   under a name of its own; CachedListing, Revalidate
 // Version: 1.9.0 - a running preview copy can be called off (CancelActivePreviewLocked)
 // Version: 1.8.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -959,28 +963,62 @@ void SweepPreviewCache(const std::string& directory) {
     const auto maxAge = std::chrono::duration_cast<fs::file_time_type::duration>(
             DiskCache::kDefaultMaxAge);
     std::error_code ec;
-    std::vector<fs::path> stale;
+    // Each copy's folder, whether a complete copy in it is still fresh, and
+    // the partial copies (".part") across all of them - kept a day, and 256 MB
+    // of them at most (StaleRemotePreviewPartials), for a fetch that was
+    // called off to continue.
+    struct Folder {
+        fs::path path;
+        bool freshCopy = false;
+        std::vector<fs::path> partials;
+    };
+    std::vector<Folder> folders;
+    std::vector<RemotePreviewPartial> partials;
     for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(directory), ec), end; it != end && !ec;
          it.increment(ec)) {
         std::error_code dec;
         if (!it->is_directory(dec) || dec) continue;
-        bool fresh = false;
+        Folder folder;
+        folder.path = it->path();
         for (fs::directory_iterator f(it->path(), dec), fend; f != fend && !dec;
              f.increment(dec)) {
             std::error_code fec;
+            const auto t = fs::last_write_time(f->path(), fec);
             if (f->path().extension() == ".part") {
-                fs::remove(f->path(), fec);
+                RemotePreviewPartial p;
+                p.path = PathToUtf8(f->path());
+                std::error_code sec;
+                const auto size = fs::file_size(f->path(), sec);
+                p.size = sec ? 0 : static_cast<uint64_t>(size);
+                p.age = fec || t > now
+                        ? std::chrono::seconds(0)
+                        : std::chrono::duration_cast<std::chrono::seconds>(now - t);
+                partials.push_back(std::move(p));
+                folder.partials.push_back(f->path());
                 continue;
             }
-            const auto t = fs::last_write_time(f->path(), fec);
             // A stamp in the future reads as fresh, as DiskCache::Sweep has it.
-            if (!fec && (t > now || now - t < maxAge)) fresh = true;
+            if (!fec && (t > now || now - t < maxAge)) folder.freshCopy = true;
         }
-        if (!fresh) stale.push_back(it->path());
+        folders.push_back(std::move(folder));
     }
-    for (const fs::path& d : stale) {
-        std::error_code rec;
-        fs::remove_all(d, rec);
+    std::unordered_set<std::string> stalePartials;
+    for (std::string& p : StaleRemotePreviewPartials(std::move(partials)))
+        stalePartials.insert(std::move(p));
+    for (const Folder& folder : folders) {
+        bool keptPartial = false;
+        for (const fs::path& p : folder.partials) {
+            if (stalePartials.count(PathToUtf8(p))) {
+                std::error_code rec;
+                fs::remove(p, rec);
+            } else {
+                keptPartial = true;
+            }
+        }
+        if (!folder.freshCopy && !keptPartial) {
+            std::error_code rec;
+            fs::remove_all(folder.path, rec);
+        }
     }
 }
 
@@ -1123,13 +1161,20 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
             break;
         }
         case RemoteOperation::Download: {
-            // The full local path was settled when the job was queued.
+            // The full local path was settled when the job was queued. A
+            // preview copy continues its ".part" file when an earlier try
+            // left one - called off for a request of the user's, or the
+            // window closed - rather than fetching the file from the start.
+            const bool previousContinues =
+                    UltraCloud::SetThreadDownloadContinues(job.isPreview);
             r = impl_->service->Download(accountId, remotePath, job.argument);
+            UltraCloud::SetThreadDownloadContinues(previousContinues);
             // A download that failed part way - the connection lost, the
             // window closed (Stop) - leaves no half a file behind: an FTP
             // download writes straight into it. The name was a free one when
-            // the job was queued, so what is there is this job's own.
-            if (!r.IsOk()) {
+            // the job was queued, so what is there is this job's own. A
+            // preview copy's ".part" is the worker's to keep or remove.
+            if (!r.IsOk() && !job.isPreview) {
                 std::error_code ec;
                 fs::remove(PathFromUtf8(job.argument), ec);
             }
@@ -1762,13 +1807,14 @@ void UltraFilerRemoteDrives::WorkerMain() {
             activeUploadFile_.clear();
         }
 
-        // A preview copy called off: half a file is thrown away, and the
-        // window is told nothing - it either still waits for the copy, which
-        // is fetched again behind the request it gave way to, or no longer
-        // wants it.
+        // A preview copy called off: the window is told nothing - it either
+        // still waits for the copy, which is fetched again behind the request
+        // it gave way to, or no longer wants it. What has arrived stays in
+        // its ".part" file, and the next try continues from there: after the
+        // request it gave way to, when the selection comes back to the file,
+        // or in the next run (the preview cache's sweep removes one nobody
+        // comes back for).
         if (job.isPreview && calledOff != PreviewKeep) {
-            std::error_code ec;
-            fs::remove(UltraCanvas::PathFromUtf8(job.argument), ec);   // half a file
             if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
             std::size_t left = 0;
             {
@@ -1777,8 +1823,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 if (calledOff == PreviewYield && !shutdown_) {
                     // Behind what the user asked for, still pending: the pane
                     // is still waiting for it, and onPreviewCopyReady fires
-                    // once it is in. Fetched from the start again - the
-                    // provider has no way to resume a download.
+                    // once it is in.
                     queue_.push_back(job);
                 } else {
                     // Asked for again if the selection comes back to it.
