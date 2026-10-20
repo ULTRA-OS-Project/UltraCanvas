@@ -96,10 +96,19 @@ jobs:
       # here against the SHA512 in its port, so a stale entry is harmless:
       # it is fetched again. Saved, like the binary cache, only when a run
       # added something.
+      #
+      # The `path` here must be the save step's, line for line: actions/cache
+      # files a cache under a version made from its paths, and a restore
+      # with any other list - even the folder alone - finds nothing. The
+      # first cut had the exclusions only on the save, and its 316 MB were
+      # never found again.
       - name: Restore vcpkg downloads
         uses: actions/cache/restore@v5
         with:
-          path: ${{ env.VCPKG_DOWNLOADS }}
+          path: |
+            ${{ env.VCPKG_DOWNLOADS }}
+            !${{ env.VCPKG_DOWNLOADS }}/tools
+            !${{ env.VCPKG_DOWNLOADS }}/temp
           key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
