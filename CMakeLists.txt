@@ -515,6 +515,14 @@ if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLis
         set(ULTRAAI_USE_ULTRAVAULT ON CACHE BOOL
             "Enable UltraVault credential lookup")
     endif()
+    # The module's own suite (mock adapters, routing, the cloud adapters
+    # over scripted transports, the local runtime against a fake engine)
+    # registers with CTest when asked, like every other suite.
+    option(ULTRACANVAS_BUILD_ULTRAAI_TESTS "Build the UltraAI test suite" OFF)
+    if(ULTRACANVAS_BUILD_ULTRAAI_TESTS)
+        enable_testing()   # must be the top-level call, as for every other suite
+        set(ULTRAAI_BUILD_TESTS ON CACHE BOOL "Build UltraAI unit tests" FORCE)
+    endif()
     add_subdirectory(UltraAI)
 endif()
     

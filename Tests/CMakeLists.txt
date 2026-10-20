@@ -1380,6 +1380,26 @@ add_test(NAME TexterMarkdownSpellRangesTest COMMAND TexterMarkdownSpellRangesTes
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: TexterMarkdownSpellRangesTest")
 
+# ===== LANGUAGE DETECT TEST =====
+# DetectLanguageFromContent (UltraCanvasLanguageDetect.h): the language of text
+# with no file name, as UltraTexter uses for a paste into a new tab. It has no
+# framework dependency, so the test builds from that one source file.
+message(STATUS "  Building LanguageDetectTest...")
+
+add_executable(LanguageDetectTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/LanguageDetectTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasLanguageDetect.cpp
+)
+target_include_directories(LanguageDetectTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(LanguageDetectTest PRIVATE cxx_std_20)
+set_target_properties(LanguageDetectTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME LanguageDetectTest COMMAND LanguageDetectTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: LanguageDetectTest")
+
 # ===== PATH UTF-8 TEST =====
 # UltraCanvasPathUtf8.h: the UTF-8 <-> UTF-16 conversion every Windows file
 # name goes through (PathToUtf8 / PathFromUtf8 / OpenFileUtf8). Header-only,

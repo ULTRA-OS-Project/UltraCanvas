@@ -1506,7 +1506,16 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys.
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+(`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
+`ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
+`InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
+`AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
+`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
+engine and a model on demand and supervises the engine as a loopback
+process shared between applications; the `local` provider
+(`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
+chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -3745,6 +3754,13 @@ configure time naming what is missing.
 | Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
+| Local runtime and `local` provider (`ULTRAAI_LOCAL_RUNTIME`, default ON, in-tree only) | llama.cpp `llama-server` (**runtime only** — a release archive downloaded on demand, hash-verified, spawned as a child process; never linked), through UltraNet, UltraCrypt and VirtualFS | same | same |
+
+> The local runtime links nothing new: the engine it runs is a prebuilt
+> llama.cpp release the user's machine downloads from the gallery index
+> (`Docs/Modules/UltraAI/LocalRuntime.md`) when a model is first asked for,
+> like Wine and QEMU for UltraWin. The models come from Hugging Face under
+> their own licences, named in the catalogue and shown before install.
 
 ### UltraCloud module
 
@@ -18262,6 +18278,12 @@ Each entry (`ClipboardHistoryEntry`) is described when it is recorded:
 | `pinned` | kept whatever the limits say; listed first |
 | `sizeBytes`, `width`, `height`, `fileCount`, `cut`, `lineCount` | for the meta line |
 | `thumbnailPath` | images: a PNG at most 96 px on its longer side |
+
+A text is `Code` when most of its lines end in `;` `{` `}` or carry an
+operator prose does not use, or when
+[`DetectLanguageFromContent`](UltraCanvasTextAreaExamples.md#picking-a-language-for-text-with-no-file-name)
+names its language (a SQL query, a Python block, YAML); Markdown it names
+stays `Text`.
 
 The same content copied again is not a second entry: it moves to the top
 (`ClipboardRecordResult::MovedToTop`).
@@ -43951,6 +43973,10 @@ on the dark grid. The legend swatch follows the mark. Closeness is measured
 as distance in RGB, so a saturated red or blue that is as dark as the grid
 keeps its own colour.
 
+A colour that does show, but only dimly, is blended toward the label colour
+just far enough to read, and keeps its hue. The Correlation scale's dark-green
+"++" on the dark grid is one: it stays green, so it still reads as positive.
+
 ## Interaction
 
 ```cpp
@@ -44437,7 +44463,7 @@ tool and a missing plugin should stop it running.
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
-| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
@@ -67233,6 +67259,40 @@ the highlighter has no rules for (a LaTeX `.cls`, an Objective-C `.m`) is left
 as plain text instead of being coloured as the other language. Returns
 whether a language was set.
 
+#### Picking a language for text with no file name
+Text that arrives without a file name - a paste into a new document, a
+clipboard entry, a stream - can be given its language from its content with
+`DetectLanguageFromContent` (`UltraCanvasLanguageDetect.h`, a free function
+with no dependency beyond the standard library). It returns a language name
+`SetProgrammingLanguage` takes, `"Markdown"` for Markdown, or `""` when the
+text does not clearly say (prose, a word or two) - leave such text plain.
+
+<!-- doc-check: std::string pasted; -->
+```cpp
+#include "UltraCanvasLanguageDetect.h"
+
+const std::string lang = DetectLanguageFromContent(pasted);
+if (lang == "Markdown") {
+    textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+} else if (!lang.empty()) {
+    textArea->SetHighlightSyntax(true);
+    textArea->SetProgrammingLanguage(lang);
+}
+```
+
+It decides in this order: a `#!` line names its interpreter; a text that is
+wholly one document is that document (`<?php`, `<?xml` and its SVG / RSS /
+KML / POM roots, HTML, a complete JSON value, JSONC with comments, GeoJSON);
+otherwise each line votes for the languages it can only be, and the winner
+must score at least 4 and lead every language outside its family by 2 (C++
+and C, TypeScript and JavaScript are families: there any lead decides, and a
+tie goes to C++ / JavaScript). Lines inside a Markdown ``` fence vote for
+Markdown, not for the code they show. Only the first 64 KB is read.
+UltraTexter calls it when text is pasted into a new, empty tab whose language
+nobody chose; `UltraCanvasMediaViewer` for a `.txt` / `.text` file; the
+clipboard history to file a copy as `Code` (UltraClipboard then colours it in
+*Edit* and offers its extension in *Save as*).
+
 ### Property Setters
 
 #### SetReadOnly
@@ -67831,6 +67891,7 @@ unescaped, and the document view typesets them.
 - **UltraCanvasTextInput**: Single-line text input
 - **UltraCanvasMarkdownDisplay**: Read-only markdown rendering (`Plugins/Text/UltraCanvasMarkdown.h`)
 - **SyntaxTokenizer**: The highlighter behind the text area (`UltraCanvasSyntaxTokenizer.h`)
+- **DetectLanguageFromContent**: The language of text with no file name (`UltraCanvasLanguageDetect.h`)
 - **UltraCanvasSpellChecker**: The shared spell-check service
 
 ## Platform-Specific Notes
@@ -83822,6 +83883,7 @@ and friends report what this build actually has.
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud or OpenAI-compatible server |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud |
 | `elevenlabs` | `ITextToSpeech` | cloud, direct or through a hosted relay |
+| `local` | `ITextLLM`, `IEmbeddings` | local — an engine the runtime downloads and supervises |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
@@ -84054,6 +84116,21 @@ unless `output_format` names an ElevenLabs format. `style`, `pitch` and
 sample bytes only; URL samples are rejected rather than downloaded.
 Speech-to-text and the WebSocket input-streaming endpoint are not
 implemented yet.
+
+---
+
+## `local` — a model on this computer, nothing to install
+
+Header: `UltraAILocal.h`. The local runtime (`UltraAILocalRuntime.h`,
+[`LocalRuntime.md`](LocalRuntime.md)) downloads llama.cpp's server for this
+machine and a model from its catalogue on demand, starts the engine on
+loopback with a key, and this adapter speaks to it in the OpenAI adapter's
+wire format. `defaultModel` is a catalogue id (`qwen3-4b-q4`), a
+user-added model (`file:<path>`, `hf:<repo>:<file>`) or empty for the
+runtime's recommendation; `providerOptions["allow_download"]` lets the
+first call install under the *Ask* policy. First in the local-first
+routing. Everything else — the gallery, the catalogue, the settings, the
+errors — is in `LocalRuntime.md`.
 
 ---
 
@@ -84366,9 +84443,314 @@ under a text-LLM provider's id replaces the LLM-backed one for that id.
 * [`../../Research/ComfyUIIntegrationResearch.md`](../../Research/ComfyUIIntegrationResearch.md)
   — why these adapters are shaped the way they are, and the licensing
   boundary against ComfyUI.
+* [`LocalRuntime.md`](LocalRuntime.md) — the local runtime behind the
+  `local` provider: engines and models downloaded on demand and run as
+  supervised processes, so nothing has to be installed;
+  [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md)
+  is its design.
 * `UltraAI/Docs/UltraNetIntegration.md` — how network adapters use
   UltraNet (HTTP, SSE, WebSocket), threading and cancellation rules.
 * `UltraAI/Docs/UltraVault.md` — credential storage for `apiKeyVaultRef`.
+
+==============================================================================
+FILE: Docs/Modules/UltraAI/LocalRuntime.md
+==============================================================================
+
+# UltraAI Local Runtime — models on this computer, nothing to install
+
+**Version:** 0.1.0
+**Last Modified:** 2026-10-20
+
+## Overview
+
+The local runtime runs language and embedding models on the user's own
+machine the way LocalAI's galleries do, without the user installing
+anything: the inference engine (llama.cpp's `llama-server`) and the model
+files are downloaded on demand, verified, started as a loopback process,
+shared between every UltraCanvas application that wants the same model,
+and stopped when nothing has used them for a while. The `local` provider
+serves `ITextLLM` and `IEmbeddings` through it and ranks first in the
+module's local-first routing, so an application that leaves `providerId`
+empty gets a model on this computer whenever one is installed or can be.
+
+Header: `UltraAILocalRuntime.h` (the runtime) and `UltraAILocal.h` (the
+provider). Design: [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md);
+this document is phase 1 of its plan (chat and embeddings over
+`llama-server`), with the user interface, speech, images and the
+supervisor process still to come. Built in-tree only
+(`ULTRAAI_LOCAL_RUNTIME`, default ON): it needs UltraNet, UltraCrypt and
+VirtualFS, which live in the shared core.
+
+```cpp
+#include <UltraAI.h>
+#include <UltraAILocalRuntime.h>
+using namespace UltraAI;
+
+// An application that just wants a chat model on this computer.
+TextLLMConfig cfg;
+cfg.providerId = "local";                 // or empty: routing prefers "local"
+cfg.providerOptions["allow_download"] = true;   // the user agreed in a dialog
+auto llm = CreateTextLLM(cfg);
+
+ChatRequest req;
+Message m; m.role = Role::User; m.text = "Fasse diesen Absatz zusammen: ...";
+req.messages.push_back(std::move(m));
+ChatResponse resp = llm->Chat(req);       // installs, starts and answers
+```
+
+The first call downloads the engine bundle for this machine (about 30 MB)
+and the recommended model (a few GB), starts the engine and answers; later
+calls find it running. Without `allow_download` under the default *Ask*
+policy the call fails with `ErrorCode::ModelNotFound` and `providerCode`
+`"needs-install"`: the cue for an application to show what the runtime
+recommends and ask.
+
+---
+
+## What the runtime does
+
+| Part | What it is | Where |
+|---|---|---|
+| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
+| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
+| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded). | `<root>/user-models.json` |
+| **Installs** | Background jobs on the runtime's worker: download to a `.part` file (resumed when one exists), verify the SHA-256 through UltraCrypt, move into place; an engine bundle is unpacked through VirtualFS and gets a `bundle.json`; a model gets its `model.json` last, so a half-installed model never counts as installed. | `InstallModel`, `InstallEngine`, `Cancel`, `ListJobs` |
+| **Supervision** | `Ensure(modelId)` starts `llama-server` on a free loopback port with `--api-key-file`, waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
+| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
+
+### Storage
+
+Under the machine-local data root (`UltraCanvasDataFolder.h`: `%LOCALAPPDATA%`
+on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
+`~/.local/share` elsewhere), so the gigabytes never roam with a profile:
+
+```
+<root>/UltraAI/
+├── engines/<engine>/<version>-<platform>-<accelerator>/   an unpacked bundle, with bundle.json
+├── models/<model id>/                                      the files, with model.json
+├── downloads/*.part                                        in flight; resumed next time
+├── gallery/index.json, catalogue.json                      the refreshed copies
+├── logs/<engine>-<model>.log                               the engine's output (rotated at 4 MB)
+├── runtime.json                                            running engines: pid, port, model, started, last used
+├── runtime.key                                             the loopback API key (owner-only on POSIX)
+├── runtime-settings.json                                   the settings below
+└── user-models.json                                        models the user added
+```
+
+`RootFolder()` returns it for a settings page's *Open folder*;
+`DiskUsedBytes()` what engines and models take.
+
+### Settings
+
+`GetSettings()` / `SetSettings()`, persisted:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `policy` | `Ask` | `Never`: installs only from a settings page; `Ask`: `Ensure` installs when the caller passes `allowDownload` (the dialog's answer); `Automatic`: `Ensure` installs silently |
+| `preferredAccelerator` | `""` (Auto) | `"cpu"`, `"vulkan"`, `"metal"`, `"cuda12"`, `"rocm"` — the bundle to use when the gallery has one for this platform |
+| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` is read from beside it |
+| `idleMinutes` | 15 | stop an engine nobody used for this long (0 stops at the next sweep) |
+| `diskCapBytes` | 20 GB | an install that would exceed it fails with `QuotaExceeded` |
+| `startTimeoutSeconds` | 0 | how long a start may take; 0 scales it with the model's size (about 100 MB/s plus 20 s, at least 30 s) |
+
+### The engine's command line
+
+For `llama-server`: `--host 127.0.0.1 --port <free> --api-key-file
+<root>/runtime.key --model <file> --alias <model id>`, `--mmproj <file>`
+when the model carries an `mmproj*.gguf`, `--embeddings` for an embedding
+model, `--n-gpu-layers 999` when the model fits the GPU (0 on a CPU bundle;
+otherwise the engine's own fitting decides), `--threads` from the physical
+cores (two left for the desktop), then the gallery's `defaultArgs`
+(`--jinja`, for tool calls) and the model's `engineArgs` (`--ctx-size`,
+`--pooling`). `local_detail::BuildEngineArgs` is the one place this is
+decided.
+
+Engines reach their libraries through their own folder (`$ORIGIN` on
+Linux, the bundle's layout on macOS and Windows), so a bundle runs from
+wherever it was unpacked.
+
+### Using an engine you built yourself
+
+`LocalRuntimeOptions::engineOverrides["llama-server"]`, or the environment
+variable `ULTRAAI_LOCAL_ENGINE_LLAMA_SERVER`, names a folder holding (or
+the path of) a `llama-server` executable; the runtime uses it instead of a
+bundle and downloads no engine. A developer's own CUDA build, or a test's
+fake engine.
+
+---
+
+## The gallery index
+
+`index.json`, format version 1:
+
+```json
+{
+  "formatVersion": 1,
+  "published": "2026-10-20",
+  "engines": [{
+    "id": "llama-server",
+    "version": "b11669",
+    "license": "MIT",
+    "executable": "llama-server",
+    "serves": ["textllm", "embeddings"],
+    "defaultArgs": ["--jinja"],
+    "bundles": [
+      {"platform": "linux-x64",   "accel": "cpu",    "url": "https://...", "sha256": "...", "size": 17851611},
+      {"platform": "linux-x64",   "accel": "vulkan", "url": "https://...", "sha256": "...", "size": 30497889},
+      {"platform": "macos-arm64", "accel": "metal",  "url": "https://...", "sha256": "...", "size": 12191582, "minOs": "13.3"},
+      {"platform": "win-x64",     "accel": "cuda12", "url": "https://...", "sha256": "...", "size": 254000000, "optional": true}
+    ]
+  }]
+}
+```
+
+Platforms are `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
+`win-x64`, `win-arm64`. A bundle marked `optional` is offered, never
+chosen by Auto. `minOs` is honoured on macOS. A bundle is an archive
+(`.tar.gz` or `.zip`) holding the executable at any depth; the runtime
+finds it by name, breadth first.
+
+## The model catalogue
+
+`catalogue.json`, format version 1:
+
+```json
+{
+  "formatVersion": 1,
+  "published": "2026-10-20",
+  "models": [{
+    "id": "qwen3-4b-q4",
+    "displayName": "Qwen3 4B (Q4_K_M)",
+    "description": "...",
+    "capability": "textllm",
+    "engine": "llama-server",
+    "license": "Apache-2.0",
+    "files": [{"name": "Qwen3-4B-Q4_K_M.gguf", "url": "https://huggingface.co/.../resolve/main/...", "sha256": "", "size": 2497000000}],
+    "requires": {"memoryBytes": 4000000000, "gpuMemoryBytes": 3500000000},
+    "features": {"contextWindow": 32768, "tools": true, "vision": false, "embeddingDimensions": 0},
+    "engineArgs": ["--ctx-size", "8192"],
+    "tags": ["chat", "tools", "recommended"]
+  }]
+}
+```
+
+A file whose `sha256` is empty is verified against the hash its host
+reports: for a Hugging Face `resolve` URL the runtime asks the repository's
+tree API for the file's LFS hash and size before downloading, and records
+them in the model's `model.json`. The built-in catalogue ships that way
+until its hashes are pinned; a catalogue entry with a hash is verified
+against that hash only. `requires` drives the fit; without it, 1.2 x the
+files' size stands in. `tags` holding `recommended` puts a model first in
+`Recommend()` for its capability.
+
+The built-in catalogue (2026-10-20): Qwen3 4B, 1.7B and 8B for chat,
+Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
+embeddings.
+
+---
+
+## The `local` provider
+
+`CreateTextLLM` / `CreateEmbeddings` with `providerId = "local"`, or an
+empty `providerId` when nothing names another provider: `local` is first
+in `KnownLocalProviders` for `textllm`, `embeddings` and `translator`.
+
+| Config field | Meaning |
+|---|---|
+| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for `Recommend(capability)` |
+| `providerOptions["allow_download"]` | bool: the first call may install under the *Ask* policy |
+| `timeoutMs`, other `providerOptions` | passed to the OpenAI-wire delegate |
+| `apiKey`, `apiKeyVaultRef`, `baseUrl` | ignored: the runtime's endpoint and key are used |
+
+A request's `model` names another local model; each gets its own engine.
+`GetCapabilities()` lists the installed models first and then the
+catalogue's for this computer with ` (not installed)` in the name, each
+`runsLocally`, so a picker shows both. `RawProvider()` is the OpenAI
+delegate of the default model once it has been used.
+
+Errors: `ModelNotFound` / `"needs-install"` (a download is needed and not
+allowed), `ModelNotFound` / `"too-large"` (the model does not fit this
+computer's memory), `ProviderError` with the log's last lines (the engine
+ended while starting), `ProviderError` / `"start-failed"` (two failed
+starts; stop or reinstall the model to try again), `Timeout` (the engine
+did not answer in time), `NetworkError` (a download failed; the `.part`
+is kept for a resume), `QuotaExceeded` (the disk cap).
+
+---
+
+## For a settings page
+
+```cpp
+LocalRuntime& rt = LocalRuntime::Instance();
+
+for (const LocalModelInfo& m : rt.ListModels()) {
+    // m.displayName, m.capability, m.license, m.sizeBytes,
+    // m.fit (Recommended / RunsOnCpu / TooLarge / Unknown),
+    // m.installed, m.running, m.installedPath
+}
+for (const EngineInfo& e : rt.ListEngines()) {
+    for (const EngineBundleInfo& b : e.bundles) {
+        // b.accelerator, b.sizeBytes, b.installed, b.recommended, b.optional
+    }
+}
+const std::string job = rt.InstallModel("qwen3-4b-q4", [](const InstallProgress& p) {
+    // p.state: Queued, Downloading (p.bytesDone / p.bytesTotal), Verifying,
+    // Unpacking, Done, Failed (p.error), Cancelled — on the runtime's worker
+});
+rt.Cancel(job);
+rt.RemoveModel("qwen3-4b-q4");
+rt.RemoveEngine("llama-server", "vulkan");
+for (const RunningEngineInfo& r : rt.ListRunning()) { /* r.modelId, r.baseUrl, r.processId */ }
+rt.StopAll();
+```
+
+Progress callbacks fire on the runtime's worker thread: hand them to the
+UI thread before touching an element.
+
+---
+
+## Testing
+
+`UltraAI/tests/test_local_runtime.cpp` runs against `fake_engine.cpp`, a
+stand-in for `llama-server` that takes the same command line and serves
+`/health`, `/v1/models`, `/v1/chat/completions` and `/v1/embeddings` over
+loopback: the built-in data parses; the fit and the bundle choice; an
+install through an injected copy fetcher (progress, a wrong hash refused,
+a failed transfer resumed, `model.json` last); `Ensure` under each policy,
+the shared record found by a second runtime, the idle stop, the restart
+marker; and the `local` provider's chat and embeddings end to end. Nothing
+in it touches the network. `ULTRACANVAS_BUILD_ULTRAAI_TESTS=ON` builds the
+module's suite in-tree and CI runs it with the rest.
+
+To try the real engine on a machine with no model installed:
+
+```cpp
+LocalRuntimeSettings s = LocalRuntime::Instance().GetSettings();
+s.policy = DownloadPolicy::Automatic;
+LocalRuntime::Instance().SetSettings(s);
+// then any CreateTextLLM(cfg) with cfg.providerId = "local"
+```
+
+## Limits (0.1.0)
+
+- Chat and embeddings only: speech-to-text, image generation and
+  text-to-speech engines are the proposal's phase 3.
+- One `llama-server` process per model; the router mode (one process for
+  every GGUF) and the `UltraAIHost` supervisor are phase 2. An engine
+  started by an application that exits stays until an idle sweep from any
+  application stops it.
+- The engine bundles are llama.cpp's own release archives, pinned by hash;
+  the UltraCanvas-built, signed gallery is phase 0 of the proposal and
+  replaces the built-in index without a format change. On macOS the
+  upstream archives are built for 13.3 and later, and a downloaded
+  executable runs as it is (UltraNet sets no quarantine attribute).
+- The catalogue's hashes are taken from Hugging Face at install time until
+  they are pinned; sizes are approximate until then.
+- The gallery index is not yet signed; it is fetched over TLS from a URL
+  the settings control.
+- No framework dialog and no dashboard page yet (phase 2 of the plan): an
+  application reads `"needs-install"` and asks with its own UI, or sets
+  `allow_download` after asking once.
 
 ==============================================================================
 FILE: Docs/Modules/UltraAI/README.md
@@ -84427,12 +84809,16 @@ tests run without any network or external model.
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
+| `local` | `ITextLLM`, `IEmbeddings` | local — an engine the runtime downloads, starts and supervises; nothing to install | `ULTRAAI_LOCAL_RUNTIME` (ON; in-tree only) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
 | *text-LLM translator* | `ITranslator` through any `ITextLLM` above, under that provider's id (`anthropic`, `openai`, `qwen`, `llama-cpp`, …) | wherever the LLM runs | always built (`UltraAITextLLMTranslator.h`) |
 
 `Docs/Modules/UltraAI/Adapters.md` documents each adapter's configuration,
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
 user installs; UltraAI talks to them over HTTP and links none of their code.
+The `local` provider needs no such program: the local runtime
+(`Docs/Modules/UltraAI/LocalRuntime.md`) fetches llama.cpp's server and a
+model from a gallery and a catalogue on demand and runs them itself.
 
 ---
 
@@ -84480,6 +84866,7 @@ UltraAI/
 │   ├── UltraAIMusicGen.h
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
+├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -84487,6 +84874,7 @@ UltraAI/
 │   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
 │   ├── minimax/                   # MiniMax / Hailuo video, image and speech
 │   ├── elevenlabs/                # ElevenLabs speech (direct or via a hosted relay)
+│   ├── local/                     # The `local` provider on the runtime (ITextLLM + IEmbeddings)
 │   ├── qwen/                      # Qwen on a local OpenAI-compatible server
 │   ├── comfyui/                   # Local ComfyUI image + video generation
 │   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
@@ -84565,6 +84953,7 @@ cmake -S UltraAI -B build \
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
+| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server` the runtime downloads from a hash-verified gallery, starts on loopback with a key, shares across applications and stops when idle; curated model catalogue, user GGUFs, Hugging Face files; hardware fit) | Complete (v0.1 — chat and embeddings; no dashboard page or framework dialog yet) |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
@@ -84580,6 +84969,12 @@ cmake -S UltraAI -B build \
   threading model, adapter checklist.
 * [`Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
+* [`../Docs/Modules/UltraAI/LocalRuntime.md`](LocalRuntime.md) —
+  the local runtime as built: the gallery and catalogue formats, storage,
+  settings, the engine's command line, the `local` provider, testing.
+* [`../Docs/Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md) —
+  the design it follows: why separate processes, why a gallery of our own,
+  the phases still to come (UI, speech, images, the supervisor process).
 
 ---
 

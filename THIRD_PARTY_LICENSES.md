@@ -165,6 +165,14 @@ local modifications.
 Built as static libraries and linked into `UltraAI_AdapterLlama` only when
 the adapter option is enabled; no sources are modified.
 
+The UltraAI local runtime (`UltraAI/runtime/`, `ULTRAAI_LOCAL_RUNTIME`)
+also uses llama.cpp, in another way: it downloads the project's own
+prebuilt `llama-server` release archive (build b11669, pinned by SHA-256 in
+`UltraAI/runtime/src/LocalRuntimeBuiltinData.cpp`) onto the user's machine
+when a model is first asked for, unpacks it with its `LICENSE` file beside
+the executable, and runs it as a child process. Nothing of it is linked or
+redistributed with the suite.
+
 ---
 
 ## Latin Modern Math (math font)

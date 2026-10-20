@@ -1,6 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
 // Matrix diagram element: item sets crossed in L, T, X, Y, House and C arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.6.2 - a dim level colour (the Correlation scale's dark-green ++ in the dark theme) is lightened just enough to read, keeping its hue
 // Version: 1.6.1 - a level colour too dark for the dark theme (HighMediumLow's High) is drawn in the label colour, as competitors are
 // Version: 1.6.0 - the C shape: a cube drawn as stacked isometric slices, one per depth item
 // Version: 1.5.1 - the dark theme recolours the competitive block, direction arrows, ranks and roll-up bars; a competitor too dark to see is drawn in the label colour

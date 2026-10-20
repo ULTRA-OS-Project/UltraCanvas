@@ -452,6 +452,13 @@ configure time naming what is missing.
 | Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
+| Local runtime and `local` provider (`ULTRAAI_LOCAL_RUNTIME`, default ON, in-tree only) | llama.cpp `llama-server` (**runtime only** — a release archive downloaded on demand, hash-verified, spawned as a child process; never linked), through UltraNet, UltraCrypt and VirtualFS | same | same |
+
+> The local runtime links nothing new: the engine it runs is a prebuilt
+> llama.cpp release the user's machine downloads from the gallery index
+> (`Docs/Modules/UltraAI/LocalRuntime.md`) when a model is first asked for,
+> like Wine and QEMU for UltraWin. The models come from Hugging Face under
+> their own licences, named in the catalogue and shown before install.
 
 ### UltraCloud module
 

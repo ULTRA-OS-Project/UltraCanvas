@@ -166,6 +166,10 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasRichTextEdit> richEdit;
         DocumentKind kind = DocumentKind::Text;
         std::string language;              // Syntax highlighting language
+        // Set once the language is settled by more than a guess - picked from
+        // the status bar, or given by a template or a recovered backup. Until
+        // then, text pasted into the still-empty tab picks the language.
+        bool languageChosen = false;
         bool isSaved;                      // Has unsaved changes
         bool isModified;                   // Has unsaved changes
         bool isNewFile;                    // Never been saved
@@ -456,6 +460,9 @@ namespace UltraCanvas {
         void OnEditCut();
         void OnEditCopy();
         void OnEditPaste();
+        // Paste into a text tab. A new, empty tab whose language nobody chose
+        // takes the language the pasted text is written in.
+        void PasteIntoDocument(int docIndex);
         void OnEditSelectAll();
         void OnEditSearch();
         void OnEditReplace();
@@ -519,6 +526,9 @@ namespace UltraCanvas {
         void UpdateMarkdownToolbarState();
         void UpdateLanguageDropdown();
         void OnLanguageChanged(int index, const DropdownItem& item);
+        // Switch a text tab's highlighting / editing mode to `lang` (a language
+        // dropdown value) and re-wire what depends on it.
+        void ApplyDocumentLanguage(int docIndex, const std::string& lang);
         void UpdateEncodingDropdown();
         void OnEncodingChanged(int index, const DropdownItem& item);
         void UpdateEOLDropdown();

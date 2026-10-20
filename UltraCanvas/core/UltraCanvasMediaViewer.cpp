@@ -53,6 +53,7 @@
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
 #include "UltraCanvasModelPreview.h"    // which 3D formats this build reads
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
+#include "UltraCanvasLanguageDetect.h" // the language of a .txt
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
@@ -2162,7 +2163,12 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         if (!importedDocument && !ReadTextFile(path, content)) {
             if (infoLabel) infoLabel->SetText("Failed to open text file: " + BaseName(path));
         } else {
-            if (ext == "md" || ext == "markdown" || importedDocument) {
+            // A .txt names no language, so the text is asked: a snippet of
+            // Python saved as notes.txt is shown as Python, a Markdown
+            // README.txt rendered. Prose stays plain.
+            const std::string detected =
+                    (ext == "txt" || ext == "text") ? DetectLanguageFromContent(content) : std::string();
+            if (ext == "md" || ext == "markdown" || importedDocument || detected == "Markdown") {
                 ta->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
                 ta->SetHighlightSyntax(false);
             } else {
@@ -2170,7 +2176,8 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
                 static SyntaxTokenizer tk;
                 // A shared extension (.cls, .m) is settled by the text: a
                 // LaTeX .cls is not coloured as VBA.
-                const std::string sniffed = SyntaxTokenizer::LanguageFromContent(ext, content);
+                const std::string sniffed = !detected.empty() ? detected
+                                                              : SyntaxTokenizer::LanguageFromContent(ext, content);
                 if (sniffed.empty() ? (!ext.empty() && tk.SetLanguageByExtension(ext))
                                     : tk.SetLanguage(sniffed)) {
                     ta->SetHighlightSyntax(true);
