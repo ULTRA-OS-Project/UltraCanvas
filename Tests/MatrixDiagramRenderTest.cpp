@@ -13,6 +13,7 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.6.2 - the roof's dark-green ++ is lightened to read on the dark grid, and stays green
 // Version: 1.6.1 - a near-black level stays visible in the dark theme, and keeps its colour in the light
 // Version: 1.6.0 - the C shape: every cell of every slice reachable over the same area, slice labels, Page Up/Down, editing in depth
 // Version: 1.5.1 - the dark theme darkens the competitive block, and a dark competitor stays visible on it
@@ -833,6 +834,34 @@ void TestDarkLevels() {
     FindCellCentre(*qfd, Ref(0, strongRow, strongCol), kWidth, kHeight, strong, cellW);
     const Color red = canvas.PixelAt(strong.x, strong.y);
     Check(red.r > 150 && red.g < 90 && red.b < 90, "a saturated colour keeps its own hue in the dark");
+
+    // The Correlation scale's "++" is a dark green: visible on the dark grid,
+    // but dimly. It is lightened until it reads, and stays green.
+    auto house = LaidOut(MatrixSamples::HouseOfQuality(), canvas);
+    house->SetDarkTheme(true);
+    house->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    int roofRow = -1, roofCol = -1;
+    for (const MatrixCell& cell : house->GetModel().cells) {
+        if (cell.panel == 1 && cell.levelId == "strongpositive") { roofRow = cell.row; roofCol = cell.col; break; }
+    }
+    Point2Di plus;
+    Check(roofRow >= 0 && FindCellCentre(*house, Ref(1, roofRow, roofCol), kWidth, kHeight, plus, cellW),
+          "the House roof has a ++ cell on screen");
+    house->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));   // the sweep hovered cells
+    const Color grid = house->GetStyle().cellBackground;
+    double farthest = 0.0;
+    Color glyph;
+    for (int y = plus.y - 8; y <= plus.y + 8; ++y) {
+        for (int x = plus.x - 10; x <= plus.x + 10; ++x) {
+            const Color c = canvas.PixelAt(x, y);
+            if (c.g <= c.r + 20 || c.g <= c.b) continue;   // green ink only
+            const double dr = c.r - grid.r, dg = c.g - grid.g, db = c.b - grid.b;
+            const double d = std::sqrt(dr * dr + dg * dg + db * db);
+            if (d > farthest) { farthest = d; glyph = c; }
+        }
+    }
+    Check(farthest >= 95.0, "dark theme: the ++ stands clear of the grid (" + std::to_string(glyph.r) + ", "
+          + std::to_string(glyph.g) + ", " + std::to_string(glyph.b) + ")");
 }
 
 } // namespace

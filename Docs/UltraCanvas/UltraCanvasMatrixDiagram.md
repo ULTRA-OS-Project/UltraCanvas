@@ -474,6 +474,10 @@ on the dark grid. The legend swatch follows the mark. Closeness is measured
 as distance in RGB, so a saturated red or blue that is as dark as the grid
 keeps its own colour.
 
+A colour that does show, but only dimly, is blended toward the label colour
+just far enough to read, and keeps its hue. The Correlation scale's dark-green
+"++" on the dark grid is one: it stays green, so it still reads as positive.
+
 ## Interaction
 
 ```cpp
