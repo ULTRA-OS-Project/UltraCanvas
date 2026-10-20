@@ -1,10 +1,85 @@
 // core/UltraDatabase/UltraDatabaseValue.cpp
 // UltraDbValue coercion rules and UltraDbRow / UltraDbResultSet column access.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.1.1
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabase/UltraDatabaseValue.h"
 
+#include "UltraDatabaseInternal.h"
+
+#include <cctype>
+#include <cmath>
 #include <cstdlib>
+#include <iomanip>
+#include <limits>
+#include <locale>
+#include <sstream>
+
+// ---- Dot-decimal numbers ---------------------------------------------------
+
+namespace ultradb_internal {
+
+namespace {
+
+// Case-insensitive "does `text` start with `word` at `pos`".
+bool StartsWithWord(const std::string& text, size_t pos, const char* word) {
+    for (size_t i = 0; word[i] != '\0'; ++i, ++pos) {
+        if (pos >= text.size()) return false;
+        if (std::tolower(static_cast<unsigned char>(text[pos])) != word[i]) return false;
+    }
+    return true;
+}
+
+} // namespace
+
+bool ParseDoubleClassic(const std::string& text, double& out) {
+    size_t pos = 0;
+    while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos]))) ++pos;
+    if (pos == text.size()) return false;
+
+    // PostgreSQL writes the special float8 values as words, which a stream
+    // does not read. strtod did, so they keep working.
+    size_t word = pos;
+    bool negative = false;
+    if (text[word] == '+' || text[word] == '-') { negative = text[word] == '-'; ++word; }
+    if (StartsWithWord(text, word, "nan")) {
+        out = std::numeric_limits<double>::quiet_NaN();
+        return true;
+    }
+    if (StartsWithWord(text, word, "inf")) {   // "inf" and "infinity"
+        out = negative ? -std::numeric_limits<double>::infinity()
+                       :  std::numeric_limits<double>::infinity();
+        return true;
+    }
+
+    // A stream imbued with the classic locale has '.' as its decimal point
+    // and no thousands grouping, whatever the process's locale is.
+    std::istringstream in(text.substr(pos));
+    in.imbue(std::locale::classic());
+    double value = 0.0;
+    in >> value;
+    if (in.fail()) return false;
+    out = value;
+    return true;
+}
+
+std::string FormatDoubleClassic(double value) {
+    if (std::isnan(value)) return "NaN";
+    if (std::isinf(value)) return value < 0 ? "-Infinity" : "Infinity";
+
+    // The shortest of 15 and 17 significant digits that reads back as the
+    // same double: 0.1 stays "0.1" rather than "0.10000000000000001".
+    for (int precision : {15, 17}) {
+        std::ostringstream text;
+        text.imbue(std::locale::classic());
+        text << std::setprecision(precision) << value;
+        double back = 0.0;
+        if (precision == 17 || (ParseDoubleClassic(text.str(), back) && back == value))
+            return text.str();
+    }
+    return std::string();   // not reached: the 17-digit form always returns
+}
+
+} // namespace ultradb_internal
 
 // ---- UltraDbValue coercions ------------------------------------------------
 
@@ -40,7 +115,13 @@ double UltraDbValue::AsDouble() const {
         case UltraDbType::Bool:
         case UltraDbType::Int:    return static_cast<double>(i_);
         case UltraDbType::Double: return d_;
-        case UltraDbType::Text:   return s_.empty() ? 0.0 : std::strtod(s_.c_str(), nullptr);
+        case UltraDbType::Text: {
+            // Dot-decimal: a Text value is a number as the database wrote it,
+            // not as the user's locale would write it.
+            double value = 0.0;
+            ultradb_internal::ParseDoubleClassic(s_, value);
+            return value;
+        }
         case UltraDbType::Blob:   return 0.0;
     }
     return 0.0;

@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 set(ULTRADATABASE_TEST_SOURCES
     test_main.cpp
     test_ultradatabase.cpp
+    test_numbers.cpp
 )
 
 add_executable(UltraDatabaseTests ${ULTRADATABASE_TEST_SOURCES})

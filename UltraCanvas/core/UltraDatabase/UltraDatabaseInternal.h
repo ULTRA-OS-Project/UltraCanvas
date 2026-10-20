@@ -29,4 +29,21 @@ std::string PostgresPlatzhalter(const std::string& sql);
 // driver for database paths).
 std::string ExpandUserPath(const std::string& path);
 
+// A number in a database's text form - a PostgreSQL float8 or numeric column,
+// a Text value coerced with AsDouble - read with '.' as the decimal point
+// whatever LC_NUMERIC says. strtod follows the locale, and the Linux backend
+// calls setlocale(LC_ALL, "") for XIM, so in any GUI program on a
+// comma-decimal desktop it read "3.14" as 3. Also takes PostgreSQL's spellings
+// of the special values ("NaN", "Infinity", "-Infinity"). Leading whitespace
+// and trailing text are ignored, as strtod ignores them. Returns false, and
+// leaves `out` alone, when the text does not start with a number. Defined in
+// UltraDatabaseValue.cpp, so it is compiled and tested without libpq.
+bool ParseDoubleClassic(const std::string& text, double& out);
+
+// The other direction: a double as a parameter on the wire, dot-decimal and
+// with enough digits to read back as the same double. std::to_string, which
+// the PostgreSQL driver used before, both follows the locale ("3,140000",
+// which the server rejects) and keeps six decimals (1e-9 became "0.000000").
+std::string FormatDoubleClassic(double value);
+
 } // namespace ultradb_internal

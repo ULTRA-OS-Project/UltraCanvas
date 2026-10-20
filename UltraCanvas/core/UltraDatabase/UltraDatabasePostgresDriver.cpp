@@ -26,7 +26,7 @@
 // the driver is simply not registered and an attempt to open a "postgresql"
 // connection reports that the driver is missing, which is a true answer rather
 // than a link error.
-// Version: 0.1.1
+// Version: 0.1.2
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDatabase/UltraDatabaseCore.h"
@@ -149,6 +149,16 @@ struct GebundeneParameter {
                     formate.push_back(0);
                     break;
                 }
+                case UltraDbType::Double:
+                    // Dot-decimal and round-tripping. AsString goes through
+                    // std::to_string, which writes "3,140000" on a
+                    // comma-decimal desktop - refused by the server - and
+                    // keeps six decimals, so 1e-9 was sent as zero.
+                    speicher.emplace_back(ultradb_internal::FormatDoubleClassic(v.AsDouble()));
+                    werte.push_back(speicher.back().c_str());
+                    laengen.push_back(0);
+                    formate.push_back(0);
+                    break;
                 default:
                     speicher.emplace_back(v.AsString());
                     werte.push_back(speicher.back().c_str());
@@ -188,10 +198,16 @@ UltraDbValue WertAusFeld(PGresult* res, int zeile, int spalte) {
             return UltraDbValue(static_cast<int64_t>(std::strtoll(text, nullptr, 10)));
         case kOidFloat4:
         case kOidFloat8:
-        case kOidNumeric:
+        case kOidNumeric: {
             // PostgreSQL always renders these with a dot, whatever the
-            // client's locale; strtod under the C locale reads them back.
-            return UltraDbValue(std::strtod(text, nullptr));
+            // client's locale - so they are read with a dot too. strtod was
+            // used here and follows LC_NUMERIC, which a GUI program on a
+            // comma-decimal desktop has set: "3.14" came back as 3.
+            double wert = 0.0;
+            ultradb_internal::ParseDoubleClassic(
+                std::string(text, static_cast<size_t>(PQgetlength(res, zeile, spalte))), wert);
+            return UltraDbValue(wert);
+        }
         case kOidBytea: {
             std::vector<uint8_t> bytes;
             const size_t laenge = static_cast<size_t>(PQgetlength(res, zeile, spalte));
