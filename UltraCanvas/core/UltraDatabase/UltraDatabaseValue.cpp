@@ -1,6 +1,6 @@
 // core/UltraDatabase/UltraDatabaseValue.cpp
 // UltraDbValue coercion rules and UltraDbRow / UltraDbResultSet column access.
-// Version: 0.1.1
+// Version: 0.1.2
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabase/UltraDatabaseValue.h"
 
@@ -132,7 +132,12 @@ std::string UltraDbValue::AsString() const {
         case UltraDbType::Null:   return std::string();
         case UltraDbType::Bool:   return i_ != 0 ? "true" : "false";
         case UltraDbType::Int:    return std::to_string(i_);
-        case UltraDbType::Double: return std::to_string(d_);
+        // Dot-decimal, and the shortest text that reads back as the same
+        // double: 3.14 is "3.14". std::to_string, used before, wrote it
+        // through LC_NUMERIC as "3,140000" on a comma-decimal desktop and
+        // kept six decimals, so 1e-9 became "0.000000". NaN and the
+        // infinities are spelled as PostgreSQL spells them.
+        case UltraDbType::Double: return ultradb_internal::FormatDoubleClassic(d_);
         case UltraDbType::Text:   return s_;
         case UltraDbType::Blob:   return std::string(b_.begin(), b_.end());
     }

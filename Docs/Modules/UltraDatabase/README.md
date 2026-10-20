@@ -17,7 +17,7 @@ the app code hard-codes.
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 42 tests, the PostgreSQL ones
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 43 tests, the PostgreSQL ones
 > against a live server where one is configured). The **PostgreSQL** driver
 > (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
 > found at configure time; it takes `?` placeholders, verifies TLS by default
@@ -265,7 +265,9 @@ has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
 **Numbers.** PostgreSQL `numeric` comes back as `Text`, exactly as stored
 (`AsDouble` still converts it for a caller that wants a double); `float8`
 and `float4` as `Double`. Numbers cross the driver dot-decimal in both
-directions whatever the process's locale.
+directions whatever the process's locale, and `AsString()` of a `Double` is
+dot-decimal too: the shortest text that reads back exactly (`3.14`, not
+`3,140000`).
 
 ---
 
@@ -383,7 +385,7 @@ headless data module usable from any ULTRA OS process.
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
 | Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
-| Test suite (42 tests) | Passing |
+| Test suite (43 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver | Planned (Stage 2) |

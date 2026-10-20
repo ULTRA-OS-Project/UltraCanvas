@@ -57,6 +57,8 @@ public:
     uint32_t             AsU32()    const { return static_cast<uint32_t>(AsInt64()); }
     int                  AsInt()    const { return static_cast<int>(AsInt64()); }
     double               AsDouble() const;
+    // A Double is written dot-decimal whatever the locale, as the shortest
+    // text that reads back exactly ("3.14", "2", "1e-09"; "NaN", "Infinity").
     std::string          AsString() const;
     std::vector<uint8_t> AsBlob()   const;
 

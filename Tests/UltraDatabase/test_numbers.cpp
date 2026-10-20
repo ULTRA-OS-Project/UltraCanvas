@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -101,6 +102,20 @@ TEST(text_as_double_ignores_the_locale) {
     REQUIRE_EQ(UltraDbValue("").AsDouble(), 0.0);
 }
 
+TEST(double_as_string_ignores_the_locale_and_round_trips) {
+    CommaDecimalLocale locale;
+    REQUIRE_EQ(UltraDbValue(3.14).AsString(), std::string("3.14"));
+    REQUIRE_EQ(UltraDbValue(2.0).AsString(), std::string("2"));
+    REQUIRE_EQ(UltraDbValue(-0.5).AsString(), std::string("-0.5"));
+    REQUIRE_EQ(UltraDbValue(1e-9).AsString(), std::string("1e-09"));
+    REQUIRE_EQ(UltraDbValue(std::nan("")).AsString(), std::string("NaN"));
+    const double third = 1.0 / 3.0;
+    REQUIRE_EQ(UltraDbValue(UltraDbValue(third).AsString()).AsDouble(), third);
+    // AsBlob of a non-blob goes through AsString.
+    const std::vector<uint8_t> bytes = UltraDbValue(2.5).AsBlob();
+    REQUIRE_EQ(std::string(bytes.begin(), bytes.end()), std::string("2.5"));
+}
+
 TEST(sqlite_text_number_reads_back_under_a_comma_locale) {
     CommaDecimalLocale locale;
     UltraDbConnectionConfig cfg;
@@ -114,6 +129,7 @@ TEST(sqlite_text_number_reads_back_under_a_comma_locale) {
     REQUIRE(UltraDb_Query(cfg.name, "SELECT '3.14' AS t, 2.75 AS r", rs).success);
     REQUIRE_EQ(rs.Row(0)["t"].AsDouble(), 3.14);
     REQUIRE_EQ(rs.Row(0)["r"].AsDouble(), 2.75);
+    REQUIRE_EQ(rs.Row(0)["r"].AsString(), std::string("2.75"));   // a REAL column, as text
     UltraDb_CloseConnection(cfg.name);
 }
 
