@@ -1,3 +1,83 @@
+#### 2026-10-20 *0.9.352*
+- **New element: `UltraCanvasColorPaletteManager`** - the colour palettes
+  under a colour picker. Rows of swatches, one per palette: with one palette
+  its row ends in a small **+**; with several, every row ends in a **−** that
+  takes it away and the last row has the **+** under its **−**. **+** opens a
+  gallery popup of ready-made schemes grouped by kind - basics, moods
+  (pastel, earth, skin tones, sunset, ocean, forest, neon), design systems
+  (Material, Nord, Solarized), retro machines (Game Boy, PICO-8, Commodore
+  64, VGA 16) and indexed palettes up to 256 colours for a GIF (web-safe
+  216, RGB 3-3-2, 256 greys) - each with a preview, its colour count and
+  its own **+**. A left click on a swatch picks its colour; a right click
+  opens a small foreground-only colour picker that sets that one entry,
+  live, with *Revert* and *Done*. The element sets its own height to its
+  rows; `SerializePalettes` / `ParsePalettes` keep them in one settings
+  line. Doc: `Docs/UltraCanvas/UltraCanvasColorPaletteManager.md`; test:
+  `ColorPaletteManagerTest`.
+- **`UltraCanvasColorSwatchBar` 1.2.0: wrapping.** `SetWrap(true)` runs a
+  large palette on as many lines as it takes to keep its swatches at least
+  `minSwatchSize`, the colours shared out evenly over the lines, and
+  `HeightForWidth` says how tall that is - a 256-colour palette is a block,
+  not a hairline. `SetColorAt` edits one entry; `onColorContextClicked`
+  reports a right click with the entry's index and the window position.
+  `GetEffectiveSwatchSize` answers for a wrapping bar too.
+- **`UltraCanvasColorPicker` 1.9.0: `SetShowBackgroundColor(false)`** - a
+  foreground-only picker for editing one colour: the background swatch and
+  the swap arrow are gone, and the right button and the eyedropper's right
+  click edit the foreground as the left ones do.
+- **Demo app: Widgets > Colour Palettes**, next to the Colour Picker: the
+  manager under a picker (as in UltraPaint), several rows of retro and mood
+  schemes, and the indexed 216- and 256-colour palettes as wrapped blocks.
+- **Matrix diagram: the attribute gutter (C4).** A row set can now carry a few
+  plain-text facts per item - a head count, an owner, a Y/N flag - beside its
+  relationships. `MatrixItemSet::columns` names the columns and
+  `MatrixItem::attributes` holds each item's values; an `L` or a `House` draws
+  them as a gutter of text columns between the row labels and the grid.
+  - Each column is as wide as its header or its widest value, up to
+    `MatrixDiagramStyle::maxAttributeColumnWidth`. Pointing into the gutter
+    selects the whole row, and a row's tooltip lists its values, which is
+    where the `T`, `X` and `Y` shapes show them.
+  - `SetShowAttributes(false)` hides the gutter and gives the grid its width
+    back. The values round-trip through JSON. `Validate()` warns when an item
+    has more values than its set has columns.
+  - The `ImprovementTools` sample's departments now carry Staff and
+    Facilitator columns, and the DemoApp has an **Attribute columns** switch.
+- **Matrix diagram: the C shape (a cube of three sets).** `MatrixShape::C`
+  relates three lists at once. Every cell is one item from each list, such as
+  a defect type on a production line in a shift, which no pair of two-way
+  panels can express.
+  - `MatrixPanel::depthSetId` makes panel 0 a cube. `SetCubeCell` and
+    `SetCubeCellAt` set its cells. `FindCell`, `LevelAt` and `ClearCell` take
+    a defaulted depth. `DepthScore` totals one slice. `RowScore` and
+    `ColumnScore` sum through all slices.
+  - The cube is drawn exploded: one isometric slice per depth item, stacked
+    and outlined by the cube's side edges, so no cell is hidden behind
+    another. Hovering a cell lights its row and column in every slice. Each
+    slice's label lights the slice and fires the new `onSliceClick`.
+    `Page Up` and `Page Down` move the selection between slices.
+  - JSON carries cubes. The CSV forms refuse them, because a table has no
+    third axis. `Validate()` checks that the three sets differ and that every
+    depth is in range.
+  - New sample: `MatrixSamples::DefectCube()`, shown on a **C-Shaped (Cube)**
+    tab in the DemoApp.
+- **Matrix diagram: the House of Quality stayed partly light in the dark
+  theme.** `SetDarkTheme(true)` left the competitive-assessment block's
+  background and tick lines at their light colours. It also left the
+  direction-of-improvement arrows dark grey, so they vanished on the dark
+  grid. The theme now covers every colour in `MatrixDiagramStyle`, including
+  the roll-up bars and rank text, and `SetDarkTheme(false)` restores them.
+  A competitor whose own colour is too dark to read on the block is drawn in
+  the label colour instead, as the House sample's near-black "Our bicycle"
+  was.
+- **Matrix diagram: near-black marks disappeared in the dark theme.** The
+  "High" level of `MatrixScale::HighMediumLow()` is near-black, so on the
+  dark grid the X-shaped sample's strongest marks were close to invisible.
+  A level colour too close to the cell background is now drawn in the label
+  colour, in the mark, the cell tint and the legend swatch alike, as a
+  competitor's line in the House already was. Closeness is measured as RGB
+  distance, so saturated colours keep their hue, and nothing changes in the
+  light theme.
+
 #### 2026-10-20 *0.9.351*
 - **The Windows applications now also come as an MSIX package, the format the
   Microsoft Store recommends.** `package-win-msix.sh` turns the `dist/` folder
