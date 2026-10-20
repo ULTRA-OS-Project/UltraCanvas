@@ -11,14 +11,16 @@
 // one (the starter site `ultrapress new` writes). The editor opens from
 // here; this window closes itself only once it has, because the
 // application ends the moment it has no window left. The same move as
-// UltraFIBU's start window.
+// UltraFIBU's start window - and the same page: the framework's
+// UltraCanvasStartPage, with UltraPress's words and its one field.
+// Version: 0.8.4 - on the framework's UltraCanvasStartPage
+// Version: 0.8.3 - a recent site's button names its whole path in a tooltip
 // Version: 0.8.2 - the sites opened last, offered first
 // Version: 0.8.1
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
-#include "UltraCanvasButton.h"
-#include "UltraCanvasLabel.h"
+#include "UltraCanvasStartPage.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
 
@@ -37,7 +39,7 @@ public:
     // instead of closing.
     std::function<std::string(const std::string& siteDir)> onSiteChosen;
     // Called with a recent folder that holds no site any more, so the caller
-    // can drop it from the list (UltraPressRecent.h).
+    // can drop it from the list (UltraPressSettings.h).
     std::function<void(const std::string& siteDir)> onSiteGone;
 
     // `hint` says why this window is showing instead of a site; `suggestion`
@@ -56,8 +58,8 @@ private:
 
     std::string suggestion_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    std::shared_ptr<UltraCanvas::UltraCanvasStartPage> page_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
 };
 
 } // namespace UltraPress

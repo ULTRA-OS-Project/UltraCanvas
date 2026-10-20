@@ -1,3 +1,17 @@
+#### 2026-10-20 *0.8.4*
+- **One settings file.** The look, the sites opened last and now the
+  editor window's size live in `<settings folder>/UltraPress/settings.json`
+  (`ui/UltraPressSettings.h`), the place for the next preference; the two
+  files of 0.8 (`look`, `recent`) are read once and go when the settings
+  are first written. The editor window opens at the size it had last.
+- **The start window is the framework's start page.** Title, hint, *Opened
+  last*, the open button, the new-site form and the status line are laid
+  out by the new `UltraCanvasStartPage`, which UltraFIBU's start window
+  is built on too; what UltraPress says and asks is unchanged.
+- **The importer checks the export's address.** `ultrapress import` says
+  when an export's `<link>` is not an address (`IsSiteAddress`), or names
+  none, instead of writing it into every page unseen.
+
 #### 2026-10-20 *0.8.3*
 - **The address is checked as typed.** `IsSiteAddress` in the model says
   what a site's address has to be - `https://` or `http://`, a host with a

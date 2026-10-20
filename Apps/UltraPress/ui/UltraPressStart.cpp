@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressStart.cpp
 // See UltraPressStart.h.
+// Version: 0.8.4 - on the framework's UltraCanvasStartPage
 // Version: 0.8.3 - a recent site's button names its whole path in a tooltip
 // Version: 0.8.2 - the sites opened last, offered first
 // Version: 0.8.1
@@ -10,11 +11,12 @@
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 
+#include "UltraCanvasButton.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTheme.h"
 
-#include <algorithm>
 #include <filesystem>
 
 #ifndef ULTRAPRESS_VERSION
@@ -28,11 +30,7 @@ namespace UltraPress {
 namespace {
 
 const int kWidth = 620;
-const int kHeight = 470;
-const int kRecentShown = 5;
-const int kMargin = 24;
 const int kRow = 34;
-const char* kFont = "Ubuntu";
 
 // Whether a folder holds a site: the one file every site has.
 bool HoldsSite(const std::string& dir) {
@@ -54,122 +52,59 @@ std::string NameFromFolder(const std::string& dir) {
 std::shared_ptr<UltraCanvasWindow> StartWindow::Build(const std::string& hint, const std::string& suggestion,
                                                       const std::vector<std::string>& recent) {
     suggestion_ = suggestion;
-    const ThemeRoles& roles = UltraCanvasTheme::Current().roles;
-    const int shown = static_cast<int>(std::min<size_t>(recent.size(), kRecentShown));
-    const int recentHeight = shown == 0 ? 0 : 30 + shown * (kRow + 6) + 10;
 
-    WindowConfig config;
-    config.title = "UltraPress " ULTRAPRESS_VERSION;
-    config.width = kWidth;
-    config.height = kHeight + recentHeight;
-    config.backgroundColor = roles.panel;
-    window_ = CreateWindow(config);
-    if (!window_) return nullptr;
-
-    int y = kMargin;
-    auto title = CreateLabel("StartTitle", kMargin, y, kWidth - 2 * kMargin, 32, "UltraPress");
-    title->SetFont(kFont, 22, FontWeight::Bold);
-    FollowTheme(title, LabelVariant::Heading);
-    window_->AddChild(title);
-    y += 40;
-
-    // Why this window and not a site: a user who typed a folder should know
-    // whether it was wrong or simply new.
-    // Three lines' room: a folder's full path, and what was wrong with it.
-    auto why = CreateLabel("StartHint", kMargin, y, kWidth - 2 * kMargin, 70, hint);
-    why->SetFont(kFont, 14);
-    why->SetWrap(TextWrap::WrapWord);
-    FollowTheme(why, LabelVariant::Body);
-    window_->AddChild(why);
-    y += 84;
-
-    // ---- the sites opened last, the last one first ----
-    if (shown > 0) {
-        auto recentTitle = CreateLabel("StartRecentTitle", kMargin, y, kWidth - 2 * kMargin, 24, "Opened last");
-        recentTitle->SetFont(kFont, 15, FontWeight::Bold);
-        FollowTheme(recentTitle, LabelVariant::Heading);
-        window_->AddChild(recentTitle);
-        y += 30;
-        for (int i = 0; i < shown; ++i) {
-            const std::string dir = recent[static_cast<size_t>(i)];
-            const std::string folder = PathToUtf8(PathFromUtf8(dir).filename());
-            auto button = CreateButton("StartRecent" + std::to_string(i), kMargin, y, kWidth - 2 * kMargin, kRow,
-                                       (folder.empty() ? dir : folder) + "  \xE2\x80\x93  " + dir);
-            button->SetFont(kFont, 13);
-            button->SetBorder(1, Colors::Transparent);
-            button->SetCornerRadius(6);
-            button->SetTextAlign(TextAlignment::Left);
-            button->SetPadding(0, 10);
-            button->SetTooltip(dir);   // the whole path, where the button shortens it
-            FollowTheme(button, ButtonVariant::Standard);
-            button->onClick = [this, dir]() {
-                if (HoldsSite(dir)) {
-                    HandOver(dir);
-                    return;
-                }
-                // Gone since: said here, and dropped from the list for next time.
-                Say("\"" + dir + "\" holds no site any more.", true);
-                if (onSiteGone) onSiteGone(dir);
-            };
-            window_->AddChild(button);
-            y += kRow + 6;
+    // The page first, the window at the height it needs.
+    page_ = std::make_shared<UltraCanvasStartPage>("Start", kWidth);
+    page_->SetTitle("UltraPress");
+    page_->SetHint(hint);
+    page_->SetRecent("Opened last", recent, [this](const std::string& dir) {
+        if (HoldsSite(dir)) {
+            HandOver(dir);
+            return;
         }
-        y += 10;
-    }
+        // Gone since: said here, and dropped from the list for next time.
+        Say("\"" + dir + "\" holds no site any more.", true);
+        if (onSiteGone) onSiteGone(dir);
+    });
+    page_->AddAction("Open a site folder\xE2\x80\xA6", [this]() { OpenExisting(); },
+                     "A folder with a site.json - one made by UltraPress, or by `ultrapress new`.");
 
-    // ---- an existing site ----
-    auto open = CreateButton("StartOpen", kMargin, y, 300, kRow, "Open a site folder\xE2\x80\xA6");
-    open->SetFont(kFont, 14, FontWeight::Bold);
-    open->SetBorder(0, Colors::Transparent);
-    open->SetCornerRadius(6);
-    FollowTheme(open, ButtonVariant::Primary);
-    open->onClick = [this]() { OpenExisting(); };
-    window_->AddChild(open);
-    y += kRow + 8;
-    auto openNote = CreateLabel("StartOpenNote", kMargin, y, kWidth - 2 * kMargin, 22,
-                                "A folder with a site.json - one made by UltraPress, or by `ultrapress new`.");
-    openNote->SetFont(kFont, 12);
-    FollowTheme(openNote, LabelVariant::Muted);
-    window_->AddChild(openNote);
-    y += 44;
-
-    // ---- a new site ----
-    auto newTitle = CreateLabel("StartNewTitle", kMargin, y, kWidth - 2 * kMargin, 24, "A new site");
-    newTitle->SetFont(kFont, 15, FontWeight::Bold);
-    FollowTheme(newTitle, LabelVariant::Heading);
-    window_->AddChild(newTitle);
-    y += 30;
-    auto nameCaption = CreateLabel("StartNameCaption", kMargin, y + 7, 90, 22, "Site name");
-    nameCaption->SetFont(kFont, 13);
+    // ---- a new site: its name, and the folder it goes into ----
+    auto form = page_->AddSection("A new site", kRow + 10 + kRow + 8 + 40);
+    const int width = page_->ContentWidth();
+    auto nameCaption = CreateLabel("StartNameCaption", 0, 7, 90, 22, "Site name");
+    nameCaption->SetFontSize(13);
     FollowTheme(nameCaption, LabelVariant::Body);
-    window_->AddChild(nameCaption);
-    name_ = CreateTextInput("StartName", kMargin + 96, y, kWidth - 2 * kMargin - 96, kRow);
+    form->AddChild(nameCaption);
+    name_ = CreateTextInput("StartName", 96, 0, width - 96, kRow);
     name_->SetFontSize(14);
     name_->SetFollowTheme(true);
     name_->SetText(suggestion.empty() ? std::string("My site") : NameFromFolder(suggestion));
-    window_->AddChild(name_);
-    y += kRow + 10;
-    auto create = CreateButton("StartCreate", kMargin, y, 300, kRow, "Create it in a folder\xE2\x80\xA6");
-    create->SetFont(kFont, 14);
+    form->AddChild(name_);
+    auto create = CreateButton("StartCreate", 0, kRow + 10, 300, kRow, "Create it in a folder\xE2\x80\xA6");
+    create->SetFontSize(14);
     create->SetBorder(1, Colors::Transparent);
     create->SetCornerRadius(6);
     FollowTheme(create, ButtonVariant::Standard);
     create->onClick = [this]() { CreateNew(); };
-    window_->AddChild(create);
-    y += kRow + 8;
-    auto createNote = CreateLabel("StartCreateNote", kMargin, y, kWidth - 2 * kMargin, 40,
+    form->AddChild(create);
+    auto createNote = CreateLabel("StartCreateNote", 0, kRow + 10 + kRow + 8, width, 40,
                                   "The starter site - a front page, an about page, a contact form - goes into the "
                                   "folder you choose; an empty or a new folder, so nothing there is overwritten.");
-    createNote->SetFont(kFont, 12);
+    createNote->SetFontSize(12);
     createNote->SetWrap(TextWrap::WrapWord);
     FollowTheme(createNote, LabelVariant::Muted);
-    window_->AddChild(createNote);
+    form->AddChild(createNote);
+    page_->AddStatusLine();
 
-    status_ = CreateLabel("StartStatus", kMargin, kHeight + recentHeight - kMargin - 44, kWidth - 2 * kMargin, 44, "");
-    status_->SetFont(kFont, 13);
-    status_->SetWrap(TextWrap::WrapWord);
-    FollowTheme(status_, LabelVariant::Muted);
-    window_->AddChild(status_);
+    WindowConfig config;
+    config.title = "UltraPress " ULTRAPRESS_VERSION;
+    config.width = page_->Width();
+    config.height = page_->PreferredHeight();
+    config.backgroundColor = UltraCanvasTheme::Current().roles.panel;
+    window_ = CreateWindow(config);
+    if (!window_) return nullptr;
+    window_->AddChild(page_);
     return window_;
 }
 
@@ -178,14 +113,7 @@ void StartWindow::Close() {
 }
 
 void StartWindow::Say(const std::string& text, bool error) {
-    if (!status_) return;
-    if (error) {
-        status_->SetFollowTheme(false);
-        status_->SetTextColor(UltraCanvasTheme::Current().roles.danger);
-    } else {
-        FollowTheme(status_, LabelVariant::Muted);
-    }
-    status_->SetText(text);
+    if (page_) page_->Say(text, error);
 }
 
 void StartWindow::OpenExisting() {

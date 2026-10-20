@@ -28,7 +28,7 @@ add_executable(UltraPressRenderTests UltraPressRenderTests.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressWindow.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressMediaDialog.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressTheme.cpp
-    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressRecent.cpp)
+    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressSettings.cpp)
 target_compile_features(UltraPressRenderTests PRIVATE cxx_std_20)
 target_link_libraries(UltraPressRenderTests PRIVATE UltraPressRender ${ULTRACANVAS_LIBRARY})
 target_include_directories(UltraPressRenderTests PRIVATE

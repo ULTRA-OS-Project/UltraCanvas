@@ -1,6 +1,6 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.8.3 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.8.4 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
@@ -41,9 +41,9 @@ opens the start window (`Apps/UltraPress/ui/UltraPressStart.h`): it says
 why, *Open a site folder…* goes through the folder dialog onto an existing
 site, and a name with *Create it in a folder…* writes the starter site into
 a folder of your choice; the editor opens from there. The sites opened last
-are offered first, as buttons under *Opened last* (the eight newest are
-kept in `<settings folder>/UltraPress/recent` through the framework's
-`UltraCanvasRecentList.h`; the whole path is the button's tooltip). On Windows the installer
+are offered first, as buttons under *Opened last* (the eight newest, the
+whole path as the button's tooltip). The window is the framework's start
+page (`UltraCanvasStartPage`) with UltraPress's words and its one field. On Windows the installer
 puts *UltraPress* into the Start menu, which starts it this way.
 
 **Publish** writes the static site under `<site>/.ultrapress/publish` and
@@ -76,8 +76,10 @@ one), and every element of the columns and the dialogs follows that theme,
 so *Dark look* / *Light look* in the side column switches them all at
 once; the side column keeps its night blue in both, through the theme's
 own `press.*` roles, and the page in the middle keeps the site's colours,
-because it is the site. The choice is remembered in
-`<settings folder>/UltraPress/look` and read before the window opens.
+because it is the site. The choice is remembered with the program's other
+settings - the sites opened last, the editor window's size - in
+`<settings folder>/UltraPress/settings.json` (`ui/UltraPressSettings.h`)
+and read before the window opens.
 
 The page is rendered on real UltraCanvas elements by the block renderer
 (`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),

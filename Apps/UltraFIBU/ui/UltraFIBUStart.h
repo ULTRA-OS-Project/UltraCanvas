@@ -21,6 +21,7 @@
 // only lets one pick a first of a month. Refusing the 15th after it was typed
 // would be the same rule, told later.
 //
+// Version: 0.3.0 - on the framework's UltraCanvasStartPage, which UltraPress's start window shares
 // Version: 0.2.0 - the bookkeepings opened last, offered first (UltraCanvasRecentList.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -31,6 +32,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasStartPage.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasDatePicker.h"
@@ -79,14 +81,13 @@ private:
     void Melden(const std::string& text, bool fehler);
 
     std::string vorschlag_;
-
     std::shared_ptr<UltraCanvas::UltraCanvasWindow>     fenster_;
+    std::shared_ptr<UltraCanvas::UltraCanvasStartPage>  seite_;   // the page: title, hint, recent, open, the form, status
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  firma_;
     std::shared_ptr<UltraCanvas::UltraCanvasDatePicker> beginn_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>   skr_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>      grund_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>     anlegenKnopf_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel>      status_;
 };
 
 } // namespace UltraFIBU

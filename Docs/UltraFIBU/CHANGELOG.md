@@ -1,3 +1,9 @@
+#### 2026-10-20 *0.24.6*
+- **The start window is the framework's start page.** Title, the reason
+  this window, *Zuletzt geöffnet*, the open button, the setup form and the
+  status line are laid out by `UltraCanvasStartPage`, the page UltraPress's
+  start window is built on too; what UltraFIBU says and asks is unchanged.
+
 #### 2026-10-20 *0.24.5*
 - **The bookkeepings opened last, in the start window.** The window
   remembers the files it opened (`<settings folder>/UltraFIBU/zuletzt`,

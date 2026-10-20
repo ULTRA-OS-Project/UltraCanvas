@@ -58417,6 +58417,117 @@ engine recalculating the translated formulas to Excel's results, the refusals,
 and UltraFiler's preview page and detail pane.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasStartPage.md
+==============================================================================
+
+# UltraCanvas Start Page Documentation
+
+<!-- doc-check: void OpenSite(const std::string& dir); void PickFolder(); std::shared_ptr<UltraCanvas::UltraCanvasWindow> window; -->
+
+## Overview
+
+**UltraCanvasStartPage** is the page an application shows when it has
+nothing open yet: a title, the reason this page and not the thing itself,
+the entries opened last as buttons, the one action that opens an existing
+thing, a section of the application's own fields for making a new one, and
+a status line that says why something could not be done.
+
+Started with no argument - a double-click on Windows - a program that
+needs a file or a folder used to print its usage into a console that closed
+before it could be read, which looked like a crash. UltraPress's start
+window (a site folder) and UltraFIBU's (a bookkeeping file) are both this
+page with their own words and their own "new" fields.
+
+**File Location**: `include/UltraCanvasStartPage.h`
+**Version**: 1.0.0
+**Base Class**: `UltraCanvasContainer`
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ Parts laid out **top to bottom in the order they are added**, at the
+  width the page was made with; `PreferredHeight()` is what the window
+  holding it should be
+- ✅ **Recent entries** as buttons: the last path part and the whole entry,
+  the whole entry as the tooltip where the button shortens it
+- ✅ The **action** as the theme's primary button, with a muted note under it
+- ✅ A **section** for the application's own fields: a heading and a
+  container of the named height, the fields placed in it from (0, 0)
+- ✅ A **status line**, muted or in the theme's error colour
+- ✅ Everything follows the framework theme (`UltraCanvasTheme`): light or
+  dark, the headings and notes by their label variant
+
+## Header Include
+
+```cpp
+#include "UltraCanvasStartPage.h"
+```
+
+## Class Reference
+
+```cpp
+explicit UltraCanvasStartPage(const std::string& identifier, int width);
+
+void SetTitle(const std::string& text);
+void SetHint(const std::string& text);                       // up to three lines
+void SetRecent(const std::string& heading, const std::vector<std::string>& entries,
+               std::function<void(const std::string&)> onPick, int shown = 5);
+std::shared_ptr<UltraCanvasButton> AddAction(const std::string& text, std::function<void()> onClick,
+                                             const std::string& note = std::string(), bool primary = true);
+std::shared_ptr<UltraCanvasContainer> AddSection(const std::string& heading, int height);
+std::shared_ptr<UltraCanvasLabel> AddStatusLine();
+void Say(const std::string& text, bool error);
+
+int PreferredHeight() const;
+int Width() const;
+static int Margin();            // the content column's distance from the edge
+int ContentWidth() const;       // the column's width: the sections are this wide
+```
+
+## Usage
+
+A start window: the page in a window of its preferred height. The
+application keeps the recent list itself (`UltraCanvasRecentList.h`) and
+decides what a picked entry means.
+
+```cpp
+auto page = std::make_shared<UltraCanvas::UltraCanvasStartPage>("start", 620);
+page->SetTitle("UltraPress");
+page->SetHint("No site is open yet. Open a site folder, or create a new site.");
+page->SetRecent("Opened last", {"/home/erika/sites/shop", "/home/erika/sites/blog"},
+                [](const std::string& dir) { OpenSite(dir); });
+page->AddAction("Open a site folder\xE2\x80\xA6", []() { PickFolder(); },
+                "A folder with a site.json in it.");
+
+// The application's own fields for a new site, in a section of their own.
+auto form = page->AddSection("A new site", 90);
+auto name = UltraCanvas::CreateTextInput("name", 100, 0, form->GetWidth() - 100, 34);
+form->AddChild(UltraCanvas::CreateLabel("nameCaption", 0, 7, 90, 22, "Site name"));
+form->AddChild(name);
+form->AddChild(UltraCanvas::CreateButton("create", 0, 48, 300, 34, "Create it in a folder\xE2\x80\xA6"));
+
+page->AddStatusLine();
+window->AddChild(page);
+window->SetWindowSize(page->Width(), page->PreferredHeight());
+```
+
+Why something could not be done goes on the status line:
+
+```cpp
+page->Say("\"/home/erika/sites/old\" holds no site any more.", true);   // the theme's error colour
+page->Say("Creating the site\xE2\x80\xA6", false);                        // muted
+```
+
+## Notes
+
+- The page is a container with absolute children; add it to a window at
+  (0, 0) and size the window to `Width()` by `PreferredHeight()`.
+- The hint has room for three lines of 14 px text: a folder's full path and
+  what was wrong with it.
+- A section's fields are the application's: lay them out from (0, 0) in the
+  container `AddSection` returns, `ContentWidth()` wide.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasStepper.md
 ==============================================================================
 
@@ -66070,6 +66181,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| The page an application shows with nothing open yet - title, why this page, the entries opened last as buttons, the open action, a section of the app's own fields for a new thing, a status line; `PreferredHeight()` sizes the window ([doc](UltraCanvasStartPage.md)) | `UltraCanvasStartPage` | `UltraCanvasStartPage.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
@@ -86324,7 +86436,7 @@ FILE: Docs/UltraPress/README.md
 
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.8.3 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.8.4 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
@@ -86365,9 +86477,9 @@ opens the start window (`Apps/UltraPress/ui/UltraPressStart.h`): it says
 why, *Open a site folder…* goes through the folder dialog onto an existing
 site, and a name with *Create it in a folder…* writes the starter site into
 a folder of your choice; the editor opens from there. The sites opened last
-are offered first, as buttons under *Opened last* (the eight newest are
-kept in `<settings folder>/UltraPress/recent` through the framework's
-`UltraCanvasRecentList.h`; the whole path is the button's tooltip). On Windows the installer
+are offered first, as buttons under *Opened last* (the eight newest, the
+whole path as the button's tooltip). The window is the framework's start
+page (`UltraCanvasStartPage`) with UltraPress's words and its one field. On Windows the installer
 puts *UltraPress* into the Start menu, which starts it this way.
 
 **Publish** writes the static site under `<site>/.ultrapress/publish` and
@@ -86400,8 +86512,10 @@ one), and every element of the columns and the dialogs follows that theme,
 so *Dark look* / *Light look* in the side column switches them all at
 once; the side column keeps its night blue in both, through the theme's
 own `press.*` roles, and the page in the middle keeps the site's colours,
-because it is the site. The choice is remembered in
-`<settings folder>/UltraPress/look` and read before the window opens.
+because it is the site. The choice is remembered with the program's other
+settings - the sites opened last, the editor window's size - in
+`<settings folder>/UltraPress/settings.json` (`ui/UltraPressSettings.h`)
+and read before the window opens.
 
 The page is rendered on real UltraCanvas elements by the block renderer
 (`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
@@ -86654,7 +86768,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
-| `UltraPress.md` | UltraPress, English - the program of 0.8, which contacts the web host the user configures and nothing else | draft 0.4, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
+| `UltraPress.md` | UltraPress, English - the program of 0.8, which contacts the web host the user configures and nothing else | draft 0.5, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -87377,7 +87491,7 @@ FILE: Docs/Legal/Privacy/UltraPress.md
 
 # Privacy declaration — UltraPress
 
-**Version 0.4 (draft for legal review) · 15 October 2026**
+**Version 0.5 (draft for legal review) · 20 October 2026**
 
 This declaration explains what personal data the **UltraPress** application
 processes, where that processing happens, which third parties it contacts and
@@ -87438,8 +87552,7 @@ required to [confirm with legal review].
 | The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` in the program's data folder (`%APPDATA%\UltraPress` on Windows, `~/Library/Application Support/UltraPress` on macOS, `~/.local/share/UltraPress` elsewhere, or `$XDG_DATA_HOME/UltraPress` where that is set); a list that UltraPress 0.5 to 0.7 kept under `UltraPress` in the shared UltraCanvas settings folder is moved there, whole, the first time the hosts are opened |
 | The host passwords | the password of each host, and for an SFTP host the path of the private key file you named (the key itself stays where it is) | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
 | The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
-| The look | one word, `dark` or `light`: which look of the window you chose last | `look` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
-| The sites opened last | the paths of the site folders the editor opened last, eight at most, so the start window can offer them | `recent` beside `look` |
+| The settings | which look of the window you chose last (`dark` or `light`), the paths of the site folders the editor opened last (eight at most, so the start window can offer them) and the editor window's last size | `settings.json` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere); the `look` and `recent` files of UltraPress 0.8.0 to 0.8.3 are read into it once and removed |
 
 UltraPress writes no caches, logs or history files of its own. Its messages
 go to the terminal it was started from, or to the window's status line.

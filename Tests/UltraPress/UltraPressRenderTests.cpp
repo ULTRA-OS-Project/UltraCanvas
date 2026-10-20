@@ -10,8 +10,8 @@
 #include "UltraPressBlocks.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
-#include "UltraPressRecent.h"
 #include "UltraPressRender.h"
+#include "UltraPressSettings.h"
 #include "UltraPressTheme.h"
 #include "UltraPressWindow.h"
 
@@ -270,14 +270,43 @@ static void TestLook() {
     namespace fs = std::filesystem;
     const fs::path dir = fs::temp_directory_path() /
         ("ultrapress-look-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    const std::string settings = UltraCanvas::PathToUtf8(dir / "UltraPress");
-    Check(!LoadLook(settings), "no choice yet is the light look");
-    Check(SaveLook(settings, true) && LoadLook(settings), "the dark look is remembered");
-    Check(SaveLook(settings, false) && !LoadLook(settings), "and the light look again");
-    Check(!LoadLook("") && !SaveLook("", true), "without a settings folder nothing is read or written");
-    Check(!UltraPress::LookSettingsDirectory().empty() || UltraCanvas::GetEnvUtf8("HOME").empty(),
-          "the program's settings folder is named: " + UltraPress::LookSettingsDirectory());
     std::error_code ec;
+
+    std::printf("The settings\n");
+    const std::string settingsDir = UltraCanvas::PathToUtf8(dir / "UltraPress");
+    UltraPressSettings s = UltraPressSettings::Load(settingsDir);
+    Check(!s.dark && s.recentSites.empty() && s.windowWidth == 0 && s.windowHeight == 0,
+          "nothing chosen yet: the light look, no sites, no window size");
+    s.dark = true;
+    s.windowWidth = 1200;
+    s.windowHeight = 800;
+    s.RememberSite("/sites/one");
+    s.RememberSite("/sites/two/");
+    Check(s.Save(settingsDir) && fs::is_regular_file(dir / "UltraPress" / "settings.json", ec), "the settings are written as settings.json");
+    UltraPressSettings back = UltraPressSettings::Load(settingsDir);
+    Check(back.dark && back.windowWidth == 1200 && back.windowHeight == 800 &&
+              back.recentSites == std::vector<std::string>{"/sites/two", "/sites/one"},
+          "and read back: the look, the window's size, the sites last opened first with their spelling normalised");
+    back.RememberSite("/sites/one");
+    Check(back.recentSites == std::vector<std::string>{"/sites/one", "/sites/two"}, "a site opened again moves to the front, once");
+    for (int i = 0; i < 10; ++i) back.RememberSite("/sites/more" + std::to_string(i));
+    Check(back.recentSites.size() == 8 && back.recentSites.front() == "/sites/more9", "eight are kept, the newest first");
+    back.ForgetSite("/sites/more9");
+    Check(back.recentSites.size() == 7 && back.recentSites.front() == "/sites/more8", "a site is forgotten");
+    // The two files of 0.8, read once and gone when the settings are written.
+    const std::string oldDir = UltraCanvas::PathToUtf8(dir / "old");
+    fs::create_directories(dir / "old", ec);
+    WriteTextFile(UltraCanvas::PathToUtf8(dir / "old" / "look"), "dark\n");
+    WriteTextFile(UltraCanvas::PathToUtf8(dir / "old" / "recent"), "/sites/a\n/sites/b\n");
+    const UltraPressSettings adopted = UltraPressSettings::Load(oldDir);
+    Check(adopted.dark && adopted.recentSites == std::vector<std::string>{"/sites/a", "/sites/b"}, "the 0.8 look and recent files are adopted");
+    Check(adopted.Save(oldDir) && !fs::exists(dir / "old" / "look", ec) && !fs::exists(dir / "old" / "recent", ec) &&
+              UltraPressSettings::Load(oldDir).dark,
+          "and go when the settings are first written");
+    Check(!UltraPressSettings().Save("") && UltraPressSettings::Load("").recentSites.empty(),
+          "without a settings folder nothing is read or written");
+    Check(!UltraPressSettings::Directory().empty() || UltraCanvas::GetEnvUtf8("HOME").empty(),
+          "the program's settings folder is named: " + UltraPressSettings::Directory());
     fs::remove_all(dir, ec);
 
     // The editor switches the current theme without a window; the look is
@@ -292,24 +321,6 @@ static void TestLook() {
     editor.SetDark(false, false);
     Check(!editor.IsDark() && !UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress light",
           "and back to the light one: " + before);
-
-    std::printf("The sites opened last\n");
-    const std::string recentDir = UltraCanvas::PathToUtf8(dir / "recent-settings");
-    Check(LoadRecentSites(recentDir).empty(), "nothing opened yet");
-    Check(RememberSite(recentDir, "/sites/one") && RememberSite(recentDir, "/sites/two/") &&
-              LoadRecentSites(recentDir) == std::vector<std::string>{"/sites/two", "/sites/one"},
-          "the last opened comes first, its spelling normalised");
-    Check(RememberSite(recentDir, "/sites/one") && LoadRecentSites(recentDir) == std::vector<std::string>{"/sites/one", "/sites/two"},
-          "a site opened again moves to the front, once");
-    for (int i = 0; i < 10; ++i) RememberSite(recentDir, "/sites/more" + std::to_string(i));
-    Check(LoadRecentSites(recentDir).size() == 8 && LoadRecentSites(recentDir).front() == "/sites/more9",
-          "eight are kept, the newest first");
-    Check(ForgetSite(recentDir, "/sites/more9") && LoadRecentSites(recentDir).front() == "/sites/more8" &&
-              LoadRecentSites(recentDir).size() == 7,
-          "a site is forgotten");
-    Check(LoadRecentSites("").empty() && !RememberSite("", "/x") && !ForgetSite("", "/x"),
-          "without a settings folder nothing is read or written");
-    fs::remove_all(dir, ec);
 
     std::printf("The site's settings\n");
     Check(!editor.IsShowingSiteSettings(), "the pane shows the page to start");

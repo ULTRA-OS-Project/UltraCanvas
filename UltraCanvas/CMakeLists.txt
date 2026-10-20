@@ -627,6 +627,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # saved over: checked on a worker, never on the paint path.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageFileWatch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        # The page an application shows with nothing open: title, hint, the
+        # entries opened last, the open action, the app's own new-thing fields.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStartPage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         # Per-format save settings (JPEG quality, PNG compression ...) kept

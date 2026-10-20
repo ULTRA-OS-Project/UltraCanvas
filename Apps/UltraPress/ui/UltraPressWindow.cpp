@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.8.4 - the look remembered through UltraPressSettings
 // Version: 0.8.3 - the address checked as typed, said under the field
 // Version: 0.8.2 - the site's settings in the property pane
 // Version: 0.8.0 - the look: the theme's colours, light or dark, remembered in the settings folder
@@ -15,6 +16,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressWindow.h"
 #include "UltraPressMediaDialog.h"
+#include "UltraPressSettings.h"
 #include "UltraPressTheme.h"
 
 #include "UltraPressBlocks.h"
@@ -230,7 +232,12 @@ void EditorWindow::Build(const std::shared_ptr<UltraCanvasWindow>& window) {
 
 void EditorWindow::SetDark(bool wantDark, bool remember) {
     dark = wantDark;
-    if (remember && !SaveLook(LookSettingsDirectory(), dark)) SetStatus("The look could not be remembered");
+    if (remember) {
+        const std::string dir = UltraPressSettings::Directory();
+        UltraPressSettings settings = UltraPressSettings::Load(dir);
+        settings.dark = dark;
+        if (!settings.Save(dir)) SetStatus("The look could not be remembered");
+    }
     ApplyLook();
     if (side) {
         RebuildSide();
