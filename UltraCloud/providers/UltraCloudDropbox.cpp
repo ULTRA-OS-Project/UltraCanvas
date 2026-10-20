@@ -1,6 +1,8 @@
 // UltraCloud/providers/UltraCloudDropbox.cpp
+// Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
+//                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudDropbox.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -71,16 +73,22 @@ Result DropboxProvider::Rpc(const Credentials& credentials, const std::string& e
     return FromHttp(net, response, what);
 }
 
-Result DropboxProvider::Content(const Credentials& credentials, const std::string& endpoint,
-                                const std::string& apiArg, std::vector<uint8_t> body,
-                                UltraNetResponse& response, const std::string& what) {
+Result DropboxProvider::ContentFromFile(const Credentials& credentials,
+                                        const std::string& endpoint, const std::string& apiArg,
+                                        const std::string& localPath, int64_t offset,
+                                        int64_t length, UltraNetResponse& response,
+                                        const std::string& what) {
     UltraNetHttpRequest req;
     req.url = std::string(kContent) + endpoint;
     req.method = UltraNetHttpMethod::Post;
     req.headers.Set("Dropbox-API-Arg", apiArg);
     req.headers.Set("Content-Type", "application/octet-stream");
-    req.body = std::move(body);
-    req.options.timeoutMs = 600000;
+    req.bodyFilePath = localPath;
+    req.bodyFileOffset = offset;
+    req.bodyFileLength = length;
+    // Up to 150 MB in one request: no whole-transfer limit, a stall limit.
+    req.options.timeoutMs = -1;
+    req.options.stallTimeoutMs = 30000;
     UltraNetResult net = Send(credentials, req, response);
     return FromHttp(net, response, what);
 }
@@ -146,8 +154,7 @@ Result DropboxProvider::MakeDirectory(const Account&, const Credentials& credent
 Result DropboxProvider::Upload(const Account&, const Credentials& credentials,
                                const std::string& localPath, const std::string& remotePath) {
     const int64_t total = FileSize(localPath);
-    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
-    if (total < 0 || !is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
+    if (total < 0) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     const std::string what = "upload " + remotePath;
 
     JSONValue commit = JSONValue::MakeObject();
@@ -155,24 +162,22 @@ Result DropboxProvider::Upload(const Account&, const Credentials& credentials,
     commit.Set("mode", "overwrite");
     commit.Set("mute", true);
 
+    // Every body below is read from the file as it is sent: memory stays at
+    // libcurl's buffer, whatever the size of the file or the chunk.
     if (total <= simpleUploadLimit_) {
-        std::vector<uint8_t> data;
-        ReadChunk(is, 0, total, data);
         UltraNetResponse resp;
-        return Content(credentials, "files/upload", ToJson(commit), std::move(data), resp, what);
+        return ContentFromFile(credentials, "files/upload", ToJson(commit), localPath, 0, total,
+                               resp, what);
     }
 
     // Upload session: start carries the first chunk, append_v2 the middle
-    // ones, finish the last one together with the commit. Every chunk is
-    // read from disk when it is sent, so memory stays at one chunk.
-    std::vector<uint8_t> chunk;
-    ReadChunk(is, 0, chunkSize_, chunk);
-    int64_t offset = static_cast<int64_t>(chunk.size());
+    // ones, finish the last one together with the commit.
+    int64_t offset = std::min(chunkSize_, total);
     JSONValue startArg = JSONValue::MakeObject();
     startArg.Set("close", false);
     UltraNetResponse startResp;
-    Result r = Content(credentials, "files/upload_session/start", ToJson(startArg),
-                       std::move(chunk), startResp, what);
+    Result r = ContentFromFile(credentials, "files/upload_session/start", ToJson(startArg),
+                               localPath, 0, offset, startResp, what);
     if (!r) return r;
     const std::string sessionId = ParseJson(BodyText(startResp))["session_id"].GetString();
     if (sessionId.empty()) return Result::Error(ResultCode::Server, what + ": no upload session");
@@ -184,23 +189,21 @@ Result DropboxProvider::Upload(const Account&, const Credentials& credentials,
         return c;
     };
     while (total - offset > chunkSize_) {
-        ReadChunk(is, offset, chunkSize_, chunk);
         JSONValue appendArg = JSONValue::MakeObject();
         appendArg.Set("cursor", cursor(offset));
         appendArg.Set("close", false);
         UltraNetResponse appendResp;
-        r = Content(credentials, "files/upload_session/append_v2", ToJson(appendArg),
-                    std::move(chunk), appendResp, what);
+        r = ContentFromFile(credentials, "files/upload_session/append_v2", ToJson(appendArg),
+                            localPath, offset, chunkSize_, appendResp, what);
         if (!r) return r;
         offset += chunkSize_;
     }
-    ReadChunk(is, offset, total - offset, chunk);
     JSONValue finishArg = JSONValue::MakeObject();
     finishArg.Set("cursor", cursor(offset));
     finishArg.Set("commit", commit);
     UltraNetResponse finishResp;
-    return Content(credentials, "files/upload_session/finish", ToJson(finishArg),
-                   std::move(chunk), finishResp, what);
+    return ContentFromFile(credentials, "files/upload_session/finish", ToJson(finishArg),
+                           localPath, offset, total - offset, finishResp, what);
 }
 
 Result DropboxProvider::Download(const Account&, const Credentials& credentials,
@@ -211,15 +214,8 @@ Result DropboxProvider::Download(const Account&, const Credentials& credentials,
     req.url = std::string(kContent) + "files/download";
     req.method = UltraNetHttpMethod::Post;
     req.headers.Set("Dropbox-API-Arg", ToJson(arg));
-    UltraNetResponse resp;
-    UltraNetResult net = Send(credentials, req, resp);
-    Result r = FromHttp(net, resp, "download " + remotePath);
-    if (!r) return r;
-    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
-    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
-    os.write(reinterpret_cast<const char*>(resp.body.data()),
-             static_cast<std::streamsize>(resp.body.size()));
-    return os ? Result::Ok() : Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    // Written to disk as it arrives, not held in memory first.
+    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
 }
 
 Result DropboxProvider::CreateShareLink(const Account&, const Credentials& credentials,

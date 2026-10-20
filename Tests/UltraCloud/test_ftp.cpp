@@ -10,9 +10,13 @@
 #include <UltraCloud/UltraCloudMemory.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // the "not a drive" side of the new verbs
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCloud;
 
@@ -482,4 +486,48 @@ TEST(providers_that_are_not_drives_report_unsupported) {
     REQUIRE(memory.Delete(a, c, "/x", false).code == ResultCode::Unsupported);
     REQUIRE(memory.Rename(a, c, "/x", "y").code == ResultCode::Unsupported);
     REQUIRE(!memory.Capabilities().modify);
+}
+
+// A download that continues a partial copy (SetThreadDownloadContinues) asks
+// UltraNet to resume at its size; a server that refuses the REST - a 5xx, a
+// Server failure - is asked again for the whole file. Without the setting, a
+// file already there is no reason to resume.
+TEST(ftp_a_continuing_download_resumes_at_the_partial_size) {
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracloud-ftp-resume";
+    std::filesystem::create_directories(dir);
+    const std::filesystem::path part = dir / "movie.mp4.part";
+    { std::ofstream(part, std::ios::binary) << "0123456789"; }
+
+    std::vector<std::pair<bool, int64_t>> asked;   // resumeTransfer, resumeOffset per try
+    bool refuseRest = false;
+    FtpOps ops;
+    ops.download = [&](const std::string&, const std::string&, const UltraNetFtpOptions& opt) {
+        asked.emplace_back(opt.resumeTransfer, opt.resumeOffset);
+        if (refuseRest && opt.resumeTransfer)
+            return NetError(UltraNetResultCode::Unknown, "502 REST not implemented");
+        UltraNetResult r; r.success = true; return r;
+    };
+    FtpProvider ftp(std::move(ops));
+    const std::string local = UltraCanvas::PathToUtf8(part);
+
+    // Not continuing: the file there is not resumed.
+    REQUIRE(ftp.Download(PlainAccount(), PasswordCredentials(), "/movie.mp4", local));
+    REQUIRE_EQ(asked.size(), static_cast<std::size_t>(1));
+    REQUIRE(!asked[0].first);
+
+    const bool previous = SetThreadDownloadContinues(true);
+    asked.clear();
+    REQUIRE(ftp.Download(PlainAccount(), PasswordCredentials(), "/movie.mp4", local));
+    REQUIRE_EQ(asked.size(), static_cast<std::size_t>(1));
+    REQUIRE(asked[0].first);
+    REQUIRE_EQ(asked[0].second, static_cast<int64_t>(10));
+
+    // The server will not continue: from the start, once more.
+    refuseRest = true;
+    asked.clear();
+    REQUIRE(ftp.Download(PlainAccount(), PasswordCredentials(), "/movie.mp4", local));
+    REQUIRE_EQ(asked.size(), static_cast<std::size_t>(2));
+    REQUIRE(asked[1].first == false);
+    SetThreadDownloadContinues(previous);
+    std::filesystem::remove_all(dir);
 }

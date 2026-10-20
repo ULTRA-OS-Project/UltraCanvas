@@ -1,4 +1,4 @@
-#### 2026-10-20 *1.81.0*
+#### 2026-10-20 *1.85.0*
 - **A drive's folder being opened or updated no longer covers the folder
   display.** Opening a folder on an FTP, SFTP or cloud drive put a turning
   ring, *Loading folder* and a line about the connection in the middle of
@@ -60,6 +60,26 @@
   *report (2).pdf*, so a file written there since is never lost. Only a
   server that refuses the rename still has it removed. UltraCloud does this
   (framework changelog: `ftp-upload-cut-off-before-rename`).
+
+#### 2026-10-20 *1.84.0*
+- **A preview copy that was called off continues where it stopped.** A
+  picture or a model being fetched from a drive for the preview pane gives way
+  when you ask the drive for something else, when the selection moves on and
+  when the window closes; until now it then started from the first byte the
+  next time. What had arrived now stays in its `.part` file in the preview
+  cache, and the next fetch asks only for the rest - after the request it gave
+  way to, when you come back to the file, or in the next run. On an FTP drive
+  that is a REST at the partial size, on a cloud drive an HTTP Range; a server
+  that cannot continue sends the whole file. A copy that failed (not called
+  off) is still thrown away. The preview cache's sweep - once a run, before
+  the first copy is asked for - removed every partial copy; it now keeps
+  those younger than a day, newest first, as long as together they stay
+  under 256 MB, and removes the rest (`StaleRemotePreviewPartials`,
+  `FilerRemoteCacheTest`), so a large partial copy nobody comes back for
+  does not wait out the two weeks a finished copy is kept. Uses UltraCloud's
+  new
+  `SetThreadDownloadContinues` (framework changelog:
+  `download-continues-partial-copy`).
 
 #### 2026-10-20 *1.80.0*
 - **A cloud drive's preview copy no longer holds the drive up.** What 1.75.0
