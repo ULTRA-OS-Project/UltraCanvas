@@ -55,7 +55,12 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   and the splitter between them can still be dragged in between. Each pane
   carries a **header row** of a folder-tree button and the pane's own path
   bar, which navigates that pane - so the navigation row's path bar is
-  hidden while the split view is on. The **preview pane** sits under the
+  hidden while the split view is on. Turning the split view off **retires the
+  right-hand display** the way a closed tab's is retired: its background work
+  is told to stop and the display is destroyed once it has, so nothing runs
+  on behind the hidden pane and the window never waits for it. Turning the
+  split view on again makes a new display on the same folder, with the same
+  Back / Forward history. The **preview pane** sits under the
   right-hand pane's path bar, beside that display, with a splitter of its
   own; the two displays stay equal beside it. The **tree button** docks the
   folder tree down the left of that display, under its header, and takes it
@@ -355,7 +360,12 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     cache folder and shown in the preview pane. The copy is kept for two
     weeks after its last use and fetched again if the file changes on the
     server. Files over 64 MB are not fetched for a preview. Video, audio,
-    documents and text on a drive are not previewed.
+    documents and text on a drive are not previewed. A copy being fetched
+    never holds the drive up, on an FTP drive or a cloud drive alike: it is
+    called off when you ask the drive for anything else (and fetched again
+    after that), when the selection moves to another file, and when the
+    window closes - also while a cloud service makes it wait out a rate
+    limit.
   - **RAM discs.** *+ Drive > RAM disc...* asks for a name and a size and
     creates a disc in memory (VirtualFS's RAM disc API, wrapped by
     `UltraFilerRamDisks`), which then opens in the folder view and gets a row

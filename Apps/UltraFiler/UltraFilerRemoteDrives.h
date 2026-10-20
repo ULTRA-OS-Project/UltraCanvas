@@ -71,7 +71,8 @@
 //                   answers for a Stale folder being fetched again too
 // Version: 1.12.0 - Revalidate goes ahead of the queue, and beside a running
 //                   transfer; the preview copy's cancel is the worker
-//                   thread's abort check
+//                   thread's abort check, on a cloud drive (HTTP) as on an
+//                   FTP drive, and it ends a rate-limit wait
 // Version: 1.11.0 - PendingTransfers; Stop() calls a running transfer off;
 //                   an upload under a name of its own; CachedListing,
 //                   Revalidate
@@ -643,9 +644,10 @@ private:
     // `job` as PendingTransfers lists it; false for a job that is not an
     // upload or a download the user asked for. Called with the lock held.
     bool DescribeTransferLocked(const Job& job, RemoteTransfer& out) const;
-    // A preview copy being downloaded can be called off (the worker thread's
-    // abort check, UltraNet_SetThreadAbortCheck, asked as its bytes move - on
-    // an FTP drive and a cloud drive alike): the path it is
+    // A preview copy being downloaded can be called off, on an FTP drive and
+    // a cloud drive alike (the worker's UltraNet_SetThreadAbortCheck, asked by
+    // every transfer as its bytes move, and the wait out of a service's rate
+    // limit): the path it is
     // for and the flag the worker's transfer asks, both set by the worker
     // under the lock for the length of the job (no flag between jobs). The
     // flag says why, which decides what becomes of the copy.
