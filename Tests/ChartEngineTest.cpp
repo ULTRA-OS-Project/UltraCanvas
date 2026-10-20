@@ -1236,6 +1236,26 @@ static void TestAxisBandsAndSymmetry() {
           "a cyclic category axis spreads n slots over [0, 1) - the last stops short of the first");
 }
 
+static void TestAbsoluteLabels() {
+    std::printf("Absolute axis labels (diverging charts)\n");
+    ChartAxis pyramid("population");
+    pyramid.symmetric = true;
+    pyramid.absoluteLabels = true;
+    pyramid.decimals = 1;
+    pyramid.unitSuffix = "M";
+    pyramid.Observe({-3.5, 3.0});
+    pyramid.Finalize();
+    CHECK(pyramid.FormatValue(-2.0) == "2.0M" && pyramid.FormatValue(2.0) == "2.0M",
+          "both sides of zero read as magnitudes");
+    bool noMinus = true;
+    for (const ChartTick& t : pyramid.GenerateTicks(5)) {
+        noMinus = noMinus && t.label.find('-') == std::string::npos;
+    }
+    CHECK(noMinus, "no tick label carries a minus sign");
+    pyramid.formatter = [](double v) { return v < 0.0 ? std::string("neg") : std::string("pos"); };
+    CHECK(pyramid.FormatValue(-1.0) == "pos", "the magnitude is taken before a custom formatter");
+}
+
 // =============================================================================
 // LINE AND AREA SERIES
 // =============================================================================
@@ -1332,6 +1352,23 @@ static void TestMarkerPolygons() {
 // ANALYSIS
 // =============================================================================
 
+static void TestSqrtScale() {
+    std::printf("Sqrt scale (area-true radii)\n");
+    ChartAxis radius("radius");
+    radius.scale = ChartScale::Sqrt;
+    radius.SetRange(0.0, 100.0);
+    radius.Finalize();
+    CHECK(Near(radius.Normalize(25.0), 0.5), "a quarter of the range lands halfway out");
+    CHECK(Near(radius.Denormalize(radius.Normalize(64.0)), 64.0, 1e-9), "sqrt round-trips");
+
+    ChartAxis signedAxis("signed");
+    signedAxis.scale = ChartScale::Sqrt;
+    signedAxis.SetRange(-100.0, 100.0);
+    signedAxis.Finalize();
+    CHECK(Near(signedAxis.Normalize(0.0), 0.5) && signedAxis.Normalize(-25.0) < 0.5,
+          "the signed root keeps negatives below zero");
+}
+
 static void TestAnalysisHelpers() {
     std::printf("Analysis (trend fit, moving averages, Heikin-Ashi)\n");
     const ChartLinearFit fit = FitLinearTrend({1.0, 2.0, 3.0, 4.0}, {3.0, 5.0, 7.0, 9.0});
@@ -1393,10 +1430,12 @@ int main() {
     TestPaletteCountAware();
     TestPaletteFromColormap();
     TestAxisBandsAndSymmetry();
+    TestAbsoluteLabels();
     TestLineRuns();
     TestAreaOutlinesAndStacking();
     TestMarkerPolygons();
     TestAnalysisHelpers();
+    TestSqrtScale();
 
     std::printf("\n%s (%d failure%s)\n",
                 g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",

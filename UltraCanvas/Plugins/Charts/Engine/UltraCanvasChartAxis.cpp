@@ -1,5 +1,7 @@
 // Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
 // Unified axis model implementation
+// Version: 1.3.0 - absoluteLabels
+// Version: 1.2.0 - the Sqrt scale
 // Version: 1.1.0 - sub-bands, symmetric ranges, cyclic category axes
 // Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
@@ -182,7 +184,7 @@ void ChartAxis::Finalize() {
         const double magnitude = std::max(std::abs(lo), 1.0);
         lo -= magnitude * 0.5;
         hi += magnitude * 0.5;
-    } else if (autoRange && scale == ChartScale::Linear) {
+    } else if (autoRange && (scale == ChartScale::Linear || scale == ChartScale::Sqrt)) {
         if (symmetric) {
             const double m = std::max(std::abs(lo), std::abs(hi));
             lo = -m;
@@ -206,6 +208,9 @@ double ChartAxis::ApplyScale(double value) const {
     switch (scale) {
         case ChartScale::Log:
             return SafeLog(value, logBase);
+        case ChartScale::Sqrt:
+            // Signed, so a negative radial minimum keeps its order.
+            return (value < 0.0) ? -std::sqrt(-value) : std::sqrt(value);
         case ChartScale::SymLog: {
             const double sign = (value < 0.0) ? -1.0 : 1.0;
             const double magnitude = std::abs(value);
@@ -233,6 +238,8 @@ double ChartAxis::UnapplyScale(double s) const {
     switch (scale) {
         case ChartScale::Log:
             return std::pow(logBase, s);
+        case ChartScale::Sqrt:
+            return (s < 0.0) ? -(s * s) : s * s;
         case ChartScale::SymLog: {
             const double sign = (s < 0.0) ? -1.0 : 1.0;
             const double magnitude = std::abs(s);
@@ -365,6 +372,7 @@ std::vector<ChartTick> ChartAxis::GenerateTicks(int targetCount) const {
 // =============================================================================
 
 std::string ChartAxis::FormatValue(double value) const {
+    if (absoluteLabels) value = std::abs(value);
     if (formatter) return formatter(value);
 
     if (scale == ChartScale::Category) {

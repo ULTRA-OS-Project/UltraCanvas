@@ -17,9 +17,11 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.4.1 - same-side edge axes with overlapping bands stack outward
 // Version: 1.4.0 - polar furniture (rim labels, radial value rule, ring and
 //   polygon grids), polar angles / inner radius, domain gridlines, axis
-//   sub-bands on the edge rule, DrawChartMarker
+//   sub-bands on the edge rule, DrawChartMarker, domain-axis limiters with
+//   a partial extent, span annotations
 // Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
 // Last Modified: 2026-10-20
@@ -68,6 +70,32 @@ struct ChartLimiter {
     bool dashed = true;
     std::string caption;             // solved as a LimiterCaption label
     Color captionColor = Color(120, 40, 40, 255);
+    // How far the line runs across the plot, as a fraction of the direction
+    // perpendicular to its axis: a value-axis limiter spans the domain, a
+    // limiter on a domain axis (an average age on a population pyramid's age
+    // rows) spans the value range. 0..1 = the whole plot; 0..0.5 stops at the
+    // middle - one side of a diverging chart. The caption sits at the end.
+    double extentStart = 0.0;
+    double extentEnd = 1.0;
+};
+
+// A dimension line between two value-space points, with an arrowhead at
+// each end and a boxed caption at its middle (phase 3, slot 700): the lead
+// time / cycle time / WIP spans of a cumulative flow diagram, a gap between
+// two series, a measured interval. x maps through the axis at xAxisIndex (the
+// projection's domain / u), y through yAxisIndex. The caption box is an
+// obstacle in the label plan, so solved value labels steer around it.
+struct ChartSpanAnnotation {
+    size_t xAxisIndex = 0;
+    size_t yAxisIndex = 1;
+    Point2Dd from;                   // value space
+    Point2Dd to;
+    std::string label;
+    Color color = Color(120, 122, 128, 255);
+    float width = 2.4f;
+    double arrowSize = 7.0;
+    Color boxColor = Color(235, 235, 238, 235);
+    Color textColor = Color(70, 72, 78, 255);
 };
 
 // How RenderBarConnections strokes the lines BuildBarConnections produced
@@ -202,6 +230,10 @@ public:
     // ChartLabelClass::HighlightLabel.
     size_t AddHighlight(const ChartHighlight& highlight);
     void ClearHighlights();
+
+    // Span annotations (ChartSpanAnnotation above) - drawn over the content.
+    size_t AddSpanAnnotation(const ChartSpanAnnotation& span);
+    void ClearSpanAnnotations();
 
     // Legend - the shared ChartLegend component drawn and laid out by the
     // engine: an outside placement reserves its edge in the layout
@@ -364,6 +396,9 @@ private:
     uint64_t generation = 0;
     int lastLayoutWidth = -1, lastLayoutHeight = -1;
 
+    // Per axis: how far outside the plot edge its rule sits - non-zero for
+    // an edge axis stacked beyond another on the same side (RunLayout).
+    std::vector<double> axisEdgeOffsets;
     size_t gridAxisIndex = static_cast<size_t>(-1);
     size_t domainGridAxisIndex = static_cast<size_t>(-1);
 
@@ -387,6 +422,12 @@ private:
     Rect2Dd PolarRimLabelBox(double u, const Size2Di& size) const;
     std::vector<ChartLimiter> limiters;
     std::vector<ChartHighlight> highlights;
+    std::vector<ChartSpanAnnotation> spanAnnotations;
+    void RenderEngineSpanAnnotations(IRenderContext* ctx);
+    // A span's screen end points, false when an axis is missing.
+    bool MapSpan(const ChartSpanAnnotation& span, Point2Dd& a, Point2Dd& b) const;
+    Rect2Dd SpanCaptionBox(IRenderContext* ctx, const ChartSpanAnnotation& span,
+                           const Point2Dd& a, const Point2Dd& b) const;
     // A highlight's value-space point on the projection's screen, or invalid
     // (NaN) when its axes are out of range.
     Point2Dd MapHighlightPoint(const ChartHighlight& highlight,

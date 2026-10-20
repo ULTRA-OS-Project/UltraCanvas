@@ -7,6 +7,8 @@
 // and leaves screen geometry to the projection, so it can be unit tested
 // without a window.
 //
+// Version: 1.3.0 - absoluteLabels (magnitudes on both sides of a diverging axis)
+// Version: 1.2.0 - the Sqrt scale (area-true polar radii)
 // Version: 1.1.0 - axis roles (polar furniture), sub-bands (stacked panes),
 //   symmetric ranges (diverging charts)
 // Version: 1.0.0
@@ -28,6 +30,7 @@ enum class ChartScale {
     Linear,
     Log,            // logarithmic; non-positive values are clamped to the floor
     SymLog,         // linear near zero, logarithmic beyond - handles signed data
+    Sqrt,           // square root (signed): area-true radii for rose / polar column charts
     Percentile,     // rank among the observed values: uniformises skewed columns
     ZScore,         // (v - mean) / stddev
     RobustZScore,   // (v - median) / MAD - resistant to outliers
@@ -95,6 +98,11 @@ public:
     // largest magnitude observed - diverging bars, population pyramids and
     // tornado charts keep zero in the middle whichever side is longer.
     bool symmetric = false;
+    // Format magnitudes: -30 reads "30". A population pyramid or a tornado
+    // chart plots one side negative only to put it left of zero; its tick,
+    // value and tooltip labels should still read as amounts. Applies before
+    // the custom formatter too.
+    bool absoluteLabels = false;
     double logBase = 10.0;
     double symLogThreshold = 1.0;   // |v| below this is linear
     int decimals = -1;              // -1 = choose from the range

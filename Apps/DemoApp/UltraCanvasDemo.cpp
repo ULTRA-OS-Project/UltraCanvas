@@ -1097,6 +1097,12 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasChartEngineExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasChartEngine.md");
 
+        chartBuilder.AddItem("chartenginecompare", "Chart Engine Comparison", "Every chart ported to the chart engine next to the legacy chart it replaces, on the same data: line, area, cumulative flow, scatter, bubble, waterfall, diverging, population, dumbbell, Mekko, financial, heatmap, radar, radial bar, pie and polar",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateChartEngineComparisonExamples(); },
+                             "DemoApp/UltraCanvasEngineComparisonExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasEngineCharts.md");
+
         chartBuilder.AddItem("linecharts", "Line Chart", "Line chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLineChartsExamples(); },

@@ -2,6 +2,10 @@
 // The chart engine's three-phase render driver
 // Version: 1.3.0
 // Last Modified: 2026-10-20
+// V1.3.1: Edge axes sharing a side stack outward when their bands overlap
+//   (the Mekko port's column names under its cumulative-percent ticks), so
+//   they no longer overprint; disjoint bands (price above volume) still share
+//   the edge line.
 // V1.3.0: Polar furniture and two-direction grids for the engine ports of the
 //   line, scatter, radar, radial bar and pie charts.
 //   - Under Polar an edge axis follows its role: a domain axis labels the rim
@@ -18,6 +22,16 @@
 //   - An edge axis with a sub-band (ChartAxis::bandStart/bandEnd) draws its
 //     rule over the band only, so stacked panes read as separate axes.
 //   - DrawChartMarker: the one marker painter of the scatter / line family.
+//   - Span annotations (AddSpanAnnotation): dimension lines with arrowheads
+//     and a boxed caption that the label plan steers around - the lead time /
+//     cycle time / WIP spans of a cumulative flow diagram.
+//   - A limiter on a domain axis runs across the value range (a pyramid's
+//     average-age line), and ChartLimiter::extentStart/extentEnd trim it to
+//     part of the plot (one side of a diverging chart).
+//   - A ValueBand highlight follows its axis's role and the projection: a
+//     domain-axis band is a vertical strip, and under Polar the outline is
+//     sampled, so value bands are rings (the polar chart's radial tolerance
+//     zones) and domain bands wedges (its angular sectors). It drew a chord.
 // V1.2.0: Themes and palettes (Engine/UltraCanvasChartTheme.h) - SetTheme /
 //   SetPalette / the "theme" named property fill the engine's furniture
 //   colours from a ChartTheme; repaint-only, with an OnThemeChanged() hook.
@@ -213,6 +227,17 @@ size_t UltraCanvasChartEngineElement::AddHighlight(const ChartHighlight& highlig
     highlights.push_back(highlight);
     MarkEngineDirty(ChartDirty::Style);       // labels join the label plan
     return highlights.size() - 1;
+}
+
+size_t UltraCanvasChartEngineElement::AddSpanAnnotation(const ChartSpanAnnotation& span) {
+    spanAnnotations.push_back(span);
+    MarkEngineDirty(ChartDirty::Style);       // the caption joins the label plan
+    return spanAnnotations.size() - 1;
+}
+
+void UltraCanvasChartEngineElement::ClearSpanAnnotations() {
+    spanAnnotations.clear();
+    MarkEngineDirty(ChartDirty::Style);
 }
 
 void UltraCanvasChartEngineElement::ClearHighlights() {
@@ -496,6 +521,13 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
 
     ctx->SetFontSize(axisFontSize);
     const bool polar = (projectionKind == ChartProjectionKind::Polar);
+    // Edge axes sharing a side stack outward in the order they were added
+    // when their bands overlap (a Mekko chart's column names under its
+    // cumulative-percent ticks); axes in disjoint bands (a price pane above a
+    // volume pane) share the edge line.
+    axisEdgeOffsets.assign(engineAxes.Count(), 0.0);
+    struct EdgeSlot { ChartAxisSide side; double lo, hi, outer; };
+    std::vector<EdgeSlot> edgeSlots;
     for (const ChartAxis& axis : engineAxes) {
         if (!axis.visible || axis.inPlot) continue;
         if (polar) {
@@ -526,21 +558,24 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
                                       vertical ? static_cast<double>(size.width)
                                                : static_cast<double>(size.height));
         }
-        const double need = tickLength + tickLabelGap + maxLabelExtent + 6.0;
-        switch (axis.side) {
-            case ChartAxisSide::Left:   request.Reserve(ChartAxisEdge::Left, need); break;
-            case ChartAxisSide::Right:  request.Reserve(ChartAxisEdge::Right, need); break;
-            case ChartAxisSide::Top:    request.Reserve(ChartAxisEdge::Top, need); break;
-            case ChartAxisSide::Bottom: request.Reserve(ChartAxisEdge::Bottom, need); break;
-        }
-        if (!axis.title.empty()) {
-            const double titleNeed = ctx->GetTextLineHeight(axis.title) + 4.0;
-            switch (axis.side) {
-                case ChartAxisSide::Left:   request.Reserve(ChartAxisEdge::Left, need + titleNeed); break;
-                case ChartAxisSide::Right:  request.Reserve(ChartAxisEdge::Right, need + titleNeed); break;
-                case ChartAxisSide::Top:    request.Reserve(ChartAxisEdge::Top, need + titleNeed); break;
-                case ChartAxisSide::Bottom: request.Reserve(ChartAxisEdge::Bottom, need + titleNeed); break;
+        const double titleNeed = axis.title.empty()
+                                     ? 0.0 : ctx->GetTextLineHeight(axis.title) + 4.0;
+        const double need = tickLength + tickLabelGap + maxLabelExtent + 6.0 + titleNeed;
+        const double lo = std::min(axis.bandStart, axis.bandEnd);
+        const double hi = std::max(axis.bandStart, axis.bandEnd);
+        double offset = 0.0;
+        for (const EdgeSlot& slot : edgeSlots) {
+            if (slot.side == axis.side && lo < slot.hi && slot.lo < hi) {
+                offset = std::max(offset, slot.outer);
             }
+        }
+        edgeSlots.push_back({axis.side, lo, hi, offset + need});
+        axisEdgeOffsets[static_cast<size_t>(&axis - &engineAxes.At(0))] = offset;
+        switch (axis.side) {
+            case ChartAxisSide::Left:   request.Reserve(ChartAxisEdge::Left, offset + need); break;
+            case ChartAxisSide::Right:  request.Reserve(ChartAxisEdge::Right, offset + need); break;
+            case ChartAxisSide::Top:    request.Reserve(ChartAxisEdge::Top, offset + need); break;
+            case ChartAxisSide::Bottom: request.Reserve(ChartAxisEdge::Bottom, offset + need); break;
         }
     }
 
@@ -627,7 +662,13 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         if (limiter.caption.empty() || limiter.axisIndex >= engineAxes.Count()) continue;
         const ChartAxis& axis = engineAxes.At(limiter.axisIndex);
         const double v = axis.Normalize(limiter.value);
-        const Point2Dd anchor = engineProjection->ToScreen(ChartNormalizedPoint(0.98, v));
+        // Near the far end of the line's extent, along whichever direction
+        // the limiter runs (across the value range for a domain axis).
+        const double along = limiter.extentStart +
+                             (limiter.extentEnd - limiter.extentStart) * 0.98;
+        const bool domainLimiter = !axis.inPlot && IsDomainAxis(axis);
+        const Point2Dd anchor = engineProjection->ToScreen(
+            domainLimiter ? ChartNormalizedPoint(v, along) : ChartNormalizedPoint(along, v));
         ChartLabelRequest caption;
         caption.text = limiter.caption;
         caption.klass = ChartLabelClass::LimiterCaption;
@@ -646,8 +687,12 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         if (h.shape == ChartHighlightShape::ValueBand) {
             if (h.axisIndex >= engineAxes.Count()) continue;
             const ChartAxis& axis = engineAxes.At(h.axisIndex);
-            anchor = engineProjection->ToScreen(ChartNormalizedPoint(
-                0.5, axis.Normalize((h.bandLow + h.bandHigh) / 2.0)));
+            const double mid = axis.Normalize((h.bandLow + h.bandHigh) / 2.0);
+            // A band on a domain axis is a vertical strip (a wedge under
+            // Polar): its label sits halfway up it, not across the domain.
+            const bool domainBand = !axis.inPlot && IsDomainAxis(axis);
+            anchor = engineProjection->ToScreen(domainBand ? ChartNormalizedPoint(mid, 0.5)
+                                                           : ChartNormalizedPoint(0.5, mid));
         } else if (h.members.empty()) {
             anchor = MapHighlightPoint(
                 h, Point2Dd(h.rectValueSpace.x + h.rectValueSpace.width / 2.0,
@@ -676,6 +721,13 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         request.preferredSide = LabelSide::Top;
         request.priority = 6;
         broker.Add(request);
+    }
+
+    // Span captions are fixed boxes on their lines: solved labels avoid them.
+    for (const ChartSpanAnnotation& span : spanAnnotations) {
+        Point2Dd a, b;
+        if (span.label.empty() || !MapSpan(span, a, b)) continue;
+        broker.AddObstacleRect(SpanCaptionBox(ctx, span, a, b));
     }
 
     CollectChartLabels(ctx, broker);
@@ -745,8 +797,17 @@ void UltraCanvasChartEngineElement::AxisScreenLine(const ChartAxis& axis,
     const Point2Dd alongU = engineProjection->ToScreen(ChartNormalizedPoint(1.0, 0.0));
     const Point2Dd alongV = engineProjection->ToScreen(ChartNormalizedPoint(0.0, 1.0));
 
+    // Stacked edge axes sit their measured offset further out (RunLayout).
+    double offset = 0.0;
+    if (engineAxes.Count() > 0 && &axis >= &engineAxes.At(0) &&
+        &axis <= &engineAxes.At(engineAxes.Count() - 1)) {
+        const size_t index = static_cast<size_t>(&axis - &engineAxes.At(0));
+        if (index < axisEdgeOffsets.size()) offset = axisEdgeOffsets[index];
+    }
+
     if (verticalEdge) {
-        const double x = (axis.side == ChartAxisSide::Right) ? plot.Right() : plot.x;
+        const double x = (axis.side == ChartAxisSide::Right) ? plot.Right() + offset
+                                                             : plot.x - offset;
         // Whichever normalised coordinate actually drives screen-y along this
         // edge decides where normalised 0 sits.
         const double du = alongU.y - origin.y;
@@ -755,7 +816,8 @@ void UltraCanvasChartEngineElement::AxisScreenLine(const ChartAxis& axis,
         lowEnd  = Point2Dd(x, downward ? plot.y : plot.Bottom());
         highEnd = Point2Dd(x, downward ? plot.Bottom() : plot.y);
     } else {
-        const double y = (axis.side == ChartAxisSide::Top) ? plot.y : plot.Bottom();
+        const double y = (axis.side == ChartAxisSide::Top) ? plot.y - offset
+                                                           : plot.Bottom() + offset;
         const double du = alongU.x - origin.x;
         const double dv = alongV.x - origin.x;
         const bool rightward = ((std::abs(du) >= std::abs(dv)) ? du : dv) >= 0.0;
@@ -832,6 +894,7 @@ void UltraCanvasChartEngineElement::RenderPhaseOver(IRenderContext* ctx) {
     // its own axis rules and value labels under the data marks.
     RenderEngineInPlotAxes(ctx);
     RenderEngineHighlights(ctx, 700);   // slot 700 - overlays above content
+    RenderEngineSpanAnnotations(ctx);   // slot 700
     RenderPlannedLabels(ctx);      // slot 800
     RenderEngineLegend(ctx);       // slot 800
     ctx->PushState();
@@ -957,18 +1020,36 @@ void UltraCanvasChartEngineElement::RenderEngineHighlights(IRenderContext* ctx,
                 const ChartAxis& axis = engineAxes.At(h.axisIndex);
                 const double lo = axis.Normalize(std::min(h.bandLow, h.bandHigh));
                 const double hi = axis.Normalize(std::max(h.bandLow, h.bandHigh));
-                const std::vector<Point2Dd> quad = {
-                    engineProjection->ToScreen(ChartNormalizedPoint(0.0, lo)),
-                    engineProjection->ToScreen(ChartNormalizedPoint(1.0, lo)),
-                    engineProjection->ToScreen(ChartNormalizedPoint(1.0, hi)),
-                    engineProjection->ToScreen(ChartNormalizedPoint(0.0, hi))};
+                // A band on a value axis spans the domain; on a domain axis it
+                // spans the value range. The outline is sampled through the
+                // projection, so under Polar a value band is a ring (a radial
+                // tolerance zone) and a domain band a wedge (a wind sector).
+                const bool domainBand = !axis.inPlot && IsDomainAxis(axis);
+                const double u0 = domainBand ? lo : 0.0, u1 = domainBand ? hi : 1.0;
+                const double v0 = domainBand ? 0.0 : lo, v1 = domainBand ? 1.0 : hi;
+                const bool polarBand = projectionKind == ChartProjectionKind::Polar;
+                const std::vector<Point2Dd> outline = BuildBarOutline(
+                    *engineProjection, u0, v0, u1, v1, polarBand ? 96 : 1);
+                if (outline.size() < 3) break;
                 ctx->SetFillPaint(h.fill);
-                ctx->FillLinePath(quad);
+                ctx->FillLinePath(outline);
                 if (strokes) {
+                    // The two edges along the band, not its ends.
+                    auto edge = [&](bool atLow) {
+                        std::vector<Point2Dd> line;
+                        const int samples = polarBand ? 96 : 1;
+                        for (int k = 0; k <= samples; ++k) {
+                            const double t = static_cast<double>(k) / samples;
+                            line.push_back(engineProjection->ToScreen(domainBand
+                                ? ChartNormalizedPoint(atLow ? lo : hi, t)
+                                : ChartNormalizedPoint(t, atLow ? lo : hi)));
+                        }
+                        ctx->DrawLinePath(line, false);
+                    };
                     ctx->SetStrokePaint(h.stroke);
                     ctx->SetStrokeWidth(h.strokeWidth);
-                    ctx->DrawLine(quad[0], quad[1]);
-                    ctx->DrawLine(quad[3], quad[2]);
+                    edge(true);
+                    edge(false);
                 }
                 break;
             }
@@ -1071,8 +1152,14 @@ void UltraCanvasChartEngineElement::RenderEngineLimiters(IRenderContext* ctx) {
         ctx->SetStrokePaint(limiter.color);
         ctx->SetStrokeWidth(limiter.width);
         if (limiter.dashed) ctx->SetLineDash(UCDashPattern({6.0, 4.0}));
-        ctx->DrawLine(engineProjection->ToScreen(ChartNormalizedPoint(0.0, v)),
-                      engineProjection->ToScreen(ChartNormalizedPoint(1.0, v)));
+        // A limiter on a domain axis (an average age across a pyramid's age
+        // rows, a date marker) runs across the value range instead.
+        const bool domainLimiter = !axis.inPlot && IsDomainAxis(axis);
+        const double e0 = limiter.extentStart, e1 = limiter.extentEnd;
+        ctx->DrawLine(engineProjection->ToScreen(domainLimiter ? ChartNormalizedPoint(v, e0)
+                                                               : ChartNormalizedPoint(e0, v)),
+                      engineProjection->ToScreen(domainLimiter ? ChartNormalizedPoint(v, e1)
+                                                               : ChartNormalizedPoint(e1, v)));
         if (limiter.dashed) ctx->SetLineDash(UCDashPattern());
     }
 }
@@ -1353,6 +1440,77 @@ void UltraCanvasChartEngineElement::RenderEngineLegend(IRenderContext* ctx) {
     // The shared component draws itself against the same area it was
     // measured with during layout; the call is cheap when nothing changed.
     engineLegend.Render(ctx, legendArea);
+}
+
+// =============================================================================
+// SPAN ANNOTATIONS
+// =============================================================================
+
+bool UltraCanvasChartEngineElement::MapSpan(const ChartSpanAnnotation& span,
+                                            Point2Dd& a, Point2Dd& b) const {
+    if (span.xAxisIndex >= engineAxes.Count() || span.yAxisIndex >= engineAxes.Count() ||
+        !engineProjection) return false;
+    const ChartAxis& x = engineAxes.At(span.xAxisIndex);
+    const ChartAxis& y = engineAxes.At(span.yAxisIndex);
+    a = engineProjection->ToScreen(ChartNormalizedPoint(x.Normalize(span.from.x),
+                                                        y.Normalize(span.from.y)));
+    b = engineProjection->ToScreen(ChartNormalizedPoint(x.Normalize(span.to.x),
+                                                        y.Normalize(span.to.y)));
+    return std::isfinite(a.x) && std::isfinite(a.y) && std::isfinite(b.x) && std::isfinite(b.y);
+}
+
+Rect2Dd UltraCanvasChartEngineElement::SpanCaptionBox(IRenderContext* ctx,
+                                                      const ChartSpanAnnotation& span,
+                                                      const Point2Dd& a,
+                                                      const Point2Dd& b) const {
+    ctx->SetFontSize(axisFontSize);
+    const Size2Di size = ctx->GetTextLineDimensions(span.label);
+    const Point2Dd mid((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+    const double w = size.width + 16.0, h = size.height + 8.0;
+    // A mostly horizontal span carries its caption above the line, a
+    // vertical one beside it, so the box never sits on the arrow.
+    if (std::abs(b.x - a.x) >= std::abs(b.y - a.y)) {
+        return Rect2Dd(mid.x - w * 0.5, mid.y - h - 5.0, w, h);
+    }
+    return Rect2Dd(mid.x + 10.0, mid.y - h * 0.5, w, h);
+}
+
+void UltraCanvasChartEngineElement::RenderEngineSpanAnnotations(IRenderContext* ctx) {
+    if (spanAnnotations.empty()) return;
+    ctx->PushState();
+    for (const ChartSpanAnnotation& span : spanAnnotations) {
+        Point2Dd a, b;
+        if (!MapSpan(span, a, b)) continue;
+        const double dx = b.x - a.x, dy = b.y - a.y;
+        const double length = std::sqrt(dx * dx + dy * dy);
+        if (length < span.arrowSize * 2.0 + 4.0) continue;   // no room for the arrows
+        const double ux = dx / length, uy = dy / length;
+
+        ctx->SetStrokePaint(span.color);
+        ctx->SetStrokeWidth(span.width);
+        ctx->DrawLine(Point2Dd(a.x + ux * 2.0, a.y + uy * 2.0),
+                      Point2Dd(b.x - ux * 2.0, b.y - uy * 2.0));
+        auto arrow = [&](const Point2Dd& tip, double angle) {
+            const double s = span.arrowSize;
+            ctx->SetFillPaint(span.color);
+            ctx->FillLinePath({tip,
+                               Point2Dd(tip.x - s * std::cos(angle - 0.42),
+                                        tip.y - s * std::sin(angle - 0.42)),
+                               Point2Dd(tip.x - s * std::cos(angle + 0.42),
+                                        tip.y - s * std::sin(angle + 0.42))});
+        };
+        const double angle = std::atan2(dy, dx);
+        arrow(b, angle);
+        arrow(a, angle + M_PI);
+
+        if (span.label.empty()) continue;
+        const Rect2Dd box = SpanCaptionBox(ctx, span, a, b);
+        ctx->SetFillPaint(span.boxColor);
+        ctx->FillRectangle(box);
+        ctx->SetTextPaint(span.textColor);
+        ctx->DrawText(span.label, Point2Dd(box.x + 8.0, box.y + 4.0));
+    }
+    ctx->PopState();
 }
 
 // =============================================================================
