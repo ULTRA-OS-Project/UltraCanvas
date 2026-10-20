@@ -8,20 +8,23 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
-// Version: 1.7.5 - DropPasswords forgets its passwords when the desktop session locks
+// Version: 1.8.5 - DropPasswords forgets its passwords when the desktop session locks
 //                  (UltraCanvasSessionLock); a drop's first file then asks again
-// Version: 1.7.4 - DropPasswords: every password given in a drop (up to eight, newest
+// Version: 1.8.4 - DropPasswords: every password given in a drop (up to eight, newest
 //                  first) is tried on each protected file after it, not only the last
-// Version: 1.7.3 - DropPassword: the password given for one file of a drop is tried first
+// Version: 1.8.3 - DropPassword: the password given for one file of a drop is tried first
 //                  on the next protected file of it, and forgotten when the drop is done;
 //                  PasteAsNewImage says what it pasted
-// Version: 1.7.2 - LoadDocumentAsking: a protected file asks for its password wherever a
+// Version: 1.8.2 - LoadDocumentAsking: a protected file asks for its password wherever a
 //                  file is read - each of a multi-file drop in turn (ApplyImports), a
 //                  pasted one; AskForFilePassword's notOpened
-// Version: 1.7.1 - AskForFilePassword: one password question for a protected *.ucd and a
+// Version: 1.8.1 - AskForFilePassword: one password question for a protected *.ucd and a
 //                  protected PDF; ImportFile takes the PDF's password on to the rasterizer
-// Version: 1.7.0 - password-protected *.ucd: CmdPassword (File > Password Protection...),
+// Version: 1.8.0 - password-protected *.ucd: CmdPassword (File > Password Protection...),
 //                  OpenProtectedFile asks for a file's password, SaveLossQuestion
+// Version: 1.7.0 - the palette rows under the picker (UltraCanvasColorPaletteManager):
+//                  palettes added from a gallery, an entry set with a right click;
+//                  RememberPalettes keeps them between starts
 // Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
 // Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
 //                  the keyboard back to the text being typed
@@ -48,7 +51,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColorPicker.h"
-#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasColorPaletteManager.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasGroupBox.h"
@@ -109,6 +112,8 @@ private:
     // The colour picker's design and open / folded channels, into the
     // settings file: the next editor opens it the way it was left.
     void RememberColourPicker();
+    // The palette rows under the picker into the settings file.
+    void RememberPalettes();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
@@ -382,7 +387,7 @@ private:
     std::shared_ptr<UltraCanvasPaintSurface>   surface;
     std::shared_ptr<UltraCanvasContainer>      rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>    colorPicker;
-    std::shared_ptr<UltraCanvasColorSwatchBar> swatches;
+    std::shared_ptr<UltraCanvasColorPaletteManager> palettes;   // the palette rows under the picker
     // Two of the right panel's cards (BuildRightPanel; the Colour card holds
     // the picker and swatches): the active tool's options, captioned with the
     // tool's name, and Layers.

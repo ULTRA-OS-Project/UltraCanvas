@@ -10,12 +10,14 @@
 // tools" matrix that drove the 5/3/1 preset: its printed row totals are the
 // arithmetic these tests pin down.
 //
+// Version: 1.6.0 - the C shape: cube cells keyed by depth, their scores, validation, CSV refusal and JSON
+// Version: 1.5.0 - attribute columns: lookup, validation and JSON
 // Version: 1.4.0 - competitive assessment: ratings, their validation and their JSON
 // Version: 1.3.0 - JSON interchange: every sample round-trips, failures leave the model untouched
 // Version: 1.2.0 - symmetric panels, House validation, relative weights, the importance column, ImportMatrixTable, the House sample
 // Version: 1.1.0 - X and Y panel validation, form header fields, the X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
@@ -688,6 +690,7 @@ static void TestJsonRoundTrip() {
             {"X (supply chain)", &MatrixSamples::SupplyChain},
             {"Y (design traceability)", &MatrixSamples::DesignTraceability},
             {"House of Quality", &MatrixSamples::HouseOfQuality},
+            {"C (defect cube)", &MatrixSamples::DefectCube},
     };
     for (const Sample& sample : samples) {
         const MatrixModel original = sample.build();
@@ -774,6 +777,128 @@ static void TestJsonRoundTrip() {
           "after every failure the model is untouched");
 }
 
+static void TestAttributes() {
+    std::printf("\n[attribute columns]\n");
+
+    MatrixModel tools = MatrixSamples::ImprovementTools();
+    const MatrixItemSet& depts = tools.sets[0];
+    CHECK(depts.columns.size() == 2 && depts.columns[1] == "Facilitator",
+          "the departments carry two attribute columns");
+    CHECK(depts.AttributeOf(depts.IndexOf("IT"), 0) == "24" && depts.AttributeOf(depts.IndexOf("IT"), 1) == "Y",
+          "a value reads back by item and column");
+    CHECK(depts.AttributeOf(-1, 0).empty() && depts.AttributeOf(0, 2).empty() &&
+          depts.AttributeOf(99, 0).empty() && depts.AttributeOf(0, -1).empty(),
+          "out-of-range indices read as blank");
+    CHECK(tools.Validate().warnings.empty(), "the sample validates without warnings");
+
+    MatrixModel shortRow = tools;
+    shortRow.sets[0].items[0].attributes = {"12"};
+    CHECK(shortRow.sets[0].AttributeOf(0, 1).empty() && shortRow.Validate().warnings.empty(),
+          "a short value list leaves the remaining columns blank, without a warning");
+
+    MatrixModel longRow = tools;
+    longRow.sets[0].items[0].attributes.push_back("extra");
+    const MatrixValidation v = longRow.Validate();
+    CHECK(v.valid && v.warnings.size() == 1, "more values than columns is a warning, not an error");
+
+    MatrixModel reread;
+    std::string error;
+    CHECK(ImportMatrixJson(ExportMatrixJson(tools), reread, &error) &&
+          reread.sets[0].columns == tools.sets[0].columns &&
+          reread.sets[0].items[6].attributes == tools.sets[0].items[6].attributes,
+          "columns and values survive JSON");
+
+    const JSONValue plain = MatrixModelToJson(MatrixSamples::QualityFunctionDeployment());
+    CHECK(!plain["sets"][0].Contains("columns") && !plain["sets"][0]["items"][0].Contains("attributes"),
+          "a set without columns writes neither member");
+
+    // A stray non-string reads as blank and keeps the values after it in their columns.
+    std::string text = ExportMatrixJson(tools, false);
+    const std::string hr = "\"attributes\":[\"12\",\"N\"]";
+    const size_t at = text.find(hr);
+    CHECK(at != std::string::npos, "the compact JSON holds HR's values as written");
+    if (at != std::string::npos) text.replace(at, hr.size(), "\"attributes\":[12,\"N\"]");
+    MatrixModel stray;
+    CHECK(ImportMatrixJson(text, stray, &error) && stray.sets[0].AttributeOf(0, 0).empty() &&
+          stray.sets[0].AttributeOf(0, 1) == "N",
+          "a non-string value reads as blank in its own column");
+}
+
+static void TestCube() {
+    std::printf("\n[C shape - the cube]\n");
+
+    CHECK(MatrixShapeSetCount(MatrixShape::C) == 3 && MatrixShapePanelCount(MatrixShape::C) == 1,
+          "a C takes three sets and one panel");
+
+    MatrixModel cube = MatrixSamples::DefectCube();
+    CHECK(cube.Validate().valid && cube.panels[0].IsCube() && cube.DepthSet(0) == &cube.sets[2],
+          "the sample is one valid cube panel with the shifts as depth");
+    CHECK(cube.LevelAt(0, 2, 1, 2) == "frequent" && cube.LevelAt(0, 2, 1, 0).empty(),
+          "a cell is found by its row, column and depth");
+    CHECK(cube.LevelAt(0, 2, 1).empty() && !cube.FindCell(0, 2, 1),
+          "without a depth, nothing on a cube is found");
+
+    CHECK(!cube.SetCellAt(0, 0, 0, "rare"), "a cube cell without a depth is refused");
+    CHECK(!cube.SetCubeCellAt(0, 0, 0, 3, "rare") && !cube.SetCubeCellAt(0, 0, 0, -1, "rare"),
+          "and so is a depth out of range");
+    CHECK(!cube.SetCubeCell(0, "Dents", "Weld", "Weekend", "rare"), "and an unknown depth item");
+    MatrixModel tools = MatrixSamples::ImprovementTools();
+    CHECK(!tools.SetCubeCellAt(0, 0, 0, 0, "strong"), "a two-way panel refuses a depth");
+
+    const size_t before = cube.cells.size();
+    CHECK(cube.SetCubeCell(0, "Dents", "Weld", "Late", "rare") && cube.cells.size() == before + 1 &&
+          cube.SetCubeCell(0, "Dents", "Weld", "Late", "frequent") && cube.cells.size() == before + 1,
+          "setting a cube cell again replaces it");
+    CHECK(cube.ClearCell(0, 1, 1, 1) && !cube.ClearCell(0, 1, 1, 1) && cube.cells.size() == before,
+          "and it clears by its depth");
+
+    // Misalignment (row 2) at the weld line (column 1): rare in the late
+    // shift, frequent at night - 1 + 3 through the cube.
+    CHECK(NearlyEqual(cube.ColumnScore(0, 1), 1 + 1 + 3 + 2) && NearlyEqual(cube.RowScore(0, 2), 1 + 3 + 2),
+          "row and column scores sum through every slice");
+    CHECK(NearlyEqual(cube.DepthScore(0, 2), 3 + 2 + 3 + 2 + 2 + 3 + 1) && NearlyEqual(cube.DepthScore(0, 0), 2 + 1 + 2 + 1),
+          "a slice's score sums its own cells");
+    CHECK(NearlyEqual(tools.DepthScore(0, 0), 0.0), "a two-way panel has no slice score");
+
+    MatrixModel stray = MatrixSamples::DefectCube();
+    stray.cells[0].depth = 7;
+    CHECK(!stray.Validate().valid, "a hand-made depth out of range fails validation");
+    MatrixModel twice = MatrixSamples::DefectCube();
+    twice.cells.push_back(twice.cells[0]);
+    CHECK(!twice.Validate().valid, "a cube cell twice fails validation");
+    MatrixModel flat = MatrixSamples::DefectCube();
+    flat.panels[0].depthSetId.clear();
+    CHECK(!flat.Validate().valid, "a C whose panel has no depth set fails validation");
+    MatrixModel same = MatrixSamples::DefectCube();
+    same.panels[0].depthSetId = "defects";
+    CHECK(!same.Validate().valid, "a cube must cross three different sets");
+    MatrixModel elsewhere = MatrixSamples::DefectCube();
+    elsewhere.shape = MatrixShape::T;
+    CHECK(!elsewhere.Validate().valid, "a depth set in another shape fails validation");
+    MatrixModel depthOnFlat = MatrixSamples::ImprovementTools();
+    depthOnFlat.cells[0].depth = 0;
+    CHECK(!depthOnFlat.Validate().valid, "a depth on a two-way panel's cell fails validation");
+
+    CHECK(ExportMatrixCsv(cube, 0).empty(), "a cube has no CSV form");
+    MatrixModel csvTarget = MatrixSamples::DefectCube();
+    CHECK(!ImportMatrixCsv(ExportMatrixCsv(tools, 0), csvTarget, 0) && csvTarget.cells.size() == before,
+          "and reads none");
+
+    MatrixModel reread;
+    std::string error;
+    CHECK(ImportMatrixJson(ExportMatrixJson(cube), reread, &error) && reread.shape == MatrixShape::C &&
+          reread.panels[0].depthSetId == "shifts" && reread.cells.size() == cube.cells.size() &&
+          reread.LevelAt(0, 2, 1, 2) == "frequent",
+          "the cube survives JSON, cells keyed by depth item");
+    std::string text = ExportMatrixJson(cube, false);
+    const size_t at = text.find("\"depth\":\"Night\"");
+    CHECK(at != std::string::npos, "cells name their depth item");
+    if (at != std::string::npos) text.replace(at, 15, "\"depth\":\"Never\"");
+    MatrixModel bad;
+    CHECK(!ImportMatrixJson(text, bad, &error) && error.find("Never") != std::string::npos,
+          "a cell naming an unknown depth item is refused, and says which");
+}
+
 static void TestCompetitiveAssessment() {
     std::printf("\n[competitive assessment]\n");
 
@@ -855,6 +980,8 @@ int main() {
     TestImportTable();
     TestJsonRoundTrip();
     TestCompetitiveAssessment();
+    TestAttributes();
+    TestCube();
 
     std::printf("\n================================\n");
     if (g_failures == 0) {

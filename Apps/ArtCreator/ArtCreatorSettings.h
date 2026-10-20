@@ -4,9 +4,11 @@
 // config.ini - ~/.config/UltraCanvas/ArtCreator/config.ini on Linux). It
 // keeps the colour picker the way it was left: the design chosen in its list
 // and whether its channels are open. The picker changes them, so they are
-// saved as they change; there is no settings window.
+// saved as they change; there is no settings window. It also keeps the
+// colour palettes under the picker (picker.palettes).
+// Version: 1.1.0 - picker.palettes: the palette rows under the colour picker
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +31,12 @@ public:
     // tabs and sliders - are open (picker.design, picker.channels).
     ColorPickerWheelStyle pickerDesign = ColorPickerWheelStyle::Ring;
     bool pickerChannelsOpen = false;
+
+    // ===== COLOUR PALETTES =====
+    // The palette rows under the colour picker, as
+    // UltraCanvasColorPaletteManager::SerializePalettes writes them; empty
+    // for the one default row.
+    std::string palettes;
 
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
@@ -66,6 +74,8 @@ public:
             if (it->second == "open") pickerChannelsOpen = true;
             else if (it->second == "folded") pickerChannelsOpen = false;
         }
+        it = kv.find("picker.palettes");
+        if (it != kv.end()) palettes = it->second;
         return true;
     }
 
@@ -80,6 +90,7 @@ public:
         file << "# ArtCreator configuration\n\n";
         file << "picker.design = " << ColorPickerWheelStyleName(pickerDesign) << "\n";
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
+        if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
         return file.good();
     }
 

@@ -1,3 +1,15 @@
+#### 2026-10-19 *0.8.2*
+- **Colour palettes under the picker**, as UltraPaint's: the row of swatches
+  in the Colour card ends in a small **+** that opens a gallery of colour
+  schemes (basics, moods, design systems, retro machines, indexed palettes
+  up to 256 colours for a GIF); each scheme's **+** adds it as another row,
+  and with several rows each row ends in a **−** that takes it away while
+  the **+** moves to the last row. A left click on a swatch sets the fill.
+- **A right click on a palette swatch edits it** in a small foreground-only
+  colour picker next to it; *Revert* puts it back. (It used to set the line
+  colour; the picker's own background swatch still does that.)
+- The rows are kept in the settings file (`picker.palettes`).
+
 #### 2026-10-19 *0.8.1*
 - **The right panel in cards, as UltraPaint's.** Icon, colour, tool options,
   gradient, line and layers are each a white card (the framework's SectionCard

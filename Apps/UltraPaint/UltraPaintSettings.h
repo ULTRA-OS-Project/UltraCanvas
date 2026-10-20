@@ -4,11 +4,12 @@
 // config.ini - ~/.config/UltraCanvas/UltraPaint/config.ini on Linux). The
 // settings window (UltraPaintSettingsDialog) applies a change to the running
 // editor at once and saves it right away, so there is no OK / Cancel.
+// Version: 1.3.0 - the colour palettes under the picker (picker.palettes)
 // Version: 1.2.1 - the designs' names are the framework's (ColorPickerWheelStyleName)
 // Version: 1.2.0 - the colour picker's design and whether its channels are open
 // Version: 1.1.0 - Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -82,6 +83,21 @@ public:
         return onDisk.Save();
     }
 
+    // ===== COLOUR PALETTES =====
+    // The palette rows under the colour picker, as
+    // UltraCanvasColorPaletteManager::SerializePalettes writes them; empty
+    // for the one default row. Changed by the rows' own buttons and saved as
+    // they change.
+    std::string palettes;
+
+    // Only the palettes go into the file, as SavePicker does.
+    bool SavePalettes() const {
+        UltraPaintSettings onDisk;
+        onDisk.Load();
+        onDisk.palettes = palettes;
+        return onDisk.Save();
+    }
+
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
     static std::filesystem::path ConfigFolder() {
@@ -128,6 +144,8 @@ public:
             if (it->second == "open") pickerChannelsOpen = true;
             else if (it->second == "folded") pickerChannelsOpen = false;
         }
+        it = kv.find("picker.palettes");
+        if (it != kv.end()) palettes = it->second;
         return true;
     }
 
@@ -146,6 +164,7 @@ public:
         file << "palette.toolbar = " << (paletteAdaptive ? "adaptive" : "static") << "\n";
         file << "picker.design = " << ColorPickerWheelStyleName(pickerDesign) << "\n";
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
+        if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
         return file.good();
     }
 
