@@ -20,6 +20,15 @@
     preload them, and the macOS bundles leave `media/emoji/` out: macOS draws
     Apple Color Emoji.
   - The Windows fonts.conf alias for `emoji` ends with Noto Color Emoji.
+  - Windows: the configuration `LoadBundledFontsNative` builds when fontconfig
+    starts with no font folders at all named the Windows font folders and
+    nothing else - no `sans-serif`, `monospace` or `emoji` alias, so those
+    matched whichever font fontconfig listed first. It now loads the same
+    aliases as the generated fonts.conf, through the new
+    `GenerateFontAliasConfig()` (`UltraCanvasApplication.h`), which both use.
   - Tested in the new `EmojiSettingsTest`: "👤 Someone" in Ubuntu Bold, with
     the bundled fonts alone, draws its emoji from the chosen font, with no
-    missing glyph.
+    missing glyph; and with the generic aliases loaded into such a
+    configuration, `monospace` is Ubuntu Mono. It runs on Linux in the full
+    pass and on Windows in its own CI step (`Tests/EmojiTests.cmake`, built
+    there by the new `ULTRACANVAS_BUILD_EMOJI_TESTS`).

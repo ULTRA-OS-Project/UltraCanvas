@@ -384,6 +384,70 @@ std::vector<std::string> AppleScriptNotificationCommand(const PresentedContent& 
     return {"/usr/bin/osascript", "-e", "on run argv", "-e", script, "-e", "end run", text, title, subtitle};
 }
 
+std::string WindowsToastAppUserModelId(const std::string& appId) {
+    std::string id;
+    for (unsigned char c : appId) {
+        if (std::isalnum(c) || c == '.' || c == '-' || c == '_') id += static_cast<char>(c);
+        if (id.size() == 128) break;
+    }
+    // Nothing but separators names no application.
+    if (id.find_first_not_of(".-_") == std::string::npos) return std::string();
+    return id;
+}
+
+namespace {
+
+std::string XmlEscape(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        switch (c) {
+            case '&':  out += "&amp;"; break;
+            case '<':  out += "&lt;"; break;
+            case '>':  out += "&gt;"; break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&apos;"; break;
+            default:   out += c; break;
+        }
+    }
+    return out;
+}
+
+constexpr const char* kToastActionPrefix = "action:";
+
+} // namespace
+
+std::string WindowsToastXml(const PresentedContent& content) {
+    std::string xml = "<toast";
+    if (content.hasDefaultAction) xml += " launch=\"default\"";
+    xml += "><visual><binding template=\"ToastGeneric\">";
+    xml += "<text>" + XmlEscape(content.title) + "</text>";
+    if (!content.body.empty()) xml += "<text>" + XmlEscape(content.body) + "</text>";
+    // A local file is named by its path: desktop applications may.
+    if (!content.iconFile.empty())
+        xml += "<image placement=\"appLogoOverride\" src=\"" + XmlEscape(content.iconFile) + "\"/>";
+    xml += "</binding></visual>";
+    if (!content.buttons.empty()) {
+        xml += "<actions>";
+        for (const auto& button : content.buttons)
+            xml += "<action content=\"" + XmlEscape(button.label) + "\" arguments=\"" +
+                   XmlEscape(kToastActionPrefix + button.id) + "\"/>";
+        xml += "</actions>";
+    }
+    if (content.urgency == "low") xml += "<audio silent=\"true\"/>";
+    xml += "</toast>";
+    return xml;
+}
+
+PresenterResponse WindowsToastResponse(const std::string& arguments, std::string& actionId) {
+    if (StartsWith(arguments, kToastActionPrefix)) {
+        actionId = arguments.substr(std::char_traits<char>::length(kToastActionPrefix));
+        return PresenterResponse::Action;
+    }
+    actionId.clear();
+    return PresenterResponse::Activated;
+}
+
 std::string PublishMirror(IAdapterHost& host, const std::string& adapterName,
                           const SystemNotification& n, const std::string& notificationId) {
     if (StartsWith(n.category, "im.received")) {

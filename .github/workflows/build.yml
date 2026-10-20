@@ -841,6 +841,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
+            -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
             -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
@@ -1313,6 +1314,16 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest)$"
+
+      # The bundled emoji fonts on Windows, where emoji drew as boxes of hex
+      # digits: the emoji setting's file under %APPDATA%, the generic font
+      # aliases, and "👤 Someone" laid out with the bundled fonts alone, its
+      # emoji from the font the setting picks. ULTRACANVAS_BUILD_EMOJI_TESTS
+      # builds it without BUILD_TESTS; Linux runs it in the full pass.
+      - name: Run emoji tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^EmojiSettingsTest$"
 
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)

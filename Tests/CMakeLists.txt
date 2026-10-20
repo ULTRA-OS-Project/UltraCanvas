@@ -698,27 +698,9 @@ else()
 endif()
 
 # ===== EMOJI SETTINGS TEST =====
-# Emoji.conf read and written, and "👤 Someone" laid out with the bundled
-# fonts alone: the emoji comes from the bundled font the setting picks (Noto
-# Color Emoji, Noto Emoji), never as a box of hex digits. fontconfig only -
-# macOS draws Apple Color Emoji.
-if(TARGET UltraCanvas AND NOT APPLE AND NOT EMSCRIPTEN)
-    message(STATUS "  Building EmojiSettingsTest...")
-    add_executable(EmojiSettingsTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/EmojiSettingsTest.cpp
-    )
-    target_include_directories(EmojiSettingsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(EmojiSettingsTest PRIVATE cxx_std_20)
-    target_link_libraries(EmojiSettingsTest PRIVATE UltraCanvas)
-    set_target_properties(EmojiSettingsTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME EmojiSettingsTest COMMAND EmojiSettingsTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: EmojiSettingsTest")
-else()
-    message(STATUS "  EmojiSettingsTest skipped (UltraCanvas target not present, or macOS)")
-endif()
+# Defined in EmojiTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_EMOJI_TESTS) where BUILD_TESTS is off - the Windows row.
+include(${CMAKE_CURRENT_SOURCE_DIR}/EmojiTests.cmake)
 
 # ===== NEW DOCUMENT DIALOG LAYOUT TEST =====
 # The new-document dialog's list names, "File name:" label and file preview

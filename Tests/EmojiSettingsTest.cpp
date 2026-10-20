@@ -8,6 +8,9 @@
 // subject of a LinkedIn mail that showed a box of hex digits in UltraMail) in
 // Ubuntu Bold: the emoji must come from Noto Color Emoji, or Noto Emoji for
 // the black-and-white setting, and no glyph may be missing.
+// The generic aliases (GenerateFontAliasConfig) are checked the same way: in a
+// configuration of the bundled fonts alone, "monospace" is Ubuntu Mono.
+// Version: 1.1.0 - the generic aliases
 // Version: 1.0.0
 // Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
@@ -18,6 +21,13 @@
 
 #include <fontconfig/fontconfig.h>
 #include <pango/pangocairo.h>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #include <cstdlib>
 #include <filesystem>
@@ -39,12 +49,13 @@ static int failCount = 0;
 
 namespace {
 
+// The settings folder's root, where the setting reads it: %APPDATA% on Windows
+// (GetEnvUtf8 reads the wide environment), $XDG_CONFIG_HOME elsewhere.
 void SetSettingsRoot(const std::filesystem::path& root) {
-    const std::string value = PathToUtf8(root);
 #if defined(_WIN32)
-    _putenv_s("APPDATA", value.c_str());   // path-string-ok: test fixture, ASCII temp path
+    SetEnvironmentVariableW(L"APPDATA", root.c_str());   // path-string-ok: the wide path itself
 #else
-    setenv("XDG_CONFIG_HOME", value.c_str(), 1);
+    setenv("XDG_CONFIG_HOME", PathToUtf8(root).c_str(), 1);
 #endif
 }
 
@@ -98,6 +109,38 @@ EmojiRun LayOutWithBundledFonts() {
     return result;
 }
 
+// The family fontconfig matches `family` to in a configuration of the
+// bundled fonts alone, with the generic aliases loaded into it or not - as
+// Windows' inline configuration for an empty fontconfig had none.
+std::string MatchInBundledFonts(const char* family, bool withAliases) {
+    FcConfig* config = FcConfigCreate();
+    const std::string dir = GetBundledFontsDir();
+    for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+        const std::string file = dir + kEmbeddedAllFonts[i];
+        if (std::filesystem::exists(PathFromUtf8(file)))
+            FcConfigAppFontAddFile(config, reinterpret_cast<const FcChar8*>(file.c_str()));
+    }
+    if (withAliases) {
+        const std::string aliases = GenerateFontAliasConfig();
+        FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(aliases.c_str()), FcFalse);
+    }
+    FcConfigBuildFonts(config);
+    std::string matched;
+    FcPattern* pattern = FcNameParse(reinterpret_cast<const FcChar8*>(family));
+    FcConfigSubstitute(config, pattern, FcMatchPattern);
+    FcDefaultSubstitute(pattern);
+    FcResult result = FcResultNoMatch;
+    if (FcPattern* match = FcFontMatch(config, pattern, &result)) {
+        FcChar8* name = nullptr;
+        if (FcPatternGetString(match, FC_FAMILY, 0, &name) == FcResultMatch && name)
+            matched = reinterpret_cast<const char*>(name);
+        FcPatternDestroy(match);
+    }
+    FcPatternDestroy(pattern);
+    FcConfigDestroy(config);
+    return matched;
+}
+
 } // namespace
 
 int main() {
@@ -143,6 +186,20 @@ int main() {
         TEST("in the UltraCanvas settings folder",
              EmojiSettings::FilePath().filename() == "Emoji.conf" &&
              std::filesystem::exists(EmojiSettings::FilePath()));
+    }
+
+    // ----- the generic aliases (GenerateFontAliasConfig) -----
+    {
+        const std::string aliases = GenerateFontAliasConfig();
+        TEST("the aliases name the generic families",
+             aliases.find("<family>monospace</family>") != std::string::npos &&
+             aliases.find("<family>emoji</family>") != std::string::npos);
+        TEST("the aliases are aliases only", aliases.find("<dir") == std::string::npos);
+        const std::string without = MatchInBundledFonts("monospace", false);
+        const std::string with = MatchInBundledFonts("monospace", true);
+        std::cerr << "  monospace: \"" << without << "\" without the aliases, \"" << with << "\" with them"
+                  << std::endl;
+        TEST("monospace is Ubuntu Mono with the aliases", with == "Ubuntu Mono");
     }
 
     // ----- drawn -----

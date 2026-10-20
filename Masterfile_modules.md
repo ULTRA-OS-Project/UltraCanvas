@@ -2070,7 +2070,7 @@ the shared chat / mail mirrors with category guessing from the application's
 identity, the presenters that put an application's `system.notification` on
 screen through the platform's own notification service and report its click
 back (`freedesktop-presenter`: `Notify` to the desktop's server;
-`windows-presenter`: notification-area balloons, shown as toasts;
+`windows-presenter`: toasts under the posting application's own AppUserModelID, balloons before Windows 10 1903;
 `macos-presenter`: Notification Center from an application bundle, osascript
 outside one), the toast
 host that draws the notifications nothing else draws - where UltraMessage
