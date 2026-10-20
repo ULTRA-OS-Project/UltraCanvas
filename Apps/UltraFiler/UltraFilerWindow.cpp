@@ -64,6 +64,10 @@
 // Version: 1.34.0 - closing during an upload or a download asks first
 //                  ("An upload is still running — quit anyway?"); for one to
 //                  an FTP drive it says what was sent is removed later
+// Version: 1.34.0 - the split view's right-hand display is retired like a closed tab
+//                  when the split view goes off (its workers stop, it is destroyed
+//                  once they have) and made again, with its folder and history,
+//                  when it comes back
 // Version: 1.33.0 - a closed tab's folder display is told to stop its workers and
 //                  destroyed once they are gone (RetireDisplay), so a busy worker
 //                  no longer freezes the window as the tab closes
@@ -74,7 +78,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -7655,12 +7659,21 @@ void UltraFilerWindow::BuildSplitViewPanes() {
 
     // The second display: everything a tab's display is, in no tab. Its
     // folder is set when the split view first shows it.
-    secondPane = CreateFolderDisplayState("split");
+    CreateSecondPane();
+}
+
+void UltraFilerWindow::CreateSecondPane() {
+    if (secondPane || !rightPaneBody) return;
+    // A name of its own each time: the one it replaces may still be
+    // retiring, and two widgets do not share an identifier.
+    secondPane = CreateFolderDisplayState("split-" + std::to_string(++tabCounter));
     rightPaneBody->AddChild(secondPane->page);
 }
 
 void UltraFilerWindow::SetSplitViewVisible(bool visible) {
-    if (visible == splitViewShown || !split || !filerPane || !secondPane) return;
+    if (visible == splitViewShown || !split || !filerPane) return;
+    if (visible) CreateSecondPane();   // retired when the split view last went off
+    if (!secondPane) return;
     // The split has to be on screen for the change to mean anything - and
     // showing a second folder is showing a folder.
     ShowBrowsingView();
@@ -7726,7 +7739,20 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
                                   (!fs::is_directory(UltraCanvas::PathFromUtf8(start), ec) || ec)))
                 start = filer ? filer->GetPath() : std::string();
             if (start.empty()) start = UserHomeDir();
+            // A display made again after the split view was off takes up the
+            // Back / Forward history of the one it replaces, when it opens on
+            // the folder that one was showing.
+            const bool resume = splitHistoryIndex < splitHistory.size() &&
+                                splitHistory[splitHistoryIndex] == start;
+            secondPane->navigatingHistory = resume;
             secondPane->filer->SetPath(start);
+            secondPane->navigatingHistory = false;
+            if (resume) {
+                secondPane->history = std::move(splitHistory);
+                secondPane->historyIndex = splitHistoryIndex;
+            }
+            splitHistory.clear();
+            splitHistoryIndex = 0;
         }
         StyleSplitHeaders();
         RefreshPaneBreadcrumbs();
@@ -7746,6 +7772,22 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             rightPane->RemoveChild(rightPaneBox);
             split->RemovePane(rightPane.get());
             rightPane.reset();
+        }
+        // The right-hand display goes the way of a closed tab: its workers
+        // are told to stop and it is destroyed once they have, rather than
+        // left running behind a hidden pane. Its folder (already in
+        // settings.splitSecondFolder) and its history are what the next one
+        // opens with.
+        if (secondPane) {
+            if (searchTab == secondPane.get()) {
+                StopSubfolderSearch();
+                searchStatus.clear();
+                searchQueryText.clear();
+            }
+            splitHistory = secondPane->history;
+            splitHistoryIndex = secondPane->historyIndex;
+            if (rightPaneBody) rightPaneBody->RemoveChild(secondPane->page);
+            RetireDisplay(std::move(secondPane));
         }
         const int leftIndex = split->GetPaneIndex(filerPane.get());
         if (leftIndex >= 0)

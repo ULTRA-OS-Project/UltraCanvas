@@ -1,7 +1,9 @@
 // UltraCloud/core/UltraCloudHttp.cpp
+// Version: 0.5.0 - a request called off (the thread's abort check) is Cancelled,
+//                  not a network failure
 // Version: 0.4.0 - a throttled request is sent again after the wait the
 //                  service asks for (RateLimitPolicy)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudHttp.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -213,6 +215,10 @@ Result HttpProviderBase::FromHttp(const UltraNetResult& net, const UltraNetRespo
         r = Result::Error(ResultCode::NotFound, what + ": not found (" + statusText() + ")", status);
     } else if (status >= 400) {
         r = Result::Error(ResultCode::Server, what + ": " + statusText(), status);
+    } else if (!net && net.code == UltraNetResultCode::Cancelled) {
+        // Called off by the caller (UltraNet_SetThreadAbortCheck): nothing
+        // went wrong with the network.
+        r = Result::Error(ResultCode::Cancelled, what + ": called off", status);
     } else if (!net) {
         r = Result::Error(ResultCode::Network, what + ": " + net.message, status);
     } else {
