@@ -23,7 +23,7 @@ Changelog and version: [`Docs/SmartHomeCenter/CHANGELOG.md`](../../Docs/SmartHom
 |---|---|
 | **Home** | Inside temperature, lights on, locks, power now; the four scenes; every room with a tile per device (a switch on the tile for whatever switches, the reading for whatever measures); the selected device's controls and details on the right. A leak or smoke alarm puts a red banner on top. |
 | **Devices** | The whole home as a table: room, type, state, battery, power, protocol, last seen. Double-click a row to open the device on Home. |
-| **Energy** | The metered plugs, live: what each draws against the biggest draw, and what each has metered so far. |
+| **Energy** | The metered plugs, live: a bar per plug drawing power, biggest first (idle plugs are left out and counted), and what each has metered so far. |
 | **Activity** | What happened since the window opened, newest first: switches, locks, sensors, scenes, pairing. |
 
 Tiles take the colour of what the device is doing: amber for light and

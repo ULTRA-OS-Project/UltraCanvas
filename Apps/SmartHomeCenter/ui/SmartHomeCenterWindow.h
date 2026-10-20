@@ -188,6 +188,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasBarChartElement> energyChart_;
     std::shared_ptr<UltraCanvas::ChartDataVector> energyData_;
     std::string energyChartKey_;                      // what the chart shows now
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> energyNoteText_;   // says how many idle plugs are left out
     std::shared_ptr<ActivityTableModel> activityModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> activityList_;
     std::deque<ActivityEntry> activity_;          // newest first

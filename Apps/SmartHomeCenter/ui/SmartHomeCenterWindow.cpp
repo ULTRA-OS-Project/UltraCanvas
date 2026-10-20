@@ -1276,6 +1276,11 @@ void SmartHomeCenterWindow::UpdateDevicesTable() {
 
 // ===== ENERGY =====
 
+namespace {
+constexpr const char* kEnergyNote =
+    "Metered plugs, live, in watts, biggest first. Lights and heating are not metered in this home.";
+}
+
 std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildEnergyPage() {
     auto page = Column("shcEnergyPage", 18);
     auto stats = Row("shcEnergyStats", 14, CSSLayout::AlignItems::Stretch);
@@ -1291,10 +1296,12 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildEnergyPage() {
     Card(card, 16);
     Grow(card);
     card->AddChild(Text("shcEnergyCardTitle", "Power by device", 15, kInk, true, 22));
-    card->AddChild(Text("shcEnergyCardNote", "Metered plugs, live, in watts. Lights and heating are not metered in this home.", 12, kMuted, false, 18));
+    energyNoteText_ = Text("shcEnergyCardNote", kEnergyNote, 12, kMuted, false, 18);
+    card->AddChild(energyNoteText_);
 
-    // The framework's bar chart, run sideways: one row per plug, its name
-    // on the left, watts along the bottom at whole steps.
+    // The framework's bar chart, run sideways: one row per plug drawing
+    // power, biggest at the top, its name on the left, watts along the
+    // bottom at whole steps.
     energyData_ = std::make_shared<ChartDataVector>();
     energyChart_ = CreateBarChartElement("shcEnergyChart", 0, 0, 700, 360);
     energyChart_->SetOrientation(BarChartOrientation::Horizontal);
@@ -1322,7 +1329,10 @@ void SmartHomeCenterWindow::UpdateEnergy() {
     float now = 0.0f, total = 0.0f, topWatts = -1.0f;
     std::string topName, key;
     size_t metered = 0;
-    std::vector<ChartDataPoint> points;
+    // The plugs drawing something, biggest first; an idle plug (under half
+    // a watt) has no bar.
+    struct Bar { double watts; float energy; const SmartHomeDeviceInfo* info; };
+    std::vector<Bar> bars;
     for (const DeviceView& v : views_) {
         if (!v.metered) continue;
         ++metered;
@@ -1331,14 +1341,23 @@ void SmartHomeCenterWindow::UpdateEnergy() {
         if (v.power > topWatts) { topWatts = v.power; topName = v.info.Name; }
         // Whole watts: the chart is redrawn only when a bar would move.
         const double watts = std::round(v.power);
-        key += v.info.DeviceId + "=" + std::to_string(static_cast<long>(watts)) + ";";
-        points.emplace_back(static_cast<double>(points.size()), watts, 0.0, v.info.Name, v.energy);
+        if (watts >= 1.0) bars.push_back({watts, v.energy, &v.info});
+    }
+    std::stable_sort(bars.begin(), bars.end(), [](const Bar& a, const Bar& b) { return a.watts > b.watts; });
+    std::vector<ChartDataPoint> points;
+    for (const Bar& b : bars) {
+        key += b.info->DeviceId + "=" + std::to_string(static_cast<long>(b.watts)) + ";";
+        points.emplace_back(static_cast<double>(points.size()), b.watts, 0.0, b.info->Name, b.energy);
     }
     if (key != energyChartKey_) {
         energyChartKey_ = key;
         energyData_->LoadFromArray(points);
         energyChart_->SetDataSource(energyData_);
     }
+    const size_t idle = metered - bars.size();
+    energyNoteText_->SetText(idle == 0 ? std::string(kEnergyNote)
+                             : std::string(kEnergyNote) + " " + std::to_string(idle) +
+                                   (idle == 1 ? " idle plug is" : " idle plugs are") + " not shown.");
     energyNowStat_.value->SetText(FormatPower(now));
     energyNowStat_.detail->SetText(std::to_string(metered) + " metered plugs");
     energyTotalStat_.value->SetText(FormatEnergy(total));
