@@ -1,3 +1,11 @@
+#### 2026-10-20 *1.0.9*
+- **A .txt shows what it holds.** A text file whose name names no language
+  (`.txt`, `.text`) is shown as the language its content is written in - a
+  Python snippet saved as `notes.txt` is highlighted as Python, a Markdown
+  `README.txt` is rendered - and stays plain when it is prose. Framework:
+  `UltraCanvasMediaViewer` with `DetectLanguageFromContent` (framework
+  changelog: `detect-language-from-content`).
+
 #### 2026-10-19 *1.0.8*
 - **One compact toolbar.** The two toolbar rows at the top are one row now,
   with smaller, flat icons, so the picture gets the room back. The Details
