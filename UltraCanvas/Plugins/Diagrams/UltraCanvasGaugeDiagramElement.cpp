@@ -256,7 +256,17 @@ void UltraCanvasGaugeDiagramElement::SetIndeterminate(bool on) {
 }
 
 void UltraCanvasGaugeDiagramElement::SetValue(double val) {
-    double clamped = std::max(minValue, std::min(maxValue, val));
+    requestedValue = val;
+    ReclampValue();
+}
+
+void UltraCanvasGaugeDiagramElement::ReclampValue() {
+    // The value asked for, inside the range as it is now. Clamping only at
+    // SetValue made the result depend on call order: SetValue(150) before
+    // SetMaxValue(200) showed 100, and a range shrunk under the value left it
+    // outside, drawn past the end of the track.
+    const double lo = std::min(minValue, maxValue), hi = std::max(minValue, maxValue);
+    double clamped = std::max(lo, std::min(hi, requestedValue));
     if (std::abs(clamped - currentValue) < 0.0001) return;
     currentValue = clamped;
     if (onGaugeValueChange) onGaugeValueChange(currentValue);
@@ -293,8 +303,8 @@ void UltraCanvasGaugeDiagramElement::StopwatchReset() {
     SetValue(0.0);
 }
 
-void UltraCanvasGaugeDiagramElement::SetMinValue(double v) { minValue = v; RequestRedraw(); }
-void UltraCanvasGaugeDiagramElement::SetMaxValue(double v) { maxValue = v; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetMinValue(double v) { minValue = v; ReclampValue(); RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetMaxValue(double v) { maxValue = v; ReclampValue(); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetTitle(const std::string& t) { title = t; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetUnit(const std::string& u) { unit = u; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetNeedleStyle(GaugeNeedleStyle s) { needleStyle = s; RequestRedraw(); }
@@ -401,7 +411,9 @@ double UltraCanvasGaugeDiagramElement::ValueToAngle(double val) const {
 double UltraCanvasGaugeDiagramElement::ValueToRatio(double val) const {
     double range = maxValue - minValue;
     if (std::abs(range) < 1e-10) return 0.0;
-    return (val - minValue) / range;
+    // A range, a pointer or a threshold outside min..max sits at the end of
+    // the scale rather than past it.
+    return std::max(0.0, std::min(1.0, (val - minValue) / range));
 }
 
 Point2Df UltraCanvasGaugeDiagramElement::AngleToPoint(
@@ -529,6 +541,20 @@ void UltraCanvasGaugeDiagramElement::Render(IRenderContext* ctx, const Rect2Df& 
     if (!ctx) return;
 
     ctx->PushState();
+
+    // The linear modes keep to their box (ComputeLinearLayout); the clip is
+    // the guarantee, for any text wider than the element.
+    switch (mode) {
+        case GaugeMode::LinearBar: case GaugeMode::LinearLED: case GaugeMode::LinearSegmented:
+        case GaugeMode::LinearMultiPointer: case GaugeMode::LinearWithArrow: case GaugeMode::LinearScale:
+            {
+                const auto local = GetLocalBounds();
+                ctx->ClipRect(Rect2Dd(local.x, local.y, local.width, local.height));
+            }
+            break;
+        default:
+            break;
+    }
 
     switch (mode) {
         case GaugeMode::Speedometer:
@@ -792,6 +818,11 @@ void UltraCanvasGaugeDiagramElement::DrawExternalPointers(
 
     bool vertical = (orientation == GaugeOrientation::Vertical);
     float arrowSize = 6.0f;
+    const auto bounds = GetLocalBounds();
+    // Labels are placed in order, each kept inside the element and left out
+    // when it would cover one already drawn - two pointers close together
+    // keep their arrows, and the first keeps its words.
+    std::vector<Rect2Df> placed;
     for (const auto& p : externalPointers) {
         double ratio = ValueToRatio(p.value);
         ratio = std::max(0.0, std::min(1.0, ratio));
@@ -831,7 +862,17 @@ void UltraCanvasGaugeDiagramElement::DrawExternalPointers(
             lbl << " - " << p.label;
             Size2Di d = ctx->GetTextLineDimensions(lbl.str());
             float lx = vertical ? (pX + arrowSize + 6.0f) : (pX - d.width / 2.0f);
-            float ly = vertical ? (pY - d.height / 2.0f) : (pY - barH / 2.0f - arrowSize - 8.0f);
+            // Above the arrow, which stands above the bar - DrawText takes the top.
+            float ly = vertical ? (pY - d.height / 2.0f) : (pY - barH / 2.0f - 2.0f - arrowSize - 2.0f - d.height);
+            lx = std::max(static_cast<float>(bounds.x),
+                          std::min(lx, static_cast<float>(bounds.x + bounds.width) - d.width));
+            ly = std::max(static_cast<float>(bounds.y),
+                          std::min(ly, static_cast<float>(bounds.y + bounds.height) - d.height));
+            const Rect2Df box(lx - 2.0f, ly, d.width + 4.0f, static_cast<float>(d.height));
+            bool covers = false;
+            for (const auto& other : placed) covers = covers || box.Intersects(other);
+            if (covers) continue;
+            placed.push_back(box);
             ctx->DrawText(lbl.str(), Point2Df(lx, ly));
         }
     }
@@ -1592,66 +1633,127 @@ void UltraCanvasGaugeDiagramElement::RenderStopwatch(
 // =============================================================================
 
 // V2.1 FIX: Title at top with proper padding, bar in center, value below
-void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
+// ===== LINEAR LAYOUT =====
+// Every linear mode used to lay out for the box it wanted: a 28 px bar under
+// a caption and over a value line needs some 150 px of height, an LED strip
+// 44 px, MultiPointer kept 80 px empty on the right and WithArrow 60. Given
+// less, they drew outside the element - over a status line's neighbours, a
+// list row's next row. This works out what fits in the box there is, in
+// three steps: the full card (as it always looked), a tight one (title and
+// value hugging the edges), and the bar alone.
+UltraCanvasGaugeDiagramElement::LinearLayout UltraCanvasGaugeDiagramElement::ComputeLinearLayout(
+    IRenderContext* ctx, float thickness, bool valueLine,
+    float extraLeft, float extraRight, float extraTop, float extraBottom) const {
     const auto b = GetLocalBounds();
-    bool vertical = (orientation == GaugeOrientation::Vertical);
+    const float w = static_cast<float>(b.width), h = static_cast<float>(b.height);
+    // A tuner dial is a horizontal thing.
+    const bool vertical = orientation == GaugeOrientation::Vertical && mode != GaugeMode::LinearScale;
 
-    // A LinearBar is usually a dashboard gauge: a caption over a 28 px bar
-    // with the value spelled out underneath, which needs some 114 px of
-    // height before any of it fits. It is also the obvious bar for a status
-    // line, a list row or a panel footer - places where the whole strip is
-    // twenty-odd pixels tall - and there it used to lay out for the height it
-    // wanted rather than the height it was given, drawing its bar and its
-    // value outside the box.
-    //
-    // So: reserve room for the caption and the value only while there is room
-    // for them, and otherwise be the bar. Nothing changes for a gauge with the
-    // height to be one, which is every gauge that was drawing correctly
-    // before.
-    const float wanted = kPaddingTop + 28.0f + kPaddingBottom + kValueHeight + 4.0f;
-    const float have = static_cast<float>(vertical ? b.width : b.height);
-    const bool compact = have < wanted;
+    ctx->SetFontFamily("Sans");
+    ctx->SetFontSize(12.0f);
+    ctx->SetFontWeight(FontWeight::Normal);
+    const float titleH = static_cast<float>(ctx->GetTextLineDimensions("Ag").height);
+    ctx->SetFontSize(13.0f);
+    ctx->SetFontWeight(FontWeight::Light);
+    const float valueH = static_cast<float>(ctx->GetTextLineDimensions("Ag").height);
 
-    // Title at top
-    if (!compact && !title.empty()) {
-        DrawTitleText(ctx, Point2Df(static_cast<float>(b.x + b.width / 2),
-                                     static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
+    // In order of preference: the full card with the mode's marks around the
+    // bar, a tight card with them, the full and the tight card without them
+    // (a pointer's label matters less than the title and the value), and
+    // last the bar alone.
+    const int steps[][2] = {{0, 1}, {1, 1}, {0, 0}, {1, 0}, {2, 0}};
+    LinearLayout layout;
+    for (const auto& step : steps) {
+        const int level = step[0];
+        const bool hasTitle = !title.empty() && level < 2;
+        const bool hasValue = valueLine && level < 2;
+        const bool extras = step[1] != 0;
+        float top, bottom, side;
+        if (level == 0) {
+            top = kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
+            bottom = valueLine ? kPaddingBottom + kValueHeight + 4.0f : kPaddingBottom;
+            side = kPaddingSide;
+        } else if (level == 1) {
+            top = hasTitle ? titleH + 4.0f : 0.0f;
+            bottom = hasValue ? valueH + 2.0f : 0.0f;
+            side = 2.0f;
+        } else {
+            top = bottom = side = 0.0f;
+        }
+        const float l = extras ? extraLeft : 0.0f, r = extras ? extraRight : 0.0f;
+        const float t = extras ? extraTop : 0.0f, bt = extras ? extraBottom : 0.0f;
+        const float availW = w - 2.0f * side - l - r;
+        const float availH = h - top - bottom - t - bt;
+
+        bool fits;
+        if (level == 2) fits = true;
+        else if (!vertical) fits = availW >= 24.0f && availH >= (level == 0 ? thickness : std::min(thickness, 6.0f));
+        else fits = availH >= (level == 0 ? 60.0f : 24.0f) && availW >= (level == 0 ? std::min(thickness, 16.0f) : 4.0f);
+        if (!fits) continue;
+
+        layout.level = level;
+        layout.showTitle = hasTitle;
+        layout.showValue = hasValue;
+        layout.showExtras = extras;
+        if (!vertical) {
+            const float thick = std::max(1.0f, std::min(thickness, availH));
+            layout.bar = Rect2Df(side + l, top + t + (availH - thick) / 2.0f, std::max(1.0f, availW), thick);
+        } else {
+            const float thick = std::max(1.0f, std::min(thickness, availW));
+            layout.bar = Rect2Df(side + l + (availW - thick) / 2.0f, top + t, thick, std::max(1.0f, availH));
+        }
+        // Level 0 puts the texts where the card always had them.
+        layout.titleTop = level == 0 ? kPaddingTop - kTitleRaise + titleH : 1.0f;
+        layout.titleBottom = hasTitle ? layout.titleTop + titleH : 0.0f;
+        layout.valueTop = level == 0 ? h - kPaddingBottom - 4.0f : h - valueH - 1.0f;
+        break;
     }
+    return layout;
+}
 
-    float topReserved = compact ? 0.0f
-                                : kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
-    float bottomReserved = compact ? 0.0f : kPaddingBottom + kValueHeight + 4.0f;
-    const float sidePadding = compact ? 0.0f : kPaddingSide;
+void UltraCanvasGaugeDiagramElement::DrawLinearTitle(IRenderContext* ctx, const LinearLayout& layout) {
+    if (!layout.showTitle || title.empty()) return;
+    ctx->SetFontFamily("Sans");
+    ctx->SetFontSize(12.0f);
+    ctx->SetTextPaint(Color(130, 130, 145, 255));
+    ctx->SetFontWeight(FontWeight::Normal);
+    const Size2Di dims = ctx->GetTextLineDimensions(title);
+    ctx->DrawText(title, Point2Df(static_cast<float>(GetLocalBounds().width) / 2.0f - dims.width / 2.0f, layout.titleTop));
+}
 
-    float barX, barY, barW, barH;
-    if (vertical) {
-        barW = compact ? static_cast<float>(b.width) : 36.0f;
-        barH = static_cast<float>(b.height) - topReserved - bottomReserved;
-        barX = static_cast<float>(b.x + b.width / 2) - barW / 2.0f;
-        barY = static_cast<float>(b.y) + topReserved;
-    } else {
-        barW = static_cast<float>(b.width) - 2.0f * sidePadding;
-        barH = compact ? static_cast<float>(b.height) : 28.0f;
-        barX = static_cast<float>(b.x) + sidePadding;
-        // Center vertically in available area
-        float availTop = static_cast<float>(b.y) + topReserved;
-        float availBottom = static_cast<float>(b.y + b.height) - bottomReserved;
-        barY = availTop + (availBottom - availTop - barH) / 2.0f;
-    }
-    if (barW <= 0.0f || barH <= 0.0f) return;
+void UltraCanvasGaugeDiagramElement::DrawLinearValue(IRenderContext* ctx, const LinearLayout& layout) {
+    if (!layout.showValue) return;
+    const std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
+    DrawValueText(ctx, vt, Point2Df(static_cast<float>(GetLocalBounds().width) / 2.0f, layout.valueTop),
+                  13.0f, textColor);
+}
 
+void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
+    const bool vertical = (orientation == GaugeOrientation::Vertical);
+
+    // A LinearBar is a dashboard gauge (caption, 28 px bar, value) where
+    // there is room, and the progress bar of a status line or a list row
+    // where there is not: then it is the bar, across the whole element, and
+    // the caller's own label says what is happening.
+    const LinearLayout layout = ComputeLinearLayout(ctx, vertical ? 36.0f : 28.0f, true);
+    DrawLinearTitle(ctx, layout);
+    const float barX = layout.bar.x, barY = layout.bar.y, barW = layout.bar.width, barH = layout.bar.height;
+
+    // The track's ends are half circles of the bar's thickness - the shorter
+    // side. Half the longer side, as the vertical bar used, is more than a
+    // rectangle can round and drew past the element.
     ctx->SetFillPaint(Color(225, 226, 235, 255));
-    ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), barH / 2.0f);
+    ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), std::min(barW, barH) / 2.0f);
 
-    // Diameter of a rounded end = the bar's cross dimension.
-    float capD = vertical ? barW : barH;
+    // Diameter of a rounded end = the bar's cross dimension, no more than its length.
+    const float trackLen = vertical ? barH : barW;
+    const float capD = std::min(vertical ? barW : barH, trackLen);
 
     // Busy, total unknown: a block sliding along the track rather than a fill
     // that would have to pretend to a value nobody has. Clipped at both ends
     // instead of wrapping round - a block reappearing at one end while its
     // tail is still at the other reads as two blocks.
     if (indeterminate) {
-        const float trackLen = vertical ? barH : barW;
         float blockLen = trackLen * 0.30f;
         if (blockLen < capD) blockLen = std::min(capD, trackLen);
         float start = indeterminateOffset * trackLen;
@@ -1694,63 +1796,39 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
         }
     } else if (blinkVisible) {
         ctx->SetFillPaint(lowWarn ? warningColor : GetColorForValue(currentValue));
+        const float fillLen = capD + static_cast<float>((trackLen - capD) * ratio);
         if (vertical) {
-            float fillH = capD + static_cast<float>((barH - capD) * ratio);
-            ctx->FillRoundedRectangle(
-                Rect2Df(barX, barY + barH - fillH, barW, fillH),
-                std::min(barW, fillH) / 2.0f);
+            ctx->FillRoundedRectangle(Rect2Df(barX, barY + barH - fillLen, barW, fillLen),
+                                      std::min(barW, fillLen) / 2.0f);
         } else {
-            float fillW = capD + static_cast<float>((barW - capD) * ratio);
-            ctx->FillRoundedRectangle(
-                Rect2Df(barX, barY, fillW, barH),
-                std::min(fillW, barH) / 2.0f);
+            ctx->FillRoundedRectangle(Rect2Df(barX, barY, fillLen, barH),
+                                      std::min(fillLen, barH) / 2.0f);
         }
     }
 
-    // Value below - where there is a below. In a compact bar the caller has
-    // the room for the words and the gauge does not: a status line says
+    // The value below, where there is a below: a status line says
     // "3.2 MB of 8.0 MB" in its own label, which is more than a number
     // squeezed under a 6 px bar could ever be.
-    if (!compact) {
-        std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
-        float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
-        DrawValueText(ctx, vt,
-                      Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                      13.0f, textColor);
-    }
+    DrawLinearValue(ctx, layout);
 }
 
-// V2.1 FIX: Title at top, segments centered, value visible below
+// Lit segments, and segments that fit: a gap of 2 px, less when the bar is
+// too short for that.
+namespace {
+float SegmentGap(float length, int count) {
+    return std::max(0.0f, std::min(2.0f, length / (count * 3.0f)));
+}
+}
+
 void UltraCanvasGaugeDiagramElement::RenderLinearLED(IRenderContext* ctx) {
-    const auto b = GetLocalBounds();
-    bool vertical = (orientation == GaugeOrientation::Vertical);
-
-    if (!title.empty()) {
-        DrawTitleText(ctx, Point2Df(static_cast<float>(b.x + b.width / 2),
-                                     static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
-    }
-
-    float topReserved = kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
-    float bottomReserved = kPaddingBottom + kValueHeight + 4.0f;
-
-    float barX, barY, barW, barH;
-    if (vertical) {
-        barW = 50.0f;
-        barH = static_cast<float>(b.height) - topReserved - bottomReserved;
-        barX = static_cast<float>(b.x + b.width / 2) - barW / 2.0f;
-        barY = static_cast<float>(b.y) + topReserved;
-    } else {
-        barW = static_cast<float>(b.width) - 2.0f * kPaddingSide;
-        barH = 44.0f;
-        barX = static_cast<float>(b.x) + kPaddingSide;
-        float availTop = static_cast<float>(b.y) + topReserved;
-        float availBottom = static_cast<float>(b.y + b.height) - bottomReserved;
-        barY = availTop + (availBottom - availTop - barH) / 2.0f;
-    }
+    const bool vertical = (orientation == GaugeOrientation::Vertical);
+    const LinearLayout layout = ComputeLinearLayout(ctx, vertical ? 50.0f : 44.0f, true);
+    DrawLinearTitle(ctx, layout);
+    const float barX = layout.bar.x, barY = layout.bar.y, barW = layout.bar.width, barH = layout.bar.height;
 
     double ratio = ValueToRatio(currentValue);
     int litSegments = static_cast<int>(ratio * segmentCount);
-    float gap = 2.0f;
+    const float gap = SegmentGap(vertical ? barH : barW, segmentCount);
 
     for (int i = 0; i < segmentCount; i++) {
         bool lit = (i < litSegments);
@@ -1774,88 +1852,97 @@ void UltraCanvasGaugeDiagramElement::RenderLinearLED(IRenderContext* ctx) {
         }
     }
 
-    std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
-    float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
-    DrawValueText(ctx, vt,
-                  Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  13.0f, textColor);
+    DrawLinearValue(ctx, layout);
 }
 
 void UltraCanvasGaugeDiagramElement::RenderLinearSegmented(IRenderContext* ctx) {
-    const auto b = GetLocalBounds();
-
-    if (!title.empty()) {
-        DrawTitleText(ctx, Point2Df(static_cast<float>(b.x + b.width / 2),
-                                     static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
-    }
-
-    float topReserved = kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 14.0f);
-    float bottomReserved = kPaddingBottom + kValueHeight + 4.0f;
-
-    float barW = static_cast<float>(b.width) - 2.0f * kPaddingSide;
-    float barH = 28.0f;
-    float barX = static_cast<float>(b.x) + kPaddingSide;
-    float availTop = static_cast<float>(b.y) + topReserved;
-    float availBottom = static_cast<float>(b.y + b.height) - bottomReserved;
-    float barY = availTop + (availBottom - availTop - barH) / 2.0f;
+    // Bricks along the bar, and beside them a thin line to the exact value
+    // (the bricks only count whole steps). Horizontal: the line above the
+    // bar; vertical, which this mode now does too: the line on its left.
+    const bool vertical = (orientation == GaugeOrientation::Vertical);
+    const LinearLayout layout = vertical ? ComputeLinearLayout(ctx, 28.0f, true, 8.0f, 0.0f, 0.0f, 0.0f)
+                                         : ComputeLinearLayout(ctx, 28.0f, true, 0.0f, 0.0f, 8.0f, 0.0f);
+    DrawLinearTitle(ctx, layout);
+    const float barX = layout.bar.x, barY = layout.bar.y, barW = layout.bar.width, barH = layout.bar.height;
 
     double ratio = ValueToRatio(currentValue);
     int litSegments = static_cast<int>(ratio * segmentCount);
-    float gap = 2.0f;
-    float segW = (barW - gap * (segmentCount - 1)) / segmentCount;
+    const float length = vertical ? barH : barW;
+    const float gap = SegmentGap(length, segmentCount);
+    const float segLen = (length - gap * (segmentCount - 1)) / segmentCount;
+    const float corner = std::min(3.0f, std::min(segLen, vertical ? barW : barH) / 2.0f);
 
     for (int i = 0; i < segmentCount; i++) {
         bool lit = (i < litSegments);
         double segValue = minValue + (i + 0.5) * (maxValue - minValue) / segmentCount;
         Color segColor = lit ? GetColorForValue(segValue) : Color(225, 226, 235, 255);
         ctx->SetFillPaint(segColor);
-        float sx = barX + i * (segW + gap);
-        ctx->FillRoundedRectangle(Rect2Df(sx, barY, segW, barH), 3.0f);
+        if (vertical) {
+            float sy = barY + barH - (i + 1) * (segLen + gap) + gap;
+            ctx->FillRoundedRectangle(Rect2Df(barX, sy, barW, segLen), corner);
+        } else {
+            float sx = barX + i * (segLen + gap);
+            ctx->FillRoundedRectangle(Rect2Df(sx, barY, segLen, barH), corner);
+        }
     }
 
-    float actualX = barX + static_cast<float>(barW * ratio);
-    ctx->SetStrokePaint(gaugeColor);
-    ctx->SetStrokeWidth(2.0f);
-    ctx->SetLineCap(LineCap::Round);
-    ctx->ClearPath();
-    ctx->MoveTo(barX, barY - 6.0f);
-    ctx->LineTo(actualX, barY - 6.0f);
-    ctx->Stroke();
+    if (layout.showExtras) {
+        ctx->SetStrokePaint(gaugeColor);
+        ctx->SetStrokeWidth(2.0f);
+        ctx->SetLineCap(LineCap::Round);
+        ctx->ClearPath();
+        if (vertical) {
+            const float actualY = barY + barH - static_cast<float>(barH * ratio);
+            ctx->MoveTo(barX - 6.0f, barY + barH);
+            ctx->LineTo(barX - 6.0f, actualY);
+        } else {
+            const float actualX = barX + static_cast<float>(barW * ratio);
+            ctx->MoveTo(barX, barY - 6.0f);
+            ctx->LineTo(actualX, barY - 6.0f);
+        }
+        ctx->Stroke();
+    }
 
-    std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
-    float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
-    DrawValueText(ctx, vt,
-                  Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  13.0f, textColor);
+    DrawLinearValue(ctx, layout);
+}
+
+// The widest label an external pointer draws, for the room beside a vertical bar.
+namespace {
+float WidestPointerLabel(IRenderContext* ctx, const std::vector<GaugeExternalPointer>& pointers,
+                         const std::string& unit, int decimals) {
+    ctx->SetFontFamily("Sans");
+    ctx->SetFontSize(10.0f);
+    float widest = 0.0f;
+    for (const auto& p : pointers) {
+        if (p.label.empty()) continue;
+        std::ostringstream lbl;
+        lbl << std::fixed << std::setprecision(decimals) << p.value;   // locale-ok: a label the person reads
+        if (!unit.empty()) lbl << " " << unit;
+        lbl << " - " << p.label;
+        widest = std::max(widest, static_cast<float>(ctx->GetTextLineDimensions(lbl.str()).width));
+    }
+    return widest;
+}
 }
 
 void UltraCanvasGaugeDiagramElement::RenderLinearMultiPointer(IRenderContext* ctx) {
-    const auto b = GetLocalBounds();
-    bool vertical = (orientation == GaugeOrientation::Vertical);
+    const bool vertical = (orientation == GaugeOrientation::Vertical);
 
-    if (!title.empty()) {
-        DrawTitleText(ctx, Point2Df(static_cast<float>(b.x + b.width / 2),
-                                     static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
-    }
-
-    float topReserved = kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
-    float bottomReserved = kPaddingBottom + kValueHeight + 4.0f;
-
-    float barX, barY, barW, barH;
+    // Room for the pointers, measured: horizontally their arrows and labels
+    // stand above the bar; vertically they point in from the right.
+    bool anyLabel = false;
+    for (const auto& p : externalPointers) anyLabel = anyLabel || !p.label.empty();
+    LinearLayout layout;
     if (vertical) {
-        // V2.1 FIX: Bar on LEFT side, pointers extend to right with enough space
-        barW = 50.0f;
-        barH = static_cast<float>(b.height) - topReserved - bottomReserved;
-        barX = static_cast<float>(b.x) + kPaddingSide + 4.0f;
-        barY = static_cast<float>(b.y) + topReserved;
+        const float labels = WidestPointerLabel(ctx, externalPointers, unit, decimalPlaces);
+        const float right = externalPointers.empty() ? 0.0f : 2.0f + 6.0f + (anyLabel ? 6.0f + labels : 0.0f);
+        layout = ComputeLinearLayout(ctx, 50.0f, true, 0.0f, right, 0.0f, 0.0f);
     } else {
-        barW = static_cast<float>(b.width) - 2.0f * kPaddingSide - 80.0f;
-        barH = 28.0f;
-        barX = static_cast<float>(b.x) + kPaddingSide;
-        float availTop = static_cast<float>(b.y) + topReserved;
-        float availBottom = static_cast<float>(b.y + b.height) - bottomReserved;
-        barY = availTop + (availBottom - availTop - barH) / 2.0f;
+        const float top = externalPointers.empty() ? 0.0f : 2.0f + 6.0f + (anyLabel ? 22.0f : 0.0f);
+        layout = ComputeLinearLayout(ctx, 28.0f, true, 0.0f, 0.0f, top, 0.0f);
     }
+    DrawLinearTitle(ctx, layout);
+    const float barX = layout.bar.x, barY = layout.bar.y, barW = layout.bar.width, barH = layout.bar.height;
 
     ctx->SetFillPaint(Color(225, 226, 235, 255));
     ctx->FillRectangle(Rect2Df(barX, barY, barW, barH));
@@ -1875,42 +1962,46 @@ void UltraCanvasGaugeDiagramElement::RenderLinearMultiPointer(IRenderContext* ct
         }
     }
 
-    DrawExternalPointers(ctx, barX, barY, barW, barH);
-
-    std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
-    float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
-    DrawValueText(ctx, vt,
-                  Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  13.0f, textColor);
+    if (layout.showExtras) DrawExternalPointers(ctx, barX, barY, barW, barH);
+    DrawLinearValue(ctx, layout);
 }
 
 void UltraCanvasGaugeDiagramElement::RenderLinearWithArrow(IRenderContext* ctx) {
+    const bool vertical = (orientation == GaugeOrientation::Vertical);
     const auto b = GetLocalBounds();
-    bool vertical = (orientation == GaugeOrientation::Vertical);
+    const float arrowSize = 8.0f;
 
-    if (!title.empty()) {
-        DrawTitleText(ctx, Point2Df(static_cast<float>(b.x + b.width / 2),
-                                     static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
-    }
-
-    float topReserved = kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
-    float bottomReserved = kPaddingBottom + kValueHeight + 4.0f;
-
-    float barX, barY, barW, barH;
+    // The arrow's label is the value, with its unit, so there is no value
+    // line under the card: the label sits under its arrow (horizontal) or
+    // beside it (vertical), and the room for it is measured, not a fixed
+    // 60 px kept empty on the right.
+    const std::string label = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
+    ctx->SetFontFamily("Sans");
+    ctx->SetFontSize(12.0f);
+    ctx->SetFontWeight(FontWeight::Light);
+    const Size2Di labelSize = ctx->GetTextLineDimensions(label);
+    const std::string minLabel = FormatValue(minValue) + (unit.empty() ? "" : (" " + unit));
+    const std::string maxLabel = FormatValue(maxValue) + (unit.empty() ? "" : (" " + unit));
+    ctx->SetFontSize(9.0f);
+    const float rangeLabels = static_cast<float>(std::max(ctx->GetTextLineDimensions(minLabel).width,
+                                                          ctx->GetTextLineDimensions(maxLabel).width));
+    LinearLayout layout;
+    bool rangeLabelsShown = showLabels;
     if (vertical) {
-        // V2.1 FIX: Centered with labels space on left, arrow on right
-        barW = 38.0f;
-        barH = static_cast<float>(b.height) - topReserved - bottomReserved;
-        barX = static_cast<float>(b.x + b.width / 2) - barW / 2.0f - 10.0f;
-        barY = static_cast<float>(b.y) + topReserved;
+        const float right = 2.0f + arrowSize + 4.0f + static_cast<float>(labelSize.width);
+        layout = ComputeLinearLayout(ctx, 38.0f, false, showLabels ? rangeLabels + 6.0f : 0.0f, right, 0.0f, 0.0f);
+        // Too narrow for both: the arrow and its value matter more than the
+        // min and max beside the bar.
+        if (showLabels && !layout.showExtras) {
+            layout = ComputeLinearLayout(ctx, 38.0f, false, 0.0f, right, 0.0f, 0.0f);
+            rangeLabelsShown = false;
+        }
     } else {
-        barW = static_cast<float>(b.width) - 2.0f * kPaddingSide - 60.0f;
-        barH = 28.0f;
-        barX = static_cast<float>(b.x) + kPaddingSide;
-        float availTop = static_cast<float>(b.y) + topReserved;
-        float availBottom = static_cast<float>(b.y + b.height) - bottomReserved;
-        barY = availTop + (availBottom - availTop - barH) / 2.0f;
+        layout = ComputeLinearLayout(ctx, 28.0f, false, 0.0f, 0.0f, 0.0f,
+                                     2.0f + arrowSize + 2.0f + static_cast<float>(labelSize.height));
     }
+    DrawLinearTitle(ctx, layout);
+    const float barX = layout.bar.x, barY = layout.bar.y, barW = layout.bar.width, barH = layout.bar.height;
 
     // Multicolor bar from ranges
     if (!ranges.empty()) {
@@ -1933,7 +2024,8 @@ void UltraCanvasGaugeDiagramElement::RenderLinearWithArrow(IRenderContext* ctx) 
         ctx->FillRectangle(Rect2Df(barX, barY, barW, barH));
     }
 
-    // Arrow + label
+    // Arrow + label: only where the room for them was given.
+    if (!layout.showExtras) return;
     double ratio = ValueToRatio(currentValue);
     float arrowX, arrowY;
     if (vertical) {
@@ -1944,7 +2036,6 @@ void UltraCanvasGaugeDiagramElement::RenderLinearWithArrow(IRenderContext* ctx) 
         arrowY = barY + barH + 2.0f;
     }
 
-    float arrowSize = 8.0f;
     ctx->SetFillPaint(gaugeColor);
     ctx->ClearPath();
     if (vertical) {
@@ -1959,29 +2050,34 @@ void UltraCanvasGaugeDiagramElement::RenderLinearWithArrow(IRenderContext* ctx) 
     ctx->ClosePath();
     ctx->Fill();
 
-    std::string label = FormatValue(currentValue);
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(12.0f);
     ctx->SetFontWeight(FontWeight::Light);
     ctx->SetTextPaint(textColor);
-    Size2Di d = ctx->GetTextLineDimensions(label);
     if (vertical) {
-        ctx->DrawText(label, Point2Df(arrowX + arrowSize + 4.0f, arrowY - d.height / 2.0f));
+        // Beside the arrow, kept inside the element at the ends of the bar.
+        float ly = arrowY - labelSize.height / 2.0f;
+        ly = std::max(0.0f, std::min(ly, static_cast<float>(b.height) - labelSize.height));
+        ctx->DrawText(label, Point2Df(arrowX + arrowSize + 4.0f, ly));
     } else {
-        ctx->DrawText(label, Point2Df(arrowX - d.width / 2.0f, arrowY + arrowSize + d.height + 2.0f));
+        // Under the arrow - DrawText takes the top - and kept inside the
+        // element when the arrow is at either end.
+        float lx = arrowX - labelSize.width / 2.0f;
+        lx = std::max(0.0f, std::min(lx, static_cast<float>(b.width) - labelSize.width));
+        ctx->DrawText(label, Point2Df(lx, arrowY + arrowSize + 2.0f));
     }
 
-    // V2.1 FIX: Min/max labels for vertical mode (left side)
-    if (showLabels && vertical) {
-        std::string minLabel = FormatValue(minValue) + (unit.empty() ? "" : (" " + unit));
-        std::string maxLabel = FormatValue(maxValue) + (unit.empty() ? "" : (" " + unit));
+    // Min/max labels for vertical mode (left side)
+    if (rangeLabelsShown && vertical) {
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(9.0f);
         ctx->SetTextPaint(Color(140, 140, 150, 255));
         Size2Di dMax = ctx->GetTextLineDimensions(maxLabel);
         Size2Di dMin = ctx->GetTextLineDimensions(minLabel);
-        ctx->DrawText(maxLabel, Point2Df(barX - dMax.width - 6.0f, barY - dMax.height / 2.0f));
-        ctx->DrawText(minLabel, Point2Df(barX - dMin.width - 6.0f, barY + barH - dMin.height / 2.0f));
+        const float maxY = std::max(0.0f, barY - dMax.height / 2.0f);
+        const float minY = std::min(static_cast<float>(b.height) - dMin.height, barY + barH - dMin.height / 2.0f);
+        ctx->DrawText(maxLabel, Point2Df(barX - dMax.width - 6.0f, maxY));
+        ctx->DrawText(minLabel, Point2Df(barX - dMin.width - 6.0f, minY));
     }
 }
 
@@ -1991,22 +2087,17 @@ void UltraCanvasGaugeDiagramElement::RenderLinearWithArrow(IRenderContext* ctx) 
 void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
     const auto b = GetLocalBounds();
 
-    if (!title.empty()) {
-        DrawTitleText(ctx, Point2Df(static_cast<float>(b.x + b.width / 2),
-                                     static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
-    }
-
-    float topReserved = kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
-    float bottomReserved = kPaddingBottom + kValueHeight + 4.0f;
-
-    // V2.1 FIX: Wider side padding so station names don't get cut
-    float sidePad = kPaddingSide + 20.0f;
-    float barX = static_cast<float>(b.x) + sidePad;
-    float barW = static_cast<float>(b.width) - 2.0f * sidePad;
-    float barH = 16.0f;
-    float availTop = static_cast<float>(b.y) + topReserved;
-    float availBottom = static_cast<float>(b.y + b.height) - bottomReserved;
-    float barY = availTop + (availBottom - availTop - barH) / 2.0f;
+    // 20 px more each side so station names at the ends are not cut, and
+    // the pointer's 6 px above and below the dial. Station labels and their
+    // values stand in the card's margins, so they are drawn only in the full
+    // card, and a row is left out when it would fall outside the element.
+    const LinearLayout layout = ComputeLinearLayout(ctx, 16.0f, true, 20.0f, 20.0f, 6.0f, 6.0f);
+    DrawLinearTitle(ctx, layout);
+    const bool stationLabels = layout.level == 0;
+    float barX = layout.bar.x;
+    float barW = layout.bar.width;
+    float barH = layout.bar.height;
+    float barY = layout.bar.y;
 
     ctx->SetFillPaint(Color(225, 226, 235, 255));
     ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), 4.0f);
@@ -2131,7 +2222,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
         ctx->SetFillPaint(t.color);
         ctx->FillRectangle(Rect2Df(mx - 1.0f, barY - 4.0f, 2.0f, barH + 8.0f));
 
-        if (!t.label.empty() && showLabels) {
+        if (!t.label.empty() && showLabels && stationLabels) {
             ctx->SetFontFamily("Sans");
             ctx->SetFontSize(10.0f);
             ctx->SetTextPaint(textColor);
@@ -2145,7 +2236,10 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
             }
             // V2.2: Staircase Y — upper row is even higher (above bar - 24)
             float labelY = labelInfos[idx].useUpperRow ? (barY - 34.0f) : (barY - 18.0f);
-            ctx->DrawText(t.label, Point2Df(labelX, labelY));
+            // Not over the title, not above the element.
+            if (labelY >= std::max(static_cast<float>(b.y), layout.titleBottom)) {
+                ctx->DrawText(t.label, Point2Df(labelX, labelY));
+            }
 
             std::string valLabel = FormatValue(t.value) + (unit.empty() ? "" : (" " + unit));
             ctx->SetFontFamily("Sans");
@@ -2159,7 +2253,11 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
             }
             // V2.2: Staircase Y for value labels too — alternate rows below bar
             float valLabelY = labelInfos[idx].valUpperRow ? (barY + barH + 38.0f) : (barY + barH + 22.0f);
-            ctx->DrawText(valLabel, Point2Df(valLabelX, valLabelY));
+            // Not over the value line, not below the element.
+            const float floor = layout.showValue ? layout.valueTop : static_cast<float>(b.y + b.height);
+            if (valLabelY + dv.height <= floor) {
+                ctx->DrawText(valLabel, Point2Df(valLabelX, valLabelY));
+            }
         }
         ++idx;
     }
@@ -2169,12 +2267,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
     ctx->SetFillPaint(gaugeColor);
     ctx->FillRoundedRectangle(Rect2Df(ptrX - 2.0f, barY - 6.0f, 4.0f, barH + 12.0f), 2.0f);
 
-    // Bottom value
-    std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
-    float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
-    DrawValueText(ctx, vt,
-                  Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  13.0f, textColor);
+    DrawLinearValue(ctx, layout);
 }
 
 // V2.7.0: Configurable round-gauge renderer.
