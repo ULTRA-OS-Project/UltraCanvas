@@ -1,5 +1,5 @@
 - **UltraCloud: cloud downloads go to disk as they arrive** (UltraCloudHttp
-  0.5.0, `HttpProviderBase::DownloadToFile`). Dropbox, OneDrive, Google Drive
+  0.6.0, `HttpProviderBase::DownloadToFile`). Dropbox, OneDrive, Google Drive
   and WebDAV / Nextcloud downloads held the whole file in memory and wrote it
   afterwards, so every download cost its own size in memory and a file larger
   than the process could spare could not be fetched at all. They also ran

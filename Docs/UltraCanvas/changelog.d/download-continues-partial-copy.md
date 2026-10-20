@@ -6,7 +6,7 @@
   - FTP (UltraCloudFtp 0.7.0): UltraNet's resume - REST at the partial size,
     the rest appended. A server that refuses the REST (a Server-class
     failure) is asked again for the whole file.
-  - HTTP (`HttpProviderBase::DownloadToFile`, UltraCloudHttp 0.6.0): a Range
+  - HTTP (`HttpProviderBase::DownloadToFile`, UltraCloudHttp 0.7.0): a Range
     request (`resumeFromOffset`). 206 appends; 200 - the server ignored the
     range - replaces the file; a 416 naming the partial size means it was
     complete; a 416 for another size fetches the file again from the start.
