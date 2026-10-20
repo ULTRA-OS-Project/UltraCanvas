@@ -140,6 +140,7 @@ their *License* is likewise marked **—** (OS component).
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
+| Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenCV frontal-face Haar cascade (data only, bundled) | [opencv.org](https://opencv.org/) | [github.com/opencv/opencv](https://github.com/opencv/opencv/tree/4.x/data/haarcascades) | Intel License Agreement (BSD 3 style) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |

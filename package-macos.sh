@@ -919,6 +919,9 @@ copy_media() {
         name="$(basename "$entry")"
         skip=false
         [ "$latex" = "nolatex" ] && [ "$name" = "microtex" ] && skip=true
+        # The bundled emoji fonts (11.7 MB) are for fontconfig; macOS draws
+        # Apple Color Emoji, so no bundle carries them.
+        [ "$name" = "emoji" ] && skip=true
         if [ "$with_samples" != "samples" ]; then
             for s in "${DEMO_SAMPLE_MEDIA[@]}"; do
                 [ "$name" = "$s" ] && { skip=true; break; }

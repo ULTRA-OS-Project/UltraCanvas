@@ -645,6 +645,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp
         # Per-format save settings (JPEG quality, PNG compression ...) kept
         # for every application, the dialog that edits them, and the Save
         # dialog's draggable file icon.

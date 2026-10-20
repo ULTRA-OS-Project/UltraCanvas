@@ -203,6 +203,24 @@ same font and is covered by the same license.
 
 ---
 
+## Noto Color Emoji and Noto Emoji (emoji fonts)
+
+- **Used by:** every application on Linux, Windows and Android, for emoji in
+  any text: the emoji setting (UOS-Settings, Appearance > Emoji;
+  `UltraCanvasEmojiSettings.h`) loads one of them at start - the colour font
+  by default, the black-and-white one when chosen, the colour one behind the
+  system's emoji font under *System*. macOS bundles leave them out.
+- **Upstream:** Google — https://github.com/googlefonts/noto-emoji
+  (Noto Color Emoji 2.047, the CBDT build of 2024-08-27; Noto Emoji 3.006,
+  the static Regular instance as served by Google Fonts).
+- **Vendored at:** `media/emoji/NotoColorEmoji.ttf` and
+  `media/emoji/NotoEmoji-Regular.ttf`
+- **License:** SIL Open Font License 1.1 — Copyright 2013-2024 Google Inc.
+  and the Noto Emoji authors.
+- **Full text:** `media/emoji/OFL.txt`
+
+---
+
 ## yyjson (JSON engine)
 
 - **Used by:** the DataFormats section's `UltraCanvasJSON` module

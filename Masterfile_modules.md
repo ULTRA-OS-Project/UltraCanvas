@@ -779,6 +779,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+  Emoji come from a bundled font the emoji setting picks
+  (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
+  `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
+  folder, edited in UOS-Settings > Appearance > Emoji): Noto Color Emoji or
+  Noto Emoji in `media/emoji/`. `ApplyEmojiSettings()`, run by every
+  fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
+  rule that makes Pango's `emoji` runs use it.
+  See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
   covers, a size control and an information line. Built on

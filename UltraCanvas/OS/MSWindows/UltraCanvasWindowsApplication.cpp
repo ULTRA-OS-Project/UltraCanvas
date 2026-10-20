@@ -15,6 +15,7 @@
 #include <winsock2.h>
 
 #include "../../include/UltraCanvasApplication.h"
+#include "../../include/UltraCanvasEmojiSettings.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
 #include "UltraCanvasWindowsDiagnostics.h"
@@ -1103,6 +1104,11 @@ namespace UltraCanvas {
                 }
             }
         }
+
+        // The emoji font the emoji setting picks (UOS-Settings) and the rule
+        // that draws emoji in it; the full font set gets them again when it
+        // replaces this one (SwitchToSystemFonts).
+        if (cfg) ApplyEmojiSettings();
 
         if (cfg) {
             // Materialise the FontSet so FcMatch (and therefore Pango) can

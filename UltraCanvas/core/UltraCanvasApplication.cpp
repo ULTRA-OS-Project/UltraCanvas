@@ -43,6 +43,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasEmojiSettings.h"
 
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
@@ -416,7 +417,7 @@ namespace UltraCanvas {
             const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
             const char* const kSerif[] = { "Times New Roman", "Georgia" };
             const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
-            const char* const kEmoji[] = { "Segoe UI Emoji", "Segoe UI Symbol" };
+            const char* const kEmoji[] = { "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" };
 #elif defined(__ANDROID__)
             // System fonts live in fixed directories (no /etc/fonts at all,
             // so this generated config is always the active one on Android).
@@ -525,6 +526,9 @@ namespace UltraCanvas {
             }
             FcConfigSetCurrent(config);
             FcConfigDestroy(config);   // the current-config reference keeps it
+            // The emoji font and its rule belong to the set in use: the new
+            // one gets them too.
+            ApplyEmojiSettings();
 #if defined(ULTRACANVAS_HAS_PANGOFT2)
             PangoFontMap* fontMap = pango_cairo_font_map_get_default();
             if (fontMap && PANGO_IS_FC_FONT_MAP(fontMap)) {
