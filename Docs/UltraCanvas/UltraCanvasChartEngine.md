@@ -10,6 +10,7 @@
 - [Phase-1 services](#phase-1-services)
 - [Bar series geometry](#bar-series-geometry)
   - [Bar connections](#bar-connections)
+- [Line and area series](#line-and-area-series)
 - [Phase-3 services](#phase-3-services)
 - [Themes and palettes](#themes-and-palettes)
 - [Hit regions and tooltips](#hit-regions-and-tooltips)
@@ -105,7 +106,7 @@ reimplemented:
 `Normalize(value)` maps into `[0,1]`; out-of-range values map outside rather
 than clamping.
 
-Four more fields cover what the ported charts each did by hand:
+Fields that cover what the ported charts each did by hand:
 
 | Field | Effect |
 |---|---|
@@ -122,7 +123,16 @@ ChartAxis volume("volume");
 volume.side = ChartAxisSide::Right;
 volume.bandEnd = 0.22;                 // the strip underneath
 volume.compactNumbers = true;
-``` Tick labels are decluttered by the 1-D pass
+```
+
+The remaining fields of the same kind: `absoluteLabels` prints magnitudes
+(both sides of a diverging axis read positive), `rangePadding` widens an auto
+range by a fraction of its span so marks at the extremes are not cut by the
+plot edge (never across a zero baseline), and `ChartScale::Sqrt` is a signed
+square root for area-true radii. An auto range is rounded once, by its step
+(0..1072 becomes 0..1200), and a prefixed negative reads `-$25`, not `$-25`.
+
+Tick labels are decluttered by the 1-D pass
 (`PriorityGreedy`: range ends and zero survive longest) — never by the 2-D
 solver.
 
@@ -208,12 +218,23 @@ a key describes marks the chart actually draws.
   rules both x and y and a radar draws rings and spokes.
 - **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
   caption})` draws reference lines (average, target, threshold...); captions
-  are solved into the label plan so they never overprint value labels.
+  are solved into the label plan so they never overprint value labels. A
+  limiter on a domain axis runs across the value range (a pyramid's average
+  age), and `extentStart` / `extentEnd` trim it to part of the plot (one side
+  of a diverging chart).
+- **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
+  label, ...})` draws a dimension line between two value-space points, with
+  arrowheads and a boxed caption the label plan steers around - the lead time,
+  cycle time and WIP spans of a cumulative flow diagram.
 - **Layout is measured, not guessed**: axis tick labels, titles and the legend
   reserve their measured space in the measure pass; `MeasureContent` adds
   chart-specific needs. `SolvePlotArea` never returns an empty plot. The chart
   title owns an exclusive band above every other top reservation, so axis
-  endpoint labels can never overprint it.
+  endpoint labels can never overprint it. Edge axes on the same side stack
+  outward when their bands overlap (a Mekko chart's column names under its
+  cumulative-percent ticks); a left/right axis title is drawn rotated along
+  the axis, outside its labels; the labels at the ends of a bottom/top axis
+  reserve their overhang instead of running off the element.
 
 ## Bar series geometry
 
@@ -338,7 +359,10 @@ and unit-tested; the content maps the results through its axes.
 - **Label plan**: labels submitted in `CollectChartLabels` go through the
   collision solver **once per invalidation, never per frame**. `allowSuppress`
   drops labels that would overprint (set `priority` on the ones that must
-  survive); leaders and rotation are drawn by the engine. Solved labels are
+  survive); `pinned` keeps a label exactly on its side of the anchor and drops
+  it rather than sliding it along (column headers, a bar's total - anything
+  whose meaning is its position); leaders and rotation are drawn by the
+  engine. Solved labels are
   kept within the plot area **plus whatever margins the chart reserved for
   itself in `MeasureContent`** (`SolveLabelBounds`): reserve a text-height
   band on the value-axis end and a bar that reaches the axis maximum keeps
@@ -366,7 +390,8 @@ and unit-tested; the content maps the results through its axes.
     `Legend().SetColorBar({colormap, min, max, ticks, formatter, ...})`,
     `quantizeLevels >= 2` draws discrete bands), or `SizeLegend` (sample
     circles keying a bubble-size scale, largest first —
-    `Legend().SetSizeScale(...)`).
+    `Legend().SetSizeScale(...)`; `areaScaled` sizes the circles like
+    area-proportional bubbles, `values` names the sample values).
   - `Legend().SetCustomArea(size, draw)` — a host-drawn panel below the
     entries, inside the legend box, for a key richer than any swatch: an
     annotated confidence-ellipse diagram, a bubble-size scale, a mini axis.

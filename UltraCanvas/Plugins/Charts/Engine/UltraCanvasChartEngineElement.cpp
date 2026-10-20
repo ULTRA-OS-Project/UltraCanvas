@@ -3,6 +3,7 @@
 // Version: 1.3.2
 // Last Modified: 2026-10-20
 // V1.3.2: Fixes the comparison page showed.
+//   - A value limiter under Polar is drawn as a ring; it collapsed to a point.
 //   - Rim labels are obstacles in the label plan: a radial bar's peak label
 //     overprinted the series name on the rim.
 //   - An edge axis title sits outside the axis's tick labels, centred on its
@@ -1209,6 +1210,19 @@ void UltraCanvasChartEngineElement::RenderEngineLimiters(IRenderContext* ctx) {
         // rows, a date marker) runs across the value range instead.
         const bool domainLimiter = !axis.inPlot && IsDomainAxis(axis);
         const double e0 = limiter.extentStart, e1 = limiter.extentEnd;
+        if (projectionKind == ChartProjectionKind::Polar && !domainLimiter) {
+            // A value limiter under Polar is a ring (an arc for a partial
+            // extent); drawn as a straight line it collapsed to a point.
+            constexpr int kSegments = 96;
+            std::vector<Point2Dd> arc;
+            for (int k = 0; k <= kSegments; ++k) {
+                const double u = e0 + (e1 - e0) * static_cast<double>(k) / kSegments;
+                arc.push_back(engineProjection->ToScreen(ChartNormalizedPoint(u, v)));
+            }
+            ctx->DrawLinePath(arc, false);
+            if (limiter.dashed) ctx->SetLineDash(UCDashPattern());
+            continue;
+        }
         ctx->DrawLine(engineProjection->ToScreen(domainLimiter ? ChartNormalizedPoint(v, e0)
                                                                : ChartNormalizedPoint(e0, v)),
                       engineProjection->ToScreen(domainLimiter ? ChartNormalizedPoint(v, e1)
