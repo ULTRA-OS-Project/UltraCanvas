@@ -18,6 +18,7 @@
 //     wants the transfer's connection to exist, so a wish made before the
 //     connect is kept and applied on a later turn). The stall check is
 //     switched off while paused.
+// Version: 0.4.0 - a body named by file (bodyFilePath) is read and sent
 // Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -94,6 +95,25 @@ public:
         a->url        = req.url;
         a->onComplete = std::move(cb);
         a->bodyOwned  = req.body;
+        // A body named by file is read here, whole: the multi worker has no
+        // read callback of its own (the synchronous path streams it).
+        if (!req.bodyFilePath.empty()) {
+            ultranet_internal::BodyFileSource bodyFile;
+            UltraNetResult bodyOpened = ultranet_internal::OpenBodyFile(req, bodyFile);
+            if (bodyOpened && !ultranet_internal::ReadBodyFile(bodyFile, a->bodyOwned))
+                bodyOpened = UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                                   "cannot read the file to send: " +
+                                                       req.bodyFilePath);
+            if (!bodyOpened) {
+                if (a->onComplete) {
+                    UltraNetResponse r;
+                    r.statusMessage = bodyOpened.message;
+                    r.transferError = r.statusMessage;
+                    a->onComplete(r);
+                }
+                return UltraNetInvalidHandle;
+            }
+        }
         a->sink.body  = &a->response.body;
 
         // The body goes to the file when the options name one; it is closed

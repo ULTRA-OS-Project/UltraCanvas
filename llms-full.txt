@@ -83940,7 +83940,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry, and the SFTP private key's path), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
-| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
+| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
@@ -86586,6 +86586,20 @@ UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetRespons
 });
 UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
 UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
+
+// An upload streamed from a file: the body is read as it is sent, never held
+// in memory whole. bodyFileOffset / bodyFileLength send one range of the
+// file - an upload session's chunk. A file that cannot be opened, or a range
+// past its end, fails before anything is sent. (The async path reads the
+// range into memory; only the synchronous one streams it.)
+UltraNetHttpRequest up;
+up.url = "https://dav.example.com/files/movie.mp4";
+up.method = UltraNetHttpMethod::Put;
+up.bodyFilePath = "/home/me/movie.mp4";
+up.options.timeoutMs = -1;            // as long as the file is large
+up.options.stallTimeoutMs = 30000;
+UltraNetResponse upResp;
+UltraNet_HttpRequest(up, upResp);
 ```
 
 ```cpp

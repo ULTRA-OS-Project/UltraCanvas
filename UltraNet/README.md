@@ -203,6 +203,20 @@ UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetRespons
 });
 UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
 UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
+
+// An upload streamed from a file: the body is read as it is sent, never held
+// in memory whole. bodyFileOffset / bodyFileLength send one range of the
+// file - an upload session's chunk. A file that cannot be opened, or a range
+// past its end, fails before anything is sent. (The async path reads the
+// range into memory; only the synchronous one streams it.)
+UltraNetHttpRequest up;
+up.url = "https://dav.example.com/files/movie.mp4";
+up.method = UltraNetHttpMethod::Put;
+up.bodyFilePath = "/home/me/movie.mp4";
+up.options.timeoutMs = -1;            // as long as the file is large
+up.options.stallTimeoutMs = 30000;
+UltraNetResponse upResp;
+UltraNet_HttpRequest(up, upResp);
 ```
 
 ```cpp
