@@ -1,3 +1,12 @@
+#### 2026-10-20 *0.1.6*
+- **Code is recognised by its language.** A copy is a *Code* entry also when
+  its language can be named although it has no brackets or semicolons - a
+  SQL query, a Python block, a YAML file (framework: the clipboard history,
+  changelog `detect-language-from-content`); Markdown stays text. *Edit*
+  colours a code entry as its language, and *Save as* offers it as a file of
+  that language - a query as `.sql`, a script as `.py`, a Markdown note as
+  `.md` - with *Plain text* still in the list.
+
 #### 2026-10-14 *0.1.5*
 - **Save an entry as a file, then choose whether to keep it.** Every row has
   a fourth button, *Save as* (also in the row's menu and on Ctrl+S): a text,

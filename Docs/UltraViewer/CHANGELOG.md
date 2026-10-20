@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.0.9*
+#### 2026-10-20 *1.0.10*
 - **Password-protected files open with their password.** A protected PDF or
   UltraCanvas layered image (`.ucd`) shows an **Unlock** button in the bar at
   the bottom (and a lock in the toolbar; Enter does the same): it asks for the
@@ -30,6 +30,14 @@
 - **A layered `.ucd` image shows whole.** Its layers are drawn at full size
   instead of the small thumbnail stored in the file (pending entry
   `media-viewer-layered-ucd`).
+
+#### 2026-10-20 *1.0.9*
+- **A .txt shows what it holds.** A text file whose name names no language
+  (`.txt`, `.text`) is shown as the language its content is written in - a
+  Python snippet saved as `notes.txt` is highlighted as Python, a Markdown
+  `README.txt` is rendered - and stays plain when it is prose. Framework:
+  `UltraCanvasMediaViewer` with `DetectLanguageFromContent` (framework
+  changelog: `detect-language-from-content`).
 
 #### 2026-10-19 *1.0.8*
 - **One compact toolbar.** The two toolbar rows at the top are one row now,
