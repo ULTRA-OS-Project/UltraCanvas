@@ -27,6 +27,24 @@ namespace {
                   << __LINE__ << std::endl; std::abort(); } \
 } while (0)
 
+// setenv / unsetenv are POSIX; the Windows C runtime has _putenv_s, where
+// an empty value removes the variable.
+void SetEnvVar(const char* name, const char* value) {
+#if defined(_WIN32)
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
+void UnsetEnvVar(const char* name) {
+#if defined(_WIN32)
+    _putenv_s(name, "");
+#else
+    unsetenv(name);
+#endif
+}
+
 void TestResolutionOrder() {
     ClearDefaultProviders();
     SetCloudFallbackAllowed(false);
@@ -91,13 +109,13 @@ void TestCloudFallback() {
     SetCloudFallbackAllowed(false);
 
     // The environment turns it on for a deployment.
-    setenv("ULTRAAI_ALLOW_CLOUD_FALLBACK", "yes", 1);
+    SetEnvVar("ULTRAAI_ALLOW_CLOUD_FALLBACK", "yes");
     EXPECT_TRUE(IsCloudFallbackAllowed());
     EXPECT_EQ(ResolveProviderId("textllm", {"mock", "anthropic"}),
               std::string("anthropic"));
-    setenv("ULTRAAI_ALLOW_CLOUD_FALLBACK", "0", 1);
+    SetEnvVar("ULTRAAI_ALLOW_CLOUD_FALLBACK", "0");
     EXPECT_TRUE(!IsCloudFallbackAllowed());
-    unsetenv("ULTRAAI_ALLOW_CLOUD_FALLBACK");
+    UnsetEnvVar("ULTRAAI_ALLOW_CLOUD_FALLBACK");
 }
 
 void TestExplicitDefault() {
@@ -124,7 +142,7 @@ void TestExplicitDefault() {
 
 void TestEnvironmentDefault() {
     ClearDefaultProviders();
-    setenv("ULTRAAI_DEFAULT_TEXTLLM", "mock", 1);
+    SetEnvVar("ULTRAAI_DEFAULT_TEXTLLM", "mock");
     EXPECT_EQ(ResolveProviderId("textllm", {"anthropic", "mock"}),
               std::string("mock"));
     // An explicit SetDefaultProvider outranks the environment.
@@ -132,7 +150,7 @@ void TestEnvironmentDefault() {
     EXPECT_EQ(ResolveProviderId("textllm", {"anthropic", "mock"}),
               std::string("anthropic"));
     ClearDefaultProviders();
-    unsetenv("ULTRAAI_DEFAULT_TEXTLLM");
+    UnsetEnvVar("ULTRAAI_DEFAULT_TEXTLLM");
 }
 
 void TestLiveFactories() {
