@@ -404,8 +404,12 @@ bool StartEngineProcess(const ProcessStart& start, uint64_t& outPid, std::string
     posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
     if (!start.workingDirUtf8.empty()) {
         // glibc 2.29 and macOS 10.15 have the _np form; the suite's
-        // deployment targets are past both.
+        // deployment targets are past both. Elsewhere (bionic, musl) the
+        // engine runs from our working directory: its libraries are found
+        // through its own folder ($ORIGIN), not the current one.
+#if defined(__GLIBC__) || defined(__APPLE__)
         posix_spawn_file_actions_addchdir_np(&actions, start.workingDirUtf8.c_str());
+#endif
     }
     posix_spawnattr_t attr;
     posix_spawnattr_init(&attr);
