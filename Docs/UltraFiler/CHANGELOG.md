@@ -1,3 +1,16 @@
+#### 2026-10-21 *1.89.0*
+- **Changes on an FTP drive go on the connection already open.** A delete, a
+  rename, a new folder - and the rename that puts an upload in place - each
+  logged in on a connection of their own: a second login per change, and on
+  a server that allows one connection per address the change got in only by
+  closing the drive's listing connection first (1.86.0). Now a change goes
+  on the connection the drive has open, like a listing or an upload - the
+  connection log shows *Using the open connection* and no new login. Two
+  drives on such a server as different accounts still need a connection
+  each, and now take turns for listings and transfers too: one turned away at
+  the login closes the other's and gets in. UltraNet does this (framework
+  changelog: `ftp-change-on-kept-connection`).
+
 #### 2026-10-21 *1.88.0*
 - **Ctrl-selecting several files leaves the preview pane as it is.** The
   pane shows a single file or folder, so the second file picked with
