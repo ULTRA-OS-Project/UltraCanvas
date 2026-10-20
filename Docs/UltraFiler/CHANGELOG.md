@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.77.0*
+#### 2026-10-20 *1.80.0*
 - **A cloud drive's preview copy no longer holds the drive up.** What 1.75.0
   did for FTP drives now holds on Dropbox, OneDrive, Google Drive, Nextcloud
   and WebDAV too: a copy being downloaded for the preview pane is called off
@@ -13,6 +13,31 @@
   for all of it when it closed. It now goes the way of a closed tab: told to
   stop, and destroyed once it has. Turning the split view on again makes a
   new display on the same folder, with the same Back / Forward history.
+#### 2026-10-19 *1.78.0*
+- **A Save dialog's file icon dropped on a folder here names that folder.**
+  Dragging the Save dialog's file icon from another program, onto a folder
+  of the listing, the listing's empty space or a folder row of the tree,
+  now tells that dialog to save there. A drive's folders and the Pinned
+  header are not offered.
+
+#### 2026-10-19 *1.77.0*
+- **Home button.** The navigation row has a Home button (a house) between
+  Refresh and the split-view button. It opens the home folder of the host
+  system - `HOME` on Linux and macOS, `USERPROFILE` on Windows - in the active
+  folder display, from the History, Favorites and Computer views too.
+- **A copy, move or delete says what it did on the status line.** When a copy or move
+  ends - a paste, a drop onto a folder, Move to / Copy to - the status line
+  says so for six seconds: `"report.pdf" moved to "alt"`, `3 files copied to
+  "alt"`, `2 folders moved to "Archive"`, or `Copy cancelled - 2 of 5 items
+  copied to "alt"` after a Cancel in the progress window. A delete says so
+  the same way: `"report.pdf" moved to the Trash`, `3 files deleted`,
+  `3 of 5 items moved to the Recycle Bin (2 left)`. Before, a short
+  operation finished without a word: its refresh put the folder's item count
+  straight back on the line. Opening another folder ends the note early.
+  The progress window over a long copy or move is unchanged: it opens once the
+  operation has run for the time set in *Settings > Handling > File
+  operations* (2 seconds by default), the same window as Compress and Extract
+  (framework changelog, pending entry `filer-transfer-finished`).
 
 #### 2026-10-18 *1.76.0*
 - **Quitting during an upload or a download asks first, and quits at once.**

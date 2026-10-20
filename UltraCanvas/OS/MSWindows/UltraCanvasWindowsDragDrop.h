@@ -1,8 +1,8 @@
 // OS/MSWindows/UltraCanvasWindowsDragDrop.h
 // OLE IDropTarget implementation for drag-and-drop support
 // Implements file drop from Windows Explorer and other applications
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.1.0 - the Save dialog's file icon as a save drag, both ways
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,6 +55,15 @@ namespace UltraCanvas {
     using DragEnterCallback = std::function<void(int x, int y)>;
     using DragLeaveCallback = std::function<void(int x, int y)>;
     using DragOverCallback = std::function<void(int x, int y)>;
+    // A save drag (the Save dialog's file icon) dropped at (x, y): the folder
+    // the file `name` goes in, or "" to refuse the drop.
+    using SaveDropCallback = std::function<std::string(const std::string& name, int x, int y)>;
+
+    // The private clipboard formats of a save drag: the name of the file the
+    // source is about to write (UTF-8), and the folder the target names for
+    // it, which the target hands back with IDataObject::SetData (UTF-8).
+    UINT SaveDragNameFormat();
+    UINT SaveDragFolderFormat();
 
     class UltraCanvasWindowsDropTarget : public IDropTarget {
     public:
@@ -80,16 +89,24 @@ namespace UltraCanvas {
         DragEnterCallback onDragEnter;
         DragLeaveCallback onDragLeave;
         DragOverCallback onDragOver;
+        SaveDropCallback onSaveDrop;
+
+        // The drag over the window is a save drag of a file not yet written,
+        // named GetSaveDragName(), rather than files.
+        bool IsSaveDrag() const { return !saveDragName.empty(); }
+        const std::string& GetSaveDragName() const { return saveDragName; }
 
     private:
         LONG refCount;
         UltraCanvasWindowsWindow* ownerWindow;
         bool acceptDrop;
+        std::string saveDragName;
         int lastDragX;
         int lastDragY;
 
         bool ContainsFileDropData(IDataObject* pDataObj);
         std::vector<std::string> ExtractFilePaths(IDataObject* pDataObj);
+        std::string ReadSaveDragName(IDataObject* pDataObj);
         POINT ScreenToClientPoint(POINTL pt);
     };
 
@@ -128,6 +145,42 @@ namespace UltraCanvas {
         std::vector<std::string> paths;
         // DROPFILES header + double-null-terminated wide path list.
         HGLOBAL BuildHDrop() const;
+    };
+
+    // A save drag's data object: the name of a file that is not written yet
+    // (SaveDragNameFormat), and, once dropped, the folder the target wrote
+    // into it (SaveDragFolderFormat through SetData).
+    class UltraCanvasWindowsSaveDataObject : public IDataObject {
+    public:
+        explicit UltraCanvasWindowsSaveDataObject(const std::string& fileName);
+        virtual ~UltraCanvasWindowsSaveDataObject();
+
+        // The folder a target named, "" when none did.
+        const std::string& GetDroppedFolder() const { return droppedFolder; }
+
+        // ===== IUnknown =====
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override;
+        ULONG STDMETHODCALLTYPE AddRef() override;
+        ULONG STDMETHODCALLTYPE Release() override;
+
+        // ===== IDataObject =====
+        HRESULT STDMETHODCALLTYPE GetData(FORMATETC* format, STGMEDIUM* medium) override;
+        HRESULT STDMETHODCALLTYPE GetDataHere(FORMATETC* format, STGMEDIUM* medium) override;
+        HRESULT STDMETHODCALLTYPE QueryGetData(FORMATETC* format) override;
+        HRESULT STDMETHODCALLTYPE GetCanonicalFormatEtc(FORMATETC* in, FORMATETC* out) override;
+        HRESULT STDMETHODCALLTYPE SetData(FORMATETC* format, STGMEDIUM* medium,
+                                          BOOL release) override;
+        HRESULT STDMETHODCALLTYPE EnumFormatEtc(DWORD direction,
+                                                IEnumFORMATETC** ppEnum) override;
+        HRESULT STDMETHODCALLTYPE DAdvise(FORMATETC* format, DWORD advf,
+                                          IAdviseSink* sink, DWORD* connection) override;
+        HRESULT STDMETHODCALLTYPE DUnadvise(DWORD connection) override;
+        HRESULT STDMETHODCALLTYPE EnumDAdvise(IEnumSTATDATA** ppEnum) override;
+
+    private:
+        LONG refCount;
+        std::string name;
+        std::string droppedFolder;
     };
 
     // Standard IDropSource: Escape / losing the button ends the drag, the

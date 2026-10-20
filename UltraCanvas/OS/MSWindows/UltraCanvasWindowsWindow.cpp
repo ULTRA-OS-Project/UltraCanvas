@@ -15,6 +15,7 @@
 
 #include "../../include/UltraCanvasWindow.h"
 #include "../../include/UltraCanvasImage.h"
+#include "../../include/UltraCanvasFileDragIcon.h"   // kDragMimeType of a save drag
 #include "UltraCanvasWindowsApplication.h"
 #include "UltraCanvasWindowsAccessibility.h"
 #include <iostream>
@@ -102,6 +103,12 @@ namespace UltraCanvas {
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
 
+        // A Save dialog's file icon dropped here: the element under the
+        // pointer names the folder, before the drop returns to the source.
+        dropTarget->onSaveDrop = [this](const std::string& name, int x, int y) {
+            return DeliverSaveDrop(name, PhysicalToLogical(Point2Di{ x, y }));
+        };
+
         dropTarget->onDragEnter = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragEnter;
@@ -110,6 +117,11 @@ namespace UltraCanvas {
             // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
+            if (dropTarget && dropTarget->IsSaveDrag()) {
+                // A Save dialog's file icon: no files, its name.
+                event.dragMimeType = UltraCanvasFileDragIcon::kDragMimeType;
+                event.dragData = dropTarget->GetSaveDragName();
+            }
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
 
@@ -132,6 +144,11 @@ namespace UltraCanvas {
             // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
+            if (dropTarget && dropTarget->IsSaveDrag()) {
+                // A Save dialog's file icon: no files, its name.
+                event.dragMimeType = UltraCanvasFileDragIcon::kDragMimeType;
+                event.dragData = dropTarget->GetSaveDragName();
+            }
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
 
@@ -898,6 +915,27 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas Windows: file drag finished hr=0x" << std::hex
                     << hr << std::dec << " effect=" << effect << std::endl;
         if (onFinished) onFinished(accepted, moved);
+        return true;
+    }
+
+    bool UltraCanvasWindowsWindow::StartNativeSaveDrag(
+            const std::string& fileName,
+            std::function<void(const std::string& folder)> onFolder) {
+        if (fileName.empty() || !hwnd) return false;
+        if (GetCapture() == hwnd) ReleaseCapture();
+
+        auto* data = new UltraCanvasWindowsSaveDataObject(fileName);
+        auto* source = new UltraCanvasWindowsDragSource();
+
+        DWORD effect = DROPEFFECT_NONE;
+        HRESULT hr = DoDragDrop(data, source, DROPEFFECT_COPY, &effect);
+        // The target wrote the folder in while its Drop ran.
+        const std::string folder = data->GetDroppedFolder();
+        data->Release();
+        source->Release();
+        debugOutput << "UltraCanvas Windows: save drag finished hr=0x" << std::hex
+                    << hr << std::dec << " folder=" << folder << std::endl;
+        if (hr == DRAGDROP_S_DROP && !folder.empty() && onFolder) onFolder(folder);
         return true;
     }
 

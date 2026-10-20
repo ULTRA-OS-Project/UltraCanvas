@@ -1,5 +1,5 @@
 // Tests/MediaViewerToolsTest.cpp
-// The media viewer's second toolbar row offers only the tools the shown file
+// The media viewer's toolbar offers only the view / edit tools the shown file
 // takes. A photo gets zoom, rotate / mirror, the colour adjustments, Curves
 // and Save as; a drawing is never offered colour sliders or a histogram; a
 // text file, a spreadsheet, a 3D model, a video or an audio file gets none of
@@ -9,8 +9,9 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.1.0 - one toolbar row; Details is in the info bar only
 // Version: 1.0.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -50,7 +51,7 @@ bool Shown(UltraCanvasMediaViewer& viewer, const std::string& id) {
 
 // A separator has no element id of its own; the toolbar knows it by its key.
 bool SeparatorShown(UltraCanvasMediaViewer& viewer, const std::string& key) {
-    auto* row = dynamic_cast<UltraCanvasToolbar*>(viewer.FindChildById("MV_Toolbar2"));
+    auto* row = dynamic_cast<UltraCanvasToolbar*>(viewer.FindChildById("MV_Toolbar"));
     auto item = row ? row->GetWidget(key) : nullptr;
     return item && item->IsVisible();
 }
@@ -69,9 +70,12 @@ void CheckToolbarMatches(UltraCanvasMediaViewer& viewer, const std::string& labe
     Check(Shown(viewer, "mv_adjust") == t.colour && Shown(viewer, "mv_curves") == t.colour,
           label + ": adjustments and Curves follow the tool set");
     Check(Shown(viewer, "mv_save") == t.save, label + ": Save as follows the tool set");
-    Check(Shown(viewer, "mv_info"), label + ": Details is always offered");
-    Check(SeparatorShown(viewer, "mv_sep3") == (t.zoom && t.transform) &&
-          SeparatorShown(viewer, "mv_sep4") == (t.zoom || t.transform),
+    Check(!viewer.FindChildById("mv_info"), label + ": Details is not on the toolbar");
+    Check(Shown(viewer, "MV_Details"), label + ": Details is always offered (info bar)");
+    const bool edit = t.colour || t.save;
+    Check(SeparatorShown(viewer, "mv_sep2") == (t.zoom || t.transform || edit) &&
+          SeparatorShown(viewer, "mv_sep3") == (t.zoom && t.transform) &&
+          SeparatorShown(viewer, "mv_sep4") == ((t.zoom || t.transform) && edit),
           label + ": no separator stands alone");
 }
 

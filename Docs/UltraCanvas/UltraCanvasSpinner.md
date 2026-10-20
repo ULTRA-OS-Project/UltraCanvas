@@ -43,6 +43,8 @@ A value can be changed four ways:
 ### Layouts (`SpinnerLayout`)
 - ✅ **UpDownRight** – editable field with stacked ▲/▼ buttons on the right (classic spin box)
 - ✅ **SidesHorizontal** – `[dec] value [inc]` stepper with buttons flanking the field
+- ✅ **FieldOnly** – the field alone, no step buttons; typing, the arrow keys and the
+  mouse wheel still change the value (`HasButtons()` is false)
 
 ### Button Glyphs (`SpinnerButtonGlyph`)
 - ✅ **Triangle** – filled triangle pointing up/down or left/right
@@ -146,7 +148,8 @@ void OpenValueDropdown();
 void CloseValueDropdown();
 
 // Layout / style
-void SetLayout(SpinnerLayout);
+void SetLayout(SpinnerLayout);          // UpDownRight, SidesHorizontal, FieldOnly
+bool HasButtons() const;                // false for FieldOnly
 void SetButtonGlyph(SpinnerButtonGlyph);
 void SetButtonThickness(float);
 SpinnerVisualStyle& GetStyle();
