@@ -1,3 +1,17 @@
+#### 2026-10-20 *1.69*
+- **Pasted text picks its own language.** Paste into a new, empty tab and
+  UltraTexter recognises what the text is - C++, C, Python, Markdown, JSON,
+  HTML, XML, SQL, Shell, JavaScript, TypeScript, Java, C#, Go, Rust, YAML,
+  CSS and more - and switches the tab's highlighting (Markdown opens in the
+  Markdown editor) and the status-bar language to match, as opening a file
+  does. A `#!` line names its interpreter; otherwise the lines that can only
+  be one language decide, and code shown inside a Markdown ``` fence counts
+  for Markdown. When the text does not say clearly (prose, a word or two)
+  the tab stays plain text. Only a tab that has never held text is guessed
+  for, and a language picked from the status bar is never overridden.
+  Works for Ctrl+V, Shift+Insert, *Edit > Paste*, the toolbar and the
+  right-click menu.
+
 #### 2026-10-18 *1.68*
 - **Search shows every match.** While the search bar is open, all matches in
   the visible part of the document are highlighted, not only the one that is

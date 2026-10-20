@@ -1419,6 +1419,7 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
             Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
             Apps/Texter/UltraCanvasMarkdownSpellRanges.cpp
+            Apps/Texter/UltraCanvasLanguageDetect.cpp
             Apps/Texter/UltraCanvasEncoding.cpp
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
