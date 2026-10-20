@@ -1,8 +1,11 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.4 - Builds for Android: the body is ultracanvas_app_main(),
+//                 which OS/Android's android_main() calls, and the X11 and
+//                 signal setup stay on desktop Linux
 // Version: 1.0.3 - Builds for the browser: the application object outlives
 //                 main(), and ?component= / ?about= stand in for the arguments
 // Version: 1.0.2 - --help prints to stdout, a bad argument to stderr
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -44,7 +47,10 @@
     #include <crtdbg.h>
 #endif
 
-#ifdef __linux__
+// Desktop Linux only: bionic defines __linux__ as well, and an Android app has
+// no X server and is not stopped by SIGINT from a terminal.
+#if defined(__linux__) && !defined(__ANDROID__)
+#define ULTRACANVAS_DEMO_X11 1
 #include <X11/Xlib.h>
 #include <signal.h>
 #include "UltraCanvasDebug.h"
@@ -79,7 +85,7 @@ void HandleFatalError(const std::string& error) {
 }
 
 // ===== SIGNAL HANDLERS =====
-#ifdef __linux__
+#ifdef ULTRACANVAS_DEMO_X11
 // The one call a signal handler may make: it sets a flag the main loop
 // turns into RequestExit, so Run returns and main shuts the app down in
 // order. Logging, Shutdown and std::exit are not async-signal-safe.
@@ -104,6 +110,8 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
             debugOutput << " (Debug Build - Memory Leak Detection Enabled)";
         #endif
 
+#elif defined(__ANDROID__)
+    debugOutput << "Android";
 #elif __linux__
     debugOutput << "Linux";
 
@@ -180,7 +188,15 @@ void ShutdownSystem() {
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
+#ifdef __ANDROID__
+// The demo is a shared library loaded by the activity, not a program: the
+// framework's android_main() (OS/Android/UltraCanvasAndroidMain.cpp) prepares
+// the sandbox, unpacks the APK's assets and waits for the first surface, then
+// calls this.
+extern "C" int ultracanvas_app_main(int argc, char* argv[]) {
+#else
 int main(int argc, char* argv[]) {
+#endif
     debugOutput << std::endl;
 #ifdef __EMSCRIPTEN__
     // In the browser app.Run() never returns: emscripten_set_main_loop()

@@ -248,19 +248,19 @@ if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE
     unset(_uc_linked)
 endif()
 
-# ===== ANDROID DEFAULTS (phase 1: core library only) =====
+# ===== ANDROID DEFAULTS (the core library and the demo) =====
 # Cache defaults only (no FORCE): -D on the command line still wins, so any of
 # these can be opted back in once its dependency exists in the NDK sysroot.
 # The desktop app executables are meaningless in an APK (an Android app is a
-# shared library loaded by the activity); packaging DemoApp via Gradle is a
-# later phase (Docs/UltraCanvas/AndroidPortInvestigation.md §5, §7).
+# shared library loaded by the activity). DemoApp is the exception and stays
+# on: it builds as libUltraCanvasDemo.so, the library the packaging template's
+# manifest names (UltraCanvas/OS/Android/packaging/).
 if(ANDROID)
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
     set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
     set(BUILD_ARTCREATOR_APP OFF CACHE BOOL "Build the ArtCreator vector drawing editor application")
-    set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
@@ -995,16 +995,28 @@ if(BUILD_DEMO_APP)
         )
     endif()
 
-    # Create executable
-    add_executable(UltraCanvasDemo
-        ${DEMO_SOURCES}
-    )
+    # Create executable. On Android the app is a shared library instead,
+    # libUltraCanvasDemo.so, which NativeActivity loads by the manifest's
+    # android.app.lib_name; main.cpp's body is then ultracanvas_app_main(),
+    # called by the framework's android_main(). The core library's interface
+    # carries the -u options that pull android_main's glue and the JNI entry
+    # points out of the static core into it (UltraCanvas/CMakeLists.txt).
+    if(ANDROID)
+        add_library(UltraCanvasDemo SHARED
+            ${DEMO_SOURCES}
+        )
+    else()
+        add_executable(UltraCanvasDemo
+            ${DEMO_SOURCES}
+        )
+    endif()
     # Export the executable's dynamic symbols so on-demand plugin modules
     # (dlopen'ed via the loader, e.g. libUltraCanvasLaTeX) can resolve
     # UltraCanvas core symbols when the core is linked statically. Not in the
     # browser: nothing is dlopen'ed there, and the setting would ask for a
-    # dynamic-linking wasm build.
-    if(NOT EMSCRIPTEN)
+    # dynamic-linking wasm build. Not on Android either: a shared library
+    # exports its symbols anyway, and nothing is dlopen'ed there.
+    if(NOT EMSCRIPTEN AND NOT ANDROID)
         set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
     endif()
 
@@ -1137,7 +1149,11 @@ if(BUILD_DEMO_APP)
 #        RUNTIME DESTINATION bin
 #    )
     
-    message(STATUS "  Demo executable: UltraCanvasDemo")
+    if(ANDROID)
+        message(STATUS "  Demo library: libUltraCanvasDemo.so")
+    else()
+        message(STATUS "  Demo executable: UltraCanvasDemo")
+    endif()
 endif()
 
 # ===== UNIT TESTS =====

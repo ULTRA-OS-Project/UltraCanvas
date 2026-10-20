@@ -5384,8 +5384,9 @@ lives in `UltraCanvas/OS/Android/` — see its
 [README](../../UltraCanvas/OS/Android/README.md) for what is actually built
 today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
 keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
-opening and saving, APK asset extraction); the dependency
-sysroot and APK packaging remain, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+opening and saving, APK asset extraction). The dependency sysroot builds in
+CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
+an APK carries; APK packaging remains, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -5818,7 +5819,10 @@ Process lessons for the Android effort:
 - Touch→mouse translation, `AKEYCODE_*`→`UCKeys` table.
 - Stubs: cursor, dialogs, clipboard (in-process fallback already exists),
   recent files, DnD off, GL off, video off, plugins compiled-in/off.
-- **Milestone: DemoApp runs on an arm64 device/emulator.**
+- **Milestone: DemoApp runs on an arm64 device/emulator.** **Status:** DemoApp
+  builds and links for Android (`main()` is `ultracanvas_app_main()` there, the
+  target is `libUltraCanvasDemo.so`, and CI checks its exported entry points);
+  running it waits on the APK.
 
 **Phase 2 — same OS support as Linux (core services)**
 - Lifecycle virtuals (pause/resume/surface loss) + rotation-safe `Run()`.

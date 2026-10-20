@@ -2,8 +2,9 @@
 //
 // NEVER RUN. The cross-compiled dependency sysroot it points at builds for
 // arm64-v8a in CI (scripts/android-bootstrap-sysroot.sh, see README.md in this
-// directory), but no APK has been built with this file. Treat it as a
-// checklist of the settings the backend needs, not as a working build file.
+// directory), and so does the demo's app library, libUltraCanvasDemo.so, but
+// no APK has been built with this file. Treat it as a checklist of the
+// settings the backend needs, not as a working build file.
 
 plugins {
     id 'com.android.application'
@@ -45,6 +46,12 @@ android {
                           // directories too (the script prints it).
                           "-DCMAKE_FIND_ROOT_PATH=${project.properties['ultracanvas.sysroot'] ?: ''}",
                           '-DPKG_CONFIG_ARGN=--static'
+                // Only the app's library: Gradle otherwise builds every
+                // target the root CMakeLists configures, and the desktop
+                // apps that stay on there are executables an APK cannot
+                // carry. libUltraCanvasDemo.so is what the manifest's
+                // android.app.lib_name names.
+                targets 'UltraCanvasDemo'
             }
         }
     }
@@ -52,9 +59,9 @@ android {
     externalNativeBuild {
         cmake {
             // The repository's root CMakeLists. Its `if(ANDROID)` block
-            // already defaults the desktop apps, plugins, UltraNet, database
-            // and VirtualFS off, so only the core library (libvips included,
-            // as on every platform) and your app are built.
+            // defaults the main desktop apps, plugins, UltraNet, database
+            // and VirtualFS off and leaves the demo on, which builds as a
+            // shared library there; `targets` above picks it out.
             path '../../../../../CMakeLists.txt'
             version '3.22.1+'
         }

@@ -8,9 +8,11 @@ with pinch/rotate gestures, message dialogs, SAF file opening and saving, and
 APK asset extraction.
 
 **Still open, and it gates everything: APK packaging.** The cross-compiled
-dependency sysroot builds in CI, and the core library compiles against it
-(`.github/workflows/android-build.yml`), but no APK has been built, so none of
-this has run on a device — it is compiled continuously in CI, not observed. See
+dependency sysroot builds in CI, the core library compiles against it, and
+DemoApp links against that into `libUltraCanvasDemo.so`, the app library an
+APK carries (`.github/workflows/android-build.yml`). But no APK has been built,
+so none of this has run on a device — it is compiled and linked continuously
+in CI, not observed. See
 [`packaging/`](packaging/README.md), and
 [`AndroidOnLinuxInvestigation.md`](../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md)
 for how to run the first APK on a Linux box rather than a phone (and what to
@@ -25,7 +27,7 @@ Android).
 | `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, UTF-8 ↔ jstring both ways (`ToStdString` / `ToJString`: real UTF-8, not JNI's modified UTF-8, so emoji survive and malformed bytes become U+FFFD instead of aborting under CheckJNI). Never use `NewStringUTF` for anything but a literal. |
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text both ways; images and files can be **pasted** (the clip's `content://` items are copied into the app cache through `UltraCanvasActivity`, as the file picker does) but not **copied** — see Clipboard below. `GetAvailableFormats` reports what the clip actually advertises, in the same MIME spelling the Linux backend uses. Change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "nothing there" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
-| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
+| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name (`Apps/DemoApp/main.cpp` is the worked example; [`packaging/`](packaging/README.md#the-app-library) has the CMake side). |
 | `UltraCanvasAndroidLog.{h,cpp}` | stdout/stderr → logcat pump, installed by `android_main` before anything can log. A native app's stdio goes to `/dev/null`, so without it every warning from cairo/Pango/fontconfig and every `std::cout`/`std::cerr` call site in shared framework code is discarded. The framework's own `debugOutput` does **not** come through here — it reaches logcat directly (see Diagnostics below). |
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs, input dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile` and `SelectFolder` stay logged "Cancel" stubs — **Dialogs** below explains why those two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
