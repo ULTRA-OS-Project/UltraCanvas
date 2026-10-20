@@ -16420,6 +16420,16 @@ namespace UltraCanvas {
                 const Point2Di local(event.pointer.x, event.pointer.y);
                 const std::string dest = IncomingDropFolderAt(local, event.droppedFiles);
                 ClearIncomingDrop();
+                // A Save dialog's file icon from another window or program
+                // brings no file: it asks which folder it landed on, and is
+                // saved there. A drive's folder is no place to save to.
+                if (event.dropFolderReply) {
+                    if (compressDlg.active || dest.empty() ||
+                        (isRemotePath && isRemotePath(dest)))
+                        return false;
+                    event.dropFolderReply(dest);
+                    return true;
+                }
                 if (event.droppedFiles.empty()) return false;
                 AcceptDroppedFiles(event.droppedFiles, dest, /*copy=*/true);
                 return true;

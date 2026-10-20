@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.78.0*
+#### 2026-10-20 *1.81.0*
 - **A drive's folder being opened or updated no longer covers the folder
   display.** Opening a folder on an FTP, SFTP or cloud drive put a turning
   ring, *Loading folder* and a line about the connection in the middle of
@@ -66,6 +66,13 @@
   WebDAV, Dropbox, OneDrive or Google Drive it ran to its last byte. The
   drive worker now has one abort check - the window closing, or the preview
   copy no longer wanted - which every request asks, HTTP and FTP alike.
+
+#### 2026-10-19 *1.78.0*
+- **A Save dialog's file icon dropped on a folder here names that folder.**
+  Dragging the Save dialog's file icon from another program, onto a folder
+  of the listing, the listing's empty space or a folder row of the tree,
+  now tells that dialog to save there. A drive's folders and the Pinned
+  header are not offered.
 
 #### 2026-10-19 *1.77.0*
 - **Home button.** The navigation row has a Home button (a house) between

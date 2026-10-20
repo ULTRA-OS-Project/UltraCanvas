@@ -74,8 +74,10 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
+//                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -173,9 +175,10 @@ struct MediaAdjustments {
 };
 
 // ===== WHICH VIEW / EDIT TOOLS APPLY =====
-// The groups of the second toolbar row that mean something for the file on
+// The view / edit groups of the toolbar that mean something for the file on
 // show. The viewer offers only these, so a video, a PDF or a 3D model is not
-// given colour sliders it cannot apply. Details is always available.
+// given colour sliders it cannot apply. Details (in the info bar) is always
+// available.
 //   bitmap image          zoom, transform, colour, save
 //   SVG / vector drawing  zoom, transform, save (rasterized) - on the image
 //                         surface; a drawing in the vector view zooms only
@@ -507,7 +510,7 @@ public:
 
     // ===== TOP BARS (EMBEDDED MODE) =====
     // Show/hide everything above the display surface: the folder breadcrumb,
-    // both toolbar rows and the adjustments panel. Hosts that embed the viewer
+    // the toolbar and the adjustments panel. Hosts that embed the viewer
     // as a plain preview pane (e.g. the UltraFiler preview) turn them off and
     // provide their own navigation. Default: visible.
     void SetTopBarsVisible(bool visible);
@@ -520,7 +523,7 @@ public:
 
     // ===== TOOLS FOR THE SHOWN FILE =====
     // Which view / edit tools apply to what is on show (see MediaViewerTools),
-    // decided on every load. The second toolbar row shows only these groups,
+    // decided on every load. The toolbar shows only these groups,
     // and the adjustments panel folds away while colour does not apply (it
     // comes back with the next bitmap if its toggle is still on). A host with
     // its own controls can ask the same question. Colour adjustments made on
@@ -680,8 +683,7 @@ private:
     bool infoBarVisible = true;    // the info bar under it
 
     std::shared_ptr<UltraCanvasBreadcrumb>   breadcrumb;
-    std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row
-    std::shared_ptr<UltraCanvasToolbar>      toolbar2;  // view / edit row
+    std::shared_ptr<UltraCanvasToolbar>      toolbar;   // browse / slideshow / view / edit
     std::shared_ptr<UltraCanvasContainer>    adjustPanel;
     std::shared_ptr<UltraCanvasMediaSurface> surface;
     std::shared_ptr<UltraCanvasColorSwatchBar> backdropBar;   // under the picture

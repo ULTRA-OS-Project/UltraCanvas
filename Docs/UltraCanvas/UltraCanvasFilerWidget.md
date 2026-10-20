@@ -2554,6 +2554,12 @@ A drop on a folder of a **remote** drive goes through `remoteUpload` with that
 folder, and a drive's entries dropped on a local folder through
 `remoteDownload`, exactly as a drop on the folder the view shows does.
 
+A Save dialog's file icon dragged in from another window or program brings no
+file: its `Drop` carries `UCEvent::dropFolderReply`, and the view answers
+with the folder under the pointer (or the folder it shows) - the file is then
+saved there ([The file icon](UltraCanvasFileDialog.md#the-file-icon)). A
+remote drive's folder is no answer: there is no local disk to write to.
+
 ### Drag overlay
 
 The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a

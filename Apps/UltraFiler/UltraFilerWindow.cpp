@@ -3841,6 +3841,14 @@ void UltraFilerWindow::BuildFolderTree() {
             [this](TreeNode* target, const std::vector<std::string>& files) {
         return DropFilesOnTreeNode(target, files);
     };
+    // A Save dialog's file icon dropped on a folder row is saved in that
+    // folder - not on the Pinned header, and not on a drive's folder, which
+    // has no local disk to write to.
+    folderTree->onDropFolderOfNode = [this](TreeNode* node) {
+        const std::string path = TreeNodeTargetPath(node);
+        if (path.empty() || IsRemoteFilerPath(path)) return std::string();
+        return path;
+    };
 }
 
 bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
