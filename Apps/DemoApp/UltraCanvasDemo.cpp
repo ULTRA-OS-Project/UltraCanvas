@@ -1626,7 +1626,8 @@ namespace UltraCanvas {
                 .AddVariant("matrixdiagram", "Weighted (QFD)")
                 .AddVariant("matrixdiagram", "X-Shaped")
                 .AddVariant("matrixdiagram", "Y-Shaped")
-                .AddVariant("matrixdiagram", "House of Quality");
+                .AddVariant("matrixdiagram", "House of Quality")
+                .AddVariant("matrixdiagram", "C-Shaped (Cube)");
 
         diagramBuilder.AddItem("kanbanboards", "Kanban Board",
                                "Workflow boards with WIP limits, swimlanes, drag & drop, "

@@ -1,11 +1,13 @@
 // Plugins/Diagrams/UltraCanvasMatrixModel.cpp
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.6.0 - the C shape: a panel with a depth set, cells keyed by row, column and depth
+// Version: 1.5.0 - attribute gutter: per-set attribute columns and per-item values
 // Version: 1.4.0 - competitive assessment: competitors and their per-need ratings
 // Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
 // Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
@@ -31,6 +33,7 @@ namespace UltraCanvas {
             case MatrixShape::Y:     return 3;
             case MatrixShape::X:     return 4;
             case MatrixShape::House: return 2;
+            case MatrixShape::C:     return 3;
         }
         return 0;
     }
@@ -42,6 +45,7 @@ namespace UltraCanvas {
             case MatrixShape::Y:     return 3;
             case MatrixShape::X:     return 4;
             case MatrixShape::House: return 1;   // the body; the correlation roof is optional
+            case MatrixShape::C:     return 1;
         }
         return 0;
     }
@@ -130,6 +134,13 @@ namespace UltraCanvas {
         return -1;
     }
 
+    std::string MatrixItemSet::AttributeOf(int item, int column) const {
+        if (item < 0 || item >= Count() || column < 0) return std::string();
+        const std::vector<std::string>& values = items[static_cast<size_t>(item)].attributes;
+        return static_cast<size_t>(column) < values.size() ? values[static_cast<size_t>(column)]
+                                                           : std::string();
+    }
+
 // =============================================================================
 // MODEL - SETS
 // =============================================================================
@@ -186,6 +197,12 @@ namespace UltraCanvas {
         return FindSet(panels[static_cast<size_t>(panel)].colSetId);
     }
 
+    const MatrixItemSet* MatrixModel::DepthSet(int panel) const {
+        if (panel < 0 || panel >= static_cast<int>(panels.size())) return nullptr;
+        const MatrixPanel& p = panels[static_cast<size_t>(panel)];
+        return p.IsCube() ? FindSet(p.depthSetId) : nullptr;
+    }
+
 // =============================================================================
 // MODEL - CELLS
 // =============================================================================
@@ -221,6 +238,29 @@ namespace UltraCanvas {
 
     bool MatrixModel::SetCellAt(int panel, int row, int col, const std::string& levelId,
                                 const std::string& note) {
+        return SetCubeCellAt(panel, row, col, -1, levelId, note);
+    }
+
+    bool MatrixModel::SetCubeCell(int panel, const std::string& rowItemId,
+                                  const std::string& colItemId, const std::string& depthItemId,
+                                  const std::string& levelId) {
+        const MatrixItemSet* rows = RowSet(panel);
+        const MatrixItemSet* cols = ColSet(panel);
+        const MatrixItemSet* depths = DepthSet(panel);
+        if (!rows || !cols || !depths) return false;
+
+        const int row = rows->IndexOf(rowItemId);
+        const int col = cols->IndexOf(colItemId);
+        const int depth = depths->IndexOf(depthItemId);
+        if (row < 0 || col < 0 || depth < 0) return false;
+
+        return SetCubeCellAt(panel, row, col, depth, levelId);
+    }
+
+    // Both kinds of cell go through here; depth is -1 for a two-way panel,
+    // and a cell of the wrong kind for its panel is refused.
+    bool MatrixModel::SetCubeCellAt(int panel, int row, int col, int depth,
+                                    const std::string& levelId, const std::string& note) {
         if (panel < 0 || panel >= static_cast<int>(panels.size())) return false;
         if (!NormalizeSymmetric(panels, panel, row, col)) return false;
 
@@ -230,11 +270,18 @@ namespace UltraCanvas {
         if (row < 0 || row >= rows->Count()) return false;
         if (col < 0 || col >= cols->Count()) return false;
 
+        if (panels[static_cast<size_t>(panel)].IsCube()) {
+            const MatrixItemSet* depths = DepthSet(panel);
+            if (!depths || depth < 0 || depth >= depths->Count()) return false;
+        } else if (depth != -1) {
+            return false;
+        }
+
         // Reject an unknown level rather than storing a mark nothing can draw.
         if (panels[static_cast<size_t>(panel)].scale.IndexOf(levelId) < 0) return false;
 
         for (MatrixCell& cell : cells) {
-            if (cell.panel == panel && cell.row == row && cell.col == col) {
+            if (cell.panel == panel && cell.row == row && cell.col == col && cell.depth == depth) {
                 cell.levelId = levelId;
                 cell.note = note;
                 return true;
@@ -245,16 +292,17 @@ namespace UltraCanvas {
         cell.panel = panel;
         cell.row = row;
         cell.col = col;
+        cell.depth = depth;
         cell.levelId = levelId;
         cell.note = note;
         cells.push_back(cell);
         return true;
     }
 
-    bool MatrixModel::ClearCell(int panel, int row, int col) {
+    bool MatrixModel::ClearCell(int panel, int row, int col, int depth) {
         if (!NormalizeSymmetric(panels, panel, row, col)) return false;
         auto it = std::find_if(cells.begin(), cells.end(), [&](const MatrixCell& c) {
-            return c.panel == panel && c.row == row && c.col == col;
+            return c.panel == panel && c.row == row && c.col == col && c.depth == depth;
         });
         if (it == cells.end()) return false;
         cells.erase(it);
@@ -265,16 +313,18 @@ namespace UltraCanvas {
         cells.clear();
     }
 
-    const MatrixCell* MatrixModel::FindCell(int panel, int row, int col) const {
+    const MatrixCell* MatrixModel::FindCell(int panel, int row, int col, int depth) const {
         if (!NormalizeSymmetric(panels, panel, row, col)) return nullptr;
         for (const MatrixCell& cell : cells) {
-            if (cell.panel == panel && cell.row == row && cell.col == col) return &cell;
+            if (cell.panel == panel && cell.row == row && cell.col == col && cell.depth == depth) {
+                return &cell;
+            }
         }
         return nullptr;
     }
 
-    std::string MatrixModel::LevelAt(int panel, int row, int col) const {
-        const MatrixCell* cell = FindCell(panel, row, col);
+    std::string MatrixModel::LevelAt(int panel, int row, int col, int depth) const {
+        const MatrixCell* cell = FindCell(panel, row, col, depth);
         return cell ? cell->levelId : std::string();
     }
 
@@ -308,6 +358,21 @@ namespace UltraCanvas {
             total += scale.WeightOf(cell.levelId);
         }
         return total * rows->items[static_cast<size_t>(row)].importance;
+    }
+
+    double MatrixModel::DepthScore(int panel, int depth) const {
+        const MatrixItemSet* rows = RowSet(panel);
+        if (!rows || !DepthSet(panel) || depth < 0) return 0.0;
+        const MatrixScale& scale = panels[static_cast<size_t>(panel)].scale;
+
+        double total = 0.0;
+        for (const MatrixCell& cell : cells) {
+            if (cell.panel != panel || cell.depth != depth) continue;
+            if (cell.row < 0 || cell.row >= rows->Count()) continue;
+            total += rows->items[static_cast<size_t>(cell.row)].importance
+                     * scale.WeightOf(cell.levelId);
+        }
+        return total;
     }
 
     std::vector<double> MatrixModel::RelativeColumnWeights(int panel) const {
@@ -384,6 +449,14 @@ namespace UltraCanvas {
             if (sets[s].id.empty()) fail("set " + std::to_string(s) + " has an empty id");
             if (sets[s].items.empty()) {
                 result.warnings.push_back("set '" + sets[s].id + "' has no items");
+            }
+            for (const MatrixItem& item : sets[s].items) {
+                if (item.attributes.size() > sets[s].columns.size()) {
+                    result.warnings.push_back("item '" + item.id + "' of set '" + sets[s].id + "' has "
+                                              + std::to_string(item.attributes.size())
+                                              + " attribute values for "
+                                              + std::to_string(sets[s].columns.size()) + " columns");
+                }
             }
             for (size_t i = 0; i < sets[s].items.size(); ++i) {
                 for (size_t j = i + 1; j < sets[s].items.size(); ++j) {
@@ -465,6 +538,30 @@ namespace UltraCanvas {
             }
         }
 
+        // A C is one cube panel crossing its three sets; elsewhere a depth
+        // set has no place to be drawn.
+        for (size_t p = 0; p < panels.size(); ++p) {
+            const MatrixPanel& panel = panels[p];
+            const std::string where = "panel " + std::to_string(p);
+            if (!panel.IsCube()) continue;
+            if (shape != MatrixShape::C) {
+                fail(where + " has a depth set, which only the C shape draws");
+            } else if (p > 0) {
+                fail(where + " is a second cube; a C draws panel 0 only");
+            }
+            if (!FindSet(panel.depthSetId)) {
+                fail(where + " references unknown depth set '" + panel.depthSetId + "'");
+            }
+            if (panel.symmetric) fail(where + " cannot be both a cube and symmetric");
+            if (panel.depthSetId == panel.rowSetId || panel.depthSetId == panel.colSetId ||
+                panel.rowSetId == panel.colSetId) {
+                fail(where + " must cross three different sets");
+            }
+        }
+        if (shape == MatrixShape::C && !panels.empty() && !panels[0].IsCube()) {
+            fail("panel 0 of a C must be a cube panel: set its depthSetId");
+        }
+
         // The competitive assessment rates the needs - panel 0's rows - so
         // every rating must name one of them and a competitor that exists.
         for (size_t a = 0; a < competitors.size(); ++a) {
@@ -511,6 +608,13 @@ namespace UltraCanvas {
             if (cell.col < 0 || cell.col >= cols->Count()) {
                 fail(where + " column " + std::to_string(cell.col) + " is out of range");
             }
+            if (const MatrixItemSet* depths = DepthSet(cell.panel)) {
+                if (cell.depth < 0 || cell.depth >= depths->Count()) {
+                    fail(where + " depth " + std::to_string(cell.depth) + " is out of range");
+                }
+            } else if (cell.depth != -1) {
+                fail(where + " has a depth, but its panel is not a cube");
+            }
             if (panels[static_cast<size_t>(cell.panel)].symmetric && cell.row >= cell.col) {
                 fail(where + " lies on or below the diagonal of a symmetric panel");
             }
@@ -523,10 +627,13 @@ namespace UltraCanvas {
             for (size_t b = a + 1; b < cells.size(); ++b) {
                 if (cells[a].panel == cells[b].panel &&
                     cells[a].row == cells[b].row &&
-                    cells[a].col == cells[b].col) {
+                    cells[a].col == cells[b].col &&
+                    cells[a].depth == cells[b].depth) {
                     fail("duplicate cells at panel " + std::to_string(cells[a].panel) +
                          " (" + std::to_string(cells[a].row) + ", " +
-                         std::to_string(cells[a].col) + ")");
+                         std::to_string(cells[a].col) +
+                         (cells[a].depth >= 0 ? ", " + std::to_string(cells[a].depth) : std::string())
+                         + ")");
                 }
             }
         }
@@ -669,7 +776,7 @@ namespace UltraCanvas {
     std::string ExportMatrixCsv(const MatrixModel& model, int panel, bool withImportance) {
         const MatrixItemSet* rows = model.RowSet(panel);
         const MatrixItemSet* cols = model.ColSet(panel);
-        if (!rows || !cols) return std::string();
+        if (!rows || !cols || model.DepthSet(panel)) return std::string();
 
         std::ostringstream out;
 
@@ -697,7 +804,7 @@ namespace UltraCanvas {
     bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel) {
         const MatrixItemSet* rows = model.RowSet(panel);
         const MatrixItemSet* cols = model.ColSet(panel);
-        if (!rows || !cols) return false;
+        if (!rows || !cols || model.DepthSet(panel)) return false;
 
         std::istringstream in(csv);
         std::string line;
@@ -876,7 +983,7 @@ namespace UltraCanvas {
         // source for both directions, so a name can never round-trip wrong.
         const std::pair<MatrixShape, const char*> kShapeNames[] = {
                 {MatrixShape::L, "L"}, {MatrixShape::T, "T"}, {MatrixShape::Y, "Y"},
-                {MatrixShape::X, "X"}, {MatrixShape::House, "House"}};
+                {MatrixShape::X, "X"}, {MatrixShape::House, "House"}, {MatrixShape::C, "C"}};
         const std::pair<MatrixMarkShape, const char*> kMarkNames[] = {
                 {MatrixMarkShape::Disc, "disc"}, {MatrixMarkShape::Ring, "ring"},
                 {MatrixMarkShape::Triangle, "triangle"}, {MatrixMarkShape::Square, "square"},
@@ -906,6 +1013,20 @@ namespace UltraCanvas {
             if (!text.empty()) object.Set(key, text);
         }
 
+        JSONValue StringArray(const std::vector<std::string>& texts) {
+            JSONValue array = JSONValue::MakeArray();
+            for (const std::string& text : texts) array.Append(JSONValue(text));
+            return array;
+        }
+
+        // An array of strings; anything else in it is read as an empty string,
+        // so one stray number cannot shift the values after it a column left.
+        std::vector<std::string> ReadStrings(const JSONValue& array) {
+            std::vector<std::string> texts;
+            for (const JSONValue& value : array.GetElements()) texts.push_back(value.GetString());
+            return texts;
+        }
+
     } // namespace
 
     JSONValue MatrixModelToJson(const MatrixModel& model) {
@@ -930,6 +1051,7 @@ namespace UltraCanvas {
             s.Set("id", set.id);
             SetText(s, "title", set.title);
             s.Set("accent", JSON::FromColor(set.accent));
+            if (!set.columns.empty()) s.Set("columns", StringArray(set.columns));
             JSONValue items = JSONValue::MakeArray();
             for (const MatrixItem& item : set.items) {
                 JSONValue i = JSONValue::MakeObject();
@@ -942,6 +1064,7 @@ namespace UltraCanvas {
                     i.Set("improvement", NameOf(kImprovementNames, item.improvement));
                 }
                 SetText(i, "target", item.target);
+                if (!item.attributes.empty()) i.Set("attributes", StringArray(item.attributes));
                 items.Append(i);
             }
             s.Set("items", items);
@@ -954,6 +1077,7 @@ namespace UltraCanvas {
             JSONValue p = JSONValue::MakeObject();
             p.Set("rows", panel.rowSetId);
             p.Set("columns", panel.colSetId);
+            SetText(p, "depth", panel.depthSetId);
             if (panel.symmetric) p.Set("symmetric", true);
 
             JSONValue scale = JSONValue::MakeObject();
@@ -988,6 +1112,10 @@ namespace UltraCanvas {
             c.Set("panel", static_cast<int64_t>(cell.panel));
             c.Set("row", rows->items[static_cast<size_t>(cell.row)].id);
             c.Set("column", cols->items[static_cast<size_t>(cell.col)].id);
+            if (const MatrixItemSet* depths = model.DepthSet(cell.panel)) {
+                if (cell.depth < 0 || cell.depth >= depths->Count()) continue;
+                c.Set("depth", depths->items[static_cast<size_t>(cell.depth)].id);
+            }
             c.Set("level", cell.levelId);
             SetText(c, "note", cell.note);
             cells.Append(c);
@@ -1054,6 +1182,7 @@ namespace UltraCanvas {
             if (s.Contains("accent") && !JSON::ToColor(s.Get("accent"), set.accent)) {
                 return failWith("set '" + set.id + "' has an unreadable accent colour");
             }
+            set.columns = ReadStrings(s.Get("columns"));
             for (const JSONValue& i : s.Get("items").GetElements()) {
                 MatrixItem item;
                 item.id = i.Get("id").GetString();
@@ -1064,6 +1193,7 @@ namespace UltraCanvas {
                 if (i.Contains("accent")) JSON::ToColor(i.Get("accent"), item.accent);
                 item.note = i.Get("note").GetString();
                 item.target = i.Get("target").GetString();
+                item.attributes = ReadStrings(i.Get("attributes"));
                 const std::string improvement = i.Get("improvement").GetString("none");
                 if (!ValueOf(kImprovementNames, improvement, item.improvement)) {
                     return failWith("item '" + item.id + "' has an unknown improvement '" + improvement + "'");
@@ -1077,6 +1207,7 @@ namespace UltraCanvas {
             MatrixPanel panel;
             panel.rowSetId = p.Get("rows").GetString();
             panel.colSetId = p.Get("columns").GetString();
+            panel.depthSetId = p.Get("depth").GetString();
             panel.symmetric = p.Get("symmetric").GetBoolean(false);
             const JSONValue& scale = p.Get("scale");
             panel.scale.title = scale.Get("title").GetString();
@@ -1110,15 +1241,22 @@ namespace UltraCanvas {
             const std::string row = c.Get("row").GetString();
             const std::string col = c.Get("column").GetString();
             const std::string level = c.Get("level").GetString();
-            if (!model.SetCell(panel, row, col, level)) {
-                return failWith("cell " + std::to_string(n) + " (" + row + " x " + col + " = " + level
+            const std::string depth = c.Get("depth").GetString();
+            const bool cube = model.DepthSet(panel) != nullptr;
+            const bool set = cube ? model.SetCubeCell(panel, row, col, depth, level)
+                                  : depth.empty() && model.SetCell(panel, row, col, level);
+            if (!set) {
+                return failWith("cell " + std::to_string(n) + " (" + row + " x " + col
+                                + (depth.empty() ? std::string() : " x " + depth) + " = " + level
                                 + ") names a panel, item or level that does not exist");
             }
             const std::string note = c.Get("note").GetString();
             if (!note.empty()) {
                 const MatrixItemSet* rows = model.RowSet(panel);
                 const MatrixItemSet* colSet = model.ColSet(panel);
-                model.SetCellAt(panel, rows->IndexOf(row), colSet->IndexOf(col), level, note);
+                const MatrixItemSet* depthSet = model.DepthSet(panel);
+                model.SetCubeCellAt(panel, rows->IndexOf(row), colSet->IndexOf(col),
+                                    depthSet ? depthSet->IndexOf(depth) : -1, level, note);
             }
         }
 
@@ -1188,6 +1326,16 @@ namespace UltraCanvas {
                          {"Graphical Analysis", "SPC", "KPIs", "Data Collection Methods",
                           "Cause and Effect", "Process Mapping", "Kaizen", "5S"});
             model.AddPanel("departments", "tools", MatrixScale::Strength531());
+
+            // The attribute gutter: head count, and whether the department has
+            // a trained improvement facilitator of its own.
+            model.sets[0].columns = {"Staff", "Facilitator"};
+            static const char* const attributes[][2] = {
+                {"12", "N"}, {"18", "N"}, {"9", "N"}, {"24", "Y"}, {"15", "Y"},
+                {"11", "N"}, {"31", "Y"}, {"140", "Y"}, {"8", "N"}};
+            for (size_t i = 0; i < model.sets[0].items.size(); ++i) {
+                model.sets[0].items[i].attributes = {attributes[i][0], attributes[i][1]};
+            }
 
             // Rows as (department, one level id per tool; empty = no relationship).
             struct Row { const char* dept; const char* marks[8]; };
@@ -1421,6 +1569,53 @@ namespace UltraCanvas {
                 {2, "Housing", "Quiet", "moderate"},
             };
             for (const Mark& m : marks) model.SetCell(m.panel, m.row, m.col, m.level);
+            return model;
+        }
+
+        MatrixModel DefectCube() {
+            MatrixModel model;
+            model.title = "Where defects happen";
+            model.subtitle = "Defect types by production line by shift";
+            model.shape = MatrixShape::C;
+
+            model.AddSet("defects", "Defect types",
+                         {"Scratches", "Dents", "Misalignment", "Porosity", "Wrong label"});
+            model.AddSet("lines", "Production lines",
+                         {"Press", "Weld", "Paint", "Assembly"});
+            model.AddSet("shifts", "Shifts", {"Early", "Late", "Night"});
+
+            MatrixScale occurrence;
+            occurrence.title = "Occurrence";
+            occurrence.levels.emplace_back("frequent",   "Frequent",   Color(206,  52,  44, 255), 3.0);
+            occurrence.levels.emplace_back("occasional", "Occasional", Color(230, 150,  40, 255), 2.0);
+            occurrence.levels.emplace_back("rare",       "Rare",       Color(120, 128, 140, 255), 1.0,
+                                           MatrixMarkShape::Ring);
+            MatrixPanel& cube = model.AddPanel("defects", "lines", occurrence);
+            cube.depthSetId = "shifts";
+
+            // The story the cube tells and no face of it can: misalignment on
+            // the weld line is a night-shift problem, and wrong labels a
+            // late-shift one at assembly.
+            struct Mark { const char* defect; const char* line; const char* shift; const char* level; };
+            static const Mark marks[] = {
+                {"Scratches",    "Press",    "Early", "occasional"},
+                {"Scratches",    "Paint",    "Early", "rare"},
+                {"Dents",        "Press",    "Early", "occasional"},
+                {"Porosity",     "Weld",     "Early", "rare"},
+                {"Scratches",    "Press",    "Late",  "occasional"},
+                {"Scratches",    "Assembly", "Late",  "rare"},
+                {"Misalignment", "Weld",     "Late",  "rare"},
+                {"Porosity",     "Paint",    "Late",  "occasional"},
+                {"Wrong label",  "Assembly", "Late",  "frequent"},
+                {"Scratches",    "Press",    "Night", "frequent"},
+                {"Dents",        "Press",    "Night", "occasional"},
+                {"Misalignment", "Weld",     "Night", "frequent"},
+                {"Misalignment", "Assembly", "Night", "occasional"},
+                {"Porosity",     "Weld",     "Night", "occasional"},
+                {"Porosity",     "Paint",    "Night", "frequent"},
+                {"Wrong label",  "Assembly", "Night", "rare"},
+            };
+            for (const Mark& m : marks) model.SetCubeCell(0, m.defect, m.line, m.shift, m.level);
             return model;
         }
 

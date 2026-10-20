@@ -43043,7 +43043,8 @@ and the weights behind those symbols roll up into per-row and per-column totals.
 form header band, cell tint, hover bands that run across panels, a ranked bar
 strip for the column totals, and spreadsheet import - and Phase 4: pan and
 zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
-the House's competitive-assessment block. See
+the House's competitive-assessment block, the attribute gutter and the `C`
+shape (a cube of three sets). Every shape in the proposal is built. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Contents
@@ -43056,7 +43057,9 @@ the House's competitive-assessment block. See
   - [The X shape](#the-x-shape)
   - [The Y shape](#the-y-shape)
   - [The House of Quality](#the-house-of-quality)
+  - [The C shape (cube)](#the-c-shape-cube)
   - [The form header band](#the-form-header-band)
+  - [The attribute gutter](#the-attribute-gutter)
 - [Relationship scales](#relationship-scales)
 - [Roll-ups](#roll-ups)
 - [Presentation](#presentation)
@@ -43142,8 +43145,9 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 | `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
 | `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
 | `MatrixShape::House` | 2 | 1–2 | the QFD House of Quality: an L plus the correlation roof |
+| `MatrixShape::C` | 3 | 1 | A × B × C — every cell relates one item of each of three sets |
 
-An `X`, `Y` or `House` whose model the shape cannot place (see *Validation*)
+An `X`, `Y`, `House` or `C` whose model the shape cannot place (see *Validation*)
 falls back to the `L` layout of panel 0 rather than drawing nothing, so its
 data is still visible.
 
@@ -43282,6 +43286,58 @@ and gives the cells its width back.
 
 `MatrixSamples::HouseOfQuality()` is a complete example.
 
+### The C shape (cube)
+
+`MatrixShape::C` relates three lists at once. Each cell is one item from each
+list: a defect type, on a production line, in a shift. Two-way panels can't
+hold that. Defects × lines can say the weld line has misalignment, and
+defects × shifts can say the night shift does, but neither can say that the
+misalignment happens on the weld line at night. The cube's single panel takes
+a third, **depth** set, and its cells take a depth index:
+
+<!-- doc-check: MatrixScale occurrence; -->
+
+```cpp
+MatrixModel cube;
+cube.shape = MatrixShape::C;
+cube.AddSet("defects", "Defect types", {"Scratches", "Dents", "Misalignment"});
+cube.AddSet("lines",   "Production lines", {"Press", "Weld", "Paint"});
+cube.AddSet("shifts",  "Shifts", {"Early", "Late", "Night"});
+cube.AddPanel("defects", "lines", occurrence).depthSetId = "shifts";
+
+cube.SetCubeCell(0, "Misalignment", "Weld", "Night", "frequent");   // by item ids
+cube.SetCubeCellAt(0, 2, 1, 1, "rare");                             // by index
+std::string level = cube.LevelAt(0, 2, 1, 2);                       // "frequent"
+double night = cube.DepthScore(0, 2);                               // one slice's total
+```
+
+`FindCell`, `LevelAt` and `ClearCell` take the depth as a last argument. It
+defaults to `-1`, which means a two-way panel's cell. Each form finds only its
+own kind of cell. `SetCellAt` refuses a cube panel's cell, and `SetCubeCellAt`
+refuses a two-way panel's. `RowScore` and `ColumnScore` sum through every
+slice. `DepthScore` sums one slice.
+
+A solid cube would show only its outer faces, and none of the cells inside, so
+the diagram draws it **exploded**. Each depth item gets one flat isometric
+slice, the first on top, stacked with a gap of `style.cubeSliceGap` cells and
+joined by the cube's left and right edges. Row labels run along the top
+slice's upper-left edge and column labels along its upper-right edge, as a Y's
+arms do. Each slice's depth item is named in a box at its right corner, and
+the depth set's title stands on end beside those boxes. The cell size is the
+largest at which the whole stack fits.
+
+Hovering a cell lights its row and column in every slice, which shows where
+the same pair sits across the depth set. Hovering or clicking a depth label
+lights its slice and fires `onSliceClick`. A cell's `MatrixRef` carries its
+`depth`, and a whole slice is a ref with only `panel` and `depth`
+(`IsSlice()`). `Page Up` and `Page Down` move the selected cell to the same
+place one slice up or down.
+
+A table has no third axis: `ExportMatrixCsv` returns an empty string for a cube
+and `ImportMatrixCsv` refuses one. JSON carries the cube whole. The panel's
+`"depth"` names the depth set, and each cell's `"depth"` names its depth item.
+`MatrixSamples::DefectCube()` is the worked example.
+
 ### The form header band
 
 Many printed matrix diagrams carry a form header — PROJECT, AREA, TITLE, TEAM,
@@ -43296,6 +43352,34 @@ x.headerFields = {
 };
 xDiagram->SetShowHeaderBand(true);   // the default; false hides it
 ```
+
+### The attribute gutter
+
+A row item often carries a few plain facts beside its relationships: a head
+count, an owner, a Y/N flag. Name the columns on the set and give each item its
+values in the same order; an `L` or a `House` draws them as a gutter of text
+columns between the row labels and the grid (and the House's importance column):
+
+<!-- doc-check: MatrixModel tools; -->
+
+```cpp
+MatrixItemSet& departments = tools.sets[0];
+departments.columns = {"Staff", "Facilitator"};
+departments.items[0].attributes = {"12", "N"};
+departments.items[1].attributes = {"18"};          // Facilitator left blank
+std::string staff = departments.AttributeOf(0, 0); // "12"; "" when out of range
+diagram->SetShowAttributes(true);                  // the default; false hides it
+```
+
+Values are text, read by people and never parsed. Each column is as wide as its
+header or its widest value, up to `style.maxAttributeColumnWidth`; longer values
+are ellipsised. Pointing into the gutter reports the whole row, as its label does,
+and a row's tooltip lists its values - which is where a `T`, `X` or `Y` shows
+them, since their labels have no room beside them for a gutter. Hiding the gutter
+gives the grid its width back. The values travel in JSON (`"columns"` on the set,
+`"attributes"` on the item); the CSV forms leave them out. An item with more
+values than its set has columns validates with a warning, and the extras are not
+drawn.
 
 ## Relationship scales
 
@@ -43401,6 +43485,7 @@ style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
 style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
 style.cellTintAlpha = 56;          // ... this faintly, under the mark
+style.maxAttributeColumnWidth = 90; // the attribute gutter's widest column
 diagram->SetStyle(style);
 ```
 
@@ -43414,12 +43499,20 @@ else: sizes, fonts and switches such as `alternateRowBands` or
 so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
 and `ApplyLightTheme()` do the same to a style you hold.
 
+Level and competitor colours belong to the model, not the theme. When one is
+too close to what it is drawn on to be seen, it is drawn in the label colour
+instead. One case is the near-black "High" of `MatrixScale::HighMediumLow()`
+on the dark grid. The legend swatch follows the mark. Closeness is measured
+as distance in RGB, so a saturated red or blue that is as dark as the grid
+keeps its own colour.
+
 ## Interaction
 
 ```cpp
 diagram->onCellClick = [](const MatrixRef& ref) { /* ref.panel/row/col */ };
 diagram->onRowClick    = [](int panel, int index, const MatrixItem& item) { };
 diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
+diagram->onSliceClick  = [](int panel, int depth, const MatrixItem& item) { };   // C only
 ```
 
 `MatrixRef` identifies a cell (`IsCell()`), or a whole row or column when the
@@ -43459,7 +43552,8 @@ The diagram takes the focus when clicked. Then:
 | Key | Does |
 |---|---|
 | arrows | move the selected cell one step, in the direction the key points *on screen* - also on a turned X quadrant, a Y rhombus and the House roof |
-| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel |
+| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel (a C's next slice) |
+| `Page Up` / `Page Down` | a C only: the same cell one slice up / down |
 | `Space` / `Enter` | edit the cell (when editable), and fire `onCellClick` |
 | `Delete` | clear the cell (when editable) |
 | `Escape` | clear the selection |
@@ -43541,11 +43635,11 @@ if (!ImportMatrixTable(sheetCsv, MatrixScale::QFD(), imported,
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+`MatrixSamples::ImprovementTools()` (L, with an attribute gutter), `MatrixSamples::EmployeeAllocation()`
 (T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
 `MatrixSamples::SupplyChain()` (X, with a form header),
-`MatrixSamples::DesignTraceability()` (Y) and `MatrixSamples::HouseOfQuality()`
-(House) build the models the demo shows
+`MatrixSamples::DesignTraceability()` (Y), `MatrixSamples::HouseOfQuality()`
+(House) and `MatrixSamples::DefectCube()` (C) build the models the demo shows
 (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
@@ -43563,8 +43657,12 @@ a left/right set with a top/bottom one and that no two panels claim the same
 quadrant; for a `Y`, that every panel crosses two different sets among the first
 three and that no pair appears twice; for a `House`, that panel 0 crosses two
 different sets and any further panel is the symmetric roof over its columns.
-A cell of a symmetric panel on or below the diagonal is an error. `warnings` collects things that are drawable but
-suspicious, such as an empty item set.
+A cell of a symmetric panel on or below the diagonal is an error. For a `C`, panel 0
+must be a cube over three different sets, and every cube cell's depth must be in
+range. A depth set in any other shape is an error, and so is a depth on a two-way
+panel's cell. `warnings` collects things that are drawable but
+suspicious, such as an empty item set or an item with more attribute values than
+its set has columns.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
 items and level ids, so `Validate()` mainly matters when you have assembled a
@@ -73017,7 +73115,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two to four item sets crossed in an L, T, X or Y, or a QFD House of Quality, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, a QFD House of Quality, or three at once in a C (cube), cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
