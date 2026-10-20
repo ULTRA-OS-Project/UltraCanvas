@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.83.0*
+#### 2026-10-20 *1.83.0*
 - **The preview pane shows PDFs in the PDF view, and unlocks protected
   files.** A PDF in the preview pane had been a picture of its first page; it
   is the PDF view again, pages and all, and PDFs on a remote drive are still
@@ -15,6 +15,22 @@
   alone before the preview forgets those passwords: a slider from *Never*
   to 120 minutes, 10 by default. The screen lock forgets them whatever is
   set.
+
+#### 2026-10-20 *1.80.0*
+- **A cloud drive's preview copy no longer holds the drive up.** What 1.75.0
+  did for FTP drives now holds on Dropbox, OneDrive, Google Drive, Nextcloud
+  and WebDAV too: a copy being downloaded for the preview pane is called off
+  when you ask the drive for anything else (and fetched again after it), when
+  the selection moves to another file, and when the window closes - also
+  while the service makes it wait out a rate limit. The drive worker's abort
+  check answers for the copy while it runs, and every transfer asks it, HTTP
+  and FTP alike.
+- **Turning the split view off retires its right-hand display.** It used to
+  stay alive behind the hidden pane, its background work (thumbnails,
+  previews, folder statistics, prefetch) running on, and the window waited
+  for all of it when it closed. It now goes the way of a closed tab: told to
+  stop, and destroyed once it has. Turning the split view on again makes a
+  new display on the same folder, with the same Back / Forward history.
 
 #### 2026-10-19 *1.78.0*
 - **A Save dialog's file icon dropped on a folder here names that folder.**

@@ -83,12 +83,14 @@
 // Version: 1.29.0 - AllowCloseDuringTransfers: closing during an upload or a
 //                  download asks first; an upload onto a name that is taken
 //                  asks Keep both / Replace / Skip (PlanRemoteUploads)
+// Version: 1.29.0 - the split view's right-hand display is retired when the split
+//                  view goes off, and made again when it comes back
 // Version: 1.28.0 - a closed tab's folder display is destroyed once its workers
 //                  have stopped (RetireDisplay), not while the tab closes
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1184,8 +1186,16 @@ private:
     int tabCounter = 0;                    // unique widget ids for new tabs
     // The split view's right-hand display: a folder display like a tab's,
     // with its own Back / Forward history, that is in no tab. Created with
-    // the window; shown only while the split view is on.
+    // the window, and again each time the split view comes back on: turning
+    // it off retires the display like a closed tab (RetireDisplay), so its
+    // workers do not run on behind a hidden pane and the window never waits
+    // for them. Null while the split view is off after that.
     std::unique_ptr<FilerTabState> secondPane;
+    // Its Back / Forward history while it is retired, given to the next one,
+    // which opens on the folder it showed (settings.splitSecondFolder).
+    std::vector<std::string> splitHistory;
+    size_t splitHistoryIndex = 0;
+    void CreateSecondPane();
     bool splitViewShown = false;           // two displays side by side
     SplitSide activeSplitSide = SplitSide::Left;   // the pane the toolbars act on
     bool treeDockShown = false;            // the tree is docked in a pane
