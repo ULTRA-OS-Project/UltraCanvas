@@ -15,6 +15,9 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.8.1 - a change turned away for "too many connections" - a server
+//                  that takes one per address, while this thread keeps its
+//                  own open - closes that one and is sent again
 // Version: 0.8.0 - one thread check: UltraNet_SetThreadFtpCancel is gone; every
 //                  call asks its options' isCancelled and the thread's abort
 //                  check (UltraNet_SetThreadAbortCheck), listings and DELE too
@@ -35,12 +38,15 @@
 
 #include <curl/curl.h>
 
+#include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 #include "../../include/UltraCanvasPathUtf8.h"
@@ -134,6 +140,13 @@ public:
             share_ = nullptr;
         }
         if (share) curl_share_cleanup(share);
+    }
+
+    // Whether this thread holds a pool - and so perhaps a connection kept
+    // open by an earlier call.
+    bool Holding() {
+        std::lock_guard<std::mutex> lk(Kept().mutex);
+        return share_ != nullptr;
     }
 
 private:
@@ -967,38 +980,84 @@ UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Ver
         return Finish(log, UltraNetResult::Error(UltraNetResultCode::InvalidUrl, error));
     }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
-    std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
-                                                          curl_easy_cleanup);
-    if (!h) {
-        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
-                                                 "curl_easy_init() failed"));
-    }
     curl_slist* cmds = nullptr;
     for (const std::string& c : plan.commands)
         cmds = curl_slist_append(cmds, c.c_str());
     std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
         guard(cmds, curl_slist_free_all);
 
-    curl_easy_setopt(h.get(), CURLOPT_URL, plan.parentUrl.c_str());
-    curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-    curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
-    ApplyCommonOptions(h.get(), opt);
-    // On FTP, a connection of its own, closed afterwards - never one an
-    // earlier call left open (ThreadConnections). libcurl sends quote
-    // commands BEFORE it changes into the URL's folder, so they run in
-    // whatever folder the connection is in, and they are written for the
-    // folder a login lands in (UltraNetFtpQuote.h). A kept connection is
-    // wherever the last listing left it: there "DELE photos/a.txt" looked for
-    // photos/photos/a.txt and failed with a 550 - or found a file of that name
-    // and deleted the wrong one. SFTP's quote commands carry the full path
-    // and may use any connection.
-    if (!IsSftpUrl(url)) {
-        curl_easy_setopt(h.get(), CURLOPT_FRESH_CONNECT, 1L);
-        curl_easy_setopt(h.get(), CURLOPT_FORBID_REUSE, 1L);
-    }
-
     CURLcode rc = CURLE_OK;
-    UltraNetResult r = Perform(h.get(), plan.parentUrl, opt, log, &rc);
+    auto attempt = [&]() {
+        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
+                                                              curl_easy_cleanup);
+        if (!h) {
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                         "curl_easy_init() failed");
+        }
+        curl_easy_setopt(h.get(), CURLOPT_URL, plan.parentUrl.c_str());
+        curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
+        curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
+        ApplyCommonOptions(h.get(), opt);
+        // On FTP, a connection of its own, closed afterwards - never one an
+        // earlier call left open (ThreadConnections). libcurl sends quote
+        // commands BEFORE it changes into the URL's folder, so they run in
+        // whatever folder the connection is in, and they are written for the
+        // folder a login lands in (UltraNetFtpQuote.h). A kept connection is
+        // wherever the last listing left it: there "DELE photos/a.txt" looked
+        // for photos/photos/a.txt and failed with a 550 - or found a file of
+        // that name and deleted the wrong one. SFTP's quote commands carry the
+        // full path and may use any connection.
+        if (!IsSftpUrl(url)) {
+            curl_easy_setopt(h.get(), CURLOPT_FRESH_CONNECT, 1L);
+            curl_easy_setopt(h.get(), CURLOPT_FORBID_REUSE, 1L);
+        }
+        return Perform(h.get(), plan.parentUrl, opt, log, &rc);
+    };
+
+    // Asked first: the attempt below makes this thread a pool if it had none.
+    const bool keptOpen = t_connections.Holding();
+    UltraNetResult r = attempt();
+    // A server that takes one connection per address or user (vsftpd's
+    // max_per_ip, ProFTPD's MaxClientsPerHost) turns that fresh connection
+    // away while this thread keeps its own open from an earlier call. The
+    // refusal comes at the greeting or the login, before any command of ours
+    // was sent - so the kept connection is closed, which frees the server's
+    // slot, and the commands go once more. The next call logs in afresh.
+    auto turnedAway = [&]() {
+        if (r.success) return false;
+        const std::string& lastVerb = log.LastCommand();
+        const bool oursSent = std::any_of(plan.commands.begin(), plan.commands.end(),
+                                          [&lastVerb](const std::string& c) {
+                                              return !lastVerb.empty() &&
+                                                     ultranet_internal::ftplog::Upper(
+                                                             c.substr(0, c.find(' '))) == lastVerb;
+                                          });
+        return !oursSent && ultranet_internal::ftplog::TooManyConnectionsReply(
+                                    log.LastReplyCode(), log.LastReply());
+    };
+    if (!IsSftpUrl(url) && keptOpen && turnedAway()) {
+        log.Step("The server takes one connection at a time: closing the one kept open "
+                 "and trying again");
+        t_connections.Close();
+        // The server goes on counting the closed connection until its session
+        // has ended, a moment after the QUIT (vsftpd's per-address count
+        // drops when the session's process is gone): asked again at once, and
+        // twice more a little later. A call off ends the waiting.
+        for (const int waitMs : {0, 300, 1000}) {
+            if (waitMs > 0) {
+                bool calledOff = false;
+                for (int waited = 0; waited < waitMs && !calledOff; waited += 50) {
+                    calledOff = UltraNet_ThreadAbortRequested() ||
+                                (opt.isCancelled && opt.isCancelled());
+                    if (!calledOff) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+                if (calledOff) break;
+                log.Step("Still turned away: trying again");
+            }
+            r = attempt();
+            if (!turnedAway()) break;
+        }
+    }
     return Finish(log, r, rc);
 }
 
