@@ -505,8 +505,14 @@ for SQLite and PostgreSQL (`UltraDatabaseSchema.h`: `UltraDb_ListSchemas`,
 (`UltraDbResultSet::ColumnInfo`), G5 quoting (`UltraDb_QuoteIdentifier`,
 `UltraDb_QuoteQualifiedName`), G7 dot-decimal numbers and exact `numeric`,
 G11 `UltraDb_ListConnections` - tested in `Tests/UltraDatabase` against
-SQLite and a live PostgreSQL server. Stage 1 waits on G3, G4 and G6
-(cursors and paging, cancel, every result of a batch).
+SQLite and a live PostgreSQL server.
+
+**Stage 1 has begun with its module prerequisites** (UltraDatabase 0.3.0):
+G3 `UltraDb_OpenCursor` / `UltraDb_FetchRows` / `UltraDb_CloseCursor`
+(server-side cursors on PostgreSQL), G4 `UltraDb_CancelQuery(connection)`
+(`sqlite3_interrupt`, `PQcancel`), G6 `UltraDb_ExecBatch` (every statement of
+a script with its own result, split as psql splits on PostgreSQL). The
+application itself is next.
 
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for

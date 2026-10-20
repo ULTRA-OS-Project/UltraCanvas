@@ -2,7 +2,7 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
 
@@ -104,6 +104,15 @@ std::map<UltraDbHandle, PreparedEntry>& PreparedTable() {
     return *t;
 }
 
+struct CursorEntry {
+    std::shared_ptr<ConnEntry>       keepAlive;
+    std::unique_ptr<IUltraDbCursor>  cursor;
+};
+std::map<UltraDbHandle, CursorEntry>& CursorTable() {
+    static auto* t = new std::map<UltraDbHandle, CursorEntry>;
+    return *t;
+}
+
 struct TxEntry {
     std::shared_ptr<ConnEntry> keepAlive;
     IUltraDbConnection*        conn = nullptr;
@@ -141,7 +150,7 @@ IUltraDbDriverPlugin* UltraDatabase_GetDriver(const std::string& driverId) {
 // Core (public, declared in UltraDatabaseCore.h)
 // ============================================================================
 
-std::string UltraDatabase_GetVersion() { return "0.2.0"; }
+std::string UltraDatabase_GetVersion() { return "0.3.0"; }
 
 std::vector<std::string> UltraDatabase_GetSupportedDrivers() {
     EnsureBuiltins();
@@ -554,5 +563,96 @@ UltraDbResult UltraDb_QuoteQualifiedName(const std::string& connection, const st
     if (!conn) return err;
     out = schema.empty() ? conn->QuoteIdentifier(name)
                          : conn->QuoteIdentifier(schema) + "." + conn->QuoteIdentifier(name);
+    return UltraDbResult::Ok();
+}
+
+// ============================================================================
+// Scripts, cancelling and cursors (public, declared in UltraDatabaseQuery.h)
+// ============================================================================
+
+UltraDbResult UltraDb_ExecBatch(const std::string& connection, const std::string& sql,
+                                std::vector<UltraDbStatementResult>& out) {
+    out.clear();
+    UltraDbResult err;
+    IUltraDbConnection* conn = Resolve(connection, err);
+    if (!conn) return err;
+    return conn->ExecuteBatch(sql, out);
+}
+
+UltraDbResult UltraDb_CancelQuery(const std::string& connection) {
+    auto e = FindEntry(connection);
+    if (!e)
+        return UltraDbResult::Error(UltraDbResultCode::ConnectionNotFound,
+                                    "no connection named '" + connection + "'");
+    // Not Resolve: a cancel must not open a connection, and must not wait on
+    // anything the running statement holds. openMtx is held only while a
+    // connection is being opened, never while a statement runs.
+    IUltraDbConnection* conn = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(e->openMtx);
+        conn = e->conn.get();
+    }
+    if (!conn) return UltraDbResult::Ok();   // never opened: nothing is running
+    return conn->Cancel();
+}
+
+UltraDbHandle UltraDb_OpenCursor(const std::string& connection, const std::string& sql,
+                                 const UltraDbParams& params, UltraDbResult* error) {
+    UltraDbResult err;
+    auto e = FindEntry(connection);
+    if (!e) {
+        err = UltraDbResult::Error(UltraDbResultCode::ConnectionNotFound,
+                                   "no connection named '" + connection + "'");
+        if (error) *error = err;
+        return UltraDbInvalidHandle;
+    }
+    IUltraDbConnection* conn = OpenEntry(e, err);
+    if (!conn) { if (error) *error = err; return UltraDbInvalidHandle; }
+
+    std::unique_ptr<IUltraDbCursor> cursor = conn->OpenCursor(sql, params, err);
+    if (!cursor) { if (error) *error = err; return UltraDbInvalidHandle; }
+
+    UltraDbHandle h = g_nextHandle.fetch_add(1);
+    {
+        std::lock_guard<std::mutex> lk(HandleMutex());
+        CursorTable()[h] = CursorEntry{e, std::move(cursor)};
+    }
+    if (error) *error = UltraDbResult::Ok();
+    return h;
+}
+
+UltraDbResult UltraDb_FetchRows(UltraDbHandle cursor, size_t maxRows,
+                                UltraDbResultSet& out, bool& exhausted) {
+    out.Clear();
+    exhausted = false;
+    IUltraDbCursor* c = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(HandleMutex());
+        auto it = CursorTable().find(cursor);
+        if (it == CursorTable().end())
+            return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                        "invalid cursor handle");
+        c = it->second.cursor.get();
+    }
+    if (maxRows == 0)
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "a page must hold at least one row");
+    return c->Fetch(maxRows, out, exhausted);
+}
+
+UltraDbResult UltraDb_CloseCursor(UltraDbHandle cursor) {
+    CursorEntry entry;
+    {
+        std::lock_guard<std::mutex> lk(HandleMutex());
+        auto it = CursorTable().find(cursor);
+        if (it == CursorTable().end())
+            return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                        "invalid cursor handle");
+        entry = std::move(it->second);
+        CursorTable().erase(it);
+    }
+    // Released outside the handle lock: closing a server-side cursor is a
+    // round trip, and other handles should not wait for it.
+    entry.cursor.reset();
     return UltraDbResult::Ok();
 }
