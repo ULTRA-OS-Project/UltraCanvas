@@ -328,7 +328,7 @@ Java here is compiled against `android.jar` alone.
 The video backend lives with the other platforms' in
 `libspecific/Video/VideoBackendAndroid*.cpp` and is **on by default**: it uses
 only the NDK's own libraries (`mediandk`, `camera2ndk`, `aaudio`, all present
-at minSdk 26), so unlike most of the stack it does not wait on the
+at minSdk 28), so unlike most of the stack it does not wait on the
 cross-compiled sysroot.
 
 - **Playback.** `AMediaExtractor` demuxes; `AMediaCodec` decodes the video
@@ -447,7 +447,7 @@ vcpkg and prints the configure line (investigation §4):
 PKG_CONFIG_LIBDIR=$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig \
 cmake -G Ninja -B build-android \
   -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
   -DCMAKE_FIND_ROOT_PATH=$SYSROOT -DPKG_CONFIG_ARGN=--static
 ```
 

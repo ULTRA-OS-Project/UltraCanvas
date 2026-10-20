@@ -33,7 +33,7 @@
 
     <!-- The backend renders with Cairo into an ANativeWindow buffer and only
          uses GLES for UltraCanvasGLSurface elements, so GLES 3 is preferred
-         but not required. Every minSdk-26 device ships ES 3.x anyway. -->
+         but not required. Every minSdk-28 device ships ES 3.x anyway. -->
     <uses-feature android:glEsVersion="0x00030000" android:required="false"/>
 
     <application

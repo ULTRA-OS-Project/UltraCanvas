@@ -12,13 +12,17 @@ plugins {
 
 android {
     namespace 'org.ultraos.ultracanvas.demo'
-    // API 26 is the backend's floor: ClipDescription.getTimestamp (clipboard
-    // change detection) and the SAF behaviour it relies on are 26+.
+    // API 28 is the floor, set by the dependency sysroot: vcpkg's Android
+    // triplets build for API 28, so glib, fontconfig and libintl call libc
+    // functions bionic only has from 28 on (iconv, posix_spawn,
+    // pthread_attr_setinheritsched, fgets_unlocked). The backend itself needs
+    // 26 (ClipDescription.getTimestamp for clipboard change detection, and
+    // the SAF behaviour it relies on).
     compileSdk 34
 
     defaultConfig {
         applicationId 'org.ultraos.ultracanvas.demo'
-        minSdk 26
+        minSdk 28
         targetSdk 34
         versionCode 1
         versionName '1.0'
@@ -36,7 +40,7 @@ android {
                 // you must cross-compile
                 // (Docs/UltraCanvas/AndroidOnLinuxInvestigation.md section 3).
                 abiFilters 'x86_64'
-                arguments '-DANDROID_PLATFORM=android-26',
+                arguments '-DANDROID_PLATFORM=android-28',
                           '-DANDROID_STL=c++_shared',
                           // The cross-compiled sysroot, from
                           // scripts/android-bootstrap-sysroot.sh for this ABI

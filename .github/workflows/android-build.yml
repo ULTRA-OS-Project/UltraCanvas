@@ -111,7 +111,9 @@ jobs:
             .vcpkg/vcpkg/buildtrees/*/*.log
           if-no-files-found: ignore
 
-      # The command the script prints: the NDK's toolchain file, the sysroot
+      # The command the script prints (plus --error-limit=0, so a link that
+      # fails lists every undefined symbol, not lld's first 20): the NDK's
+      # toolchain file, the sysroot
       # as pkg-config's only search path and as CMake's find root, static
       # pkg-config link lists (vcpkg's Android triplets build static
       # libraries).
@@ -122,9 +124,10 @@ jobs:
           cmake -G Ninja -B build-android \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" \
-            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_PLATFORM=android-28 \
             -DCMAKE_FIND_ROOT_PATH="$sysroot" \
             -DPKG_CONFIG_ARGN=--static \
+            -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--error-limit=0 \
             -DCMAKE_BUILD_TYPE=Release
 
       # -k 0: past a failing source, so one run lists every one (the core

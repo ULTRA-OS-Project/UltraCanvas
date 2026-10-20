@@ -2537,7 +2537,7 @@ if(ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
             ${AVFOUNDATION_FRAMEWORK} ${COREMEDIA_FRAMEWORK} ${COREVIDEO_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
-        # All from the NDK sysroot (minSdk 26 has every one of them):
+        # All from the NDK sysroot (minSdk 28 has every one of them):
         # mediandk = MediaCodec/Extractor/Muxer + AImageReader, camera2ndk =
         # Camera2, aaudio = the audio device for playback and recording.
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC mediandk camera2ndk aaudio)
