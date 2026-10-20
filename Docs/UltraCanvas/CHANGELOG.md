@@ -1,3 +1,60 @@
+#### 2026-10-20 *0.9.353*
+- **Filer widget: a remote folder being fetched no longer covers the file
+  area.** While `remoteListingStatus` answered, the widget drew a turning
+  ring, *Loading folder* and the host's status line in the middle of the
+  display. Now it slides a thin bar along the foot of the file area, just
+  above the info bar (`FilerStyle::loadingBarColor`, the accent blue
+  `Color(37, 99, 235)`), over whatever the folder shows, and hands the line
+  to the host for its status bar: `GetListingPendingStatus()`, and
+  `onListingPendingChanged(status)` when it starts, changes and ends (`""`).
+  `remoteListingStatus` is now asked after every remote listing, not only an
+  empty one, so a host can show the bar over entries it answered from its
+  cache while it asks the server again. An empty folder's info bar says
+  *Loading folder...* rather than *0 items* meanwhile. The bar's 40 ms timer
+  repaints only its own 3-pixel strip.
+- **UltraCloud: an upload that was complete when the connection went is put
+  in place, not removed.** An upload to an FTP or SFTP server goes to a
+  hidden part name and is renamed into place once the last byte is in
+  (`UltraCloudUploads.h`); a connection that died between the two left the
+  whole file under the part name, and the next call on the account removed
+  it like any unfinished upload. Now `CloudService` notes the pending upload
+  as complete (`PendingUpload::completedAt`, account-store migration 4) and
+  the next call that reaches the server gives it its name
+  (`PlaceCompletePart`) - also when the process ended in between and the
+  folder lists the part at the file's full size. A file that has the name by
+  then is replaced when the upload finished within
+  `kCompleteUploadReplacesSeconds` (an hour: it was replacing that file) and
+  otherwise kept, the upload put beside it as *name (2).ext*
+  (`UploadKeptName`), so a file written there since is never lost; an old
+  file set aside for the replace is removed once the new one has its name.
+  Only a server that refuses the rename still has the part removed. The
+  upload's error says it: *it is given that name the next time this account
+  reaches the server*. A step called off by the thread's abort check (the
+  application quitting) counts as unanswered, never as a refusal: the
+  account does not go over to uploading straight to its names, and nothing
+  is sent again. `uploads_a_complete_*` in `Tests/UltraCloud` cover
+  each case against the fake FTP server.
+- **UltraNet: one per-thread check calls an FTP call off.**
+  `UltraNet_SetThreadFtpCancel` is gone; `UltraNet_SetThreadAbortCheck`
+  (`UltraNetCore.h`), which the synchronous HTTP requests and the FTP
+  transfers already asked, is now asked by every FTP call - listings and
+  `DELE`/`RNFR` too - beside the call's own `UltraNetFtpOptions::isCancelled`.
+  A thread that wants its calls stopped sets that one check. UltraFiler's
+  drive worker folds its quit-time abort and its preview-copy cancel into
+  it, which also calls a preview download off on a cloud drive, not only on
+  an FTP one. `ftp_log_the_thread_abort_check_calls_off_a_listing` covers it.
+- **Tree view: a row whose children are being fetched can say so.**
+  `TreeNodeData::loading` makes a row slide a thin bar along its foot, from
+  its icon to the right edge, in the tree's loading colour
+  (`SetLoadingBarColor` / `GetLoadingBarColor`, the accent blue
+  `Color(37, 99, 235)` by default) - the sign the filer widget gives a remote
+  folder being fetched. A lazy-loading host keeps its placeholder child only
+  for the expand button, hidden (`visible = false`), instead of showing a
+  "..." row. A 40 ms timer keeps the bars moving while a loading row is drawn
+  and stops with the first frame that draws none, and in the destructor
+  (`UltraCanvasTreeView` now has one). UltraFiler's folder tree uses it for
+  a remote drive's folders.
+
 #### 2026-10-20 *0.9.352*
 - **New element: `UltraCanvasColorPaletteManager`** - the colour palettes
   under a colour picker. Rows of swatches, one per palette: with one palette
