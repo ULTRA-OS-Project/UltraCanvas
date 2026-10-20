@@ -204,6 +204,10 @@ cmake -S UltraAI -B build \
   threading model, adapter checklist.
 * [`Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
+* [`../Docs/Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md) —
+  how models run on the user's own machine with nothing to install:
+  engines and models downloaded on demand from a signed gallery, run as
+  supervised loopback processes behind a `local` provider (proposal).
 
 ---
 

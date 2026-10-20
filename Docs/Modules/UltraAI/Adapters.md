@@ -578,6 +578,9 @@ under a text-LLM provider's id replaces the LLM-backed one for that id.
 * [`../../Research/ComfyUIIntegrationResearch.md`](../../Research/ComfyUIIntegrationResearch.md)
   — why these adapters are shaped the way they are, and the licensing
   boundary against ComfyUI.
+* [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md)
+  — the proposal for a `local` provider: engines and models downloaded on
+  demand and run as supervised processes, so nothing has to be installed.
 * `UltraAI/Docs/UltraNetIntegration.md` — how network adapters use
   UltraNet (HTTP, SSE, WebSocket), threading and cancellation rules.
 * `UltraAI/Docs/UltraVault.md` — credential storage for `apiKeyVaultRef`.
