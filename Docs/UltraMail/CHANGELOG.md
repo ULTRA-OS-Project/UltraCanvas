@@ -1,3 +1,15 @@
+#### 2026-10-19 *0.10.61*
+- **An *Attach cloud link* upload that was complete when the connection
+  went is put in place, not thrown away.** To an FTP or SFTP account the
+  upload goes to a hidden part name and is renamed once complete; a
+  connection that died between the last byte and the rename left the whole
+  file under the part name, and the next use of the account deleted it as
+  an unfinished upload. Now it is given its name the next time UltraMail
+  uses the account (replacing the file there only if it finished within the
+  hour, otherwise kept beside it as *report (2).pdf*). UltraCloud does this
+  for every application (framework changelog:
+  `ftp-upload-cut-off-before-rename`).
+
 #### 2026-10-17 *0.10.60*
 - **An *Attach cloud link* upload to an FTP or SFTP account no longer leaves
   half a file behind.** Such a server writes an upload into the file as it

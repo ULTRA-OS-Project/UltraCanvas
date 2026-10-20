@@ -4,8 +4,10 @@
 // and do not rename onto a file, the pending-upload records in the account
 // store, and CloudService doing all of it through the FTP provider against
 // a fake FTP server - one that can refuse renames, deletes or dot names, hide
-// dot names from a listing, break an upload part way, or not answer at all.
-// Headless - no server is contacted.
+// dot names from a listing, break an upload part way, stop answering once an
+// upload is in, or not answer at all. Headless - no server is contacted.
+// Version: 0.2.0 - a complete upload whose rename the connection cut off is
+//                  given its name, replacing or beside the file there
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -40,6 +42,8 @@ struct FakeFtpServer {
     bool refusesDotNames = false;     // STOR of ".x" answers 553
     bool hidesDotNames = false;       // LIST leaves ".x" out (vsftpd's default)
     bool down = false;                // nothing answers
+    bool downAfterUpload = false;     // ... from the moment an upload is in
+    bool callsRenamesOff = false;     // the caller's abort check stops a rename
     long breakUploadAfter = -1;       // bytes in, then the connection resets
     std::vector<std::string> commands;
     int lists = 0;                    // listings asked for, answered or not
@@ -127,6 +131,7 @@ FtpOps FakeOps(FakeFtpServer& srv) {
         }
         srv.files[path] = data;
         if (!sftp) Say(opt, UltraNetFtpLogKind::Response, "226 Transfer complete.", 226);
+        if (srv.downAfterUpload) srv.down = true;
         return Ok();
     };
     ops.rename = [&srv](const std::string& url, const std::string& newName,
@@ -135,6 +140,7 @@ FtpOps FakeOps(FakeFtpServer& srv) {
         const std::string from = PathOfUrl(url);
         const std::string parent = ParentOf(from);
         const std::string to = (parent == "/" ? "" : parent) + "/" + newName;
+        if (srv.callsRenamesOff) return Fail(UltraNetResultCode::Cancelled, "called off");
         srv.commands.push_back("RNFR " + from + " RNTO " + to);
         if (!srv.renames) return Fail(UltraNetResultCode::Unknown, "550 Permission denied.");
         if (!srv.files.count(from)) return Fail(UltraNetResultCode::Unknown, "550 No such file.");
@@ -227,6 +233,36 @@ struct Setting {
 
 const std::string kNew(4096, 'n');
 
+int64_t Now() { return static_cast<int64_t>(std::time(nullptr)); }
+
+// A folder: names to contents, behind the two operations PutUploadInPlace and
+// PlaceCompletePart use. Answers `answerFor` steps, then nothing.
+struct Folder {
+    std::map<std::string, std::string> files;
+    bool overwrites = true, renames = true, deletes = true;
+    int answerFor = 1000;
+    int said = 0;
+    InPlaceOps Ops() {
+        InPlaceOps ops;
+        ops.rename = [this](const std::string& path, const std::string& to, bool& unreachable) {
+            if (answerFor-- <= 0) { unreachable = true; return false; }
+            const std::string from = NameOf(path);
+            if (!renames || !files.count(from)) return false;
+            if (files.count(to) && !overwrites) return false;
+            files[to] = files[from];
+            files.erase(from);
+            return true;
+        };
+        ops.remove = [this](const std::string& path, bool& unreachable) {
+            if (answerFor-- <= 0) { unreachable = true; return false; }
+            return deletes && files.erase(NameOf(path)) > 0;
+        };
+        ops.say = [this](const std::string&) { ++said; };
+        return ops;
+    }
+};
+using Files = std::map<std::string, std::string>;
+
 } // namespace
 
 // ---- The pure parts -----------------------------------------------------------
@@ -260,32 +296,6 @@ TEST(uploads_part_names_and_anonymous_logins) {
 }
 
 TEST(uploads_put_in_place_on_servers_that_do_and_do_not_rename_onto_a_file) {
-    // A folder: names to contents, behind the two operations the steps use.
-    struct Folder {
-        std::map<std::string, std::string> files;
-        bool overwrites = true, renames = true, deletes = true;
-        int answerFor = 1000;
-        int said = 0;
-        InPlaceOps Ops() {
-            InPlaceOps ops;
-            ops.rename = [this](const std::string& path, const std::string& to, bool& unreachable) {
-                if (answerFor-- <= 0) { unreachable = true; return false; }
-                const std::string from = NameOf(path);
-                if (!renames || !files.count(from)) return false;
-                if (files.count(to) && !overwrites) return false;
-                files[to] = files[from];
-                files.erase(from);
-                return true;
-            };
-            ops.remove = [this](const std::string& path, bool& unreachable) {
-                if (answerFor-- <= 0) { unreachable = true; return false; }
-                return deletes && files.erase(NameOf(path)) > 0;
-            };
-            ops.say = [this](const std::string&) { ++said; };
-            return ops;
-        }
-    };
-    using Files = std::map<std::string, std::string>;
     const std::string part = UploadPartName("a.txt");
     const std::string aside = UploadSetAsideName("a.txt");
 
@@ -334,6 +344,81 @@ TEST(uploads_put_in_place_on_servers_that_do_and_do_not_rename_onto_a_file) {
     REQUIRE(dead.files == (Files{{part, "new"}}));
 }
 
+TEST(uploads_a_complete_part_is_told_apart_and_given_its_place) {
+    const int64_t now = 1760000000;
+    PendingUpload u{"nas", "/up/.a.txt.part", true, 100, now - 50};
+    REQUIRE(!IsCompletePart(u, true, 99));
+    REQUIRE(IsCompletePart(u, true, 100));
+    REQUIRE(!IsCompletePart(u, false, 0));          // hidden: not known
+    u.completedAt = now - 10;
+    REQUIRE(IsCompletePart(u, false, 0));           // ... unless the upload said so
+    PendingUpload atName = u;
+    atName.partName = false;
+    REQUIRE(!IsCompletePart(atName, true, 100));
+
+    REQUIRE(CompletePartReplaces(u, now));
+    REQUIRE(!CompletePartReplaces(u, now - 10 + kCompleteUploadReplacesSeconds));
+    u.completedAt = 0;                               // the start stands in for the end
+    REQUIRE(CompletePartReplaces(u, now));
+    REQUIRE(!CompletePartReplaces(u, now - 50 + kCompleteUploadReplacesSeconds));
+
+    auto none = [](const std::string&) { return false; };
+    REQUIRE_EQ(UploadKeptName("a.txt", none), std::string("a (2).txt"));
+    REQUIRE_EQ(UploadKeptName(".bashrc", none), std::string(".bashrc (2)"));
+    REQUIRE_EQ(UploadKeptName("a.txt", [](const std::string& n) { return n == "a (2).txt"; }),
+               std::string("a (3).txt"));
+
+    const std::string part = UploadPartName("a.txt");
+    const std::string aside = UploadSetAsideName("a.txt");
+
+    Folder free;
+    free.files = {{part, "new"}, {"b", "b"}};
+    REQUIRE(PlaceCompletePart("", "a.txt", AtName::Nothing, false, false, "a (2).txt",
+                              free.Ops()) == CompletePart::Named);
+    REQUIRE(free.files == (Files{{"a.txt", "new"}, {"b", "b"}}));
+
+    // Cut off part way through replacing: the old file was set aside.
+    Folder halfway;
+    halfway.overwrites = false;
+    halfway.files = {{part, "new"}, {aside, "old"}};
+    REQUIRE(PlaceCompletePart("", "a.txt", AtName::Nothing, true, false, "a (2).txt",
+                              halfway.Ops()) == CompletePart::Named);
+    REQUIRE(halfway.files == (Files{{"a.txt", "new"}}));
+
+    Folder recent;
+    recent.overwrites = false;
+    recent.files = {{part, "new"}, {"a.txt", "old"}};
+    REQUIRE(PlaceCompletePart("", "a.txt", AtName::File, false, true, "a (2).txt",
+                              recent.Ops()) == CompletePart::Replaced);
+    REQUIRE(recent.files == (Files{{"a.txt", "new"}}));
+
+    Folder later;
+    later.files = {{part, "new"}, {"a.txt", "written since"}};
+    REQUIRE(PlaceCompletePart("", "a.txt", AtName::File, false, false, "a (2).txt",
+                              later.Ops()) == CompletePart::KeptBeside);
+    REQUIRE(later.files == (Files{{"a.txt", "written since"}, {"a (2).txt", "new"}}));
+
+    Folder folder;   // a folder took the name: never replaced
+    folder.files = {{part, "new"}};
+    REQUIRE(PlaceCompletePart("", "a.txt", AtName::Folder, false, true, "a (2).txt",
+                              folder.Ops()) == CompletePart::KeptBeside);
+    REQUIRE(folder.files == (Files{{"a (2).txt", "new"}}));
+
+    Folder noRenames;
+    noRenames.renames = false;
+    noRenames.files = {{part, "new"}, {aside, "old"}};
+    REQUIRE(PlaceCompletePart("", "a.txt", AtName::Nothing, true, false, "a (2).txt",
+                              noRenames.Ops()) == CompletePart::Refused);
+    REQUIRE(noRenames.files == (Files{{part, "new"}, {aside, "old"}}));
+
+    Folder dead;
+    dead.answerFor = 0;
+    dead.files = {{part, "new"}, {"a.txt", "old"}};
+    REQUIRE(PlaceCompletePart("", "a.txt", AtName::File, false, false, "a (2).txt",
+                              dead.Ops()) == CompletePart::Unreachable);
+    REQUIRE(dead.files == (Files{{part, "new"}, {"a.txt", "old"}}));
+}
+
 TEST(uploads_the_account_store_keeps_pending_uploads_and_direct_accounts) {
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-uploads-store", ":memory:"));
@@ -352,6 +437,10 @@ TEST(uploads_the_account_store_keeps_pending_uploads_and_direct_accounts) {
     REQUIRE_EQ(out[0].fileSize, (uint64_t)10);
     REQUIRE_EQ(out[1].fileSize, (uint64_t)30);
     REQUIRE(!out[1].partName);
+    REQUIRE_EQ(out[0].completedAt, (int64_t)0);
+    REQUIRE(accounts.AddPendingUpload({"nas", "/up/.a.part", true, 10, now - 5, now - 1}));
+    REQUIRE(accounts.ListPendingUploads("nas", now, out));
+    REQUIRE_EQ(out[0].completedAt, now - 1);
     REQUIRE(accounts.RemovePendingUpload("nas", "/up/b"));
     REQUIRE(accounts.ListPendingUploads("nas", now, out));
     REQUIRE_EQ(out.size(), (size_t)1);
@@ -613,13 +702,139 @@ TEST(uploads_a_cleanup_the_server_did_not_answer_runs_once_a_call_gets_through) 
 TEST(uploads_the_old_file_set_aside_when_the_line_went_is_put_back) {
     FakeFtpServer srv;
     srv.files["/up/.big.bin.replaced"] = "the old version";
-    srv.files["/up/.big.bin.part"] = kNew;
+    srv.files["/up/.big.bin.part"] = kNew.substr(0, 100);
     Setting s(srv, "uctest-uploads-putback");
     s.accounts.AddPendingUpload({s.account.accountId, "/up/.big.bin.part", true, kNew.size(),
-                                 static_cast<int64_t>(std::time(nullptr))});
+                                 Now()});
     CloudService nextRun(s.accounts, s.secrets);
     std::vector<Entry> entries;
     REQUIRE(nextRun.List(s.account.accountId, "/up", entries));
     REQUIRE(srv.files["/up/big.bin"] == "the old version");
     REQUIRE_EQ(srv.files.size(), (size_t)1);
+}
+
+// ---- A complete upload whose rename the connection cut off ----------------------
+
+TEST(uploads_a_complete_upload_cut_off_before_its_rename_is_given_its_name) {
+    FakeFtpServer srv;
+    srv.downAfterUpload = true;
+    Setting s(srv, "uctest-uploads-complete");
+    LocalFile local(kNew);
+    const Result r = s.service->Upload(s.account.accountId, local.Utf8(), "/up/big.bin");
+    REQUIRE(!r);
+    REQUIRE(r.code == ResultCode::Network);
+    REQUIRE(r.message.find("given that name") != std::string::npos);
+    REQUIRE(srv.files["/up/.big.bin.part"] == kNew);
+    std::vector<PendingUpload> pending = s.Pending();
+    REQUIRE_EQ(pending.size(), (size_t)1);
+    REQUIRE(pending[0].completedAt != 0);
+    // Still down: it waits, and is not removed.
+    std::vector<Entry> entries;
+    REQUIRE(!s.service->List(s.account.accountId, "/up", entries));
+    REQUIRE(srv.files.count("/up/.big.bin.part"));
+    srv.down = false;
+    srv.downAfterUpload = false;
+    REQUIRE(s.service->List(s.account.accountId, "/up", entries));
+    REQUIRE_EQ(srv.files.size(), (size_t)1);
+    REQUIRE(srv.files["/up/big.bin"] == kNew);
+    REQUIRE(s.Pending().empty());
+    REQUIRE(s.Said("\"big.bin\" is in place"));
+}
+
+TEST(uploads_a_rename_called_off_is_not_taken_for_a_server_that_refuses_renames) {
+    // The application quitting just as the upload is in: the rename is
+    // called off. Nothing was refused - the account keeps its part names,
+    // nothing is sent again, and the upload is put in place next time.
+    FakeFtpServer srv;
+    srv.files["/up/big.bin"] = "the old version";
+    srv.callsRenamesOff = true;
+    Setting s(srv, "uctest-uploads-complete-calledoff");
+    LocalFile local(kNew);
+    const Result r = s.service->Upload(s.account.accountId, local.Utf8(), "/up/big.bin");
+    REQUIRE(r.code == ResultCode::Cancelled);
+    REQUIRE(r.message.find("was called off") != std::string::npos);
+    REQUIRE(!s.accounts.UploadsDirect(s.account.accountId, s.account.serverUrl, Now()));
+    REQUIRE(!Sent(srv, "STOR /up/big.bin"));
+    REQUIRE(!Sent(srv, "DELE /up/.big.bin.part"));
+    REQUIRE(srv.files["/up/big.bin"] == "the old version");
+    REQUIRE_EQ(s.Pending().size(), (size_t)1);
+    REQUIRE(s.Pending()[0].completedAt != 0);
+    srv.callsRenamesOff = false;
+    CloudService nextRun(s.accounts, s.secrets);
+    std::vector<Entry> entries;
+    REQUIRE(nextRun.List(s.account.accountId, "/up", entries));
+    REQUIRE_EQ(srv.files.size(), (size_t)1);
+    REQUIRE(srv.files["/up/big.bin"] == kNew);
+    REQUIRE(s.Pending().empty());
+}
+
+TEST(uploads_a_complete_upload_cut_off_while_replacing_replaces_the_file_soon_after) {
+    // vsftpd: dot names hidden, so the part is found by the record alone.
+    FakeFtpServer srv;
+    srv.hidesDotNames = true;
+    srv.files["/up/big.bin"] = "the old version";
+    srv.downAfterUpload = true;
+    Setting s(srv, "uctest-uploads-complete-replace");
+    LocalFile local(kNew);
+    REQUIRE(!s.service->Upload(s.account.accountId, local.Utf8(), "/up/big.bin"));
+    REQUIRE(srv.files["/up/big.bin"] == "the old version");
+    srv.down = false;
+    srv.downAfterUpload = false;
+    CloudService nextRun(s.accounts, s.secrets);   // a record from a run that ended
+    std::vector<Entry> entries;
+    REQUIRE(nextRun.List(s.account.accountId, "/up", entries));
+    REQUIRE_EQ(srv.files.size(), (size_t)1);
+    REQUIRE(srv.files["/up/big.bin"] == kNew);
+    REQUIRE_EQ(entries.size(), (size_t)1);
+    REQUIRE(s.Pending().empty());
+}
+
+TEST(uploads_a_complete_upload_found_later_is_kept_beside_the_file_there) {
+    FakeFtpServer srv;
+    srv.files["/up/big.bin"] = "written since";
+    srv.files["/up/big (2).bin"] = "another";
+    srv.files["/up/.big.bin.part"] = kNew;
+    Setting s(srv, "uctest-uploads-complete-beside");
+    const int64_t now = Now();
+    s.accounts.AddPendingUpload({s.account.accountId, "/up/.big.bin.part", true, kNew.size(),
+                                 now - 3 * 3600, now - 2 * 3600});
+    CloudService nextRun(s.accounts, s.secrets);
+    std::vector<Entry> entries;
+    REQUIRE(nextRun.List(s.account.accountId, "/up", entries));
+    REQUIRE(srv.files["/up/big.bin"] == "written since");
+    REQUIRE(srv.files["/up/big (3).bin"] == kNew);
+    REQUIRE(!srv.files.count("/up/.big.bin.part"));
+    REQUIRE(s.Pending().empty());
+    REQUIRE(s.Said("kept beside it as \"big (3).bin\""));
+}
+
+TEST(uploads_a_whole_part_a_run_left_without_a_word_is_given_its_name) {
+    // The process ended between the last byte and the rename: the record
+    // does not say complete, the listing's size does.
+    FakeFtpServer srv;
+    srv.files["/up/.big.bin.part"] = kNew;
+    Setting s(srv, "uctest-uploads-complete-killed");
+    s.accounts.AddPendingUpload({s.account.accountId, "/up/.big.bin.part", true, kNew.size(),
+                                 Now()});
+    CloudService nextRun(s.accounts, s.secrets);
+    std::vector<Entry> entries;
+    REQUIRE(nextRun.List(s.account.accountId, "/up", entries));
+    REQUIRE_EQ(srv.files.size(), (size_t)1);
+    REQUIRE(srv.files["/up/big.bin"] == kNew);
+    REQUIRE(s.Said("It is all there"));
+}
+
+TEST(uploads_a_complete_part_the_server_will_not_rename_is_removed) {
+    FakeFtpServer srv;
+    srv.files["/up/.big.bin.part"] = kNew;
+    srv.renames = false;
+    Setting s(srv, "uctest-uploads-complete-refused");
+    s.accounts.AddPendingUpload({s.account.accountId, "/up/.big.bin.part", true, kNew.size(),
+                                 Now(), Now()});
+    CloudService nextRun(s.accounts, s.secrets);
+    std::vector<Entry> entries;
+    REQUIRE(nextRun.List(s.account.accountId, "/up", entries));
+    REQUIRE(srv.files.empty());
+    REQUIRE(s.Pending().empty());
+    REQUIRE(s.Said("has to be sent again"));
 }
