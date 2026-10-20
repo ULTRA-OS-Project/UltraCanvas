@@ -17,6 +17,9 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.5.0 - OnThemeChanged() renamed OnChartThemeChanged(): it hid the element's
+//   OnThemeChanged(const UltraCanvasTheme&); value-axis tick labels inside the
+//   plot are label-plan obstacles
 // Version: 1.4.1 - same-side edge axes with overlapping bands stack outward
 // Version: 1.4.0 - polar furniture (rim labels, radial value rule, ring and
 //   polygon grids), polar angles / inner radius, domain gridlines, axis
@@ -194,7 +197,7 @@ public:
     // repaint-only - it never re-runs layout or the label solver. Content
     // charts draw their series from Palette() (typically
     // Palette().ColorAt(i, count)) and refresh anything cached from the
-    // theme - legend entry colours above all - in OnThemeChanged().
+    // theme - legend entry colours above all - in OnChartThemeChanged().
     void SetTheme(const ChartTheme& theme);
     // Resolves a built-in theme by name ("Dark", "Ocean", ...); returns false
     // and changes nothing when the name is unknown. Also reachable through
@@ -204,7 +207,10 @@ public:
     // Replace only the series palette, keeping the theme's furniture.
     void SetPalette(const ChartPalette& palette);
     const ChartPalette& Palette() const { return engineTheme.palette; }
-    virtual void OnThemeChanged() {}
+    // Named for the chart theme, not OnThemeChanged(): that name is the
+    // element's hook for the application's UltraCanvasTheme, and a
+    // parameterless overload of it hid that one (-Woverloaded-virtual).
+    virtual void OnChartThemeChanged() {}
 
     void SetLabelPolicy(const ChartLabelPolicy& policy);
     void SetLabelOptions(const LabelPlacementOptions& options);
@@ -475,6 +481,13 @@ private:
     void DeclutterAxisTickLabels(IRenderContext* ctx);
     // Screen segment of an axis rule (in-plot or edge) under the projection.
     void AxisScreenLine(const ChartAxis& axis, Point2Dd& lowEnd, Point2Dd& highEnd) const;
+    // Which way an axis's ticks point, and where a tick label goes: shared by
+    // the draw pass and the label plan, which treats in-plot tick labels as
+    // obstacles.
+    void TickDirection(const ChartAxis& axis, const Point2Dd& lowEnd, const Point2Dd& highEnd,
+                       double& tickDx, double& tickDy) const;
+    Rect2Dd TickLabelBox(const ChartAxis& axis, const Point2Dd& lowEnd, const Point2Dd& highEnd,
+                         double normalized, const Size2Di& size) const;
     // One axis's rule, ticks, labels and title - shared by both axis passes.
     void RenderAxisFurniture(IRenderContext* ctx, size_t axisIndex);
 };

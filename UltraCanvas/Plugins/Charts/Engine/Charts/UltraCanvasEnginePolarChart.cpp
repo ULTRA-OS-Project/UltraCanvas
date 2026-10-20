@@ -458,7 +458,7 @@ void UltraCanvasEnginePolarChart::RefreshLegend() {
     SetShowLegend(seriesList.size() > 1);
 }
 
-void UltraCanvasEnginePolarChart::OnThemeChanged() { RefreshLegend(); }
+void UltraCanvasEnginePolarChart::OnChartThemeChanged() { RefreshLegend(); }
 
 void UltraCanvasEnginePolarChart::OnLegendEntryToggled(size_t entryIndex, bool enabled) {
     if (entryIndex >= seriesList.size()) return;

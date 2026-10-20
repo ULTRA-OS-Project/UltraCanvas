@@ -192,7 +192,7 @@ void UltraCanvasEngineRadialBarChart::RefreshLegend() {
     SetLegendEntries(entries);
 }
 
-void UltraCanvasEngineRadialBarChart::OnThemeChanged() { RefreshLegend(); }
+void UltraCanvasEngineRadialBarChart::OnChartThemeChanged() { RefreshLegend(); }
 
 void UltraCanvasEngineRadialBarChart::Layout(std::vector<Ray>& rays,
                                              std::vector<Sector>& sectors) const {

@@ -15590,10 +15590,12 @@ ChartThemes::Names();                        // the 14 built-in names
 ```
 
 A theme is colours only, so a theme change is **repaint-only**: no layout, no
-label re-solve (proposal §5.7). The engine calls the `OnThemeChanged()` hook
+label re-solve (proposal §5.7). The engine calls the `OnChartThemeChanged()` hook
 so content can refresh anything it cached from the theme — legend entry
 colours above all (they are stored in `ChartLegendEntry`, not looked up at
-draw time). The frozen frame carries `frame.theme` for phase-2 drawing.
+draw time). The frozen frame carries `frame.theme` for phase-2 drawing. (The hook was called `OnThemeChanged()` until 1.5.0; it was
+renamed because that name is the element's own hook for the application's
+`UltraCanvasTheme`, and the parameterless overload hid it.)
 
 The built-in themes are the palettes the pre-engine charts each carried
 privately, lifted verbatim: **Light** (default furniture, Paul Tol bright),

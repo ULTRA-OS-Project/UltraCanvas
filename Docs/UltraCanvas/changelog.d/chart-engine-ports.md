@@ -41,3 +41,18 @@
   `$-25K`. Left / right axis titles are rotated along their axis instead of
   sitting under it on the bottom axis's first label. The end labels of a
   bottom / top axis are no longer cut off at the element's edge.
+- **Chart engine: tick labels inside the plot are label obstacles.** The labels
+  of an in-plot axis and of the radial value rule under Polar render above the
+  content but did not take part in the label plan, so a solved label could
+  land on one - the polar chart's "Under-Absorp" band caption on its "0 ppm".
+  They now claim their space before the solve (the tick declutter runs first,
+  and one helper places a tick label for the plan and the draw pass), and a
+  polar limiter's caption sits a little way round its ring instead of beside
+  the rule.
+- **Chart engine: `OnThemeChanged()` is now `OnChartThemeChanged()`.** The
+  engine's parameterless hook for a chart-theme change hid the element's
+  `OnThemeChanged(const UltraCanvasTheme&)` (`-Woverloaded-virtual` in every
+  file including the engine header), and the two hooks mean different things:
+  a chart palette swap, and the application's theme. A chart overriding the
+  old name with `override` now fails to compile and is renamed; the twelve
+  engine ports and the demo are.

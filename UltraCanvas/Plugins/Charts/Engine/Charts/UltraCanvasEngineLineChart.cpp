@@ -606,7 +606,7 @@ void UltraCanvasEngineLineChart::CollectChartLabels(IRenderContext* ctx,
     }
 }
 
-void UltraCanvasEngineLineChart::OnThemeChanged() {
+void UltraCanvasEngineLineChart::OnChartThemeChanged() {
     RefreshLegend();                    // entries store their colour
 }
 

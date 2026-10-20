@@ -144,7 +144,7 @@ public:
     void DescribeAxes(ChartAxisSet& axes) override;
     void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) override;
     void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) override;
-    void OnThemeChanged() override;
+    void OnChartThemeChanged() override;
     void OnLegendEntryToggled(size_t entryIndex, bool enabled) override;
 
 private:

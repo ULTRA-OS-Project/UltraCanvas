@@ -274,7 +274,7 @@ void UltraCanvasEngineMekkoChart::RefreshLegend() {
     SetLegendEntries(entries);
 }
 
-void UltraCanvasEngineMekkoChart::OnThemeChanged() {
+void UltraCanvasEngineMekkoChart::OnChartThemeChanged() {
     RefreshLegend();
 }
 

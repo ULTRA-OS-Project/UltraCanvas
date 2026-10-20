@@ -98,7 +98,7 @@ public:
     void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) override;
     void MeasureContent(IRenderContext* ctx, ChartLayoutRequest& request) override;
     void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) override;
-    void OnThemeChanged() override;
+    void OnChartThemeChanged() override;
 
 private:
     std::vector<WaterfallStep> steps;

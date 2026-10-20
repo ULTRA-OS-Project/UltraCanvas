@@ -1,7 +1,16 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
-// Version: 1.3.2
+// Version: 1.3.3
 // Last Modified: 2026-10-20
+// V1.3.3: Tick labels drawn inside the plot (an in-plot axis, the radial
+//   value rule under Polar) are obstacles in the label plan, so a solved
+//   label no longer overprints them - the polar chart's "0 ppm" under its
+//   "Under-Absorp" band caption. The tick declutter runs before the solve and
+//   one helper (TickLabelBox) places a tick label for both passes.
+//   A polar limiter's caption sits a little way round its ring, not at the
+//   ring's end beside the radial rule.
+//   OnThemeChanged() is renamed OnChartThemeChanged(): it hid the element's
+//   OnThemeChanged(const UltraCanvasTheme&).
 // V1.3.2: Fixes the comparison page showed.
 //   - A value limiter under Polar is drawn as a ring; it collapsed to a point.
 //   - Rim labels are obstacles in the label plan: a radial bar's peak label
@@ -47,7 +56,7 @@
 //     zones) and domain bands wedges (its angular sectors). It drew a chord.
 // V1.2.0: Themes and palettes (Engine/UltraCanvasChartTheme.h) - SetTheme /
 //   SetPalette / the "theme" named property fill the engine's furniture
-//   colours from a ChartTheme; repaint-only, with an OnThemeChanged() hook.
+//   colours from a ChartTheme; repaint-only, with an OnChartThemeChanged() hook.
 //   Also: the label solver's bounds now include the margins the content
 //   reserved in MeasureContent (SolveLabelBounds), so a bar that reaches the
 //   axis maximum keeps its value label just above the plot edge instead of
@@ -186,7 +195,7 @@ void UltraCanvasChartEngineElement::SetTheme(const ChartTheme& theme) {
     legendStyle.borderColor = theme.gridColor;
     legendStyle.swatchBorderColor = theme.axisLineColor;
     engineProperties.Set("theme", theme.name);
-    OnThemeChanged();
+    OnChartThemeChanged();
     // A theme is colours only, so nothing can move: no layout, no label
     // re-solve (proposal §5.7) - just repaint.
     RequestRedraw();
@@ -201,7 +210,7 @@ bool UltraCanvasChartEngineElement::SetTheme(const std::string& themeName) {
 
 void UltraCanvasChartEngineElement::SetPalette(const ChartPalette& palette) {
     engineTheme.palette = palette;
-    OnThemeChanged();
+    OnChartThemeChanged();
     RequestRedraw();
 }
 
@@ -695,9 +704,12 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         const double v = axis.Normalize(limiter.value);
         // Near the far end of the line's extent, along whichever direction
         // the limiter runs (across the value range for a domain axis).
-        const double along = limiter.extentStart +
-                             (limiter.extentEnd - limiter.extentStart) * 0.98;
         const bool domainLimiter = !axis.inPlot && IsDomainAxis(axis);
+        // A ring under Polar ends where it starts, beside the radial rule and
+        // its labels: caption it a little way round instead, clear of them.
+        const bool polarRing = projectionKind == ChartProjectionKind::Polar && !domainLimiter;
+        const double along = limiter.extentStart +
+                             (limiter.extentEnd - limiter.extentStart) * (polarRing ? 0.06 : 0.98);
         const Point2Dd anchor = engineProjection->ToScreen(
             domainLimiter ? ChartNormalizedPoint(v, along) : ChartNormalizedPoint(along, v));
         ChartLabelRequest caption;
@@ -706,7 +718,7 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         caption.anchor = anchor;
         const Size2Di size = ctx->GetTextLineDimensions(limiter.caption);
         caption.textSize = Size2Dd(size.width, size.height);
-        caption.preferredSide = LabelSide::Top;
+        caption.preferredSide = polarRing ? LabelSide::Right : LabelSide::Top;
         caption.priority = 5;
         broker.Add(caption);
     }
@@ -773,10 +785,34 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         }
     }
 
+    // Tick labels drawn inside the plot - an in-plot axis, or the radial
+    // value rule under Polar - are obstacles too: they render above the
+    // content, so a solved label on top of one ("0 ppm" under a band's
+    // caption) overprinted it. Edge axes sit in the margins, outside the
+    // label bounds, and need nothing. Which ticks keep a label is decided
+    // first, so only the labels that will be drawn claim space.
+    DeclutterAxisTickLabels(ctx);
+    std::vector<std::vector<bool>> tickVisible = std::move(labelPlan.tickVisible);
+    ctx->SetFontSize(axisFontSize);
+    for (size_t i = 0; i < engineAxes.Count(); ++i) {
+        const ChartAxis& axis = engineAxes.At(i);
+        if (!axis.visible) continue;
+        const bool polarValueRule = projectionKind == ChartProjectionKind::Polar &&
+                                    !axis.inPlot && !IsDomainAxis(axis);
+        if (!polarValueRule && !(axis.inPlot && axis.showTickLabels)) continue;
+        Point2Dd lowEnd, highEnd;
+        AxisScreenLine(axis, lowEnd, highEnd);
+        const std::vector<ChartTick> ticks = axis.GenerateTicks(targetTickCount);
+        for (size_t t = 0; t < ticks.size(); ++t) {
+            if (i < tickVisible.size() && t < tickVisible[i].size() && !tickVisible[i][t]) continue;
+            broker.AddObstacleRect(TickLabelBox(axis, lowEnd, highEnd, ticks[t].normalized,
+                                                ctx->GetTextLineDimensions(ticks[t].label)));
+        }
+    }
+
     CollectChartLabels(ctx, broker);
     labelPlan = broker.Solve(generation);
-
-    DeclutterAxisTickLabels(ctx);
+    labelPlan.tickVisible = std::move(tickVisible);
 }
 
 void UltraCanvasChartEngineElement::DeclutterAxisTickLabels(IRenderContext* ctx) {
@@ -1295,6 +1331,45 @@ void UltraCanvasChartEngineElement::RenderEngineInPlotAxes(IRenderContext* ctx) 
     }
 }
 
+void UltraCanvasChartEngineElement::TickDirection(const ChartAxis& axis, const Point2Dd& lowEnd,
+                                                  const Point2Dd& highEnd,
+                                                  double& tickDx, double& tickDy) const {
+    // Ticks point away from the plot for edge axes, left for in-plot ones.
+    tickDx = 0.0;
+    tickDy = 0.0;
+    const bool alongY = std::abs(highEnd.y - lowEnd.y) > std::abs(highEnd.x - lowEnd.x);
+    if (alongY) {
+        tickDx = (axis.side == ChartAxisSide::Right && !axis.inPlot) ? tickLength
+                                                                     : -tickLength;
+    } else {
+        tickDy = (axis.side == ChartAxisSide::Top && !axis.inPlot) ? -tickLength
+                                                                   : tickLength;
+    }
+}
+
+Rect2Dd UltraCanvasChartEngineElement::TickLabelBox(const ChartAxis& axis, const Point2Dd& lowEnd,
+                                                    const Point2Dd& highEnd, double normalized,
+                                                    const Size2Di& size) const {
+    const Point2Dd p{lowEnd.x + (highEnd.x - lowEnd.x) * normalized,
+                     lowEnd.y + (highEnd.y - lowEnd.y) * normalized};
+    double tickDx = 0.0, tickDy = 0.0;
+    TickDirection(axis, lowEnd, highEnd, tickDx, tickDy);
+    const bool alongY = std::abs(highEnd.y - lowEnd.y) > std::abs(highEnd.x - lowEnd.x);
+    if (alongY) {
+        const double x = (tickDx < 0.0)
+            ? p.x + tickDx - tickLabelGap - size.width
+            : p.x + tickDx + tickLabelGap;
+        return Rect2Dd(x, p.y - size.height * 0.5, size.width, size.height);
+    }
+    const double y = (tickDy < 0.0)
+        ? p.y + tickDy - tickLabelGap - size.height
+        : p.y + tickDy + tickLabelGap;
+    // Centred on the tick, but never past the element's edge.
+    const double x = std::clamp(p.x - size.width * 0.5, 0.0,
+                                std::max(0.0, static_cast<double>(GetWidth() - size.width)));
+    return Rect2Dd(x, y, size.width, size.height);
+}
+
 void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, size_t i) {
     const ChartAxis& axis = engineAxes.At(i);
     if (projectionKind == ChartProjectionKind::Polar && !axis.inPlot && IsDomainAxis(axis)) {
@@ -1316,15 +1391,8 @@ void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, siz
     ctx->DrawLine(along(axis.bandStart), along(axis.bandEnd));
 
     const bool alongY = std::abs(highEnd.y - lowEnd.y) > std::abs(highEnd.x - lowEnd.x);
-    // Ticks point away from the plot for edge axes, left for in-plot ones.
     double tickDx = 0.0, tickDy = 0.0;
-    if (alongY) {
-        tickDx = (axis.side == ChartAxisSide::Right && !axis.inPlot) ? tickLength
-                                                                     : -tickLength;
-    } else {
-        tickDy = (axis.side == ChartAxisSide::Top && !axis.inPlot) ? -tickLength
-                                                                   : tickLength;
-    }
+    TickDirection(axis, lowEnd, highEnd, tickDx, tickDy);
 
     const std::vector<ChartTick> ticks = axis.GenerateTicks(targetTickCount);
     const std::vector<bool>* visible =
@@ -1343,23 +1411,9 @@ void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, siz
         if (axis.inPlot && !axis.showTickLabels) continue;
 
         ctx->SetTextPaint(axisLabelColor);
-        const Size2Di size = ctx->GetTextLineDimensions(tick.label);
-        Point2Dd labelPos;
-        if (alongY) {
-            const double x = (tickDx < 0.0)
-                ? p.x + tickDx - tickLabelGap - size.width
-                : p.x + tickDx + tickLabelGap;
-            labelPos = Point2Dd(x, p.y - size.height * 0.5);
-        } else {
-            const double y = (tickDy < 0.0)
-                ? p.y + tickDy - tickLabelGap - size.height
-                : p.y + tickDy + tickLabelGap;
-            // Centred on the tick, but never past the element's edge.
-            const double x = std::clamp(p.x - size.width * 0.5, 0.0,
-                                        std::max(0.0, static_cast<double>(GetWidth() - size.width)));
-            labelPos = Point2Dd(x, y);
-        }
-        ctx->DrawText(tick.label, labelPos);
+        const Rect2Dd box = TickLabelBox(axis, lowEnd, highEnd, tick.normalized,
+                                         ctx->GetTextLineDimensions(tick.label));
+        ctx->DrawText(tick.label, box.TopLeft());
     }
 
     // Endpoint min/max labels for in-plot axes (parallel coordinates) - only

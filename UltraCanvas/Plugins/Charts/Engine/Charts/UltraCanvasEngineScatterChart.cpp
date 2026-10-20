@@ -649,7 +649,7 @@ void UltraCanvasEngineScatterChart::CollectChartLabels(IRenderContext* ctx,
     }
 }
 
-void UltraCanvasEngineScatterChart::OnThemeChanged() {
+void UltraCanvasEngineScatterChart::OnChartThemeChanged() {
     RefreshLegend();
     RebuildHighlights();                 // ellipse washes take the group colours
 }

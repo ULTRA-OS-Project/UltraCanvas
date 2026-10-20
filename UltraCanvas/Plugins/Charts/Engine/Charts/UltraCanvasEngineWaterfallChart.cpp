@@ -156,7 +156,7 @@ void UltraCanvasEngineWaterfallChart::SetShowZeroLine(bool show) {
     RefreshLimiters();
 }
 
-void UltraCanvasEngineWaterfallChart::OnThemeChanged() {
+void UltraCanvasEngineWaterfallChart::OnChartThemeChanged() {
     RefreshLegend();
     RefreshLimiters();
 }

@@ -165,7 +165,7 @@ void UltraCanvasEngineFinancialChart::RefreshLegend() {
     SetLegendEntries(entries);
 }
 
-void UltraCanvasEngineFinancialChart::OnThemeChanged() {
+void UltraCanvasEngineFinancialChart::OnChartThemeChanged() {
     RefreshLegend();     // the default moving-average colour follows the palette
 }
 

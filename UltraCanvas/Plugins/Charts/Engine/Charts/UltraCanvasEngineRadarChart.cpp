@@ -177,7 +177,7 @@ void UltraCanvasEngineRadarChart::RefreshLegend() {
     SetShowLegend(radarSeries.size() > 1);
 }
 
-void UltraCanvasEngineRadarChart::OnThemeChanged() { RefreshLegend(); }
+void UltraCanvasEngineRadarChart::OnChartThemeChanged() { RefreshLegend(); }
 
 void UltraCanvasEngineRadarChart::OnLegendEntryToggled(size_t entryIndex, bool enabled) {
     if (entryIndex >= seriesHidden.size()) return;

@@ -312,7 +312,7 @@ void UltraCanvasEnginePieChart::RefreshLegend() {
     SetLegendEntries(entries);
 }
 
-void UltraCanvasEnginePieChart::OnThemeChanged() { RefreshLegend(); }
+void UltraCanvasEnginePieChart::OnChartThemeChanged() { RefreshLegend(); }
 
 void UltraCanvasEnginePieChart::OnLegendEntryToggled(size_t entryIndex, bool enabled) {
     if (entryIndex >= sliceHidden.size()) return;

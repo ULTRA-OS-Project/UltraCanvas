@@ -107,7 +107,7 @@ public:
     void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) override;
     void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) override;
     void RenderInteractionOverlay(IRenderContext* ctx, const ChartEngineFrame& frame) override;
-    void OnThemeChanged() override;
+    void OnChartThemeChanged() override;
 
 private:
     // One ray resolved into normalised space.

@@ -204,7 +204,7 @@ void UltraCanvasEngineDivergingBarChart::SetValueAxisTitle(const std::string& ti
     MarkEngineDirty(ChartDirty::Style);
 }
 
-void UltraCanvasEngineDivergingBarChart::OnThemeChanged() {
+void UltraCanvasEngineDivergingBarChart::OnChartThemeChanged() {
     RefreshLegend();
     RefreshLimiters();
 }

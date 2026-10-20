@@ -141,7 +141,7 @@ void UltraCanvasEngineDumbbellChart::SetShowRowHighlight(bool show) {
     RequestRedraw();
 }
 
-void UltraCanvasEngineDumbbellChart::OnThemeChanged() {
+void UltraCanvasEngineDumbbellChart::OnChartThemeChanged() {
     RefreshLegend();
 }
 
