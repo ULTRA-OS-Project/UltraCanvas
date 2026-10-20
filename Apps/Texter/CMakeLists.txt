@@ -167,7 +167,6 @@ set(ULTRATEXTER_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasTextEditorInfoFileStatistics.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasTextEditorSpellCheck.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasMarkdownSpellRanges.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasLanguageDetect.cpp
 )
 
 # Create executable

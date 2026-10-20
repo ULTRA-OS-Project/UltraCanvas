@@ -1,4 +1,4 @@
-// Apps/Texter/UltraCanvasLanguageDetect.cpp
+// UltraCanvasLanguageDetect.cpp
 // Guess a text's language from its content alone
 // Version: 1.0.0
 // Last Modified: 2026-10-20

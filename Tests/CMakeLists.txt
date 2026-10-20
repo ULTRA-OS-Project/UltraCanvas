@@ -1380,25 +1380,25 @@ add_test(NAME TexterMarkdownSpellRangesTest COMMAND TexterMarkdownSpellRangesTes
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: TexterMarkdownSpellRangesTest")
 
-# ===== ULTRATEXTER PASTED-TEXT LANGUAGE TEST =====
-# The guess that picks the highlighting for text pasted into a new, empty tab
-# has no framework or editor dependency, so the test builds from that one
-# source file.
-message(STATUS "  Building TexterLanguageDetectTest...")
+# ===== LANGUAGE DETECT TEST =====
+# DetectLanguageFromContent (UltraCanvasLanguageDetect.h): the language of text
+# with no file name, as UltraTexter uses for a paste into a new tab. It has no
+# framework dependency, so the test builds from that one source file.
+message(STATUS "  Building LanguageDetectTest...")
 
-add_executable(TexterLanguageDetectTest
-    ${CMAKE_CURRENT_SOURCE_DIR}/TexterLanguageDetectTest.cpp
-    ${ULTRACANVAS_ROOT}/Apps/Texter/UltraCanvasLanguageDetect.cpp
+add_executable(LanguageDetectTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/LanguageDetectTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasLanguageDetect.cpp
 )
-target_include_directories(TexterLanguageDetectTest PRIVATE
-    ${ULTRACANVAS_ROOT}/Apps/Texter)
-target_compile_features(TexterLanguageDetectTest PRIVATE cxx_std_20)
-set_target_properties(TexterLanguageDetectTest PROPERTIES
+target_include_directories(LanguageDetectTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(LanguageDetectTest PRIVATE cxx_std_20)
+set_target_properties(LanguageDetectTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
-add_test(NAME TexterLanguageDetectTest COMMAND TexterLanguageDetectTest
+add_test(NAME LanguageDetectTest COMMAND LanguageDetectTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: TexterLanguageDetectTest")
+message(STATUS "    Test registered: LanguageDetectTest")
 
 # ===== PATH UTF-8 TEST =====
 # UltraCanvasPathUtf8.h: the UTF-8 <-> UTF-16 conversion every Windows file

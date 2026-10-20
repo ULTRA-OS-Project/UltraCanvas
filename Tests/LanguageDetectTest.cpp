@@ -1,12 +1,12 @@
-// TexterLanguageDetectTest.cpp
-// Test suite for UltraTexter's "what language is this pasted text" guess
+// LanguageDetectTest.cpp
+// Test suite for DetectLanguageFromContent - the language of text with no file name
 // Version: 1.0.0
 // Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 //
-// Text pasted into a new, empty tab has no file name to go by, so UltraTexter
-// picks the highlighting from the text. The guesser has no framework or editor
-// dependency, so the test builds from the one source file.
+// Text pasted into a new, empty UltraTexter tab has no file name to go by, so
+// the highlighting is picked from the text. The guesser has no framework or
+// editor dependency, so the test builds from the one source file.
 
 #include "UltraCanvasLanguageDetect.h"
 

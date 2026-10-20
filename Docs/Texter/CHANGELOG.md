@@ -10,7 +10,9 @@
   the tab stays plain text. Only a tab that has never held text is guessed
   for, and a language picked from the status bar is never overridden.
   Works for Ctrl+V, Shift+Insert, *Edit > Paste*, the toolbar and the
-  right-click menu.
+  right-click menu. Framework: `DetectLanguageFromContent` in
+  `UltraCanvasLanguageDetect.h` (framework changelog:
+  `detect-language-from-content`).
 
 #### 2026-10-18 *1.68*
 - **Search shows every match.** While the search bar is open, all matches in
