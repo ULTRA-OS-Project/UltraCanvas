@@ -81,6 +81,10 @@ std::string RegisteredName(const ConnectionSpec& spec) {
     return "ultradbadmin." + spec.id;
 }
 
+std::string ConsoleName(const ConnectionSpec& spec) {
+    return RegisteredName(spec) + ".console";
+}
+
 std::string Describe(const ConnectionSpec& spec) {
     if (spec.IsSqlite()) {
         const std::string file = PathToUtf8(PathFromUtf8(spec.database).filename());
@@ -180,14 +184,13 @@ bool ConnectionStore::Remove(const std::string& id, std::string& error) {
     if (it == specs_.end()) return true;
     if (vault_) vault_->Remove(id);
     else UltraVault::Delete(kKeyPrefix + id);
-    UltraDb_CloseConnection(RegisteredName(*it));
     specs_.erase(it);
     return Save(error);
 }
 
-UltraDbResult ConnectionStore::Register(const ConnectionSpec& spec) const {
+UltraDbResult RegisterSession(const ConnectionSpec& spec, const std::string& name) {
     UltraDbConnectionConfig cfg;
-    cfg.name     = RegisteredName(spec);
+    cfg.name     = name;
     cfg.driver   = spec.driver;
     cfg.database = spec.database;
     cfg.host     = spec.host;
@@ -198,6 +201,12 @@ UltraDbResult ConnectionStore::Register(const ConnectionSpec& spec) const {
     // Only the vault key travels; the driver reads the password itself.
     if (spec.hasPassword) cfg.credentials = std::string("vault:") + kKeyPrefix + spec.id;
     return UltraDb_RegisterConnection(cfg);
+}
+
+UltraDbResult ConnectionStore::Register(const ConnectionSpec& spec) const {
+    UltraDbResult result = RegisterSession(spec, RegisteredName(spec));
+    if (!result) return result;
+    return RegisterSession(spec, ConsoleName(spec));
 }
 
 bool ConnectionStore::Save(std::string& error) const {

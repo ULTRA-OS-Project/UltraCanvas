@@ -25,6 +25,7 @@ add_executable(UltraDBAdmin
     main.cpp
     engine/DbAdminConnections.cpp
     engine/DbAdminFormat.cpp
+    engine/DbAdminJobQueue.cpp
     engine/DbAdminPaths.cpp
     engine/DbAdminSqlRunner.cpp
     engine/DbAdminTablePager.cpp

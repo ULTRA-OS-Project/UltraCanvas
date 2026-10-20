@@ -1,12 +1,14 @@
 // Tests/UltraDBAdmin/UltraDBAdminEngineTests.cpp
 // UltraDBAdmin's engine without a window: the connection store (its file
 // never holds a password, its vault does), cell formatting, the Browse pager
-// (pages, sorting, quoting) and the SQL runner (a script on a worker thread,
-// Stop, history). SQLite throughout, in temporary folders only.
+// (pages, sorting, quoting), the SQL runner (a script on a worker thread,
+// Stop, history) and the job queue the window's queries run on. SQLite
+// throughout, in temporary folders only.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
 #include "DbAdminFormat.h"
+#include "DbAdminJobQueue.h"
 #include "DbAdminSqlRunner.h"
 #include "DbAdminTablePager.h"
 
@@ -14,6 +16,7 @@
 #include <UltraDatabase/UltraDatabase.h>
 #include <UltraVault/UltraVault.h>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -110,6 +113,11 @@ void TestConnectionStoreInMemory() {
     spec.name = "Notes (renamed)";
     Check(store.Put(spec, "", false, error) == id, "putting the same id replaces");
     Check(store.All().size() == 1 && store.Find(id)->name == "Notes (renamed)", "rather than adding");
+    store.Register(*store.Find(id));
+    const ConnectionSpec& registered = *store.Find(id);
+    Check(ConsoleName(registered) != RegisteredName(registered), "the console has a session of its own");
+    Check(UltraDb_HasConnection(RegisteredName(registered)) && UltraDb_HasConnection(ConsoleName(registered)),
+          "Register registers both sessions");
     Check(store.Remove(id, error) && store.All().empty(), "and Remove takes it out");
     Check(ConnectionStore::NewId() != ConnectionStore::NewId(), "ids do not repeat");
 }
@@ -265,6 +273,47 @@ void TestSqlRunner() {
     UltraDb_CloseConnection(c);
 }
 
+void TestJobQueue() {
+    Section("Job queue");
+    std::mutex m;
+    std::condition_variable cv;
+    std::vector<int> order;
+    {
+        JobQueue queue;
+        bool release = false;
+        // The first job holds the worker until released, so the rest wait.
+        queue.Post([&] {
+            std::unique_lock<std::mutex> lock(m);
+            cv.wait(lock, [&] { return release; });
+            order.push_back(0);
+        });
+        for (int i = 1; i <= 3; ++i)
+            queue.Post([&, i] { std::lock_guard<std::mutex> lock(m); order.push_back(i); });
+        Check(queue.Outstanding() == 4, "jobs wait while one runs (" + std::to_string(queue.Outstanding()) + ")");
+        {
+            std::lock_guard<std::mutex> lock(m);
+            release = true;
+        }
+        cv.notify_all();
+        for (int i = 0; i < 200 && queue.Outstanding() > 0; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        Check(queue.Outstanding() == 0, "and then all run");
+    }
+    Check(order == std::vector<int>({ 0, 1, 2, 3 }), "in the order they were posted");
+
+    // Stop: the running job finishes, the waiting ones are dropped.
+    std::atomic<int> ran{0};
+    JobQueue queue;
+    queue.Post([&] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); ++ran; });
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    queue.Post([&] { ++ran; });
+    queue.Stop();
+    Check(ran == 1, "Stop waits for the running job and drops the rest");
+    queue.Post([&] { ++ran; });
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    Check(ran == 1 && queue.Outstanding() == 0, "a job posted after Stop is ignored");
+}
+
 } // namespace
 
 int main() {
@@ -274,6 +323,7 @@ int main() {
     TestCellText();
     TestPager();
     TestSqlRunner();
+    TestJobQueue();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

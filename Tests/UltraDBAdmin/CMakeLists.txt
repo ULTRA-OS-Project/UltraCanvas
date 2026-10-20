@@ -14,6 +14,7 @@ add_executable(UltraDBAdminEngineTests
     UltraDBAdminEngineTests.cpp
     ${_dbadmin}/engine/DbAdminConnections.cpp
     ${_dbadmin}/engine/DbAdminFormat.cpp
+    ${_dbadmin}/engine/DbAdminJobQueue.cpp
     ${_dbadmin}/engine/DbAdminPaths.cpp
     ${_dbadmin}/engine/DbAdminSqlRunner.cpp
     ${_dbadmin}/engine/DbAdminTablePager.cpp

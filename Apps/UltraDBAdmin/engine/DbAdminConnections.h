@@ -34,8 +34,20 @@ struct ConnectionSpec {
     bool IsSqlite() const { return driver == "sqlite" || driver == "sqlite3"; }
 };
 
-// The name a spec is registered under in UltraDatabase.
+// The name a spec is registered under in UltraDatabase: the session the
+// tree, Browse and Structure use.
 std::string RegisteredName(const ConnectionSpec& spec);
+
+// A second session to the same database, the SQL console's own. A script
+// that runs for minutes holds its session (the drivers serialise each
+// connection), so on a session of its own it never holds up the tree or a
+// Browse page - and Stop cancels exactly the console's statement.
+std::string ConsoleName(const ConnectionSpec& spec);
+
+// Register (or re-register) one session of `spec` under `name` with
+// UltraDatabase. Replacing a registration drops the session it held, with
+// the connection inside it: only when nothing is using that session.
+UltraDbResult RegisterSession(const ConnectionSpec& spec, const std::string& name);
 
 // A one-line description for the tree's tooltip and the window title:
 // "notes.db" or "alice@db.example.com:5432/crm".
@@ -62,10 +74,15 @@ public:
     std::string Put(ConnectionSpec spec, const std::string& password, bool clearPassword,
                     std::string& error);
 
+    // Forget a connection and its stored password. Its sessions stay
+    // registered: the caller closes them (UltraDb_CloseConnection) once
+    // nothing is using them.
     bool Remove(const std::string& id, std::string& error);
 
-    // Register (or re-register) the spec with UltraDatabase, so its name can
-    // be queried. Does not open it: the first query does.
+    // Register (or re-register) the spec with UltraDatabase under both its
+    // names (RegisteredName, ConsoleName), so they can be queried. Opens
+    // neither: the first query does. Re-registering drops open sessions (see
+    // RegisterSession): call it when neither is in use.
     UltraDbResult Register(const ConnectionSpec& spec) const;
 
     // A new id: "c" followed by 16 hex digits of randomness.
