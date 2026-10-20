@@ -45,7 +45,7 @@ tints per state, so one file serves every colour.
 Nothing is painted by hand: tiles and figures are containers of labels,
 images, switches and badges; the inspector uses the framework's slider,
 segmented control and buttons; the tables are `UltraCanvasListView`s; the
-energy bars are `UltraCanvasGaugeDiagramElement` in `LinearBar` mode.
+Energy page is an `UltraCanvasBarChartElement` in its horizontal orientation.
 
 SmartHomeAPI reports changes on the thread that caused them. The window's
 callbacks only note which device changed; a UI timer reads those devices

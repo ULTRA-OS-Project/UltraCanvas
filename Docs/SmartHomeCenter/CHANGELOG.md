@@ -10,6 +10,8 @@
   thermostat, position for a blind, lock and unlock. *Devices* is the whole
   home as a table, *Energy* the metered plugs live, *Activity* what
   happened and when. A leak or smoke alarm puts a red banner over Home.
+  The Energy page is the framework's bar chart run sideways, one row per
+  plug, on an axis marked at whole watts.
 - **The demo home.** With no radio enabled the window opens the simulated
   home of the SmartHome module (30 devices in 8 rooms), says so in a panel
   under the menu and in every device's details, and offers three events to

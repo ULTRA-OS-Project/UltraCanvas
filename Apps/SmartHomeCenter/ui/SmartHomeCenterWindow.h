@@ -45,7 +45,7 @@
 #include <string>
 #include <vector>
 
-namespace UltraCanvas { class UltraCanvasGaugeDiagramElement; }
+namespace UltraCanvas { class UltraCanvasBarChartElement; class ChartDataVector; }
 
 namespace SmartHomeCenter {
 
@@ -124,7 +124,6 @@ private:
     void UpdateSummary();
     void UpdateDevicesTable();
     void UpdateEnergy();
-    void RebuildEnergyRows();
     void NoteEvent(const DeviceView& view, bool initial);
     void Log(const std::string& device, const std::string& room, const std::string& text, bool alert);
 
@@ -184,15 +183,10 @@ private:
     std::shared_ptr<DevicesTableModel> devicesModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> devicesList_;
     Stat energyNowStat_, energyTotalStat_, energyTopStat_;
-    // One row per metered plug: name, a bar against the biggest draw, watts.
-    struct EnergyRow {
-        std::shared_ptr<UltraCanvas::UltraCanvasGaugeDiagramElement> bar;
-        std::shared_ptr<UltraCanvas::UltraCanvasLabel> watts;
-        std::shared_ptr<UltraCanvas::UltraCanvasLabel> total;
-    };
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> energyRows_;
-    std::map<std::string, EnergyRow> energyBars_;     // by device id
-    std::string energySignature_;
+    // One bar per metered plug, live (horizontal: the names are long).
+    std::shared_ptr<UltraCanvas::UltraCanvasBarChartElement> energyChart_;
+    std::shared_ptr<UltraCanvas::ChartDataVector> energyData_;
+    std::string energyChartKey_;                      // what the chart shows now
     std::shared_ptr<ActivityTableModel> activityModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> activityList_;
     std::deque<ActivityEntry> activity_;          // newest first

@@ -20,6 +20,9 @@
 //     by index in DataLabel mode.
 // 10. A left press, and its release, are taken only when they start and end
 //     a pan; CSV rows that cannot be read are skipped (were plotted at 0,0).
+// 12. Axis ticks fall on whole steps (1, 2, 2.5, 5 x 10^n) and the grid on
+//     them; a bar chart whose smallest value is 0 starts its axis at 0 (it
+//     was padded to -5 % first); a fixed value range; horizontal bars.
 // 11. Eleven charts and diagrams defined a private InvalidateLayout() that
 //     only cleared their own cache. It overrode the layout engine's, so a
 //     framework invalidation (a new size, visibility) never reached the
@@ -27,6 +30,7 @@
 //
 // Pictures are drawn into an offscreen surface and read back pixel by pixel;
 // plot areas and ranges are read through a probe subclass.
+// Version: 1.4.0 - whole-step ticks; bars from zero with a zero value; value range; horizontal bars
 // Version: 1.3.0 - a framework invalidation of any of eleven charts reaches the parent
 // Version: 1.2.0 - a press is taken only when it starts a pan; bad CSV rows are skipped
 // Version: 1.1.0 - the hover ring in DataLabel mode
@@ -555,6 +559,77 @@ void TestInvalidationReachesParent() {
 
 } // namespace
 
+void TestAxisTicksAndBars() {
+    std::cout << "12. whole-step ticks, the bar axis, value range, horizontal bars\n";
+
+    // The ticks a person would mark.
+    ChartAxisTicks t = ComputeChartAxisTicks(0.0, 149.1, 6);
+    Check(t.step == 25.0 && t.values.size() == 6 && t.values.front() == 0.0 && t.values.back() == 125.0,
+          "0..149.1: a tick every 25, 0 to 125 (was 0, 24.85, 49.7 ...)");
+    Check(t.Format(125.0) == "125" && t.decimals == 0, "and they read as whole numbers");
+    ChartAxisTicks fine = ComputeChartAxisTicks(0.0, 1.0, 4);
+    Check(fine.step == 0.25 && fine.Format(0.75) == "0.75", "0..1 in four: 0.25 steps, two decimals");
+    ChartAxisTicks tenths = ComputeChartAxisTicks(0.1, 0.7, 6);
+    Check(tenths.values.size() == 7 && tenths.values[2] == 0.3, "0.1..0.7: exact tenths (0.3, not 0.30000004)");
+    ChartAxisTicks big = ComputeChartAxisTicks(0.0, 48000.0, 6);
+    Check(big.Format(40000.0) == "40K" && big.Format(0.0) == "0K", "0..48000: 10K steps labelled in K");
+    ChartAxisTicks across = ComputeChartAxisTicks(-7.1, 149.1, 6);
+    Check(across.values.front() == 0.0 && across.Format(0.0) == "0", "-7.1..149.1: no tick below the data, 0 reads 0");
+
+    // A zero value no longer pushes the axis below zero.
+    auto bars = std::make_shared<Probe<UltraCanvasBarChartElement>>("bars", 0, 0, 600, 360);
+    auto data = std::make_shared<ChartDataVector>();
+    const char* names[] = {"TV", "Kettle", "Fridge", "Towel rail", "Workstation"};
+    const double watts[] = {88, 0, 95, 0, 142};
+    for (int i = 0; i < 5; ++i) data->AddPoint(ChartDataPoint(i, watts[i], 0, names[i]));
+    bars->SetDataSource(data);
+    bars->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+    ChartDataBounds b = bars->Bounds();
+    Check(b.minY == 0.0, "values 0..142: the axis starts at 0 (was -7.1)");
+    Check(b.maxY == 160.0, "and ends at the next whole tick past the padding, 160 (was 149.1)");
+
+    // A fixed range wins, and bars past it stop at the edge.
+    bars->SetValueRange(0.0, 100.0);
+    b = bars->Bounds();
+    Check(b.minY == 0.0 && b.maxY == 100.0, "SetValueRange(0, 100): the axis is 0..100");
+    const Rect2Dd clipped = bars->GetBarRect(4);
+    Check(std::abs(clipped.y - bars->PlotArea().y) < 0.5, "a 142 W bar on a 0..100 axis stops at the top of the plot");
+    bars->SetValueRange(500.0, 500.0);
+    Check(bars->Bounds().maxY == 100.0, "an empty range is ignored");
+    bars->ClearValueRange();
+    Check(bars->Bounds().maxY == 160.0, "ClearValueRange: fitted to the data again");
+
+    // Horizontal: a row per category, from the left edge of the plot.
+    bars->SetOrientation(BarChartOrientation::Horizontal);
+    const ChartPlotArea plot = bars->PlotArea();
+    const Rect2Dd tv = bars->GetBarRect(0), work = bars->GetBarRect(4), kettle = bars->GetBarRect(1);
+    Check(plot.x >= 0.2 * 600 - 0.5 && plot.x <= 0.4 * 600 + 0.5, "horizontal: room on the left for the names");
+    Check(std::abs(tv.x - plot.x) < 0.5 && tv.y < work.y, "bars start at the zero line, first category on top");
+    Check(std::abs(work.width - plot.width * 142.0 / 160.0) < 1.0 && kettle.width < 0.5,
+          "a bar's length is its value along the bottom axis; a zero bar has none");
+    Check(tv.height > 0 && std::abs((work.y - tv.y) - 4 * plot.height / 5) < 0.5, "one row per category");
+
+    bars->SetShowGrid(false);
+    bars->SetShowAxes(false);
+    bars->SetBarBorderWidth(0);
+    bars->SetBarColor(Color(0, 200, 0));
+    Canvas canvas(600, 360);
+    bars->Render(canvas.ctx.get(), Rect2Df(0, 0, 600, 360));
+    const double midY = work.y + work.height / 2;
+    Check(Near(canvas.At(work.x + work.width - 3, midY), Color(0, 200, 0)) &&
+          !Near(canvas.At(work.x + work.width + 3, midY), Color(0, 200, 0)),
+          "and it is drawn where GetBarRect says");
+
+    // A point's own colour wins over the series colour.
+    data->AddPoint(ChartDataPoint(5, 50, 0, "Lamp", 0.0, Color(200, 0, 0)));
+    bars->SetDataSource(data);
+    canvas.Clear();
+    bars->Render(canvas.ctx.get(), Rect2Df(0, 0, 600, 360));
+    const Rect2Dd lamp = bars->GetBarRect(5);
+    Check(Near(canvas.At(lamp.x + lamp.width / 2, lamp.y + lamp.height / 2), Color(200, 0, 0)),
+          "a point with its own colour is drawn in it");
+}
+
 int main() {
     fs::path dir = fs::temp_directory_path() / "uc_chart_element_test";
     fs::create_directories(dir);
@@ -569,6 +644,7 @@ int main() {
     TestPopulationPyramidRows();
     TestHoverRingOnThePoint();
     TestInvalidationReachesParent();
+    TestAxisTicksAndBars();
 
     std::error_code ec;
     fs::remove_all(dir, ec);

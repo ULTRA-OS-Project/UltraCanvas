@@ -1,5 +1,7 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.3.0 - axis ticks at whole steps (1, 2, 2.5 or 5 x 10^n) with the grid
+//                  on them; ComputeChartAxisTicks; CalculateRawDataBounds
 // Version: 1.2.1 - a left press is taken only when it starts a pan
 // Version: 1.2.0 - x-axis zoom and pan that work (charts opt in); the wheel and
 //                  drags are left to the parent when nothing zooms; plot area
@@ -17,6 +19,8 @@
 #include <memory>
 #include <chrono>
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -28,6 +32,34 @@ namespace UltraCanvas {
         NumericValue,    // Use the 'x' numeric value (default)
         DataLabel       // Use the 'label' string property
     };
+
+// =============================================================================
+// AXIS TICKS
+// =============================================================================
+
+    // The ticks of one axis: every multiple of a whole step (1, 2, 2.5 or 5 x 10^n)
+    // between lo and hi, as a person would mark a ruler - 0, 20, 40 ... 140,
+    // never 0, 24.85, 49.7. Labels drop the decimals the step does not need
+    // and switch to K or M once the largest tick reaches ten thousand or ten
+    // million, so one axis never mixes "500" and "1K".
+    struct ChartAxisTicks {
+        double step = 0.0;            // 0 when lo..hi is empty
+        std::vector<double> values;   // ascending, all inside lo..hi
+        int decimals = 0;             // what the labels show after the point
+        double unitDivisor = 1.0;     // 1, 1e3 or 1e6
+        std::string unitSuffix;       // "", "K" or "M"
+
+        // A tick's label, as the person reads it (their locale's decimal mark).
+        std::string Format(double value) const;
+    };
+
+    // At most maxTicks intervals between lo and hi. Values that are exact
+    // multiples of the step are kept exact (0.1 + 0.2 is never 0.30000004).
+    ChartAxisTicks ComputeChartAxisTicks(double lo, double hi, int maxTicks = 6);
+
+    // The step ComputeChartAxisTicks would choose: 1, 2, 2.5 or 5 x 10^n, the
+    // smallest that splits `range` into at most maxTicks intervals.
+    double ChartNiceStep(double range, int maxTicks);
 
 // =============================================================================
 // BASE CHART ELEMENT CLASS
@@ -396,7 +428,22 @@ namespace UltraCanvas {
             );
         }
 
+        // The data's extent padded by 5 % on every side. Charts with a
+        // baseline (bars from zero) start from CalculateRawDataBounds and pad
+        // only where there is no baseline.
         virtual ChartDataBounds CalculateDataBounds();
+        ChartDataBounds CalculateRawDataBounds() const;
+        static void PadDataBounds(ChartDataBounds& bounds, bool padX, bool padMinY, bool padMaxY);
+
+        // The ticks the axes, labels and grid share, worked out from
+        // cachedDataBounds: y ticks inside the value range, x ticks inside
+        // the visible x range (numeric mode only).
+        ChartAxisTicks GetYAxisTicks() const {
+            return ComputeChartAxisTicks(cachedDataBounds.minY, cachedDataBounds.maxY, GetYAxisTickTarget());
+        }
+        // How many intervals the value axis aims for at most.
+        virtual int GetYAxisTickTarget() const { return 6; }
+        ChartAxisTicks GetXAxisTicks() const { return ComputeChartAxisTicks(cachedDataBounds.minX, cachedDataBounds.maxX, 8); }
 
         void InvalidateCache() {
             cacheValid = false;
@@ -432,6 +479,8 @@ namespace UltraCanvas {
         Point2Dd CalculateValueLabelPosition(const Point2Dd &pointPos, size_t index, size_t totalPoints);
 
         virtual double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
+        // DataLabel mode labels every n-th point, at most a dozen in view.
+        size_t GetXAxisLabelStep() const;
 
         std::string FormatAxisLabel(double value);
         void DrawSelectionIndicators(IRenderContext* ctx);

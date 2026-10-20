@@ -3,7 +3,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "SmartHomeCenterWindow.h"
 
-#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
+#include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasListModel.h"
@@ -1287,105 +1287,53 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildEnergyPage() {
     Card(card, 16);
     Grow(card);
     card->AddChild(Text("shcEnergyCardTitle", "Power by device", 15, kInk, true, 22));
-    card->AddChild(Text("shcEnergyCardNote", "Metered plugs, live, against the biggest draw. Lights and heating are not metered in this home.", 12, kMuted, false, 18));
-    auto gap = CreateContainer("shcEnergyGap");
-    Fixed(gap, -1, 8);
-    card->AddChild(gap);
-    energyRows_ = Column("shcEnergyRows", 14);
-    energyRows_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
-    energyRows_->layoutItem.SetFlexShrink(0);
-    card->AddChild(energyRows_);
+    card->AddChild(Text("shcEnergyCardNote", "Metered plugs, live, in watts. Lights and heating are not metered in this home.", 12, kMuted, false, 18));
+
+    // The framework's bar chart, run sideways: one row per plug, its name
+    // on the left, watts along the bottom at whole steps.
+    energyData_ = std::make_shared<ChartDataVector>();
+    energyChart_ = CreateBarChartElement("shcEnergyChart", 0, 0, 700, 360);
+    energyChart_->SetOrientation(BarChartOrientation::Horizontal);
+    energyChart_->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+    energyChart_->SetBarColor(Color(245, 165, 36));
+    energyChart_->SetBarBorderWidth(0);
+    energyChart_->SetBarSpacing(0.35);
+    energyChart_->SetShowValueLabels(true);
+    energyChart_->SetBackgroundColor(kSurface);
+    energyChart_->SetPlotAreaColor(kSurface);
+    energyChart_->SetGridColor(Color(236, 239, 245));
+    energyChart_->SetSeriesName("Power");
+    energyChart_->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t) {
+        return point.label + ": " + FormatPower(static_cast<float>(point.y)) +
+               ", " + FormatEnergy(static_cast<float>(point.value)) + " metered";
+    });
+    energyChart_->SetDataSource(energyData_);
+    Grow(energyChart_);
+    card->AddChild(energyChart_);
     page->AddChild(card);
     return page;
 }
 
-void SmartHomeCenterWindow::RebuildEnergyRows() {
-    energyRows_->ClearChildren();
-    energyBars_.clear();
-    for (const DeviceView& v : views_) {
-        if (!v.metered) continue;
-        const std::string& id = v.info.DeviceId;
-        auto row = Row("shcEnergyRow_" + id, 14);
-        Fixed(row, -1, 40);
-        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        auto badge = Row("shcEnergyBadge_" + id, 0);
-        badge->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-        badge->SetBorderRadius(10);
-        badge->SetBackgroundColor(kLit.soft);
-        Fixed(badge, 36, 36);
-        auto icon = CreateImageElement("shcEnergyIcon_" + id, 18, 18);
-        icon->LoadFromFile(iconsDir_ + v.icon + ".svg");
-        icon->SetTintColor(kLit.fg);
-        Fixed(icon, 18, 18);
-        badge->AddChild(icon);
-        row->AddChild(badge);
-
-        auto names = Column("shcEnergyNames_" + id, 0);
-        names->AddChild(Text("shcEnergyName_" + id, v.info.Name, 14, kInk, true, 20));
-        names->AddChild(Text("shcEnergyRoom_" + id, v.info.Room.empty() ? std::string(kNoRoom) : v.info.Room, 12, kMuted, false, 16));
-        Fixed(names, 170, 38);
-        row->AddChild(names);
-
-        // The framework's bar is the gauge in LinearBar mode; at this height
-        // it is just the bar, and the words belong to the labels beside it.
-        EnergyRow bars;
-        bars.bar = CreateGaugeDiagramElement("shcEnergyBar_" + id, 0, 0, 300, 10);
-        bars.bar->SetMode(GaugeMode::LinearBar);
-        bars.bar->SetOrientation(GaugeOrientation::Horizontal);
-        bars.bar->SetMinValue(0.0);
-        bars.bar->SetMaxValue(100.0);
-        bars.bar->SetTitle("");
-        bars.bar->SetUnit("");
-        bars.bar->SetGaugeColor(Color(245, 165, 36));
-        bars.bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(10));
-        bars.bar->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-        bars.bar->layoutItem.SetFlexGrow(1);
-        bars.bar->layoutItem.SetFlexShrink(1);
-        row->AddChild(bars.bar);
-
-        bars.watts = Text("shcEnergyWatts_" + id, "", 15, kInk, true, 22);
-        bars.watts->SetAlignment(TextAlignment::Right);
-        Fixed(bars.watts, 90, 22);
-        row->AddChild(bars.watts);
-        bars.total = Text("shcEnergyTotal_" + id, "", 12, kMuted, false, 18);
-        bars.total->SetAlignment(TextAlignment::Right);
-        Fixed(bars.total, 90, 18);
-        row->AddChild(bars.total);
-
-        energyBars_[id] = bars;
-        energyRows_->AddChild(row);
-    }
-    energyRows_->InvalidateLayout();
-}
-
 void SmartHomeCenterWindow::UpdateEnergy() {
     float now = 0.0f, total = 0.0f, topWatts = -1.0f;
-    std::string topName, signature;
+    std::string topName, key;
     size_t metered = 0;
+    std::vector<ChartDataPoint> points;
     for (const DeviceView& v : views_) {
         if (!v.metered) continue;
         ++metered;
         now += v.power;
         total += v.energy;
-        signature += v.info.DeviceId + ";";
         if (v.power > topWatts) { topWatts = v.power; topName = v.info.Name; }
+        // Whole watts: the chart is redrawn only when a bar would move.
+        const double watts = std::round(v.power);
+        key += v.info.DeviceId + "=" + std::to_string(static_cast<long>(watts)) + ";";
+        points.emplace_back(static_cast<double>(points.size()), watts, 0.0, v.info.Name, v.energy);
     }
-    if (signature != energySignature_) {
-        energySignature_ = signature;
-        RebuildEnergyRows();
-    }
-    // The scale is the biggest draw now, rounded up to 50 W, so the leader's
-    // bar nearly fills the row and the rest read against it.
-    const double scale = std::max(50.0, std::ceil(std::max(0.0f, topWatts) / 0.9 / 50.0) * 50.0);
-    for (const DeviceView& v : views_) {
-        auto row = energyBars_.find(v.info.DeviceId);
-        if (row == energyBars_.end()) continue;
-        row->second.bar->SetMaxValue(scale);
-        row->second.bar->SetValue(v.power);
-        row->second.watts->SetText(v.on ? FormatPower(v.power) : "Off");
-        row->second.watts->SetTextColor(v.on ? kInk : kFaint);
-        row->second.total->SetText(FormatEnergy(v.energy));
+    if (key != energyChartKey_) {
+        energyChartKey_ = key;
+        energyData_->LoadFromArray(points);
+        energyChart_->SetDataSource(energyData_);
     }
     energyNowStat_.value->SetText(FormatPower(now));
     energyNowStat_.detail->SetText(std::to_string(metered) + " metered plugs");
