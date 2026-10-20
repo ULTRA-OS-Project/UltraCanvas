@@ -7,3 +7,7 @@
   colours), and the text is centred (it began 60 px left of the middle, so a
   longer message ran off-centre). The jitter plot uses the same empty state
   instead of a copy of the old one.
+- **An icon over the empty-state message.** `SetEmptyIcon(path, iconColor,
+  badgeColor)`: 32 px over the text, or 28 px on a 54 px rounded badge when
+  `badgeColor` is set; `iconColor` paints a single-colour icon in that
+  colour. The icon, message and detail are centred as one block.

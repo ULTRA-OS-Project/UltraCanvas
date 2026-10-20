@@ -572,18 +572,40 @@ namespace UltraCanvas {
         const Rect2Di local = GetLocalBounds();
         // The chart's own background, as with data (it was a fixed grey).
         if (showBackground) ctx->DrawFilledRectangle(local, backgroundColor);
-        if (emptyMessage.empty() && emptyDetail.empty()) return;
+        const bool hasIcon = !emptyIconPath.empty();
+        if (emptyMessage.empty() && emptyDetail.empty() && !hasIcon) return;
 
         ctx->PushState();
+        // The icon, the message and the detail under it, centred as one block.
+        constexpr double kMessageHeight = 20.0, kDetailHeight = 18.0, kGap = 2.0, kIconGap = 10.0;
+        constexpr double kBadge = 54.0, kBadgeIcon = 28.0, kBareIcon = 32.0;
+        const bool badge = hasIcon && emptyIconBadgeColor.a > 0;
+        const double iconBox = !hasIcon ? 0.0 : (badge ? kBadge : kBareIcon);
+        double text = 0.0;
+        if (!emptyMessage.empty()) text += kMessageHeight;
+        if (!emptyDetail.empty()) text += (text > 0 ? kGap : 0.0) + kDetailHeight;
+        const double block = iconBox + (iconBox > 0 && text > 0 ? kIconGap : 0.0) + text;
+        double y = local.y + (local.height - block) / 2.0;
+        const double centreX = local.x + local.width / 2.0;
+
+        if (hasIcon) {
+            if (badge) {
+                ctx->SetFillPaint(emptyIconBadgeColor);
+                ctx->FillRoundedRectangle(Rect2Dd(centreX - kBadge / 2.0, y, kBadge, kBadge), 14.0);
+            }
+            const double size = badge ? kBadgeIcon : kBareIcon;
+            const Rect2Dd iconRect(centreX - size / 2.0, y + (iconBox - size) / 2.0, size, size);
+            if (emptyIconColor.a > 0) {
+                ctx->DrawMask(emptyIconColor, emptyIconPath, iconRect, ImageFitMode::Contain);
+            } else {
+                ctx->DrawImage(emptyIconPath, iconRect, ImageFitMode::Contain);
+            }
+            y += iconBox + (text > 0 ? kIconGap : 0.0);
+        }
+
         ctx->SetTextAlignment(TextAlignment::Center);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextPaint(emptyMessageColor);
-        // The message, and the detail under it, centred as one block.
-        constexpr double kMessageHeight = 20.0, kDetailHeight = 18.0, kGap = 2.0;
-        const bool twoLines = !emptyMessage.empty() && !emptyDetail.empty();
-        const double block = twoLines ? kMessageHeight + kGap + kDetailHeight
-                                      : (emptyMessage.empty() ? kDetailHeight : kMessageHeight);
-        double y = local.y + (local.height - block) / 2.0;
         const double x = local.x + 8.0, width = std::max(0.0, local.width - 16.0);
         if (!emptyMessage.empty()) {
             ctx->SetFontSize(14.0f);

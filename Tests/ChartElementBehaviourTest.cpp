@@ -27,6 +27,7 @@
 //     smaller one under it), centred, in SetEmptyMessageColor, on the
 //     chart's own background (it was a fixed grey with the text placed
 //     60 px left of the middle); an empty message leaves the background.
+//     SetEmptyIcon puts an icon over it, in one colour and on a badge.
 // 11. Eleven charts and diagrams defined a private InvalidateLayout() that
 //     only cleared their own cache. It overrode the layout engine's, so a
 //     framework invalidation (a new size, visibility) never reached the
@@ -34,6 +35,7 @@
 //
 // Pictures are drawn into an offscreen surface and read back pixel by pixel;
 // plot areas and ranges are read through a probe subclass.
+// Version: 1.6.0 - the empty-state icon
 // Version: 1.5.0 - the empty-state message
 // Version: 1.4.0 - whole-step ticks; bars from zero with a zero value; value range; horizontal bars
 // Version: 1.3.0 - a framework invalidation of any of eleven charts reaches the parent
@@ -58,6 +60,7 @@
 #include "Plugins/Charts/UltraCanvasWaterfallChart.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <cairo/cairo.h>
@@ -635,7 +638,7 @@ void TestAxisTicksAndBars() {
           "a point with its own colour is drawn in it");
 }
 
-void TestEmptyMessage() {
+void TestEmptyMessage(const fs::path& dir) {
     std::cout << "13. the empty-state message\n";
     const Color background(250, 246, 230, 255);
     // The box round every pixel that is not the background.
@@ -674,6 +677,34 @@ void TestEmptyMessage() {
     Check(std::abs((two.left + two.right) / 2 - 200) <= 6, "centred");
     Check(Near(two.tone, Color(20, 90, 200), 40), "in the colour set");
 
+    // An icon over the message: a black square, painted blue on a pale badge.
+    const fs::path iconPath = dir / "empty-icon.png";
+    {
+        cairo_surface_t* icon = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 32, 32);
+        cairo_t* cr = cairo_create(icon);
+        cairo_set_source_rgb(cr, 0, 0, 0);
+        cairo_rectangle(cr, 4, 4, 24, 24);
+        cairo_fill(cr);
+        cairo_surface_write_to_png(icon, PathToUtf8(iconPath).c_str());
+        cairo_destroy(cr);
+        cairo_surface_destroy(icon);
+    }
+    chart->SetEmptyIcon(PathToUtf8(iconPath), Color(20, 90, 200, 255), Color(225, 235, 250, 255));
+    Ink withIcon;
+    {
+        Canvas canvas(400, 200);
+        chart->Render(canvas.ctx.get(), Rect2Df(0, 0, 400, 200));
+        // Icon 54 + gap 10 + text 40 = 104 tall, from y 48: the badge spans
+        // 48..102 round x 200, the icon 61..89 inside it.
+        Check(Near(canvas.At(178, 52), Color(225, 235, 250), 6), "the badge is drawn above the message");
+        Check(Near(canvas.At(200, 75), Color(20, 90, 200), 20), "the icon on it in the colour set");
+        draw(chart, withIcon);
+    }
+    Check(withIcon.top < 55 && withIcon.bottom > two.bottom + 20,
+          "the message moves down to make room, the whole block still centred");
+    chart->SetEmptyIcon("");
+    Check(chart->GetEmptyIcon().empty(), "an empty path takes the icon away");
+
     chart->SetEmptyMessage("");
     Ink none;
     Check(draw(chart, none) && none.right < 0, "an empty message draws the background alone");
@@ -686,6 +717,7 @@ void TestEmptyMessage() {
 }
 
 int main() {
+    UCImage::InitializeImageSubsysterm("ChartElementBehaviourTest");   // the empty-state icon
     fs::path dir = fs::temp_directory_path() / "uc_chart_element_test";
     fs::create_directories(dir);
 
@@ -700,7 +732,7 @@ int main() {
     TestHoverRingOnThePoint();
     TestInvalidationReachesParent();
     TestAxisTicksAndBars();
-    TestEmptyMessage();
+    TestEmptyMessage(dir);
 
     std::error_code ec;
     fs::remove_all(dir, ec);

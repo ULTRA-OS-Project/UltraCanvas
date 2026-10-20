@@ -114,6 +114,7 @@ window->AddChild(chartRow);
 | `SetShowAxes(bool)` | the axes and their labels (on by default) |
 | `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element (white by default; the element's own background, so `UltraCanvasUIElement::SetBackgroundColor` sets the same colour), and the plot rectangle |
 | `SetEmptyMessage(text, detail)`, `SetEmptyMessageColor(color)` | what the chart says, centred on its background, while it has no points — "No data to display" unless set; `detail` is an optional smaller line under it, and an empty `text` and `detail` leave the background alone |
+| `SetEmptyIcon(path, iconColor, badgeColor)` | an icon over that message: 32 px, or 28 px on a 54 px rounded badge when `badgeColor` is not transparent; `iconColor` paints a single-colour icon in that colour, transparent draws it as it is; an empty `path` takes it away |
 | `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
 | `SetPointRadius(radius)` | the dot radius of the line and area charts (4 and 3 by default) and the offset of value labels |
 | `SetEnableZoom(bool)`, `SetEnablePan(bool)` | wheel zoom and drag pan of the x axis — off by default; see *Zoom and pan* |
@@ -126,6 +127,7 @@ window->AddChild(chartRow);
 // Before the first reading arrives.
 trendChart->SetEmptyMessage("No readings yet", "Connect a meter to see them here.");
 trendChart->SetEmptyMessageColor(Color(107, 115, 133, 255));
+trendChart->SetEmptyIcon("media/icons/smarthome/power.svg", Color(120, 128, 146, 255), Color(241, 243, 247, 255));
 
 trendChart->SetSeriesName("Sales 2024");
 trendChart->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index) {

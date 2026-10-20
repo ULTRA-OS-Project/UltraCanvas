@@ -1315,6 +1315,7 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildEnergyPage() {
     energyChart_->SetGridColor(Color(236, 239, 245));
     energyChart_->SetSeriesName("Power");
     energyChart_->SetEmptyMessageColor(kMuted);
+    energyChart_->SetEmptyIcon(iconsDir_ + "plug.svg", kIdle.fg, kIdle.soft);
     energyChart_->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t) {
         return point.label + ": " + FormatPower(static_cast<float>(point.y)) +
                ", " + FormatEnergy(static_cast<float>(point.value)) + " metered";

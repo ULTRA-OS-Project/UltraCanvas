@@ -81,6 +81,7 @@ fits the axis to the data again.
 | gridColor | Color | Color(220, 220, 220, 255) | Color of grid lines |
 | emptyMessage, emptyDetail | std::string | "No data to display", "" | What the chart says, centred, while it has no data (`SetEmptyMessage(text, detail)`); an empty text draws the background alone |
 | emptyMessageColor | Color | Color(128, 128, 128, 255) | Colour of that message (`SetEmptyMessageColor`) |
+| emptyIconPath, emptyIconColor, emptyIconBadgeColor | std::string, Color, Color | "", transparent, transparent | An optional icon over the message, in one colour and on a rounded badge when those are set (`SetEmptyIcon(path, iconColor, badgeColor)`) |
 | enableTooltips | bool | true | Enable interactive tooltips |
 | enableZoom | bool | false | Kept, but the bar chart does not zoom: the wheel goes to the parent |
 | enablePan | bool | false | Kept, but the bar chart does not pan |

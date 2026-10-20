@@ -1,5 +1,6 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.5.0 - an optional icon over the empty-state message (SetEmptyIcon)
 // Version: 1.4.0 - a settable empty-state message (SetEmptyMessage), centred
 //                  on the chart's own background
 // Version: 1.3.0 - axis ticks at whole steps (1, 2, 2.5 or 5 x 10^n) with the grid
@@ -129,6 +130,11 @@ namespace UltraCanvas {
         std::string emptyMessage = "No data to display";
         std::string emptyDetail;
         Color emptyMessageColor = Color(128, 128, 128, 255);
+        // An optional icon over it, in its own colours or in one colour, and
+        // on a rounded badge when the badge has a colour.
+        std::string emptyIconPath;
+        Color emptyIconColor = Color(0, 0, 0, 0);
+        Color emptyIconBadgeColor = Color(0, 0, 0, 0);
 
         // X-axis label configuration
         XAxisLabelMode xAxisLabelMode = XAxisLabelMode::NumericValue;
@@ -275,8 +281,8 @@ namespace UltraCanvas {
 
         // What the chart says while it has no data ("No data to display"
         // unless set), with an optional smaller line under it - "Connect a
-        // meter to see readings". An empty message draws the background
-        // alone.
+        // meter to see readings". An empty message (and no icon) draws the
+        // background alone.
         void SetEmptyMessage(const std::string& message, const std::string& detail = "") {
             if (message == emptyMessage && detail == emptyDetail) return;
             emptyMessage = message;
@@ -291,6 +297,21 @@ namespace UltraCanvas {
             RequestRedraw();
         }
         const Color& GetEmptyMessageColor() const { return emptyMessageColor; }
+
+        // An icon over the empty-state message: 32 px, or 28 px on a 54 px
+        // rounded badge when badgeColor is not transparent. iconColor paints
+        // the icon in that one colour (for a single-colour icon such as the
+        // app icon sets); transparent draws it as it is. An empty path takes
+        // the icon away.
+        void SetEmptyIcon(const std::string& path, const Color& iconColor = Color(0, 0, 0, 0),
+                          const Color& badgeColor = Color(0, 0, 0, 0)) {
+            if (path == emptyIconPath && iconColor == emptyIconColor && badgeColor == emptyIconBadgeColor) return;
+            emptyIconPath = path;
+            emptyIconColor = iconColor;
+            emptyIconBadgeColor = badgeColor;
+            RequestRedraw();
+        }
+        const std::string& GetEmptyIcon() const { return emptyIconPath; }
 
         void SetShowGrid(bool show) {
             showGrid = show;
