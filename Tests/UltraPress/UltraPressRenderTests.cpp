@@ -4,17 +4,20 @@
 // accordion opens and closes, a form hands its fields to the callback, the
 // theme's colours reach the palette, and the example site renders with no
 // warning but its missing pictures.
+// Version: 0.3.0 - the start window's page, built without a window
 // Version: 0.2.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 #include "UltraPressRender.h"
 #include "UltraPressSettings.h"
+#include "UltraPressStart.h"
 #include "UltraPressTheme.h"
 #include "UltraPressWindow.h"
 
+#include "UltraCanvasAppSettings.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -293,16 +296,19 @@ static void TestLook() {
     Check(back.recentSites.size() == 8 && back.recentSites.front() == "/sites/more9", "eight are kept, the newest first");
     back.ForgetSite("/sites/more9");
     Check(back.recentSites.size() == 7 && back.recentSites.front() == "/sites/more8", "a site is forgotten");
-    // The two files of 0.8, read once and gone when the settings are written.
+    // The look file of 0.8.0 to 0.8.3, read once and gone when the settings are written.
     const std::string oldDir = UltraCanvas::PathToUtf8(dir / "old");
     fs::create_directories(dir / "old", ec);
     WriteTextFile(UltraCanvas::PathToUtf8(dir / "old" / "look"), "dark\n");
-    WriteTextFile(UltraCanvas::PathToUtf8(dir / "old" / "recent"), "/sites/a\n/sites/b\n");
     const UltraPressSettings adopted = UltraPressSettings::Load(oldDir);
-    Check(adopted.dark && adopted.recentSites == std::vector<std::string>{"/sites/a", "/sites/b"}, "the 0.8 look and recent files are adopted");
-    Check(adopted.Save(oldDir) && !fs::exists(dir / "old" / "look", ec) && !fs::exists(dir / "old" / "recent", ec) &&
-              UltraPressSettings::Load(oldDir).dark,
-          "and go when the settings are first written");
+    Check(adopted.dark && adopted.recentSites.empty(), "the 0.8 look file is adopted");
+    Check(adopted.Save(oldDir) && !fs::exists(dir / "old" / "look", ec) && UltraPressSettings::Load(oldDir).dark,
+          "and goes when the settings are first written");
+    std::string written;
+    Check(UltraCanvas::UltraCanvasAppSettings::AtFile(UltraCanvas::PathToUtf8(dir / "old" / "settings.json")).Load() &&
+              ReadTextFile(UltraCanvas::PathToUtf8(dir / "old" / "settings.json"), written) &&
+              written.find("\"look\": \"dark\"") != std::string::npos,
+          "the file is the framework's settings file, the look under \"look\"");
     Check(!UltraPressSettings().Save("") && UltraPressSettings::Load("").recentSites.empty(),
           "without a settings folder nothing is read or written");
     Check(!UltraPressSettings::Directory().empty() || UltraCanvas::GetEnvUtf8("HOME").empty(),
@@ -521,6 +527,74 @@ static void TestEditor() {
     fs::remove_all(dir, ec);
 }
 
+// The start window's page, without a window: what it says, the sites opened
+// last as buttons, a gone one said and dropped, an existing one handed over,
+// the name field filled from the folder that was given.
+static void TestStartWindow() {
+    namespace fs = std::filesystem;
+    std::printf("The start window\n");
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path() /
+        ("ultrapress-start-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const fs::path shop = dir / "my-shop";
+    fs::create_directories(shop, ec);
+    WriteTextFile(UltraCanvas::PathToUtf8(shop / "site.json"), "{}\n");
+    const std::string shopDir = UltraCanvas::PathToUtf8(shop);
+    const std::string goneDir = UltraCanvas::PathToUtf8(dir / "gone");
+
+    StartWindow start;
+    std::vector<std::string> chosen, gone;
+    start.onSiteChosen = [&chosen](const std::string& siteDir) { chosen.push_back(siteDir); return std::string(); };
+    start.onSiteGone = [&gone](const std::string& siteDir) { gone.push_back(siteDir); };
+    const std::string hint = "No site is open yet. Open a site folder, or create a new site.";
+    auto page = start.BuildPage(hint, "", {shopDir, goneDir});
+    Check(page != nullptr && page->Width() == 620 && page->PreferredHeight() > 400 && page->PreferredHeight() < 800,
+          "the page is 620 wide and about a window tall: " + std::to_string(page ? page->PreferredHeight() : 0));
+    Check(FindLabel(page, "UltraPress") != nullptr && FindLabel(page, hint) != nullptr &&
+              FindLabel(page, "Opened last") != nullptr && FindLabel(page, "A new site") != nullptr &&
+              FindLabel(page, "Site name") != nullptr,
+          "the title, the hint, both headings and the name caption are on it");
+    Check(FindButton(page, "Open a site folder\xE2\x80\xA6") != nullptr && FindButton(page, "Create it in a folder\xE2\x80\xA6") != nullptr,
+          "and the two buttons");
+    Check(start.SiteName() == "My site", "the name field offers \"My site\" with no folder given");
+
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> shopButton, goneButton;
+    Walk(page, [&](const auto& element) {
+        if (auto button = std::dynamic_pointer_cast<UltraCanvas::UltraCanvasButton>(element)) {
+            if (button->GetTooltip() == shopDir) shopButton = button;
+            if (button->GetTooltip() == goneDir) goneButton = button;
+        }
+    });
+    Check(shopButton != nullptr && goneButton != nullptr && shopButton->GetText().find("my-shop") == 0,
+          "the sites opened last are buttons, the folder name first, the whole path as tooltip");
+    if (shopButton && shopButton->onClick) shopButton->onClick();
+    Check(chosen == std::vector<std::string>{shopDir} && gone.empty(), "the one holding a site is handed over");
+    if (goneButton && goneButton->onClick) goneButton->onClick();
+    Check(chosen.size() == 1 && gone == std::vector<std::string>{goneDir}, "the one holding none is dropped");
+    auto status = FindById<UltraCanvas::UltraCanvasLabel>(page, "Start.status");
+    Check(status != nullptr && status->GetText().find("holds no site any more") != std::string::npos, "and said so");
+
+    StartWindow refused;
+    refused.onSiteChosen = [](const std::string&) { return std::string("written by a newer UltraPress"); };
+    auto refusedPage = refused.BuildPage("x", "", {shopDir});
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> again;
+    Walk(refusedPage, [&](const auto& element) {
+        if (auto button = std::dynamic_pointer_cast<UltraCanvas::UltraCanvasButton>(element)) {
+            if (button->GetTooltip() == shopDir) again = button;
+        }
+    });
+    if (again && again->onClick) again->onClick();
+    auto refusedStatus = FindById<UltraCanvas::UltraCanvasLabel>(refusedPage, "Start.status");
+    Check(refusedStatus != nullptr && refusedStatus->GetText() == "written by a newer UltraPress",
+          "what the editor answers is shown on the page");
+
+    StartWindow suggested;
+    auto suggestedPage = suggested.BuildPage("\"" + shopDir + "\" holds no site.", shopDir);
+    Check(suggestedPage != nullptr && suggested.SiteName() == "My shop" && suggestedPage->PreferredHeight() < page->PreferredHeight(),
+          "a folder given names the new site, and without a recent list the page is shorter");
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     // The preview loads pictures through libvips, which the application
     // initialises at start-up (UltraCanvasApplication::Initialize); a test
@@ -531,6 +605,7 @@ int main() {
     TestPaletteAndExample();
     TestLook();
     TestEditor();
+    TestStartWindow();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

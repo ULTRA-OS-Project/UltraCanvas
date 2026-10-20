@@ -65,8 +65,8 @@ int ContentWidth() const;       // the column's width: the sections are this wid
 ## Usage
 
 A start window: the page in a window of its preferred height. The
-application keeps the recent list itself (`UltraCanvasRecentList.h`) and
-decides what a picked entry means.
+application keeps the recent list itself (a list in its settings file,
+`UltraCanvasAppSettings.h`) and decides what a picked entry means.
 
 ```cpp
 auto page = std::make_shared<UltraCanvas::UltraCanvasStartPage>("start", 620);

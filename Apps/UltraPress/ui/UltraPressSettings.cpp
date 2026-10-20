@@ -1,18 +1,17 @@
 // Apps/UltraPress/ui/UltraPressSettings.cpp
 // See UltraPressSettings.h.
+// Version: 0.8.5 - over the framework's UltraCanvasAppSettings
 // Version: 0.8.4
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressSettings.h"
 
-#include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasAppSettings.h"
 #include "UltraCanvasPathUtf8.h"
-#include "UltraCanvasRecentList.h"
 #include "UltraCanvasSettingsFolder.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 
 using namespace UltraCanvas;
 
@@ -21,8 +20,7 @@ namespace UltraPress {
 namespace {
 
 const char* kSettingsFile = "settings.json";
-const char* kOldLookFile = "look";       // 0.8.0 to 0.8.3
-const char* kOldRecentFile = "recent";   // 0.8.2 and 0.8.3
+const char* kOldLookFile = "look";   // 0.8.0 to 0.8.3
 const size_t kKeep = 8;
 
 // One spelling per folder, so "./site" and "site/" are the same entry:
@@ -31,6 +29,10 @@ std::string Normal(const std::string& dir) {
     std::string normal = PathToUtf8(PathFromUtf8(dir).lexically_normal());
     while (normal.size() > 1 && (normal.back() == '/' || normal.back() == '\\')) normal.pop_back();
     return normal;
+}
+
+UltraCanvasAppSettings FileIn(const std::string& dir) {
+    return UltraCanvasAppSettings::AtFile(PathToUtf8(PathFromUtf8(dir) / kSettingsFile));
 }
 
 } // namespace
@@ -44,57 +46,32 @@ std::string UltraPressSettings::Directory() {
 UltraPressSettings UltraPressSettings::Load(const std::string& dir) {
     UltraPressSettings s;
     if (dir.empty()) return s;
-    const std::filesystem::path folder = PathFromUtf8(dir);
-    std::ifstream in(folder / kSettingsFile);
-    if (!in) {
-        // The two files of 0.8, until the settings are first written.
-        std::ifstream look(folder / kOldLookFile);
+    UltraCanvasAppSettings file = FileIn(dir);
+    if (!file.Load()) {
+        // The look file of 0.8, until the settings are first written.
+        std::ifstream look(PathFromUtf8(dir) / kOldLookFile);
         std::string word;
         if (look && (look >> word)) s.dark = word == "dark";
-        s.recentSites = LoadRecentList(PathToUtf8(folder / kOldRecentFile));
         return s;
     }
-    std::stringstream text;
-    text << in.rdbuf();
-    JSONParseResult result;
-    const JSONValue json = JSON::Parse(text.str(), &result);
-    if (!result.success || !json.IsObject()) return s;
-    s.dark = json["look"].GetString("light") == "dark";
-    if (json["recent"].IsArray()) {
-        for (const JSONValue& entry : json["recent"].GetElements()) {
-            const std::string site = entry.GetString();
-            if (!site.empty() && std::find(s.recentSites.begin(), s.recentSites.end(), site) == s.recentSites.end())
-                s.recentSites.push_back(site);
-        }
-    }
-    s.windowWidth = static_cast<int>(json["window"]["width"].GetNumber(0));
-    s.windowHeight = static_cast<int>(json["window"]["height"].GetNumber(0));
+    s.dark = file.GetString("look", "light") == "dark";
+    s.recentSites = file.GetList("recent");
+    s.windowWidth = file.GetInt("window.width", 0);
+    s.windowHeight = file.GetInt("window.height", 0);
     return s;
 }
 
 bool UltraPressSettings::Save(const std::string& dir) const {
     if (dir.empty()) return false;
-    const std::filesystem::path folder = PathFromUtf8(dir);
+    UltraCanvasAppSettings file = FileIn(dir);
+    file.Set("look", dark ? "dark" : "light");
+    file.Set("recent", recentSites);
+    file.Set("window.width", windowWidth);
+    file.Set("window.height", windowHeight);
+    if (!file.Save()) return false;
+    // The 0.8 file is in here now.
     std::error_code ec;
-    std::filesystem::create_directories(folder, ec);
-    JSONValue recent = JSONValue::MakeArray();
-    for (const std::string& site : recentSites) recent.Append(JSONValue(site));
-    JSONValue json = JSONValue::MakeObject()
-                         .Set("look", JSONValue(dark ? "dark" : "light"))
-                         .Set("recent", std::move(recent))
-                         .Set("window", JSONValue::MakeObject()
-                                            .Set("width", JSONValue(windowWidth))
-                                            .Set("height", JSONValue(windowHeight)));
-    JSONSerializeOptions pretty;
-    pretty.pretty = true;
-    pretty.indentWidth = 2;
-    std::ofstream out(folder / kSettingsFile, std::ios::trunc);
-    if (!out) return false;
-    out << JSON::Serialize(json, pretty) << '\n';
-    if (!out) return false;
-    // The 0.8 files are in here now.
-    std::filesystem::remove(folder / kOldLookFile, ec);
-    std::filesystem::remove(folder / kOldRecentFile, ec);
+    std::filesystem::remove(PathFromUtf8(dir) / kOldLookFile, ec);
     return true;
 }
 

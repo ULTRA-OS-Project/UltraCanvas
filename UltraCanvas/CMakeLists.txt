@@ -630,6 +630,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # The page an application shows with nothing open: title, hint, the
         # entries opened last, the open action, the app's own new-thing fields.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStartPage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAppSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         # Per-format save settings (JPEG quality, PNG compression ...) kept

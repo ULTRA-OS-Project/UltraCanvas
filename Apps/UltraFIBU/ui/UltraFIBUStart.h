@@ -21,8 +21,9 @@
 // only lets one pick a first of a month. Refusing the 15th after it was typed
 // would be the same rule, told later.
 //
+// Version: 0.3.1 - SeiteBauen builds the page without a window, for a headless test
 // Version: 0.3.0 - on the framework's UltraCanvasStartPage, which UltraPress's start window shares
-// Version: 0.2.0 - the bookkeepings opened last, offered first (UltraCanvasRecentList.h)
+// Version: 0.2.0 - the bookkeepings opened last, offered first
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -69,11 +70,24 @@ public:
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> Bauen(const std::string& hinweis,
                                                           const std::string& vorschlag,
                                                           const std::vector<std::string>& zuletzt = {});
+    // The page alone, without a window - what Bauen puts into one. A test
+    // builds it without a display and reads it back: the hint, the recent
+    // entries, the form, PreferredHeight().
+    std::shared_ptr<UltraCanvas::UltraCanvasStartPage> SeiteBauen(const std::string& hinweis,
+                                                                  const std::string& vorschlag,
+                                                                  const std::vector<std::string>& zuletzt = {});
 
     void Schliessen();
+    // The setup form as it stands, and why it cannot be submitted yet
+    // (empty when it can): what the greyed button's reason label says.
+    EinrichtungsDaten Daten() const;
+    std::string Grund() const;
+    // The form's fields, for a test that fills them.
+    const std::shared_ptr<UltraCanvas::UltraCanvasTextInput>& Firma() const { return firma_; }
+    const std::shared_ptr<UltraCanvas::UltraCanvasDatePicker>& Beginn() const { return beginn_; }
+    const std::shared_ptr<UltraCanvas::UltraCanvasButton>& AnlegenKnopf() const { return anlegenKnopf_; }
 
 private:
-    EinrichtungsDaten Daten() const;
     void Pruefen();      // live: enable "Anlegen" or say why not
     void Anlegen();
     void Oeffnen();

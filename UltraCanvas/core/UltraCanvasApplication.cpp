@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS closes every window after that long
 // Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
 // Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
@@ -950,6 +951,14 @@ namespace UltraCanvas {
         RunInEventLoop();
     }
 
+    void UltraCanvasApplicationBase::CloseAllWindows() {
+        // A copy: a window that closes takes itself out of `windows`.
+        const std::vector<std::shared_ptr<UltraCanvasWindowBase>> open = windows;
+        for (const auto& window : open) {
+            if (window) window->Close();
+        }
+    }
+
     void UltraCanvasApplicationBase::Run() {
         debugOutput << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
         if (!initialized) {
@@ -961,6 +970,19 @@ namespace UltraCanvas {
 
         // Start the event processing thread
         RunBeforeMainLoop();
+
+        // A test that starts the program and must see it end: after this
+        // many milliseconds every window is asked to close, the way the
+        // window manager would ask, so the application's own close path
+        // runs (the size saved, the settings written) and Run returns.
+        if (const char* closeAfter = std::getenv("ULTRACANVAS_CLOSE_AFTER_MS")) {
+            const long ms = std::strtol(closeAfter, nullptr, 10);   // locale-ok: digits only
+            if (ms > 0) {
+                debugOutput << "UltraCanvas: ULTRACANVAS_CLOSE_AFTER_MS=" << ms
+                            << " - every window closes after that" << std::endl;
+                StartTimer(static_cast<unsigned int>(ms), false, [this](TimerId) { CloseAllWindows(); });
+            }
+        }
 
         debugOutput << "UltraCanvas: Starting main loop..." << std::endl;
         try {

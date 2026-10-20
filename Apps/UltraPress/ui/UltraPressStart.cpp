@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressStart.cpp
 // See UltraPressStart.h.
+// Version: 0.8.5 - BuildPage builds the page without a window
 // Version: 0.8.4 - on the framework's UltraCanvasStartPage
 // Version: 0.8.3 - a recent site's button names its whole path in a tooltip
 // Version: 0.8.2 - the sites opened last, offered first
@@ -51,9 +52,22 @@ std::string NameFromFolder(const std::string& dir) {
 
 std::shared_ptr<UltraCanvasWindow> StartWindow::Build(const std::string& hint, const std::string& suggestion,
                                                       const std::vector<std::string>& recent) {
-    suggestion_ = suggestion;
-
     // The page first, the window at the height it needs.
+    BuildPage(hint, suggestion, recent);
+    WindowConfig config;
+    config.title = "UltraPress " ULTRAPRESS_VERSION;
+    config.width = page_->Width();
+    config.height = page_->PreferredHeight();
+    config.backgroundColor = UltraCanvasTheme::Current().roles.panel;
+    window_ = CreateWindow(config);
+    if (!window_) return nullptr;
+    window_->AddChild(page_);
+    return window_;
+}
+
+std::shared_ptr<UltraCanvasStartPage> StartWindow::BuildPage(const std::string& hint, const std::string& suggestion,
+                                                             const std::vector<std::string>& recent) {
+    suggestion_ = suggestion;
     page_ = std::make_shared<UltraCanvasStartPage>("Start", kWidth);
     page_->SetTitle("UltraPress");
     page_->SetHint(hint);
@@ -96,21 +110,14 @@ std::shared_ptr<UltraCanvasWindow> StartWindow::Build(const std::string& hint, c
     FollowTheme(createNote, LabelVariant::Muted);
     form->AddChild(createNote);
     page_->AddStatusLine();
-
-    WindowConfig config;
-    config.title = "UltraPress " ULTRAPRESS_VERSION;
-    config.width = page_->Width();
-    config.height = page_->PreferredHeight();
-    config.backgroundColor = UltraCanvasTheme::Current().roles.panel;
-    window_ = CreateWindow(config);
-    if (!window_) return nullptr;
-    window_->AddChild(page_);
-    return window_;
+    return page_;
 }
 
 void StartWindow::Close() {
     if (window_) window_->PerformClose();
 }
+
+std::string StartWindow::SiteName() const { return name_ ? name_->GetText() : std::string(); }
 
 void StartWindow::Say(const std::string& text, bool error) {
     if (page_) page_->Say(text, error);

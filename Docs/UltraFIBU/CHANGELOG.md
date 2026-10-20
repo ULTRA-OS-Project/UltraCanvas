@@ -1,3 +1,16 @@
+#### 2026-10-20 *0.24.7*
+- **The bookkeepings opened last live in the program's settings file.**
+  `<settings folder>/UltraFIBU/settings.json`, the framework's
+  `UltraCanvasAppSettings`, under `zuletzt` - the place for the next
+  preference too - instead of a plain `zuletzt` file; what the start
+  window offers is unchanged.
+- **The start window has a headless test: `UltraFIBUStartTests`.**
+  `StartFenster::SeiteBauen` builds the page without a window, and the
+  test reads it back: the hint, *Zuletzt geöffnet* as buttons, a gone file
+  said and dropped, an existing one handed over, the setup form refusing
+  until the company and a first of a month are in, the page's height.
+  Built where the UI library is, with no display.
+
 #### 2026-10-20 *0.24.6*
 - **The start window is the framework's start page.** Title, the reason
   this window, *Zuletzt geöffnet*, the open button, the setup form and the

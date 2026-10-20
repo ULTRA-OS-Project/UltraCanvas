@@ -1,3 +1,19 @@
+#### 2026-10-20 *0.8.5*
+- **The settings file is the framework's.** `settings.json` is now read
+  and written through `UltraCanvasAppSettings`, the file every UltraCanvas
+  application keeps its preferences in; its content is unchanged (`look`,
+  `recent`, `window.width`, `window.height`). The `look` file of 0.8.0 to
+  0.8.3 is still read once and removed.
+- **The start window has a headless test.** `BuildPage` builds the page
+  without a window, and the render tests build it: what it says, the sites
+  opened last as buttons, a gone one said and dropped, an existing one
+  handed over, the editor's refusal shown, the name field filled from the
+  folder that was given.
+- **A start-up and shut-down test ends the program by itself.** With
+  `ULTRACANVAS_CLOSE_AFTER_MS=<ms>` the framework closes the window after
+  that long, through the same path as the close button, so the window's
+  size is saved and the settings written; no X client is needed under Xvfb.
+
 #### 2026-10-20 *0.8.4*
 - **One settings file.** The look, the sites opened last and now the
   editor window's size live in `<settings folder>/UltraPress/settings.json`

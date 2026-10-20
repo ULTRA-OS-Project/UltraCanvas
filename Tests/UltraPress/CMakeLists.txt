@@ -23,13 +23,20 @@ add_test(NAME UltraPressEngine COMMAND UltraPressEngineTests
 
 # The renderer: pages on real elements, built without a window.
 # The editor window's model side (ui/UltraPressWindow.cpp) is compiled in
-# too: without Build() it edits the site and saves, and that is tested.
+# too: without Build() it edits the site and saves, and that is tested; so
+# is the start window's page (ui/UltraPressStart.cpp, BuildPage).
 add_executable(UltraPressRenderTests UltraPressRenderTests.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressWindow.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressMediaDialog.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressTheme.cpp
-    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressSettings.cpp)
+    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressSettings.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressStart.cpp)
 target_compile_features(UltraPressRenderTests PRIVATE cxx_std_20)
+# The start window's title names the version; its source refuses to build
+# without it (the same first changelog line the program is built with).
+include("${CMAKE_SOURCE_DIR}/cmake/UltraCanvasVersion.cmake")
+target_compile_definitions(UltraPressRenderTests PRIVATE
+    ULTRAPRESS_VERSION="${ULTRAPRESS_VERSION}")
 target_link_libraries(UltraPressRenderTests PRIVATE UltraPressRender ${ULTRACANVAS_LIBRARY})
 target_include_directories(UltraPressRenderTests PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include

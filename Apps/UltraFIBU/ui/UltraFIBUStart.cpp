@@ -1,6 +1,7 @@
 // Apps/UltraFIBU/ui/UltraFIBUStart.cpp
 // The start window. See the header for why it asks so little.
 //
+// Version: 0.3.1 - SeiteBauen builds the page without a window
 // Version: 0.3.0 - on the framework's UltraCanvasStartPage
 // Version: 0.2.0 - the bookkeepings opened last, offered first
 // Version: 0.1.0
@@ -48,6 +49,22 @@ std::vector<FileFilter> BuchhaltungsFilter() {
 std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinweis,
                                                        const std::string& vorschlag,
                                                        const std::vector<std::string>& zuletzt) {
+    SeiteBauen(hinweis, vorschlag, zuletzt);
+
+    WindowConfig config;
+    config.title  = "UltraFIBU " ULTRAFIBU_VERSION;
+    config.width  = seite_->Width();
+    // At least kHoehe: the calendar under the date field opens downward and
+    // needs the room under the form.
+    config.height = std::max(seite_->PreferredHeight(), kHoehe);
+    fenster_ = CreateWindow(config);
+    fenster_->AddChild(seite_);
+    return fenster_;
+}
+
+std::shared_ptr<UltraCanvasStartPage> StartFenster::SeiteBauen(const std::string& hinweis,
+                                                               const std::string& vorschlag,
+                                                               const std::vector<std::string>& zuletzt) {
     vorschlag_ = vorschlag;
 
     // The framework's start page, with UltraFIBU's words: the title, why
@@ -125,17 +142,8 @@ std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinwei
     form->AddChild(anlegenKnopf_);
     seite_->AddStatusLine();
 
-    WindowConfig config;
-    config.title  = "UltraFIBU " ULTRAFIBU_VERSION;
-    config.width  = seite_->Width();
-    // At least kHoehe: the calendar under the date field opens downward and
-    // needs the room under the form.
-    config.height = std::max(seite_->PreferredHeight(), kHoehe);
-    fenster_ = CreateWindow(config);
-    fenster_->AddChild(seite_);
-
     Pruefen();
-    return fenster_;
+    return seite_;
 }
 
 void StartFenster::Schliessen() {
@@ -156,11 +164,15 @@ EinrichtungsDaten StartFenster::Daten() const {
     return daten;
 }
 
-void StartFenster::Pruefen() {
-    if (!anlegenKnopf_ || !grund_) return;
+std::string StartFenster::Grund() const {
     // The same check the setup runs, so the form can never allow what the
     // engine then refuses - and never refuse what it would allow.
-    const std::string grund = PruefeEinrichtung(Daten());
+    return PruefeEinrichtung(Daten());
+}
+
+void StartFenster::Pruefen() {
+    if (!anlegenKnopf_ || !grund_) return;
+    const std::string grund = Grund();
     anlegenKnopf_->SetDisabled(!grund.empty());
     grund_->SetText(grund);
 }
