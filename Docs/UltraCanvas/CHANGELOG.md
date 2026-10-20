@@ -1,3 +1,100 @@
+#### 2026-10-20 *0.9.357*
+- **The media viewer shows a layered `.ucd` image whole.** A `UCBitmap`
+  document's layers are read through `UCRasterDocument::LoadUCD` and
+  composited, so UltraViewer - and every pane built on
+  `UltraCanvasMediaViewer` - shows the picture at full size and zooms it,
+  instead of the 256 px thumbnail stored after the header. A
+  password-protected document still shows its thumbnail (none when it is
+  private), and Details gains the image size, the layer count and a *Shown*
+  row saying what is shown and why.
+- **The media viewer unlocks password-protected files.** A layered `.ucd`
+  image (UCD 2.2) or a PDF that needs its password shows what it can without
+  it - the thumbnail (nothing when private), or a note for the PDF - and an
+  **Unlock** button in the info bar and the toolbar; Enter does the
+  same. Unlock asks for the password over the viewer's window, again when it
+  is not right, and then shows the file whole: the image at full size, the PDF
+  with every page. Nothing asks on its own while browsing. `IsLocked`, `Unlock`,
+  `UnlockWithPassword` (`MediaUnlockResult`) and `MediaViewerTools::unlock` let
+  a host drive it.
+  - The passwords Unlock is given are kept for the folder being browsed
+    (zeroed-on-free, at most eight): a file browsed back to shows without
+    asking, and another protected file there that one of them opens shows
+    whole straight away. Opening another folder forgets them;
+    `ForgetPasswords` does at once, and `SetRememberPasswords(false)` keeps
+    none.
+  - `IPDFDocument::GetLastOpenError` and `UltraCanvasPDFView::GetLastOpenError`
+    (`PDFOpenError`: `NeedsPassword`, `WrongPassword`, `Failed`) say why an open
+    failed, so a protected PDF is no longer taken for a damaged one; a password
+    refusal is not retried as a stream.
+  - A PDF opens in the PDF view again. `ClassifyFile` asked the vector check
+    first, and on a libvips with a PDF loader that took every PDF for a
+    drawing: the viewer showed its first page as a flat picture, without the
+    other pages or the page inventory. A PDF that fails to open no longer
+    leaves the last one on show under its name.
+  - The viewer's own notes - a `*.ucd`'s header summary, a locked PDF's -
+    are in a note view of their own, dark like the rest of the viewer and laid
+    out as the Details panel is, instead of plain text on the white page the
+    text view gives a text file.
+- **UltraCanvasSessionLock: a call when the desktop session locks.**
+  `AddSessionLockListener(onChange)` reports the screen locking - by hand or
+  by the screensaver - and unlocking again, on the UI thread, once per
+  change, so a program can forget what should not outlive the user stepping
+  away. Linux and the BSDs hear logind's `Lock` / `Unlock` and `LockedHint`
+  for their session and the screensaver's `ActiveChanged`
+  (`org.freedesktop.ScreenSaver`, `org.gnome.ScreenSaver`) through GDBus on
+  the application's own loop; Windows its WTS session notifications; macOS
+  the loginwindow's `com.apple.screenIsLocked` / `screenIsUnlocked`. The
+  platform is watched only while a listener is registered;
+  `NotifySessionLockChanged` lets a host with a lock of its own, or a test,
+  report one. `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` (PUBLIC) is set where a
+  backend exists. See `UltraCanvasSessionLock.md`.
+- **The media viewer forgets Unlock's passwords when the user steps away.**
+  When the session locks, or its window has had no key or mouse input for ten
+  minutes (`SetForgetPasswordsAfterIdle`, zero for never;
+  `ForgetPasswordsIfIdle`), the kept passwords are forgotten and a file shown
+  unlocked is shown locked again - `ForgetPasswords()` now does both. The
+  viewer listens only while it holds a password or an unlocked file.
+  - A file opened with its password says so: *unlocked* beside *PDF* or
+    *UC DOCUMENT* in the info bar, the encryption in a PDF's Details, and
+    `IsUnlocked()`.
+  - `SetSettingsAction(action)`: a gear at the right end of the info bar for
+    the host's settings, hidden until one is set - UltraViewer's *Forget
+    passwords after* lives behind it.
+- **UCD documents can be password-protected (UCD 2.2).** The container
+  (`UltraCanvasUCDContainer.h`) now does what the spec's key source `1`
+  describes, through UltraCrypt: `Writer::SetPassword` derives a key with
+  Argon2id (a fresh salt each write), puts a `SECU` record after the `INDX`
+  and seals every other section with XChaCha20-Poly1305 - a fresh nonce,
+  the section's header as associated data - with `hidePreview` marking the
+  document `PRIVATE` and leaving the thumbnail out. `Reader::NeedsPassword`
+  / `Unlock` open it: the key is checked against the `SECU`'s check tag, so
+  a wrong password (`UCD::kWrongPassword`) is told apart from a damaged
+  file, and costs over 64 passes or 4 GiB are refused before anything is
+  derived. Without libsodium it fails closed (`UCD::EncryptionAvailable()`).
+  The spec gains the `SECU` layout and the encrypted-section layout (4.3.1,
+  4.3.2; *Changes in 2.2*), and writers put down version 2.2.
+  - `UCRasterDocument` carries a password for its `.ucd`:
+    `SetUCDPassword(password, hidePreview)`, `HasUCDPassword`,
+    `GetUCDHidesPreview`, `LoadUCD(path, error, password)` and
+    `IsPasswordProtected(path)`. A document opened with its password saves
+    protected again; loading another file clears it.
+- **A password-protected PDF can be rasterized.** `UltraCanvasVectorRaster`
+  read a PDF through libvips' `pdfload` with no way to give it a password, so
+  a protected PDF failed like a damaged one. `VectorRasterOptions::password`
+  carries it, `InspectVectorFile(path, password)` takes it, and
+  `VectorSourceInfo::passwordRequired` / `passwordWrong` say when one is needed
+  or the one given does not open the file - decided from the file's
+  `/Encrypt` dictionary behind the loader's refusal, since poppler says
+  *"Document is encrypted"* for both. `PixelFX::FileIO::LoadPdf` takes the
+  password too. UltraPaint asks for it on import.
+- **On a libvips older than 8.13 the password opens the PDF too.** `pdfload`
+  gained its `"password"` in libvips 8.13; Ubuntu 22.04's 8.12 ignores it
+  (*"no property named 'password'"*) and opens every PDF with none, so the
+  right password was reported as the wrong one. With such a libvips, CMake
+  finds poppler-glib - which that libvips' `pdfload` is built on, and which
+  `libvips-dev` depends on - and `LoadPdf` opens a protected PDF through it,
+  rendering the page as `pdfload` does. A newer libvips is used as before.
+
 #### 2026-10-20 *0.9.356*
 - **Matrix diagram: the House roof's "++" was hard to read in the dark theme.**
   The Correlation scale's dark green was just distinct enough from the dark
