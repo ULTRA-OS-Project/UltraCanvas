@@ -20,13 +20,16 @@
 // to start a record of its own. Anything that does not parse drops the
 // listing it belongs to, not the file: a cache is an optimisation, and a bad
 // line in it is a reason to ask the server again, never a reason to fail.
+// Version: 1.3.0 - StaleRemotePreviewPartials: a partial preview copy is kept a day,
+//                  256 MB of them at most
 // Version: 1.2.0 - kRemoteRateLimitMaxWaitSeconds
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraFilerRemotePath.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -165,6 +168,48 @@ inline std::string RemotePreviewLocalName(const std::string& remoteName) {
     while (!out.empty() && (out.back() == '.' || out.back() == ' ')) out.pop_back();
     if (out.empty()) out = "preview";
     return out;
+}
+
+// A copy being fetched is written to "<name>.part" and renamed when whole. A
+// fetch that was called off - it gave way to a request of the user's, the
+// selection moved on, the window closed - leaves its ".part" for the next
+// fetch of that file to continue (UltraCloud::SetThreadDownloadContinues).
+// Nobody may come back for it, though, and each can be up to
+// kRemotePreviewMaxBytes: the cache's sweep (once a run, before the first
+// copy is asked for) keeps the partial copies younger than a day, newest
+// first, as long as together they stay under kRemotePreviewPartialMaxBytes,
+// and removes the rest. The complete copies keep DiskCache's two weeks.
+inline constexpr std::chrono::hours kRemotePreviewPartialMaxAge{24};
+inline constexpr uint64_t kRemotePreviewPartialMaxBytes = 256ull * 1024 * 1024;
+
+struct RemotePreviewPartial {
+    std::string path;
+    uint64_t size = 0;
+    std::chrono::seconds age{0};   // since it was last written; < 0 is now
+};
+
+// The partial copies a sweep removes, by path: every one older than `maxAge`,
+// and of the rest, newest kept first, every one that would take what is kept
+// past `maxBytes`.
+inline std::vector<std::string> StaleRemotePreviewPartials(
+        std::vector<RemotePreviewPartial> partials,
+        std::chrono::seconds maxAge = kRemotePreviewPartialMaxAge,
+        uint64_t maxBytes = kRemotePreviewPartialMaxBytes) {
+    std::stable_sort(partials.begin(), partials.end(),
+                     [](const RemotePreviewPartial& a, const RemotePreviewPartial& b) {
+                         return a.age < b.age;   // newest first
+                     });
+    std::vector<std::string> stale;
+    uint64_t kept = 0;
+    for (const RemotePreviewPartial& p : partials) {
+        const bool young = p.age < maxAge;
+        if (young && kept + p.size <= maxBytes) {
+            kept += p.size;
+            continue;
+        }
+        stale.push_back(p.path);
+    }
+    return stale;
 }
 
 // ---- The file -------------------------------------------------------------

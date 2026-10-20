@@ -2,8 +2,10 @@
 // The provider interface every cloud storage backend implements, and the
 // process-wide provider registry. Providers are stateless: every call gets
 // the account and the resolved credentials.
+// Version: 0.4.0 - SetThreadDownloadContinues / DownloadContinues: a download that
+//                  continues a partial copy
 // Version: 0.3.0 - SetThreadSignInCancel / SignInCancelled
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -103,6 +105,22 @@ public:
 std::function<bool()> SetThreadSignInCancel(std::function<bool()> cancelled);
 // Whether the calling thread's sign-in has been called off.
 bool SignInCancelled();
+
+// A download can continue a partial copy instead of starting over: while the
+// calling thread says so, Download treats a file already at `localPath` as
+// the first part of the remote file, asks only for the bytes past its size
+// and appends them. A server that cannot continue (no REST on FTP, a 200 to
+// an HTTP Range) sends the whole file, which replaces the partial one - the
+// result is the same file either way, only the time it takes differs. A
+// download that fails while continuing leaves what it has at `localPath`, for
+// the next try to continue; the caller decides when a partial copy is to be
+// thrown away. Per thread, set around the call, like the log sink - a thread
+// rather than a parameter, so ICloudProvider (which provider plug-ins are
+// built against) keeps its layout; a provider that does not read it simply
+// downloads the whole file. Returns the previous setting.
+bool SetThreadDownloadContinues(bool continues);
+// Whether the calling thread's downloads continue a partial copy.
+bool DownloadContinues();
 
 // ---- Registry ---------------------------------------------------------------
 // Register a provider (replaces one with the same id). The built-in set is
