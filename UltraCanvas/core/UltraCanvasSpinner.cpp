@@ -1,5 +1,6 @@
 // core/UltraCanvasSpinner.cpp
 // Platform-independent spinner / spin-button component implementation.
+// Version: 1.6.0 - SpinnerLayout::FieldOnly: the field takes the whole control, no buttons
 // Version: 1.5.0 - onStepsFinished: once per run of steps (held button or key, wheel)
 // Version: 1.4.0 - SetSnapToStep(false): a Decimal value keeps its own places off the step grid
 // Version: 1.3.0 - the value list opens anchored to the field: above it when there is
@@ -242,6 +243,7 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasSpinner::GetFieldRect(const Rect2Di& b) const {
         float t = style.buttonThickness;
+        if (layout == SpinnerLayout::FieldOnly) return b;
         if (layout == SpinnerLayout::SidesHorizontal) {
             return Rect2Di(b.x + t, b.y, b.width - 2 * t, b.height);
         }
@@ -273,8 +275,10 @@ namespace UltraCanvas {
 
     UltraCanvasSpinner::Part UltraCanvasSpinner::HitTest(const Point2Di& p) const {
         Rect2Di b = GetLocalBounds();
-        if (GetIncButtonRect(b).Contains(p)) return Part::IncButton;
-        if (GetDecButtonRect(b).Contains(p)) return Part::DecButton;
+        if (HasButtons()) {
+            if (GetIncButtonRect(b).Contains(p)) return Part::IncButton;
+            if (GetDecButtonRect(b).Contains(p)) return Part::DecButton;
+        }
         if (GetFieldRect(b).Contains(p))     return Part::Field;
         return Part::NonePart;
     }
@@ -404,6 +408,7 @@ namespace UltraCanvas {
 
         Rect2Di fieldRect = GetFieldRect(bounds);
         RenderField(fieldRect, ctx);
+        if (!HasButtons()) return;
 
         RenderButton(GetIncButtonRect(bounds), Part::IncButton, true,  ctx);
         RenderButton(GetDecButtonRect(bounds), Part::DecButton, false, ctx);

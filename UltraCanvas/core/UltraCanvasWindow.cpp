@@ -15,6 +15,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasCaret.h"
+#include "UltraCanvasFileDragIcon.h"
 
 #include <cairo/cairo.h>
 #include <iostream>
@@ -923,6 +924,28 @@ namespace UltraCanvas {
             const int m = kDragOverlayInvalidateMargin;
             return Rect2Di(r.x - m, r.y - m, r.width + 2 * m, r.height + 2 * m);
         }
+    }
+
+    std::string UltraCanvasWindowBase::DeliverSaveDrop(const std::string& fileName,
+                                                       const Point2Di& pointerWindow) {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return std::string();
+        // Answered while the event runs: the platform hands the folder back
+        // to the source before its drop call returns.
+        std::string folder;
+        UCEvent event;
+        event.type = UCEventType::Drop;
+        event.targetWindow = GetWindowWeakPtr();
+        event.nativeWindowHandle = GetNativeHandle();
+        event.pointerWindow = pointerWindow;
+        event.pointer = pointerWindow;
+        event.dragMimeType = UltraCanvasFileDragIcon::kDragMimeType;
+        event.dragData = fileName;
+        event.dropFolderReply = [&folder](const std::string& f) {
+            if (folder.empty()) folder = f;
+        };
+        app->DispatchEvent(event);
+        return folder;
     }
 
     void UltraCanvasWindowBase::SetDragOverlay(UltraCanvasUIElement* owner,

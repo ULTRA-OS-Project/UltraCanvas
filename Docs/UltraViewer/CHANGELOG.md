@@ -1,3 +1,10 @@
+#### 2026-10-19 *1.0.8*
+- **One compact toolbar.** The two toolbar rows at the top are one row now,
+  with smaller, flat icons, so the picture gets the room back. The Details
+  (info) button is gone from the toolbar; the one at the bottom right of the
+  window opens the same panel. Framework: `UltraCanvasMediaViewer` (framework
+  changelog: `media-viewer-one-toolbar`).
+
 #### 2026-10-14 *1.0.7*
 - **One UltraViewer at a time.** Opening a file while UltraViewer is already
   running opens it in the running copy (in the viewer, in place of what it

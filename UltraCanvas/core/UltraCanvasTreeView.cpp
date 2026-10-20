@@ -1006,6 +1006,15 @@ namespace UltraCanvas {
         // (e.g. adding a pinned node), which would dangle dropTargetNode.
         dropTargetNode = nullptr;
         RequestRedraw();
+        // A Save dialog's file icon asks which folder it landed on.
+        if (event.dropFolderReply) {
+            if (!target || !onDropFolderOfNode) return false;
+            if (onFilesDragAccept && !onFilesDragAccept(target)) return false;
+            const std::string folder = onDropFolderOfNode(target);
+            if (folder.empty()) return false;
+            event.dropFolderReply(folder);
+            return true;
+        }
         if (event.droppedFiles.empty() || !onFilesDroppedOnNode || !target)
             return false;
         return onFilesDroppedOnNode(target, event.droppedFiles);

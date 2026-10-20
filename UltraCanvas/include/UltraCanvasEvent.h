@@ -11,6 +11,7 @@
 #include "UltraCanvasNativeHandle.h"
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -346,6 +347,13 @@ namespace UltraCanvas {
         std::string dragData;                // Dragged data (text, file paths, etc.)
         std::string dragMimeType;            // MIME type of dragged data
         std::vector<std::string> droppedFiles; // Multiple file paths for file drop
+        // Set on a Drop that carries no file but asks where it landed: the
+        // Save dialog's file icon dragged onto a folder of another window or
+        // program (UltraCanvasFileDragIcon::kDragMimeType, the name in
+        // dragData). The element it lands on calls it, during the event, with
+        // the local folder the file would be saved in; one that is no folder
+        // leaves it alone. The source then saves there.
+        std::function<void(const std::string& folder)> dropFolderReply;
 
         // Window specific
         int width = 0, height = 0;           // For resize events

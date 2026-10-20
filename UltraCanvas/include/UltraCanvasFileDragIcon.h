@@ -17,11 +17,15 @@
 // (UltraCanvasFilerWidget::GetIncomingDropFolder, the tree's row under the
 // pointer) before the target is told the drag has left.
 //
-// The drag stays inside its window: beyond the edge the badge stops at the
-// border, and a release there drops on nothing.
+// Out of its window the drag carries on as a native one
+// (UltraCanvasWindowBase::StartNativeSaveDrag), which another window or
+// program - UltraFiler's listing or folder tree - answers with the folder it
+// was dropped on: that goes to onDroppedOnFolder. Where the platform has no
+// such drag the badge stops at the border, and a release there drops on
+// nothing.
 //
-// Version: 1.1.0 - DrawDocumentGlyph: a type's logo, a page with a folded corner
-// Last Modified: 2026-10-12
+// Version: 1.2.0 - out of the window as a native save drag (onDroppedOnFolder)
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,6 +93,10 @@ namespace UltraCanvas {
         // while the target still shows where the drop lands, before it is
         // sent DragLeave.
         std::function<void(UltraCanvasUIElement* target, const Point2Di& windowPoint)> onDropped;
+        // The drag left the window and was dropped on a folder of another
+        // window or program, which named it (a local path). Not called when
+        // the drop landed on anything else.
+        std::function<void(const std::string& folder)> onDroppedOnFolder;
         // Escape, or the pointer was taken away: nothing dropped.
         std::function<void()> onDragCancelled;
         // Pressed and released without dragging.
@@ -108,6 +116,9 @@ namespace UltraCanvas {
         bool pressed = false;          // left button down on the icon
         bool dragging = false;         // the press became a drag
         bool mouseCaptured = false;
+        // The platform could not take the drag out of the window this
+        // gesture: it stays inside, as it is not asked again.
+        bool nativeRefused = false;
         Point2Di pressPoint;           // window coordinates
         Point2Di dragPoint;            // window coordinates, while dragging
         // The element the badge is over and has been sent DragEnter. Weak:
@@ -119,6 +130,10 @@ namespace UltraCanvas {
         void BeginDrag(const Point2Di& windowPoint);
         void UpdateDrag(const Point2Di& windowPoint);
         void FinishDrag(const Point2Di& windowPoint);
+        // Out of the window: hands the drag to the platform. False when it
+        // cannot take it.
+        bool HandOverToNativeDrag();
+        bool IsInsideWindow(const Point2Di& windowPoint) const;
         // Releases the pointer, takes the badge away and tells the target the
         // drag has left; clears the gesture.
         void EndGesture();
