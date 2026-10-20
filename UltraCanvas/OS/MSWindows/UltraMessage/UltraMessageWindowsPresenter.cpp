@@ -11,12 +11,17 @@
 // registration, so every desktop build has the presenter; the price is that
 // Windows names the toast after the process that hosts the broker, so a
 // notification from another application carries that application's name
-// in its title. The windows-notification-listener adapter reads the toast
-// back from the Action Center; it skips the ones noted here (NotePresented).
+// in its title. The picture beside the text is the posting application's
+// own: the notification's icon file (a PNG or an .ico), and the host
+// executable's icon only when it names none. The windows-notification-listener
+// adapter reads the toast back from the Action Center; it skips the ones noted
+// here (NotePresented).
 //
 // A hidden window on the adapter's own thread owns the tray icon and pumps
 // its messages; the icon exists only while a notification may still be
 // clicked. Focus assist (quiet hours) is respected.
+// Version: 0.2.0 - the balloon shows the notification's icon file, not the
+//                 host's: UltraMail's mail came with UltraFiler's folder icon
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -32,15 +37,20 @@
 #include "../../../core/UltraMessage/UltraMessageAdapter.h"
 #include "../../../core/UltraMessage/UltraMessageInternal.h"
 #include "UltraMessage/UltraMessageEndpoint.h"
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace UltraMessage {
 namespace Internal {
@@ -93,12 +103,43 @@ void CopyField(wchar_t (&field)[N], const std::wstring& text) {
     field[fitted.size()] = L'\0';
 }
 
+// A notification's icon file as an icon of the given size: a PNG (read as an
+// icon resource, which Windows decodes and scales) or an .ico. Null for an icon
+// name rather than a file, a file that is not there, or one that does not read.
+HICON LoadIconFile(const std::string& file, int size) {
+    if (file.empty()) return nullptr;
+    std::error_code ec;
+    const std::filesystem::path path = UltraCanvas::PathFromUtf8(file);
+    if (!path.is_absolute() || !std::filesystem::is_regular_file(path, ec)) return nullptr;
+    const auto bytes = std::filesystem::file_size(path, ec);
+    // An application's icon, not a photograph: anything larger is not read.
+    constexpr std::uintmax_t kMaxIconBytes = 4 * 1024 * 1024;
+    if (ec || bytes < 8 || bytes > kMaxIconBytes) return nullptr;
+
+    std::FILE* f = UltraCanvas::OpenFileUtf8(file, "rb");
+    if (!f) return nullptr;
+    std::vector<BYTE> data(static_cast<size_t>(bytes));
+    const size_t read = std::fread(data.data(), 1, data.size(), f);
+    std::fclose(f);
+    if (read != data.size()) return nullptr;
+
+    static const BYTE kPngSignature[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+    if (std::equal(kPngSignature, kPngSignature + 8, data.begin()))
+        return CreateIconFromResourceEx(data.data(), static_cast<DWORD>(data.size()), TRUE, 0x00030000, size,
+                                        size, LR_DEFAULTCOLOR);
+    // An .ico: its header is reserved 0, type 1.
+    if (data[0] == 0 && data[1] == 0 && data[2] == 1 && data[3] == 0)
+        return static_cast<HICON>(LoadImageW(nullptr, path.c_str(), IMAGE_ICON, size, size, LR_LOADFROMFILE));
+    return nullptr;
+}
+
 // What one Present hands the window thread.
 struct PendingBalloon {
     std::string notificationId;
     std::wstring title;
     std::wstring text;
     std::string urgency;
+    std::string iconFile;   // the notification's icon, when it names a file
 };
 
 class WindowsPresenterAdapter final : public IAdapter {
@@ -153,6 +194,7 @@ public:
         pending->title = Widen(title);
         pending->text = Widen(n.body.empty() ? n.summary : n.body);
         pending->urgency = n.urgency;
+        pending->iconFile = n.icon;
         if (!PostMessageW(window, kShowMessage, 0, reinterpret_cast<LPARAM>(pending))) {
             delete pending;
             return false;
@@ -265,7 +307,8 @@ private:
     void FreeIcons() {
         if (ownLarge_ && largeIcon_) DestroyIcon(largeIcon_);
         if (ownSmall_ && smallIcon_) DestroyIcon(smallIcon_);
-        largeIcon_ = smallIcon_ = nullptr;
+        if (balloonIcon_) DestroyIcon(balloonIcon_);
+        largeIcon_ = smallIcon_ = balloonIcon_ = nullptr;
         ownLarge_ = ownSmall_ = false;
     }
 
@@ -316,11 +359,16 @@ private:
         CopyField(data.szInfoTitle, title);
         CopyField(data.szInfo, text);
         data.dwInfoFlags = NIIF_RESPECT_QUIET_TIME;
+        // The poster's icon, kept until the next balloon: the one shown may
+        // still be read from the handle.
+        if (balloonIcon_) DestroyIcon(balloonIcon_);
+        balloonIcon_ = LoadIconFile(balloon.iconFile, GetSystemMetrics(SM_CXICON));
+        HICON picture = balloonIcon_ ? balloonIcon_ : largeIcon_;
         if (balloon.urgency == "critical") {
             data.dwInfoFlags |= NIIF_WARNING;
-        } else if (largeIcon_) {
+        } else if (picture) {
             data.dwInfoFlags |= NIIF_USER | NIIF_LARGE_ICON;
-            data.hBalloonIcon = largeIcon_;
+            data.hBalloonIcon = picture;
         } else {
             data.dwInfoFlags |= NIIF_INFO;
         }
@@ -421,6 +469,7 @@ private:
     bool iconAdded_ = false;
     HICON smallIcon_ = nullptr;   // the tray icon
     HICON largeIcon_ = nullptr;   // the balloon's, when the executable has one
+    HICON balloonIcon_ = nullptr; // the notification's own icon file, while it shows
     bool ownSmall_ = false;
     bool ownLarge_ = false;
 
