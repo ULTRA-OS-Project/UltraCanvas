@@ -1,3 +1,36 @@
+#### 2026-10-20 *1.0.10*
+- **Password-protected files open with their password.** A protected PDF or
+  UltraCanvas layered image (`.ucd`) shows an **Unlock** button in the bar at
+  the bottom (and a lock in the toolbar; Enter does the same): it asks for the
+  password, again if it is not right, and then shows the file - the PDF with
+  all its pages, the image at full size. Until then a `.ucd` shows its
+  thumbnail and a PDF a note saying it is protected. Browsing a folder never
+  asks on its own, and a password once given is kept while the folder is
+  browsed: going back to the file - or on to another one there with the same
+  password - shows it without asking again; opening another folder forgets
+  it (framework changelog, pending entry `media-viewer-unlock`).
+- **Passwords don't outlive you stepping away.** When the screen locks - or
+  UltraViewer has had no key or mouse input for ten minutes - the passwords
+  it kept are forgotten, and a file shown unlocked goes back behind its
+  Unlock button. A file opened with its password says so: *unlocked* beside
+  *PDF* (or *UC DOCUMENT*) in the bar at the bottom, and in the Details
+  (framework changelog, pending entry `session-lock`).
+- **Settings: how long before the passwords are forgotten.** A gear at the
+  right end of the bottom bar opens UltraViewer's settings, where *Forget
+  passwords after* takes 1 minute to 2 hours, or *Never* (the screen lock
+  still forgets them). The choice applies at once and is kept in
+  `UltraViewer/config.ini` of the UltraCanvas settings folder.
+- **The viewer's own notes are dark.** What it says about a file it shows no
+  picture of - a `.ucd`'s summary, a protected PDF's note - was printed on a
+  white page in the dark window; it is in the viewer's colours now, laid out
+  like the Details panel.
+- **PDFs show every page again.** A PDF had been shown as a picture of its
+  first page; it opens in the PDF view again, with the page strip and page
+  zoom.
+- **A layered `.ucd` image shows whole.** Its layers are drawn at full size
+  instead of the small thumbnail stored in the file (pending entry
+  `media-viewer-layered-ucd`).
+
 #### 2026-10-20 *1.0.9*
 - **A .txt shows what it holds.** A text file whose name names no language
   (`.txt`, `.text`) is shown as the language its content is written in - a

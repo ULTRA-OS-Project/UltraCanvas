@@ -19,6 +19,9 @@
 //   - text / source / markdown
 //   - UltraCanvas Document containers (*.ucd): embedded preview thumbnail +
 //     container details until the UCD v2 engine lands
+// Version: 1.2.0 - ShowSettings: the gear in the info bar opens UltraViewer's settings
+//                  (how long before Unlock's passwords are forgotten), kept in
+//                  UltraViewerSettings
 // Version: 1.1.0 - ShowPaths / BringForward: a second start's files are shown
 //                  in this window, which comes to the front
 // Version: 1.0.0
@@ -28,6 +31,7 @@
 
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraViewerSettings.h"
 
 #include <memory>
 #include <string>
@@ -53,9 +57,18 @@ public:
     // Restores the window when minimised and raises it with the keyboard focus.
     void BringForward();
 
+    // The settings dialog, over the window: how long the viewer may be left
+    // alone before it forgets the passwords Unlock was given. A choice
+    // applies at once and is saved; Close only closes.
+    void ShowSettings();
+
 private:
+    // What the settings say, on the viewer.
+    void ApplySettings();
+
     std::shared_ptr<UltraCanvasWindow>      window;
     std::shared_ptr<UltraCanvasMediaViewer> viewer;
+    UltraViewerSettings                     settings;
 };
 
 } // namespace UltraCanvas

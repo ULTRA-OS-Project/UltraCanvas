@@ -472,6 +472,14 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
 endif()
 
+# And for the session lock (UltraCanvasSessionLock: WTS session notifications /
+# logind and the screensaver over D-Bus / the loginwindow's distributed
+# notifications). Without the define the core file compiles a backend that
+# never starts: nothing is reported, and a listener keeps its own idle timeout.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
+endif()
+
 # A build machine's private OAuth settings (the sign-in service UltraNet is
 # built with), kept out of the repository - see cmake/oauth.local.cmake.example.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")

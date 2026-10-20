@@ -5426,6 +5426,8 @@ if(TARGET UltraCanvas)
     target_include_directories(VectorRasterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(VectorRasterTest PRIVATE cxx_std_20)
     target_link_libraries(VectorRasterTest PRIVATE UltraCanvas)
+    target_compile_definitions(VectorRasterTest PRIVATE
+        UC_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     set_target_properties(VectorRasterTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -5809,7 +5811,8 @@ if(TARGET UltraCanvas)
     target_include_directories(MediaViewerToolsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(MediaViewerToolsTest PRIVATE cxx_std_20)
     target_compile_definitions(MediaViewerToolsTest PRIVATE
-        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media"
+        UC_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(MediaViewerToolsTest PRIVATE UltraCanvas)
     set_target_properties(MediaViewerToolsTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -5819,6 +5822,59 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MediaViewerToolsTest")
 else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ULTRAVIEWER SETTINGS TEST =====
+# UltraViewer's settings file (Apps/UltraViewer/UltraViewerSettings.h,
+# header-only): the minutes before Unlock's passwords are forgotten - the
+# default, never, and hand-edited values. Works in a temporary folder.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraViewerSettingsTest...")
+    add_executable(UltraViewerSettingsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraViewerSettingsTest.cpp
+    )
+    target_include_directories(UltraViewerSettingsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraViewer)
+    target_compile_features(UltraViewerSettingsTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraViewerSettingsTest PRIVATE UltraCanvas)
+    set_target_properties(UltraViewerSettingsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraViewerSettingsTest COMMAND UltraViewerSettingsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraViewerSettingsTest")
+else()
+    message(STATUS "  UltraViewerSettingsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== SESSION LOCK TEST =====
+# Session-lock listeners hear a lock and an unlock once each; on Linux the
+# D-Bus backend turns a screensaver's ActiveChanged into those calls. That
+# half needs a display and a session bus, so CTest gives it a bus of its own
+# through dbus-run-session where one is installed; it skips without either.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SessionLockTest...")
+    add_executable(SessionLockTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SessionLockTest.cpp
+    )
+    target_include_directories(SessionLockTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SessionLockTest PRIVATE cxx_std_20)
+    target_link_libraries(SessionLockTest PRIVATE UltraCanvas)
+    set_target_properties(SessionLockTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    find_program(ULTRACANVAS_DBUS_RUN_SESSION dbus-run-session)
+    if(ULTRACANVAS_DBUS_RUN_SESSION AND UNIX AND NOT APPLE)
+        add_test(NAME SessionLockTest
+                 COMMAND ${ULTRACANVAS_DBUS_RUN_SESSION} -- $<TARGET_FILE:SessionLockTest>
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    else()
+        add_test(NAME SessionLockTest COMMAND SessionLockTest
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
+    message(STATUS "    Test registered: SessionLockTest")
+else()
+    message(STATUS "  SessionLockTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== MEDIA VIEWER SAVE TEST =====
