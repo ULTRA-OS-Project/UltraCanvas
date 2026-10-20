@@ -5,7 +5,9 @@
     callback for a redirect or an authentication retry, and sends it with a
     Content-Length; the method stays the request's own (a PUT stays a PUT).
     A file that cannot be opened, or a range past its end, fails before
-    anything is sent. The async path reads the range into memory.
+    anything is sent. The async path (`UltraNet_HttpRequestAsync`) streams it
+    the same way: the request owns the open file for the length of the
+    transfer and libcurl reads it on the multi worker.
     `test_body_file.cpp` sends a whole file, a range, a 3 MB file and a file
     that is not there to an echo server on loopback.
   - UltraCloud: a WebDAV / Nextcloud upload held the whole file in memory

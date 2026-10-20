@@ -88,8 +88,6 @@ namespace ultranet_internal {
     // seek callback (libcurl rewinds for a redirect or an authentication
     // retry) and the body's size, so it is sent with a Content-Length.
     void ApplyBodyFile(CURL* easy, BodyFileSource* source);
-    // Reads the whole range into `out`, for a path that cannot stream it.
-    bool ReadBodyFile(BodyFileSource& source, std::vector<uint8_t>& out);
 
     // Opens options.outputFilePath into the sink when it is set: truncated,
     // or appended with resumeOutputFile, in which case the file's size

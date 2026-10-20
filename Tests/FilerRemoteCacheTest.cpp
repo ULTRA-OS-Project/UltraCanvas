@@ -8,11 +8,13 @@
 // holds names a server chose - so a name with a tab or a newline in it must
 // come back as itself, and a damaged file must cost the listing it damaged,
 // never the start-up.
+// Version: 1.1.0 - which partial preview copies the cache's sweep removes
 // Version: 1.0.0
-// Last Modified: 2026-09-27
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteCache.h"
 
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -172,6 +174,50 @@ int main() {
         Check(RemotePreviewLocalName("tab\there.stl") == "tab_here.stl",
               "control characters are replaced");
         Check(kRemotePreviewMaxBytes == 64ull * 1024 * 1024, "the preview size limit");
+    }
+
+    std::printf("\nPartial preview copies a sweep removes\n");
+    {
+        using std::chrono::hours;
+        using std::chrono::seconds;
+        auto partial = [](const char* path, uint64_t mb, hours age) {
+            RemotePreviewPartial p;
+            p.path = path;
+            p.size = mb * 1024 * 1024;
+            p.age = std::chrono::duration_cast<seconds>(age);
+            return p;
+        };
+        auto removes = [](const std::vector<std::string>& stale, const char* path) {
+            for (const std::string& s : stale)
+                if (s == path) return true;
+            return false;
+        };
+        Check(StaleRemotePreviewPartials({}).empty(), "nothing to sweep, nothing removed");
+
+        const std::vector<std::string> byAge = StaleRemotePreviewPartials(
+                {partial("fresh", 10, hours(2)), partial("old", 10, hours(30))});
+        Check(byAge.size() == 1 && removes(byAge, "old"),
+              "a partial copy older than a day goes, a younger one stays");
+
+        // 3 x 100 MB, all young: the newest two fit in 256 MB, the oldest not.
+        const std::vector<std::string> bySize = StaleRemotePreviewPartials(
+                {partial("oldest", 100, hours(5)), partial("newest", 100, hours(1)),
+                 partial("middle", 100, hours(3))});
+        Check(bySize.size() == 1 && removes(bySize, "oldest"),
+              "over 256 MB together, the oldest go first");
+
+        // A stamp in the future (a clock set back) counts as now.
+        const std::vector<std::string> future = StaleRemotePreviewPartials(
+                {partial("ahead", 1, hours(0))});
+        Check(future.empty(), "a partial copy written just now stays");
+
+        // One alone larger than the cap is not kept, however young.
+        const std::vector<std::string> huge = StaleRemotePreviewPartials(
+                {partial("huge", 300, hours(1))});
+        Check(huge.size() == 1, "one partial copy over the cap on its own goes");
+        Check(kRemotePreviewPartialMaxAge == hours(24) &&
+              kRemotePreviewPartialMaxBytes == 256ull * 1024 * 1024,
+              "a day, and 256 MB");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures,

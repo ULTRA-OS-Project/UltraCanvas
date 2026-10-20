@@ -6,6 +6,7 @@
 // test sees exactly the bytes that went over the wire - the whole file, or
 // one range of it (an upload session's chunk). POSIX only: it is a socket
 // loop on a thread.
+// Version: 1.1.0 - the async path streams the file too
 // Version: 1.0.0
 // Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
@@ -15,6 +16,9 @@
 #include <UltraNet/UltraNetHttp.h>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
@@ -247,5 +251,70 @@ TEST(body_file_that_cannot_be_read_sends_nothing) {
     REQUIRE(!r2.success);
     REQUIRE_EQ(server.Requests(), 0);
     std::filesystem::remove(file);
+}
+
+// The async path streams the file the same way, from the multi worker: the
+// request keeps the file open for as long as the transfer runs.
+TEST(body_file_streams_on_the_async_path_too) {
+    UltraNet_Initialize();
+    EchoServer server;
+    if (!server.Start()) SKIP("cannot listen on loopback");
+    const std::filesystem::path file = MakeFile();
+
+    UltraNetHttpRequest req;
+    req.url = server.Url();
+    req.method = UltraNetHttpMethod::Put;
+    req.bodyFilePath = UltraCanvas::PathToUtf8(file);
+    req.bodyFileOffset = 500;
+    req.bodyFileLength = 2000;
+
+    std::mutex m;
+    std::condition_variable cv;
+    bool done = false;
+    UltraNetResponse got;
+    const UltraNetHandle h = UltraNet_HttpRequestAsync(req, [&](const UltraNetResponse& r) {
+        std::lock_guard<std::mutex> lk(m);
+        got = r;
+        done = true;
+        cv.notify_all();
+    });
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait_for(lk, std::chrono::seconds(10), [&]() { return done; });
+    }
+    server.Stop();
+
+    REQUIRE(h != UltraNetInvalidHandle);
+    REQUIRE(done);
+    REQUIRE_EQ(got.statusCode, 200);
+    REQUIRE_EQ(got.headers.Get("X-Method"), std::string("PUT"));
+    REQUIRE_EQ(Text(got), Slice(file, 500, 2000));
+    std::filesystem::remove(file);
+}
+
+// A file the async path cannot open answers at once, with no handle and
+// nothing sent.
+TEST(body_file_the_async_path_cannot_open_sends_nothing) {
+    UltraNet_Initialize();
+    EchoServer server;
+    if (!server.Start()) SKIP("cannot listen on loopback");
+
+    UltraNetHttpRequest req;
+    req.url = server.Url();
+    req.method = UltraNetHttpMethod::Put;
+    req.bodyFilePath = UltraCanvas::PathToUtf8(
+            std::filesystem::temp_directory_path() / "ultranet_body_file_not_there.bin");
+    bool answered = false;
+    std::string error;
+    const UltraNetHandle h = UltraNet_HttpRequestAsync(req, [&](const UltraNetResponse& r) {
+        answered = true;
+        error = r.transferError;
+    });
+    server.Stop();
+
+    REQUIRE(h == UltraNetInvalidHandle);
+    REQUIRE(answered);
+    REQUIRE(!error.empty());
+    REQUIRE_EQ(server.Requests(), 0);
 }
 #endif // !_WIN32

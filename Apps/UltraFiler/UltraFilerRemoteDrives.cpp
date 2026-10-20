@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
 // Version: 1.12.0 - a preview copy called off keeps its ".part" and the next try
-//                  continues it (UltraCloud::SetThreadDownloadContinues)
+//                  continues it (UltraCloud::SetThreadDownloadContinues); the
+//                  cache's sweep keeps a partial copy a day, 256 MB of them at most
 // Version: 1.10.0 - PendingTransfers; Stop() calls a running transfer off; a
 //                   failed download leaves no half-written file; an upload
 //                   under a name of its own; CachedListing, Revalidate
@@ -784,28 +785,62 @@ void SweepPreviewCache(const std::string& directory) {
     const auto maxAge = std::chrono::duration_cast<fs::file_time_type::duration>(
             DiskCache::kDefaultMaxAge);
     std::error_code ec;
-    std::vector<fs::path> stale;
+    // Each copy's folder, whether a complete copy in it is still fresh, and
+    // the partial copies (".part") across all of them - kept a day, and 256 MB
+    // of them at most (StaleRemotePreviewPartials), for a fetch that was
+    // called off to continue.
+    struct Folder {
+        fs::path path;
+        bool freshCopy = false;
+        std::vector<fs::path> partials;
+    };
+    std::vector<Folder> folders;
+    std::vector<RemotePreviewPartial> partials;
     for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(directory), ec), end; it != end && !ec;
          it.increment(ec)) {
         std::error_code dec;
         if (!it->is_directory(dec) || dec) continue;
-        bool fresh = false;
+        Folder folder;
+        folder.path = it->path();
         for (fs::directory_iterator f(it->path(), dec), fend; f != fend && !dec;
              f.increment(dec)) {
             std::error_code fec;
+            const auto t = fs::last_write_time(f->path(), fec);
             if (f->path().extension() == ".part") {
-                fs::remove(f->path(), fec);
+                RemotePreviewPartial p;
+                p.path = PathToUtf8(f->path());
+                std::error_code sec;
+                const auto size = fs::file_size(f->path(), sec);
+                p.size = sec ? 0 : static_cast<uint64_t>(size);
+                p.age = fec || t > now
+                        ? std::chrono::seconds(0)
+                        : std::chrono::duration_cast<std::chrono::seconds>(now - t);
+                partials.push_back(std::move(p));
+                folder.partials.push_back(f->path());
                 continue;
             }
-            const auto t = fs::last_write_time(f->path(), fec);
             // A stamp in the future reads as fresh, as DiskCache::Sweep has it.
-            if (!fec && (t > now || now - t < maxAge)) fresh = true;
+            if (!fec && (t > now || now - t < maxAge)) folder.freshCopy = true;
         }
-        if (!fresh) stale.push_back(it->path());
+        folders.push_back(std::move(folder));
     }
-    for (const fs::path& d : stale) {
-        std::error_code rec;
-        fs::remove_all(d, rec);
+    std::unordered_set<std::string> stalePartials;
+    for (std::string& p : StaleRemotePreviewPartials(std::move(partials)))
+        stalePartials.insert(std::move(p));
+    for (const Folder& folder : folders) {
+        bool keptPartial = false;
+        for (const fs::path& p : folder.partials) {
+            if (stalePartials.count(PathToUtf8(p))) {
+                std::error_code rec;
+                fs::remove(p, rec);
+            } else {
+                keptPartial = true;
+            }
+        }
+        if (!folder.freshCopy && !keptPartial) {
+            std::error_code rec;
+            fs::remove_all(folder.path, rec);
+        }
     }
 }
 

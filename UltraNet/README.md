@@ -207,8 +207,8 @@ UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
 // An upload streamed from a file: the body is read as it is sent, never held
 // in memory whole. bodyFileOffset / bodyFileLength send one range of the
 // file - an upload session's chunk. A file that cannot be opened, or a range
-// past its end, fails before anything is sent. (The async path reads the
-// range into memory; only the synchronous one streams it.)
+// past its end, fails before anything is sent. The async path streams it
+// the same way, from the multi worker.
 UltraNetHttpRequest up;
 up.url = "https://dav.example.com/files/movie.mp4";
 up.method = UltraNetHttpMethod::Put;

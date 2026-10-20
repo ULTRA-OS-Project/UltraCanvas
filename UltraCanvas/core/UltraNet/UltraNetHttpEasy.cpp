@@ -387,15 +387,6 @@ void ApplyBodyFile(CURL* easy, BodyFileSource* source) {
     curl_easy_setopt(easy, CURLOPT_SEEKDATA, source);
 }
 
-bool ReadBodyFile(BodyFileSource& source, std::vector<uint8_t>& out) {
-    out.clear();
-    if (!source.file) return true;
-    if (!SeekFile(source.file, source.start)) return false;
-    out.resize(static_cast<std::size_t>(source.length));
-    const std::size_t got = out.empty() ? 0 : std::fread(out.data(), 1, out.size(), source.file);
-    return got == out.size();
-}
-
 UltraNetResult OpenOutputFile(const UltraNetHttpOptions& options, WriteSink& sink) {
     if (options.outputFilePath.empty()) return UltraNetResult::Ok();
     std::FILE* fp = UltraCanvas::OpenFileUtf8(options.outputFilePath,

@@ -8,7 +8,13 @@
   way to, when you come back to the file, or in the next run. On an FTP drive
   that is a REST at the partial size, on a cloud drive an HTTP Range; a server
   that cannot continue sends the whole file. A copy that failed (not called
-  off) is still thrown away. Uses UltraCloud's new
+  off) is still thrown away. The preview cache's sweep - once a run, before
+  the first copy is asked for - removed every partial copy; it now keeps
+  those younger than a day, newest first, as long as together they stay
+  under 256 MB, and removes the rest (`StaleRemotePreviewPartials`,
+  `FilerRemoteCacheTest`), so a large partial copy nobody comes back for
+  does not wait out the two weeks a finished copy is kept. Uses UltraCloud's
+  new
   `SetThreadDownloadContinues` (framework changelog:
   `download-continues-partial-copy`).
 #### 2026-10-19 *1.78.0*

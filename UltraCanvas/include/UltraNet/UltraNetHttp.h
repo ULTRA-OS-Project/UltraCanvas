@@ -128,8 +128,8 @@ struct UltraNetHttpRequest {
     // bodyFileOffset / bodyFileLength send one range of it (an upload
     // session's chunk); a length of -1 sends from the offset to the end. A
     // file that cannot be opened, or is shorter than the range, fails the
-    // request before anything is sent. The async path reads the range into
-    // memory instead; only the synchronous one streams it.
+    // request before anything is sent - on the async path, as an
+    // onComplete with transferError set and no handle. Both paths stream it.
     std::string bodyFilePath;
     int64_t bodyFileOffset = 0;
     int64_t bodyFileLength = -1;
