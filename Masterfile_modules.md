@@ -1327,7 +1327,16 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys.
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+(`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
+`ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
+`InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
+`AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
+`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
+engine and a model on demand and supervises the engine as a loopback
+process shared between applications; the `local` provider
+(`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
+chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 

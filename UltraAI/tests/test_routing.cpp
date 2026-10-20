@@ -145,7 +145,7 @@ void TestLiveFactories() {
     auto llm = CreateTextLLM(cfg);
     EXPECT_TRUE(llm != nullptr);
     const std::string routed = llm->GetCapabilities().providerId;
-    EXPECT_TRUE(routed == "llama-cpp" || routed == "qwen" || routed == "mock");
+    EXPECT_TRUE(routed == "local" || routed == "llama-cpp" || routed == "qwen" || routed == "mock");
 
     TextToSpeechConfig ttsCfg;
     auto tts = CreateTextToSpeech(ttsCfg);

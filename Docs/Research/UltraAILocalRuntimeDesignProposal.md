@@ -1,7 +1,7 @@
 # UltraAI local runtime — models on this computer, with nothing to install (Investigation and Proposal)
 
 **Date:** 2026-10-20
-**Status:** Proposal — nothing in §6–§9 is implemented yet
+**Status:** Phase 1 of §9 implemented on 2026-10-20 (`UltraAI/runtime/`, the `local` provider, the routing change; `Docs/Modules/UltraAI/LocalRuntime.md` documents what was built and where it departs from this text — the upstream macOS archives turned out to be built for macOS 13.3, not 26); phases 0 and 2–4 are still a proposal
 **Scope:** how UltraAI runs language, embedding, speech, image and
 text-to-speech models *on the user's own machine*, next to the endpoints it
 already has for Claude, ChatGPT and other hosted providers — with the
