@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.6.2 - a dim level colour (the Correlation scale's dark-green ++ in the dark theme) is lightened just enough to read, keeping its hue
 // Version: 1.6.1 - a level colour too dark for the dark theme (HighMediumLow's High) is drawn in the label colour, as competitors are
 // Version: 1.6.0 - the C shape: a cube drawn as stacked isometric slices, one per depth item
 // Version: 1.5.1 - the dark theme recolours the competitive block, direction arrows, ranks and roll-up bars; a competitor too dark to see is drawn in the label colour
@@ -3262,11 +3263,36 @@ namespace UltraCanvas {
     // rather than lose the mark. The alpha is kept, so dimming still works.
     // Distance in RGB, not in brightness: a saturated red or blue is as dark
     // as the grid yet plainly visible on it, and must keep its colour.
+    //
+    // A colour that does show, but dimly - the Correlation scale's dark-green
+    // "++" on the dark grid - is blended towards the label colour just far
+    // enough to read. It keeps its hue, so the green still says "positive",
+    // and it stays apart from a near-match that has been replaced outright:
+    // HighMediumLow's grey "Low" ring lightens a little, its near-black
+    // "High" becomes the label colour.
     Color UltraCanvasMatrixDiagram::ReadableOn(const Color& color, const Color& background) const {
-        const double dr = color.r - background.r, dg = color.g - background.g, db = color.b - background.b;
-        if (std::sqrt(dr * dr + dg * dg + db * db) >= 60.0) return color;
+        auto distance = [&background](const Color& c) {
+            const double dr = c.r - background.r, dg = c.g - background.g, db = c.b - background.b;
+            return std::sqrt(dr * dr + dg * dg + db * db);
+        };
+        const double kInvisible = 60.0;   // below this, no hue survives to keep
+        const double kReadable = 100.0;
+        const double d = distance(color);
+        if (d >= kReadable) return color;
+
         Color readable = style.labelColor;
         readable.a = color.a;
+        if (d < kInvisible) return readable;
+
+        auto mix = [](uint8_t a, uint8_t b, double t) {
+            return static_cast<uint8_t>(std::lround(a + (b - a) * t));
+        };
+        for (int step = 1; step <= 20; ++step) {
+            const double t = step / 20.0;
+            const Color blended(mix(color.r, readable.r, t), mix(color.g, readable.g, t),
+                                mix(color.b, readable.b, t), color.a);
+            if (distance(blended) >= kReadable) return blended;
+        }
         return readable;
     }
 
