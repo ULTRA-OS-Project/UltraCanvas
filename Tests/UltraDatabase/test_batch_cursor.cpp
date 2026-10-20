@@ -248,6 +248,10 @@ TEST(pg_exec_batch_reports_every_statement) {
     const std::string c = "batch-pg";
     if (!ultradb_test::OpenPgTestConnection(c)) return;
     REQUIRE(UltraDb_Exec(c, "SET client_min_messages = warning").success);
+    // The function first: a BEGIN ATOMIC body depends on the table it reads,
+    // and PostgreSQL refuses to drop the table while it stands.
+    const char* cleanup = "DROP FUNCTION IF EXISTS ultradb_batch_f(); DROP TABLE IF EXISTS ultradb_batch_t";
+    REQUIRE(UltraDb_Exec(c, cleanup).success);
     std::vector<UltraDbStatementResult> out;
     UltraDbResult r = UltraDb_ExecBatch(c,
         "DROP TABLE IF EXISTS ultradb_batch_t;"
@@ -268,7 +272,7 @@ TEST(pg_exec_batch_reports_every_statement) {
     REQUIRE_EQ(out[4].rows.Row(0)["n"].AsInt64(), (int64_t)2);
     REQUIRE_EQ(out[4].rows.ColumnInfo()[0].sourceTable, std::string("ultradb_batch_t"));
     REQUIRE(!out[5].result.success);
-    UltraDb_Exec(c, "DROP TABLE IF EXISTS ultradb_batch_t; DROP FUNCTION IF EXISTS ultradb_batch_f()");
+    REQUIRE(UltraDb_Exec(c, cleanup).success);
     UltraDb_CloseConnection(c);
 }
 
