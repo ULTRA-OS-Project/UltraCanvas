@@ -621,12 +621,6 @@ void UltraCanvasEnginePolarChart::RenderChartContent(IRenderContext* ctx,
             top.emplace_back(p.u, grow(p.base, p.v));
             base.emplace_back(p.u, p.base);
         }
-        // A closed series on a full circle joins its last point back to the
-        // first, one turn on.
-        if (series.closed && FullCircle() && top.size() > 2) {
-            top.emplace_back(top.front().u + 1.0, top.front().v);
-            base.emplace_back(base.front().u + 1.0, base.front().v);
-        }
 
         const bool spline = series.type == EnginePolarSeriesType::Spline ||
                             series.type == EnginePolarSeriesType::SplineArea;
@@ -635,6 +629,9 @@ void UltraCanvasEnginePolarChart::RenderChartContent(IRenderContext* ctx,
         // Straight segments are chords between the projected points; splines
         // are sampled in normalised space so they curve with the rings.
         options.samplesPerSegment = spline ? 24 : 1;
+        // A closed series on a full circle joins its last point back to the
+        // first, one turn on (the engine's closed loops).
+        options.closed = series.closed && FullCircle();
 
         if (IsArea(series)) {
             ctx->SetFillPaint(color.WithAlpha(static_cast<uint8_t>(

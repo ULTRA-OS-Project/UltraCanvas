@@ -420,6 +420,16 @@ private:
     void RenderPolarRimAxis(IRenderContext* ctx, size_t axisIndex);
     // Where a rim label goes for normalised domain position u.
     Rect2Dd PolarRimLabelBox(double u, const Size2Di& size) const;
+    // A domain axis's ticks on the rim, deduplicated (0 and 360 degrees are
+    // one spoke) and decluttered: shared by the rim pass and the label plan,
+    // which treats the kept labels as obstacles.
+    struct PolarRimTick {
+        double u = 0.0;
+        std::string label;
+        Rect2Dd box;
+        bool labelled = false;
+    };
+    std::vector<PolarRimTick> PolarRimTicks(IRenderContext* ctx, size_t axisIndex) const;
     std::vector<ChartLimiter> limiters;
     std::vector<ChartHighlight> highlights;
     std::vector<ChartSpanAnnotation> spanAnnotations;

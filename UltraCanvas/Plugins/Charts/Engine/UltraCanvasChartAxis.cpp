@@ -1,5 +1,8 @@
 // Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
 // Unified axis model implementation
+// Version: 1.5.0 - rangePadding
+// Version: 1.4.0 - one nice-number rounding for auto ranges and tick steps;
+//   the minus sign leads the unit prefix
 // Version: 1.3.0 - absoluteLabels
 // Version: 1.2.0 - the Sqrt scale
 // Version: 1.1.0 - sub-bands, symmetric ranges, cyclic category axes
@@ -185,13 +188,22 @@ void ChartAxis::Finalize() {
         lo -= magnitude * 0.5;
         hi += magnitude * 0.5;
     } else if (autoRange && (scale == ChartScale::Linear || scale == ChartScale::Sqrt)) {
+        if (rangePadding > 0.0) {
+            const double pad = (hi - lo) * rangePadding;
+            const double paddedLo = lo - pad, paddedHi = hi + pad;
+            lo = (lo >= 0.0 && paddedLo < 0.0) ? 0.0 : paddedLo;
+            hi = (hi <= 0.0 && paddedHi > 0.0) ? 0.0 : paddedHi;
+        }
         if (symmetric) {
             const double m = std::max(std::abs(lo), std::abs(hi));
             lo = -m;
             hi = m;
         }
         // Round an auto range outward to nice numbers so tick labels read well.
-        const double step = NiceNumber(NiceNumber(hi - lo, false) / 5.0, true);
+        // One rounding, of the step itself: rounding the span first as well
+        // compounded the two, so 0..1072 became 0..1500 (a third of the plot
+        // empty) instead of 0..1200.
+        const double step = NiceNumber((hi - lo) / 5.0, true);
         lo = std::floor(lo / step) * step;
         hi = std::ceil(hi / step) * step;
     }
@@ -344,8 +356,9 @@ std::vector<ChartTick> ChartAxis::GenerateTicks(int targetCount) const {
     // across the effective range.
     const double lo = (scale == ChartScale::Percentile) ? 0.0 : effectiveMin;
     const double hi = (scale == ChartScale::Percentile) ? 1.0 : effectiveMax;
-    const double span = NiceNumber(hi - lo, false);
-    const double step = NiceNumber(span / (targetCount - 1), true);
+    // The step is rounded once, from the real span: rounding the span first
+    // (1072 -> 2000) left three ticks on a range that holds six.
+    const double step = NiceNumber((hi - lo) / (targetCount - 1), true);
     if (step <= 0.0 || !IsFinite(step)) return ticks;
 
     const double start = std::ceil(lo / step) * step;
@@ -406,6 +419,10 @@ std::string ChartAxis::FormatValue(double value) const {
         if (text.find_first_not_of("-0.") == std::string::npos && !text.empty()) {
             if (text[0] == '-') text.erase(text.begin());
         }
+    }
+    // The sign leads the unit: -$25K, not $-25K.
+    if (!text.empty() && text[0] == '-' && !unitPrefix.empty()) {
+        return "-" + unitPrefix + text.substr(1) + unitSuffix;
     }
     return unitPrefix + text + unitSuffix;
 }

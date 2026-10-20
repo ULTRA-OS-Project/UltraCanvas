@@ -24,6 +24,7 @@
 // marker shapes scatter and line charts put on their points. Lines are sampled
 // through the projection, so a line chart under Polar is a polar line chart.
 //
+// Version: 1.3.0 - closed line loops (ChartLineOptions::closed)
 // Version: 1.2.0
 // Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
@@ -157,6 +158,11 @@ struct ChartLineOptions {
     // Screen samples per joined pair of points. Straight segments are sampled
     // too, so they follow the rings under Polar.
     int samplesPerSegment = 16;
+    // Join the last point back to the first one domain period on (u + 1),
+    // which a full-circle polar projection maps onto the first point: a
+    // polar series over categories or 0..360 degrees becomes a closed loop.
+    // Only an unbroken series (one run, three points or more) closes.
+    bool closed = false;
 };
 
 // One unbroken run of a line series.

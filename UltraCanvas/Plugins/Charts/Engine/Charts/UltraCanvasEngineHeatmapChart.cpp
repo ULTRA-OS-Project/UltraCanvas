@@ -329,6 +329,13 @@ std::string UltraCanvasEngineHeatmapChart::FormatCell(double v) const {
     if (std::isnan(v)) return "NaN";
     if (valueFormatter) return valueFormatter(v);
     std::ostringstream out;
+    if (std::abs(v) < 1e-12) v = 0.0;        // no "-0.000" from a round trip
+    if (v != 0.0 && std::abs(v) < 0.01) {
+        // A log key reaches far below what fixed decimals can show: three
+        // significant digits (2.59e-06), as the legacy colour bar printed.
+        out << std::setprecision(3) << v;
+        return out.str();
+    }
     if (std::abs(v - std::round(v)) < 1e-9 && std::abs(v) < 1e7) {
         out << std::fixed << std::setprecision(0) << v;
     } else {

@@ -13,6 +13,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "CSSLayout/CSSLayout.h"
+#include <algorithm>
 
 namespace UltraCanvas {
 namespace EngineComparison {
@@ -104,8 +105,11 @@ std::shared_ptr<UltraCanvasContainer> MakeComparisonTab(
 }
 
 std::shared_ptr<UltraCanvasContainer> MakeControlStrip(const std::string& idPrefix) {
-    auto strip = std::make_shared<UltraCanvasContainer>(idPrefix + "Controls", 0, 30);
-    strip->layout.SetFlexRow().SetFlexGap(10)
+    // Wraps onto a second row when the window is narrower than the
+    // controls, instead of clipping the last ones.
+    auto strip = std::make_shared<UltraCanvasContainer>(idPrefix + "Controls", 0, 58);
+    strip->layout.SetFlexRow().SetFlexGap(10, 4)
+                 .SetFlexWrap(CSSLayout::FlexWrap::Wrap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     strip->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return strip;
@@ -118,7 +122,10 @@ void AddToStrip(UltraCanvasContainer& strip, std::shared_ptr<UltraCanvasUIElemen
 
 void AddStripLabel(UltraCanvasContainer& strip, const std::string& id, const std::string& text,
                    int width) {
-    auto label = std::make_shared<UltraCanvasLabel>(id, width, 20, text);
+    // The callers' widths ran short of the text ("Projecti..."); never give
+    // a label less than its text needs at 11 px (about 8 px a character).
+    const int needed = static_cast<int>(text.size()) * 8 + 6;
+    auto label = std::make_shared<UltraCanvasLabel>(id, std::max(width, needed), 20, text);
     label->SetFontSize(11);
     AddToStrip(strip, label);
 }

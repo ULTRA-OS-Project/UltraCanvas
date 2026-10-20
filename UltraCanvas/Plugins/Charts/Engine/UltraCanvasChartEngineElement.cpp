@@ -1,7 +1,19 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
-// Version: 1.3.0
+// Version: 1.3.2
 // Last Modified: 2026-10-20
+// V1.3.2: Fixes the comparison page showed.
+//   - Rim labels are obstacles in the label plan: a radial bar's peak label
+//     overprinted the series name on the rim.
+//   - An edge axis title sits outside the axis's tick labels, centred on its
+//     band - rotated along a left/right axis. It was drawn past the low end,
+//     so a scatter plot's y title landed on the x axis's first label.
+//   - The labels at the ends of a bottom/top axis are centred on their ticks
+//     and spilled past the element's edge (a financial chart's last date was
+//     cut in half). The measure pass now reserves their overhang on the
+//     left/right, and the labels are clamped inside the element.
+//   - Under Polar the plot-area fill follows the circle (or the sector, or
+//     the polygon web) instead of painting a rectangle behind a round chart.
 // V1.3.1: Edge axes sharing a side stack outward when their bands overlap
 //   (the Mekko port's column names under its cumulative-percent ticks), so
 //   they no longer overprint; disjoint bands (price above volume) still share
@@ -558,6 +570,24 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
                                       vertical ? static_cast<double>(size.width)
                                                : static_cast<double>(size.height));
         }
+        // A bottom/top axis centres its labels on the ticks, so the ones at
+        // the ends overhang the plot by up to half their width: reserve that
+        // on the left/right, or the last date label is cut off at the
+        // element's edge. Plot width is not known yet; the element's width
+        // stands in, which over-reserves slightly rather than clipping.
+        if (axis.side == ChartAxisSide::Bottom || axis.side == ChartAxisSide::Top) {
+            const double span = std::max(1.0, static_cast<double>(GetWidth()));
+            double overhangLow = 0.0, overhangHigh = 0.0;
+            for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
+                const double half = ctx->GetTextLineDimensions(tick.label).width * 0.5;
+                overhangLow = std::max(overhangLow, half - tick.normalized * span);
+                overhangHigh = std::max(overhangHigh, half - (1.0 - tick.normalized) * span);
+            }
+            // The domain may run either way on screen; reserve both ends.
+            const double overhang = std::max(overhangLow, overhangHigh) + 2.0;
+            request.Reserve(ChartAxisEdge::Left, overhang);
+            request.Reserve(ChartAxisEdge::Right, overhang);
+        }
         const double titleNeed = axis.title.empty()
                                      ? 0.0 : ctx->GetTextLineHeight(axis.title) + 4.0;
         const double need = tickLength + tickLabelGap + maxLabelExtent + 6.0 + titleNeed;
@@ -728,6 +758,18 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         Point2Dd a, b;
         if (span.label.empty() || !MapSpan(span, a, b)) continue;
         broker.AddObstacleRect(SpanCaptionBox(ctx, span, a, b));
+    }
+
+    // Under Polar the rim labels sit inside the label bounds' reach, so the
+    // solved labels must steer around them, as they do around the legend.
+    if (projectionKind == ChartProjectionKind::Polar) {
+        for (size_t i = 0; i < engineAxes.Count(); ++i) {
+            const ChartAxis& axis = engineAxes.At(i);
+            if (!axis.visible || axis.inPlot || !IsDomainAxis(axis)) continue;
+            for (const PolarRimTick& tick : PolarRimTicks(ctx, i)) {
+                if (tick.labelled) broker.AddObstacleRect(tick.box);
+            }
+        }
     }
 
     CollectChartLabels(ctx, broker);
@@ -906,7 +948,18 @@ void UltraCanvasChartEngineElement::RenderEngineBackground(IRenderContext* ctx) 
     if (!showBackground) return;
     ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
     ctx->SetFillPaint(plotAreaColor);
-    ctx->FillRectangle(frame.plotArea);
+    if (projectionKind != ChartProjectionKind::Polar) {
+        ctx->FillRectangle(frame.plotArea);
+        return;
+    }
+    // A round chart gets a round plot area: the disk, the polygon web, or the
+    // sector of a partial sweep (closed through the inner radius).
+    std::vector<Point2Dd> area = PolarRing(1.0);
+    if (!PolarFullCircle()) {
+        const std::vector<Point2Dd> inner = PolarRing(0.0);
+        area.insert(area.end(), inner.rbegin(), inner.rend());
+    }
+    if (area.size() >= 3) ctx->FillLinePath(area);
 }
 
 Point2Dd UltraCanvasChartEngineElement::MapHighlightPoint(
@@ -1287,7 +1340,10 @@ void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, siz
             const double y = (tickDy < 0.0)
                 ? p.y + tickDy - tickLabelGap - size.height
                 : p.y + tickDy + tickLabelGap;
-            labelPos = Point2Dd(p.x - size.width * 0.5, y);
+            // Centred on the tick, but never past the element's edge.
+            const double x = std::clamp(p.x - size.width * 0.5, 0.0,
+                                        std::max(0.0, static_cast<double>(GetWidth() - size.width)));
+            labelPos = Point2Dd(x, y);
         }
         ctx->DrawText(tick.label, labelPos);
     }
@@ -1309,22 +1365,50 @@ void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, siz
                                          highEnd.y - highSize.height - 3.0));
     }
 
-    // Axis title below (in-plot / bottom) or rotated placement is left to
-    // the label plan for charts that promote titles to solved labels; the
-    // engine default puts the title past the low end.
+    // Axis titles. An in-plot axis keeps its title past the low end (the
+    // parallel coordinate headers). An edge axis puts it outside its tick
+    // labels, centred on its band: below a bottom axis, above a top one, and
+    // rotated along a left or right axis - where the measure pass reserved
+    // it. Drawn past the low end, a left axis title landed on the first
+    // label of the bottom axis.
     if (!axis.title.empty()) {
         ctx->SetTextPaint(axisLabelColor);
         const Size2Di size = ctx->GetTextLineDimensions(axis.title);
-        const double extra = endpointsDrawn ? size.height + 6.0 : 6.0;
-        if (alongY) {
-            ctx->DrawText(axis.title,
-                          Point2Dd(lowEnd.x - size.width * 0.5,
-                                   lowEnd.y + extra + tickLength));
+        if (axis.inPlot) {
+            const double extra = endpointsDrawn ? size.height + 6.0 : 6.0;
+            if (alongY) {
+                ctx->DrawText(axis.title,
+                              Point2Dd(lowEnd.x - size.width * 0.5,
+                                       lowEnd.y + extra + tickLength));
+            } else {
+                ctx->DrawText(axis.title,
+                              Point2Dd((lowEnd.x + highEnd.x - size.width) * 0.5,
+                                       lowEnd.y + tickLength + tickLabelGap +
+                                           size.height + extra));
+            }
         } else {
-            ctx->DrawText(axis.title,
-                          Point2Dd((lowEnd.x + highEnd.x - size.width) * 0.5,
-                                   lowEnd.y + tickLength + tickLabelGap +
-                                       size.height + extra));
+            double labelExtent = 0.0;
+            for (const ChartTick& tick : ticks) {
+                const Size2Di labelSize = ctx->GetTextLineDimensions(tick.label);
+                labelExtent = std::max(labelExtent, static_cast<double>(
+                                           alongY ? labelSize.width : labelSize.height));
+            }
+            const Point2Dd mid = along((axis.bandStart + axis.bandEnd) * 0.5);
+            const double reach = tickLength + tickLabelGap + labelExtent + 4.0;
+            if (alongY) {
+                const bool right = (axis.side == ChartAxisSide::Right);
+                const double cx = right ? mid.x + reach + size.height * 0.5
+                                        : mid.x - reach - size.height * 0.5;
+                ctx->PushState();
+                ctx->Translate(cx, mid.y);
+                ctx->Rotate((right ? 90.0 : -90.0) * M_PI / 180.0);
+                ctx->DrawText(axis.title, Point2Dd(-size.width * 0.5, -size.height * 0.5));
+                ctx->PopState();
+            } else {
+                const bool top = (axis.side == ChartAxisSide::Top);
+                const double y = top ? mid.y - reach - size.height : mid.y + reach;
+                ctx->DrawText(axis.title, Point2Dd(mid.x - size.width * 0.5, y));
+            }
         }
     }
 }
@@ -1345,8 +1429,42 @@ Rect2Dd UltraCanvasChartEngineElement::PolarRimLabelBox(double u, const Size2Di&
                    size.width, size.height);
 }
 
+std::vector<UltraCanvasChartEngineElement::PolarRimTick>
+UltraCanvasChartEngineElement::PolarRimTicks(IRenderContext* ctx, size_t axisIndex) const {
+    std::vector<PolarRimTick> rimTicks;
+    if (axisIndex >= engineAxes.Count()) return rimTicks;
+    const ChartAxis& axis = engineAxes.At(axisIndex);
+    ctx->SetFontSize(axisFontSize);
+    std::vector<Rect2Dd> placed;
+    for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
+        double u = tick.normalized;
+        if (PolarFullCircle()) u -= std::floor(u);
+        if (u < -1e-6 || u > 1.0 + 1e-6) continue;
+        bool duplicate = false;
+        for (const PolarRimTick& t : rimTicks) duplicate = duplicate || std::abs(t.u - u) < 1e-6;
+        if (duplicate) continue;      // 0 and 360 degrees are one spoke
+
+        PolarRimTick rimTick;
+        rimTick.u = u;
+        rimTick.label = tick.label;
+        rimTick.box = PolarRimLabelBox(u, ctx->GetTextLineDimensions(tick.label));
+        // Declutter around the circle: a label that would overprint one
+        // already placed is dropped (the rim has no ends to protect).
+        rimTick.labelled = true;
+        for (const Rect2Dd& other : placed) {
+            if (rimTick.box.x < other.Right() + 2.0 && other.x < rimTick.box.Right() + 2.0 &&
+                rimTick.box.y < other.Bottom() + 1.0 && other.y < rimTick.box.Bottom() + 1.0) {
+                rimTick.labelled = false;
+                break;
+            }
+        }
+        if (rimTick.labelled) placed.push_back(rimTick.box);
+        rimTicks.push_back(std::move(rimTick));
+    }
+    return rimTicks;
+}
+
 void UltraCanvasChartEngineElement::RenderPolarRimAxis(IRenderContext* ctx, size_t i) {
-    const ChartAxis& axis = engineAxes.At(i);
     const auto* polar = dynamic_cast<const ChartPolarProjection*>(engineProjection.get());
     if (!polar) return;
     const Point2Dd c = polar->Center();
@@ -1357,41 +1475,16 @@ void UltraCanvasChartEngineElement::RenderPolarRimAxis(IRenderContext* ctx, size
     const std::vector<Point2Dd> rim = PolarRing(1.0);
     if (rim.size() >= 2) ctx->DrawLinePath(rim, PolarFullCircle());
 
-    std::vector<Rect2Dd> placed;
-    std::vector<double> drawnU;
-    for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
-        double u = tick.normalized;
-        if (PolarFullCircle()) u -= std::floor(u);
-        if (u < -1e-6 || u > 1.0 + 1e-6) continue;
-        bool duplicate = false;
-        for (double d : drawnU) duplicate = duplicate || std::abs(d - u) < 1e-6;
-        if (duplicate) continue;      // 0 and 360 degrees are one spoke
-        drawnU.push_back(u);
-
-        const Point2Dd p = engineProjection->ToScreen(ChartNormalizedPoint(u, 1.0));
+    for (const PolarRimTick& tick : PolarRimTicks(ctx, i)) {
+        const Point2Dd p = engineProjection->ToScreen(ChartNormalizedPoint(tick.u, 1.0));
         double dx = p.x - c.x, dy = p.y - c.y;
         const double len = std::sqrt(dx * dx + dy * dy);
         if (len > 1e-9) { dx /= len; dy /= len; }
         ctx->SetStrokePaint(axisTickColor);
         ctx->DrawLine(p, Point2Dd(p.x + dx * tickLength, p.y + dy * tickLength));
-
-        // Declutter around the circle: a label that would overprint one
-        // already placed is dropped (ticks arrive in angular order, ends
-        // first in priority is not needed - the rim has no ends to protect).
-        const Size2Di size = ctx->GetTextLineDimensions(tick.label);
-        const Rect2Dd box = PolarRimLabelBox(u, size);
-        bool overlaps = false;
-        for (const Rect2Dd& other : placed) {
-            if (box.x < other.Right() + 2.0 && other.x < box.Right() + 2.0 &&
-                box.y < other.Bottom() + 1.0 && other.y < box.Bottom() + 1.0) {
-                overlaps = true;
-                break;
-            }
-        }
-        if (overlaps) continue;
-        placed.push_back(box);
+        if (!tick.labelled) continue;
         ctx->SetTextPaint(axisLabelColor);
-        ctx->DrawText(tick.label, box.TopLeft());
+        ctx->DrawText(tick.label, tick.box.TopLeft());
     }
 }
 

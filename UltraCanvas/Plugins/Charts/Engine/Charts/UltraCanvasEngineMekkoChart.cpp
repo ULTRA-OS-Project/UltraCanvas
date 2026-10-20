@@ -401,6 +401,9 @@ void UltraCanvasEngineMekkoChart::CollectChartLabels(IRenderContext* ctx, ChartL
         r.preferredSide = GetProjectionKind() == ChartProjectionKind::Horizontal ? LabelSide::Right
                                                                                  : LabelSide::Top;
         r.allowSuppress = true;
+        // A header names the column under it: pinned, so a crowded one is
+        // dropped rather than slid onto its neighbour's column.
+        r.pinned = true;
         r.priority = static_cast<int>(span.total / std::max(grandTotal, 1e-12) * 10.0);
         broker.Add(r);
     }

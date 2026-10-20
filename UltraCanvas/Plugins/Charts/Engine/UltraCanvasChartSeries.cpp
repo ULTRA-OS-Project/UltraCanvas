@@ -1,5 +1,6 @@
 // Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
 // Shared series geometry for the bar and line chart families.
+// Version: 1.3.0 - closed line loops
 // Version: 1.2.0 - line and area series, stacking, marker polygons
 // Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
@@ -532,10 +533,15 @@ std::vector<ChartLineRun> BuildLineRuns(const IChartProjection& projection,
         ChartLineRun run;
         run.indices = indices;
         std::vector<ChartNormalizedPoint> knots;
-        knots.reserve(indices.size());
+        knots.reserve(indices.size() + 1);
         for (size_t i : indices) {
             knots.push_back(points[i]);
             run.knots.push_back(projection.ToScreen(points[i]));
+        }
+        // The seam: one period on, so the last segment travels forward round
+        // the circle to the first point instead of back across it.
+        if (options.closed && indices.size() == points.size() && knots.size() >= 3) {
+            knots.emplace_back(knots.front().u + 1.0, knots.front().v);
         }
         run.path = SampleRun(knots, options);
         if (knots.size() >= 2) {
@@ -564,6 +570,10 @@ std::vector<std::vector<Point2Dd>> BuildAreaOutlines(const IChartProjection& pro
         for (size_t i : indices) {
             topKnots.push_back(top[i]);
             baseKnots.push_back(base[i]);
+        }
+        if (options.closed && indices.size() == count && topKnots.size() >= 3) {
+            topKnots.emplace_back(topKnots.front().u + 1.0, topKnots.front().v);
+            baseKnots.emplace_back(baseKnots.front().u + 1.0, baseKnots.front().v);
         }
         const std::vector<ChartNormalizedPoint> topPath = SampleRun(topKnots, options);
         const std::vector<ChartNormalizedPoint> basePath = SampleRun(baseKnots, options);

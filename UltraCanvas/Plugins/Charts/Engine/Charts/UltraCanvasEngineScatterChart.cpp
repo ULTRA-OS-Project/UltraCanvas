@@ -469,6 +469,12 @@ void UltraCanvasEngineScatterChart::DescribeAxes(ChartAxisSet& axes) {
             if (yFormat.categories.empty() && !yFormat.explicitRange) y.Observe(p.y);
         }
     }
+    // Outliers keep their whole marker inside the plot; bubbles need room for
+    // the largest radius (a fraction of the plot, as the plot size is not
+    // known while the axes are described).
+    const double padding = HasSizeChannel() ? 0.12 : 0.05;
+    x.rangePadding = padding;
+    y.rangePadding = padding;
     axes.Add(y);    // 0
     axes.Add(x);    // 1
 
@@ -565,11 +571,16 @@ void UltraCanvasEngineScatterChart::CollectChartLabels(IRenderContext* ctx,
     const IChartProjection& projection = *Frame().projection;
     ctx->SetFontSize(axisFontSize);
 
-    // Every mark is an obstacle, so labels never cover another point.
+    // Every mark is an obstacle, so labels never cover another point. A mark
+    // that carries its own label is already a shape in the solver (its
+    // anchorRadius); boxing it as an obstacle as well pushed its label away
+    // from its own corners and off to wherever the cluster had room.
+    const bool labelled = labelMode != EngineScatterLabelMode::Hidden;
     for (size_t g = 0; g < groups.size(); ++g) {
         if (!Visible(g)) continue;
         for (const EngineScatterPoint& point : groups[g].points) {
             if (!Finite(point.x) || !Finite(point.y)) continue;
+            if (labelled && !point.label.empty()) continue;
             const Point2Dd p = projection.ToScreen(
                 ChartNormalizedPoint(x.Normalize(point.x), y.Normalize(point.y)));
             const double r = RadiusOf(point);
@@ -594,8 +605,9 @@ void UltraCanvasEngineScatterChart::CollectChartLabels(IRenderContext* ctx,
                     ChartNormalizedPoint(x.Normalize(point.x), y.Normalize(point.y)));
                 request.anchorRadius = r + 1.0;
                 request.textSize = Size2Dd(size.width, size.height);
-                request.preferredSide = LabelSide::Bottom;
+                request.preferredSide = LabelSide::Auto;
                 request.allowSuppress = true;
+                request.wantLeaderLine = true;   // a name pushed off its bubble points back to it
                 request.priority = static_cast<int>(r);      // big marks keep their names
                 broker.Add(request);
             }

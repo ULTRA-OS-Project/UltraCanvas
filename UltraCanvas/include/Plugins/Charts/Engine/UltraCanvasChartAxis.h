@@ -7,6 +7,9 @@
 // and leaves screen geometry to the projection, so it can be unit tested
 // without a window.
 //
+// Version: 1.5.0 - rangePadding
+// Version: 1.4.0 - one nice-number rounding for auto ranges and tick steps;
+//   the minus sign leads the unit prefix (-$25K)
 // Version: 1.3.0 - absoluteLabels (magnitudes on both sides of a diverging axis)
 // Version: 1.2.0 - the Sqrt scale (area-true polar radii)
 // Version: 1.1.0 - axis roles (polar furniture), sub-bands (stacked panes),
@@ -98,6 +101,12 @@ public:
     // largest magnitude observed - diverging bars, population pyramids and
     // tornado charts keep zero in the middle whichever side is longer.
     bool symmetric = false;
+    // Auto ranges only: widen the observed extent by this fraction of its
+    // span on each side before the nice rounding, so marks at the extremes
+    // (a scatter's outliers, a line's peak, a bubble's radius) are not cut by
+    // the plot edge. Never pads across zero: data that starts at zero keeps
+    // its zero baseline.
+    double rangePadding = 0.0;
     // Format magnitudes: -30 reads "30". A population pyramid or a tornado
     // chart plots one side negative only to put it left of zero; its tick,
     // value and tooltip labels should still read as amounts. Applies before

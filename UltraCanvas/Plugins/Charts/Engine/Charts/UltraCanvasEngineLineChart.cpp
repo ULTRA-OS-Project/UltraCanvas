@@ -388,6 +388,9 @@ void UltraCanvasEngineLineChart::DescribeAxes(ChartAxisSet& axes) {
     } else {
         for (const std::vector<double>& values : visible) value.Observe(values);
         if (Filled() || includeZero || polar) value.Observe(0.0);
+        // Keeps the extreme points and their markers clear of the plot edge;
+        // a range that starts at zero keeps its baseline.
+        value.rangePadding = 0.05;
     }
     axes.Add(value);
 
@@ -427,6 +430,10 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
     const double zero = std::clamp(value.Normalize(0.0), 0.0, 1.0);
     const int64_t hovered = HoveredRegionId();
     const size_t hoveredSeries = hovered >= 0 ? static_cast<size_t>(hovered / 1000000) : SIZE_MAX;
+    // Around a full circle of categories the series is a loop: December
+    // joins back to January.
+    ChartLineOptions shapeOptions = lineOptions;
+    shapeOptions.closed = !orthogonal && domain.scale == ChartScale::Category && domain.cyclic;
 
     std::vector<std::vector<ChartNormalizedPoint>> tops(series.size());
     for (size_t s = 0; s < series.size(); ++s) {
@@ -452,7 +459,7 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
             const float alpha = (hoveredSeries == s) ? std::min(1.0f, areaOpacity + 0.2f)
                                                      : areaOpacity;
             for (const std::vector<Point2Dd>& outline :
-                 BuildAreaOutlines(projection, tops[s], base, lineOptions)) {
+                 BuildAreaOutlines(projection, tops[s], base, shapeOptions)) {
                 if (outline.size() < 3) continue;
                 if (gradientFill && orthogonal) {
                     const Point2Dd from = projection.ToScreen(ChartNormalizedPoint(0.5, 1.0));
@@ -476,7 +483,7 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
     ctx->SetLineCap(LineCap::Round);
     for (size_t s = 0; s < series.size(); ++s) {
         if (tops[s].empty()) continue;
-        runs[s] = BuildLineRuns(projection, tops[s], lineOptions);
+        runs[s] = BuildLineRuns(projection, tops[s], shapeOptions);
         if (Filled() && !showEdgeLines) continue;
         const Color color = SeriesColor(s);
         float width = series[s].lineWidth > 0.0f ? series[s].lineWidth : lineWidth;

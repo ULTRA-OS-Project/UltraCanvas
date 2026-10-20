@@ -1300,6 +1300,16 @@ static void TestLineRuns() {
     }
     CHECK(held && Near(runs.front().path.back().v, 0.8), "StepAfter holds the value until the next point");
 
+    {
+        ChartLineOptions loop;
+        loop.samplesPerSegment = 2;
+        loop.closed = true;
+        const auto closedRuns = BuildLineRuns(projection, {{0.0, 0.2}, {0.25, 0.5}, {0.5, 0.8}}, loop);
+        CHECK(closedRuns.size() == 1 && closedRuns[0].path.size() == 7 &&
+              Near(closedRuns[0].path.back().u, 1.0) && Near(closedRuns[0].path.back().v, 0.2),
+              "a closed line returns to its first point one period on");
+        CHECK(closedRuns[0].knots.size() == 3, "closing adds no marker");
+    }
     runs = BuildLineRuns(projection, {{0.5, 0.5}}, options);
     CHECK(runs.size() == 1 && runs[0].points.empty() && runs[0].knots.size() == 1,
           "a lone point keeps its marker but draws no stroke");
@@ -1391,6 +1401,69 @@ static void TestAnalysisHelpers() {
     CHECK(ha[1].high >= ha[1].open && ha[1].low <= ha[1].close, "the HA range covers its body");
 }
 
+static void TestNiceRangeAndSignedPrefix() {
+    std::printf("Nice auto ranges and signed unit prefixes\n");
+    ChartAxis axis("value");
+    axis.Observe({0.0, 1072.0});
+    axis.Finalize();
+    CHECK(Near(axis.Max(), 1200.0), "0..1072 rounds to 0..1200, not 0..1500");
+    const std::vector<ChartTick> ticks = axis.GenerateTicks(6);
+    CHECK(ticks.size() >= 5, "a range that holds six ticks gets at least five");
+
+    ChartAxis money("money");
+    money.SetRange(-50.0, 50.0);
+    money.unitPrefix = "$";
+    money.decimals = 0;
+    money.Finalize();
+    CHECK(money.FormatValue(-25.0) == "-$25", "the minus sign leads the prefix");
+    CHECK(money.FormatValue(25.0) == "$25", "positives are unchanged");
+
+    ChartAxis padded("padded");
+    padded.rangePadding = 0.1;
+    padded.Observe({45.0, 78.0});
+    padded.Finalize();
+    CHECK(padded.Min() < 45.0 && padded.Max() > 78.0, "range padding keeps the extremes off the edges");
+    ChartAxis fromZero("fromZero");
+    fromZero.rangePadding = 0.1;
+    fromZero.Observe({0.0, 78.0});
+    fromZero.Finalize();
+    CHECK(Near(fromZero.Min(), 0.0), "padding never crosses a zero baseline");
+}
+
+static void TestPinnedLabels() {
+    std::printf("Pinned labels (exact placement, dropped rather than slid)\n");
+    LabelPlacementOptions options;
+    ChartLabelBroker broker(ChartLabelPolicy::Default(), options);
+
+    auto header = [](double x, int priority) {
+        ChartLabelRequest r;
+        r.text = "20%";
+        r.anchor = Point2Dd(x, 100.0);
+        r.textSize = Size2Dd(30.0, 12.0);
+        r.preferredSide = LabelSide::Top;
+        r.pinned = true;
+        r.allowSuppress = true;
+        r.priority = priority;
+        return r;
+    };
+    broker.Add(header(100.0, 5));
+    broker.Add(header(110.0, 1));    // overlaps the first: must drop, not slide
+    broker.Add(header(200.0, 1));    // clear of both
+    const ChartLabelPlan plan = broker.Solve(1);
+
+    CHECK(plan.labels.size() == 3, "every pinned request is in the plan");
+    bool exact = false, dropped = false, kept = false;
+    for (const PlacedChartLabel& l : plan.labels) {
+        const double cx = l.bounds.x + l.bounds.width * 0.5;
+        if (Near(cx, 100.0) && !l.suppressed && Near(l.bounds.Bottom(), 96.0)) exact = true;
+        if (Near(cx, 110.0) && l.suppressed) dropped = true;
+        if (Near(cx, 200.0) && !l.suppressed) kept = true;
+    }
+    CHECK(exact, "the winner sits exactly above its anchor");
+    CHECK(dropped, "a colliding pinned label is suppressed in place, not moved");
+    CHECK(kept, "a clear pinned label is kept");
+}
+
 // =============================================================================
 
 int main() {
@@ -1435,6 +1508,8 @@ int main() {
     TestAreaOutlinesAndStacking();
     TestMarkerPolygons();
     TestAnalysisHelpers();
+    TestNiceRangeAndSignedPrefix();
+    TestPinnedLabels();
     TestSqrtScale();
 
     std::printf("\n%s (%d failure%s)\n",
