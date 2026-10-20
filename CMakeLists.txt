@@ -645,6 +645,16 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRADBADMIN =====
+# Browse and query the databases UltraDatabase reaches - SQLite files and
+# PostgreSQL servers (Docs/Research/UltraDBAdminDesignProposal.md).
+option(BUILD_ULTRADBADMIN "Build the UltraDBAdmin application" ON)
+if(BUILD_ULTRADBADMIN)
+    message(STATUS "")
+    message(STATUS "── Building UltraDBAdmin ──")
+    add_subdirectory(Apps/UltraDBAdmin)
+endif()
+
 # ===== ULTRAWEB =====
 # The ULTRA OS browser. This version runs WebAssembly apps that build their UI
 # out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
@@ -1365,6 +1375,18 @@ if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
     add_subdirectory(Tests/UltraFIBU)
     message(STATUS "")
     message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
+endif()
+
+# ===== ULTRADBADMIN ENGINE TESTS =====
+# The database admin's engine: the connection list and its password vault,
+# cell formatting, the Browse pager, the SQL runner (with Stop). Compiles the
+# engine sources directly, so it runs where the UI library cannot be built.
+option(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS "Build the UltraDBAdmin engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS AND TARGET UltraDatabase AND TARGET UltraVault)
+    enable_testing()
+    add_subdirectory(Tests/UltraDBAdmin)
+    message(STATUS "")
+    message(STATUS "── UltraDBAdmin engine test suite enabled (target: UltraDBAdminEngineTests) ──")
 endif()
 
 # ===== ULTRAPRESS ENGINE TESTS =====
