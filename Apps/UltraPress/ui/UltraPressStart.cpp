@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressStart.cpp
 // See UltraPressStart.h.
+// Version: 0.8.6 - the form's rows laid out by the page (AddField, AddButton, AddNote)
 // Version: 0.8.5 - BuildPage builds the page without a window
 // Version: 0.8.4 - on the framework's UltraCanvasStartPage
 // Version: 0.8.3 - a recent site's button names its whole path in a tooltip
@@ -7,14 +8,11 @@
 // Version: 0.8.1
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressStart.h"
-#include "UltraPressTheme.h"
 
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 
-#include "UltraCanvasButton.h"
 #include "UltraCanvasFileLoader.h"
-#include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTheme.h"
 
@@ -31,7 +29,6 @@ namespace UltraPress {
 namespace {
 
 const int kWidth = 620;
-const int kRow = 34;
 
 // Whether a folder holds a site: the one file every site has.
 bool HoldsSite(const std::string& dir) {
@@ -84,31 +81,15 @@ std::shared_ptr<UltraCanvasStartPage> StartWindow::BuildPage(const std::string& 
                      "A folder with a site.json - one made by UltraPress, or by `ultrapress new`.");
 
     // ---- a new site: its name, and the folder it goes into ----
-    auto form = page_->AddSection("A new site", kRow + 10 + kRow + 8 + 40);
-    const int width = page_->ContentWidth();
-    auto nameCaption = CreateLabel("StartNameCaption", 0, 7, 90, 22, "Site name");
-    nameCaption->SetFontSize(13);
-    FollowTheme(nameCaption, LabelVariant::Body);
-    form->AddChild(nameCaption);
-    name_ = CreateTextInput("StartName", 96, 0, width - 96, kRow);
+    page_->AddSection("A new site");
+    name_ = CreateTextInput("StartName", 0, 0, 0, 0);
     name_->SetFontSize(14);
     name_->SetFollowTheme(true);
     name_->SetText(suggestion.empty() ? std::string("My site") : NameFromFolder(suggestion));
-    form->AddChild(name_);
-    auto create = CreateButton("StartCreate", 0, kRow + 10, 300, kRow, "Create it in a folder\xE2\x80\xA6");
-    create->SetFontSize(14);
-    create->SetBorder(1, Colors::Transparent);
-    create->SetCornerRadius(6);
-    FollowTheme(create, ButtonVariant::Standard);
-    create->onClick = [this]() { CreateNew(); };
-    form->AddChild(create);
-    auto createNote = CreateLabel("StartCreateNote", 0, kRow + 10 + kRow + 8, width, 40,
-                                  "The starter site - a front page, an about page, a contact form - goes into the "
-                                  "folder you choose; an empty or a new folder, so nothing there is overwritten.");
-    createNote->SetFontSize(12);
-    createNote->SetWrap(TextWrap::WrapWord);
-    FollowTheme(createNote, LabelVariant::Muted);
-    form->AddChild(createNote);
+    page_->AddField("Site name", name_, 96);
+    page_->AddButton("Create it in a folder\xE2\x80\xA6", [this]() { CreateNew(); }, 300);
+    page_->AddNote("The starter site - a front page, an about page, a contact form - goes into the "
+                   "folder you choose; an empty or a new folder, so nothing there is overwritten.");
     page_->AddStatusLine();
     return page_;
 }

@@ -10,5 +10,8 @@
 - **The start page has a headless test of its own: `StartPageTest`.** The
   parts laid out top to bottom, the preferred height growing by what each
   takes, the recent entries as buttons that hand back the whole entry, the
-  action as wide as the column, a section at the margin at the height
-  asked for, the status line in the error colour.
+  action as wide as the column, a section at the margin and the rows put
+  in it, the status line in the error colour. It and `AppSettingsTest`
+  run on the macOS and Windows CI rows too (`ULTRACANVAS_BUILD_STARTPAGE_TESTS`,
+  `Tests/StartPageTests.cmake`), with the UltraPress suites and the
+  UltraFIBU start window test, on each platform's own path rules.

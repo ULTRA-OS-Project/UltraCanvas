@@ -5649,45 +5649,7 @@ else()
     message(STATUS "  TreeViewFilterTest skipped (UltraCanvas target not present)")
 endif()
 
-# UltraCanvasStartPage without a window: the parts laid out top to bottom,
-# the preferred height growing by what each takes, the recent entries as
-# buttons, the action as wide as the column, a section at the margin, the
-# status line in the error colour. Headless.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building StartPageTest...")
-    add_executable(StartPageTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/StartPageTest.cpp
-    )
-    target_include_directories(StartPageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(StartPageTest PRIVATE cxx_std_20)
-    target_link_libraries(StartPageTest PRIVATE UltraCanvas)
-    set_target_properties(StartPageTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME StartPageTest COMMAND StartPageTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: StartPageTest")
-else()
-    message(STATUS "  StartPageTest skipped (UltraCanvas target not present)")
-endif()
-
-# UltraCanvasAppSettings: an application's preferences in one JSON file -
-# typed values, dotted keys, a recent list, the file written and read back,
-# a broken one as the defaults, the file under the settings folder.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building AppSettingsTest...")
-    add_executable(AppSettingsTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/AppSettingsTest.cpp
-    )
-    target_include_directories(AppSettingsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(AppSettingsTest PRIVATE cxx_std_20)
-    target_link_libraries(AppSettingsTest PRIVATE UltraCanvas)
-    set_target_properties(AppSettingsTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME AppSettingsTest COMMAND AppSettingsTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: AppSettingsTest")
-else()
-    message(STATUS "  AppSettingsTest skipped (UltraCanvas target not present)")
-endif()
+# StartPageTest and AppSettingsTest: defined in StartPageTests.cmake, which
+# the top level also includes on its own under
+# ULTRACANVAS_BUILD_STARTPAGE_TESTS (the macOS and Windows CI rows).
+include(${CMAKE_CURRENT_SOURCE_DIR}/StartPageTests.cmake)

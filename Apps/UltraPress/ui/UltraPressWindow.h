@@ -5,6 +5,7 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.8.6 - SetDark writes no file: the look is saved with the window's size on close
 // Version: 0.8.3 - the address checked as typed (IsSiteAddress), said under the field
 // Version: 0.8.2 - the site's settings in the property pane: ShowSiteSettings, SetSiteProperty
 // Version: 0.8.0 - the look: SetDark, the theme's colours on the columns and dialogs
@@ -107,10 +108,11 @@ public:
     bool SetSiteProperty(const std::string& name, const std::string& value);
 
     // The look: the light or the dark theme (UltraPressTheme.h) on the
-    // window and its dialogs; the page keeps the site's colours. Remembered
-    // in the settings folder unless `remember` is off (the start-up value,
-    // which came from there, and the tests).
-    void SetDark(bool dark, bool remember = true);
+    // window and its dialogs; the page keeps the site's colours. The choice
+    // is the editor's state (IsDark); the program writes it to the settings
+    // with the window's size when the editor closes (ui/main.cpp), so a
+    // click writes no file.
+    void SetDark(bool dark);
     bool IsDark() const { return dark; }
 
     const Site& CurrentSite() const { return site; }

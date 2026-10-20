@@ -13,6 +13,7 @@
 // application ends the moment it has no window left. The same move as
 // UltraFIBU's start window - and the same page: the framework's
 // UltraCanvasStartPage, with UltraPress's words and its one field.
+// Version: 0.8.6 - the form's rows laid out by the page
 // Version: 0.8.5 - BuildPage builds the page without a window, for the render tests
 // Version: 0.8.4 - on the framework's UltraCanvasStartPage
 // Version: 0.8.3 - a recent site's button names its whole path in a tooltip

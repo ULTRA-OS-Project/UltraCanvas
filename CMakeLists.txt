@@ -1153,6 +1153,16 @@ if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
 endif()
 
+# ===== START PAGE AND APP SETTINGS TESTS WITHOUT THE FULL SUITE =====
+# StartPageTest and AppSettingsTest alone, for builds that leave BUILD_TESTS
+# off (the macOS and Windows CI rows): every application's start page and its
+# settings file, on the platform's own path rules and settings folder.
+option(ULTRACANVAS_BUILD_STARTPAGE_TESTS "Build StartPageTest and AppSettingsTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_STARTPAGE_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/StartPageTests.cmake)
+endif()
+
 # ===== FILER TESTS WITHOUT THE FULL SUITE =====
 # FilerFolderPreviewTest and FilerNameEncodingTest alone, for builds that
 # leave BUILD_TESTS off (the Windows CI rows): the file display lists and draws

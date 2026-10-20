@@ -316,15 +316,15 @@ static void TestLook() {
     fs::remove_all(dir, ec);
 
     // The editor switches the current theme without a window; the look is
-    // not remembered from a test.
+    // the editor's state, and no file is written.
     const std::string before = UltraCanvasTheme::Current().name;
     Site site = CreateStarterSite("Look", "https://look.example");
     EditorWindow editor(site, "");
     Check(!editor.IsDark(), "the editor starts light");
-    editor.SetDark(true, false);
+    editor.SetDark(true);
     Check(editor.IsDark() && UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress dark",
           "SetDark makes the dark theme current");
-    editor.SetDark(false, false);
+    editor.SetDark(false);
     Check(!editor.IsDark() && !UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress light",
           "and back to the light one: " + before);
 

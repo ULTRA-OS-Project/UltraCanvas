@@ -1,6 +1,7 @@
 // Apps/UltraFIBU/ui/UltraFIBUStart.cpp
 // The start window. See the header for why it asks so little.
 //
+// Version: 0.3.2 - the form's rows laid out by the page (AddField, AddNote, AddButton)
 // Version: 0.3.1 - SeiteBauen builds the page without a window
 // Version: 0.3.0 - on the framework's UltraCanvasStartPage
 // Version: 0.2.0 - the bookkeepings opened last, offered first
@@ -34,8 +35,8 @@ constexpr int   kBreite = 560;
 // Tall enough that the calendar under the date field opens downward and
 // leaves the rest of the form visible.
 constexpr int   kHoehe  = 640;
-constexpr float kZeile  = 28.0f;
-constexpr float kLabelB = 190.0f;
+constexpr int   kZeile  = 28;    // a date picker's and a dropdown's own height
+constexpr int   kLabelB = 210;   // the captions' width: "Geschäftsjahr beginnt am" fits
 
 std::vector<FileFilter> BuchhaltungsFilter() {
     // The type spelled out: FileFilter also takes a single pattern string, and
@@ -84,20 +85,14 @@ std::shared_ptr<UltraCanvasStartPage> StartFenster::SeiteBauen(const std::string
     });
     seite_->AddAction("Bestehende Buchhaltung öffnen ...", [this]() { Oeffnen(); });
 
-    // ---- set up a new one ----
-    const int breite = seite_->ContentWidth();
-    auto form = seite_->AddSection("Neue Buchhaltung anlegen", 222);
-    float y = 0;
-    form->AddChild(CreateLabel("startFirmaL", 0, y, kLabelB, kZeile, "Firma"));
-    firma_ = CreateTextInput("startFirma", static_cast<int>(kLabelB), static_cast<int>(y),
-                             static_cast<int>(breite - kLabelB), static_cast<int>(kZeile));
+    // ---- set up a new one: the page lays the rows out ----
+    seite_->AddSection("Neue Buchhaltung anlegen");
+    firma_ = CreateTextInput("startFirma", 0, 0, 0, 0);
     firma_->SetPlaceholder("Name, wie er auf Rechnungen steht");
     firma_->onTextChanged = [this](const std::string&) { Pruefen(); };
-    form->AddChild(firma_);
-    y += kZeile + 10;
+    seite_->AddField("Firma", firma_, kLabelB);
 
-    form->AddChild(CreateLabel("startBeginnL", 0, y, kLabelB, kZeile, "Geschäftsjahr beginnt am"));
-    beginn_ = CreateDatePicker("startBeginn", kLabelB, y, 160, kZeile);
+    beginn_ = CreateDatePicker("startBeginn", 0, 0, 160, kZeile);
     beginn_->SetDateFormat("dd.MM.yyyy");
     beginn_->SetPlaceholder("TT.MM.JJJJ");
     beginn_->SetFirstDayOfWeek(1);   // the German week begins on Monday
@@ -109,37 +104,21 @@ std::shared_ptr<UltraCanvasStartPage> StartFenster::SeiteBauen(const std::string
     // the wrong place, which cannot be put right once documents are booked.
     // The form says the date is missing until one is chosen.
     beginn_->onDateChanged = [this](const UCDate&) { Pruefen(); };
-    form->AddChild(beginn_);
-    y += kZeile + 10;
+    seite_->AddField("Geschäftsjahr beginnt am", beginn_, kLabelB);
 
-    form->AddChild(CreateLabel("startSkrL", 0, y, kLabelB, kZeile, "Kontenrahmen"));
-    skr_ = CreateDropdown("startSkr", kLabelB, y, 260, kZeile);
+    skr_ = CreateDropdown("startSkr", 0, 0, 260, kZeile);
     skr_->AddItem("SKR03 - Prozessgliederung", "SKR03");
     skr_->AddItem("SKR04 - Abschlussgliederung", "SKR04");
     skr_->SetSelectedIndex(0, false);
     skr_->onSelectionChanged = [this](int, const DropdownItem&) { Pruefen(); };
-    form->AddChild(skr_);
-    y += kZeile + 10;
+    seite_->AddField("Kontenrahmen", skr_, kLabelB);
 
-    auto spaeter = CreateLabel("startSpaeter", 0, y, breite, 36,
-        "Anschrift, Steuernummer und Bankverbindung lassen sich später ergänzen - "
-        "sie werden erst für die erste gedruckte Rechnung gebraucht.");
-    spaeter->SetWrap(TextWrap::WrapWord);
-    spaeter->SetFontSize(11);
-    form->AddChild(spaeter);
-    y += 44;
-
+    seite_->AddNote("Anschrift, Steuernummer und Bankverbindung lassen sich später ergänzen - "
+                    "sie werden erst für die erste gedruckte Rechnung gebraucht.", 52);   // three lines
     // The reason the button is greyed, next to it - never a greyed button with
     // no explanation.
-    grund_ = CreateLabel("startGrund", 0, y, breite, 22, "");
-    grund_->SetFontSize(11);
-    form->AddChild(grund_);
-    y += 26;
-
-    anlegenKnopf_ = CreateButton("startAnlegen", 0, y, 300, kZeile,
-                                 "Anlegen und speichern unter ...");
-    anlegenKnopf_->SetOnClick([this]() { Anlegen(); });
-    form->AddChild(anlegenKnopf_);
+    grund_ = seite_->AddNote("", 22);
+    anlegenKnopf_ = seite_->AddButton("Anlegen und speichern unter ...", [this]() { Anlegen(); }, 300);
     seite_->AddStatusLine();
 
     Pruefen();

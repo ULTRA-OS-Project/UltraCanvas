@@ -14,8 +14,13 @@
 // action as the primary button, the recent entries as standard ones.
 //
 // The application's own fields go into a section (AddSection), a container
-// of the height the application names, with the fields placed in it from
-// (0, 0) - the section is as wide as the page's content column.
+// as wide as the page's content column that grows with what is put in it:
+// a captioned field (AddField - the caption at the left, the input beside
+// it, as wide as the rest of the column unless it has a width of its own),
+// a note or a line of text across it (AddNote), a button (AddButton). The
+// rows take the page's row height, so no application lays out a form by
+// hand; a section made with a height holds what the application places in
+// it from (0, 0) itself.
 //
 // doc-check: void OpenSite(const std::string& dir); void PickFolder();
 // doc-check: std::shared_ptr<UltraCanvas::UltraCanvasWindow> window;
@@ -27,13 +32,17 @@
 //                   [](const std::string& dir) { OpenSite(dir); });
 //   page->AddAction("Open a site folder\xE2\x80\xA6", []() { PickFolder(); },
 //                   "A folder with a site.json in it.");
-//   auto form = page->AddSection("A new site", 90);   // the app's own fields, from (0, 0)
-//   form->AddChild(UltraCanvas::CreateTextInput("name", 0, 0, 300, 34));
+//   page->AddSection("A new site");                                   // the app's own fields
+//   auto name = UltraCanvas::CreateTextInput("name", 0, 0, 0, 0);
+//   page->AddField("Site name", name, 96);                             // caption, the input beside it
+//   page->AddButton("Create it in a folder\xE2\x80\xA6", []() { PickFolder(); }, 300);
+//   page->AddNote("The starter site goes into the folder you choose.", 40);
 //   page->AddStatusLine();
 //   page->Say("The folder could not be read.", true);
 //   window->AddChild(page);
 //   window->SetWindowSize(620, page->PreferredHeight());
 //
+// Version: 1.1.0 - AddField, AddNote and AddButton lay out a section's rows; a section grows with them
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -73,9 +82,27 @@ namespace UltraCanvas {
                                                      const std::string& note = std::string(), bool primary = true);
 
         // A section for the application's own fields: a heading and a
-        // container `height` tall, as wide as the content column, with the
-        // fields placed in it from (0, 0).
-        std::shared_ptr<UltraCanvasContainer> AddSection(const std::string& heading, int height);
+        // container as wide as the content column. With a `height` the
+        // application places its fields in it from (0, 0) itself; without
+        // one the section grows with the rows the three calls below add to
+        // it (the section added last, until the next part is added).
+        std::shared_ptr<UltraCanvasContainer> AddSection(const std::string& heading, int height = 0);
+        // A row of the current section: `caption` in a label `captionWidth`
+        // wide at the left, `input` beside it - as wide as the rest of the
+        // column and a row tall unless it has a width of its own, in which
+        // case it keeps its size. Returns the row's y in the section.
+        int AddField(const std::string& caption, const std::shared_ptr<UltraCanvasUIElement>& input,
+                     int captionWidth = 190);
+        // A line of text across the current section, `height` tall, muted
+        // and wrapping: a note under the fields, or the reason a button is
+        // greyed (set its text later). Returns the label.
+        std::shared_ptr<UltraCanvasLabel> AddNote(const std::string& text, int height = 40);
+        // A button in the current section, `width` wide (0: the column),
+        // styled as the secondary action. Returns the button.
+        std::shared_ptr<UltraCanvasButton> AddButton(const std::string& text, std::function<void()> onClick,
+                                                     int width = 0);
+        // The row height the page lays fields and buttons out with.
+        static int RowHeight() { return 34; }
 
         // The status line, placed where it is added - last, as a rule; Say
         // writes it, muted, or in the theme's error colour.
@@ -92,6 +119,9 @@ namespace UltraCanvas {
 
     private:
         void Grow(int height);
+        // Makes the current section `height` taller (and the page with it)
+        // and returns the y the new row goes at; -1 without a section.
+        int GrowSection(int height);
 
         int width_;
         int y_;
@@ -99,6 +129,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> title_;
         std::shared_ptr<UltraCanvasLabel> hint_;
         std::shared_ptr<UltraCanvasLabel> status_;
+        std::shared_ptr<UltraCanvasContainer> section_;   // the one added last, while it is the last part
+        int sectionHeight_ = 0;
     };
 
 } // namespace UltraCanvas

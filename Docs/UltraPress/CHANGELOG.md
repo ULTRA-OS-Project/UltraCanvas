@@ -1,3 +1,16 @@
+#### 2026-10-20 *0.8.6*
+- **The settings are read once and written once.** The program holds one
+  settings object: the look and the editor window's size are written
+  together as the editor closes, the recent list as the start window
+  changes it. *Dark look* / *Light look* no longer writes a file on every
+  click, and nothing reads the file back before writing it.
+- **The start window's form is laid out by the page.** The name field, the
+  create button and the note are rows the framework's start page places
+  (`AddField`, `AddButton`, `AddNote`); the window has no coordinates of
+  its own left.
+- **The engine and render tests run on macOS and Windows too**, in a CI
+  step of their own, on each platform's own path rules and settings folder.
+
 #### 2026-10-20 *0.8.5*
 - **The settings file is the framework's.** `settings.json` is now read
   and written through `UltraCanvasAppSettings`, the file every UltraCanvas

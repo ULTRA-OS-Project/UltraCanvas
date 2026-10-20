@@ -4,6 +4,15 @@
 # so the suite does too; it opens no window and needs no display.
 cmake_minimum_required(VERSION 3.16)
 
+# Where the test executables go. On Windows beside the core DLL: an
+# executable finds its DLLs in its own directory, and build/bin is on no
+# search path (Tests/VectorFormatsTests.cmake found out the hard way).
+if(WIN32)
+    set(_UPT_BIN_DIR "$<TARGET_FILE_DIR:${ULTRACANVAS_LIBRARY}>")
+else()
+    set(_UPT_BIN_DIR "${CMAKE_BINARY_DIR}/bin")
+endif()
+
 add_executable(UltraPressEngineTests UltraPressEngineTests.cpp)
 target_compile_features(UltraPressEngineTests PRIVATE cxx_std_20)
 # The hosts over UltraCloud's in-memory provider, where the module is built.
@@ -16,7 +25,7 @@ target_compile_definitions(UltraPressEngineTests PRIVATE
     ULTRAPRESS_EXAMPLE_DIR="${CMAKE_SOURCE_DIR}/Apps/UltraPress/examples/ultraos"
     ULTRAPRESS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 set_target_properties(UltraPressEngineTests PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    RUNTIME_OUTPUT_DIRECTORY ${_UPT_BIN_DIR})
 include(CTest)
 add_test(NAME UltraPressEngine COMMAND UltraPressEngineTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -44,6 +53,6 @@ target_include_directories(UltraPressRenderTests PRIVATE
 target_compile_definitions(UltraPressRenderTests PRIVATE
     ULTRAPRESS_EXAMPLE_DIR="${CMAKE_SOURCE_DIR}/Apps/UltraPress/examples/ultraos")
 set_target_properties(UltraPressRenderTests PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    RUNTIME_OUTPUT_DIRECTORY ${_UPT_BIN_DIR})
 add_test(NAME UltraPressRender COMMAND UltraPressRenderTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

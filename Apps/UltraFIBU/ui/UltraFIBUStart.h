@@ -21,6 +21,7 @@
 // only lets one pick a first of a month. Refusing the 15th after it was typed
 // would be the same rule, told later.
 //
+// Version: 0.3.2 - the form's rows laid out by the page
 // Version: 0.3.1 - SeiteBauen builds the page without a window, for a headless test
 // Version: 0.3.0 - on the framework's UltraCanvasStartPage, which UltraPress's start window shares
 // Version: 0.2.0 - the bookkeepings opened last, offered first

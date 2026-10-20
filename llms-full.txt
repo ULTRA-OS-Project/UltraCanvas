@@ -58585,7 +58585,7 @@ window (a site folder) and UltraFIBU's (a bookkeeping file) are both this
 page with their own words and their own "new" fields.
 
 **File Location**: `include/UltraCanvasStartPage.h`
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Base Class**: `UltraCanvasContainer`
 **Author**: UltraCanvas Framework
 
@@ -58594,6 +58594,8 @@ page with their own words and their own "new" fields.
 - ✅ Parts laid out **top to bottom in the order they are added**, at the
   width the page was made with; `PreferredHeight()` is what the window
   holding it should be
+- ✅ A **section of the application's own fields**, laid out row by row:
+  a captioned field, a note, a button (`AddField`, `AddNote`, `AddButton`)
 - ✅ **Recent entries** as buttons: the last path part and the whole entry,
   the whole entry as the tooltip where the button shortens it
 - ✅ The **action** as the theme's primary button, with a muted note under it
@@ -58620,7 +58622,13 @@ void SetRecent(const std::string& heading, const std::vector<std::string>& entri
                std::function<void(const std::string&)> onPick, int shown = 5);
 std::shared_ptr<UltraCanvasButton> AddAction(const std::string& text, std::function<void()> onClick,
                                              const std::string& note = std::string(), bool primary = true);
-std::shared_ptr<UltraCanvasContainer> AddSection(const std::string& heading, int height);
+std::shared_ptr<UltraCanvasContainer> AddSection(const std::string& heading, int height = 0);
+int AddField(const std::string& caption, const std::shared_ptr<UltraCanvasUIElement>& input,
+             int captionWidth = 190);                        // a row of the current section
+std::shared_ptr<UltraCanvasLabel> AddNote(const std::string& text, int height = 40);
+std::shared_ptr<UltraCanvasButton> AddButton(const std::string& text, std::function<void()> onClick,
+                                             int width = 0);  // 0: the column
+static int RowHeight();                                      // 34
 std::shared_ptr<UltraCanvasLabel> AddStatusLine();
 void Say(const std::string& text, bool error);
 
@@ -58645,12 +58653,14 @@ page->SetRecent("Opened last", {"/home/erika/sites/shop", "/home/erika/sites/blo
 page->AddAction("Open a site folder\xE2\x80\xA6", []() { PickFolder(); },
                 "A folder with a site.json in it.");
 
-// The application's own fields for a new site, in a section of their own.
-auto form = page->AddSection("A new site", 90);
-auto name = UltraCanvas::CreateTextInput("name", 100, 0, form->GetWidth() - 100, 34);
-form->AddChild(UltraCanvas::CreateLabel("nameCaption", 0, 7, 90, 22, "Site name"));
-form->AddChild(name);
-form->AddChild(UltraCanvas::CreateButton("create", 0, 48, 300, 34, "Create it in a folder\xE2\x80\xA6"));
+// The application's own fields for a new site: a section the page lays
+// out row by row - the caption at the left, the input beside it as wide as
+// the rest of the column, a button, a note under them.
+page->AddSection("A new site");
+auto name = UltraCanvas::CreateTextInput("name", 0, 0, 0, 0);
+page->AddField("Site name", name, 96);
+page->AddButton("Create it in a folder\xE2\x80\xA6", []() { PickFolder(); }, 300);
+page->AddNote("The starter site goes into the folder you choose; an empty or a new one.");
 
 page->AddStatusLine();
 window->AddChild(page);
@@ -58670,8 +58680,12 @@ page->Say("Creating the site\xE2\x80\xA6", false);                        // mut
   (0, 0) and size the window to `Width()` by `PreferredHeight()`.
 - The hint has room for three lines of 14 px text: a folder's full path and
   what was wrong with it.
-- A section's fields are the application's: lay them out from (0, 0) in the
-  container `AddSection` returns, `ContentWidth()` wide.
+- A section grows with the rows `AddField`, `AddNote` and `AddButton` put
+  in it, `RowHeight()` tall with 10 px between them, until the next part is
+  added; an input with a width of its own (a date picker, a dropdown) keeps
+  its size, one without gets the rest of the column. A section made with a
+  height is the application's to lay out from (0, 0) in the container
+  `AddSection` returns, `ContentWidth()` wide.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasStepper.md

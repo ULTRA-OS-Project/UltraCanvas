@@ -111,8 +111,15 @@ if(TARGET ultrafibu AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     include("${CMAKE_SOURCE_DIR}/cmake/UltraCanvasVersion.cmake")
     target_compile_definitions(UltraFIBUStartTests PRIVATE
         ULTRAFIBU_VERSION="${ULTRAFIBU_VERSION}")
-    set_target_properties(UltraFIBUStartTests PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # On Windows beside the core DLL, where an executable finds it; build/bin
+    # is on no search path there (Tests/VectorFormatsTests.cmake).
+    if(WIN32)
+        set_target_properties(UltraFIBUStartTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:${ULTRACANVAS_LIBRARY}>")
+    else()
+        set_target_properties(UltraFIBUStartTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
     add_test(NAME UltraFIBUStart COMMAND UltraFIBUStartTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     set_tests_properties(UltraFIBUStart PROPERTIES

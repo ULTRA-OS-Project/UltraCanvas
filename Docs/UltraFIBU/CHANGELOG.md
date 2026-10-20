@@ -1,3 +1,12 @@
+#### 2026-10-20 *0.24.8*
+- **The start window's form is laid out by the page.** Firma, the start of
+  the fiscal year, the chart of accounts, the note, the reason the button
+  is greyed and the button itself are rows the framework's start page
+  places (`AddField`, `AddNote`, `AddButton`); the window has no
+  coordinates of its own left. The rows are a little taller than before.
+- **The start window test runs on macOS and Windows too**, in a CI step
+  of its own.
+
 #### 2026-10-20 *0.24.7*
 - **The bookkeepings opened last live in the program's settings file.**
   `<settings folder>/UltraFIBU/settings.json`, the framework's

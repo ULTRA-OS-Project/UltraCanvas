@@ -817,6 +817,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
@@ -849,6 +850,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
@@ -1222,6 +1224,18 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCloud$"
+
+      # The UltraPress engine and renderer, the UltraFIBU start window and
+      # the framework's start page and settings file all handle paths and
+      # the per-user settings folder, which each platform spells its own way
+      # (%APPDATA% and UTF-16 on Windows, Application Support on macOS).
+      # Linux runs them in the full pass below; here they run on the other
+      # two, so a path or locale difference is caught where it lives. Every
+      # one is headless.
+      - name: Run UltraPress, UltraFIBU start and start page tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(UltraPressEngine|UltraPressRender|UltraFIBUStart|StartPageTest|AppSettingsTest)$"
 
       # Trusting a device's self-signed certificate on first use rests on
       # libcurl pinning a public key and handing back the server's

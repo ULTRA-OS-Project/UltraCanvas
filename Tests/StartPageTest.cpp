@@ -3,14 +3,17 @@
 // bottom in the order they are added, the preferred height grows by what
 // each part takes, the recent entries become buttons that hand back the
 // whole entry, the action is as wide as the column, a section sits at the
-// margin at the height asked for, and the status line takes the theme's
-// error colour for an error and the muted one otherwise. Headless.
+// margin at the height asked for or grows with the rows put in it, and
+// the status line takes the theme's error colour for an error and the
+// muted one otherwise. Headless.
+// Version: 1.1.0 - the rows a section is laid out with
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasStartPage.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTheme.h"
 
 #include <cstdio>
@@ -115,6 +118,55 @@ int main() {
     Check(page->PreferredHeight() >= beforeSection + 90 + 24, "the page grew by the section and its heading");
     section->AddChild(CreateLabel("field", 0, 0, 100, 20, "Name"));
     Check(section->GetChildren().size() == 1, "the application's fields go into it");
+
+    std::printf("A section laid out by the page\n");
+    auto laid = std::make_shared<UltraCanvasStartPage>("laid", 560);
+    const int bare = laid->PreferredHeight();
+    Check(laid->AddField("Nothing", CreateLabel("x", 0, 0, 10, 10, ""), 100) == -1 && laid->AddNote("x") == nullptr &&
+              laid->AddButton("x", []() {}) == nullptr && laid->PreferredHeight() == bare,
+          "without a section the row calls add nothing");
+    auto fields = laid->AddSection("Neue Buchhaltung anlegen");
+    const int sectionY = static_cast<int>(fields->GetY());
+    Check(fields != nullptr && static_cast<int>(fields->GetHeight()) == 0 && laid->PreferredHeight() == bare + 24 + 6 + 8,
+          "a section without a height is empty, and the page has its heading only");
+    auto firma = CreateTextInput("firma", 0, 0, 0, 0);
+    Check(laid->AddField("Firma", firma, 190) == 0, "the first row is at the section's top");
+    Check(firma->GetX() == 190 && firma->GetY() == 0 && static_cast<int>(firma->GetWidth()) == laid->ContentWidth() - 190 &&
+              static_cast<int>(firma->GetHeight()) == UltraCanvasStartPage::RowHeight(),
+          "an input without a size gets the rest of the column, a row tall");
+    Check(static_cast<int>(fields->GetHeight()) == UltraCanvasStartPage::RowHeight() &&
+              laid->PreferredHeight() == bare + 24 + 6 + UltraCanvasStartPage::RowHeight() + 8,
+          "the section and the page grew by the row");
+    auto caption = LabelWithText(fields, "Firma");
+    Check(caption != nullptr && caption->GetX() == 0 && caption->GetY() == 0 && static_cast<int>(caption->GetWidth()) == 190,
+          "the caption is a label at the left, as wide as asked");
+    auto picker = CreateTextInput("beginn", 0, 0, 160, 28);
+    const int second = laid->AddField("Geschäftsjahr beginnt am", picker, 190);
+    Check(second == UltraCanvasStartPage::RowHeight() + 10 && picker->GetX() == 190 && picker->GetY() == second &&
+              static_cast<int>(picker->GetWidth()) == 160 && static_cast<int>(picker->GetHeight()) == 28,
+          "the next row is a gap lower, and an input with a size keeps it");
+    const int beforeNote = static_cast<int>(fields->GetHeight());
+    auto note = laid->AddNote("Anschrift und Bankverbindung lassen sich später ergänzen.", 36);
+    Check(note != nullptr && note->GetY() == beforeNote + 10 && static_cast<int>(note->GetWidth()) == laid->ContentWidth() &&
+              static_cast<int>(note->GetHeight()) == 36 && note->GetFollowTheme(),
+          "a note is a muted label across the section, as tall as asked");
+    bool created = false;
+    auto button = laid->AddButton("Anlegen und speichern unter ...", [&created]() { created = true; }, 300);
+    Check(button != nullptr && static_cast<int>(button->GetWidth()) == 300 && button->GetX() == 0 &&
+              static_cast<int>(button->GetHeight()) == UltraCanvasStartPage::RowHeight() &&
+              button->GetStyle().fontWeight != FontWeight::Bold,
+          "a button is as wide as asked, not bold");
+    if (button && button->onClick) button->onClick();
+    Check(created, "and its click reaches the callback");
+    auto wide = laid->AddButton("Wide", []() {});
+    Check(wide != nullptr && static_cast<int>(wide->GetWidth()) == laid->ContentWidth(), "or as wide as the column");
+    Check(fields->GetChildren().size() == 7 && static_cast<int>(fields->GetHeight()) == static_cast<int>(wide->GetY()) + UltraCanvasStartPage::RowHeight() &&
+              laid->PreferredHeight() == sectionY + static_cast<int>(fields->GetHeight()) + 8 + UltraCanvasStartPage::Margin(),
+          "every row is in the section, which ends under the last, the page 8 px under it");
+    laid->AddStatusLine();
+    Check(laid->AddField("Late", CreateTextInput("late", 0, 0, 0, 0), 100) == -1, "after the status line the section is closed");
+    laid->AddSection("Placed by hand", 90);
+    Check(laid->AddNote("x") == nullptr, "and a section with a height is the application's to lay out");
 
     std::printf("The status line\n");
     const int beforeStatus = page->PreferredHeight();

@@ -20,6 +20,7 @@
 // ultrafibu, started with nothing it opens a window rather than printing
 // its usage: a double-click on Windows gave that usage a console that
 // closed before it could be read, which looked like a crash.
+// Version: 0.8.6 - the settings read once, written once as the editor closes
 // Version: 0.8.4 - the settings in one file; the editor window's size remembered
 // Version: 0.8.2 - the sites opened last are remembered for the start window
 // Version: 0.8.1 - no argument, or a folder without a site, opens the start window
@@ -112,7 +113,12 @@ std::string FirstError(const std::vector<std::string>& errors, const std::string
 // main()'s frame while the loop keeps ticking.
 std::unique_ptr<UltraPress::EditorWindow> g_editor;
 UltraPress::StartWindow g_start;
+// The program's settings, read once at the start and written when they
+// change: the recent list as the start window changes it, the look and the
+// editor window's size once, as the editor closes. One object, so nothing
+// here reads the file back before writing it.
 std::string g_settingsDir;          // <settings folder>/UltraPress
+UltraPress::UltraPressSettings g_settings;
 
 // Opens the editor on a loaded site: the main window at the size it had
 // last, the look, the site. Why not, as one line, or an empty string.
@@ -120,29 +126,30 @@ std::string OpenEditor(const std::string& siteDir, UltraPress::Site site, bool d
     for (const UltraPress::ValidationIssue& issue : UltraPress::ValidateSite(site)) {
         std::fprintf(stderr, "%s %s: %s\n", issue.page.c_str(), issue.path.c_str(), issue.message.c_str());
     }
-    const UltraPress::UltraPressSettings settings = UltraPress::UltraPressSettings::Load(g_settingsDir);
     WindowConfig cfg;
     cfg.title = site.name + " - UltraPress " ULTRAPRESS_VERSION;
-    cfg.width = settings.windowWidth >= 900 ? settings.windowWidth : 1500;
-    cfg.height = settings.windowHeight >= 600 ? settings.windowHeight : 920;
+    cfg.width = g_settings.windowWidth >= 900 ? g_settings.windowWidth : 1500;
+    cfg.height = g_settings.windowHeight >= 600 ? g_settings.windowHeight : 920;
     cfg.backgroundColor = UltraCanvasTheme::Current().roles.ground;
     auto window = CreateWindow(cfg);
     if (!window) return "The editor window could not be created.";
-    // The size is read off the window as it closes and written once then.
-    // The window is captured raw: it owns the callback, so a shared_ptr here
+    // The size is read off the window as it closes, and the settings are
+    // written once then: the size and the look the editor ended in. The
+    // window is captured raw: it owns the callback, so a shared_ptr here
     // would be a cycle, and the pointer is valid for as long as it can run.
     UltraCanvasWindow* raw = window.get();
     window->onWindowClosed = [raw]() {
         int width = 0, height = 0;
         raw->GetWindowSize(width, height);
-        if (width <= 0 || height <= 0) return;
-        UltraPress::UltraPressSettings latest = UltraPress::UltraPressSettings::Load(g_settingsDir);
-        latest.windowWidth = width;
-        latest.windowHeight = height;
-        latest.Save(g_settingsDir);
+        if (width > 0 && height > 0) {
+            g_settings.windowWidth = width;
+            g_settings.windowHeight = height;
+        }
+        if (g_editor) g_settings.dark = g_editor->IsDark();
+        g_settings.Save(g_settingsDir);
     };
     g_editor = std::make_unique<UltraPress::EditorWindow>(std::move(site), siteDir);
-    g_editor->SetDark(dark, false);
+    g_editor->SetDark(dark);
     g_editor->Build(window);
 #if defined(__EMSCRIPTEN__)
     window->Maximize();
@@ -188,8 +195,8 @@ int main(int argc, char* argv[]) {
     // The settings - the look the user chose last, before any window is
     // built, so that every element that follows the theme is born in it.
     g_settingsDir = UltraPress::UltraPressSettings::Directory();
-    const UltraPress::UltraPressSettings settings = UltraPress::UltraPressSettings::Load(g_settingsDir);
-    const bool dark = settings.dark;
+    g_settings = UltraPress::UltraPressSettings::Load(g_settingsDir);
+    const bool dark = g_settings.dark;
     UltraCanvasTheme::SetCurrent(UltraPress::ThemeFor(dark));
 
     // Open a site folder in the editor; why not, or an empty string. A site
@@ -200,9 +207,8 @@ int main(int argc, char* argv[]) {
         if (!UltraPress::LoadSite(dir, site, errors)) return FirstError(errors, dir);
         const std::string error = OpenEditor(dir, std::move(site), dark);
         if (error.empty()) {
-            UltraPress::UltraPressSettings latest = UltraPress::UltraPressSettings::Load(g_settingsDir);
-            latest.RememberSite(dir);
-            latest.Save(g_settingsDir);
+            g_settings.RememberSite(dir);
+            g_settings.Save(g_settingsDir);
         }
         return error;
     };
@@ -223,11 +229,10 @@ int main(int argc, char* argv[]) {
     }
     g_start.onSiteChosen = open;
     g_start.onSiteGone = [](const std::string& dir) {
-        UltraPress::UltraPressSettings latest = UltraPress::UltraPressSettings::Load(g_settingsDir);
-        latest.ForgetSite(dir);
-        latest.Save(g_settingsDir);
+        g_settings.ForgetSite(dir);
+        g_settings.Save(g_settingsDir);
     };
-    auto start = g_start.Build(hint, siteDir, settings.recentSites);
+    auto start = g_start.Build(hint, siteDir, g_settings.recentSites);
     if (!start) return 1;
     start->Show();
     app.Run();
