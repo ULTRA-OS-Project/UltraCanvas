@@ -17,6 +17,7 @@
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasFileDialogSettings.h"
 #include "UltraCanvasFileLoader.h"       // NotifyRecentFile, save settings
+#include "UltraCanvasBreadcrumb.h"       // the path, as UltraFiler shows it
 #include "UltraCanvasFileDragIcon.h"     // the Save dialog's file icon
 #include <cstdlib>
 #include <cstring>
@@ -26,6 +27,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <numeric>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -1591,27 +1593,25 @@ namespace UltraCanvas {
         upButton->onClick = [this]() { NavigateToParentDirectory(); };
         pathRow->AddChild(upButton);
 
-        pathInput = std::make_shared<UltraCanvasTextInput>("FileDialogPath", 0, 0, 300, fieldHeight);
-        pathInput->SetFontSize(fontSize);
-        pathInput->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        // Return in the path field goes to the folder typed there instead of
-        // accepting the dialog.
-        pathInput->onEnterPressed = [this](const std::string& text) {
-            std::error_code ec;
-            const std::filesystem::path typed = PathFromUtf8(text);
-            if (std::filesystem::is_directory(UltraCanvas::PathFromUtf8(typed), ec)) {
-                GoToDirectory(text, true);
-            } else if (fileConfig.dialogType != FileDialogType::SelectFolder &&
-                       std::filesystem::is_directory(typed.parent_path(), ec)) {
-                // A file path: open its folder and put the name in the name field.
-                GoToDirectory(PathToUtf8(typed.parent_path()), true);
-                SetNameText(PathToUtf8(typed.filename()));
-            } else if (pathInput) {
-                pathInput->SetText(currentDirectory);
-            }
-            return true;
-        };
-        pathRow->AddChild(pathInput);
+        // The folder as a breadcrumb, as in UltraFiler: a segment opens its
+        // folder, its drop-down the folders inside, and the leading Computer
+        // the drives. A path is typed in the name field, which opens a
+        // folder typed there.
+        pathBreadcrumb = std::make_shared<UltraCanvasBreadcrumb>("FileDialogPath", 0, 0, 300, fieldHeight);
+        {
+            BreadcrumbStyle look = BreadcrumbStyle::Arrow();
+            look.overflowMode = BreadcrumbOverflowMode::Collapse;
+            look.keepFirstItemOnCollapse = true;
+            look.minVisibleAfterCollapse = 2;
+            look.arrowSize = 8;
+            look.itemPaddingHorizontal = 9;
+            look.itemPaddingVertical = 4;
+            look.fontStyle.fontSize = fontSize;
+            pathBreadcrumb->SetStyle(look);
+        }
+        pathBreadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                .SetAlignSelf(CSSLayout::AlignSelf::Center);
+        pathRow->AddChild(pathBreadcrumb);
 
         // How the listing is drawn, as in UltraFiler: one glyph per layout,
         // the current one marked. Created before the listing it drives, which
@@ -1741,6 +1741,14 @@ namespace UltraCanvas {
         fields->layoutItem.SetFlexShrink(0);
 
         // A field's name over the field (or row of fields) it names.
+        // The picture's pixels and proportions, under the type.
+        if (fileConfig.dialogType == FileDialogType::Save && HasPictureSize()) {
+            pictureSizeLabel = std::make_shared<UltraCanvasLabel>("FileDialogPictureSize", "");
+            pictureSizeLabel->SetFontSize(std::max(8.0f, fontSize - 1.0f));
+            pictureSizeLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            pictureSizeLabel->size.height = CSSLayout::Dimension::Px(static_cast<float>(kFileDialogLabelHeight));
+            pictureSizeLabel->layoutItem.SetFlexShrink(0);
+        }
         auto makeGroup = [&](const std::string& id, const std::string& labelId,
                              const std::string& text,
                              const std::shared_ptr<UltraCanvasUIElement>& field) {
@@ -1822,6 +1830,11 @@ namespace UltraCanvas {
                 fileIcon->onDropped = [this](UltraCanvasUIElement* target, const Point2Di& point) {
                     OnFileIconDropped(target, point);
                 };
+                // Out of the dialog, onto a folder of UltraFiler (or another
+                // file manager that names it): the same as a folder here.
+                fileIcon->onDroppedOnFolder = [this](const std::string& folder) {
+                    SaveIntoDroppedFolder(folder);
+                };
                 iconBlock->AddChild(fileIcon);
 
                 fileIconCaption = std::make_shared<UltraCanvasLabel>(
@@ -1878,6 +1891,7 @@ namespace UltraCanvas {
                 stack->AddChild(makeGroup("FileDialogTypeGroup", "FileDialogTypeLabel",
                                           "Show", toggleRow));
                 fields->AddChild(stack);
+                if (pictureSizeLabel) stack->AddChild(pictureSizeLabel);
 
                 RebuildFilterToggles();
                 ApplyListingFilter();   // the listing was set up before the toggles
@@ -1911,6 +1925,7 @@ namespace UltraCanvas {
                                            withSettings("FileDialogTypeRow", filterDropdown));
                 typeGroup->layoutItem.SetFlexGrow(2).SetFlexShrink(1).SetFlexBasis(
                         CSSLayout::Dimension::Px(0));
+                if (pictureSizeLabel) typeGroup->AddChild(pictureSizeLabel);
                 fields->AddChild(typeGroup);
                 RebuildFilterDropdown();
             }
@@ -2042,9 +2057,10 @@ namespace UltraCanvas {
 
         for (auto& label : fieldLabels) label->SetTextColor(r.ink);
         if (fileIconCaption) fileIconCaption->SetTextColor(r.inkMuted);
+        if (pictureSizeLabel) pictureSizeLabel->SetTextColor(r.inkMuted);
 
         // The fields: the theme's own, with the corners the buttons have.
-        for (auto& input : {pathInput, fileNameInput}) {
+        for (auto& input : {fileNameInput}) {
             if (!input) continue;
             TextInputStyle look = TextInputStyle::FromTheme(theme, input->GetStyle());
             look.borderRadius = static_cast<int>(kFileDialogCornerRadius);
@@ -2270,7 +2286,7 @@ namespace UltraCanvas {
         const std::filesystem::path path = PathFromUtf8(directory);
         if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec) || ec) {
             debugOutput << "Invalid path: " << directory << std::endl;
-            if (pathInput) pathInput->SetText(currentDirectory);
+            ShowPathInBreadcrumb();
             return false;
         }
         std::filesystem::path canonical = std::filesystem::canonical(UltraCanvas::PathFromUtf8(path), ec);
@@ -2288,7 +2304,7 @@ namespace UltraCanvas {
     void UltraCanvasFileDialog::RefreshFileList() {
         selectedFiles.clear();
         autoFileName.clear();
-        if (pathInput) pathInput->SetText(currentDirectory);
+        ShowPathInBreadcrumb();
         if (!filerView) return;
         if (filerView->GetPath() == currentDirectory) {
             filerView->Refresh();
@@ -2366,7 +2382,7 @@ namespace UltraCanvas {
         // Opening the folder ended the listing's name filter (SetPath); the
         // name typed still stands, so it narrows this folder too.
         if (filerView && !nameFilter.empty()) filerView->SetNameFilter(nameFilter);
-        if (pathInput) pathInput->SetText(currentDirectory);
+        ShowPathInBreadcrumb();
         SyncFolderTree();
         if (onDirectoryChanged) onDirectoryChanged(currentDirectory);
     }
@@ -2688,6 +2704,7 @@ namespace UltraCanvas {
         const size_t slash = name.find_last_of("/\\");
         const std::string leaf = slash == std::string::npos ? name : name.substr(slash + 1);
         if (fileIcon) fileIcon->SetFileName(leaf);
+        UpdatePictureSizeLabel();
         if (!saveSettingsButton) return;
 
         const size_t dot = leaf.find_last_of('.');
@@ -2723,7 +2740,59 @@ namespace UltraCanvas {
                 [weak, this](DialogResult result, const FileSaveImageSize& size) {
                     if (weak.expired() || result != DialogResult::OK) return;
                     saveImageSize = size;
+                    UpdatePictureSizeLabel();
                 });
+    }
+
+    namespace {
+        // "16:9" - the proportions in the smallest whole numbers, or, when
+        // those are too long to read (1366 x 768 is 683:384), as "1.78:1".
+        std::string AspectRatioText(int width, int height) {
+            if (width <= 0 || height <= 0) return std::string();
+            const int divisor = std::gcd(width, height);
+            const int a = width / divisor, b = height / divisor;
+            if (a <= 32 && b <= 32) return std::to_string(a) + ":" + std::to_string(b);
+            // Two decimals of the longer side over the shorter.
+            const bool wide = width >= height;
+            const long hundredths = std::lround(100.0 * (wide ? width : height) / (wide ? height : width));
+            std::string decimal = std::to_string(hundredths / 100) + ".";
+            const long fraction = hundredths % 100;
+            if (fraction < 10) decimal += "0";
+            decimal += std::to_string(fraction);
+            return wide ? decimal + ":1" : "1:" + decimal;
+        }
+    } // namespace
+
+    void UltraCanvasFileDialog::UpdatePictureSizeLabel() {
+        if (!pictureSizeLabel) return;
+        const std::string name = GetSaveTypeName();
+        const size_t dot = name.find_last_of('.');
+        std::string type = (dot == std::string::npos || dot + 1 >= name.size())
+                                   ? std::string() : name.substr(dot + 1);
+        std::transform(type.begin(), type.end(), type.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        // A pixel type this build writes, or a drawing type: the inventory's
+        // answer, never a list of the dialog's own.
+        FileSaveFormat format;
+        const bool bitmap = !type.empty() &&
+                ((UltraCanvasFileLoader::FindSaveFormat(type, format) && format.bitmap) ||
+                 UltraCanvasFileLoader::CanSaveImage(type));
+        bool vector = false;
+        if (!bitmap && !type.empty()) {
+            const std::vector<std::string> drawings = UltraCanvasFileLoader::GetVectorSaveExtensions();
+            vector = std::find(drawings.begin(), drawings.end(), type) != drawings.end();
+        }
+        std::string text;
+        if (bitmap || vector) {
+            // The size chosen in the Settings this once, else the picture's.
+            const FileSaveImageSize chosen = GetSaveImageSize();
+            const int w = chosen.IsOriginal() ? fileConfig.imageWidth : chosen.width;
+            const int h = chosen.IsOriginal() ? fileConfig.imageHeight : chosen.height;
+            const std::string ratio = "(" + AspectRatioText(w, h) + ")";
+            text = bitmap ? std::to_string(w) + " \xC3\x97 " + std::to_string(h) + " pixels " + ratio
+                          : ratio;
+        }
+        pictureSizeLabel->SetText(text);
     }
 
     bool UltraCanvasFileDialog::HasPictureSize() const {
@@ -2763,11 +2832,25 @@ namespace UltraCanvas {
                 break;
             }
         }
+        SaveIntoDroppedFolder(folder);
+    }
+
+    void UltraCanvasFileDialog::ShowPathInBreadcrumb() {
+        if (!pathBreadcrumb) return;
+        // The whole path on hover, which a collapsed strip does not show.
+        pathBreadcrumb->SetTooltip(currentDirectory);
+        if (currentDirectory.empty()) return;
+        BuildFolderBreadcrumb(pathBreadcrumb.get(), currentDirectory,
+                              [this](const std::string& folder) { GoToDirectory(folder, true); });
+    }
+
+    void UltraCanvasFileDialog::SaveIntoDroppedFolder(const std::string& folder) {
         if (folder.empty() || folder == currentDirectory) return;
         // A folder of an archive the listing is browsing is not a place a
         // file can be written to.
         std::error_code ec;
         if (!std::filesystem::is_directory(PathFromUtf8(folder), ec) || ec) return;
+        // The folder field, the listing and the tree all follow.
         GoToDirectory(folder, true);
     }
 

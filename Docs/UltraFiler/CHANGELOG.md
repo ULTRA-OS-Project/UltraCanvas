@@ -1,4 +1,4 @@
-#### 2026-10-19 *1.77.1*
+#### 2026-10-19 *1.79.0*
 - **The preview pane shows PDFs in the PDF view, and unlocks protected
   files.** A PDF in the preview pane had been a picture of its first page; it
   is the PDF view again, pages and all, and PDFs on a remote drive are still
@@ -15,6 +15,13 @@
   alone before the preview forgets those passwords: a slider from *Never*
   to 120 minutes, 10 by default. The screen lock forgets them whatever is
   set.
+
+#### 2026-10-19 *1.78.0*
+- **A Save dialog's file icon dropped on a folder here names that folder.**
+  Dragging the Save dialog's file icon from another program, onto a folder
+  of the listing, the listing's empty space or a folder row of the tree,
+  now tells that dialog to save there. A drive's folders and the Pinned
+  header are not offered.
 
 #### 2026-10-19 *1.77.0*
 - **Home button.** The navigation row has a Home button (a house) between

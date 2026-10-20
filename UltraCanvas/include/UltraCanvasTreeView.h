@@ -1,7 +1,9 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-15 - SetFilterText: show only the rows matching a text, expanded
-//                to them, and put the tree back when the filter ends (TreeNode::IsShown)
+// Last Modified: 2026-10-19 - onDropFolderOfNode: the folder a node stands for, for a
+//                Save dialog's file icon dropped on it from another window or program
+//                (2026-10-15: SetFilterText: show only the rows matching a text, expanded
+//                to them, and put the tree back when the filter ends (TreeNode::IsShown))
 //                (2026-10-13: the tree takes the keyboard focus; arrows, Page Up/Down,
 //                Home, End, Enter and Space act on the focused tree (UCKeys, every platform))
 //                (2026-10-12: GetDropTargetNode, the row a drag would drop on)
@@ -343,6 +345,11 @@ public:
     // that carries no files and so ends without a Drop (the file dialog's
     // Save icon, UltraCanvasFileDragIcon): its owner asks here on release.
     TreeNode* GetDropTargetNode() const { return dropTargetNode; }
+    // The local folder `node` stands for, or "" when it stands for none. Asked
+    // when a Save dialog's file icon from another window or program is
+    // dropped on a node onFilesDragAccept accepts (a Drop carrying
+    // UCEvent::dropFolderReply): the file is saved in that folder.
+    std::function<std::string(TreeNode* node)> onDropFolderOfNode;
     // Right mouse button released over a node. The event is passed along so a
     // handler can open a context menu at the pointer (event.pointerWindow).
     // A right press never changes the selection — the menu acts on the node

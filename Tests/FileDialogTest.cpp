@@ -50,6 +50,7 @@
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -303,12 +304,13 @@ bool DragIconUntil(UltraCanvasApplication& app, const std::shared_ptr<UltraCanva
     return false;
 }
 
-// The folder the dialog shows, as its path field has it. (Not the dialog's
-// GetCurrentDirectory: windows.h renames that, and new callers are not added.)
+// The folder the dialog shows, as its path breadcrumb has it - the whole
+// path is its tooltip. (Not the dialog's GetCurrentDirectory: windows.h
+// renames that, and new callers are not added.)
 std::string ShownFolder(const SaveRun& run) {
-    auto* field = run.dialog ? dynamic_cast<UltraCanvasTextInput*>(run.dialog->FindChildById("FileDialogPath"))
+    auto* crumb = run.dialog ? dynamic_cast<UltraCanvasBreadcrumb*>(run.dialog->FindChildById("FileDialogPath"))
                              : nullptr;
-    return field ? field->GetText() : std::string();
+    return crumb ? crumb->GetTooltip() : std::string();
 }
 
 std::string Canonical(const std::filesystem::path& p) {
@@ -904,6 +906,30 @@ int main() {
                      over && now != start && std::filesystem::is_directory(PathFromUtf8(now), dec));
                 TEST("... and the row is no longer highlighted", tree->GetDropTargetNode() == nullptr);
             }
+            // Out of the window the drag is the platform's, and the window it
+            // lands on answers with a folder: a file display names the one
+            // under the pointer (DeliverSaveDrop, as the platform calls it).
+            if (listing) {
+                const Rect2Di lb = listing->GetBoundsInWindow();
+                const std::string named = run.dialog->DeliverSaveDrop(
+                        "untitled.png", Point2Di(lb.x + lb.width / 2, lb.y + lb.height / 2));
+                std::error_code dec;
+                TEST("A save drag dropped on a file display is told its folder",
+                     !named.empty() && std::filesystem::is_directory(PathFromUtf8(named), dec));
+                TEST("... and the display shows no drop after it", listing->GetIncomingDropFolder().empty());
+            }
+            if (icon && icon->onDroppedOnFolder) {
+                const std::filesystem::path other = PathFromUtf8(folder) / "Dropped elsewhere";
+                std::error_code dec;
+                std::filesystem::create_directories(other, dec);
+                icon->onDroppedOnFolder(PathToUtf8(other));
+                TEST("The folder another program names becomes the dialog's",
+                     Canonical(PathFromUtf8(ShownFolder(run))) == Canonical(other));
+                auto* crumb = dynamic_cast<UltraCanvasBreadcrumb*>(run.dialog->FindChildById("FileDialogPath"));
+                TEST("The path is a breadcrumb, as in UltraFiler, ending in that folder",
+                     crumb && crumb->GetItemCount() >= 2 &&
+                     crumb->GetItem(static_cast<int>(crumb->GetItemCount()) - 1)->text == "Dropped elsewhere");
+            }
             run.dialog->CloseDialog(DialogResult::Cancel);
 
             // The Settings button: the type's settings, stored on OK.
@@ -957,6 +983,17 @@ int main() {
                 c.imageHeight = 480;
             });
             TEST("Nothing chosen, the size is the picture's own", run.dialog->GetSaveImageSize().IsOriginal());
+            auto sizeLine = [&run]() {
+                auto* label = dynamic_cast<UltraCanvasLabel*>(run.dialog->FindChildById("FileDialogPictureSize"));
+                return label ? label->GetText() : std::string("<none>");
+            };
+            TEST("Under the type: the pixels and the proportions of a bitmap",
+                 sizeLine() == "640 \xC3\x97 480 pixels (4:3)");
+            if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
+                WritePpm(run.dialog.get(), static_cast<int>(run.dialog->GetWidth()),
+                         static_cast<int>(run.dialog->GetHeight()), std::string(shotDir) + "/save-dialog-size.ppm");
+            }
             top = openSettings(run);
             auto* sizeW = top ? dynamic_cast<UltraCanvasSpinner*>(top->FindChildById("SaveSizeWidth")) : nullptr;
             auto* sizeH = top ? dynamic_cast<UltraCanvasSpinner*>(top->FindChildById("SaveSizeHeight")) : nullptr;
@@ -989,6 +1026,7 @@ int main() {
                 const FileSaveImageSize picked = run.dialog->GetSaveImageSize();
                 TEST("OK makes it this save's size", picked.width == 100 && picked.height == 50 &&
                                                      !picked.keepProportions);
+                TEST("... and the line under the type says so", sizeLine() == "100 \xC3\x97 50 pixels (2:1)");
                 TEST("... without storing it as a setting", !UltraCanvasFileLoader::HasStoredSaveSettings("png") ||
                      UltraCanvasFileLoader::GetSaveSettings("png").values.count("width") == 0);
                 TypeName(run, "notes.txt");
@@ -996,6 +1034,12 @@ int main() {
                     types->SetSelectedIndex(3);   // All files: a text file is no picture
                 TEST("A type that is not a bitmap is saved at no size",
                      run.dialog->GetSaveImageSize().IsOriginal());
+                TEST("... and shows no size", sizeLine().empty());
+                const std::vector<std::string> drawings = UltraCanvasFileLoader::GetVectorSaveExtensions();
+                if (!drawings.empty()) {
+                    TypeName(run, "picture." + drawings.front());
+                    TEST("A drawing type shows the proportions alone", sizeLine() == "(4:3)");
+                }
                 TypeName(run, "picture.bmp");
                 TEST("BMP has no settings but its size: the button can be used",
                      !dynamic_cast<UltraCanvasButton*>(run.dialog->FindChildById("FileDialogSaveSettings"))->IsDisabled());
@@ -1003,8 +1047,21 @@ int main() {
             }
             run.dialog->CloseDialog(DialogResult::Cancel);
 
+            // Proportions that do not reduce to short numbers, as a decimal.
+            run = ShowSave(folder, "screen.png", 0, "", [](FileDialogConfig& c) {
+                c.imageWidth = 1366;
+                c.imageHeight = 768;
+            });
+            {
+                auto* label = dynamic_cast<UltraCanvasLabel*>(run.dialog->FindChildById("FileDialogPictureSize"));
+                TEST("1366 x 768 reads (1.78:1)", label && label->GetText() == "1366 \xC3\x97 768 pixels (1.78:1)");
+            }
+            run.dialog->CloseDialog(DialogResult::Cancel);
+
             // Without the picture's size: no Size row, and BMP has nothing.
             run = ShowSave(folder, "picture.png");
+            TEST("Without the picture's size there is no size line",
+                 run.dialog->FindChildById("FileDialogPictureSize") == nullptr);
             top = openSettings(run);
             TEST("Without the picture's size there is no Size row",
                  top && top->FindChildById("SaveSizeWidth") == nullptr);

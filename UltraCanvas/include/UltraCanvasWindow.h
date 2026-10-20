@@ -415,6 +415,30 @@ namespace UltraCanvas {
             return false;
         }
 
+        // ===== NATIVE SAVE DRAG =====
+        // The Save dialog's file icon (UltraCanvasFileDragIcon) dragged out of
+        // this window: a native drag that carries no file, only its name, and
+        // asks the window it is dropped on which folder the file goes in -
+        // the folder of a file display (UltraFiler's listing, the folder
+        // tree) under the pointer. Same rules as StartNativeFileDrag: called
+        // while the button is held, returns false where the platform has no
+        // implementation. onFolder runs only when a target named a local
+        // folder; a drop on anything else (or Escape) ends with no call.
+        // Windows: a private clipboard format the target answers through
+        // IDataObject::SetData. X11: the XDS protocol (XdndDirectSave0), so
+        // other file managers that speak it name their folder too.
+        virtual bool StartNativeSaveDrag(const std::string& fileName,
+                                         std::function<void(const std::string& folder)> onFolder) {
+            (void)fileName; (void)onFolder;
+            return false;
+        }
+
+        // The target side of that drag, for the platform layer: delivers the
+        // Drop to the element under `pointerWindow` (logical window
+        // coordinates) at once, not through the queue, and returns the folder
+        // it named (UCEvent::dropFolderReply), or "" when it named none.
+        std::string DeliverSaveDrop(const std::string& fileName, const Point2Di& pointerWindow);
+
         // ===== DRAG OVERLAY =====
         // A small piece of content painted on top of every element of the
         // window. An element cannot paint outside its own bounds, so a widget
