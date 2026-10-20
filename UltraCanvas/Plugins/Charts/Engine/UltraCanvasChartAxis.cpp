@@ -1,7 +1,7 @@
 // Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
 // Unified axis model implementation
-// Version: 1.0.0
-// Last Modified: 2026-08-01
+// Version: 1.1.0 - sub-bands, symmetric ranges, cyclic category axes
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
@@ -120,6 +120,11 @@ void ChartAxis::Finalize() {
     finalized = true;
     degenerate = false;
 
+    if (scale == ChartScale::Category && cyclic) {
+        effectiveMin = 0.0;
+        effectiveMax = std::max<double>(1.0, static_cast<double>(categories.size()));
+        return;
+    }
     if (scale == ChartScale::Category) {
         effectiveMin = -categoryPadding;
         effectiveMax = (categories.empty() ? 1.0
@@ -178,6 +183,11 @@ void ChartAxis::Finalize() {
         lo -= magnitude * 0.5;
         hi += magnitude * 0.5;
     } else if (autoRange && scale == ChartScale::Linear) {
+        if (symmetric) {
+            const double m = std::max(std::abs(lo), std::abs(hi));
+            lo = -m;
+            hi = m;
+        }
         // Round an auto range outward to nice numbers so tick labels read well.
         const double step = NiceNumber(NiceNumber(hi - lo, false) / 5.0, true);
         lo = std::floor(lo / step) * step;
@@ -253,10 +263,13 @@ double ChartAxis::Normalize(double value) const {
         const double span = hi - lo;
         t = (std::abs(span) < 1e-15) ? 0.5 : (ApplyScale(value) - lo) / span;
     }
-    return inverted ? 1.0 - t : t;
+    if (inverted) t = 1.0 - t;
+    return bandStart + t * (bandEnd - bandStart);
 }
 
 double ChartAxis::Denormalize(double t) const {
+    const double band = bandEnd - bandStart;
+    if (std::abs(band) > 1e-15) t = (t - bandStart) / band;
     const double u = inverted ? 1.0 - t : t;
     if (scale == ChartScale::Percentile) return UnapplyScale(u);
     const double lo = ApplyScale(effectiveMin);

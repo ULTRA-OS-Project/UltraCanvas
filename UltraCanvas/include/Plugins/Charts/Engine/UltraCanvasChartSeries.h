@@ -17,8 +17,15 @@
 // Bar connections (1.1.0) join each series' bars across the categories with a
 // straight or curved line - see BuildBarConnections below.
 //
-// Version: 1.1.0
-// Last Modified: 2026-09-27
+// Line and area series (1.2.0): the same normalised-space discipline for the
+// line family - straight, monotone-curved and stepped lines broken at missing
+// values, filled bands between a top and a base line, the stacking arithmetic
+// stacked areas and cumulative-flow charts share with stacked bars, and the
+// marker shapes scatter and line charts put on their points. Lines are sampled
+// through the projection, so a line chart under Polar is a polar line chart.
+//
+// Version: 1.2.0
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -129,5 +136,82 @@ struct ChartBarConnection {
 std::vector<ChartBarConnection> BuildBarConnections(const IChartProjection& projection,
                                                     const std::vector<ChartBarSpan>& spans,
                                                     const ChartBarConnectionOptions& options = {});
+
+// =============================================================================
+// LINE AND AREA SERIES
+// =============================================================================
+
+enum class ChartLineShape {
+    Straight,     // knot to knot
+    Curved,       // monotone cubic (Fritsch-Carlson): smooth, never overshoots a knot
+    StepAfter,    // hold each value until the next point, then step
+    StepBefore,   // step to the next value first, then hold it
+    StepMiddle    // step halfway between the points
+};
+
+struct ChartLineOptions {
+    ChartLineShape shape = ChartLineShape::Straight;
+    // A non-finite point breaks the line by default; true joins its
+    // neighbours instead.
+    bool bridgeGaps = false;
+    // Screen samples per joined pair of points. Straight segments are sampled
+    // too, so they follow the rings under Polar.
+    int samplesPerSegment = 16;
+};
+
+// One unbroken run of a line series.
+struct ChartLineRun {
+    std::vector<size_t> indices;              // the data points joined, in order
+    std::vector<Point2Dd> points;             // the screen polyline, ready to stroke
+    std::vector<Point2Dd> knots;              // each joined data point on screen (markers)
+    std::vector<ChartNormalizedPoint> path;   // the same polyline in normalised space
+};
+
+// Joins the points in the order given (normally increasing u). A run of a
+// single point produces a run with one knot and no stroke, so a lone value
+// still gets its marker.
+std::vector<ChartLineRun> BuildLineRuns(const IChartProjection& projection,
+                                        const std::vector<ChartNormalizedPoint>& points,
+                                        const ChartLineOptions& options = {});
+
+// Closed outlines of the band between a top and a base line (same length,
+// same u per index - a stacked area's segment, or an area down to a constant
+// base). An index where either edge is non-finite breaks the band, unless
+// options.bridgeGaps. Both edges follow options.shape.
+std::vector<std::vector<Point2Dd>> BuildAreaOutlines(const IChartProjection& projection,
+                                                     const std::vector<ChartNormalizedPoint>& top,
+                                                     const std::vector<ChartNormalizedPoint>& base,
+                                                     const ChartLineOptions& options = {});
+
+// The stacking arithmetic of the line family, in value space: per series, per
+// index, the base and top of that series' band. Grouped leaves every series
+// on zero (base 0, top = value; a missing value is NaN in both). Stacked
+// accumulates positives upward and negatives downward, exactly as the bar
+// stacks do; PercentStacked shares out each index's absolute total (tops in
+// percent). In the stacked arrangements a missing value contributes nothing
+// (a zero-thickness band), so the stack above it stays continuous. Feed the
+// value axis with ObserveBarSeries - the range arithmetic is the same.
+struct ChartStackedValues {
+    std::vector<std::vector<double>> base;
+    std::vector<std::vector<double>> top;
+};
+ChartStackedValues StackSeriesValues(const std::vector<std::vector<double>>& series,
+                                     ChartBarArrangement arrangement);
+
+// =============================================================================
+// MARKERS
+// =============================================================================
+
+// The point shapes the scatter, bubble and line charts draw - and the
+// Marker legend swatch keys. Drawn by DrawChartMarker
+// (Engine/UltraCanvasChartEngineElement.h). NoMarker, not None: X11's Xlib.h
+// #defines None.
+enum class ChartMarkerShape { NoMarker, Circle, Square, Diamond, TriangleUp, TriangleDown, Cross, Plus };
+
+// The marker's outline polygon around `center` with circumradius `radius`;
+// empty for NoMarker, Circle (drawn as a circle), Cross and Plus (drawn as
+// strokes). UI-free, so hit regions can reuse the exact shape.
+std::vector<Point2Dd> ChartMarkerPolygon(ChartMarkerShape shape, const Point2Dd& center,
+                                         double radius);
 
 } // namespace UltraCanvas

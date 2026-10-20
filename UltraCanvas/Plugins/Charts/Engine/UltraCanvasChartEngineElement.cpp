@@ -1,7 +1,23 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
-// Version: 1.2.0
-// Last Modified: 2026-08-20
+// Version: 1.3.0
+// Last Modified: 2026-10-20
+// V1.3.0: Polar furniture and two-direction grids for the engine ports of the
+//   line, scatter, radar, radial bar and pie charts.
+//   - Under Polar an edge axis follows its role: a domain axis labels the rim
+//     (ticks and labels around the outer ring, the margin measured on all four
+//     sides), a value axis becomes the radial rule at the start angle. Before,
+//     both were straight rules along the rectangular plot bounds.
+//   - The value grid draws rings under Polar (circles, or polygons through
+//     the domain ticks - SetPolarGridShape); it drew degenerate chords.
+//   - SetDomainGridAxis adds the perpendicular grid (vertical lines, spokes),
+//     and a domain axis given to SetGridAxis now rules across the value range
+//     instead of drawing lines at its tick positions in the wrong direction.
+//   - SetPolarAngles / SetPolarInnerRadius reach the polar projection and
+//     survive projection switches.
+//   - An edge axis with a sub-band (ChartAxis::bandStart/bandEnd) draws its
+//     rule over the band only, so stacked panes read as separate axes.
+//   - DrawChartMarker: the one marker painter of the scatter / line family.
 // V1.2.0: Themes and palettes (Engine/UltraCanvasChartTheme.h) - SetTheme /
 //   SetPalette / the "theme" named property fill the engine's furniture
 //   colours from a ChartTheme; repaint-only, with an OnThemeChanged() hook.
@@ -67,6 +83,7 @@ void UltraCanvasChartEngineElement::SetProjectionKind(ChartProjectionKind kind) 
     if (kind == projectionKind) return;
     projectionKind = kind;
     engineProjection = CreateChartProjection(kind);
+    ApplyPolarGeometry();
     // Data, not just Geometry: DescribeAxes must run again, because a chart
     // may place its edge axes differently per projection (a horizontal bar
     // chart's value axis sits on the bottom, not the left).
@@ -75,6 +92,48 @@ void UltraCanvasChartEngineElement::SetProjectionKind(ChartProjectionKind kind) 
 
 ChartProjectionKind UltraCanvasChartEngineElement::GetProjectionKind() const {
     return projectionKind;
+}
+
+void UltraCanvasChartEngineElement::ApplyPolarGeometry() {
+    if (auto* polar = dynamic_cast<ChartPolarProjection*>(engineProjection.get())) {
+        polar->SetAngles(polarStartAngle, polarSweep, polarClockwise);
+        polar->SetInnerRadiusFraction(polarInnerFraction);
+    }
+}
+
+void UltraCanvasChartEngineElement::SetPolarAngles(double startAngleDegrees,
+                                                   double sweepDegrees, bool clockwise) {
+    polarStartAngle = startAngleDegrees;
+    polarSweep = std::clamp(sweepDegrees, 1.0, 360.0);
+    polarClockwise = clockwise;
+    ApplyPolarGeometry();
+    MarkEngineDirty(ChartDirty::Geometry);      // labels sit on the moved rim
+}
+
+void UltraCanvasChartEngineElement::SetPolarInnerRadius(double fraction) {
+    polarInnerFraction = std::clamp(fraction, 0.0, 0.95);
+    ApplyPolarGeometry();
+    MarkEngineDirty(ChartDirty::Geometry);
+}
+
+void UltraCanvasChartEngineElement::SetPolarGridShape(ChartPolarGridShape shape) {
+    polarGridShape = shape;
+    RequestRedraw();
+}
+
+bool UltraCanvasChartEngineElement::PolarFullCircle() const {
+    return polarSweep >= 359.999;
+}
+
+bool UltraCanvasChartEngineElement::IsDomainAxis(const ChartAxis& axis) const {
+    if (axis.role == ChartAxisRole::Domain) return true;
+    if (axis.role == ChartAxisRole::Value) return false;
+    const bool acrossBottomOrTop = (axis.side == ChartAxisSide::Bottom ||
+                                    axis.side == ChartAxisSide::Top);
+    // The horizontal projection transposes the plot: the domain runs down the
+    // left/right edges and the value along the bottom/top.
+    return (projectionKind == ChartProjectionKind::Horizontal) ? !acrossBottomOrTop
+                                                               : acrossBottomOrTop;
 }
 
 void UltraCanvasChartEngineElement::SetTheme(const ChartTheme& theme) {
@@ -131,6 +190,11 @@ void UltraCanvasChartEngineElement::SetLabelOptions(const LabelPlacementOptions&
 
 void UltraCanvasChartEngineElement::SetGridAxis(size_t axisIndex) {
     gridAxisIndex = axisIndex;
+    RequestRedraw();
+}
+
+void UltraCanvasChartEngineElement::SetDomainGridAxis(size_t axisIndex) {
+    domainGridAxisIndex = axisIndex;
     RequestRedraw();
 }
 
@@ -431,8 +495,27 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
     }
 
     ctx->SetFontSize(axisFontSize);
+    const bool polar = (projectionKind == ChartProjectionKind::Polar);
     for (const ChartAxis& axis : engineAxes) {
         if (!axis.visible || axis.inPlot) continue;
+        if (polar) {
+            // Polar furniture: a value axis is the radial rule inside the
+            // circle and reserves nothing; a domain axis rings the circle with
+            // labels pointing outward, so it needs room on every side.
+            if (!IsDomainAxis(axis)) continue;
+            double widest = 0.0, tallest = 0.0;
+            for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
+                const Size2Di size = ctx->GetTextLineDimensions(tick.label);
+                widest = std::max(widest, static_cast<double>(size.width));
+                tallest = std::max(tallest, static_cast<double>(size.height));
+            }
+            const double ring = tickLength + tickLabelGap + 4.0;
+            request.Reserve(ChartAxisEdge::Left, ring + widest);
+            request.Reserve(ChartAxisEdge::Right, ring + widest);
+            request.Reserve(ChartAxisEdge::Top, ring + tallest);
+            request.Reserve(ChartAxisEdge::Bottom, ring + tallest);
+            continue;
+        }
         // Widest tick label of an edge axis decides its margin.
         double maxLabelExtent = 0.0;
         for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
@@ -609,6 +692,9 @@ void UltraCanvasChartEngineElement::DeclutterAxisTickLabels(IRenderContext* ctx)
     for (size_t i = 0; i < engineAxes.Count(); ++i) {
         const ChartAxis& axis = engineAxes.At(i);
         if (!axis.visible) continue;
+        // Rim labels declutter themselves around the circle.
+        if (projectionKind == ChartProjectionKind::Polar && !axis.inPlot &&
+            IsDomainAxis(axis)) continue;
         const std::vector<ChartTick> ticks = axis.GenerateTicks(targetTickCount);
 
         Point2Dd lowEnd, highEnd;
@@ -635,9 +721,14 @@ void UltraCanvasChartEngineElement::DeclutterAxisTickLabels(IRenderContext* ctx)
 void UltraCanvasChartEngineElement::AxisScreenLine(const ChartAxis& axis,
                                                    Point2Dd& lowEnd,
                                                    Point2Dd& highEnd) const {
-    if (axis.inPlot) {
-        lowEnd = engineProjection->ToScreen(ChartNormalizedPoint(axis.plotPosition, 0.0));
-        highEnd = engineProjection->ToScreen(ChartNormalizedPoint(axis.plotPosition, 1.0));
+    // A value edge axis under Polar is the radial rule at the start angle,
+    // exactly where an in-plot axis at position 0 would stand.
+    const bool polarValueRule = projectionKind == ChartProjectionKind::Polar &&
+                                !axis.inPlot && !IsDomainAxis(axis);
+    if (axis.inPlot || polarValueRule) {
+        const double at = axis.inPlot ? axis.plotPosition : 0.0;
+        lowEnd = engineProjection->ToScreen(ChartNormalizedPoint(at, 0.0));
+        highEnd = engineProjection->ToScreen(ChartNormalizedPoint(at, 1.0));
         return;
     }
     const Rect2Dd& plot = frame.plotArea;
@@ -896,20 +987,78 @@ void UltraCanvasChartEngineElement::RenderEngineHighlights(IRenderContext* ctx,
 }
 
 void UltraCanvasChartEngineElement::RenderEngineGrid(IRenderContext* ctx) {
-    if (gridAxisIndex >= engineAxes.Count()) return;
-    const ChartAxis& axis = engineAxes.At(gridAxisIndex);
-
     ctx->SetStrokePaint(gridColor);
     ctx->SetStrokeWidth(1.0f);
+    RenderGridFrom(ctx, gridAxisIndex);
+    if (domainGridAxisIndex != gridAxisIndex) RenderGridFrom(ctx, domainGridAxisIndex);
+}
+
+void UltraCanvasChartEngineElement::RenderGridFrom(IRenderContext* ctx, size_t axisIndex) {
+    if (axisIndex >= engineAxes.Count()) return;
+    const ChartAxis& axis = engineAxes.At(axisIndex);
+    const bool polar = (projectionKind == ChartProjectionKind::Polar);
+    // In-plot axes keep the value direction they always had.
+    const bool domain = !axis.inPlot && IsDomainAxis(axis);
+
     // Gridlines run perpendicular to the grid axis, one per tick - derived
     // from the same ticks the labels use, so they always line up.
+    std::vector<double> drawn;
     for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
-        const Point2Dd from = engineProjection->ToScreen(
-            ChartNormalizedPoint(0.0, tick.normalized));
-        const Point2Dd to = engineProjection->ToScreen(
-            ChartNormalizedPoint(1.0, tick.normalized));
-        ctx->DrawLine(from, to);
+        if (domain) {
+            // Across the value range: vertical lines, or spokes under Polar.
+            // A full circle maps u = 0 and u = 1 onto the same spoke.
+            double u = tick.normalized;
+            if (polar && PolarFullCircle()) u -= std::floor(u);
+            bool duplicate = false;
+            for (double d : drawn) duplicate = duplicate || std::abs(d - u) < 1e-6;
+            if (duplicate) continue;
+            drawn.push_back(u);
+            ctx->DrawLine(engineProjection->ToScreen(ChartNormalizedPoint(u, 0.0)),
+                          engineProjection->ToScreen(ChartNormalizedPoint(u, 1.0)));
+        } else if (polar) {
+            const std::vector<Point2Dd> ring = PolarRing(tick.normalized);
+            if (ring.size() >= 2) ctx->DrawLinePath(ring, PolarFullCircle());
+        } else {
+            ctx->DrawLine(engineProjection->ToScreen(ChartNormalizedPoint(0.0, tick.normalized)),
+                          engineProjection->ToScreen(ChartNormalizedPoint(1.0, tick.normalized)));
+        }
     }
+}
+
+const ChartAxis* UltraCanvasChartEngineElement::PolarDomainAxis() const {
+    if (domainGridAxisIndex < engineAxes.Count()) return &engineAxes.At(domainGridAxisIndex);
+    for (const ChartAxis& axis : engineAxes) {
+        if (!axis.inPlot && IsDomainAxis(axis)) return &axis;
+    }
+    return nullptr;
+}
+
+std::vector<Point2Dd> UltraCanvasChartEngineElement::PolarRing(double v) const {
+    std::vector<Point2Dd> ring;
+    const ChartAxis* domain = PolarDomainAxis();
+    if (polarGridShape == ChartPolarGridShape::Polygon && domain) {
+        // The radar web: straight chords between neighbouring spokes.
+        std::vector<double> us;
+        for (const ChartTick& tick : domain->GenerateTicks(targetTickCount)) {
+            double u = tick.normalized;
+            if (PolarFullCircle()) u -= std::floor(u);
+            bool duplicate = false;
+            for (double d : us) duplicate = duplicate || std::abs(d - u) < 1e-6;
+            if (!duplicate) us.push_back(u);
+        }
+        std::sort(us.begin(), us.end());
+        if (us.size() >= 3) {
+            for (double u : us) ring.push_back(engineProjection->ToScreen(ChartNormalizedPoint(u, v)));
+            return ring;
+        }
+    }
+    constexpr int kSegments = 120;
+    for (int k = 0; k <= kSegments; ++k) {
+        if (PolarFullCircle() && k == kSegments) break;   // closed by the caller
+        ring.push_back(engineProjection->ToScreen(
+            ChartNormalizedPoint(static_cast<double>(k) / kSegments, v)));
+    }
+    return ring;
 }
 
 void UltraCanvasChartEngineElement::RenderEngineLimiters(IRenderContext* ctx) {
@@ -994,13 +1143,23 @@ void UltraCanvasChartEngineElement::RenderEngineInPlotAxes(IRenderContext* ctx) 
 
 void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, size_t i) {
     const ChartAxis& axis = engineAxes.At(i);
+    if (projectionKind == ChartProjectionKind::Polar && !axis.inPlot && IsDomainAxis(axis)) {
+        RenderPolarRimAxis(ctx, i);
+        return;
+    }
 
     Point2Dd lowEnd, highEnd;
     AxisScreenLine(axis, lowEnd, highEnd);
 
+    // The rule covers the axis's sub-band only (stacked panes), so a price
+    // axis above a volume axis reads as two axes on the same edge.
+    auto along = [&](double t) {
+        return Point2Dd(lowEnd.x + (highEnd.x - lowEnd.x) * t,
+                        lowEnd.y + (highEnd.y - lowEnd.y) * t);
+    };
     ctx->SetStrokePaint(axisLineColor);
     ctx->SetStrokeWidth(1.0f);
-    ctx->DrawLine(lowEnd, highEnd);
+    ctx->DrawLine(along(axis.bandStart), along(axis.bandEnd));
 
     const bool alongY = std::abs(highEnd.y - lowEnd.y) > std::abs(highEnd.x - lowEnd.x);
     // Ticks point away from the plot for edge axes, left for in-plot ones.
@@ -1083,6 +1242,72 @@ void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, siz
     }
 }
 
+Rect2Dd UltraCanvasChartEngineElement::PolarRimLabelBox(double u, const Size2Di& size) const {
+    const auto* polar = dynamic_cast<const ChartPolarProjection*>(engineProjection.get());
+    const Point2Dd c = polar ? polar->Center() : frame.plotArea.Center();
+    const Point2Dd rim = engineProjection->ToScreen(ChartNormalizedPoint(u, 1.0));
+    double dx = rim.x - c.x, dy = rim.y - c.y;
+    const double len = std::sqrt(dx * dx + dy * dy);
+    if (len < 1e-9) { dx = 0.0; dy = -1.0; } else { dx /= len; dy /= len; }
+    const double reach = tickLength + tickLabelGap;
+    const Point2Dd p(rim.x + dx * reach, rim.y + dy * reach);
+    // Push the box outward along the radius: a label at 3 o'clock starts at
+    // the anchor, one at 12 o'clock sits centred above it.
+    return Rect2Dd(p.x - size.width * 0.5 + dx * size.width * 0.5,
+                   p.y - size.height * 0.5 + dy * size.height * 0.5,
+                   size.width, size.height);
+}
+
+void UltraCanvasChartEngineElement::RenderPolarRimAxis(IRenderContext* ctx, size_t i) {
+    const ChartAxis& axis = engineAxes.At(i);
+    const auto* polar = dynamic_cast<const ChartPolarProjection*>(engineProjection.get());
+    if (!polar) return;
+    const Point2Dd c = polar->Center();
+
+    // The rim itself, at the outer edge of the value range.
+    ctx->SetStrokePaint(axisLineColor);
+    ctx->SetStrokeWidth(1.0f);
+    const std::vector<Point2Dd> rim = PolarRing(1.0);
+    if (rim.size() >= 2) ctx->DrawLinePath(rim, PolarFullCircle());
+
+    std::vector<Rect2Dd> placed;
+    std::vector<double> drawnU;
+    for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
+        double u = tick.normalized;
+        if (PolarFullCircle()) u -= std::floor(u);
+        if (u < -1e-6 || u > 1.0 + 1e-6) continue;
+        bool duplicate = false;
+        for (double d : drawnU) duplicate = duplicate || std::abs(d - u) < 1e-6;
+        if (duplicate) continue;      // 0 and 360 degrees are one spoke
+        drawnU.push_back(u);
+
+        const Point2Dd p = engineProjection->ToScreen(ChartNormalizedPoint(u, 1.0));
+        double dx = p.x - c.x, dy = p.y - c.y;
+        const double len = std::sqrt(dx * dx + dy * dy);
+        if (len > 1e-9) { dx /= len; dy /= len; }
+        ctx->SetStrokePaint(axisTickColor);
+        ctx->DrawLine(p, Point2Dd(p.x + dx * tickLength, p.y + dy * tickLength));
+
+        // Declutter around the circle: a label that would overprint one
+        // already placed is dropped (ticks arrive in angular order, ends
+        // first in priority is not needed - the rim has no ends to protect).
+        const Size2Di size = ctx->GetTextLineDimensions(tick.label);
+        const Rect2Dd box = PolarRimLabelBox(u, size);
+        bool overlaps = false;
+        for (const Rect2Dd& other : placed) {
+            if (box.x < other.Right() + 2.0 && other.x < box.Right() + 2.0 &&
+                box.y < other.Bottom() + 1.0 && other.y < box.Bottom() + 1.0) {
+                overlaps = true;
+                break;
+            }
+        }
+        if (overlaps) continue;
+        placed.push_back(box);
+        ctx->SetTextPaint(axisLabelColor);
+        ctx->DrawText(tick.label, box.TopLeft());
+    }
+}
+
 void UltraCanvasChartEngineElement::RenderEngineTitle(IRenderContext* ctx) {
     if (chartTitle.empty()) return;
     ctx->SetTextPaint(titleTextColor);
@@ -1128,6 +1353,61 @@ void UltraCanvasChartEngineElement::RenderEngineLegend(IRenderContext* ctx) {
     // The shared component draws itself against the same area it was
     // measured with during layout; the call is cheap when nothing changed.
     engineLegend.Render(ctx, legendArea);
+}
+
+// =============================================================================
+// MARKERS
+// =============================================================================
+
+void DrawChartMarker(IRenderContext* ctx, ChartMarkerShape shape, const Point2Dd& center,
+                     double radius, const Color& fill, const Color& stroke,
+                     float strokeWidth) {
+    if (!ctx || shape == ChartMarkerShape::NoMarker || radius <= 0.0) return;
+    const bool outlined = stroke.a > 0 && strokeWidth > 0.0f;
+
+    if (shape == ChartMarkerShape::Cross || shape == ChartMarkerShape::Plus) {
+        ctx->PushState();
+        ctx->SetLineCap(LineCap::Round);
+        const double r = radius;
+        const double k = (shape == ChartMarkerShape::Cross) ? r * 0.8 : r;
+        auto stroke2 = [&](const Color& color, float width) {
+            ctx->SetStrokePaint(color);
+            ctx->SetStrokeWidth(width);
+            if (shape == ChartMarkerShape::Cross) {
+                ctx->DrawLine(Point2Dd(center.x - k, center.y - k), Point2Dd(center.x + k, center.y + k));
+                ctx->DrawLine(Point2Dd(center.x - k, center.y + k), Point2Dd(center.x + k, center.y - k));
+            } else {
+                ctx->DrawLine(Point2Dd(center.x - k, center.y), Point2Dd(center.x + k, center.y));
+                ctx->DrawLine(Point2Dd(center.x, center.y - k), Point2Dd(center.x, center.y + k));
+            }
+        };
+        const float width = static_cast<float>(std::max(1.5, radius * 0.45));
+        if (outlined) stroke2(stroke, width + strokeWidth * 2.0f);
+        stroke2(fill, width);
+        ctx->PopState();
+        return;
+    }
+
+    if (shape == ChartMarkerShape::Circle) {
+        ctx->SetFillPaint(fill);
+        ctx->FillCircle(center, radius);
+        if (outlined) {
+            ctx->SetStrokePaint(stroke);
+            ctx->SetStrokeWidth(strokeWidth);
+            ctx->DrawCircle(center, radius);
+        }
+        return;
+    }
+
+    const std::vector<Point2Dd> polygon = ChartMarkerPolygon(shape, center, radius);
+    if (polygon.size() < 3) return;
+    ctx->SetFillPaint(fill);
+    ctx->FillLinePath(polygon);
+    if (outlined) {
+        ctx->SetStrokePaint(stroke);
+        ctx->SetStrokeWidth(strokeWidth);
+        ctx->DrawLinePath(polygon, true);
+    }
 }
 
 } // namespace UltraCanvas

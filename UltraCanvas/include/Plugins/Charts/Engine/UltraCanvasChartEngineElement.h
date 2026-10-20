@@ -17,9 +17,12 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.4.0 - polar furniture (rim labels, radial value rule, ring and
+//   polygon grids), polar angles / inner radius, domain gridlines, axis
+//   sub-bands on the edge rule, DrawChartMarker
 // Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -83,6 +86,19 @@ struct ChartBarConnectionStyle {
     Color haloColor = Color(0, 0, 0, 0);
 };
 
+// The rings a polar value grid draws: true circles, or polygons through the
+// domain ticks - the radar "web".
+enum class ChartPolarGridShape { Circle, Polygon };
+
+// Paints one point marker (Engine/UltraCanvasChartSeries.h ChartMarkerShape)
+// centred on `center`. Filled shapes take `fill` and an optional outline
+// (`stroke` with alpha 0 = none); Cross and Plus are strokes in the fill
+// colour. Shared by the scatter, bubble and line charts so a marker looks the
+// same everywhere it appears.
+void DrawChartMarker(IRenderContext* ctx, ChartMarkerShape shape, const Point2Dd& center,
+                     double radius, const Color& fill,
+                     const Color& stroke = Color(0, 0, 0, 0), float strokeWidth = 1.0f);
+
 // The legend is the shared ChartLegend component
 // (Plugins/Charts/UltraCanvasChartLegend.h): ChartLegendEntry, LegendSwatch
 // (Square, Circle, Ring, Line, DashedLine, Marker, Glyph, Gradient, Outline,
@@ -130,6 +146,22 @@ public:
     void SetProjectionKind(ChartProjectionKind kind);
     ChartProjectionKind GetProjectionKind() const;
 
+    // Polar projection geometry, kept across projection switches: where the
+    // domain starts (degrees, 0 = 3 o'clock, -90 = 12 o'clock), how far it
+    // sweeps (360 = full circle; 270 for a radial bar chart) and which way,
+    // and the fraction of the radius left empty in the middle (donuts, radial
+    // bars). Geometry-only - no re-describe of the axes.
+    void SetPolarAngles(double startAngleDegrees, double sweepDegrees, bool clockwise = true);
+    void SetPolarInnerRadius(double fraction);
+    // Value-grid rings under Polar: circles (default) or polygons through
+    // the domain ticks (the radar web).
+    void SetPolarGridShape(ChartPolarGridShape shape);
+    ChartPolarGridShape GetPolarGridShape() const { return polarGridShape; }
+
+    // Whether an axis maps the domain (u) or the value (v) under the current
+    // projection - ChartAxis::role, or inferred from its side when Auto.
+    bool IsDomainAxis(const ChartAxis& axis) const;
+
     // Theme and palette (Engine/UltraCanvasChartTheme.h). A theme change is
     // repaint-only - it never re-runs layout or the label solver. Content
     // charts draw their series from Palette() (typically
@@ -152,7 +184,12 @@ public:
 
     // Grid lines are derived from this axis's ticks (fixes the base class's
     // fixed 10x8 grid that never matched the ticks). SIZE_MAX = no grid axis.
+    // A value axis draws lines across the domain (rings under Polar); a
+    // domain axis draws lines across the value range (spokes under Polar).
     void SetGridAxis(size_t axisIndex);
+    // A second grid source, so a chart can rule both directions - a scatter
+    // plot's x and y, a radar's rings and spokes. SIZE_MAX = none (default).
+    void SetDomainGridAxis(size_t axisIndex);
 
     size_t AddLimiter(const ChartLimiter& limiter);
     void ClearLimiters();
@@ -328,6 +365,26 @@ private:
     int lastLayoutWidth = -1, lastLayoutHeight = -1;
 
     size_t gridAxisIndex = static_cast<size_t>(-1);
+    size_t domainGridAxisIndex = static_cast<size_t>(-1);
+
+    // Polar geometry, applied to the projection whenever it is polar.
+    double polarStartAngle = -90.0;
+    double polarSweep = 360.0;
+    bool polarClockwise = true;
+    double polarInnerFraction = 0.0;
+    ChartPolarGridShape polarGridShape = ChartPolarGridShape::Circle;
+    void ApplyPolarGeometry();
+    bool PolarFullCircle() const;
+    // A ring at normalised value v: a sampled circle, or the polygon through
+    // the domain ticks when the grid shape is Polygon.
+    std::vector<Point2Dd> PolarRing(double v) const;
+    // The domain axis the polygon grid and the rim labels follow.
+    const ChartAxis* PolarDomainAxis() const;
+    void RenderGridFrom(IRenderContext* ctx, size_t axisIndex);
+    // A domain edge axis under Polar: the rim, its ticks and labels.
+    void RenderPolarRimAxis(IRenderContext* ctx, size_t axisIndex);
+    // Where a rim label goes for normalised domain position u.
+    Rect2Dd PolarRimLabelBox(double u, const Size2Di& size) const;
     std::vector<ChartLimiter> limiters;
     std::vector<ChartHighlight> highlights;
     // A highlight's value-space point on the projection's screen, or invalid

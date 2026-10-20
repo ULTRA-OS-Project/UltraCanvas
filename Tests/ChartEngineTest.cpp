@@ -6,11 +6,14 @@
 // Exercises the real engine sources with no UI stack and no link dependencies
 // beyond the files under test.
 //
+// Version: 1.1.0 - axis bands / symmetric / cyclic, line and area series,
+//   stacking, marker polygons, the analysis helpers
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartAnalysis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
@@ -1195,6 +1198,163 @@ static void TestPaletteFromColormap() {
 }
 
 // =============================================================================
+// AXIS 1.1: SUB-BANDS, SYMMETRIC RANGES, CYCLIC CATEGORIES
+// =============================================================================
+
+static void TestAxisBandsAndSymmetry() {
+    std::printf("Axis sub-bands, symmetric ranges and cyclic categories\n");
+
+    ChartAxis price("price");
+    price.SetRange(100.0, 200.0);
+    price.bandStart = 0.3;
+    price.bandEnd = 1.0;
+    price.Finalize();
+    CHECK(Near(price.Normalize(100.0), 0.3) && Near(price.Normalize(200.0), 1.0),
+          "a sub-band maps the range onto [bandStart, bandEnd]");
+    CHECK(Near(price.Denormalize(price.Normalize(137.5)), 137.5, 1e-9),
+          "denormalise inverts the band");
+    bool ticksInBand = true;
+    for (const ChartTick& t : price.GenerateTicks(5)) {
+        ticksInBand = ticksInBand && t.normalized >= 0.3 - 1e-9 && t.normalized <= 1.0 + 1e-9;
+    }
+    CHECK(ticksInBand, "ticks land inside the band");
+
+    ChartAxis diverging("share");
+    diverging.symmetric = true;
+    diverging.Observe({-12.0, 30.0, 5.0});
+    diverging.Finalize();
+    CHECK(Near(diverging.Min(), -diverging.Max()) && diverging.Max() >= 30.0,
+          "a symmetric auto range is centred on zero and covers the longer side");
+    CHECK(Near(diverging.Normalize(0.0), 0.5), "zero sits in the middle");
+
+    ChartAxis spokes("axes");
+    spokes.scale = ChartScale::Category;
+    spokes.categories = {"A", "B", "C", "D"};
+    spokes.cyclic = true;
+    spokes.Finalize();
+    CHECK(Near(spokes.Normalize(0.0), 0.0) && Near(spokes.Normalize(3.0), 0.75),
+          "a cyclic category axis spreads n slots over [0, 1) - the last stops short of the first");
+}
+
+// =============================================================================
+// LINE AND AREA SERIES
+// =============================================================================
+
+static void TestLineRuns() {
+    std::printf("Line runs (shapes, gaps, knots)\n");
+    ChartVerticalProjection projection;
+    projection.SetPlotArea(Rect2Dd(0.0, 0.0, 100.0, 100.0));
+
+    const double nan = std::nan("");
+    const std::vector<ChartNormalizedPoint> points = {
+        {0.0, 0.2}, {0.25, 0.8}, {0.5, nan}, {0.75, 0.4}, {1.0, 0.6}};
+
+    ChartLineOptions options;
+    options.samplesPerSegment = 4;
+    std::vector<ChartLineRun> runs = BuildLineRuns(projection, points, options);
+    CHECK(runs.size() == 2, "a NaN breaks the line into two runs");
+    CHECK(runs.size() == 2 && runs[0].indices == std::vector<size_t>({0, 1}) &&
+          runs[1].indices == std::vector<size_t>({3, 4}), "each run lists the points it joins");
+    CHECK(!runs.empty() && runs[0].points.size() == 5 && runs[0].knots.size() == 2,
+          "a straight run is sampled per segment and keeps one knot per point");
+    CHECK(!runs.empty() && Near(runs[0].points.back().y, 20.0) && Near(runs[0].points.front().y, 80.0),
+          "the run starts and ends on its knots");
+
+    options.bridgeGaps = true;
+    runs = BuildLineRuns(projection, points, options);
+    CHECK(runs.size() == 1 && runs[0].indices.size() == 4, "bridgeGaps joins across the hole");
+
+    options.bridgeGaps = false;
+    options.shape = ChartLineShape::Curved;
+    runs = BuildLineRuns(projection, {{0.0, 0.0}, {0.5, 1.0}, {1.0, 1.0}}, options);
+    bool bounded = true;
+    for (const Point2Dd& p : runs.front().points) bounded = bounded && p.y >= -1e-9 && p.y <= 100.0 + 1e-9;
+    CHECK(bounded, "a curved line never overshoots its knots");
+
+    options.shape = ChartLineShape::StepAfter;
+    runs = BuildLineRuns(projection, {{0.0, 0.2}, {1.0, 0.8}}, options);
+    // Holds 0.2 across the whole step, then rises at u = 1.
+    bool held = true;
+    for (size_t i = 0; i + 1 < runs.front().path.size(); ++i) {
+        held = held && Near(runs.front().path[i].v, 0.2);
+    }
+    CHECK(held && Near(runs.front().path.back().v, 0.8), "StepAfter holds the value until the next point");
+
+    runs = BuildLineRuns(projection, {{0.5, 0.5}}, options);
+    CHECK(runs.size() == 1 && runs[0].points.empty() && runs[0].knots.size() == 1,
+          "a lone point keeps its marker but draws no stroke");
+}
+
+static void TestAreaOutlinesAndStacking() {
+    std::printf("Area outlines and line-family stacking\n");
+    ChartVerticalProjection projection;
+    projection.SetPlotArea(Rect2Dd(0.0, 0.0, 100.0, 100.0));
+
+    ChartLineOptions options;
+    options.samplesPerSegment = 1;
+    const std::vector<ChartNormalizedPoint> top = {{0.0, 0.5}, {0.5, 0.7}, {1.0, 0.6}};
+    const std::vector<ChartNormalizedPoint> base = {{0.0, 0.0}, {0.5, 0.0}, {1.0, 0.0}};
+    const auto outlines = BuildAreaOutlines(projection, top, base, options);
+    CHECK(outlines.size() == 1 && outlines[0].size() == 6,
+          "one band: the top forward, the base back");
+
+    const std::vector<std::vector<double>> series = {{1.0, 2.0, -1.0}, {3.0, std::nan(""), 2.0}};
+    const ChartStackedValues stacked = StackSeriesValues(series, ChartBarArrangement::Stacked);
+    CHECK(Near(stacked.base[1][0], 1.0) && Near(stacked.top[1][0], 4.0),
+          "stacked: the second band starts on the first");
+    CHECK(Near(stacked.base[1][1], 2.0) && Near(stacked.top[1][1], 2.0),
+          "stacked: a missing value is a zero-thickness band, not a hole");
+    CHECK(Near(stacked.top[0][2], -1.0) && Near(stacked.base[1][2], 0.0) && Near(stacked.top[1][2], 2.0),
+          "stacked: negatives grow downward, positives upward");
+
+    const ChartStackedValues percent = StackSeriesValues(series, ChartBarArrangement::PercentStacked);
+    CHECK(Near(percent.top[1][0], 100.0) && Near(percent.top[0][0], 25.0),
+          "percent stacking shares out the total");
+
+    const ChartStackedValues grouped = StackSeriesValues(series, ChartBarArrangement::Grouped);
+    CHECK(Near(grouped.base[1][0], 0.0) && std::isnan(grouped.top[1][1]),
+          "grouped: every band on zero, a missing value stays a hole");
+}
+
+static void TestMarkerPolygons() {
+    std::printf("Marker polygons\n");
+    const Point2Dd c(10.0, 10.0);
+    CHECK(ChartMarkerPolygon(ChartMarkerShape::Square, c, 4.0).size() == 4, "a square has four corners");
+    CHECK(ChartMarkerPolygon(ChartMarkerShape::TriangleUp, c, 4.0).size() == 3, "a triangle has three");
+    CHECK(ChartMarkerPolygon(ChartMarkerShape::Circle, c, 4.0).empty() &&
+          ChartMarkerPolygon(ChartMarkerShape::Cross, c, 4.0).empty(),
+          "circles and strokes have no polygon");
+    const auto up = ChartMarkerPolygon(ChartMarkerShape::TriangleUp, c, 4.0);
+    CHECK(up.size() == 3 && up[0].y < c.y, "TriangleUp points up");
+}
+
+// =============================================================================
+// ANALYSIS
+// =============================================================================
+
+static void TestAnalysisHelpers() {
+    std::printf("Analysis (trend fit, moving averages, Heikin-Ashi)\n");
+    const ChartLinearFit fit = FitLinearTrend({1.0, 2.0, 3.0, 4.0}, {3.0, 5.0, 7.0, 9.0});
+    CHECK(fit.valid && Near(fit.slope, 2.0) && Near(fit.intercept, 1.0) && Near(fit.r2, 1.0),
+          "an exact line fits with r^2 = 1");
+    CHECK(!FitLinearTrend({2.0, 2.0}, {1.0, 5.0}).valid, "identical x values have no slope");
+
+    const std::vector<double> sma = MovingAverage({1.0, 2.0, 3.0, 4.0, std::nan(""), 6.0}, 3);
+    CHECK(std::isnan(sma[1]) && Near(sma[2], 2.0) && Near(sma[3], 3.0),
+          "the moving average starts once a full window exists");
+    CHECK(std::isnan(sma[4]) && std::isnan(sma[5]), "a window holding a gap is a gap");
+
+    const std::vector<double> ema = ExponentialMovingAverage({2.0, 4.0, 6.0, 8.0}, 2);
+    CHECK(std::isnan(ema[0]) && Near(ema[1], 3.0) && Near(ema[2], 5.0),
+          "the EMA seeds from the first window's mean");
+
+    const std::vector<ChartCandle> ha = HeikinAshiCandles({{10, 12, 9, 11}, {11, 14, 10, 13}});
+    CHECK(Near(ha[0].close, 10.5) && Near(ha[0].open, 10.5) && Near(ha[1].open, 10.5),
+          "Heikin-Ashi opens on the previous bar's midpoint");
+    CHECK(ha[1].high >= ha[1].open && ha[1].low <= ha[1].close, "the HA range covers its body");
+}
+
+// =============================================================================
 
 int main() {
     std::printf("=== ChartEngineTest ===\n\n");
@@ -1232,6 +1392,11 @@ int main() {
     TestPaletteCycling();
     TestPaletteCountAware();
     TestPaletteFromColormap();
+    TestAxisBandsAndSymmetry();
+    TestLineRuns();
+    TestAreaOutlinesAndStacking();
+    TestMarkerPolygons();
+    TestAnalysisHelpers();
 
     std::printf("\n%s (%d failure%s)\n",
                 g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
