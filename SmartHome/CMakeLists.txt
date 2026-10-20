@@ -25,6 +25,9 @@
 set(SMARTHOME_SOURCES
     core/UltraCanvasSmartHomeManager.cpp
     core/SmartHomeProtocolRegistry.cpp
+    # The demo home: no radio, no third party, so it is always built and
+    # always registered (SmartHomeProtocolType::Simulated).
+    protocols/Simulated/SimulatedProtocol.cpp
 )
 
 # ── Protocol backends: all OFF, none of them can build yet ───────────────────
@@ -177,7 +180,8 @@ target_compile_features(SmartHome PUBLIC cxx_std_20)
 target_include_directories(SmartHome PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/include)
-target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
+target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core
+                                             ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
 # The public headers reach UltraCanvasUIElement.h, whose render context
 # includes cairo. Those include paths (Homebrew's on macOS, vcpkg's on
 # Windows) are the UltraCanvas target's public interface, so the engine has
@@ -339,6 +343,13 @@ message(STATUS "  [✓] SmartHomeUI - ENABLED (target: SmartHomeUI)")
 if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     add_executable(SmartHomeFacadeTest tests/FacadeTest.cpp)
     target_link_libraries(SmartHomeFacadeTest PRIVATE SmartHome)
+
+    # The demo home, on a clock the test drives, through the facade.
+    add_executable(SmartHomeSimulatedTest tests/SimulatedTest.cpp)
+    target_link_libraries(SmartHomeSimulatedTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeSimulatedTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
+    add_test(NAME SmartHomeSimulated COMMAND SmartHomeSimulatedTest)
 
     # Pure framing, so it builds whether or not the Zigbee backend is on.
     add_executable(SmartHomeAshCodecTest tests/AshCodecTest.cpp

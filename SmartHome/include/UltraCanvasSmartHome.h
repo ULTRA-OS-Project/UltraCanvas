@@ -31,6 +31,9 @@ enum class SmartHomeProtocolType {
     KNX,
     WiFi,
     Bluetooth,
+    // No radio: the demo home in protocols/Simulated, for development,
+    // tests and a showcase without hardware. Never mixed with a real home.
+    Simulated,
     Unknown
 };
 
@@ -112,6 +115,12 @@ struct SmartHomeDeviceInfo {
     // so a caller can choose a control from what the device supports rather than
     // guessing from Category alone.
     std::vector<std::string> Capabilities;
+    // The room the backend places the device in, when it knows one: a KNX
+    // project names it, a Matter device may carry a location label, the
+    // simulated home assigns one. Empty when unknown. The user's own choice
+    // will override it once the home model lands (Docs/Research/
+    // SmartHomeCenterDesignProposal.md §4.3).
+    std::string Room;
 };
 
 struct SmartHomeNetworkInfo {
@@ -265,6 +274,10 @@ public:
     SmartHomeLockState GetLockState(const std::string& deviceId) const;
     bool GetSwitchState(const std::string& deviceId) const;
     SmartHomeSensorReading GetSensorReading(const std::string& deviceId) const;
+    uint8_t GetBlindPosition(const std::string& deviceId) const;   // 0 closed - 100 open
+    int GetBatteryLevel(const std::string& deviceId) const;        // 0-100, -1 on mains
+    float GetPowerUsage(const std::string& deviceId) const;        // watts now, 0 if unmetered
+    float GetEnergyUsage(const std::string& deviceId) const;       // kWh since metering began
     std::vector<SmartHomeSensorReading> GetSensorHistory(const std::string& deviceId, 
                                                           uint64_t startTime, 
                                                           uint64_t endTime) const;

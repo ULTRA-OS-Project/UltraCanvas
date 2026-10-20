@@ -75,6 +75,8 @@ public:
     std::vector<SmartHomeDeviceInfo> GetDevicesByProtocol(SmartHomeProtocolType protocol) const;
     bool UpdateDeviceInfo(const std::string& deviceId, const SmartHomeDeviceInfo& info);
     bool UpdateDeviceState(const std::string& deviceId, SmartHomeDeviceState state);
+    // Re-reads a device's info from its object and dispatches the update.
+    void RefreshDeviceInfo(const std::string& deviceId);
     
     // ===== DISCOVERY =====
     bool StartDiscovery(SmartHomeProtocolType protocol = SmartHomeProtocolType::Unknown);
@@ -162,6 +164,9 @@ private:
     bool ExecuteCommand(const SmartHomeCommand& command);
     void NotifyDeviceAdded(const SmartHomeDeviceInfo& info);
     void NotifyDeviceRemoved(const std::string& deviceId);
+    // Registers a device a backend reports, with the backend's device
+    // object when it keeps one.
+    void AdoptDevice(ISmartHomeProtocol* protocol, const SmartHomeDeviceInfo& info);
     
     // State
     std::atomic<bool> initialized{false};
@@ -206,7 +211,7 @@ private:
     OnSmartHomeError onSmartHomeError;
     
     // Pairing state
-    SmartHomeProtocolType pairingProtocol;
+    std::atomic<SmartHomeProtocolType> pairingProtocol;  // read on backend threads
     int pairingTimeout;
 };
 

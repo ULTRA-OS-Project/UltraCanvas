@@ -9,6 +9,8 @@
 #include "ISmartHomeDevice.h"
 #include <chrono>
 #include <algorithm>
+#include <locale>
+#include <sstream>
 
 namespace UltraCanvas {
 namespace SmartHome {
@@ -158,7 +160,7 @@ bool SmartHomeManager::EnableProtocol(SmartHomeProtocolType type) {
         }
     }
 
-    std::lock_guard<std::mutex> lock(protocolMutex);
+    std::unique_lock<std::mutex> lock(protocolMutex);
 
     auto it = protocols.find(type);
     if (it == protocols.end()) {
@@ -180,34 +182,57 @@ bool SmartHomeManager::EnableProtocol(SmartHomeProtocolType type) {
     }
     
     it->second.Enabled = true;
-    
+
+    // The registry holds the backend, so the callbacks hold it raw: a
+    // shared_ptr captured here would keep the backend alive from inside
+    // itself.
+    ISmartHomeProtocol* proto = it->second.Protocol.get();
+    std::shared_ptr<ISmartHomeProtocol> backend = it->second.Protocol;
+
     // Set up protocol callbacks
-    it->second.Protocol->SetOnDeviceDiscover([this](const SmartHomeDeviceInfo& device) {
+    proto->SetOnDeviceDiscover([this](const SmartHomeDeviceInfo& device) {
         DispatchDeviceDiscover(device);
     });
-    
-    it->second.Protocol->SetOnDeviceJoin([this](const SmartHomeDeviceInfo& device) {
-        RegisterDevice(device.DeviceId, nullptr, device, device.Protocol);
-        DispatchDeviceDiscover(device);
+
+    // RegisterDevice reports the join through DispatchDeviceDiscover itself.
+    proto->SetOnDeviceJoin([this, proto, type](const SmartHomeDeviceInfo& device) {
+        AdoptDevice(proto, device);
+        if (pairing && pairingProtocol == type) {
+            DispatchPairingProgress(100, "Added " + device.Name);
+            DispatchPairingComplete(true, GetDeviceInfo(device.DeviceId));
+        }
     });
-    
-    it->second.Protocol->SetOnDeviceLeave([this](const std::string& deviceId) {
+
+    proto->SetOnDeviceLeave([this](const std::string& deviceId) {
         UnregisterDevice(deviceId);
     });
-    
-    it->second.Protocol->SetOnDeviceUpdate([this](const std::string& deviceId) {
-        DispatchDeviceUpdate(deviceId);
+
+    // A backend reports that something about a device changed; the info the
+    // registry holds (state, reachability, last seen) is re-read from the
+    // device so GetDevices() does not go stale.
+    proto->SetOnDeviceUpdate([this](const std::string& deviceId) {
+        RefreshDeviceInfo(deviceId);
     });
-    
-    it->second.Protocol->SetOnError([this](int code, const std::string& message) {
+
+    proto->SetOnError([this](int code, const std::string& message) {
         DispatchError(code, message);
     });
-    
+
+    lock.unlock();
+
+    // A backend may come up with devices already paired - one that resumes
+    // a saved network does, and so does the simulated home. Those never
+    // join, so nothing would ever register them: adopt them now. The
+    // registry lock is released first, since RegisterDevice dispatches.
+    for (const SmartHomeDeviceInfo& info : backend->GetPairedDevices()) {
+        AdoptDevice(proto, info);
+    }
+
     return true;
 }
 
 bool SmartHomeManager::DisableProtocol(SmartHomeProtocolType type) {
-    std::lock_guard<std::mutex> lock(protocolMutex);
+    std::unique_lock<std::mutex> lock(protocolMutex);
     
     auto it = protocols.find(type);
     if (it == protocols.end()) {
@@ -219,6 +244,18 @@ bool SmartHomeManager::DisableProtocol(SmartHomeProtocolType type) {
     }
     
     it->second.Enabled = false;
+    lock.unlock();
+
+    // Its devices went with it: a device whose backend is shut down cannot
+    // be controlled, and its object may no longer be safe to query.
+    std::vector<std::string> gone;
+    {
+        std::lock_guard<std::mutex> deviceLock(deviceMutex);
+        for (const auto& [id, reg] : devices) {
+            if (reg.Protocol == type) gone.push_back(id);
+        }
+    }
+    for (const std::string& id : gone) UnregisterDevice(id);
     return true;
 }
 
@@ -272,29 +309,36 @@ bool SmartHomeManager::RegisterDevice(const std::string& deviceId,
                                        std::shared_ptr<ISmartHomeDevice> device,
                                        const SmartHomeDeviceInfo& info, 
                                        SmartHomeProtocolType protocol) {
-    std::lock_guard<std::mutex> lock(deviceMutex);
-    
-    DeviceRegistration reg;
-    reg.DeviceId = deviceId;
-    reg.Device = device;
-    reg.Info = info;
-    reg.Protocol = protocol;
-    
-    devices[deviceId] = reg;
-    
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+
+        DeviceRegistration reg;
+        reg.DeviceId = deviceId;
+        reg.Device = device;
+        reg.Info = info;
+        reg.Protocol = protocol;
+
+        devices[deviceId] = reg;
+    }
+    // Outside the lock: DispatchDeviceDiscover takes deviceMutex itself (it
+    // used to be called with it held, which deadlocked the first device that
+    // ever joined), and an application callback may call straight back into
+    // the API.
     NotifyDeviceAdded(info);
     return true;
 }
 
 bool SmartHomeManager::UnregisterDevice(const std::string& deviceId) {
-    std::lock_guard<std::mutex> lock(deviceMutex);
-    
-    auto it = devices.find(deviceId);
-    if (it == devices.end()) {
-        return false;
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+
+        auto it = devices.find(deviceId);
+        if (it == devices.end()) {
+            return false;
+        }
+
+        devices.erase(it);
     }
-    
-    devices.erase(it);
     NotifyDeviceRemoved(deviceId);
     return true;
 }
@@ -354,33 +398,62 @@ std::vector<SmartHomeDeviceInfo> SmartHomeManager::GetDevicesByProtocol(SmartHom
 }
 
 bool SmartHomeManager::UpdateDeviceInfo(const std::string& deviceId, const SmartHomeDeviceInfo& info) {
-    std::lock_guard<std::mutex> lock(deviceMutex);
-    
-    auto it = devices.find(deviceId);
-    if (it == devices.end()) {
-        return false;
+    SmartHomeDeviceState oldState;
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+
+        auto it = devices.find(deviceId);
+        if (it == devices.end()) {
+            return false;
+        }
+
+        oldState = it->second.Info.State;
+        it->second.Info = info;
     }
-    
-    it->second.Info = info;
+    // Callbacks run with no lock held, so they may query the API.
+    if (oldState != info.State) {
+        DispatchDeviceStateChange(deviceId, info.State);
+    }
     DispatchDeviceUpdate(deviceId);
     return true;
 }
 
 bool SmartHomeManager::UpdateDeviceState(const std::string& deviceId, SmartHomeDeviceState state) {
-    std::lock_guard<std::mutex> lock(deviceMutex);
-    
-    auto it = devices.find(deviceId);
-    if (it == devices.end()) {
-        return false;
+    SmartHomeDeviceState oldState;
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+
+        auto it = devices.find(deviceId);
+        if (it == devices.end()) {
+            return false;
+        }
+
+        oldState = it->second.Info.State;
+        it->second.Info.State = state;
     }
-    
-    SmartHomeDeviceState oldState = it->second.Info.State;
-    it->second.Info.State = state;
-    
     if (oldState != state) {
         DispatchDeviceStateChange(deviceId, state);
     }
     return true;
+}
+
+void SmartHomeManager::RefreshDeviceInfo(const std::string& deviceId) {
+    std::shared_ptr<ISmartHomeDevice> device = GetDevice(deviceId);
+    if (!device) {
+        // A backend that keeps no device objects has nothing fresher to say
+        // than what it already reported; pass the update on as it stands.
+        DispatchDeviceUpdate(deviceId);
+        return;
+    }
+    UpdateDeviceInfo(deviceId, device->GetDeviceInfo());
+}
+
+void SmartHomeManager::AdoptDevice(ISmartHomeProtocol* protocol, const SmartHomeDeviceInfo& info) {
+    // The object behind the info, where the backend keeps one: it is what
+    // the state queries read (GetLightState and the rest) and what a rename
+    // writes to.
+    std::shared_ptr<ISmartHomeDevice> device = protocol ? protocol->GetDevice(info.DeviceId) : nullptr;
+    RegisterDevice(info.DeviceId, device, device ? device->GetDeviceInfo() : info, info.Protocol);
 }
 
 // ===== DISCOVERY =====
@@ -912,6 +985,9 @@ SmartHomeDeviceInfo SmartHomeAPI::GetDevice(const std::string& deviceId) const {
 bool SmartHomeAPI::RemoveDevice(const std::string& deviceId) { return SmartHomeManager::Instance().UnregisterDevice(deviceId); }
 
 bool SmartHomeAPI::RenameDevice(const std::string& deviceId, const std::string& newName) {
+    // The object too, where there is one: the registry's info is re-read
+    // from it on every update, which would otherwise undo the rename.
+    if (auto device = SmartHomeManager::Instance().GetDevice(deviceId)) device->SetName(newName);
     auto info = SmartHomeManager::Instance().GetDeviceInfo(deviceId);
     info.Name = newName;
     return SmartHomeManager::Instance().UpdateDeviceInfo(deviceId, info);
@@ -941,7 +1017,12 @@ bool SmartHomeAPI::SetThermostatTarget(const std::string& deviceId, float temper
     SmartHomeCommand cmd;
     cmd.DeviceId = deviceId;
     cmd.Command = "setTargetTemp";
-    cmd.Parameters["temperature"] = std::to_string(temperature);
+    // Dot-decimal whatever the locale: backends parse it with TryParseFloat,
+    // and std::to_string would write "21,500000" under LC_NUMERIC=de_DE.
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+    text << temperature;
+    cmd.Parameters["temperature"] = text.str();
     return SendCommand(cmd);
 }
 
@@ -975,13 +1056,64 @@ bool SmartHomeAPI::SetBlindPosition(const std::string& deviceId, uint8_t positio
     return SendCommand(cmd);
 }
 
-// State queries - would need device-specific implementation
-SmartHomeLightState SmartHomeAPI::GetLightState(const std::string& deviceId) const { return SmartHomeLightState{}; }
-SmartHomeThermostatState SmartHomeAPI::GetThermostatState(const std::string& deviceId) const { return SmartHomeThermostatState{}; }
-SmartHomeLockState SmartHomeAPI::GetLockState(const std::string& deviceId) const { return SmartHomeLockState{}; }
-bool SmartHomeAPI::GetSwitchState(const std::string& deviceId) const { return false; }
-SmartHomeSensorReading SmartHomeAPI::GetSensorReading(const std::string& deviceId) const { return SmartHomeSensorReading{}; }
-std::vector<SmartHomeSensorReading> SmartHomeAPI::GetSensorHistory(const std::string& deviceId, uint64_t startTime, uint64_t endTime) const { return {}; }
+// State queries read the backend's device object. A backend that keeps none
+// (or a device of another kind) answers with the empty state, as before.
+namespace {
+template <typename T>
+std::shared_ptr<T> DeviceAs(const std::string& deviceId) {
+    return std::dynamic_pointer_cast<T>(SmartHomeManager::Instance().GetDevice(deviceId));
+}
+} // namespace
+
+SmartHomeLightState SmartHomeAPI::GetLightState(const std::string& deviceId) const {
+    auto light = DeviceAs<ISmartLight>(deviceId);
+    return light ? light->GetLightState() : SmartHomeLightState{};
+}
+
+SmartHomeThermostatState SmartHomeAPI::GetThermostatState(const std::string& deviceId) const {
+    auto thermostat = DeviceAs<ISmartThermostat>(deviceId);
+    return thermostat ? thermostat->GetThermostatState() : SmartHomeThermostatState{};
+}
+
+SmartHomeLockState SmartHomeAPI::GetLockState(const std::string& deviceId) const {
+    auto lock = DeviceAs<ISmartLock>(deviceId);
+    return lock ? lock->GetLockState() : SmartHomeLockState{};
+}
+
+bool SmartHomeAPI::GetSwitchState(const std::string& deviceId) const {
+    if (auto sw = DeviceAs<ISmartSwitch>(deviceId)) return sw->IsOn();
+    // A light answers "is it on" too, so a caller can treat both alike.
+    if (auto light = DeviceAs<ISmartLight>(deviceId)) return light->IsOn();
+    return false;
+}
+
+SmartHomeSensorReading SmartHomeAPI::GetSensorReading(const std::string& deviceId) const {
+    auto sensor = DeviceAs<ISmartSensor>(deviceId);
+    return sensor ? sensor->GetReading() : SmartHomeSensorReading{};
+}
+
+uint8_t SmartHomeAPI::GetBlindPosition(const std::string& deviceId) const {
+    auto blind = DeviceAs<ISmartBlind>(deviceId);
+    return blind ? blind->GetPosition() : 0;
+}
+
+int SmartHomeAPI::GetBatteryLevel(const std::string& deviceId) const {
+    auto device = SmartHomeManager::Instance().GetDevice(deviceId);
+    return device && device->IsBatteryPowered() ? device->GetBatteryLevel() : -1;
+}
+
+float SmartHomeAPI::GetPowerUsage(const std::string& deviceId) const {
+    auto sw = DeviceAs<ISmartSwitch>(deviceId);
+    return sw && sw->SupportsPowerMonitoring() ? sw->GetPower() : 0.0f;
+}
+
+float SmartHomeAPI::GetEnergyUsage(const std::string& deviceId) const {
+    auto sw = DeviceAs<ISmartSwitch>(deviceId);
+    return sw && sw->SupportsPowerMonitoring() ? sw->GetEnergyUsage() : 0.0f;
+}
+
+// Not recorded yet: history needs the store (proposal §4.5).
+std::vector<SmartHomeSensorReading> SmartHomeAPI::GetSensorHistory(const std::string&, uint64_t, uint64_t) const { return {}; }
 
 // Scenes
 bool SmartHomeAPI::CreateScene(const SmartHomeScene& scene) { return SmartHomeManager::Instance().AddScene(scene); }
@@ -1025,6 +1157,7 @@ std::string ProtocolTypeToString(SmartHomeProtocolType type) {
         case SmartHomeProtocolType::KNX: return "KNX";
         case SmartHomeProtocolType::WiFi: return "WiFi";
         case SmartHomeProtocolType::Bluetooth: return "Bluetooth";
+        case SmartHomeProtocolType::Simulated: return "Simulated";
         default: return "Unknown";
     }
 }
@@ -1037,6 +1170,7 @@ SmartHomeProtocolType StringToProtocolType(const std::string& str) {
     if (str == "KNX") return SmartHomeProtocolType::KNX;
     if (str == "WiFi") return SmartHomeProtocolType::WiFi;
     if (str == "Bluetooth") return SmartHomeProtocolType::Bluetooth;
+    if (str == "Simulated") return SmartHomeProtocolType::Simulated;
     return SmartHomeProtocolType::Unknown;
 }
 
