@@ -437,7 +437,9 @@ and C, TypeScript and JavaScript are families: there any lead decides, and a
 tie goes to C++ / JavaScript). Lines inside a Markdown ``` fence vote for
 Markdown, not for the code they show. Only the first 64 KB is read.
 UltraTexter calls it when text is pasted into a new, empty tab whose language
-nobody chose.
+nobody chose; `UltraCanvasMediaViewer` for a `.txt` / `.text` file; the
+clipboard history to file a copy as `Code` (UltraClipboard then colours it in
+*Edit* and offers its extension in *Save as*).
 
 ### Property Setters
 

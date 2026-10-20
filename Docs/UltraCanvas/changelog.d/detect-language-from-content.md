@@ -9,5 +9,12 @@
   Fortran, VBA, R, Lisp, x86 assembly). Until now a language could only be
   picked from a file name or extension. Standard library only; tested by
   `LanguageDetectTest`. UltraTexter 1.69 uses it for text pasted into a new
-  tab. See *Picking a language for text with no file name* in
+  tab.
+  - `UltraCanvasMediaViewer` asks it for a `.txt` / `.text` file, whose name
+    names no language: code is highlighted as its language, Markdown
+    rendered, prose left plain (UltraViewer 1.0.9).
+  - The clipboard history files a copy as `ClipboardEntryKind::Code` also when
+    the detector names its language (a SQL query, a Python block, YAML) and
+    `LooksLikeCode` missed it for want of brackets; Markdown stays `Text`
+    (UltraClipboard 0.1.6, whose *Edit* and *Save as* use the language too). See *Picking a language for text with no file name* in
   `Docs/UltraCanvas/UltraCanvasTextAreaExamples.md`.
