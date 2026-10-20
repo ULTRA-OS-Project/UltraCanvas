@@ -2,7 +2,7 @@
 // The built-in SQLite driver: opens file / in-memory databases and executes
 // parameterized statements on top of libsqlite3. Registered automatically the
 // first time the manager resolves a driver.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
 
@@ -99,6 +99,25 @@ UltraDbResult RunStatement(sqlite3* db, sqlite3_stmt* stmt, UltraDbResultSet& ou
         cols.emplace_back(name ? name : "");
     }
     out.SetColumns(std::move(cols));
+
+    // What else SQLite knows about each column: the declared type always, the
+    // table and column it came from where the library has column metadata
+    // (checked at configure time: ULTRADATABASE_SQLITE_COLUMN_METADATA).
+    std::vector<UltraDbColumnInfo> info;
+    info.reserve(ncol);
+    auto text = [](const char* s) { return s ? std::string(s) : std::string(); };
+    for (int c = 0; c < ncol; ++c) {
+        UltraDbColumnInfo ci;
+        ci.name         = out.Columns()[static_cast<size_t>(c)];
+        ci.declaredType = text(sqlite3_column_decltype(stmt, c));
+#if defined(ULTRADATABASE_SQLITE_COLUMN_METADATA)
+        ci.sourceSchema = text(sqlite3_column_database_name(stmt, c));
+        ci.sourceTable  = text(sqlite3_column_table_name(stmt, c));
+        ci.sourceColumn = text(sqlite3_column_origin_name(stmt, c));
+#endif
+        info.push_back(std::move(ci));
+    }
+    out.SetColumnInfo(std::move(info));
 
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
@@ -230,6 +249,20 @@ public:
             tail = next;
         }
         return meta;
+    }
+
+    // Introspection is plain SQL through ExecuteDirect, so it takes the
+    // connection mutex statement by statement; see UltraDatabaseSqliteSchema.cpp.
+    UltraDbResult ListSchemas(std::vector<std::string>& out) override {
+        return SqliteListSchemas(*this, out);
+    }
+    UltraDbResult ListObjects(const std::string& schema,
+                              std::vector<UltraDbObjectSummary>& out) override {
+        return SqliteListObjects(*this, schema, out);
+    }
+    UltraDbResult DescribeTable(const std::string& schema, const std::string& table,
+                                UltraDbTableSchema& out) override {
+        return SqliteDescribeTable(*this, schema, table, out);
     }
 
     // Called by SqliteStatement::Execute under the connection mutex.

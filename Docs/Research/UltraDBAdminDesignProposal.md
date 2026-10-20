@@ -499,6 +499,15 @@ pull those Stage 2 items forward rather than invent new ones.
 | **5 — comfort** | schema-aware completion, EXPLAIN view, database-wide search, data compare between two connections, saved query bookmarks | 4 |
 | **6 — browser build** | the same app compiled to WebAssembly, talking to the UltraDBAdmin relay on the server (§8.1) | 4 |
 
+**Stage 0 is done** (UltraDatabase 0.2.0, 2026-10-20): G1 introspection
+for SQLite and PostgreSQL (`UltraDatabaseSchema.h`: `UltraDb_ListSchemas`,
+`UltraDb_ListObjects`, `UltraDb_DescribeTable`), G2 result-column metadata
+(`UltraDbResultSet::ColumnInfo`), G5 quoting (`UltraDb_QuoteIdentifier`,
+`UltraDb_QuoteQualifiedName`), G7 dot-decimal numbers and exact `numeric`,
+G11 `UltraDb_ListConnections` - tested in `Tests/UltraDatabase` against
+SQLite and a live PostgreSQL server. Stage 1 waits on G3, G4 and G6
+(cursors and paging, cancel, every result of a batch).
+
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for
 SQLite" step for supporting ULTRA OS apps.

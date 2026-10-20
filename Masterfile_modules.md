@@ -1536,6 +1536,11 @@ extended or replaced without changing callers.
 - `UltraDb_OpenCursor`, `UltraDb_FetchRow`, `UltraDb_CloseCursor`
 - `UltraDb_Migrate`, `UltraDb_CancelQuery`
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
+- `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
+  `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
+  indexes, triggers), `UltraDb_QuoteIdentifier`, `UltraDb_QuoteQualifiedName`
+  (the one way a name goes into SQL text), `UltraDbResultSet::ColumnInfo`
+  (declared type and source table / column per result column)
 
 **Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
 - Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server

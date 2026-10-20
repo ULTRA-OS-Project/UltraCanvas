@@ -2,12 +2,16 @@
 // Internal shared declarations for the UltraDatabase core: the connection
 // manager (registry + handle tables) and the built-in SQLite driver
 // accessor. Not a public header.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraDatabase/UltraDatabaseCore.h"
 #include "UltraDatabase/UltraDatabasePlugins.h"
+#include "UltraDatabase/UltraDatabaseSchema.h"
+
+#include <string>
+#include <vector>
 
 namespace ultradb_internal {
 
@@ -45,5 +49,30 @@ bool ParseDoubleClassic(const std::string& text, double& out);
 // the PostgreSQL driver used before, both follows the locale ("3,140000",
 // which the server rejects) and keeps six decimals (1e-9 became "0.000000").
 std::string FormatDoubleClassic(double value);
+
+// ---- Schema introspection, per engine ----
+// Plain SQL over the connection interface, so each lives in a file of its own
+// (UltraDatabaseSqliteSchema.cpp, UltraDatabasePostgresSchema.cpp) and the
+// PostgreSQL catalog queries compile even in a build without libpq. The
+// drivers' ListSchemas / ListObjects / DescribeTable overrides call these.
+
+// How values of a SQLite column with this declared type come back - SQLite's
+// affinity rules, plus BOOLEAN as a bool.
+UltraDbType SqliteValueTypeForDeclaredType(const std::string& declaredType);
+
+UltraDbResult SqliteListSchemas(IUltraDbConnection& conn, std::vector<std::string>& out);
+UltraDbResult SqliteListObjects(IUltraDbConnection& conn, const std::string& schema,
+                                std::vector<UltraDbObjectSummary>& out);
+UltraDbResult SqliteDescribeTable(IUltraDbConnection& conn, const std::string& schema,
+                                  const std::string& table, UltraDbTableSchema& out);
+
+// How values of a PostgreSQL type come back from the driver, by type OID.
+UltraDbType PostgresValueTypeForOid(unsigned int typeOid);
+
+UltraDbResult PostgresListSchemas(IUltraDbConnection& conn, std::vector<std::string>& out);
+UltraDbResult PostgresListObjects(IUltraDbConnection& conn, const std::string& schema,
+                                  std::vector<UltraDbObjectSummary>& out);
+UltraDbResult PostgresDescribeTable(IUltraDbConnection& conn, const std::string& schema,
+                                    const std::string& table, UltraDbTableSchema& out);
 
 } // namespace ultradb_internal

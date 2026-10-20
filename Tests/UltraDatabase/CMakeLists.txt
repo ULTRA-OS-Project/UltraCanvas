@@ -7,6 +7,7 @@ set(ULTRADATABASE_TEST_SOURCES
     test_main.cpp
     test_ultradatabase.cpp
     test_numbers.cpp
+    test_schema.cpp
 )
 
 add_executable(UltraDatabaseTests ${ULTRADATABASE_TEST_SOURCES})

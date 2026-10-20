@@ -3268,6 +3268,8 @@ if(ULTRACANVAS_ENABLE_DATABASE)
         target_include_directories(uc-database PRIVATE ${SQLITE3_INCLUDE_DIRS})
         target_link_libraries(uc-database PUBLIC Threads::Threads)
         target_link_libraries(uc-database PRIVATE ${SQLITE3_LIBRARIES})
+        ultradatabase_sqlite_features(uc-database "${SQLITE3_INCLUDE_DIRS}"
+                                      "${SQLITE3_LIBRARIES}" "${SQLITE3_LIBRARY_DIRS}")
         if(LIBPQ_LIBRARIES)
             target_include_directories(uc-database PRIVATE ${LIBPQ_INCLUDE_DIRS})
             target_link_libraries(uc-database PRIVATE ${LIBPQ_LIBRARIES})
