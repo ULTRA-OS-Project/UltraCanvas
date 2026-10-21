@@ -235,7 +235,7 @@ namespace UltraCanvas {
             CircularRing ring;
             ring.textStyle = CircularTextStyle::Horizontal;
             ring.decorativeType = (level % 2 == 0) ? DecorativeRingType::Gradient
-                                                   : DecorativeRingType::None;
+                                                   : DecorativeRingType::NoRing;
             ring.decorativeColor = Color(120, 90, 200, 80);
             ring.borderColor = Color(25, 25, 35, 255);
             ring.borderWidth = 0.5f;
@@ -388,7 +388,7 @@ namespace UltraCanvas {
             switch (index) {
                 case 1:  type = ConnectionLineType::DirectCurve; break;
                 case 2:  type = ConnectionLineType::OutsideRing; break;
-                case 3:  type = ConnectionLineType::None;        break;
+                case 3:  type = ConnectionLineType::NoLine;        break;
                 default: type = ConnectionLineType::InsideCenter; break;
             }
             chart->SetConnectionLineType(type);

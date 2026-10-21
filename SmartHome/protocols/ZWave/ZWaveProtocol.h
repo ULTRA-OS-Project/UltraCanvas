@@ -68,7 +68,7 @@ enum class ZWaveDeviceRole {
  * @brief Z-Wave security levels
  */
 enum class ZWaveSecurityLevel {
-    None,
+    NoSecurity,
     S0,                  ///< S0 security (legacy)
     S2Unauthenticated,   ///< S2 unauthenticated
     S2Authenticated,     ///< S2 authenticated
@@ -354,7 +354,7 @@ struct ZWaveNode {
     
     ZWaveNodeType NodeType = ZWaveNodeType::Unknown;
     ZWaveDeviceRole Role = ZWaveDeviceRole::Unknown;
-    ZWaveSecurityLevel Security = ZWaveSecurityLevel::None;
+    ZWaveSecurityLevel Security = ZWaveSecurityLevel::NoSecurity;
     
     std::string Name;
     std::string Location;

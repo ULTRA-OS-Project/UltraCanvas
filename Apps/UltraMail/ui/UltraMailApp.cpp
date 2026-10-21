@@ -1323,7 +1323,7 @@ void UltraMailApp::RunMailboxAction(
                          "No incoming (IMAP) server is known for this account.");
             return;
         }
-        if (vault_.MethodFor(accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) {
             AlertWarning(parent, actionName + " could not be completed.",
                          "No password or sign-in is stored for this account in the "
                          "credential vault.");
@@ -1398,7 +1398,7 @@ void UltraMailApp::RunMailboxActionQuiet(
     const std::string serverUrl =
         settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
     if (serverUrl.empty() || !settings.found) return;
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -2520,7 +2520,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     const std::string serverUrl =
         settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
     if (serverUrl.empty() || !settings.found) return;
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -2678,7 +2678,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The password — or the Google sign-in — lives in the vault. Without
         // either the login would be rejected anyway, so report the real reason
         // instead of a bad-password error from the server.
-        if (vault_.MethodFor(acc.accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(acc.accountId) == SignInMethod::NoSignIn) {
             if (userInitiated)
                 AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
                              "No password or sign-in is stored for this account "
@@ -3664,7 +3664,7 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     EnsureVaultUnlocked([this, account, current, parent]() {
         const std::string accountId = account.accountId;
         ServerSettingsDialog::Verifier verify;
-        if (vault_.MethodFor(accountId) != SignInMethod::None) {
+        if (vault_.MethodFor(accountId) != SignInMethod::NoSignIn) {
             verify = LoginVerifier([this, accountId, current](
                     const ServerSettingsDialog::Result&,
                     const std::string& username, UltraNetCredentials& c) {

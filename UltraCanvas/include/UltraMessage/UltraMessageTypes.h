@@ -17,9 +17,6 @@
 #ifdef Success
 #undef Success
 #endif
-#ifdef None
-#undef None
-#endif
 
 // ---------------------------------------------------------------------------
 // Results and handles

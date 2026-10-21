@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Success` and `None` as macros, which would
+// Defensive: X11/Xlib.h defines `Success` as a macro, which would
 // turn our enum-class members into literal integers. UltraCanvas's Linux
 // platform glue pulls X11 in transitively, so any TU that includes both an
 // UltraCanvas header and an UltraNet header would otherwise fail to compile.
@@ -25,9 +25,6 @@
 // known conflict names here.
 #ifdef Success
 #undef Success
-#endif
-#ifdef None
-#undef None
 #endif
 #ifdef Bool
 #undef Bool
@@ -133,7 +130,7 @@ struct UltraNetResult {
 // surface. Stage 1 honours Basic / Bearer; the rest are reserved.
 // ============================================================================
 enum class UltraNetAuthType {
-    None,
+    NoAuth,
     Basic,
     Digest,
     Bearer,
@@ -145,7 +142,7 @@ enum class UltraNetAuthType {
 };
 
 struct UltraNetCredentials {
-    UltraNetAuthType type = UltraNetAuthType::None;
+    UltraNetAuthType type = UltraNetAuthType::NoAuth;
     std::string username;
     std::string password;
     std::string token;
@@ -159,7 +156,7 @@ struct UltraNetCredentials {
 // OS/<Platform>/UltraNetSupport.{cpp,mm}.
 // ============================================================================
 enum class UltraNetProxyType {
-    None,
+    NoProxy,
     Http,
     Https,
     Socks4,
@@ -168,13 +165,13 @@ enum class UltraNetProxyType {
 };
 
 struct UltraNetProxyConfig {
-    UltraNetProxyType type = UltraNetProxyType::None;
+    UltraNetProxyType type = UltraNetProxyType::NoProxy;
     std::string host;
     int port = 0;
     UltraNetCredentials credentials;
     std::vector<std::string> noProxyHosts;
 
-    bool IsEnabled() const { return type != UltraNetProxyType::None; }
+    bool IsEnabled() const { return type != UltraNetProxyType::NoProxy; }
 };
 
 // ============================================================================

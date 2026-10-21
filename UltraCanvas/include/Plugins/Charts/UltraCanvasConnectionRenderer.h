@@ -11,10 +11,6 @@
 #include "UltraCanvasRenderContext.h"
 #include <vector>
 
-// X11 defines `None` as a macro that clobbers our enumerators.
-#ifdef None
-#undef None
-#endif
 
 namespace UltraCanvas {
 
@@ -36,7 +32,7 @@ namespace UltraCanvas {
     };
 
     enum class ConnectionCapStyle {
-        None,              // No end decoration
+        NoCap,              // No end decoration
         CircleDot,
         SquareDot,
         DiamondDot,
@@ -52,7 +48,7 @@ namespace UltraCanvas {
     // this struct stays reusable across chart types.
     struct ConnectionStyle {
         ConnectionDrawStyle drawStyle = ConnectionDrawStyle::CurvedLine;
-        ConnectionCapStyle  capStyle  = ConnectionCapStyle::None;
+        ConnectionCapStyle  capStyle  = ConnectionCapStyle::NoCap;
 
         Color color      = Color(128, 128, 128, 255);
         Color startColor = Color(128, 128, 128, 255);

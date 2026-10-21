@@ -1,9 +1,31 @@
 #### 2026-10-21 *0.9.363*
-- **`HardwareQuery::None` is `HardwareQuery::Nothing`.** X11's `None` macro
-  rewrote the enumerator in any file that included a window header before
-  `UltraCanvasHardwareInfo.h`, so DeviceExplorer, UltraNetMonitor and the
-  UltraDesktop tasks window each worked around it with include order. The
-  rename removes the trap; the include-order comments are gone.
+- **No framework enumerator is named `None` any more.** X11's `None` macro
+  rewrote such an enumerator in any file that included a window header
+  first, so 28 headers and sources carried an `#undef None` and others
+  worked around it with include order. Every `None` enumerator in the
+  framework's headers is renamed and every `#undef None` is gone:
+  `HardwareQuery::Nothing`; spreadsheet `CellErrorType::NoError`,
+  `BorderStyle::NoBorder`, `UnderlineStyle::NoUnderline`,
+  `FillPattern::NoFill`, `FilterOperator::NoFilter`,
+  `ClipboardOperation::NoOperation`, `PasteOperation::NoOperation`,
+  `HitArea::Nowhere`; `WaveformOverlay::NoOverlay`; QR code
+  `QRLogoStyle::NoLogo`, `QRGradientType::NoGradient`; charts
+  `ConnectionCapStyle::NoCap`, `SunburstLabelContent::NoLabel`,
+  `SunburstShadeMode::NoShade`, `ValueVisualizationType::NoVisualization`,
+  `DecorativeRingType::NoRing`, `ConnectionLineType::NoLine`,
+  `NestedAreaLabelPosition::NoLabels`, `ChordLabelPlacement::NoLabels`, pie
+  `LabelPosition::NoLabels`; diagrams `ArcValueDisplay::NoLabel`,
+  `GroupLabelPlacement::NoLabels`, `GroupFillMode::NoFill`,
+  `ConfidenceDisplayMode::Hidden`, `FlowChartArrowStyle::NoArrow`; UltraNet
+  `UltraNetAuthType::NoAuth`, `UltraNetProxyType::NoProxy`,
+  `UltraNetMailAuth::NoAuth`, `UltraNetMailFlags::NoFlags`; UltraVault
+  `SignInMethod::NoSignIn`; VirtualFS `VirtualFSCapability::NoCapabilities`,
+  `VirtualFSRamDiskBacking::NotCreated`, `UCVFSCompressionType::Uncompressed`;
+  printers `IODuplexMode::OneSided`, `IOSupplyColor::NoColor`; network
+  monitor `LoopbackRole::NotLoopback`, `NameSource::NoSource`; video timeline
+  `Drag::NoDrag`; LaTeX `MathAtomClass::NoClass`. The strings the file
+  formats write are unchanged. (`NoValue` is also an X11 macro, hence
+  `NoVisualization`.)
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

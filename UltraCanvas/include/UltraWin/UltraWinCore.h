@@ -12,15 +12,12 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Success` and `None` as macros, which would
+// Defensive: X11/Xlib.h defines `Success` as a macro, which would
 // turn our enum-class members into literal integers (same guard as
 // UltraNetCore.h — UltraCanvas's Linux platform glue pulls X11 in
 // transitively).
 #ifdef Success
 #undef Success
-#endif
-#ifdef None
-#undef None
 #endif
 #ifdef Bool
 #undef Bool

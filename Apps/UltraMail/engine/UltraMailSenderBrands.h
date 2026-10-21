@@ -134,10 +134,10 @@ const SenderBrand* BrandNamedIn(const std::string& text);
 // foreign-lettered name with ordinary ones too ("faceboookmail.com"), since
 // no brand misspells itself. Personal mailbox domains and every brand's own
 // domains are never flagged.
-enum class LookalikeKind { None, Name, Misspelt, OwnDomain, Homograph };
+enum class LookalikeKind { NoLookalike, Name, Misspelt, OwnDomain, Homograph };
 struct DomainLookalike {
     const SenderBrand* brand = nullptr;
-    LookalikeKind      kind  = LookalikeKind::None;
+    LookalikeKind      kind  = LookalikeKind::NoLookalike;
     std::string        worn;      // the part that looks like the brand: "faceebook", "pаypal"
     std::string        letters;   // Homograph: whose letters - "Cyrillic", "Greek and accented"
     std::string        unicode;   // Homograph: the domain as it reads ("pаypal.com")

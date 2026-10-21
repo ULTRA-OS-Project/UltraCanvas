@@ -465,7 +465,7 @@ NetworkMonitorResult NetworkMonitor_RecordSnapshot(NetworkMonitorStoreHandle sto
                       c.remoteName, c.nameSource, name, source);
             // The chain as this sighting decoded it; a sighting that saw
             // none (the mirror socket gone already) keeps the recorded one.
-            const int role = c.loopbackRole != LoopbackRole::None ? static_cast<int>(c.loopbackRole)
+            const int role = c.loopbackRole != LoopbackRole::NotLoopback ? static_cast<int>(c.loopbackRole)
                                                                    : recent.Row(0)[4].AsInt();
             const std::string peer = c.localPeer ? c.localPeer->Label() : recent.Row(0)[5].AsString();
             const std::string forProcesses = !c.forProcesses.empty() ? JoinList(c.forProcesses)
@@ -490,7 +490,7 @@ NetworkMonitorResult NetworkMonitor_RecordSnapshot(NetworkMonitorStoreHandle sto
                   static_cast<int>(c.localPort), c.remoteAddress, static_cast<int>(c.remotePort),
                   static_cast<int>(c.state), static_cast<int64_t>(c.socketInode), processRow,
                   observedAt, observedAt, OptionalBytes(c.bytesSent), OptionalBytes(c.bytesReceived),
-                  c.remoteName, static_cast<int>(c.remoteName.empty() ? NameSource::None : c.nameSource),
+                  c.remoteName, static_cast<int>(c.remoteName.empty() ? NameSource::NoSource : c.nameSource),
                   static_cast<int>(c.loopbackRole), c.localPeer ? c.localPeer->Label() : std::string(),
                   JoinList(c.forProcesses) });
         }

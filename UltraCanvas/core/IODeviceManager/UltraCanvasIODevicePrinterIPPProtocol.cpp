@@ -420,7 +420,7 @@ IOSupplyType SupplyTypeFromKeyword(const std::string& keyword) {
 // marker-colors are "#RRGGBB", the same form CUPS relays. Recognised by value,
 // not by the marker's name, which is localised and vendor-chosen.
 IOSupplyColor SupplyColorFromHex(const std::string& hex) {
-    if (hex.size() < 7 || hex[0] != '#') return IOSupplyColor::None;
+    if (hex.size() < 7 || hex[0] != '#') return IOSupplyColor::NoColor;
     const std::string rgb = Lower(hex.substr(1, 6));
     if (rgb == "000000") return IOSupplyColor::Black;
     if (rgb == "00ffff") return IOSupplyColor::Cyan;
@@ -431,7 +431,7 @@ IOSupplyColor SupplyColorFromHex(const std::string& hex) {
     if (rgb == "808080") return IOSupplyColor::Gray;
     if (rgb == "ff0000") return IOSupplyColor::Red;
     if (rgb == "0000ff") return IOSupplyColor::Blue;
-    return IOSupplyColor::None;
+    return IOSupplyColor::NoColor;
 }
 
 // printer-supply's colorantname: "black", "cyan", "light-cyan", ...
@@ -453,7 +453,7 @@ IOSupplyColor SupplyColorFromName(const std::string& name) {
     if (colour == "blue")         return IOSupplyColor::Blue;
     if (colour == "photoblack")   return IOSupplyColor::PhotoBlack;
     if (colour == "matteblack")   return IOSupplyColor::MatteBlack;
-    return IOSupplyColor::None;
+    return IOSupplyColor::NoColor;
 }
 
 // "key=value;key=value;" as printer-supply carries it.
@@ -1670,7 +1670,7 @@ void AddIppJobTemplate(IppGroup& job, const IOPrintOptions& options,
     }
 
     switch (options.duplex) {
-        case IODuplexMode::None:      job.Set("sides", IppValue::Keyword("one-sided")); break;
+        case IODuplexMode::OneSided:      job.Set("sides", IppValue::Keyword("one-sided")); break;
         case IODuplexMode::LongEdge:  job.Set("sides", IppValue::Keyword("two-sided-long-edge")); break;
         case IODuplexMode::ShortEdge: job.Set("sides", IppValue::Keyword("two-sided-short-edge")); break;
     }

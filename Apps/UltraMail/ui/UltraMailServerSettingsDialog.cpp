@@ -62,7 +62,7 @@ constexpr AuthChoice kAuthChoices[] = {
     { UltraNetMailAuth::OAuth2,            "OAuth2" },
     { UltraNetMailAuth::Kerberos,          "Kerberos / GSSAPI" },
     { UltraNetMailAuth::NTLM,              "NTLM" },
-    { UltraNetMailAuth::None,              "No authentication" },
+    { UltraNetMailAuth::NoAuth,              "No authentication" },
 };
 constexpr int kAuthChoiceCount = static_cast<int>(sizeof(kAuthChoices) / sizeof(kAuthChoices[0]));
 
@@ -227,13 +227,13 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->AddChild(label);
         auto dd = CreateDropdown(id, 0, 0, 0, Theme::kControlHeight);
         for (const AuthChoice& c : kAuthChoices) {
-            if (c.auth == UltraNetMailAuth::None && !offerNone) continue;
+            if (c.auth == UltraNetMailAuth::NoAuth && !offerNone) continue;
             dd->AddItem(c.label, ToString(c.auth));
         }
         Theme::StyleDropdown(dd);
         // "None" is last, so indices match kAuthChoices whether or not it is listed.
         int index = AuthIndex(current);
-        if (current == UltraNetMailAuth::None && !offerNone) index = 0;
+        if (current == UltraNetMailAuth::NoAuth && !offerNone) index = 0;
         dd->SetSelectedIndex(index, /*runNotifications=*/false);
         row->AddChild(dd);
         dd->layoutItem.SetFlexGrow(1);

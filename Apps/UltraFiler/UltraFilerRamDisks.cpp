@@ -88,7 +88,7 @@ bool BuiltIn() {
 bool Available() {
 #ifdef ULTRAFILER_HAS_RAMDISK
     return VirtualFS::VirtualFS_GetPreferredRamDiskBacking() !=
-           VirtualFSRamDiskBacking::None;
+           VirtualFSRamDiskBacking::NotCreated;
 #else
     return false;
 #endif

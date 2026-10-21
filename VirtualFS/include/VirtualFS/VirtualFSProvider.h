@@ -11,9 +11,7 @@
 
 // Shield against X11 macros (see note in VirtualFSTypes.h)
 #pragma push_macro("Success")
-#pragma push_macro("None")
 #undef Success
-#undef None
 
 namespace VirtualFS {
 
@@ -673,5 +671,4 @@ using VirtualFSProviderFactory = std::function<std::shared_ptr<IVirtualFSProvide
 
 } // namespace VirtualFS
 
-#pragma pop_macro("None")
 #pragma pop_macro("Success")

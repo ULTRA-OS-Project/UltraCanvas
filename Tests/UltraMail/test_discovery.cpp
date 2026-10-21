@@ -210,7 +210,7 @@ TEST(parse_autoconfig_takes_the_authentication_method) {
     r = parse("<authentication>password-encrypted</authentication>",
               "<authentication>none</authentication>");
     REQUIRE(r.imap.auth == UltraNetMailAuth::EncryptedPassword);
-    REQUIRE(r.smtp.auth == UltraNetMailAuth::None);
+    REQUIRE(r.smtp.auth == UltraNetMailAuth::NoAuth);
 
     // OAuth2 listed first with a password fallback: the password (UltraMail has
     // no OAuth client for an arbitrary provider), but the capability is kept.
@@ -255,7 +255,7 @@ TEST(mail_auth_round_trips_through_strings) {
     for (UltraNetMailAuth a : {UltraNetMailAuth::Any, UltraNetMailAuth::Password,
                                UltraNetMailAuth::EncryptedPassword, UltraNetMailAuth::OAuth2,
                                UltraNetMailAuth::Kerberos, UltraNetMailAuth::NTLM,
-                               UltraNetMailAuth::None})
+                               UltraNetMailAuth::NoAuth})
         REQUIRE(MailAuthFromString(ToString(a)) == a);
     REQUIRE(MailAuthFromString("") == UltraNetMailAuth::Any);   // accounts from before the setting
     REQUIRE(MailAuthFromString("bogus") == UltraNetMailAuth::Any);

@@ -200,7 +200,7 @@ std::size_t PlatformMaxNameLength() {
 VirtualFSRamDiskBacking PlatformPreferredBacking() {
     return (HaveTool("hdiutil") && HaveTool("diskutil"))
                ? VirtualFSRamDiskBacking::HdiUtil
-               : VirtualFSRamDiskBacking::None;
+               : VirtualFSRamDiskBacking::NotCreated;
 }
 
 } // namespace RamDiskDetail

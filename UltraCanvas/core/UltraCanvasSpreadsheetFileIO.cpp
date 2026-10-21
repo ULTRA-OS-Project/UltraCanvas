@@ -142,7 +142,7 @@ BorderStyle ParseBorderStyle(const std::string& styleStr) {
     if (styleStr == "double") return BorderStyle::Double;
     if (styleStr == "dashed") return BorderStyle::Dashed;
     if (styleStr == "dotted") return BorderStyle::Dotted;
-    return BorderStyle::None;
+    return BorderStyle::NoBorder;
 }
 
 // Get XML attribute with default
@@ -1453,7 +1453,7 @@ private:
             if (!(style.font.color == defaults.color)) {
                 props << " fo:color=\"" << ColorToHex(style.font.color) << "\"";
             }
-            if (style.font.underline != UnderlineStyle::None) {
+            if (style.font.underline != UnderlineStyle::NoUnderline) {
                 props << " style:text-underline-style=\""
                       << (style.font.underline == UnderlineStyle::Double
                           || style.font.underline == UnderlineStyle::DoubleAccounting

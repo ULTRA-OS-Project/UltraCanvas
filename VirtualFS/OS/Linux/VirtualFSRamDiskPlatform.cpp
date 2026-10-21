@@ -167,7 +167,7 @@ std::size_t PlatformMaxNameLength() {
 // the same as on the platforms where the probe launches a process.
 VirtualFSRamDiskBacking PlatformPreferredBacking() {
     return ShmIsTmpfs() ? VirtualFSRamDiskBacking::Tmpfs
-                        : VirtualFSRamDiskBacking::None;
+                        : VirtualFSRamDiskBacking::NotCreated;
 }
 
 } // namespace RamDiskDetail

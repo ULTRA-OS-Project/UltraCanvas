@@ -35,7 +35,7 @@ namespace UltraCanvas {
  * with additional algorithms available through VirtualFS/libarchive
  */
 enum class UCVFSCompressionType {
-    None = 0,           // No compression (store)
+    Uncompressed = 0,           // No compression (store)
     
     // Standard compression (existing UltraCanvas support)
     Deflate = 1,        // DEFLATE (ZIP/GZIP default) - zlib

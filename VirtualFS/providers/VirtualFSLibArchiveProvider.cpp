@@ -1750,7 +1750,7 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
     size_t dotPos = ext.rfind('.');
     if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
 
-    enum class WriteFilter { None, Gzip, BZip2, XZ, Zstd, LZ4 };
+    enum class WriteFilter { NoFilter, Gzip, BZip2, XZ, Zstd, LZ4 };
     int format;
     WriteFilter filter;
 
@@ -1773,7 +1773,7 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
         else if (ext == "xz")                   filter = WriteFilter::XZ;
         else if (ext == "zst" || ext == "zstd") filter = WriteFilter::Zstd;
         else if (ext == "lz4")                  filter = WriteFilter::LZ4;
-        else                                    filter = WriteFilter::None;
+        else                                    filter = WriteFilter::NoFilter;
     }
 
     archive_write_set_format(writeArchive, format);
@@ -1783,7 +1783,7 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
         case WriteFilter::XZ:    archive_write_add_filter_xz(writeArchive);    break;
         case WriteFilter::Zstd:  archive_write_add_filter_zstd(writeArchive);  break;
         case WriteFilter::LZ4:   archive_write_add_filter_lz4(writeArchive);   break;
-        case WriteFilter::None:  break;
+        case WriteFilter::NoFilter:  break;
     }
 }
 

@@ -87,7 +87,7 @@ namespace UltraCanvas {
                 case DialogType::Successful:
                     return AndroidDialogs::JavaIcon::Info;
                 default:
-                    return AndroidDialogs::JavaIcon::None;
+                    return AndroidDialogs::JavaIcon::NoIcon;
             }
         }
 

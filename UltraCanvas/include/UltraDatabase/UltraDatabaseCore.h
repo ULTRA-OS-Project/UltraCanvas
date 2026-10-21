@@ -12,14 +12,11 @@
 #include <vector>
 
 // Defensive: X11/Xlib.h (pulled in transitively by UltraCanvas's Linux
-// platform glue) defines Success / None / Bool / Status as macros, which
+// platform glue) defines Success / Bool / Status as macros, which
 // would turn our enum-class members into literal integers. Undef them so any
 // translation unit that includes both an X11 header and this one compiles.
 #ifdef Success
 #undef Success
-#endif
-#ifdef None
-#undef None
 #endif
 #ifdef Bool
 #undef Bool

@@ -207,7 +207,7 @@ inline std::string FlagsToImapString(UltraNetMailFlags flags) {
 
 // "\Seen \Answered" (case-insensitive) -> UltraNetMailFlags bitfield.
 inline UltraNetMailFlags ImapStringToFlags(const std::string& tokens) {
-    UltraNetMailFlags flags = UltraNetMailFlags::None;
+    UltraNetMailFlags flags = UltraNetMailFlags::NoFlags;
     std::string low = Lower(tokens);
     if (low.find("\\seen")     != std::string::npos) flags |= UltraNetMailFlags::Seen;
     if (low.find("\\answered") != std::string::npos) flags |= UltraNetMailFlags::Answered;
@@ -222,11 +222,11 @@ inline UltraNetMailFlags ImapStringToFlags(const std::string& tokens) {
 inline UltraNetMailFlags ParseFetchFlags(const std::string& fetchLine) {
     std::string low = Lower(fetchLine);
     std::size_t f = low.find("flags");
-    if (f == std::string::npos) return UltraNetMailFlags::None;
+    if (f == std::string::npos) return UltraNetMailFlags::NoFlags;
     std::size_t open = fetchLine.find('(', f);
-    if (open == std::string::npos) return UltraNetMailFlags::None;
+    if (open == std::string::npos) return UltraNetMailFlags::NoFlags;
     std::size_t close = fetchLine.find(')', open);
-    if (close == std::string::npos) return UltraNetMailFlags::None;
+    if (close == std::string::npos) return UltraNetMailFlags::NoFlags;
     return ImapStringToFlags(fetchLine.substr(open + 1, close - open - 1));
 }
 
@@ -597,7 +597,7 @@ private:
 struct ImapFetchItem {
     uint32_t uid = 0;
     bool hasFlags = false;
-    UltraNetMailFlags flags = UltraNetMailFlags::None;
+    UltraNetMailFlags flags = UltraNetMailFlags::NoFlags;
     bool hasSize = false;
     uint32_t size = 0;          // RFC822.SIZE, when asked for
     std::map<std::string, std::string> sections;

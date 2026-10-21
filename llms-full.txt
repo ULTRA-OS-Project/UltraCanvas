@@ -9325,7 +9325,7 @@ enum class ArcNodeSizeMode {
 };
 
 enum class ArcValueDisplay {
-    None,          // No auto-generated apex label (default)
+    NoLabel,          // No auto-generated apex label (default)
     Value,         // Show edge weight as numeric value at apex
     Percentage     // Show edge weight as percentage of total at apex
 };
@@ -9428,7 +9428,7 @@ struct ArcDiagramStyle {
     bool  emphasizeActiveLabel = true;   // bold weight on active node label
 
     // Auto value/percentage label drawn at arc apex (zenit)
-    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::NoLabel;
     int             arcValueDecimals = 1;
     float           arcValueFontSize = 10.0f;
     Color           arcValueLabelColor  = Color(40, 40, 40, 230);
@@ -17206,7 +17206,7 @@ void SetValueFormatter(std::function<std::string(double)> f);
 
 ```cpp
 enum class ChordLabelPlacement {
-    None,        // No labels
+    NoLabels,        // No labels
     Outside,     // Horizontal text just beyond the ring
     Radial       // Text runs along the radius, flipped on the left half
 };
@@ -17217,7 +17217,7 @@ enum class ChordLabelPlacement {
 - `Radial` — names run along the radius and are flipped on the left half so
   they read outward. Suits many categories or long names; the chart reserves
   the full label room above and below the ring for them.
-- `SetShowLabels(true/false)` is shorthand for `Outside` / `None`.
+- `SetShowLabels(true/false)` is shorthand for `Outside` / `NoLabels`.
 
 `SetLabelDistance` is the gap between the ring and the text (default 12 px).
 `SetLabelFont` defaults to Arial 11 normal; `SetLabelColor` to dark grey
@@ -17440,8 +17440,8 @@ chart->SetRibbonBorder(Color(255, 255, 255, 140), 1.0f);
 - `ChordFlow::isVisible` is honoured when drawing and hit testing, but the
   chart builds its flow list itself, so there is no public way to hide one
   ribbon; filter by value with `SetMinFlowValue` or set the cell to 0.
-- The X11 headers define a `None` macro; the chord chart header undefines it
-  so `ChordLabelPlacement::None` compiles.
+- No enumerator is named `None`: the X11 headers define a `None` macro, so
+  the placement that shows no label is `ChordLabelPlacement::NoLabels`.
 
 ## See also
 
@@ -17846,9 +17846,9 @@ struct CircularConnection {
 
 ```cpp
 enum class CircularTextStyle      { Horizontal, Circular, Radial, StarStyle };
-enum class ValueVisualizationType { None, Bars, CircularLine, CircularBar };
-enum class DecorativeRingType     { None, ColorHighlight, Graphics, Pattern, Gradient };
-enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve };
+enum class ValueVisualizationType { NoVisualization, Bars, CircularLine, CircularBar };
+enum class DecorativeRingType     { NoRing, ColorHighlight, Graphics, Pattern, Gradient };
+enum class ConnectionLineType     { NoLine, InsideCenter, OutsideRing, DirectCurve };
 ```
 
 ## Public API
@@ -17884,7 +17884,7 @@ enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve
 ### Connections
 | Method | Description |
 |---|---|
-| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `None` |
+| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `NoLine` |
 | `AddConnection(fromRing, fromCell, toRing, toCell, value)` | Add a link |
 | `SetConnectionStyle(i, style)` / `SetDefaultConnectionStyle(style)` | Styling |
 | `ClearConnections()` / `GetConnectionCount()` | Management |
@@ -22552,7 +22552,7 @@ struct DendrogramStyle {
     double defaultBranchWidth        = 1.5f;
     DendrogramLinkStyle linkStyle   = DendrogramLinkStyle::Rectangular;
 
-    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::None;
+    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::Hidden;
     double confidenceHighThreshold       = 0.80f;
     double confidenceLowThreshold        = 0.40f;
     double branchWidthMin = 0.5f, branchWidthMax = 3.5f;
@@ -22639,15 +22639,15 @@ enum class BranchColorMode {
 };
 
 enum class GroupLabelPlacement {
-    None, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
+    NoLabels, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
 };
 
 enum class GroupFillMode {
-    None, BandFill, SectorFill, ConvexHull
+    NoFill, BandFill, SectorFill, ConvexHull
 };
 
 enum class ConfidenceDisplayMode {
-    None, LineThickness, LineDash, NodeDot, LineThicknessAndDot
+    Hidden, LineThickness, LineDash, NodeDot, LineThicknessAndDot
 };
 
 // NEW in 1.5.0 - how a node dot's radius is derived
@@ -32119,7 +32119,7 @@ UltraCanvasUIElement
 
 - **Rich shape vocabulary:** Rectangle, RoundedRectangle, Diamond, Oval, Circle, Parallelogram, Hexagon, Triangle, Star, Ellipse, Process, Decision, ManualInput, Document, Database, Cloud, StickyNote, Actor.
 - **Connection styles:** `Straight`, `Orthogonal` (A* obstacle-aware), `Curved`.
-- **Arrow heads:** `None`, `Arrow`, `ArrowFilled`, `Diamond`.
+- **Arrow heads:** `NoArrow`, `Arrow`, `ArrowFilled`, `Diamond`.
 - **Line styles:** `Solid`, `Dashed`, `Dotted`, `DashDot`.
 - **Themes:** `Default`, `Professional`, `Colorful`, `Minimal`, `Dark`.
 - **Edit modes:** Select / move / connect / create / pan with built-in mode switching.
@@ -32335,7 +32335,7 @@ enum class FlowChartShape {
 };
 
 enum class FlowChartConnectionStyle { Straight, Orthogonal, Curved };
-enum class FlowChartArrowStyle      { None, Arrow, ArrowFilled, Diamond };
+enum class FlowChartArrowStyle      { NoArrow, Arrow, ArrowFilled, Diamond };
 enum class FlowChartLineStyle       { Solid, Dashed, Dotted, DashDot };
 enum class FlowChartTheme           { Default, Professional, Colorful, Minimal, Dark };
 ```
@@ -32392,7 +32392,7 @@ chart->SetConnectionColor("c5", Color(220, 120, 80, 255));
 
 chart->AddConnection("c6", "process3", "note1",
                      FlowChartConnectionStyle::Straight,
-                     FlowChartArrowStyle::None);
+                     FlowChartArrowStyle::NoArrow);
 chart->SetConnectionLineStyle("c6", FlowChartLineStyle::Dotted);
 chart->SetConnectionColor("c6", Color(180, 180, 180, 255));
 chart->SetConnectionWidth("c6", 1.5f);
@@ -48213,7 +48213,7 @@ enum class NestedAreaLabelPosition {
     Inside,         // Label inside the shape (default)
     Outside,        // Label outside the shape
     Tooltip,        // Label shown on hover only
-    None            // No labels
+    NoLabels            // No labels
 };
 
 enum class NestedAreaColorTheme {
@@ -52469,7 +52469,7 @@ Controls where slice labels are drawn.
 
 ```cpp
 enum class LabelPosition {
-    None,
+    NoLabels,
     Inside,
     Outside,
     Edge,
@@ -52830,7 +52830,7 @@ labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2](int index, const D
         case 1: pos = LabelPosition::Inside; break;
         case 2: pos = LabelPosition::Outside; break;
         case 3: pos = LabelPosition::Edge; break;
-        case 4: pos = LabelPosition::None; break;
+        case 4: pos = LabelPosition::NoLabels; break;
         default: pos = LabelPosition::Auto;
     }
     pieChart1->SetLabelPosition(pos);
@@ -54591,9 +54591,9 @@ enum class QRPointStyle {
 
 enum class QRFinderStyle { Standard = 0, Rounded, Circle, RoundedCircle, Diamond };
 
-enum class QRLogoStyle { None = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
+enum class QRLogoStyle { NoLogo = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
 
-enum class QRGradientType { None = 0, Linear, Radial, Diagonal };
+enum class QRGradientType { NoGradient = 0, Linear, Radial, Diagonal };
 
 enum class QRImageFormat { PNG = 0, JPEG, QOI, WebP, AVIF };
 ```
@@ -54611,11 +54611,11 @@ struct QRStyleConfig {
     Color backgroundColor = Colors::White;
     Color finderColor     = Color(0, 0, 0, 0);   // transparent => use foreground
 
-    QRGradientType gradientType       = QRGradientType::None;
+    QRGradientType gradientType       = QRGradientType::NoGradient;
     Color          gradientStartColor = Colors::Black;
     Color          gradientEndColor   = Color(0, 102, 204);
 
-    QRLogoStyle              logoStyle        = QRLogoStyle::None;
+    QRLogoStyle              logoStyle        = QRLogoStyle::NoLogo;
     std::shared_ptr<UCImage> logoImage;
     float                    logoScale        = 0.20f;
     float                    logoBorderWidth  = 4.0f;
@@ -66047,7 +66047,7 @@ The root node itself is not drawn — its children form the innermost ring.
 ### SunburstLabelContent
 ```cpp
 enum class SunburstLabelContent {
-    None, Name, Value, Percentage, NameValue, NamePercentage
+    NoLabel, Name, Value, Percentage, NameValue, NamePercentage
 };
 ```
 
@@ -66063,7 +66063,7 @@ enum class SunburstLabelOrientation {
 ### SunburstShadeMode
 ```cpp
 enum class SunburstShadeMode {
-    None, LightenByDepth, DarkenByDepth
+    NoShade, LightenByDepth, DarkenByDepth
 };
 ```
 
@@ -83020,7 +83020,7 @@ for (const auto& app : NetworkMonitor_SummarizeByProcess(connections)) { /* … 
 
 | Type | Holds |
 |---|---|
-| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `None` until a source has named the peer) |
+| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `NoSource` until a source has named the peer) |
 | `ProcessIdentity` | `pid`, `executablePath`, `displayName` (the kernel's comm), `userName` |
 | `NetworkConnectionState` | the TCP state machine, plus `Unconnected` for a UDP socket without a fixed peer |
 | `NetworkMonitorCapabilities` | `socketTable`, `processAttribution`, `allUsers`, `connectionEvents`, `perConnectionBytes`, `dnsWithProcess`, `backendName`, `notes` |

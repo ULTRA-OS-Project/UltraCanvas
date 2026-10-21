@@ -21,11 +21,8 @@
 
 #include "UltraCanvasCommonTypes.h"
 
-// UltraCanvasCommonTypes.h pulls in X11/Xlib.h on Linux, whose None/Status
-// macros collide with the enum members below.
-#ifdef None
-#undef None
-#endif
+// UltraCanvasCommonTypes.h pulls in X11/Xlib.h on Linux, whose Status
+// macro collides with the enum members below.
 #ifdef Status
 #undef Status
 #endif

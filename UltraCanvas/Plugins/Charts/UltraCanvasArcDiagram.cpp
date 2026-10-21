@@ -507,7 +507,7 @@ namespace UltraCanvas {
         bool        apexOutside = false;
         if (dimmed) {
             // leave apexText empty
-        } else if (style.arcValueDisplay != ArcValueDisplay::None) {
+        } else if (style.arcValueDisplay != ArcValueDisplay::NoLabel) {
             apexText    = FormatArcValueLabel(edge.weight);
             apexColor   = style.arcValueLabelColor;
             apexFont    = style.arcValueFontSize;
@@ -598,7 +598,7 @@ namespace UltraCanvas {
         float       apexFont  = style.arcLabelFontSize;
         if (dimmed) {
             // leave apexText empty
-        } else if (style.arcValueDisplay != ArcValueDisplay::None) {
+        } else if (style.arcValueDisplay != ArcValueDisplay::NoLabel) {
             apexText  = FormatArcValueLabel(edge.weight);
             apexColor = style.arcValueLabelColor;
             apexFont  = style.arcValueFontSize;
@@ -613,7 +613,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(apexColor);
             auto dims = ctx->GetTextLineDimensions(apexText);
             int tw = dims.width, th = dims.height;
-            float gap = (style.arcValueDisplay != ArcValueDisplay::None)
+            float gap = (style.arcValueDisplay != ArcValueDisplay::NoLabel)
                         ? style.arcValueLabelOffset : 2.0f;
             float ly = above ? (apexY - th - gap) : (apexY + gap);
             ctx->DrawText(apexText, Point2Dd(cx - tw * 0.5f, ly));

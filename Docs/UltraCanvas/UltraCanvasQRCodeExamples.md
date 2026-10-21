@@ -81,9 +81,9 @@ enum class QRPointStyle {
 
 enum class QRFinderStyle { Standard = 0, Rounded, Circle, RoundedCircle, Diamond };
 
-enum class QRLogoStyle { None = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
+enum class QRLogoStyle { NoLogo = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
 
-enum class QRGradientType { None = 0, Linear, Radial, Diagonal };
+enum class QRGradientType { NoGradient = 0, Linear, Radial, Diagonal };
 
 enum class QRImageFormat { PNG = 0, JPEG, QOI, WebP, AVIF };
 ```
@@ -101,11 +101,11 @@ struct QRStyleConfig {
     Color backgroundColor = Colors::White;
     Color finderColor     = Color(0, 0, 0, 0);   // transparent => use foreground
 
-    QRGradientType gradientType       = QRGradientType::None;
+    QRGradientType gradientType       = QRGradientType::NoGradient;
     Color          gradientStartColor = Colors::Black;
     Color          gradientEndColor   = Color(0, 102, 204);
 
-    QRLogoStyle              logoStyle        = QRLogoStyle::None;
+    QRLogoStyle              logoStyle        = QRLogoStyle::NoLogo;
     std::shared_ptr<UCImage> logoImage;
     float                    logoScale        = 0.20f;
     float                    logoBorderWidth  = 4.0f;

@@ -89,9 +89,9 @@ struct CircularConnection {
 
 ```cpp
 enum class CircularTextStyle      { Horizontal, Circular, Radial, StarStyle };
-enum class ValueVisualizationType { None, Bars, CircularLine, CircularBar };
-enum class DecorativeRingType     { None, ColorHighlight, Graphics, Pattern, Gradient };
-enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve };
+enum class ValueVisualizationType { NoVisualization, Bars, CircularLine, CircularBar };
+enum class DecorativeRingType     { NoRing, ColorHighlight, Graphics, Pattern, Gradient };
+enum class ConnectionLineType     { NoLine, InsideCenter, OutsideRing, DirectCurve };
 ```
 
 ## Public API
@@ -127,7 +127,7 @@ enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve
 ### Connections
 | Method | Description |
 |---|---|
-| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `None` |
+| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `NoLine` |
 | `AddConnection(fromRing, fromCell, toRing, toCell, value)` | Add a link |
 | `SetConnectionStyle(i, style)` / `SetDefaultConnectionStyle(style)` | Styling |
 | `ClearConnections()` / `GetConnectionCount()` | Management |

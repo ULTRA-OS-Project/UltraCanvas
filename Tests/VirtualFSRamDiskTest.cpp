@@ -75,7 +75,7 @@ int main() {
         CHECK(took < std::chrono::milliseconds(50),
               "preferred backing answers from the kept answer, not a new probe");
         CHECK(VirtualFS_IsTrueRamDiskAvailable() ==
-                  (first != VirtualFSRamDiskBacking::None &&
+                  (first != VirtualFSRamDiskBacking::NotCreated &&
                    first != VirtualFSRamDiskBacking::DiskFallback),
               "true-RAM availability follows the kept backing");
     }

@@ -40,13 +40,6 @@
 #include <cstdint>
 #include <string>
 
-// When included after X11 headers, Xlib's `None` macro (0L) collides with
-// SignInMethod::None — the same collision UltraVault.h neutralizes for X11's
-// `Success`, and UltraAICommon.h for this one. Undefine it before ours.
-#ifdef None
-#undef None
-#endif
-
 namespace UltraVault {
 
 // The tokens of an account that signed in with OAuth2.
@@ -63,7 +56,7 @@ struct OAuthTokens {
 };
 
 // How an account signs in, decided by what the vault holds for it.
-enum class SignInMethod { None, Password, OAuth2 };
+enum class SignInMethod { NoSignIn, Password, OAuth2 };
 
 // Why an unlock attempt failed, so the UI can tell "wrong password" (ask
 // again) from "this build cannot open a vault at all" (say so and stop).

@@ -98,7 +98,7 @@ struct ProcessIdentity {
 
 // A connection whose other end is on this machine: which side of it this
 // socket is. The server is the side whose port a listener holds.
-enum class LoopbackRole { None, Client, Server };
+enum class LoopbackRole { NotLoopback, Client, Server };
 
 // Where a domain name came from. The first four are *observed*: a source saw
 // the query that produced the address, so the name is the one the
@@ -106,7 +106,7 @@ enum class LoopbackRole { None, Client, Server };
 // or a guess, near-useless behind a CDN, and a UI shows them as such. The
 // order is the precedence when two sources name one address.
 enum class NameSource {
-    None,
+    NoSource,
     DnsProxy,        // the local DNS proxy saw the query (NetworkMonitorNames.h)
     EtwDnsClient,    // the Windows DNS client's own events, with the PID
     PacketCapture,   // port-53 capture (not built yet)
@@ -122,7 +122,7 @@ struct DnsObservation {
     std::string              queryName;      // "www.example.com", lower-case, no trailing dot
     std::vector<std::string> addresses;      // the A / AAAA answers, in text
     std::optional<ProcessIdentity> process;  // the asking process, where known
-    NameSource               source = NameSource::None;
+    NameSource               source = NameSource::NoSource;
     int64_t                  observedAt = 0; // Unix seconds; 0 = now
     int                      ttlSeconds = 0; // the shortest answer TTL; 0 = unknown
 };
@@ -157,7 +157,7 @@ struct NetworkConnection {
     // NetworkMonitor_ListConnections from the name table
     // (NetworkMonitorNames.h) when the options ask for it.
     std::string remoteName;
-    NameSource  nameSource = NameSource::None;
+    NameSource  nameSource = NameSource::NoSource;
 
     // The loopback chain (NetworkMonitor_DecodeLoopback): when the other
     // end of this connection is a socket on this machine, the process on
@@ -167,7 +167,7 @@ struct NetworkConnection {
     // client as localPeer. `forProcesses` is the inference the other way:
     // on a process's outbound connections, the loopback clients that
     // process serves - the applications its traffic is really for.
-    LoopbackRole                   loopbackRole = LoopbackRole::None;
+    LoopbackRole                   loopbackRole = LoopbackRole::NotLoopback;
     std::optional<ProcessIdentity> localPeer;
     std::vector<std::string>       forProcesses;   // "thunderbird (4120)", distinct
 

@@ -58,7 +58,7 @@ FillPattern FillPatternFor(int biffPattern) {
         case 16: return FillPattern::ThinDiagCross;
         case 17: return FillPattern::Gray125;
         case 18: return FillPattern::Gray0625;
-        default: return FillPattern::None;
+        default: return FillPattern::NoFill;
     }
 }
 
@@ -77,7 +77,7 @@ BorderStyle BorderStyleFor(int biffStyle) {
         case 11: return BorderStyle::DashDotDot;
         case 12: return BorderStyle::DashDotDot;   // medium dash-dot-dot: no own style
         case 13: return BorderStyle::SlantDashDot;
-        default: return BorderStyle::None;
+        default: return BorderStyle::NoBorder;
     }
 }
 
@@ -163,7 +163,7 @@ private:
         font.strikethrough = f.strikethrough;
         font.underline = f.underline == 2 ? UnderlineStyle::Double
                        : f.underline == 1 ? UnderlineStyle::Single
-                                          : UnderlineStyle::None;
+                                          : UnderlineStyle::NoUnderline;
         font.superscript = f.superscript;
         font.subscript = f.subscript;
         if (!f.automaticColor) font.color = f.color;

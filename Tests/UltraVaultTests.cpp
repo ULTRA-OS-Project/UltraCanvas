@@ -315,7 +315,7 @@ static void TestDeviceKeyVault(const fs::path& dir) {
         Check(vault.Store("erika", "pw2"), "Store password again");
         Check(!vault.HasOAuthTokens("erika"), "password drops the token set");
         Check(vault.StoreOAuthTokens("erika", t) && vault.RemoveOAuthTokens("erika") &&
-                  vault.MethodFor("erika") == UltraVault::SignInMethod::None,
+                  vault.MethodFor("erika") == UltraVault::SignInMethod::NoSignIn,
               "RemoveOAuthTokens");
         Check(!vault.RemoveOAuthTokens("erika"), "removing absent tokens reports false");
 

@@ -361,7 +361,7 @@ bool DeviceKeyVault::RemoveOAuthTokens(const std::string& account) {
 SignInMethod DeviceKeyVault::MethodFor(const std::string& account) const {
     if (HasOAuthTokens(account)) return SignInMethod::OAuth2;
     if (Has(account)) return SignInMethod::Password;
-    return SignInMethod::None;
+    return SignInMethod::NoSignIn;
 }
 
 bool DeviceKeyVault::Retrieve(const std::string& account, std::string& out) const {

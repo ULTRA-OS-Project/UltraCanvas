@@ -448,7 +448,7 @@ void TestOptionResolution() {
     Check(!resolved.page.borderless, "borderless is dropped when unsupported");
     Check(resolved.colorMode == IOPrinterColorMode::Grayscale,
           "colour falls back to grayscale on a mono printer");
-    Check(resolved.duplex == IODuplexMode::None, "duplex is dropped when there is no unit");
+    Check(resolved.duplex == IODuplexMode::OneSided, "duplex is dropped when there is no unit");
     Check(resolved.copies == 10, "copies are clamped to the printer's maximum");
     Check(!resolved.collate, "collate is dropped when unsupported");
     Check(resolved.quality == IOPrintQuality::Normal, "Photo quality falls back to Normal");

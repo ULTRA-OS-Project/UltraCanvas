@@ -228,7 +228,7 @@ namespace UltraCanvas {
             ChordLabelPlacement placement;
             switch (index) {
                 case 1:  placement = ChordLabelPlacement::Radial; break;
-                case 2:  placement = ChordLabelPlacement::None;   break;
+                case 2:  placement = ChordLabelPlacement::NoLabels;   break;
                 default: placement = ChordLabelPlacement::Outside; break;
             }
             chart->SetLabelPlacement(placement);

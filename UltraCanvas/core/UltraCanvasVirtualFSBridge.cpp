@@ -103,7 +103,7 @@ bool UltraCanvasVirtualFSBridge::CompressWithOptions(
     }
     
     switch (options.type) {
-        case UCVFSCompressionType::None:
+        case UCVFSCompressionType::Uncompressed:
             output = input;
             return true;
             
@@ -147,7 +147,7 @@ bool UltraCanvasVirtualFSBridge::Decompress(
     }
     
     switch (type) {
-        case UCVFSCompressionType::None:
+        case UCVFSCompressionType::Uncompressed:
             output = input;
             return true;
             
@@ -175,7 +175,7 @@ bool UltraCanvasVirtualFSBridge::DecompressAuto(
     
     UCVFSCompressionType detected = DetectCompressionFormat(input);
     
-    if (detected == UCVFSCompressionType::None) {
+    if (detected == UCVFSCompressionType::Uncompressed) {
         // Not compressed or unknown format
         output = input;
         return true;
@@ -833,7 +833,7 @@ UCVFSCompressionType UltraCanvasVirtualFSBridge::DetectCompressionFormat(
     const std::vector<uint8_t>& data) {
     
     if (data.size() < 4) {
-        return UCVFSCompressionType::None;
+        return UCVFSCompressionType::Uncompressed;
     }
     
     // GZIP: 1F 8B
@@ -870,7 +870,7 @@ UCVFSCompressionType UltraCanvasVirtualFSBridge::DetectCompressionFormat(
     // Raw DEFLATE is harder to detect - no magic number
     // Would need to try decompressing
     
-    return UCVFSCompressionType::None;
+    return UCVFSCompressionType::Uncompressed;
 }
 
 float UltraCanvasVirtualFSBridge::GetCompressionRatio(
@@ -921,7 +921,7 @@ std::vector<std::string> UltraCanvasVirtualFSBridge::GetSupportedAlgorithms() {
 
 std::string UltraCanvasVirtualFSBridge::CompressionTypeToString(UCVFSCompressionType type) {
     switch (type) {
-        case UCVFSCompressionType::None: return "None";
+        case UCVFSCompressionType::Uncompressed: return "None";
         case UCVFSCompressionType::Deflate: return "Deflate";
         case UCVFSCompressionType::GZIP: return "GZIP";
         case UCVFSCompressionType::LZMA: return "LZMA";

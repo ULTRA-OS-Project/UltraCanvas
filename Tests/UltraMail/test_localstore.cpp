@@ -81,11 +81,11 @@ TEST(accounts_store_their_server_settings) {
     REQUIRE(b.smtp.auth == UltraNetMailAuth::Any);
 
     a.imap.auth = UltraNetMailAuth::Password;
-    a.smtp.auth = UltraNetMailAuth::None;
+    a.smtp.auth = UltraNetMailAuth::NoAuth;
     REQUIRE(s.UpsertAccount(a).success);
     REQUIRE(s.ListAccounts(accs).success);
     REQUIRE(accs[0].imap.auth == UltraNetMailAuth::Password);
-    REQUIRE(accs[0].smtp.auth == UltraNetMailAuth::None);
+    REQUIRE(accs[0].smtp.auth == UltraNetMailAuth::NoAuth);
 }
 
 namespace {

@@ -245,7 +245,7 @@ UltraNetMailAuth AuthFromAutoconfig(const std::string& method) {
     if (m == "oauth2")                                return UltraNetMailAuth::OAuth2;
     if (m == "gssapi")                                return UltraNetMailAuth::Kerberos;
     if (m == "ntlm")                                  return UltraNetMailAuth::NTLM;
-    if (m == "none")                                  return UltraNetMailAuth::None;
+    if (m == "none")                                  return UltraNetMailAuth::NoAuth;
     return UltraNetMailAuth::Any;
 }
 

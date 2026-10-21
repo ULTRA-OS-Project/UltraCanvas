@@ -30,9 +30,6 @@
 #ifdef Above
 #undef Above
 #endif
-#ifdef None
-#undef None   // X11 defines `None` as 0L — collides with ArcValueDisplay::None
-#endif
 
 namespace UltraCanvas {
 
@@ -82,7 +79,7 @@ namespace UltraCanvas {
 
     /// P12 — what to render automatically at the arc apex (zenit)
     enum class ArcValueDisplay {
-        None,           ///< No auto-generated apex label (default; honors edge.label)
+        NoLabel,           ///< No auto-generated apex label (default; honors edge.label)
         Value,          ///< Show edge weight as numeric value
         Percentage      ///< Show edge weight as percentage of total edge weight
     };
@@ -187,7 +184,7 @@ namespace UltraCanvas {
         bool    emphasizeActiveLabel = true;    ///< Draw active node's label in bold weight
 
         // P12 — auto value/percentage label drawn at arc apex (zenit)
-        ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+        ArcValueDisplay arcValueDisplay  = ArcValueDisplay::NoLabel;
         int     arcValueDecimals    = 1;        ///< Decimal places for value/percentage text
         float   arcValueFontSize    = 10.0f;    ///< Font size for apex value label
         Color   arcValueLabelColor  = Color(40, 40, 40, 230);   ///< Apex value label color

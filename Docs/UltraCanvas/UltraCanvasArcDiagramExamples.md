@@ -105,7 +105,7 @@ enum class ArcNodeSizeMode {
 };
 
 enum class ArcValueDisplay {
-    None,          // No auto-generated apex label (default)
+    NoLabel,          // No auto-generated apex label (default)
     Value,         // Show edge weight as numeric value at apex
     Percentage     // Show edge weight as percentage of total at apex
 };
@@ -208,7 +208,7 @@ struct ArcDiagramStyle {
     bool  emphasizeActiveLabel = true;   // bold weight on active node label
 
     // Auto value/percentage label drawn at arc apex (zenit)
-    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::NoLabel;
     int             arcValueDecimals = 1;
     float           arcValueFontSize = 10.0f;
     Color           arcValueLabelColor  = Color(40, 40, 40, 230);

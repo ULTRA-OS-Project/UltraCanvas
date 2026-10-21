@@ -438,7 +438,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildComputerStep(
                                              found ? PackageManagerName(profile_.packageManager) : "none on PATH"));
         row->AddChild(Theme::MakeValue("ucsSysManagerPath",
                                        found ? profile_.packageManagerPath
-                                             : (profile_.packageManager == PackageManager::None
+                                             : (profile_.packageManager == PackageManager::NoPackageManager
                                                     ? "no apt, dnf, pacman, zypper or brew was found"
                                                     : PackageManagerName(profile_.packageManager) + " was not found on PATH"),
                                        found ? Theme::kTextPrimary : Theme::kTextSecondary));

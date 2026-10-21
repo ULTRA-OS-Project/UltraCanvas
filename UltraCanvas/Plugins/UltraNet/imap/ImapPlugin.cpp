@@ -961,7 +961,7 @@ public:
         CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
         if (rc != CURLE_OK)
             return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
-        if (flags != UltraNetMailFlags::None) SetFlagsOfAppended(serverUrl, folder, rawMessage,
+        if (flags != UltraNetMailFlags::NoFlags) SetFlagsOfAppended(serverUrl, folder, rawMessage,
                                                                  flags, options);
         return UltraNetResult::Ok();
     }
@@ -1018,7 +1018,7 @@ public:
             if (listed) {
                 for (uint32_t uid : uids) {
                     auto it = fm.find(uid);
-                    onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::None,
+                    onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::NoFlags,
                             /*flagsKnown=*/it != fm.end());
                 }
                 return UltraNetResult::Ok();
@@ -1052,7 +1052,7 @@ public:
 
         for (uint32_t uid : uids) {
             auto it = fm.find(uid);
-            onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::None,
+            onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::NoFlags,
                     /*flagsKnown=*/it != fm.end());
         }
         return UltraNetResult::Ok();
@@ -1302,7 +1302,7 @@ private:
         const bool known = PerformOn(h, mbUrl, UidFetchFlagsCommand(uid), flagsBody)
                            && HasFetchFlags(flagsBody);
         const UltraNetMailFlags before = known ? ParseFetchFlags(flagsBody)
-                                               : UltraNetMailFlags::None;
+                                               : UltraNetMailFlags::NoFlags;
         if (flagsOut) *flagsOut = before;
         UltraNetResult r = PerformOn(h, sectionUrl, std::string(), out);
         // Only when the flags were read: a message whose state is unknown is

@@ -99,7 +99,7 @@ bool RamDiskDetail::SecureWipeDirectory(const std::string& path) {
 
 const char* VirtualFSRamDiskBackingToString(VirtualFSRamDiskBacking backing) {
     switch (backing) {
-        case VirtualFSRamDiskBacking::None:         return "None";
+        case VirtualFSRamDiskBacking::NotCreated:         return "None";
         case VirtualFSRamDiskBacking::Tmpfs:        return "tmpfs (/dev/shm)";
         case VirtualFSRamDiskBacking::HdiUtil:      return "hdiutil ram://";
         case VirtualFSRamDiskBacking::ImDisk:       return "ImDisk";
@@ -127,7 +127,7 @@ VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking() {
 
 bool VirtualFS_IsTrueRamDiskAvailable() {
     const VirtualFSRamDiskBacking backing = VirtualFS_GetPreferredRamDiskBacking();
-    return backing != VirtualFSRamDiskBacking::None &&
+    return backing != VirtualFSRamDiskBacking::NotCreated &&
            backing != VirtualFSRamDiskBacking::DiskFallback;
 }
 

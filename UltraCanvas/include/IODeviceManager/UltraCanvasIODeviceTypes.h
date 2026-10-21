@@ -11,16 +11,13 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Success`, `None`, `Bool` and `Status` as
+// Defensive: X11/Xlib.h defines `Success`, `Bool` and `Status` as
 // macros, which would turn the enum-class members below into literal
 // integers. UltraCanvas's Linux platform glue pulls X11 in transitively, so
 // any TU including both an UltraCanvas header and this one would otherwise
 // fail to compile. Same guard as UltraNetCore.h.
 #ifdef Success
 #undef Success
-#endif
-#ifdef None
-#undef None
 #endif
 #ifdef Bool
 #undef Bool

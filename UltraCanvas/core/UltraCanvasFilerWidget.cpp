@@ -89,9 +89,6 @@
 // Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
-// VirtualFS + bridge must be included before the UI headers: X11 (pulled in
-// via UltraCanvasApplication.h) #defines None/Success, which collide with the
-// None enumerators in VirtualFS and UCVFSCompressionType.
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
 #include "VirtualFS/VirtualFS.h"
 #include "UltraCanvasVirtualFSBridge.h"
@@ -182,13 +179,10 @@
 #endif
 #endif
 
-// X11 (pulled in via UltraCanvasApplication.h) #defines Success and None,
-// which collide with the VirtualFS::VirtualFSResult enumerators used below.
+// X11 (pulled in via UltraCanvasApplication.h) #defines Success, which
+// collides with the VirtualFS::VirtualFSResult enumerator used below.
 #ifdef Success
 #undef Success
-#endif
-#ifdef None
-#undef None
 #endif
 
 namespace fs = std::filesystem;
