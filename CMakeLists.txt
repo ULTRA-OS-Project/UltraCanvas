@@ -1069,6 +1069,15 @@ if(BUILD_DEMO_APP)
         target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
     endif()
 
+    # The Smart Home entry opens the module's panel on its simulated home
+    # when the widgets are built (Apps/DemoApp/UltraCanvasSmartHomeExamples.cpp);
+    # otherwise it shows the module's documentation.
+    if(TARGET SmartHomeUI)
+        target_sources(UltraCanvasDemo PRIVATE Apps/DemoApp/UltraCanvasSmartHomeExamples.cpp)
+        target_link_libraries(UltraCanvasDemo PRIVATE SmartHomeUI)
+        target_compile_definitions(UltraCanvasDemo PRIVATE ULTRACANVAS_DEMO_HAS_SMARTHOME=1)
+    endif()
+
     # Link against all plugin libraries
     if(ULTRACANVAS_PLUGIN_TARGETS)
         target_link_libraries(UltraCanvasDemo PRIVATE

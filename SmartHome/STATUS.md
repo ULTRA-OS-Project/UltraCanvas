@@ -204,9 +204,33 @@ scene activation goes to the event log (`GetEventLog`, `SetOnEvent`).
 `tests/AutomationTest.cpp` covers both on the simulated home with a clock of
 its own, and passed 40 runs in a row and under ThreadSanitizer.
 
-Still open: the home model's own room list (rooms are whatever devices name),
-`location` triggers, the safety opt-in for automations that unlock, and the
-hub service that keeps automations running with no window open.
+Still open: `location` triggers, the safety opt-in for automations that
+unlock, and the hub service that keeps automations running with no window
+open.
+
+### The home's rooms (2026-10-21)
+
+Rooms belong to the module now (proposal §4.3): `SmartHomeRoom` (id, name,
+icon, floor, sort order) and `GetRooms`, `GetRoom`, `CreateRoom`,
+`UpdateRoom`, `DeleteRoom`, `AssignDeviceToRoom`, `GetDeviceRoom` and
+`SetOnHomeChange` on the facade. A room name a backend reports becomes a
+room the first time a device brings it; `SmartHomeDeviceInfo::Room` is the
+name of the home's room the device is in and `RoomId` its id. The person's
+choice is kept by id, so a renamed room keeps its devices and the backend's
+old name does not bring the old room back; a deleted room leaves its
+devices in no room. smarthome.db migration 2 adds the `room` table and the
+id column, and turns a version-1 store's room names into rooms on its first
+open. `tests/HomeModelTest.cpp` covers it with and without the store.
+
+`WaitForCommands(timeoutMs)` waits until every queued command has been sent
+- for a command-line tool that exits right after one (SmartHome Center's
+`--set` and `--scene`), and for tests.
+
+`SmartHomePanel` drew every card at its own origin, so the grid showed one
+card on top of the others; it now draws each where it is laid out, and its
+room view groups by the home's rooms when the panel was given none of its
+own. The demo application's Smart Home entry opens the panel on the
+simulated home.
 
 ### Known latent bug
 

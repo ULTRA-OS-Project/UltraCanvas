@@ -1,6 +1,6 @@
 // UltraCanvasSmartHomePanel.h
 // Smart Home Control Panel UI Component
-// Version: 1.0.0
+// Version: 1.0.1 - cards drawn where they are laid out; the room view from the home's rooms
 // Last Modified: 2025-12-08
 // Author: UltraCanvas Framework
 

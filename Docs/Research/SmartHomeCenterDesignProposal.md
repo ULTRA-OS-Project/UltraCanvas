@@ -1,12 +1,16 @@
 # SmartHome Center — the home control application for ULTRA OS (Proposal)
 
 **Date:** 2026-10-20
-**Status:** Phase 0 largely done (2026-10-20): the simulated backend
-(§4.7), smarthome.db (§4.4), sensor history (§4.5) and the automation engine
-(§4.6) are in `SmartHome/`; still open from phase 0 is the home model's own
-room list (§4.3 - rooms are per device for now). A first
-`Apps/SmartHomeCenter` runs on it. The window is assembled from framework elements directly rather than
-from the `SmartHomeUI` widgets, which still paint their own controls (§4.8).
+**Status:** Phases 0 and 1 done (2026-10-21). Phase 0: the simulated
+backend (§4.7), smarthome.db (§4.4), sensor history (§4.5), the automation
+engine (§4.6) and the home model's rooms (§4.3) are in `SmartHome/`.
+Phase 1: `Apps/SmartHomeCenter` 0.2.0 has Home, Rooms, Devices, a page per
+device, Scenes, Energy, Activity, Settings and the first-run guide;
+`--list`, `--set`, `--scene`, `--history` and `--log`, checked in CI by
+`SmartHomeCenterCliTest`; the demo application's Smart Home entry opens
+the panel on the simulator. The window is assembled from framework
+elements directly rather than from the `SmartHomeUI` widgets, which still
+paint their own controls (§4.8, phase 2).
 **Scope:** a new application, `Apps/SmartHomeCenter`, on top of the existing
 `SmartHome` engine and `SmartHomeUI` widget library. This document also
 covers what those two libraries still need before an application can stand

@@ -487,36 +487,71 @@ void SmartHomePanel::RenderToolbar(IRenderContext* ctx) {
                                 bounds.width * 0.5 - 12.0, 16.0));
 }
 
+namespace {
+
+// A card draws itself from (0, 0): put it where LayoutCards placed it.
+void RenderAt(IRenderContext* ctx, UltraCanvasUIElement& card) {
+    const Rect2Df b = card.GetBounds();
+    ctx->PushState();
+    ctx->Translate(b.x, b.y);
+    card.Render(ctx, Rect2Df(0, 0, b.width, b.height));
+    ctx->PopState();
+}
+
+} // namespace
+
 void SmartHomePanel::RenderDeviceGrid(IRenderContext* ctx) {
     if (filteredDevices.empty()) { RenderEmptyState(ctx); return; }
     for (const auto& device : filteredDevices) {
         auto it = deviceCards.find(device.DeviceId);
-        if (it != deviceCards.end()) it->second->Render(ctx, GetLocalBounds());
+        if (it != deviceCards.end()) RenderAt(ctx, *it->second);
     }
 }
 
 void SmartHomePanel::RenderDeviceList(IRenderContext* ctx) { RenderDeviceGrid(ctx); }
 
 void SmartHomePanel::RenderRoomView(IRenderContext* ctx) {
-    if (rooms.empty()) { RenderEmptyState(ctx); return; }
+    // The panel's own rooms (AddRoom) when it was given some; otherwise the
+    // home's, from the module.
+    std::vector<std::pair<std::string, std::vector<std::string>>> grouped(rooms.begin(), rooms.end());
+    if (grouped.empty()) {
+        for (const auto& room : SmartHomeAPI::Instance().GetRooms()) {
+            std::vector<std::string> members;
+            for (const auto& device : filteredDevices)
+                if (device.RoomId == room.RoomId) members.push_back(device.DeviceId);
+            if (!members.empty()) grouped.emplace_back(room.Name, std::move(members));
+        }
+        std::vector<std::string> unplaced;
+        for (const auto& device : filteredDevices)
+            if (device.RoomId.empty()) unplaced.push_back(device.DeviceId);
+        if (!unplaced.empty()) grouped.emplace_back("Not in a room", std::move(unplaced));
+    }
+    if (grouped.empty()) { RenderEmptyState(ctx); return; }
 
     const Rect2Df bounds = GetLocalBounds();
     float y = kToolbarHeight + 8.0f - scrollOffset;
-    for (const auto& [room, members] : rooms) {
+    for (const auto& [room, members] : grouped) {
         ctx->SetTextPaint(colorText);
         ctx->SetFontSize(12.0);
         ctx->DrawTextInRect(room + "  (" + std::to_string(members.size()) + ")",
                             Rect2Dd(12.0, y, bounds.width - 24.0, 18.0));
         y += 22.0f;
 
+        // The room's cards as a grid, as in the device grid: the cards are
+        // laid out for their square size.
+        const float spacing = static_cast<float>(config.GridSpacing);
+        const float cardSize = static_cast<float>(config.CardSize);
+        const int columns = std::max(1, static_cast<int>((bounds.width - spacing) / (cardSize + spacing)));
+        int index = 0;
         for (const auto& deviceId : members) {
             auto it = deviceCards.find(deviceId);
             if (it == deviceCards.end()) continue;   // filtered out
-            it->second->SetBounds(Rect2Df(20.0f, y, bounds.width - 40.0f, 48.0f));
-            it->second->Render(ctx, bounds);
-            y += 52.0f;
+            it->second->SetBounds(Rect2Df(spacing + (index % columns) * (cardSize + spacing),
+                                          y + (index / columns) * (cardSize + spacing), cardSize, cardSize));
+            RenderAt(ctx, *it->second);
+            ++index;
         }
-        y += 10.0f;
+        y += ((index + columns - 1) / columns) * (cardSize + spacing) + 10.0f;
     }
 }
 
@@ -524,7 +559,7 @@ void SmartHomePanel::RenderSceneView(IRenderContext* ctx) {
     if (scenes.empty()) { RenderEmptyState(ctx); return; }
     for (const auto& scene : scenes) {
         auto it = sceneCards.find(scene.SceneId);
-        if (it != sceneCards.end()) it->second->Render(ctx, GetLocalBounds());
+        if (it != sceneCards.end()) RenderAt(ctx, *it->second);
     }
 }
 
