@@ -5,8 +5,12 @@
 // zlib and gzip section compression, the header-default compression code,
 // unknown sections listed rather than refused, and the refusals - a bad
 // signature, a version 1 file, a later major version, a truncated file, a
-// damaged stream, an encrypted section, a section past its size limit.
+// damaged stream, an encrypted section, a section past its size limit -
+// and password protection: the SECU record and encrypted sections on disk,
+// a wrong password told from a damaged file, tampering caught, a private
+// document without its preview, failing closed without libsodium.
 // Headless.
+// Version: 1.1.0 - password protection
 // Version: 1.0.0
 // Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
@@ -15,6 +19,7 @@
 #include "UltraCanvasPathUtf8.h"
 
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -101,8 +106,8 @@ static void TestWriterBytes() {
     Check(w.WriteToBuffer(file, err), "a container is written");
     Check(file.size() > 28 && file[0] == 0x89 && std::memcmp(&file[1], "UCBitmap", 8) == 0 &&
           file[9] == 0x0D && file[10] == 0x0A && file[11] == 0x1A, "the signature: guard, descriptor, CR LF, EOF");
-    Check(file[12] == 2 && file[13] == 1 && file[14] == 0 && file[15] == 1 && file[16] == 0,
-          "version 2.1, binary, deflate by default, no key source");
+    Check(file[12] == 2 && file[13] == 2 && file[14] == 0 && file[15] == 1 && file[16] == 0,
+          "version 2.2, binary, deflate by default, no key source");
     Check(file[17] == (UCD::FlagThumbnail | UCD::FlagThumbPng) && file[18] == 0 && file[19] == 0,
           "flags: a PNG thumbnail; reserved bytes zero");
     Check(U32At(file, 20) == thumb.size() && U32At(file, 24) == 0, "thumbnail length; no header extension");
@@ -272,6 +277,127 @@ static void TestBytes() {
     Check(!r.U32(more) && !r.Ok(), "a read past the end fails and leaves the reader failed");
 }
 
+// Where in `file` section `type` starts (its 12-byte header); 0 when absent.
+static size_t SectionAt(const std::vector<uint8_t>& file, const std::string& type) {
+    UCD::Reader r;
+    std::string err;
+    if (!r.OpenBuffer(file, err)) return 0;
+    for (const UCD::Section& s : r.GetSections()) if (s.type == type) return static_cast<size_t>(s.offset);
+    return 0;
+}
+
+static void TestPasswordProtection() {
+    std::printf("--- password protection ---\n");
+    std::vector<uint8_t> pixels(20000);
+    for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = static_cast<uint8_t>("SECRETPIXELS"[i % 12]);
+    const std::vector<uint8_t> thumb = { 0x89, 'P', 'N', 'G', 7 };
+    std::string err;
+
+    if (!UCD::EncryptionAvailable()) {
+        UCD::Writer w("UCBitmap");
+        w.SetPassword("pw");
+        w.AddSection("BMAP", pixels);
+        std::vector<uint8_t> out;
+        Check(!w.WriteToBuffer(out, err) && !err.empty(),
+              "without libsodium a protected write fails rather than writing it in the clear");
+        std::printf("  (libsodium not available: the rest is skipped)\n");
+        return;
+    }
+
+    UCD::Writer w("UCBitmap");
+    w.SetThumbnailPng(thumb);
+    w.SetPassword("correct horse \xC3\xA9");
+    w.AddSection("BMAP", pixels);
+    w.AddSection("META", { 'm', 'e', 't', 'a' }, UCD::Compression::Uncompressed);
+    std::vector<uint8_t> file;
+    Check(w.WriteToBuffer(file, err), "a protected document is written");
+    Check(file[16] == 1 && (file[17] & UCD::FlagEncrypted) && (file[17] & UCD::FlagThumbnail),
+          "key source 1 (password), ENCRYPTED set, the thumbnail kept");
+    const size_t indx = 28 + thumb.size();
+    Check(std::memcmp(&file[indx], "INDX", 4) == 0, "INDX is still first");
+    const size_t secu = SectionAt(file, "SECU");
+    Check(secu == indx + 12 + U32At(file, indx + 4), "SECU follows it");
+    Check(secu && file[secu + 8] == 0 && file[secu + 9] == 0 && U32At(file, secu + 4) == 76 &&
+          file[secu + 12] == 1 && file[secu + 13] == 1 && file[secu + 14] == 1 && U32At(file, secu + 12 + 12) == 1,
+          "SECU: uncompressed, in the clear, 76 bytes; Argon2id, XChaCha20-Poly1305, one lane");
+    const size_t bmap = SectionAt(file, "BMAP");
+    Check(bmap && (file[bmap + 9] & 1) && file[bmap + 8] == 1, "BMAP: encrypted, and says it was deflated before");
+    const std::string plain = "SECRETPIXELS";
+    Check(std::search(file.begin(), file.end(), plain.begin(), plain.end()) == file.end(),
+          "nothing of the content is readable in the file");
+    const std::string metaText = "meta";
+    Check(std::search(file.begin(), file.end(), metaText.begin(), metaText.end()) == file.end(),
+          "an uncompressed section is encrypted too");
+
+    UCD::Reader r;
+    Check(r.OpenBuffer(file, err) && r.NeedsPassword(), "it opens, and says it needs a password");
+    Check(r.GetThumbnail() == thumb, "the thumbnail is readable without one");
+    std::vector<uint8_t> out;
+    const auto bmaps = r.FindSections("BMAP");
+    err.clear();
+    Check(bmaps.size() == 1 && !r.Decode(*bmaps[0], out, err) && err.find("password") != std::string::npos,
+          "an encrypted section does not decode before the password");
+    err.clear();
+    Check(!r.Unlock("correct horse", err) && err.find("not right") != std::string::npos && r.NeedsPassword(),
+          "a wrong password is told as such");
+    Check(r.Unlock("correct horse \xC3\xA9", err) && !r.NeedsPassword(), "the right one unlocks it");
+    Check(bmaps.size() == 1 && r.Decode(*bmaps[0], out, err) && out == pixels, "and the section decrypts and inflates");
+    const auto metas = r.FindSections("META");
+    Check(metas.size() == 1 && r.Decode(*metas[0], out, err) && out == std::vector<uint8_t>{ 'm', 'e', 't', 'a' },
+          "an uncompressed one too");
+
+    // Tampering: a byte of ciphertext, a byte of the header (the associated data).
+    std::vector<uint8_t> bad = file;
+    bad[bmap + 12 + 40] ^= 0x01;
+    UCD::Reader t;
+    err.clear();
+    Check(t.OpenBuffer(bad, err) && t.Unlock("correct horse \xC3\xA9", err) &&
+          !t.Decode(*t.FindSections("BMAP")[0], out, err) && err.find("damaged") != std::string::npos,
+          "a changed byte of ciphertext is caught, as damage - not as a wrong password");
+    bad = file;
+    bad[bmap + 10] = 1;   // the reserved bytes of its header
+    UCD::Reader u;
+    Check(u.OpenBuffer(bad, err) && u.Unlock("correct horse \xC3\xA9", err) &&
+          !u.Decode(*u.FindSections("BMAP")[0], out, err), "an edited section header fails the tag");
+    bad = file;
+    bad[secu + 12 + 8] = 0xFF; bad[secu + 12 + 9] = 0xFF; bad[secu + 12 + 10] = 0xFF; bad[secu + 12 + 11] = 0xFF;
+    UCD::Reader v;
+    err.clear();
+    Check(v.OpenBuffer(bad, err) && !v.Unlock("correct horse \xC3\xA9", err) && err.find("damaged") != std::string::npos,
+          "a SECU asking for 4 TiB of memory is refused before anything is derived");
+    bad = file;
+    bad[secu + 12 + 4] = 1;   // one pass instead of the stored cost
+    UCD::Reader x;
+    Check(x.OpenBuffer(bad, err) && !x.Unlock("correct horse \xC3\xA9", err), "lowered costs do not pass the check");
+
+    // Every save draws a new salt and new nonces.
+    std::vector<uint8_t> again;
+    w.WriteToBuffer(again, err);
+    Check(again.size() == file.size() && again != file, "saving again writes other bytes");
+
+    // A private document leaves the preview out.
+    UCD::Writer hidden("UCBitmap");
+    hidden.SetThumbnailPng(thumb);
+    hidden.SetPassword("pw", true);
+    hidden.AddSection("BMAP", pixels);
+    std::vector<uint8_t> priv;
+    Check(hidden.WriteToBuffer(priv, err) && (priv[17] & UCD::FlagPrivate) && !(priv[17] & UCD::FlagThumbnail) &&
+          U32At(priv, 20) == 0, "hidePreview: PRIVATE, and no thumbnail");
+    UCD::Reader pr;
+    Check(pr.OpenBuffer(priv, err) && pr.GetHeader().IsPrivate() && pr.GetThumbnail().empty() &&
+          pr.Unlock("pw", err), "and it still opens with its password");
+
+    // An empty password protects nothing; an unprotected file needs no Unlock.
+    UCD::Writer open("UCBitmap");
+    open.SetPassword("pw");
+    open.SetPassword("");
+    open.AddSection("BMAP", { 1 });
+    std::vector<uint8_t> clear;
+    UCD::Reader cr;
+    Check(open.WriteToBuffer(clear, err) && clear[16] == 0 && cr.OpenBuffer(clear, err) && !cr.NeedsPassword() &&
+          cr.Unlock("anything", err), "an empty password writes an unprotected file");
+}
+
 int main() {
     std::printf("========================================\n   UCD Container Suite\n========================================\n");
     TestWriterBytes();
@@ -279,6 +405,7 @@ int main() {
     TestWhatTheWriterNeverWrites();
     TestRefusals();
     TestBytes();
+    TestPasswordProtection();
     std::printf("Tests: %d, failed: %d\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

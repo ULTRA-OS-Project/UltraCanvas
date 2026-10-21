@@ -516,6 +516,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/AnchorPoint/CHANGELOG.md` | AnchorPoint |
 | `Docs/ArtCreator/CHANGELOG.md` | ArtCreator |
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
+| `Docs/SmartHomeCenter/CHANGELOG.md` | SmartHome Center — the home control window |
 | `Docs/UltraDesktop/CHANGELOG.md` | UltraDesktop — the ULTRA OS desktop |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |

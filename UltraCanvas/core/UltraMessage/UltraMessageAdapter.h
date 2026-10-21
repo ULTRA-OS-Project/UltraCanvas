@@ -192,5 +192,20 @@ private:
 // in them is AppleScript.
 std::vector<std::string> AppleScriptNotificationCommand(const PresentedContent& content);
 
+// The Windows presenter's toasts (Windows 10 1903 and later) show under the
+// posting application's own AppUserModelID, so Windows heads them with its
+// name and icon rather than the broker host's. The ID is the application's
+// id with only the characters an AppUserModelID may hold (letters, digits,
+// '.', '-', '_'), at most 128 of them; "" when none is left.
+std::string WindowsToastAppUserModelId(const std::string& appId);
+// The toast as Windows reads it (ToastGeneric): the title and body, the icon
+// file as the application logo, each button as an action whose arguments are
+// "action:<id>", a click on the toast itself as "default" when it has a
+// default action; silent when the urgency is "low". Every text is escaped.
+std::string WindowsToastXml(const PresentedContent& content);
+// What a toast's activation arguments ask for: a button ("action:<id>" ->
+// Action, the id) or the toast itself (Activated, "").
+PresenterResponse WindowsToastResponse(const std::string& arguments, std::string& actionId);
+
 } // namespace Internal
 } // namespace UltraMessage

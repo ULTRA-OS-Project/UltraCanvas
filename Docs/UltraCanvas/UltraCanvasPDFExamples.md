@@ -180,6 +180,7 @@ view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
 
 ```cpp
 bool LoadFromPath(const std::string& path, const std::string& password = "");
+PDFOpenError GetLastOpenError() const;      // why the last LoadFromPath failed
 void SetDocument(std::unique_ptr<IPDFDocument> doc);
 IPDFDocument* GetDocument() const;
 bool HasDocument() const;
@@ -196,6 +197,25 @@ that streamed the file would block the very file it is showing. A bigger file is
 streamed instead, because holding hundreds of megabytes of PDF in RAM is the
 worse trade; raise or lower the limit to move that line, or set 0 to always
 stream. `SetDocument()` takes whatever the caller opened, unchanged.
+
+A **password-protected** document opens with its password as the second
+argument. When `LoadFromPath()` fails, `GetLastOpenError()` says why, so a
+caller can ask for the password instead of calling the file damaged:
+
+```cpp
+if (!view->LoadFromPath(path)) {
+    switch (view->GetLastOpenError()) {
+        case PDFOpenError::NeedsPassword: /* ask for it, then LoadFromPath(path, password) */ break;
+        case PDFOpenError::WrongPassword: /* ask again */ break;
+        default:                          /* unreadable or damaged */ break;
+    }
+}
+```
+
+A password refusal is not retried as a stream (it would be refused the same
+way), and a failed load leaves the document that was shown in place. The media
+viewer builds its *Unlock* button on this
+([`UltraCanvasMediaViewer.md`](UltraCanvasMediaViewer.md#password-protected-files)).
 
 ### Navigation
 
@@ -543,6 +563,7 @@ void Close();
 bool IsOpen() const;
 bool IsDirty() const;
 const std::string& GetSourcePath() const;
+PDFOpenError GetLastOpenError() const;      // NoError, NeedsPassword, WrongPassword, Failed
 
 PDFDocumentInfo GetInfo() const;            // title/author/dates/version/encryption…
 int             GetPageCount() const;
@@ -557,6 +578,11 @@ afterwards — it still reports `path` as its source and saves normally, and onl
 by it, and returns `false` on a memory-opened one). Use `OpenInMemory()` whenever
 the document is merely being displayed and the file must stay movable; use
 `Open()` for a document too big to hold in memory.
+
+`GetLastOpenError()` says why the last `Open*` failed: `NeedsPassword` (the
+document is encrypted and no password was given), `WrongPassword` (the one
+given does not open it), `Failed` (unreadable, not a PDF, damaged); `NoError`
+after a successful open. An engine that cannot tell answers `NoError`.
 
 `PDFSaveOptions`: `linearize` (web-optimize), `garbageCollect`, `deflateStreams`,
 `cleanContentStreams`.

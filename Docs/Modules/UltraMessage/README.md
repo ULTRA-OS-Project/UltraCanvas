@@ -50,7 +50,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | `freedesktop-presenter` adapter (GDBus): applications' notifications on screen | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp` |
-| `windows-presenter` adapter (notification-area balloons) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp` |
+| `windows-presenter` adapter (toasts under the poster's AppUserModelID, notification-area balloons before Windows 10 1903) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp`, `UltraMessageWindowsToasts.cpp` |
 | `macos-presenter` adapter (Notification Center, osascript outside a bundle) | `UltraCanvas/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm` |
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
@@ -312,16 +312,30 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   would draw it: mode `none`, `Present` declines, and a toast host on the bus
   draws it instead (§3.8); the state says so, with the remedy for a session
   without one.
-- **`windows-presenter`** (every Windows build) shows a notification-area
-  balloon (`Shell_NotifyIconW`, `NIF_INFO`), which Windows 10 and 11 present as
-  a toast and keep in the Action Center; focus assist is respected, `critical`
-  shows the warning icon and `low` makes no sound. It needs no package
-  identity, shortcut or registration. Windows heads the toast with the name of
-  the process hosting the broker, so another application's notification carries
-  its `appName` in the title. A click is the `"default"` action; the tray icon
-  the click needs exists from the first balloon until it is clicked or ten
-  minutes have passed. The `windows-notification-listener` skips the toasts
-  the presenter put up (`Internal::NotePresented` / `WasPresented`).
+- **`windows-presenter`** (every Windows build) shows a toast under the
+  posting application's own AppUserModelID - its `appId`, as
+  `org.ultraos.ultramail` - so Windows heads it with that application's name
+  and icon, not the broker host's (mode `toast`; Windows 10 1903 and later, in
+  a build with C++/WinRT). The ID is registered for the user under
+  `HKCU\Software\Classes\AppUserModelId\<appId>` (`DisplayName` = `appName`,
+  `IconUri` = the icon file), which Windows accepts from a program with no
+  package identity and no Start-menu shortcut; the key stays, like an
+  installed application's. The toast carries the icon as its logo, the
+  notification's actions as up to three buttons, and is silent for `low`;
+  focus assist and the user's per-application switch in Settings are
+  respected (an application turned off shows nothing, not a balloon). A click
+  is the `"default"` action, a button its action, a dismissal
+  `system.notification.dismissed`, while the broker runs; an update
+  (`UltraMsgFlag_Replace`) changes the toast in place. Where toasts are not
+  available, or one cannot be shown, it is a notification-area balloon
+  (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
+  registration: Windows heads it with the name of the process hosting the
+  broker, so another application's notification carries its `appName` in the
+  title, and its picture is the notification's icon file; `critical` shows the
+  warning icon. A balloon's click is the `"default"` action; the tray icon the
+  click needs exists from the first balloon until it is clicked or ten minutes
+  have passed. The `windows-notification-listener` skips what the presenter
+  put up (`Internal::NotePresented` / `WasPresented`).
 - **`macos-presenter`** (every macOS build) hands the notification to
   Notification Center through the UserNotifications framework: a banner that
   stays in the Notification Center list, the notification's other actions as

@@ -1,8 +1,11 @@
 // include/Plugins/Documents/UltraCanvasPDF.h
 // PDF document interface — read, write, page operations, content editing.
 // Backed by MuPDF when ULTRACANVAS_PLUGIN_PDF is enabled.
+// Version: 1.3.0 - PDFOpenError / GetLastOpenError: why an open failed - a
+//                  password-protected document opened without its password,
+//                  or with one that is not right, told apart from a damaged file
 // Version: 1.2.0
-// Last Modified: 2026-08-23
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_H
@@ -126,6 +129,16 @@ struct PDFSaveOptions {
     bool cleanContentStreams = false;  // mutool-style content stream cleanup
 };
 
+// ===== OPEN FAILURES =====
+
+// Why the last Open / OpenInMemory / OpenFromBytes failed.
+enum class PDFOpenError {
+    NoError,         // it opened (or nothing has been opened yet)
+    NeedsPassword,   // password-protected, and no password was given
+    WrongPassword,   // password-protected, and the password given is not right
+    Failed           // unreadable, not a PDF, or damaged
+};
+
 // ===== ENGINE ENUM =====
 
 enum class PDFEngineKind {
@@ -161,6 +174,9 @@ public:
 
     virtual bool IsOpen()  const = 0;
     virtual bool IsDirty() const = 0;
+    // Why the last open failed - so a viewer asks for a password (again)
+    // instead of calling a protected document damaged.
+    virtual PDFOpenError GetLastOpenError() const { return PDFOpenError::NoError; }
     virtual const std::string& GetSourcePath() const = 0;
 
     // ----- Metadata -----

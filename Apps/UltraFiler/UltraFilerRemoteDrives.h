@@ -61,9 +61,18 @@
 // (UltraCloudUploads.h), and its steps are in the connection log with the
 // rest. An upload can be given a name of its own (Upload's `remoteName`),
 // which is how the window's "Keep both" puts one beside a file of the same
-// name, and CachedListing answers what the window needs to ask about one.
-// Version: 1.12.0 - a cloud drive's preview copy (HTTP) is called off like an FTP
-//                  drive's: the worker's abort check answers for it
+// name, and CachedListing answers what the window needs to ask about one -
+// from a fresh listing (Revalidate) that goes ahead of the queue, and is
+// fetched beside an upload or download in progress on a thread of its own
+// rather than after it.
+// Version: 1.13.0 - a folder a change was made in keeps its listing on screen
+//                   (Stale) while it is fetched again, and a listing the user
+//                   is looking at goes ahead of queued transfers; ListingStatus
+//                   answers for a Stale folder being fetched again too
+// Version: 1.12.0 - Revalidate goes ahead of the queue, and beside a running
+//                   transfer; the preview copy's cancel is the worker
+//                   thread's abort check, on a cloud drive (HTTP) as on an
+//                   FTP drive, and it ends a rate-limit wait
 // Version: 1.11.0 - PendingTransfers; Stop() calls a running transfer off;
 //                   an upload under a name of its own; CachedListing,
 //                   Revalidate
@@ -284,11 +293,14 @@ public:
               std::string& error);
 
     // What the filer widget's remoteListingStatus hook calls: one line about
-    // a listing that List() answered "nothing yet" for. Empty once the data
-    // is in (or the fetch failed, or the path was never asked for); while
-    // the fetch is queued it counts the requests ahead of it, and while the
-    // worker is on it it names the server and the folder, with how long the
-    // server has been keeping it waiting. Never blocks: a lock and a lookup.
+    // a listing being fetched - one List() answered "nothing yet" for, or
+    // one it answered from the cache while the server is asked again
+    // (Stale). The window puts it on its status line; the folder display
+    // slides a bar along its foot meanwhile. Empty once the data is in (or
+    // the fetch failed, or the path was never asked for); while the fetch is
+    // queued it counts the requests ahead of it, and while the worker is on
+    // it it names the server and the folder, with how long the server has
+    // been keeping it waiting. Never blocks: a lock and a lookup.
     std::string ListingStatus(const std::string& path) const;
 
     // Why the listing of `path` failed, as the folder display shows it; empty
@@ -341,10 +353,23 @@ public:
     // Asks the server for the folder `path` again while the display goes on
     // showing what the cache has (a Ready listing becomes Stale until the
     // answer is in), and onListingArrived fires for it then. A fetch already
-    // on its way is joined rather than repeated. For a caller that must know
-    // what is there now, not when it was last looked at - the window, before
-    // an upload could replace a file that appeared since.
+    // under way is joined rather than repeated; one still waiting in the
+    // queue is replaced. For a caller that must know what is there now, not
+    // when it was last looked at - the window, before an upload could replace
+    // a file that appeared since - and is waiting on the answer: it goes
+    // ahead of everything queued, and when the worker is in the middle of an
+    // upload or download, which can take minutes, it is fetched beside it on
+    // a thread of its own (falling back to the queue if the server will not
+    // take a second connection).
     void Revalidate(const std::string& path);
+
+    // The uploads into the folder `path` under way or waiting their turn,
+    // added to `entries` as the files they will be - the local file's size
+    // and time - where `entries` has nothing of that name. A listing taken
+    // while they are on their way does not show them yet (Revalidate fetches
+    // one beside a running upload, and ahead of queued ones), and a file
+    // dropped meanwhile under one of their names would replace it unasked.
+    void AddUploadsUnderWay(const std::string& path, std::vector<FilerEntry>& entries) const;
 
     // Queues the download of the remote file `remoteFile` into the local
     // folder `localFolder`, under its own name, and answers at once;
@@ -524,8 +549,27 @@ private:
     // Both run on the worker thread and make the actual UltraCloud call.
     // FetchListing answers whether the window should hear about the path
     // (onListingArrived): false for a prefetch that failed with nobody
-    // waiting on it.
-    bool FetchListing(const std::string& path, bool isPrefetch, JobOutcome& outcome);
+    // waiting on it. With `recordFailure` false (a listing beside the
+    // worker) a failure leaves the cache as it was, says so in `outcome`,
+    // and answers false.
+    bool FetchListing(const std::string& path, bool isPrefetch, JobOutcome& outcome,
+                      bool recordFailure = true);
+    // A listing fetched beside a transfer the worker is in the middle of
+    // (Revalidate). Started with the lock held; its thread runs
+    // SideListingMain and sets `done` as it ends, so the next one started
+    // can join it, and Stop() joins any still running.
+    void StartSideListingLocked(const std::string& path);
+    void SideListingMain(const std::string& path);
+    struct SideListing {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
+    std::vector<SideListing> sideListings_;
+    // The folders being fetched that way, so one is fetched once, and those
+    // of them a job of the worker changed meanwhile (read again when the
+    // listing lands).
+    std::unordered_set<std::string> sideListingPaths_;
+    std::unordered_set<std::string> sideListingsOverrun_;
     // Records a listing that could not be fetched, with the lock held, and
     // answers the same question.
     bool RecordListingFailureLocked(const std::string& path, bool isPrefetch,
@@ -590,6 +634,12 @@ private:
     // PendingTransfers; activeIsTransfer_ is false for any other job.
     // Written by the worker under the lock.
     bool activeIsTransfer_ = false;
+    // Whether that job is a listing (of activeJobPath_): a Revalidate of the
+    // same folder joins it.
+    bool activeIsListing_ = false;
+    // The local file of that job when it is an upload (into activeJobPath_,
+    // as activeTransfer_.name), for AddUploadsUnderWay.
+    std::string activeUploadFile_;
     RemoteTransfer activeTransfer_;
     // `job` as PendingTransfers lists it; false for a job that is not an
     // upload or a download the user asked for. Called with the lock held.

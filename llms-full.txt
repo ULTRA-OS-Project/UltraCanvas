@@ -958,6 +958,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+  Emoji come from a bundled font the emoji setting picks
+  (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
+  `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
+  folder, edited in UOS-Settings > Appearance > Emoji): Noto Color Emoji or
+  Noto Emoji in `media/emoji/`. `ApplyEmojiSettings()`, run by every
+  fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
+  rule that makes Pango's `emoji` runs use it.
+  See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
   covers, a size control and an information line. Built on
@@ -1163,6 +1172,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
 
+- **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
+  desktop session locks and when it unlocks, so a program forgets what should
+  not outlive the user stepping away (a kept password, a decrypted document on
+  screen). Listener list in `core/UltraCanvasSessionLock.cpp`; per-platform
+  backends under `OS/<Platform>/` (Linux/BSD: logind `Lock` / `Unlock` and
+  `LockedHint` on the system bus plus the screensaver's `ActiveChanged` on the
+  session bus, through GDBus on the application's loop; Windows: WTS session
+  notifications on a message-only window; macOS: the
+  `com.apple.screenIsLocked` / `screenIsUnlocked` distributed notifications).
+  Public surface: `AddSessionLockListener(onChange)` /
+  `RemoveSessionLockListener(id)` (the platform is watched only while one is
+  registered; calls on the UI thread, once per change),
+  `IsWatchingSessionLock`, `NotifySessionLockChanged` (what backends, hosts
+  with a lock of their own and tests call). Wired up by
+  `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` in the **top-level** `CMakeLists.txt`;
+  without it nothing is reported. Used by `UltraCanvasMediaViewer` to forget
+  Unlock's passwords, and by UltraPaint for the passwords of a drop. See
+  `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
+
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
   jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a
@@ -1364,7 +1392,9 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
   `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
   `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
-  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips; password
+  protection with `SetUCDPassword` / `LoadUCD(path, error, password)` /
+  `IsPasswordProtected`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1380,7 +1410,10 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
   `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
   `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
-  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  little-endian `ByteWriter` / `ByteReader`; password protection (UCD 2.2):
+  `Writer::SetPassword`, `Reader::NeedsPassword/Unlock` (Argon2id key,
+  XChaCha20-Poly1305 per section, through UltraCrypt; fails closed without
+  libsodium, `EncryptionAvailable()`). Doc:
   `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -1506,7 +1539,16 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys.
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+(`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
+`ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
+`InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
+`AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
+`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
+engine and a model on demand and supervises the engine as a loopback
+process shared between applications; the `local` provider
+(`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
+chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -1712,9 +1754,16 @@ extended or replaced without changing callers.
 - `UltraDb_Query`, `UltraDb_Exec`, `UltraDb_QueryAsync`
 - `UltraDb_Prepare`, `UltraDb_ExecPrepared`, `UltraDb_Finalize`
 - `UltraDb_Begin`, `UltraDb_ExecInTx`, `UltraDb_Commit`, `UltraDb_Rollback`
-- `UltraDb_OpenCursor`, `UltraDb_FetchRow`, `UltraDb_CloseCursor`
-- `UltraDb_Migrate`, `UltraDb_CancelQuery`
+- `UltraDb_OpenCursor`, `UltraDb_FetchRows`, `UltraDb_CloseCursor` (page at
+  a time; server-side cursors on PostgreSQL)
+- `UltraDb_ExecBatch` (every statement of a script with its own result)
+- `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
+- `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
+  `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
+  indexes, triggers), `UltraDb_QuoteIdentifier`, `UltraDb_QuoteQualifiedName`
+  (the one way a name goes into SQL text), `UltraDbResultSet::ColumnInfo`
+  (declared type and source table / column per result column)
 
 **Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
 - Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server
@@ -1734,9 +1783,10 @@ migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
 `Tests/UltraDatabase`); the PostgreSQL driver
 (`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
 found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
-networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
-queries, pooling, streaming cursors and at-rest encryption. Details in
+UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
+plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
+DuckDB), async queries, pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
@@ -2240,7 +2290,7 @@ the shared chat / mail mirrors with category guessing from the application's
 identity, the presenters that put an application's `system.notification` on
 screen through the platform's own notification service and report its click
 back (`freedesktop-presenter`: `Notify` to the desktop's server;
-`windows-presenter`: notification-area balloons, shown as toasts;
+`windows-presenter`: toasts under the posting application's own AppUserModelID, balloons before Windows 10 1903;
 `macos-presenter`: Notification Center from an application bundle, osascript
 outside one), the toast
 host that draws the notifications nothing else draws - where UltraMessage
@@ -3433,6 +3483,7 @@ their *License* is likewise marked **—** (OS component).
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
+| Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenCV frontal-face Haar cascade (data only, bundled) | [opencv.org](https://opencv.org/) | [github.com/opencv/opencv](https://github.com/opencv/opencv/tree/4.x/data/haarcascades) | Intel License Agreement (BSD 3 style) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
@@ -3745,6 +3796,13 @@ configure time naming what is missing.
 | Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
+| Local runtime and `local` provider (`ULTRAAI_LOCAL_RUNTIME`, default ON, in-tree only) | llama.cpp `llama-server` (**runtime only** — a release archive downloaded on demand, hash-verified, spawned as a child process; never linked), through UltraNet, UltraCrypt and VirtualFS | same | same |
+
+> The local runtime links nothing new: the engine it runs is a prebuilt
+> llama.cpp release the user's machine downloads from the gallery index
+> (`Docs/Modules/UltraAI/LocalRuntime.md`) when a model is first asked for,
+> like Wine and QEMU for UltraWin. The models come from Hugging Face under
+> their own licences, named in the catalogue and shown before install.
 
 ### UltraCloud module
 
@@ -6693,9 +6751,12 @@ Status: **Draft specification** — reference for the v2 implementation of
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
 layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
 frames that stay text) and pins down what 2.0 left open — the `INDX` layout
-(§4.2.1) and the deflate and gzip stream formats (§2.3). The container itself
-(`UltraCanvasUCDContainer.h`) and layered images (`UCRasterDocument`, `*.ucd`)
-are implemented; the other content types are still to come.
+(§4.2.1) and the deflate and gzip stream formats (§2.3). Revision **2.2**
+defines password protection byte for byte: the `SECU` record and the layout
+of an encrypted section (§4.3.1, §4.3.2). The container itself
+(`UltraCanvasUCDContainer.h`, password protection included) and layered images
+(`UCRasterDocument`, `*.ucd`) are implemented; SuperVault and the other content
+types are still to come.
 
 UCD v2 is a multipurpose container for documents, forms, vector graphics and
 window/UI descriptions, with room for bitmap graphics and video in the future.
@@ -6793,7 +6854,7 @@ Detection rules:
 | Offset | Size | Field | Values / meaning |
 |---|---|---|---|
 | 12 | 1 | Version major | `2` for this specification |
-| 13 | 1 | Version minor | `1` for this revision (`0`: written before layered images; read the same way) |
+| 13 | 1 | Version minor | `2` for this revision (`1`: before §4.3.1–4.3.2 were defined; `0`: before layered images — all read the same way) |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
 | 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). *Deflate* is a zlib stream (RFC 1950: two header bytes, the deflate data, an Adler-32 checksum) — what HTTP calls the `deflate` coding; *gzip* is a gzip member (RFC 1952). Both carry a checksum, so a damaged section is detected rather than decoded into wrong pixels. |
 | 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
@@ -6888,7 +6949,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
-| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. | Never encrypted (it is the input to decryption). |
+| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. Layout in 4.3.1. | Never encrypted or compressed (it is the input to decryption); required when key source = `1`. |
 | `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when key source = `2`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
@@ -6946,6 +7007,54 @@ Per section, in this order:
    `SECU` parameters, or supplied by SuperVault (4.4). Each encrypted section
    carries its own random 192-bit nonce; the section header is passed as
    associated data, so editing it invalidates the tag.
+
+#### 4.3.1 `SECU` layout (key source `1`, password)
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 1 | KDF | `1` = Argon2id — the only code point |
+| 2 | 1 | AEAD | `1` = XChaCha20-Poly1305 — the only code point |
+| 3 | 1 | Reserved | `0x00` |
+| 4 | 4 | Passes | uint32, Argon2id time cost |
+| 8 | 4 | Memory | uint32, Argon2id memory cost in KiB |
+| 12 | 4 | Parallelism | uint32, Argon2id lanes; `1` |
+| 16 | 16 | Salt | random per save |
+| 32 | 4 | Permissions | uint32, bit 0 print, bit 1 copy, bit 2 edit, bit 3 form-fill (`1` = allowed); advisory — anyone with the password has the content |
+| 36 | 24 | Check nonce | random |
+| 60 | 16 | Check tag | the XChaCha20-Poly1305 tag of an **empty** message under the document key, this nonce, and as associated data the ASCII bytes `UCD-SECU` followed by bytes 0–35 of this record |
+
+The **document key** is 32 bytes of Argon2id over the password's UTF-8 bytes
+with this salt and these costs. The check tag lets a reader tell a wrong
+password ("the password is not right") from a damaged section ("the file is
+damaged") before it decrypts anything, and binds the stored costs, so they
+cannot be lowered without the password.
+
+A reader refuses a record whose costs no honest writer would choose — more
+than 64 passes or more than 4 GiB of memory — before deriving anything, so a
+hostile file cannot make it allocate without bound.
+
+#### 4.3.2 An encrypted section
+
+An encrypted section has bit 0 of its section flags set, and its payload as
+stored is:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 24 | Nonce, random per section and per save |
+| 24 | n | Ciphertext: XChaCha20-Poly1305 of the payload *after* compression — the compression byte names what the decrypted bytes are |
+| 24 + n | 16 | Tag |
+
+The associated data is the section's 12-byte header exactly as stored (type,
+the stored length — `40 + n` — compression byte, flags, reserved), so a
+header edited to name another type, length or compression fails the tag.
+
+Writer rules for key source `1`: the header's `ENCRYPTED` flag is set; the
+`SECU` section comes before every encrypted one; every section is encrypted
+except `INDX`, `SECU`, `SVLT` and, at the writer's choice, `META`. The `INDX`
+still lists every section's type and lengths, as the section headers do — the
+sizes of a protected document are not secret, its content is. `PRIVATE` (§2.4)
+leaves the thumbnail out as well.
 
 **One cipher, one KDF — deliberately.** UCD is our own format, so it offers no
 algorithm menu: every writer emits XChaCha20-Poly1305 with Argon2id, and every
@@ -7327,6 +7436,16 @@ signature; loaders should keep the v1 read path during a transition period.
 
 A 2.0 reader opens a 2.1 layered image as the 2.0 rules allow: it skips the
 unknown `LAYR` and shows the first `BMAP`, or the thumbnail.
+
+### 7.2 Changes in 2.2
+
+| Aspect | 2.1 | 2.2 |
+|---|---|---|
+| Version minor | `1` | `2` |
+| `SECU` | contents named, layout open | layout defined (4.3.1), with a check tag that tells a wrong password from a damaged file |
+| Encrypted sections | "carries its own nonce" | nonce, ciphertext, tag; the stored header is the associated data (4.3.2) |
+
+Files without a password are written exactly as in 2.1.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
@@ -11036,13 +11155,25 @@ auto barChart = std::make_shared<UltraCanvasBarChartElement>(
 | barBorderColor | Color | Color(0, 51, 102, 255) | Border color for bars (dark blue) |
 | barBorderWidth | float | 1.0f | Width of bar borders in pixels |
 | barSpacing | float | 0.1f | Spacing between bars as percentage (0.0-0.9) |
+| orientation | BarChartOrientation | Vertical | `Vertical`: categories along the bottom; `Horizontal`: one row per category, names on the left, values along the bottom |
+| showValueLabels | bool | false | Each bar's value past its end (off by default for bars, unlike the other charts) |
+
+A point's own `ChartDataPoint::color`, when it is not transparent, is drawn
+instead of `barColor`.
 
 ### Value axis
 
-The value (y) axis always includes 0: bars rise from the zero line, and
-negative values hang below it. With all-positive data the axis runs from 0 to
-the largest value plus 5 %; with all-negative data, from the smallest value
-minus 5 % to 0.
+The value axis always includes 0: bars rise from the zero line, and negative
+values hang below it. The axis reaches 0 *before* it is padded, so a series
+whose smallest value is 0 starts at 0. It is padded by 5 % away from zero
+only, then rounded out to the next whole tick: values 0 to 142 give an axis
+from 0 to 160 marked every 20. Ticks fall on whole steps (1, 2, 2.5 or
+5 x 10^n), aiming for at most eight intervals, and the grid lines lie on them.
+
+`SetValueRange(min, max)` fixes the axis instead - two charts side by side
+then compare, and a live chart does not rescale whenever its biggest value
+moves. A bar past the range stops at the plot's edge. `ClearValueRange()`
+fits the axis to the data again.
 
 ### Inherited Properties from Base Class
 
@@ -11053,6 +11184,9 @@ minus 5 % to 0.
 | plotAreaColor | Color | Color(250, 250, 250, 255) | Background color of plot area |
 | showGrid | bool | true | Whether to display grid lines |
 | gridColor | Color | Color(220, 220, 220, 255) | Color of grid lines |
+| emptyMessage, emptyDetail | std::string | "No data to display", "" | What the chart says, centred, while it has no data (`SetEmptyMessage(text, detail)`); an empty text draws the background alone |
+| emptyMessageColor | Color | Color(128, 128, 128, 255) | Colour of that message (`SetEmptyMessageColor`) |
+| emptyIconPath, emptyIconColor, emptyIconBadgeColor | std::string, Color, Color | "", transparent, transparent | An optional icon over the message, in one colour and on a rounded badge when those are set (`SetEmptyIcon(path, iconColor, badgeColor)`) |
 | enableTooltips | bool | true | Enable interactive tooltips |
 | enableZoom | bool | false | Kept, but the bar chart does not zoom: the wheel goes to the parent |
 | enablePan | bool | false | Kept, but the bar chart does not pan |
@@ -11119,6 +11253,47 @@ Sets the spacing between bars as a percentage of bar width.
 ```cpp
 barChart->SetBarSpacing(0.2f); // 20% spacing
 ```
+
+#### SetOrientation
+```cpp
+void SetOrientation(BarChartOrientation orientation)
+```
+`GetOrientation()` reads it back.
+`BarChartOrientation::Horizontal` runs the bars sideways: one row per data
+point, first at the top, its `label` on the left, the value axis along the
+bottom. The left margin is sized for the longest label (between a fifth and
+two fifths of the width). Use it for named amounts whose names are longer
+than a bar is wide.
+
+**Example:**
+```cpp
+barChart->SetOrientation(BarChartOrientation::Horizontal);
+barChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+barChart->SetShowValueLabels(true);
+```
+
+#### SetValueRange / ClearValueRange
+```cpp
+void SetValueRange(double min, double max)
+```
+```cpp
+void ClearValueRange()
+```
+`HasValueRange()` says whether one is set.
+Fixes the value axis to `min`..`max` (either order; an empty range is
+ignored), or returns to one fitted to the data.
+
+**Example:**
+```cpp
+barChart->SetValueRange(0.0, 2500.0);   // watts: a kettle fits
+```
+
+#### GetBarRect
+```cpp
+Rect2Dd GetBarRect(size_t index)
+```
+Where bar `index` is drawn, in element coordinates - for a host that marks a
+bar, and for tests.
 
 ### Data Management Methods (Inherited)
 
@@ -11282,6 +11457,25 @@ perfChart->SetBarSpacing(0.25f);                       // 25% spacing
 perfChart->SetDataSource(performanceData);
 perfChart->SetChartTitle("Team Performance Metrics");
 perfChart->SetEnableTooltips(true);   // the bar chart's interaction; it does not zoom or pan
+```
+
+### Power by Device (horizontal)
+
+```cpp
+auto power = CreateBarChartElement("power", 0, 0, 700, 300);
+power->SetOrientation(BarChartOrientation::Horizontal);
+power->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+power->SetBarColor(Color(245, 165, 36, 255));
+power->SetBarBorderWidth(0);
+power->SetShowValueLabels(true);
+
+auto watts = std::make_shared<ChartDataVector>();
+watts->LoadFromArray({
+    ChartDataPoint(0, 88, 0, "TV"),
+    ChartDataPoint(1, 95, 0, "Fridge"),
+    ChartDataPoint(2, 142, 0, "Workstation")
+});
+power->SetDataSource(watts);   // axis 0..160, a tick every 20
 ```
 
 ### Dynamic Data Update
@@ -11761,6 +11955,8 @@ window->AddChild(chartRow);
 | `SetShowGrid(bool)`, `SetGridColor(color)` | the grid lines (on by default) |
 | `SetShowAxes(bool)` | the axes and their labels (on by default) |
 | `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element (white by default; the element's own background, so `UltraCanvasUIElement::SetBackgroundColor` sets the same colour), and the plot rectangle |
+| `SetEmptyMessage(text, detail)`, `SetEmptyMessageColor(color)` | what the chart says, centred on its background, while it has no points — "No data to display" unless set; `detail` is an optional smaller line under it, and an empty `text` and `detail` leave the background alone |
+| `SetEmptyIcon(path, iconColor, badgeColor)` | an icon over that message: 32 px, or 28 px on a 54 px rounded badge when `badgeColor` is not transparent; `iconColor` paints a single-colour icon in that colour, transparent draws it as it is; an empty `path` takes it away |
 | `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
 | `SetPointRadius(radius)` | the dot radius of the line and area charts (4 and 3 by default) and the offset of value labels |
 | `SetEnableZoom(bool)`, `SetEnablePan(bool)` | wheel zoom and drag pan of the x axis — off by default; see *Zoom and pan* |
@@ -11770,6 +11966,11 @@ window->AddChild(chartRow);
 | `SetEnableSelection(bool)` | a ring around the hovered point (on by default for the scatter plot) |
 
 ```cpp
+// Before the first reading arrives.
+trendChart->SetEmptyMessage("No readings yet", "Connect a meter to see them here.");
+trendChart->SetEmptyMessageColor(Color(107, 115, 133, 255));
+trendChart->SetEmptyIcon("media/icons/smarthome/power.svg", Color(120, 128, 146, 255), Color(241, 243, 247, 255));
+
 trendChart->SetSeriesName("Sales 2024");
 trendChart->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index) {
     return point.label + ": " + std::to_string(static_cast<int>(point.y)) + " EUR";
@@ -18160,6 +18361,12 @@ Each entry (`ClipboardHistoryEntry`) is described when it is recorded:
 | `sizeBytes`, `width`, `height`, `fileCount`, `cut`, `lineCount` | for the meta line |
 | `thumbnailPath` | images: a PNG at most 96 px on its longer side |
 
+A text is `Code` when most of its lines end in `;` `{` `}` or carry an
+operator prose does not use, or when
+[`DetectLanguageFromContent`](UltraCanvasTextAreaExamples.md#picking-a-language-for-text-with-no-file-name)
+names its language (a SQL query, a Python block, YAML); Markdown it names
+stays `Text`.
+
 The same content copied again is not a second entry: it moves to the top
 (`ClipboardRecordResult::MovedToTop`).
 
@@ -18451,6 +18658,166 @@ what the test drives on any platform.
 - 1.0.0 (2026-10-01): first version.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasColorPaletteManager.md
+==============================================================================
+
+# UltraCanvas Color Palette Manager Documentation
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> card; std::shared_ptr<UltraCanvasColorPicker> picker; std::string savedLine; void SaveSetting(const std::string& value); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Keeping the palettes](#keeping-the-palettes)
+- [The palettes](#the-palettes)
+- [Selection and popups](#selection-and-popups)
+- [Style](#style)
+- [Callbacks](#callbacks)
+
+## Overview
+
+**UltraCanvasColorPaletteManager** is the set of colour palettes that sits
+under a [colour picker](UltraCanvasColorPicker.md): one or more rows of
+swatches, each row a palette, with a small button at the end of the rows to
+add more. It is what UltraPaint and ArtCreator show under the picker in their
+Colour card.
+
+- With **one** palette, its row ends in a **+** button.
+- With **several**, every row ends in a **−** that takes that palette away,
+  and the **last** row has the **+** under its **−**.
+- **+** opens the **palette gallery**: a popup of ready-made schemes, grouped
+  by kind (basics, moods, design systems, retro machines, indexed / GIF), each
+  with a preview of its colours, the number of colours and its own **+** that
+  adds it as a new row. A scheme already among the rows shows a check mark.
+  Clicking a preview adds it too.
+- A **left click** on a swatch picks its colour (`onColorSelected`); one
+  swatch is marked across all the rows.
+- A **right click** on a swatch opens a small **foreground-only** colour
+  picker next to it that sets that one entry of the palette, live, as it is
+  dragged. *Revert* puts the colour back; *Done*, Escape or a click outside
+  keep it.
+
+Palettes run from a few colours to a whole **256-colour GIF palette**; large
+ones wrap into a compact block (`UltraCanvasColorSwatchBar::SetWrap`) instead
+of shrinking to hairlines. The element sets its own height to its rows', so in
+a flex column what is below it moves as rows come and go.
+
+It is built from framework elements only: the rows are
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md)s, the buttons
+`UltraCanvasButton`s, the captions `UltraCanvasLabel`s and the entry editor an
+`UltraCanvasColorPicker` with `SetShowBackgroundColor(false)`.
+
+**File Location**: `include/UltraCanvasColorPaletteManager.h`
+**Implementation**: `core/UltraCanvasColorPaletteManager.cpp`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasColorPaletteManager.h"
+using namespace UltraCanvas;
+
+// Under the picker, as wide as it.
+auto palettes = CreateColorPaletteManager("palettes", 0, 0, 250);
+palettes->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+palettes->onColorSelected = [](const Color& c) {
+    // the host's foreground colour, e.g. picker->SetForegroundColor(c, false)
+    (void)c;
+};
+card->AddChild(palettes);
+```
+
+## Keeping the palettes
+
+The rows are the host's to keep. `onPalettesChanged` fires after every change
+(a row added or removed, an entry set), and the palettes go into one line of
+a settings file and back:
+
+```cpp
+palettes->onPalettesChanged = [m = palettes.get()]() {
+    SaveSetting(UltraCanvasColorPaletteManager::SerializePalettes(m->GetPalettes()));
+};
+
+std::vector<NamedColorPalette> saved;
+if (UltraCanvasColorPaletteManager::ParsePalettes(savedLine, saved)) palettes->SetPalettes(saved);
+```
+
+The line is `Name|RRGGBB,RRGGBB,...;Name|...`. `ParsePalettes` returns false,
+and leaves its output alone, for text that holds no palette.
+
+## The palettes
+
+```cpp
+struct NamedColorPalette {
+    std::string name;        // shown in the gallery and as the row's tooltip
+    std::string category;    // the gallery's group
+    std::vector<Color> colors;
+};
+
+void SetPalettes(const std::vector<NamedColorPalette>& palettes);
+const std::vector<NamedColorPalette>& GetPalettes() const;
+int  GetPaletteCount() const;
+void AddPalette(const NamedColorPalette& palette);   // a row at the end
+void RemovePalette(int index);                       // never the last one
+bool HasPalette(const std::string& name) const;
+void SetEntryColor(int palette, int entry, const Color& c, bool notify = true);
+
+static NamedColorPalette DefaultPalette();                       // six greys and twelve colours
+static const std::vector<NamedColorPalette>& PresetPalettes();   // what the gallery offers
+```
+
+There is always at least one row: setting no palettes, or a list of empty
+ones, leaves `DefaultPalette()`.
+
+The gallery's schemes:
+
+| Group | Palettes |
+|---|---|
+| Basics | Basic (18), Greys (16), Rainbow (24) |
+| Moods | Pastel, Earth, Skin tones, Sunset, Ocean, Forest, Neon |
+| Design systems | Material (19), Nord (16), Solarized (16) |
+| Retro | Game Boy (4), PICO-8 (16), Commodore 64 (16), VGA 16 |
+| Indexed (GIF) | Web-safe 216, GIF 256 (RGB 3-3-2), GIF 256 greys |
+
+## Selection and popups
+
+```cpp
+void SelectColor(const Color& c);   // marks the first swatch with it, any row
+void ClearSelection();
+
+void OpenPaletteGallery(const Rect2Df& anchorWindow);   // what "+" does
+void OpenEntryEditor(int palette, int entry, const Point2Di& windowPos);   // a right click
+void ClosePopups();
+```
+
+The gallery opens below its anchor (window coordinates), right-aligned with
+it, or above it when the window has no room below.
+
+## Style
+
+```cpp
+ColorPaletteManagerStyle s = palettes->GetManagerStyle();
+s.swatchSelectedBorder = Color(37, 99, 235, 255);
+s.editorPickerStyle = picker->GetStyle();   // the entry editor looks like the host's picker
+palettes->SetManagerStyle(s);
+```
+
+`ColorPaletteManagerStyle` holds the swatch outlines, the largest swatch size
+(the manager makes a row's swatches smaller and closer the more colours it
+has), the gaps, the micro buttons' size and colours, the popups' colours and
+corner radius, the accent of the gallery's add buttons, and the entry
+editor's picker style and scale.
+
+## Callbacks
+
+```cpp
+std::function<void(const Color&)> onColorSelected;   // a swatch was clicked
+std::function<void()>             onPalettesChanged; // added, removed, an entry set
+```
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 ==============================================================================
 
@@ -18468,6 +18835,7 @@ FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
   - [Light and dark styles](#light-and-dark-styles)
   - [Compact (sliders-only) variant](#compact-sliders-only-variant)
 - [Colour Space Helpers](#colour-space-helpers)
+- [Foreground-only picker](#foreground-only-picker)
 - [Interaction Summary](#interaction-summary)
 - [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
 
@@ -18654,6 +19022,9 @@ namespace UltraCanvas {
 
         void SetShowColorWheel(bool show);               // compact mode when false
         void SetShowAlpha(bool show);
+        // false: foreground only - one swatch, no swap arrow, the right
+        // button edits the same colour (a palette entry's editor)
+        void SetShowBackgroundColor(bool show);
 
         // Foreground = current swatch, Background = previous swatch.
         Color GetForegroundColor() const;
@@ -18792,6 +19163,24 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 // HSV -> RGB is provided by the existing global Color HSV(h, s, v, a) helper.
 ```
 
+## Foreground-only picker
+
+A picker that edits one colour - a palette entry, a single fill - has no
+background colour to offer. `SetShowBackgroundColor(false)` takes it away:
+only the foreground swatch is drawn, the swap arrow is gone, and the right
+button (on the colour controls and on the eyedropper) edits the foreground as
+the left one does, so `onBackgroundChanged` never fires.
+
+```cpp
+auto entryPicker = CreateColorPicker("entry", Color(229, 57, 53, 255), 0, 0, 212, 300);
+entryPicker->SetStyle(ColorPickerStyle::Light());
+entryPicker->SetShowBackgroundColor(false);
+entryPicker->SetAutoHeight(true);
+```
+
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+opens one in a popup when a palette swatch is right-clicked.
+
 ## Interaction Summary
 
 | Action | Result |
@@ -18880,7 +19269,7 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.0.0
+**Version**: 1.2.0
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -18894,6 +19283,10 @@ colours nobody can reach.
 - ✅ `onColorSelected` / `onCheckeredSelected` callbacks; right (Adjust) click
   raises `onColorAdjustSelected` — the background colour of a
   foreground/background picker
+- ✅ Optional **wrapping** (`SetWrap`) for large palettes — up to a 256-colour
+  GIF palette as a compact block; `HeightForWidth` sizes the element
+- ✅ `SetColorAt` edits one entry; `onColorContextClicked` reports a right
+  click with the entry's index, for a host that edits it in a popup
 - ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
 
 ## Quick Start
@@ -18987,6 +19380,26 @@ swatch) and let the layout stretch it across the width. The swatch edge is
 | Narrow | Swatches shrink towards `minSwatchSize`; below that the gaps close and the swatches keep shrinking, so every colour stays reachable |
 | Short | Swatches shrink to the height; the row stays a single line |
 
+### Wrapping
+
+A palette too large for one row wraps instead of shrinking to hairlines:
+
+```cpp
+auto gif = std::make_shared<UltraCanvasColorSwatchBar>("gif", 230, 10);
+std::vector<Color> colors(256, Colors::Black);   // a GIF's palette
+gif->SetColors(colors);
+gif->SetWrap(true);
+gif->SetElementSize(Size2Df(230, gif->HeightForWidth(230)));
+```
+
+In wrap mode the swatches stay at least `minSwatchSize`; the bar takes as many
+lines as that needs, shares the colours out evenly over them (16 on two lines
+are 8 + 8), and makes each swatch as large as the line's width allows up to
+`swatchSize`. The block starts at the top-left corner. `HeightForWidth(w)` is
+the height all the lines take at width `w`.
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+uses it for its palette rows.
+
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
 
@@ -18996,6 +19409,9 @@ needs to read as a bar of its own.
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+// right click with the entry's index and the window position; when set it
+// takes the right click instead of onColorAdjustSelected
+std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
 ```
 
 A right click does not move the selection outline (that tracks left clicks)
@@ -26533,6 +26949,99 @@ is kept out of the package by `package-win.sh`; see [*"Entry point not found"
 in a Windows DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasEmojiSettings.md
+==============================================================================
+
+# UltraCanvasEmojiSettings
+
+Which emoji every UltraCanvas application draws, and the two emoji fonts the
+framework ships for them. Header: `UltraCanvas/include/UltraCanvasEmojiSettings.h`.
+
+## Contents
+
+- [The choices](#the-choices)
+- [Where it is kept](#where-it-is-kept)
+- [How it reaches the text](#how-it-reaches-the-text)
+- [API](#api)
+
+## The choices
+
+| `EmojiStyle` | Font | Notes |
+|---|---|---|
+| `Colour` (default) | Noto Color Emoji 2.047 (`media/emoji/NotoColorEmoji.ttf`, CBDT, 10.8 MB) | The same pictures on every computer. |
+| `Monochrome` | Noto Emoji 3.006 (`media/emoji/NotoEmoji-Regular.ttf`, outlines, 0.9 MB) | Drawn in the colour of the surrounding text. |
+| `System` | The system's emoji font | Segoe UI Emoji on Windows, the one fontconfig prefers on Linux; Noto Color Emoji is loaded behind it for what it lacks. |
+
+The user chooses in UOS-Settings, *Appearance > Emoji*.
+
+## Where it is kept
+
+`Emoji.conf` in the UltraCanvas settings folder (`UltraCanvasSettingsFolder()`:
+`%APPDATA%\UltraCanvas`, `~/Library/Application Support/UltraCanvas`,
+`$XDG_CONFIG_HOME/UltraCanvas`), one line:
+
+```
+style=monochrome        # colour | monochrome | system
+```
+
+A missing file, or a value the reader does not know, is `Colour`.
+
+## How it reaches the text
+
+Each platform's `LoadBundledFontsNative` calls `ApplyEmojiSettings()` at
+start, and the Windows switch to the full system font set calls it again for
+the new configuration. It reads `Emoji.conf`, adds the style's font to the
+current fontconfig configuration as an application font (only that one - the
+fonts are kept out of `media/fonts/` for this reason) and loads the style's
+rule:
+
+- Pango asks for the family `emoji` and for a colour font on a run of emoji.
+  The rule puts the style's family first (`prepend_first`, ahead of what the
+  system's own `60-generic.conf` prefers).
+- For `Monochrome` it also withdraws the request for colour, which fontconfig
+  weighs above the family - otherwise an installed colour font would still
+  win.
+
+A change applies to the applications started after it. Where the text engine
+is not fontconfig the call does nothing: macOS draws Apple Color Emoji (its
+bundles leave `media/emoji/` out), and the WebAssembly pages do not preload
+the fonts.
+
+## API
+
+```cpp
+#include "UltraCanvasEmojiSettings.h"
+
+void ChooseBlackAndWhiteEmoji() {
+    UltraCanvas::EmojiSettings settings = UltraCanvas::EmojiSettings::Load();
+    settings.style = UltraCanvas::EmojiStyle::Monochrome;
+    if (!settings.Save()) {
+        // the settings folder is not writable
+    }
+    // What an application started now loads, and the rule it applies:
+    const std::string file  = UltraCanvas::BundledEmojiFontFile(settings.style);   // .../media/emoji/NotoEmoji-Regular.ttf
+    const std::string rules = UltraCanvas::EmojiFontconfigRules(settings.style);   // a <fontconfig> document
+    (void)file;
+    (void)rules;
+}
+```
+
+| Function | What it does |
+|---|---|
+| `EmojiStyleKey(style)` / `ParseEmojiStyle(key, out)` | The style as the file writes it (`colour`, `monochrome`, `system`) and back. |
+| `EmojiSettings::Parse(text)` / `Serialize()` | The file's text and back. |
+| `EmojiSettings::FilePath()` / `Load()` / `Save()` | `Emoji.conf`; `Save` writes beside it and renames over it. |
+| `GetBundledEmojiDir()` | `media/emoji/` in the resources dir. |
+| `BundledEmojiFontFile(style)` | The bundled file the style loads. |
+| `EmojiFontFamily(style)` | `"Noto Color Emoji"`, `"Noto Emoji"`, or `""` for `System`. |
+| `EmojiFontconfigRules(style)` | The rule, as a `<fontconfig>` document; empty for `System`. |
+| `ApplyEmojiSettings()` | Reads the setting and applies it to the current fontconfig configuration, once per configuration. |
+
+Tested in `Tests/EmojiSettingsTest.cpp`: the file round trip, and "👤 Someone"
+laid out in Ubuntu Bold with only the bundled fonts drawing its emoji from the
+style's font with no missing glyph.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileAssociations.md
 ==============================================================================
 
@@ -28627,16 +29136,30 @@ filer->remoteListingStatus = [drives](const std::string& path) {
 };
 ```
 
-It is asked after `remoteListing` answered with an empty listing, and again
-on every tick while the notice is up. A non-empty answer — "Connecting to
-Backup NAS (ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup
-NAS - 2 requests ahead" — puts a turning progress ring, **Loading folder**
-and that line in place of "Folder is empty!", and the words follow the fetch
-as the host's answer changes. An empty answer means the folder really is
-empty. Left unset, a folder being fetched shows as empty until the host's
-`Refresh()`, as before. The ring runs on a 50 ms application timer that stops
-as soon as the listing arrives, the folder changes or the widget is
-destroyed.
+It is asked after every `remoteListing` — an empty one, or one the host
+answered from its cache while it asks the server again — and again on every
+tick while it answers. A non-empty answer — "Connecting to Backup NAS
+(ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup NAS - 2
+requests ahead" — marks the folder as loading without covering it: a thin
+blue bar (`FilerStyle::loadingBarColor`, the accent blue) slides along the
+foot of the file area, just above the info bar, over whatever entries there
+are or an empty area; an empty folder's info bar says **Loading folder...**
+rather than "0 items", and "Folder is empty!" is not shown. The words are the
+host's to show — on its status line rather than over the files:
+
+```cpp
+filer->onListingPendingChanged = [statusLine](const std::string& status) {
+    statusLine->SetText(status);   // "" once the listing is in
+};
+// or read it when the status line is rebuilt: filer->GetListingPendingStatus()
+```
+
+`onListingPendingChanged` fires when the fetch starts, each time the host's
+answer changes, and with `""` once the listing is in. An empty answer means
+the listing is the folder as it is. Left unset, a folder being fetched shows
+as empty until the host's `Refresh()`, as before. The bar runs on a 40 ms
+application timer that repaints only its own strip, and stops as soon as the
+listing arrives, the folder changes or the widget is destroyed.
 ### Changing a remote folder
 
 Four more hooks let the host carry out the changes that act on the drive
@@ -30282,6 +30805,7 @@ reports what the system hides, not what the host asked for.
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
@@ -33452,6 +33976,11 @@ void   SetMaxValue(double v);
 double GetMaxValue() const;
 ```
 
+The value is shown clamped to the range, and the gauge keeps the value it
+was given: the order of the calls does not matter. `SetValue(150)` followed by
+`SetMaxValue(200)` shows 150, and a range narrowed under the value takes the
+shown value with it (and widened again, gives it back).
+
 ### Title & Unit
 
 ```cpp
@@ -33464,7 +33993,7 @@ void SetUnit(const std::string& u);    // e.g. "km/h", "%", "C"
 ```cpp
 void SetNeedleStyle(GaugeNeedleStyle s);     // Classic, Thin, Arrow, Triangle, NoNeedle
 void SetTickPosition(GaugeTickPosition p);   // NoTicks, Inside, Outside, Both
-void SetOrientation(GaugeOrientation o);     // Horizontal / Vertical (linear modes)
+void SetOrientation(GaugeOrientation o);     // Horizontal / Vertical (linear modes; LinearScale is horizontal only)
 void SetBatteryStyle(GaugeBatteryStyle s);   // BarPointer / LedPointer (Battery mode)
 void SetArcAngles(double startDeg, double endDeg);  // custom sweep for analog dials
 ```
@@ -33697,6 +34226,33 @@ chunk was in flight. No value text is drawn in this state — there is no value,
 and the caller's own label is where "3.2 MB sent" belongs.
 
 LinearBar only; other modes ignore the flag.
+
+#### Any size: a card, a row, a status line
+
+Every linear mode fits the box it is given and draws nothing outside it. In
+order of preference it lays out as:
+
+1. **The full card** - title, bar (28 px; LED 44, vertical bars 36-50), the
+   value line, and the mode's own marks around the bar (MultiPointer's
+   pointer labels, WithArrow's arrow and value, Segmented's line to the exact
+   value, the tuner's station labels).
+2. **A tight card** - the same, with the title and the value hugging the
+   edges.
+3. **Either card without the marks** - a pointer's label matters less than
+   the title and the value.
+4. **The bar alone**, across the element: the progress bar of a status line
+   or a list row, where the caller's own label carries the words.
+
+Room for the marks is measured, not reserved: MultiPointer and WithArrow no
+longer keep 80 / 60 px empty on the right. Pointer labels are kept inside the
+element, and one that would cover another is left out. `LinearSegmented`
+runs vertically too.
+
+```cpp
+auto rowBar = CreateGaugeDiagramElement("rowBar", 0, 0, 300, 8);
+rowBar->SetMode(GaugeMode::LinearBar);   // 8 px: the bar alone
+rowBar->SetValue(40.0);
+```
 
 #### It fits the box it is given
 
@@ -42839,7 +43395,8 @@ and the weights behind those symbols roll up into per-row and per-column totals.
 form header band, cell tint, hover bands that run across panels, a ranked bar
 strip for the column totals, and spreadsheet import - and Phase 4: pan and
 zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
-the House's competitive-assessment block. See
+the House's competitive-assessment block, the attribute gutter and the `C`
+shape (a cube of three sets). Every shape in the proposal is built. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Contents
@@ -42852,7 +43409,9 @@ the House's competitive-assessment block. See
   - [The X shape](#the-x-shape)
   - [The Y shape](#the-y-shape)
   - [The House of Quality](#the-house-of-quality)
+  - [The C shape (cube)](#the-c-shape-cube)
   - [The form header band](#the-form-header-band)
+  - [The attribute gutter](#the-attribute-gutter)
 - [Relationship scales](#relationship-scales)
 - [Roll-ups](#roll-ups)
 - [Presentation](#presentation)
@@ -42938,8 +43497,9 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 | `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
 | `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
 | `MatrixShape::House` | 2 | 1–2 | the QFD House of Quality: an L plus the correlation roof |
+| `MatrixShape::C` | 3 | 1 | A × B × C — every cell relates one item of each of three sets |
 
-An `X`, `Y` or `House` whose model the shape cannot place (see *Validation*)
+An `X`, `Y`, `House` or `C` whose model the shape cannot place (see *Validation*)
 falls back to the `L` layout of panel 0 rather than drawing nothing, so its
 data is still visible.
 
@@ -43078,6 +43638,58 @@ and gives the cells its width back.
 
 `MatrixSamples::HouseOfQuality()` is a complete example.
 
+### The C shape (cube)
+
+`MatrixShape::C` relates three lists at once. Each cell is one item from each
+list: a defect type, on a production line, in a shift. Two-way panels can't
+hold that. Defects × lines can say the weld line has misalignment, and
+defects × shifts can say the night shift does, but neither can say that the
+misalignment happens on the weld line at night. The cube's single panel takes
+a third, **depth** set, and its cells take a depth index:
+
+<!-- doc-check: MatrixScale occurrence; -->
+
+```cpp
+MatrixModel cube;
+cube.shape = MatrixShape::C;
+cube.AddSet("defects", "Defect types", {"Scratches", "Dents", "Misalignment"});
+cube.AddSet("lines",   "Production lines", {"Press", "Weld", "Paint"});
+cube.AddSet("shifts",  "Shifts", {"Early", "Late", "Night"});
+cube.AddPanel("defects", "lines", occurrence).depthSetId = "shifts";
+
+cube.SetCubeCell(0, "Misalignment", "Weld", "Night", "frequent");   // by item ids
+cube.SetCubeCellAt(0, 2, 1, 1, "rare");                             // by index
+std::string level = cube.LevelAt(0, 2, 1, 2);                       // "frequent"
+double night = cube.DepthScore(0, 2);                               // one slice's total
+```
+
+`FindCell`, `LevelAt` and `ClearCell` take the depth as a last argument. It
+defaults to `-1`, which means a two-way panel's cell. Each form finds only its
+own kind of cell. `SetCellAt` refuses a cube panel's cell, and `SetCubeCellAt`
+refuses a two-way panel's. `RowScore` and `ColumnScore` sum through every
+slice. `DepthScore` sums one slice.
+
+A solid cube would show only its outer faces, and none of the cells inside, so
+the diagram draws it **exploded**. Each depth item gets one flat isometric
+slice, the first on top, stacked with a gap of `style.cubeSliceGap` cells and
+joined by the cube's left and right edges. Row labels run along the top
+slice's upper-left edge and column labels along its upper-right edge, as a Y's
+arms do. Each slice's depth item is named in a box at its right corner, and
+the depth set's title stands on end beside those boxes. The cell size is the
+largest at which the whole stack fits.
+
+Hovering a cell lights its row and column in every slice, which shows where
+the same pair sits across the depth set. Hovering or clicking a depth label
+lights its slice and fires `onSliceClick`. A cell's `MatrixRef` carries its
+`depth`, and a whole slice is a ref with only `panel` and `depth`
+(`IsSlice()`). `Page Up` and `Page Down` move the selected cell to the same
+place one slice up or down.
+
+A table has no third axis: `ExportMatrixCsv` returns an empty string for a cube
+and `ImportMatrixCsv` refuses one. JSON carries the cube whole. The panel's
+`"depth"` names the depth set, and each cell's `"depth"` names its depth item.
+`MatrixSamples::DefectCube()` is the worked example.
+
 ### The form header band
 
 Many printed matrix diagrams carry a form header — PROJECT, AREA, TITLE, TEAM,
@@ -43092,6 +43704,34 @@ x.headerFields = {
 };
 xDiagram->SetShowHeaderBand(true);   // the default; false hides it
 ```
+
+### The attribute gutter
+
+A row item often carries a few plain facts beside its relationships: a head
+count, an owner, a Y/N flag. Name the columns on the set and give each item its
+values in the same order; an `L` or a `House` draws them as a gutter of text
+columns between the row labels and the grid (and the House's importance column):
+
+<!-- doc-check: MatrixModel tools; -->
+
+```cpp
+MatrixItemSet& departments = tools.sets[0];
+departments.columns = {"Staff", "Facilitator"};
+departments.items[0].attributes = {"12", "N"};
+departments.items[1].attributes = {"18"};          // Facilitator left blank
+std::string staff = departments.AttributeOf(0, 0); // "12"; "" when out of range
+diagram->SetShowAttributes(true);                  // the default; false hides it
+```
+
+Values are text, read by people and never parsed. Each column is as wide as its
+header or its widest value, up to `style.maxAttributeColumnWidth`; longer values
+are ellipsised. Pointing into the gutter reports the whole row, as its label does,
+and a row's tooltip lists its values - which is where a `T`, `X` or `Y` shows
+them, since their labels have no room beside them for a gutter. Hiding the gutter
+gives the grid its width back. The values travel in JSON (`"columns"` on the set,
+`"attributes"` on the item); the CSV forms leave them out. An item with more
+values than its set has columns validates with a warning, and the extras are not
+drawn.
 
 ## Relationship scales
 
@@ -43197,6 +43837,7 @@ style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
 style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
 style.cellTintAlpha = 56;          // ... this faintly, under the mark
+style.maxAttributeColumnWidth = 90; // the attribute gutter's widest column
 diagram->SetStyle(style);
 ```
 
@@ -43210,12 +43851,24 @@ else: sizes, fonts and switches such as `alternateRowBands` or
 so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
 and `ApplyLightTheme()` do the same to a style you hold.
 
+Level and competitor colours belong to the model, not the theme. When one is
+too close to what it is drawn on to be seen, it is drawn in the label colour
+instead. One case is the near-black "High" of `MatrixScale::HighMediumLow()`
+on the dark grid. The legend swatch follows the mark. Closeness is measured
+as distance in RGB, so a saturated red or blue that is as dark as the grid
+keeps its own colour.
+
+A colour that does show, but only dimly, is blended toward the label colour
+just far enough to read, and keeps its hue. The Correlation scale's dark-green
+"++" on the dark grid is one: it stays green, so it still reads as positive.
+
 ## Interaction
 
 ```cpp
 diagram->onCellClick = [](const MatrixRef& ref) { /* ref.panel/row/col */ };
 diagram->onRowClick    = [](int panel, int index, const MatrixItem& item) { };
 diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
+diagram->onSliceClick  = [](int panel, int depth, const MatrixItem& item) { };   // C only
 ```
 
 `MatrixRef` identifies a cell (`IsCell()`), or a whole row or column when the
@@ -43255,7 +43908,8 @@ The diagram takes the focus when clicked. Then:
 | Key | Does |
 |---|---|
 | arrows | move the selected cell one step, in the direction the key points *on screen* - also on a turned X quadrant, a Y rhombus and the House roof |
-| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel |
+| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel (a C's next slice) |
+| `Page Up` / `Page Down` | a C only: the same cell one slice up / down |
 | `Space` / `Enter` | edit the cell (when editable), and fire `onCellClick` |
 | `Delete` | clear the cell (when editable) |
 | `Escape` | clear the selection |
@@ -43337,11 +43991,11 @@ if (!ImportMatrixTable(sheetCsv, MatrixScale::QFD(), imported,
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+`MatrixSamples::ImprovementTools()` (L, with an attribute gutter), `MatrixSamples::EmployeeAllocation()`
 (T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
 `MatrixSamples::SupplyChain()` (X, with a form header),
-`MatrixSamples::DesignTraceability()` (Y) and `MatrixSamples::HouseOfQuality()`
-(House) build the models the demo shows
+`MatrixSamples::DesignTraceability()` (Y), `MatrixSamples::HouseOfQuality()`
+(House) and `MatrixSamples::DefectCube()` (C) build the models the demo shows
 (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
@@ -43359,8 +44013,12 @@ a left/right set with a top/bottom one and that no two panels claim the same
 quadrant; for a `Y`, that every panel crosses two different sets among the first
 three and that no pair appears twice; for a `House`, that panel 0 crosses two
 different sets and any further panel is the symmetric roof over its columns.
-A cell of a symmetric panel on or below the diagonal is an error. `warnings` collects things that are drawable but
-suspicious, such as an empty item set.
+A cell of a symmetric panel on or below the diagonal is an error. For a `C`, panel 0
+must be a cube over three different sets, and every cube cell's depth must be in
+range. A depth set in any other shape is an error, and so is a depth on a two-way
+panel's cell. `warnings` collects things that are drawable but
+suspicious, such as an empty item set or an item with more attribute values than
+its set has columns.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
 items and level ids, so `Validate()` mainly matters when you have assembled a
@@ -43686,14 +44344,14 @@ tool and a missing plugin should stop it running.
 | `MediaKind` | Formats | Display view |
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
-| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
+| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`); a password-protected one is unlocked first (*Password-protected files*). Classified before `Vector`: a libvips with a PDF loader would otherwise take a PDF for a drawing and show its first page flat. Without the plugin a PDF is an image the pipeline rasterizes |
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
-| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
-| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
+| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
@@ -43729,10 +44387,12 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
 | Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
 | Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
-| `*.ucd` preview thumbnail | yes | — | — | — |
+| `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
 | Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
 
+*Unlock* (`tools.unlock`) is there only while the shown file is
+password-protected and not unlocked yet - see *Password-protected files*.
 Separators follow the groups, so none is left standing alone. Text,
 spreadsheet, font, 3D, video and audio views carry their own controls (the
 players' transport bar, the model's orbit and dolly), so the toolbar is down to
@@ -43837,18 +44497,121 @@ recognised by the 12-byte signature of the fixed header, read through the
 container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
 format deliberately makes available without parsing the body:
 
-- the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
-  fixed header) on the image surface, when present — respecting the
-  `PRIVATE` flag, which suppresses the preview;
-- otherwise a **header summary** in the text view.
+- a **layered image** (`UCBitmap`) whole: its layers read through
+  `UCRasterDocument::LoadUCD` and composited, at full size - the picture,
+  not the 256 px thumbnail - and zoomable like a photo (it is still not an
+  image to turn or save from here); a password-protected one once it is
+  unlocked (*Password-protected files*);
+- otherwise the **embedded preview thumbnail** (raw HEIC/PNG stored
+  directly after the fixed header) on the image surface, when present —
+  respecting the `PRIVATE` flag, which suppresses the preview. A
+  password-protected layered image shows this until it is unlocked;
+- otherwise a **header summary** in the viewer's **note view**: dark like
+  the rest of the viewer and laid out as the Details panel lays out its
+  facts (a heading, then a table of the container's fields) - not on the
+  white page a text file is shown on.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
 container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
 `UCBitmap` …), version, body encoding, compression, encryption (always
 XChaCha20-Poly1305; the key from a password or from SuperVault) and
 thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
-document) gets a summary saying why. A layered image (`UCBitmap`) shows its
-thumbnail here; `UCRasterDocument` opens it with its layers.
+document) gets a summary saying why. For a layered image it adds the size
+and the layer count, and a *Shown* row says what the pane shows - the image
+at full size, or the thumbnail and why not the image (password-protected,
+damaged).
+
+## Password-protected files
+
+A file the viewer can open with its password - a layered `*.ucd` image
+(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
+or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
+(its header summary when the document is private), or a note saying the PDF
+is password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
+that hides the top bars, such as UltraFiler's preview pane, still offers it)
+and as an icon in the toolbar; **Enter** does the same. Unlock
+asks for the password over the viewer's window - again, saying so, when it
+is not right - and then shows the file whole: the image at full size with
+its layers composited, the PDF in its view with every page.
+
+Nothing asks on its own: browsing a folder of protected files never pops up
+a prompt. The info bar says *password-protected*, and the Details panel adds
+an *Encryption* row and a *Shown* row that says what Unlock would show.
+
+**Passwords are kept for the folder being browsed.** A password Unlock was
+given opens, without asking again, the file it unlocked when it is browsed
+back to, and is tried - with the others kept, the one that opened that file
+first - on every other protected file shown in the same folder, which then
+shows whole straight away. A file none of them opens is not tried again
+until another password is given. They are held in `UltraCryptSecureBuffer`s
+(zeroed when freed), at most `kMaxRememberedPasswords` (8), and only for that
+folder: opening another folder, or a selection in another folder, forgets
+them; `CloseFile` keeps them, so a preview pane that closes and reopens the
+same folder does not ask again. `ForgetPasswords()` forgets them at once, and
+`SetRememberPasswords(false)` keeps none - every protected file asks each
+time it is shown.
+
+**They do not outlive the user stepping away.** When the desktop session
+locks ([UltraCanvasSessionLock](UltraCanvasSessionLock.md): the screen locked
+by hand or by the screensaver), or the viewer's window has had no key or
+mouse input for `GetForgetPasswordsAfterIdle()` - ten minutes unless set -
+the viewer calls `ForgetPasswords()` itself. That forgets the passwords *and*
+shows a file showing unlocked locked again: the PDF closes behind its note,
+the image goes back to its thumbnail (or to nothing, when it is private). The
+viewer watches for this only while it holds something - a kept password or
+an unlocked file. Input means a key, a click, a wheel turn or the mouse moving
+anywhere in the viewer's window, and a password given - typed into Unlock or
+passed to `UnlockWithPassword` - but not a kept password opening a file as it
+is shown, so an unattended slideshow through protected files still forgets.
+`SetForgetPasswordsAfterIdle(std::chrono::seconds(0))` turns the idle half
+off; the session lock still forgets. `ForgetPasswordsIfIdle()` is what the
+idle timer runs.
+
+**An unlocked file says so.** A protected file opened with its password -
+typed, or kept - looks like any other once it is open, so the info bar puts
+*unlocked* beside its kind (`name · PDF · unlocked · page 1 / 3 · …`,
+`name · UC DOCUMENT · unlocked · …`) and the Details name its encryption.
+`IsUnlocked()` reports the same.
+
+```cpp
+viewer->SetRememberPasswords(false);   // a kiosk: ask every time
+viewer->ForgetPasswords();             // or: forget now - and lock the shown file again
+viewer->SetForgetPasswordsAfterIdle(std::chrono::minutes(2));   // a shared desk: sooner
+if (viewer->IsUnlocked()) { /* the shown file is protected, and open */ }
+```
+
+**A host's settings.** `SetSettingsAction(action)` puts a gear at the right
+end of the info bar, beside Details, that runs `action`: UltraViewer opens
+its settings there - *Forget passwords after*, which it passes on to
+`SetForgetPasswordsAfterIdle`. The gear is hidden while no action is set, and
+an empty one hides it again; the optional second argument is its tooltip.
+
+```cpp
+viewer->SetSettingsAction([this]() { ShowSettings(); });   // the gear appears
+viewer->SetSettingsAction(nullptr);                        // ... and goes again
+```
+
+```cpp
+if (viewer->IsLocked()) {
+    viewer->Unlock();                      // asks, in a dialog
+}
+// ... or, with a password the host already has:
+const std::string password = "tulip";
+std::string why;
+const MediaUnlockResult result = viewer->UnlockWithPassword(password, why);
+if (result == MediaUnlockResult::WrongPassword) { /* still locked; `why` says so */ }
+else if (result == MediaUnlockResult::Failed)   { /* right, but it would not open */ }
+// Unlocked: shown whole. NotLocked: there was nothing to unlock.
+```
+
+What a protected PDF needs from the engine is a reason: `IPDFDocument` and
+`UltraCanvasPDFView` report it with `GetLastOpenError()` - `NeedsPassword`
+for a document opened without one, `WrongPassword` for one opened with the
+wrong one, `Failed` for anything else - so the viewer offers Unlock rather
+than calling the file damaged. A host that hides both bars still has Enter,
+or calls `Unlock()` itself. Formats the framework can tell are encrypted but
+not decrypt - an encrypted Excel workbook - say so in their view instead
+(*"The workbook is password-protected"*), with no Unlock.
 
 ## Details panel
 
@@ -44034,7 +44797,7 @@ the user has stored any. An SVG has no pixel size of its own: it is offered as
 written by drawing it again at the size chosen - sharp at any size, where the
 picture shown would blur when stretched. The surface does it:
 
-<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; void ShowSettings(); -->
 ```cpp
 UltraCanvasMediaSurface* surface = viewer->GetSurface();
 const FileSavePicture picture = surface->GetSavePicture();   // turned as shown
@@ -48646,6 +49409,7 @@ view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
 
 ```cpp
 bool LoadFromPath(const std::string& path, const std::string& password = "");
+PDFOpenError GetLastOpenError() const;      // why the last LoadFromPath failed
 void SetDocument(std::unique_ptr<IPDFDocument> doc);
 IPDFDocument* GetDocument() const;
 bool HasDocument() const;
@@ -48662,6 +49426,25 @@ that streamed the file would block the very file it is showing. A bigger file is
 streamed instead, because holding hundreds of megabytes of PDF in RAM is the
 worse trade; raise or lower the limit to move that line, or set 0 to always
 stream. `SetDocument()` takes whatever the caller opened, unchanged.
+
+A **password-protected** document opens with its password as the second
+argument. When `LoadFromPath()` fails, `GetLastOpenError()` says why, so a
+caller can ask for the password instead of calling the file damaged:
+
+```cpp
+if (!view->LoadFromPath(path)) {
+    switch (view->GetLastOpenError()) {
+        case PDFOpenError::NeedsPassword: /* ask for it, then LoadFromPath(path, password) */ break;
+        case PDFOpenError::WrongPassword: /* ask again */ break;
+        default:                          /* unreadable or damaged */ break;
+    }
+}
+```
+
+A password refusal is not retried as a stream (it would be refused the same
+way), and a failed load leaves the document that was shown in place. The media
+viewer builds its *Unlock* button on this
+([`UltraCanvasMediaViewer.md`](UltraCanvasMediaViewer.md#password-protected-files)).
 
 ### Navigation
 
@@ -49009,6 +49792,7 @@ void Close();
 bool IsOpen() const;
 bool IsDirty() const;
 const std::string& GetSourcePath() const;
+PDFOpenError GetLastOpenError() const;      // NoError, NeedsPassword, WrongPassword, Failed
 
 PDFDocumentInfo GetInfo() const;            // title/author/dates/version/encryption…
 int             GetPageCount() const;
@@ -49023,6 +49807,11 @@ afterwards — it still reports `path` as its source and saves normally, and onl
 by it, and returns `false` on a memory-opened one). Use `OpenInMemory()` whenever
 the document is merely being displayed and the file must stay movable; use
 `Open()` for a document too big to hold in memory.
+
+`GetLastOpenError()` says why the last `Open*` failed: `NeedsPassword` (the
+document is encrypted and no password was given), `WrongPassword` (the one
+given does not open it), `Failed` (unreadable, not a PDF, damaged); `NoError`
+after a successful open. An engine that cannot tell answers `NoError`.
 
 `PDFSaveOptions`: `linearize` (web-optimize), `garbageCollect`, `deflateStreams`,
 `cleanContentStreams`.
@@ -49862,6 +50651,10 @@ doc->SaveToFile("out.png", err);               // flattened, format by extension
                                                // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 doc->SaveToFile("work.ucd", err);              // layers kept, as a UCD layered image
+doc->SetUCDPassword("tulip");                  // ... and from now on password-protected
+doc->SaveToFile("work.ucd", err);
+UCRasterDocument reopened;
+reopened.LoadUCD("work.ucd", err, "tulip");    // UCRasterDocument::IsPasswordProtected says it needs one
 ```
 
 ### Layered files
@@ -49881,6 +50674,16 @@ extension (`IsProjectFile` is true for both, `IsUCDFile` for the first):
   (`ExtractEmbeddedPreviewBytes`, the media viewer). Needs no libvips. A
   `UCBitmap` file without a stack opens as one layer; a text frame this cannot
   read leaves its layer the bitmap it shows.
+
+  **Password-protected** (UCD 2.2): `SetUCDPassword(password, hidePreview)`
+  makes every later `SaveUCD` encrypt the file (Argon2id key,
+  XChaCha20-Poly1305 per section; `hidePreview` leaves the thumbnail out
+  too), an empty password takes it off, and `HasUCDPassword` /
+  `GetUCDHidesPreview` say what is set. `IsPasswordProtected(path)` reads
+  only the header; `LoadUCD(path, error, password)` opens such a file - a
+  wrong password fails with `UCD::kWrongPassword`, without one it says the
+  file needs it - and keeps the password, so the next save is protected
+  again. Loading anything else clears it.
 - **`.ucraster`, an UltraPaint project** (`SaveProject` / `LoadProject`,
   libvips): a ZIP of `document.json`, one PNG per layer and an OpenDocument
   text per text layer.
@@ -60369,6 +61172,94 @@ flow->FitView();
   — the UML family's roadmap
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSessionLock.md
+==============================================================================
+
+# UltraCanvasSessionLock
+
+<!-- doc-check: void ForgetPasswords(); void ShowLockedAgain(); -->
+
+A call when the desktop session locks — the user locked the screen, or
+stepped away and the screensaver did — and when it unlocks again. It is what
+a program holding something it should not keep past the user's absence
+listens to: a password typed earlier, a decrypted document on screen.
+
+```cpp
+#include "UltraCanvasSessionLock.h"
+
+SessionLockListenerId listener = AddSessionLockListener([this](bool locked) {
+    if (locked) {
+        ForgetPasswords();
+        ShowLockedAgain();
+    }
+});
+// ... and before `this` goes:
+RemoveSessionLockListener(listener);
+```
+
+The [media viewer](UltraCanvasMediaViewer.md) is the first user: while it
+keeps a password Unlock was given, or shows a file opened with one, a lock
+forgets the passwords and puts the file back behind its Unlock button.
+UltraPaint listens while a drop of protected files holds the passwords given
+for it, and forgets them, so the files still to come ask again.
+
+A listener is best registered only while there is something to forget, as
+both do: the platform is watched only while one is registered.
+
+## Calls
+
+| Call | Meaning |
+|---|---|
+| `AddSessionLockListener(onChange)` | `onChange(true)` when the session locks, `onChange(false)` when it unlocks, on the UI thread. Returns the id to remove it by; 0 for an empty callback. The first listener starts the platform backend. |
+| `RemoveSessionLockListener(id)` | Removes it; the last one stops the backend. Safe from inside a callback (its own or another's) and safe twice. |
+| `IsWatchingSessionLock()` | True while a backend is watching: a listener is registered and the platform answered. |
+| `NotifySessionLockChanged(locked)` | Tells every listener — what a backend calls. A host with a lock of its own (a kiosk's screen lock) calls it too, and so do tests. |
+
+Each change is reported once. A lock usually arrives from two sources at once
+— logind's signal and the screensaver's, or the signal and the property that
+follows it — and the second, saying the same thing, calls nobody.
+
+## Where it comes from
+
+| Platform | Source |
+|---|---|
+| Linux, the BSDs | logind (system bus): the `Lock` / `Unlock` signals of this process's session and its `LockedHint` property, which the screen locker sets while it shows. The screensaver (session bus): the `ActiveChanged` signal (a boolean) of `org.freedesktop.ScreenSaver` (KDE, Xfce and most others) and `org.gnome.ScreenSaver` (GNOME). Either is enough. GDBus runs on a private context the application's loop watches — no thread of its own. |
+| Windows | WTS session notifications (`WTS_SESSION_LOCK`, `WTS_SESSION_UNLOCK`) on a message-only window of the UI thread; `wtsapi32` is loaded when the first listener arrives. |
+| macOS | The loginwindow's `com.apple.screenIsLocked` / `com.apple.screenIsUnlocked` distributed notifications, on the main queue. |
+
+Everything else — Android, WebAssembly, a Linux session with no bus — reports
+nothing, and `IsWatchingSessionLock()` stays false. A caller that must not
+depend on a lock being reported keeps an idle timeout of its own as well; the
+media viewer forgets after ten minutes without input either way.
+
+On Linux the session is the caller's own (logind's `GetSession` asked for
+`"auto"`, which for a program started from a user service is the user's
+graphical session), falling back to the one its process is in. The screensaver's signal is taken from any
+sender on any path, since each desktop emits it on a path of its own; a forged
+one can do no more than make a listener forget.
+
+## Testing
+
+`NotifySessionLockChanged(true)` is a lock as far as every listener can tell,
+so a test needs no desktop. The backend itself is tested by
+`Tests/SessionLockTest.cpp`, which CTest runs under `dbus-run-session` and
+which sends the screensaver's signal with `gdbus`:
+
+```sh
+gdbus emit --session --object-path /org/gnome/ScreenSaver \
+           --signal org.gnome.ScreenSaver.ActiveChanged true
+```
+
+## Building
+
+`ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` (top-level `CMakeLists.txt`) is set for
+Windows, macOS and desktop Unix, and is a PUBLIC define of the library. Without
+it `core/UltraCanvasSessionLock.cpp` compiles a backend that never starts. The
+backends are `OS/Linux/UltraCanvasLinuxSessionLock.cpp` (gio, which GTK
+already brings), `OS/MSWindows/UltraCanvasWindowsSessionLock.cpp` and
+`OS/MacOS/UltraCanvasMacOSSessionLock.mm`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasShellLink.md
 ==============================================================================
 
@@ -66486,6 +67377,40 @@ the highlighter has no rules for (a LaTeX `.cls`, an Objective-C `.m`) is left
 as plain text instead of being coloured as the other language. Returns
 whether a language was set.
 
+#### Picking a language for text with no file name
+Text that arrives without a file name - a paste into a new document, a
+clipboard entry, a stream - can be given its language from its content with
+`DetectLanguageFromContent` (`UltraCanvasLanguageDetect.h`, a free function
+with no dependency beyond the standard library). It returns a language name
+`SetProgrammingLanguage` takes, `"Markdown"` for Markdown, or `""` when the
+text does not clearly say (prose, a word or two) - leave such text plain.
+
+<!-- doc-check: std::string pasted; -->
+```cpp
+#include "UltraCanvasLanguageDetect.h"
+
+const std::string lang = DetectLanguageFromContent(pasted);
+if (lang == "Markdown") {
+    textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+} else if (!lang.empty()) {
+    textArea->SetHighlightSyntax(true);
+    textArea->SetProgrammingLanguage(lang);
+}
+```
+
+It decides in this order: a `#!` line names its interpreter; a text that is
+wholly one document is that document (`<?php`, `<?xml` and its SVG / RSS /
+KML / POM roots, HTML, a complete JSON value, JSONC with comments, GeoJSON);
+otherwise each line votes for the languages it can only be, and the winner
+must score at least 4 and lead every language outside its family by 2 (C++
+and C, TypeScript and JavaScript are families: there any lead decides, and a
+tie goes to C++ / JavaScript). Lines inside a Markdown ``` fence vote for
+Markdown, not for the code they show. Only the first 64 KB is read.
+UltraTexter calls it when text is pasted into a new, empty tab whose language
+nobody chose; `UltraCanvasMediaViewer` for a `.txt` / `.text` file; the
+clipboard history to file a copy as `Code` (UltraClipboard then colours it in
+*Edit* and offers its extension in *Save as*).
+
 ### Property Setters
 
 #### SetReadOnly
@@ -67084,6 +68009,7 @@ unescaped, and the document view typesets them.
 - **UltraCanvasTextInput**: Single-line text input
 - **UltraCanvasMarkdownDisplay**: Read-only markdown rendering (`Plugins/Text/UltraCanvasMarkdown.h`)
 - **SyntaxTokenizer**: The highlighter behind the text area (`UltraCanvasSyntaxTokenizer.h`)
+- **DetectLanguageFromContent**: The language of text with no file name (`UltraCanvasLanguageDetect.h`)
 - **UltraCanvasSpellChecker**: The shared spell-check service
 
 ## Platform-Specific Notes
@@ -71341,7 +72267,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
 
 ## Contents
 
@@ -71372,6 +72298,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
   - [Basic Tree Creation](#basic-tree-creation)
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
+  - [Rows still loading](#rows-still-loading)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -71512,6 +72439,7 @@ struct TreeNodeData {
     const TreeCellData* GetCell(const std::string& colId) const;
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
+    bool loading = false;                  // children being fetched: a bar slides along the row's foot
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -72102,6 +73030,7 @@ void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
+void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
@@ -72114,6 +73043,8 @@ inherited from `UltraCanvasUIElement`.
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
+`SetLoadingBarColor` sets the bar a loading row slides along its foot (default
+the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
 
 ### Event Callbacks
 
@@ -72235,6 +73166,31 @@ treeView->onNodeExpanded = [](TreeNode* node) {
         LoadChildrenFromDisk(node);
     }
 };
+```
+
+### Rows still loading
+
+When children come from somewhere slow - a server, a long scan - the
+placeholder can stay hidden (`visible = false`: it still gives the row its
+expand button) and the row itself say it is waiting. `TreeNodeData::loading`
+makes the row slide a thin bar along its foot, from its icon to the right
+edge, in the tree's loading colour (`SetLoadingBarColor`, the accent blue by
+default) - the same sign the filer widget gives a folder being fetched. A
+40 ms timer keeps the bar moving while such a row is on screen and stops once
+none is drawn.
+
+```cpp
+TreeNodeData placeholder("remote/photos#placeholder", "...");
+placeholder.visible = false;               // the expand button, without a row
+treeView->AddNode("remote/photos", placeholder);
+
+treeView->onNodeExpanded = [treeView](TreeNode* node) {
+    node->data.loading = true;             // the bar slides until the answer is in
+    treeView->RequestRedraw();
+    StartFetch(node->data.nodeId);         // calls back on the UI thread
+};
+// ...when the children have arrived:
+//     add them, remove the placeholder, node->data.loading = false, RequestRedraw()
 
 // Handle right-click (open a context menu at the pointer)
 treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
@@ -72481,6 +73437,7 @@ on. The format itself is specified in
 | `UCD::Writer` | Builds a file: a type descriptor, an optional PNG thumbnail, sections; writes an `INDX` first and stages the write |
 | `UCD::Reader` | Reads a whole file: header, thumbnail, every section as stored; decodes a section on request |
 | `UCD::ReadHeaderAndThumbnail` | A filer's read: the 28-byte header and the raw thumbnail, the body untouched |
+| `Writer::SetPassword` / `Reader::Unlock` | Password protection (key source 1): an Argon2id key, every section but `INDX` and `SECU` sealed with XChaCha20-Poly1305 |
 | `UCD::AppendPreamble` / `ReadPreamble` | The 8-byte sub-format preamble a `VECT` / `BMAP` / `VIDS` / `AUDS` / `SC3D` payload starts with |
 | `UCD::ByteWriter` / `ByteReader` | Little-endian, bounds-checked bytes - what section payloads are built from |
 
@@ -72508,13 +73465,13 @@ std::string error;
 if (!writer.WriteToFile(path, error)) { /* the file that was there is untouched */ }
 ```
 
-- The header is version **2.1**, binary body, deflate by default, key source
-  none; the thumbnail flags say PNG.
+- The header is version **2.2**, binary body, deflate by default, key source
+  none (password, with `SetPassword`); the thumbnail flags say PNG.
 - Sections are written in the order added, after an `INDX` that lists each
   one's type, offset, stored and whole length.
 - `WriteToFile` writes through `WriteFileAtomically`: a failure leaves the
   previous file as it was. `WriteToBuffer` gives the bytes.
-- Only *Uncompressed* and *Deflate* are written; there is no encryption yet.
+- Only *Uncompressed* and *Deflate* are written.
 
 ## Reading
 
@@ -72545,13 +73502,60 @@ if (reader.Open(path, error)) {
 - `Open` reads the whole file and lists every section, unknown types
   included - the caller skips what it does not know (the spec's
   forward-compatibility rule).
-- `Decode` gives the payload as serialized: it inflates zlib and gzip
-  sections (checksums checked), resolves the header-default code `0xFF`, and
-  refuses - with the reason - an encrypted section, LZMA, a damaged stream,
-  or a section that would decompress past `limit` (2 GiB by default).
+- `Decode` gives the payload as serialized: it decrypts a section once the
+  reader is unlocked, inflates zlib and gzip sections (checksums checked),
+  resolves the header-default code `0xFF`, and refuses - with the reason - an
+  encrypted section before `Unlock`, LZMA, a damaged stream, or a section
+  that would decompress past `limit` (2 GiB by default).
 - Refused outright, with a message: a damaged signature (all 12 bytes are
   checked), a version 1 file (`UCD\x01`), a later **major** version, a file
   cut short. A later **minor** version reads.
+
+## Password protection
+
+```cpp
+#include "UltraCanvasUCDContainer.h"
+using namespace UltraCanvas;
+
+if (UCD::EncryptionAvailable()) {             // UltraCrypt with libsodium
+    UCD::Writer writer("UCBitmap");
+    writer.SetPassword("correct horse", /*hidePreview=*/false);
+    writer.AddSection("BMAP", payload);
+    std::string error;
+    writer.WriteToFile(path, error);
+}
+
+UCD::Reader reader;
+std::string error;
+if (reader.Open(path, error) && reader.NeedsPassword()) {
+    if (!reader.Unlock("correct horse", error)) {
+        if (error == UCD::kWrongPassword) { /* ask again */ }
+        else { /* damaged, SuperVault, no libsodium ... - say why */ }
+    }
+}
+```
+
+- `SetPassword` (spec section 4.3, key source `1`): the writer derives a
+  32-byte key with **Argon2id** (UltraCrypt's recommended cost - 3 passes,
+  64 MiB - and a fresh salt every write), puts a `SECU` record straight after
+  the `INDX`, and seals every other section with **XChaCha20-Poly1305**
+  after compressing it: a fresh 24-byte nonce, the section's 12-byte header
+  as associated data, so a header changed on disk fails like a changed
+  payload. The header gets key source `1` and the `ENCRYPTED` flag;
+  `hidePreview` adds `PRIVATE` and leaves the thumbnail out. The password is
+  held in an `UltraCryptSecureBuffer` (zeroed when freed); an empty one
+  protects nothing.
+- A protected file opens as any other - header, thumbnail, section list;
+  `NeedsPassword()` says its sections will not decode yet. `Unlock` reads
+  the `SECU`, refuses costs over 64 passes or 4 GiB before deriving
+  anything, and checks the key against the record's check tag, so a wrong
+  password (`UCD::kWrongPassword`) is told apart from a damaged file.
+- A build without libsodium fails closed: `EncryptionAvailable()` is false,
+  `WriteToBuffer` refuses rather than writing the file unprotected, and
+  `Unlock` says why. SuperVault (key source `2`) is refused with a message.
+- `UCRasterDocument` carries a password for its `.ucd` (`SetUCDPassword`,
+  `LoadUCD(path, error, password)`, `IsPasswordProtected`): see
+  [`UltraCanvasPaintSurface.md`](UltraCanvasPaintSurface.md), *Layered files*.
 
 ## The filer's read
 
@@ -72578,7 +73582,10 @@ out.
 bytes a writer puts down, the round trip through a buffer and a file, the
 header-default code, gzip, an unknown section, LZMA and encrypted sections
 refused, damaged checksums, the refusals above, the preamble and the byte
-helpers. `RasterEditingTest` covers layered images on top of it, and
+helpers - and password protection: the bytes a protected file puts down,
+a wrong and the right password, a tampered payload and a tampered header, a
+hostile `SECU` cost refused, a fresh salt on every save, a private document,
+and failing closed without libsodium. `RasterEditingTest` covers layered images on top of it, and
 `EmbeddedPreviewTest` the thumbnail as an embedded preview.
 
 ==============================================================================
@@ -72732,6 +73739,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | Colour (wheel, SV area, hue × lightness field or colour + intensity sliders; optional design selector) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
+| Palette rows under a colour picker - add schemes from a gallery (up to 256-colour GIF palettes), remove rows, set an entry with a right click | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
@@ -72812,7 +73820,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two to four item sets crossed in an L, T, X or Y, or a QFD House of Quality, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, a QFD House of Quality, or three at once in a C (cube), cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
@@ -73934,6 +74942,38 @@ onto white without touching what is drawn on top.
 `page` selects the page of a paged source; `VectorSourceInfo::pageCount` says
 how many there are (1 for everything but PDF).
 
+### A password-protected PDF
+
+A PDF (or `.ai`) that does not open without its password reports it rather
+than failing like a damaged file: `InspectVectorFile(path)` comes back with
+`ok` false and `passwordRequired` true. Ask for the password and inspect
+again with it - `passwordWrong` says the one given does not open it either -
+then hand it to the rasterizer in `VectorRasterOptions::password`:
+
+```cpp
+VectorSourceInfo info = InspectVectorFile(path);
+if (!info.ok && info.passwordRequired) {
+    const std::string password = "tulip";            // what the user typed
+    info = InspectVectorFile(path, password);
+    if (info.passwordWrong) { /* ask again */ }
+    VectorRasterOptions options;
+    options.password = password;
+    std::string error;
+    auto layer = RasterizeVectorFile(path, options, error);
+    if (!layer) ShowError(error);
+}
+```
+
+Which refusals are about a password is decided from the file, not from the
+loader's wording (poppler says *"Document is encrypted"* for a missing and a
+wrong password alike): the refused PDF names an `/Encrypt` dictionary. A
+password given to a file that has none is ignored.
+
+libvips' `pdfload` takes a password from libvips 8.13 on. Built against an
+older one (Ubuntu 22.04 ships 8.12), the framework opens a protected PDF
+through poppler-glib instead - CMake looks for it only then - so the
+password works the same everywhere.
+
 ## Elements of a loaded drawing
 
 `RasterizeVectorElements` is the same job for a drawing that is already open:
@@ -74020,7 +75060,8 @@ ArtCreator's Export is those two calls.
 
 UltraPaint: dropping or opening a drawing asks for the raster size and then
 comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
-`UltraPaintImportDialog`).
+`UltraPaintImportDialog`); a password-protected PDF asks for its password
+first, again while it is wrong.
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
 by `RasterizeVectorElements`, and *Export* writes PNG, JPEG and the other
@@ -74040,7 +75081,9 @@ build: the crop to what is painted, a stroke past the bounds, the scale, an
 ancestor's transform, and the refusals. So do its `RasterizeVectorDocument`
 checks: the natural size, a page twenty times larger with a hard edge, one
 side following the page's shape, a size in another shape, both backgrounds,
-and the refusals.
+and the refusals. A password-protected PDF (`Tests/fixtures/pdf-aes256-locked.pdf`)
+reports a missing and a wrong password as such, is refused without one, and
+measures and rasterizes with the right one.
 
 ## See also
 
@@ -82943,6 +83986,27 @@ FILE: Docs/Modules/Smarthome/README.md
 
 Ready for integration with: **Matter**, **Thread**, **Zigbee**, **Z-Wave**, **WiFi**, **Bluetooth**
 
+The **simulated demo home** (`SmartHome/protocols/Simulated`) needs no
+radio: 30 devices in 8 rooms answering commands and changing over time, for
+development, tests and demos. Enabling the `Simulated` protocol type
+through `SmartHomeAPI` brings it up.
+
+### Store and automations
+
+The home's own database, **smarthome.db** (UltraDatabase / SQLite): scenes,
+automations, the names and rooms given to devices, the home's location, the
+event log and sensor history. **Automations run** in the module: device,
+time, sunrise and sunset triggers, time, weekday and device conditions, and
+device commands, notifications, delays and scenes as actions. The trigger and
+condition forms are documented on `SmartHomeAutomation` in
+`SmartHome/include/UltraCanvasSmartHome.h`.
+
+### Application
+
+**SmartHome Center** (`Apps/SmartHomeCenter`) is the home control window
+built on this module: rooms and device tiles, scenes, energy, activity. It
+opens the demo home when no radio is enabled.
+
 ==============================================================================
 FILE: Docs/Modules/Smarthome/intro.md
 ==============================================================================
@@ -83043,6 +84107,7 @@ and friends report what this build actually has.
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud or OpenAI-compatible server |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud |
 | `elevenlabs` | `ITextToSpeech` | cloud, direct or through a hosted relay |
+| `local` | `ITextLLM`, `IEmbeddings` | local — an engine the runtime downloads and supervises |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
@@ -83275,6 +84340,21 @@ unless `output_format` names an ElevenLabs format. `style`, `pitch` and
 sample bytes only; URL samples are rejected rather than downloaded.
 Speech-to-text and the WebSocket input-streaming endpoint are not
 implemented yet.
+
+---
+
+## `local` — a model on this computer, nothing to install
+
+Header: `UltraAILocal.h`. The local runtime (`UltraAILocalRuntime.h`,
+[`LocalRuntime.md`](LocalRuntime.md)) downloads llama.cpp's server for this
+machine and a model from its catalogue on demand, starts the engine on
+loopback with a key, and this adapter speaks to it in the OpenAI adapter's
+wire format. `defaultModel` is a catalogue id (`qwen3-4b-q4`), a
+user-added model (`file:<path>`, `hf:<repo>:<file>`) or empty for the
+runtime's recommendation; `providerOptions["allow_download"]` lets the
+first call install under the *Ask* policy. First in the local-first
+routing. Everything else — the gallery, the catalogue, the settings, the
+errors — is in `LocalRuntime.md`.
 
 ---
 
@@ -83587,9 +84667,314 @@ under a text-LLM provider's id replaces the LLM-backed one for that id.
 * [`../../Research/ComfyUIIntegrationResearch.md`](../../Research/ComfyUIIntegrationResearch.md)
   — why these adapters are shaped the way they are, and the licensing
   boundary against ComfyUI.
+* [`LocalRuntime.md`](LocalRuntime.md) — the local runtime behind the
+  `local` provider: engines and models downloaded on demand and run as
+  supervised processes, so nothing has to be installed;
+  [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md)
+  is its design.
 * `UltraAI/Docs/UltraNetIntegration.md` — how network adapters use
   UltraNet (HTTP, SSE, WebSocket), threading and cancellation rules.
 * `UltraAI/Docs/UltraVault.md` — credential storage for `apiKeyVaultRef`.
+
+==============================================================================
+FILE: Docs/Modules/UltraAI/LocalRuntime.md
+==============================================================================
+
+# UltraAI Local Runtime — models on this computer, nothing to install
+
+**Version:** 0.1.0
+**Last Modified:** 2026-10-20
+
+## Overview
+
+The local runtime runs language and embedding models on the user's own
+machine the way LocalAI's galleries do, without the user installing
+anything: the inference engine (llama.cpp's `llama-server`) and the model
+files are downloaded on demand, verified, started as a loopback process,
+shared between every UltraCanvas application that wants the same model,
+and stopped when nothing has used them for a while. The `local` provider
+serves `ITextLLM` and `IEmbeddings` through it and ranks first in the
+module's local-first routing, so an application that leaves `providerId`
+empty gets a model on this computer whenever one is installed or can be.
+
+Header: `UltraAILocalRuntime.h` (the runtime) and `UltraAILocal.h` (the
+provider). Design: [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md);
+this document is phase 1 of its plan (chat and embeddings over
+`llama-server`), with the user interface, speech, images and the
+supervisor process still to come. Built in-tree only
+(`ULTRAAI_LOCAL_RUNTIME`, default ON): it needs UltraNet, UltraCrypt and
+VirtualFS, which live in the shared core.
+
+```cpp
+#include <UltraAI.h>
+#include <UltraAILocalRuntime.h>
+using namespace UltraAI;
+
+// An application that just wants a chat model on this computer.
+TextLLMConfig cfg;
+cfg.providerId = "local";                 // or empty: routing prefers "local"
+cfg.providerOptions["allow_download"] = true;   // the user agreed in a dialog
+auto llm = CreateTextLLM(cfg);
+
+ChatRequest req;
+Message m; m.role = Role::User; m.text = "Fasse diesen Absatz zusammen: ...";
+req.messages.push_back(std::move(m));
+ChatResponse resp = llm->Chat(req);       // installs, starts and answers
+```
+
+The first call downloads the engine bundle for this machine (about 30 MB)
+and the recommended model (a few GB), starts the engine and answers; later
+calls find it running. Without `allow_download` under the default *Ask*
+policy the call fails with `ErrorCode::ModelNotFound` and `providerCode`
+`"needs-install"`: the cue for an application to show what the runtime
+recommends and ask.
+
+---
+
+## What the runtime does
+
+| Part | What it is | Where |
+|---|---|---|
+| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
+| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
+| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded). | `<root>/user-models.json` |
+| **Installs** | Background jobs on the runtime's worker: download to a `.part` file (resumed when one exists), verify the SHA-256 through UltraCrypt, move into place; an engine bundle is unpacked through VirtualFS and gets a `bundle.json`; a model gets its `model.json` last, so a half-installed model never counts as installed. | `InstallModel`, `InstallEngine`, `Cancel`, `ListJobs` |
+| **Supervision** | `Ensure(modelId)` starts `llama-server` on a free loopback port with `--api-key-file`, waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
+| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
+
+### Storage
+
+Under the machine-local data root (`UltraCanvasDataFolder.h`: `%LOCALAPPDATA%`
+on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
+`~/.local/share` elsewhere), so the gigabytes never roam with a profile:
+
+```
+<root>/UltraAI/
+├── engines/<engine>/<version>-<platform>-<accelerator>/   an unpacked bundle, with bundle.json
+├── models/<model id>/                                      the files, with model.json
+├── downloads/*.part                                        in flight; resumed next time
+├── gallery/index.json, catalogue.json                      the refreshed copies
+├── logs/<engine>-<model>.log                               the engine's output (rotated at 4 MB)
+├── runtime.json                                            running engines: pid, port, model, started, last used
+├── runtime.key                                             the loopback API key (owner-only on POSIX)
+├── runtime-settings.json                                   the settings below
+└── user-models.json                                        models the user added
+```
+
+`RootFolder()` returns it for a settings page's *Open folder*;
+`DiskUsedBytes()` what engines and models take.
+
+### Settings
+
+`GetSettings()` / `SetSettings()`, persisted:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `policy` | `Ask` | `Never`: installs only from a settings page; `Ask`: `Ensure` installs when the caller passes `allowDownload` (the dialog's answer); `Automatic`: `Ensure` installs silently |
+| `preferredAccelerator` | `""` (Auto) | `"cpu"`, `"vulkan"`, `"metal"`, `"cuda12"`, `"rocm"` — the bundle to use when the gallery has one for this platform |
+| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` is read from beside it |
+| `idleMinutes` | 15 | stop an engine nobody used for this long (0 stops at the next sweep) |
+| `diskCapBytes` | 20 GB | an install that would exceed it fails with `QuotaExceeded` |
+| `startTimeoutSeconds` | 0 | how long a start may take; 0 scales it with the model's size (about 100 MB/s plus 20 s, at least 30 s) |
+
+### The engine's command line
+
+For `llama-server`: `--host 127.0.0.1 --port <free> --api-key-file
+<root>/runtime.key --model <file> --alias <model id>`, `--mmproj <file>`
+when the model carries an `mmproj*.gguf`, `--embeddings` for an embedding
+model, `--n-gpu-layers 999` when the model fits the GPU (0 on a CPU bundle;
+otherwise the engine's own fitting decides), `--threads` from the physical
+cores (two left for the desktop), then the gallery's `defaultArgs`
+(`--jinja`, for tool calls) and the model's `engineArgs` (`--ctx-size`,
+`--pooling`). `local_detail::BuildEngineArgs` is the one place this is
+decided.
+
+Engines reach their libraries through their own folder (`$ORIGIN` on
+Linux, the bundle's layout on macOS and Windows), so a bundle runs from
+wherever it was unpacked.
+
+### Using an engine you built yourself
+
+`LocalRuntimeOptions::engineOverrides["llama-server"]`, or the environment
+variable `ULTRAAI_LOCAL_ENGINE_LLAMA_SERVER`, names a folder holding (or
+the path of) a `llama-server` executable; the runtime uses it instead of a
+bundle and downloads no engine. A developer's own CUDA build, or a test's
+fake engine.
+
+---
+
+## The gallery index
+
+`index.json`, format version 1:
+
+```json
+{
+  "formatVersion": 1,
+  "published": "2026-10-20",
+  "engines": [{
+    "id": "llama-server",
+    "version": "b11669",
+    "license": "MIT",
+    "executable": "llama-server",
+    "serves": ["textllm", "embeddings"],
+    "defaultArgs": ["--jinja"],
+    "bundles": [
+      {"platform": "linux-x64",   "accel": "cpu",    "url": "https://...", "sha256": "...", "size": 17851611},
+      {"platform": "linux-x64",   "accel": "vulkan", "url": "https://...", "sha256": "...", "size": 30497889},
+      {"platform": "macos-arm64", "accel": "metal",  "url": "https://...", "sha256": "...", "size": 12191582, "minOs": "13.3"},
+      {"platform": "win-x64",     "accel": "cuda12", "url": "https://...", "sha256": "...", "size": 254000000, "optional": true}
+    ]
+  }]
+}
+```
+
+Platforms are `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
+`win-x64`, `win-arm64`. A bundle marked `optional` is offered, never
+chosen by Auto. `minOs` is honoured on macOS. A bundle is an archive
+(`.tar.gz` or `.zip`) holding the executable at any depth; the runtime
+finds it by name, breadth first.
+
+## The model catalogue
+
+`catalogue.json`, format version 1:
+
+```json
+{
+  "formatVersion": 1,
+  "published": "2026-10-20",
+  "models": [{
+    "id": "qwen3-4b-q4",
+    "displayName": "Qwen3 4B (Q4_K_M)",
+    "description": "...",
+    "capability": "textllm",
+    "engine": "llama-server",
+    "license": "Apache-2.0",
+    "files": [{"name": "Qwen3-4B-Q4_K_M.gguf", "url": "https://huggingface.co/.../resolve/main/...", "sha256": "", "size": 2497000000}],
+    "requires": {"memoryBytes": 4000000000, "gpuMemoryBytes": 3500000000},
+    "features": {"contextWindow": 32768, "tools": true, "vision": false, "embeddingDimensions": 0},
+    "engineArgs": ["--ctx-size", "8192"],
+    "tags": ["chat", "tools", "recommended"]
+  }]
+}
+```
+
+A file whose `sha256` is empty is verified against the hash its host
+reports: for a Hugging Face `resolve` URL the runtime asks the repository's
+tree API for the file's LFS hash and size before downloading, and records
+them in the model's `model.json`. The built-in catalogue ships that way
+until its hashes are pinned; a catalogue entry with a hash is verified
+against that hash only. `requires` drives the fit; without it, 1.2 x the
+files' size stands in. `tags` holding `recommended` puts a model first in
+`Recommend()` for its capability.
+
+The built-in catalogue (2026-10-20): Qwen3 4B, 1.7B and 8B for chat,
+Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
+embeddings.
+
+---
+
+## The `local` provider
+
+`CreateTextLLM` / `CreateEmbeddings` with `providerId = "local"`, or an
+empty `providerId` when nothing names another provider: `local` is first
+in `KnownLocalProviders` for `textllm`, `embeddings` and `translator`.
+
+| Config field | Meaning |
+|---|---|
+| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for `Recommend(capability)` |
+| `providerOptions["allow_download"]` | bool: the first call may install under the *Ask* policy |
+| `timeoutMs`, other `providerOptions` | passed to the OpenAI-wire delegate |
+| `apiKey`, `apiKeyVaultRef`, `baseUrl` | ignored: the runtime's endpoint and key are used |
+
+A request's `model` names another local model; each gets its own engine.
+`GetCapabilities()` lists the installed models first and then the
+catalogue's for this computer with ` (not installed)` in the name, each
+`runsLocally`, so a picker shows both. `RawProvider()` is the OpenAI
+delegate of the default model once it has been used.
+
+Errors: `ModelNotFound` / `"needs-install"` (a download is needed and not
+allowed), `ModelNotFound` / `"too-large"` (the model does not fit this
+computer's memory), `ProviderError` with the log's last lines (the engine
+ended while starting), `ProviderError` / `"start-failed"` (two failed
+starts; stop or reinstall the model to try again), `Timeout` (the engine
+did not answer in time), `NetworkError` (a download failed; the `.part`
+is kept for a resume), `QuotaExceeded` (the disk cap).
+
+---
+
+## For a settings page
+
+```cpp
+LocalRuntime& rt = LocalRuntime::Instance();
+
+for (const LocalModelInfo& m : rt.ListModels()) {
+    // m.displayName, m.capability, m.license, m.sizeBytes,
+    // m.fit (Recommended / RunsOnCpu / TooLarge / Unknown),
+    // m.installed, m.running, m.installedPath
+}
+for (const EngineInfo& e : rt.ListEngines()) {
+    for (const EngineBundleInfo& b : e.bundles) {
+        // b.accelerator, b.sizeBytes, b.installed, b.recommended, b.optional
+    }
+}
+const std::string job = rt.InstallModel("qwen3-4b-q4", [](const InstallProgress& p) {
+    // p.state: Queued, Downloading (p.bytesDone / p.bytesTotal), Verifying,
+    // Unpacking, Done, Failed (p.error), Cancelled — on the runtime's worker
+});
+rt.Cancel(job);
+rt.RemoveModel("qwen3-4b-q4");
+rt.RemoveEngine("llama-server", "vulkan");
+for (const RunningEngineInfo& r : rt.ListRunning()) { /* r.modelId, r.baseUrl, r.processId */ }
+rt.StopAll();
+```
+
+Progress callbacks fire on the runtime's worker thread: hand them to the
+UI thread before touching an element.
+
+---
+
+## Testing
+
+`UltraAI/tests/test_local_runtime.cpp` runs against `fake_engine.cpp`, a
+stand-in for `llama-server` that takes the same command line and serves
+`/health`, `/v1/models`, `/v1/chat/completions` and `/v1/embeddings` over
+loopback: the built-in data parses; the fit and the bundle choice; an
+install through an injected copy fetcher (progress, a wrong hash refused,
+a failed transfer resumed, `model.json` last); `Ensure` under each policy,
+the shared record found by a second runtime, the idle stop, the restart
+marker; and the `local` provider's chat and embeddings end to end. Nothing
+in it touches the network. `ULTRACANVAS_BUILD_ULTRAAI_TESTS=ON` builds the
+module's suite in-tree and CI runs it with the rest.
+
+To try the real engine on a machine with no model installed:
+
+```cpp
+LocalRuntimeSettings s = LocalRuntime::Instance().GetSettings();
+s.policy = DownloadPolicy::Automatic;
+LocalRuntime::Instance().SetSettings(s);
+// then any CreateTextLLM(cfg) with cfg.providerId = "local"
+```
+
+## Limits (0.1.0)
+
+- Chat and embeddings only: speech-to-text, image generation and
+  text-to-speech engines are the proposal's phase 3.
+- One `llama-server` process per model; the router mode (one process for
+  every GGUF) and the `UltraAIHost` supervisor are phase 2. An engine
+  started by an application that exits stays until an idle sweep from any
+  application stops it.
+- The engine bundles are llama.cpp's own release archives, pinned by hash;
+  the UltraCanvas-built, signed gallery is phase 0 of the proposal and
+  replaces the built-in index without a format change. On macOS the
+  upstream archives are built for 13.3 and later, and a downloaded
+  executable runs as it is (UltraNet sets no quarantine attribute).
+- The catalogue's hashes are taken from Hugging Face at install time until
+  they are pinned; sizes are approximate until then.
+- The gallery index is not yet signed; it is fetched over TLS from a URL
+  the settings control.
+- No framework dialog and no dashboard page yet (phase 2 of the plan): an
+  application reads `"needs-install"` and asks with its own UI, or sets
+  `allow_download` after asking once.
 
 ==============================================================================
 FILE: Docs/Modules/UltraAI/README.md
@@ -83648,12 +85033,16 @@ tests run without any network or external model.
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
+| `local` | `ITextLLM`, `IEmbeddings` | local — an engine the runtime downloads, starts and supervises; nothing to install | `ULTRAAI_LOCAL_RUNTIME` (ON; in-tree only) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
 | *text-LLM translator* | `ITranslator` through any `ITextLLM` above, under that provider's id (`anthropic`, `openai`, `qwen`, `llama-cpp`, …) | wherever the LLM runs | always built (`UltraAITextLLMTranslator.h`) |
 
 `Docs/Modules/UltraAI/Adapters.md` documents each adapter's configuration,
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
 user installs; UltraAI talks to them over HTTP and links none of their code.
+The `local` provider needs no such program: the local runtime
+(`Docs/Modules/UltraAI/LocalRuntime.md`) fetches llama.cpp's server and a
+model from a gallery and a catalogue on demand and runs them itself.
 
 ---
 
@@ -83701,6 +85090,7 @@ UltraAI/
 │   ├── UltraAIMusicGen.h
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
+├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -83708,6 +85098,7 @@ UltraAI/
 │   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
 │   ├── minimax/                   # MiniMax / Hailuo video, image and speech
 │   ├── elevenlabs/                # ElevenLabs speech (direct or via a hosted relay)
+│   ├── local/                     # The `local` provider on the runtime (ITextLLM + IEmbeddings)
 │   ├── qwen/                      # Qwen on a local OpenAI-compatible server
 │   ├── comfyui/                   # Local ComfyUI image + video generation
 │   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
@@ -83786,6 +85177,7 @@ cmake -S UltraAI -B build \
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
+| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server` the runtime downloads from a hash-verified gallery, starts on loopback with a key, shares across applications and stops when idle; curated model catalogue, user GGUFs, Hugging Face files; hardware fit) | Complete (v0.1 — chat and embeddings; no dashboard page or framework dialog yet) |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
@@ -83801,6 +85193,12 @@ cmake -S UltraAI -B build \
   threading model, adapter checklist.
 * [`Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
+* [`../Docs/Modules/UltraAI/LocalRuntime.md`](LocalRuntime.md) —
+  the local runtime as built: the gallery and catalogue formats, storage,
+  settings, the engine's command line, the `local` provider, testing.
+* [`../Docs/Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md) —
+  the design it follows: why separate processes, why a gallery of our own,
+  the phases still to come (UI, speech, images, the supervisor process).
 
 ---
 
@@ -84155,11 +85553,39 @@ Removed /up/.big.bin.part
 ```
 
 A part the server will not remove stays recorded for the next run; one whose
-server did not answer is asked again straight after a later call gets
-through (`kPendingCleanupTriesPerRun` times a run), and a listing then
-leaves out what was removed. An application has nothing to do for any of
-this; one that asks before it quits can say that what an upload sent is
-removed later (`partialUploadsRemain` on the account's provider).
+server did not answer - or whose step the thread called off, quitting - is
+asked again straight after a later call gets through
+(`kPendingCleanupTriesPerRun` times a run), and a listing then leaves out
+what was removed. An application has nothing to do for any of this; one that
+asks before it quits can say that what an upload sent is removed later
+(`partialUploadsRemain` on the account's provider).
+
+### An upload complete before its rename
+
+The connection can go - or the application quit - between the last byte and
+the rename. The whole file is then under the part name, and it is put in
+place rather than removed: the upload notes its record as complete
+(`PendingUpload::completedAt`; its error says *it is given that name the
+next time this account reaches the server*), and a part the folder lists at
+the file's full size counts as complete too - a process that ended in
+between (`IsCompletePart`). The next call that reaches the server gives it
+its name (`PlaceCompletePart`):
+
+| At the name | What happens |
+|---|---|
+| nothing (an old file set aside or not) | the part takes the name; a set-aside old file is removed |
+| a file, the upload finished within the hour (`kCompleteUploadReplacesSeconds`) | it replaces the file, as the upload was doing (`PutUploadInPlace`) |
+| a file, the upload older - or a folder | kept beside it as *name (2).ext* (`UploadKeptName`): what has the name may have been written since |
+| the server refuses the rename | the part is removed, as before |
+
+```text
+An upload of "big.bin" was complete when the server stopped answering, before it had its name: giving it that name (/up/.big.bin.part)
+"big.bin" is in place
+```
+
+A step that is called off or not answered is never taken for a refusal: the
+account does not go over to uploading straight to its names, and the record
+waits for the server to answer.
 
 ## Quick examples
 
@@ -84251,7 +85677,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault; the uploads' records: `AddPendingUpload`, `RemovePendingUpload`, `ListPendingUploads`, `SetUploadsDirect`, `UploadsDirect`), `MakeAccountId` |
-| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun` |
+| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun`; a complete upload whose rename was cut off: `IsCompletePart`, `CompletePartReplaces`, `kCompleteUploadReplacesSeconds`, `UploadKeptName`, `AtName` / `CompletePart` / `PlaceCompletePart` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory); `TransfersInProgress` - the uploads and downloads under way, for a host that asks before it quits |
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
@@ -84278,9 +85704,11 @@ large-upload paths are exercised with small thresholds
 (`SetUploadLimits(simpleLimit, chunkSize)` on the three hosted providers),
 so a 25-byte file walks the same start / append / finish, upload-session or
 resumable code as a multi-gigabyte one. The FTP uploads' part names, their
-records and the cleanup run against a fake FTP server that can refuse
-renames, deletes or dot names, hide dot names from a listing, break an
-upload part way or not answer (`test_uploads.cpp`). Chunks are read from disk as they are
+records, the cleanup and the placing of a complete upload whose rename was
+cut off run against a fake FTP server that can refuse renames, deletes or
+dot names, hide dot names from a listing, break an upload part way, stop
+answering once an upload is in, call a rename off or not answer at all
+(`test_uploads.cpp`). Chunks are read from disk as they are
 sent; a large upload never holds more than one chunk in memory.
 
 ## Roadmap
@@ -85443,18 +86871,20 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, and the PostgreSQL driver from Stage 2.**
+> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
+> introspection, streaming cursors, per-statement scripts and cancelling.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 14 tests). The **PostgreSQL** driver
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 56 tests, the PostgreSQL ones
+> against a live server where one is configured). The **PostgreSQL** driver
 > (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
 > found at configure time; it takes `?` placeholders, verifies TLS by default
 > and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
 > it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
-> networked drivers (MySQL, …), async queries, pooling and streaming cursors
-> described below are still the Stage 2/3 plan.
+> networked drivers (MySQL, …), async queries and pooling described below
+> are still the Stage 2/3 plan.
 
 ---
 
@@ -85582,8 +87012,8 @@ App / Module (UltraMail, ULTRA Store, UltraAI, ...)
   transactions, streaming cursors and async queries. Zero is invalid.
 - `UltraDbResult` for every blocking operation — explicit error code,
   message, driver, SQLSTATE, affected-row count, timing.
-- Sync **and** async variants for queries; cancellation via
-  `UltraDb_CancelQuery(handle)`.
+- Sync **and** (planned) async variants for queries; cancellation via
+  `UltraDb_CancelQuery(connection)` from any thread.
 - Engine additions are **driver-only** — the core does not change to
   support a new DBMS.
 
@@ -85629,19 +87059,37 @@ UltraDb_ExecInTx(tx, "UPDATE folders SET uidnext = ? WHERE name = ?", { next, "I
 UltraDb_ExecInTx(tx, "INSERT INTO messages(...) VALUES(...)", { ... });
 UltraDb_Commit(tx);        // or UltraDb_Rollback(tx)
 
-// Async query — result delivered on a worker thread, marshal to UI.
+// Async query (planned, Stage 2) — result delivered on a worker thread.
 UltraDbHandle h = UltraDb_QueryAsync("crm",
     "SELECT * FROM contacts WHERE name ILIKE ?", { "%" + term + "%" },
     [](const UltraDbResultSet& rs) {
         // runs on the UltraDatabase worker pool — post to UI thread
     });
 
-// Streaming cursor for large result sets (rows pulled on demand).
-UltraDbHandle cur = UltraDb_OpenCursor("crm", "SELECT * FROM events", {});
-UltraDbRow row;
-while (UltraDb_FetchRow(cur, row)) { /* ... */ }
+// Streaming cursor for large result sets: a page at a time, never all of it.
+UltraDbHandle cur = UltraDb_OpenCursor("crm", "SELECT * FROM events WHERE day > ?", { since });
+UltraDbResultSet page;
+bool exhausted = false;
+while (!exhausted && UltraDb_FetchRows(cur, 1000, page, exhausted))
+    for (const auto& row : page) { /* ... */ }
 UltraDb_CloseCursor(cur);
+
+// A pasted script, every statement with its own result (a SQL console).
+std::vector<UltraDbStatementResult> results;
+UltraDb_ExecBatch("crm", script, results);   // stops after the first failure
+
+// Stop it from the UI thread: the running call returns Cancelled.
+UltraDb_CancelQuery("crm");
 ```
+
+**Cursors** step the statement as pages are asked for on SQLite; on
+PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
+connection is free for other statements between pages, `WITHOUT HOLD`
+inside one, where they end with it. **Scripts** are split as psql splits
+them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
+bodies) and by SQLite itself on SQLite; each statement reports its text,
+outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+both safe from another thread while the statement holds the connection.
 
 **Values.** `UltraDbValue` is a small variant: null, bool, int64,
 double, text (UTF-8), blob (bytes), and timestamp. Typed accessors
@@ -85652,6 +87100,52 @@ rules. Column access by name or index.
 versioned list of migration steps inside a transaction and records the
 applied version in a `ultradb_schema_version` table, so an app brings
 its own schema up to date on launch regardless of engine.
+
+### Introspection, names and column metadata
+
+`UltraDatabaseSchema.h` asks the engine what a database holds — the first
+step of the UltraDBAdmin plan (`Docs/Research/UltraDBAdminDesignProposal.md`,
+stage 0) and what anything that reads a schema it did not write needs. One
+engine-neutral model, filled by each driver from its own catalog: SQLite's
+`sqlite_master` and table-valued pragmas, PostgreSQL's `pg_catalog`.
+
+```cpp
+std::vector<std::string> schemas;               // SQLite: "main", "temp", ATTACHed
+UltraDb_ListSchemas("crm", schemas);            // PostgreSQL: namespaces, minus pg_*
+
+std::vector<UltraDbObjectSummary> objects;      // tables, views, materialized views,
+UltraDb_ListObjects("crm", "public", objects);  // foreign tables, sequences
+
+UltraDbTableSchema t;                           // columns (type, null, default, identity,
+UltraDb_DescribeTable("crm", "public", "orders", t);  // generated, collation, comment),
+                                                // primary key, foreign keys with actions,
+                                                // indexes, triggers, view text, size
+
+// A NAME cannot be bound, so it is quoted - by the engine's rules, through
+// the one function that does it. Never splice a name in any other way.
+std::string table;
+if (UltraDb_QuoteQualifiedName("crm", t.schema, t.name, table))
+    UltraDb_Query("crm", "SELECT * FROM " + table + " WHERE id > ? LIMIT ?", { lastId, 50 }, rs);
+
+// What each result column is and where it came from.
+for (const UltraDbColumnInfo& c : rs.ColumnInfo())
+    ;  // c.declaredType ("numeric(12,2)"), c.sourceSchema / sourceTable / sourceColumn
+```
+
+`UltraDb_ListConnections()` lists the registered connection names. A driver
+that cannot introspect answers `Unsupported`. On PostgreSQL the column
+metadata costs one catalog query per table the first time and nothing after
+(cached per connection, emptied by DDL on that connection; inside a
+transaction the lookup runs under a savepoint, so it cannot abort the
+caller's work). SQLite reports a column's source table where the library
+has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
+
+**Numbers.** PostgreSQL `numeric` comes back as `Text`, exactly as stored
+(`AsDouble` still converts it for a caller that wants a double); `float8`
+and `float4` as `Double`. Numbers cross the driver dot-decimal in both
+directions whatever the process's locale, and `AsString()` of a `Double` is
+dot-decimal too: the shortest text that reads back exactly (`3.14`, not
+`3,140000`).
 
 ---
 
@@ -85768,11 +87262,13 @@ headless data module usable from any ULTRA OS process.
 | Connection registry (lazy open) | Implemented |
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
-| Test suite (14 tests) | Passing |
+| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
+| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
+| Test suite (56 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver | Planned (Stage 2) |
-| Async + streaming cursors | Planned (Stage 2) |
+| Async queries | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
 **Suggested rollout** (mirrors UltraNet's staged approach):
@@ -85864,7 +87360,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | `freedesktop-presenter` adapter (GDBus): applications' notifications on screen | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp` |
-| `windows-presenter` adapter (notification-area balloons) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp` |
+| `windows-presenter` adapter (toasts under the poster's AppUserModelID, notification-area balloons before Windows 10 1903) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp`, `UltraMessageWindowsToasts.cpp` |
 | `macos-presenter` adapter (Notification Center, osascript outside a bundle) | `UltraCanvas/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm` |
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
@@ -86126,16 +87622,30 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   would draw it: mode `none`, `Present` declines, and a toast host on the bus
   draws it instead (§3.8); the state says so, with the remedy for a session
   without one.
-- **`windows-presenter`** (every Windows build) shows a notification-area
-  balloon (`Shell_NotifyIconW`, `NIF_INFO`), which Windows 10 and 11 present as
-  a toast and keep in the Action Center; focus assist is respected, `critical`
-  shows the warning icon and `low` makes no sound. It needs no package
-  identity, shortcut or registration. Windows heads the toast with the name of
-  the process hosting the broker, so another application's notification carries
-  its `appName` in the title. A click is the `"default"` action; the tray icon
-  the click needs exists from the first balloon until it is clicked or ten
-  minutes have passed. The `windows-notification-listener` skips the toasts
-  the presenter put up (`Internal::NotePresented` / `WasPresented`).
+- **`windows-presenter`** (every Windows build) shows a toast under the
+  posting application's own AppUserModelID - its `appId`, as
+  `org.ultraos.ultramail` - so Windows heads it with that application's name
+  and icon, not the broker host's (mode `toast`; Windows 10 1903 and later, in
+  a build with C++/WinRT). The ID is registered for the user under
+  `HKCU\Software\Classes\AppUserModelId\<appId>` (`DisplayName` = `appName`,
+  `IconUri` = the icon file), which Windows accepts from a program with no
+  package identity and no Start-menu shortcut; the key stays, like an
+  installed application's. The toast carries the icon as its logo, the
+  notification's actions as up to three buttons, and is silent for `low`;
+  focus assist and the user's per-application switch in Settings are
+  respected (an application turned off shows nothing, not a balloon). A click
+  is the `"default"` action, a button its action, a dismissal
+  `system.notification.dismissed`, while the broker runs; an update
+  (`UltraMsgFlag_Replace`) changes the toast in place. Where toasts are not
+  available, or one cannot be shown, it is a notification-area balloon
+  (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
+  registration: Windows heads it with the name of the process hosting the
+  broker, so another application's notification carries its `appName` in the
+  title, and its picture is the notification's icon file; `critical` shows the
+  warning icon. A balloon's click is the `"default"` action; the tray icon the
+  click needs exists from the first balloon until it is clicked or ten minutes
+  have passed. The `windows-notification-listener` skips what the presenter
+  put up (`Internal::NotePresented` / `WasPresented`).
 - **`macos-presenter`** (every macOS build) hands the notification to
   Notification Center through the UserNotifications framework: a banner that
   stays in the Notification Center list, the notification's other actions as
@@ -87110,11 +88620,14 @@ the call runs - as bytes move, and about once a second while none do, so a
 stalled transfer is called off as promptly as a busy one; once it answers
 true the call ends as `UltraNetResultCode::Cancelled` with the message
 *called off*, and a listing is not tried again in another format. It runs on
-the calling thread inside libcurl and must answer at once (an atomic flag). As
-with the log, a caller behind a layer that builds the options sets one for
-its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
-UltraFiler's drive worker uses it to stop a preview download the user is no
-longer waiting for.
+the calling thread inside libcurl and must answer at once (an atomic flag).
+Beside it every FTP call - listings and `DELE` as well as transfers - asks its
+thread's abort check, `UltraNet_SetThreadAbortCheck(fn)` (`UltraNetCore.h`,
+which returns the previous one), the same check the synchronous HTTP requests
+ask: a caller behind a layer that builds the options, and a thread that wants
+every call it makes stopped at once, set that one check. UltraFiler's drive
+worker uses it to stop a preview download the user is no longer waiting for,
+on an FTP drive or a cloud drive, and every transfer when the window closes.
 
 What a failure says, whether or not anyone reads the log:
 
@@ -87154,7 +88667,15 @@ remove a folder - is the exception on FTP: it always logs in on a connection
 of its own and closes it, because libcurl sends those commands before it
 changes folder, and they name the entry from the folder a login lands in; on
 a kept connection that a listing left in a subfolder they would name another
-file.
+file. A server that takes one connection per address or user (vsftpd's
+`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
+away - *421 There are too many connections from your internet address.*,
+or a 530 saying the maximum number of clients is reached - while the
+thread's kept one is open. Turned away so before any of its commands was
+sent, the change closes the kept connection and is sent again: at once, and
+after 0.3 s and 1 s more if the server is still counting the closed one
+(the waits end early when the call is called off). The log says *The server
+takes one connection at a time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.

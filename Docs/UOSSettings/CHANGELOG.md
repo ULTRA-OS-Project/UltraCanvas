@@ -1,3 +1,14 @@
+#### 2026-10-20 *0.6.0*
+- **Appearance → Emoji: colour, black and white, or the system's.** A new
+  page chooses how every application draws emoji: *Colour* (Noto Color Emoji,
+  the default), *Black and white* (Noto Emoji, in the text's colour) or
+  *System* (the computer's own emoji font, Noto Color Emoji where it has
+  none). Both fonts now ship with ULTRA OS, so an emoji - the 👤 at the start
+  of a LinkedIn subject in UltraMail - no longer draws as a box of hex digits
+  on a computer without an emoji font. Saved to `Emoji.conf` at once;
+  applications started afterwards use it (framework changelog:
+  `bundled-emoji-fonts`).
+
 #### 2026-10-15 *0.5.0*
 - **Desktop → At sign-in (Windows) is a choice of three:** *The Windows
   desktop*, *UltraDesktop beside Explorer* (what the switch did before:

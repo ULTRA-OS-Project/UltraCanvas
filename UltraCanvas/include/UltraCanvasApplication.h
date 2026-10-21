@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.10.0 - GenerateFontAliasConfig: the generic family aliases as a fontconfig document
 // Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
 // Version: 1.8.1 - IsKeyPressed checks the key code against the table (KeyStateCount)
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
@@ -46,6 +47,15 @@ namespace UltraCanvas {
     // resources dir (GetResourcesDir), absolute and ending in a separator, so
     // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
+
+#if !defined(__APPLE__)
+    // The platform's generic family aliases - "sans-serif", "sans", "serif",
+    // "monospace" and Pango's "emoji" onto real families - as a <fontconfig>
+    // document of <alias> elements alone. The fonts.conf the framework writes
+    // where the system has none carries the same aliases; a configuration
+    // made another way loads this into it (FcConfigParseAndLoadFromMemory).
+    std::string GenerateFontAliasConfig();
+#endif
 
     // Every font family this process can set text in: the fonts installed on
     // the system (TrueType, OpenType, Type 1, ...) with the bundled ones and

@@ -145,6 +145,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | Colour (wheel, SV area, hue × lightness field or colour + intensity sliders; optional design selector) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
+| Palette rows under a colour picker - add schemes from a gallery (up to 256-colour GIF palettes), remove rows, set an entry with a right click | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
@@ -225,7 +226,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two to four item sets crossed in an L, T, X or Y, or a QFD House of Quality, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, a QFD House of Quality, or three at once in a C (cube), cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |

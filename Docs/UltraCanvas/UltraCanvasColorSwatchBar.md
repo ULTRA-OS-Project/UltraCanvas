@@ -19,7 +19,7 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.0.0
+**Version**: 1.2.0
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -33,6 +33,10 @@ colours nobody can reach.
 - ✅ `onColorSelected` / `onCheckeredSelected` callbacks; right (Adjust) click
   raises `onColorAdjustSelected` — the background colour of a
   foreground/background picker
+- ✅ Optional **wrapping** (`SetWrap`) for large palettes — up to a 256-colour
+  GIF palette as a compact block; `HeightForWidth` sizes the element
+- ✅ `SetColorAt` edits one entry; `onColorContextClicked` reports a right
+  click with the entry's index, for a host that edits it in a popup
 - ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
 
 ## Quick Start
@@ -126,6 +130,26 @@ swatch) and let the layout stretch it across the width. The swatch edge is
 | Narrow | Swatches shrink towards `minSwatchSize`; below that the gaps close and the swatches keep shrinking, so every colour stays reachable |
 | Short | Swatches shrink to the height; the row stays a single line |
 
+### Wrapping
+
+A palette too large for one row wraps instead of shrinking to hairlines:
+
+```cpp
+auto gif = std::make_shared<UltraCanvasColorSwatchBar>("gif", 230, 10);
+std::vector<Color> colors(256, Colors::Black);   // a GIF's palette
+gif->SetColors(colors);
+gif->SetWrap(true);
+gif->SetElementSize(Size2Df(230, gif->HeightForWidth(230)));
+```
+
+In wrap mode the swatches stay at least `minSwatchSize`; the bar takes as many
+lines as that needs, shares the colours out evenly over them (16 on two lines
+are 8 + 8), and makes each swatch as large as the line's width allows up to
+`swatchSize`. The block starts at the top-left corner. `HeightForWidth(w)` is
+the height all the lines take at width `w`.
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+uses it for its palette rows.
+
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
 
@@ -135,6 +159,9 @@ needs to read as a bar of its own.
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+// right click with the entry's index and the window position; when set it
+// takes the right click instead of onColorAdjustSelected
+std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
 ```
 
 A right click does not move the selection outline (that tracks left clicks)

@@ -17,9 +17,14 @@
 // page at the size asked for, drawn there rather than stretched - an edge on
 // the page stays one sharp pixel step at twenty times the size - each side
 // scaled on its own, the background under it, and no page is an error.
+//
+// A password-protected PDF (Tests/fixtures/pdf-aes256-locked.pdf, "tulip"):
+// without its password it reports passwordRequired - not just "damaged" -
+// a wrong one passwordWrong, and the right one measures and rasterizes it.
+// Version: 1.3.0 - a password-protected PDF
 // Version: 1.2.0 - RasterizeVectorDocument
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
@@ -307,6 +312,42 @@ int main() {
     auto huge = RasterizeVectorFile(svgPath, options, error);
     Check(huge == nullptr && !error.empty(),
           "a 10-gigapixel request is refused with a reason, not attempted");
+
+    // ===== A PASSWORD-PROTECTED PDF =====
+    {
+        const std::string pdf = std::string(UC_FIXTURE_DIR) + "/pdf-aes256-locked.pdf";
+        if (!IsVectorGraphicsPath(pdf)) {
+            std::cout << "  [SKIP] this build has no PDF rasterizer\n";
+        } else {
+            const VectorSourceInfo locked = InspectVectorFile(pdf);
+            Check(!locked.ok && locked.passwordRequired && !locked.passwordWrong,
+                  "a protected PDF without its password says it needs one (" + locked.error + ")");
+            const VectorSourceInfo wrong = InspectVectorFile(pdf, "tulpi");
+            Check(!wrong.ok && wrong.passwordRequired && wrong.passwordWrong,
+                  "a wrong password is reported as wrong");
+            const VectorSourceInfo right = InspectVectorFile(pdf, "tulip");
+            Check(right.ok && right.naturalWidth == 200 && right.naturalHeight == 200,
+                  "the right password measures the page: 200 x 200");
+
+            VectorRasterOptions pdfOptions;
+            pdfOptions.width = 100;
+            error.clear();
+            Check(!RasterizeVectorFile(pdf, pdfOptions, error) && !error.empty(),
+                  "rasterizing it without the password is refused with a reason");
+            pdfOptions.password = "tulip";
+            error.clear();
+            auto page = RasterizeVectorFile(pdf, pdfOptions, error);
+            Check(page && page->GetWidth() == 100 && page->GetHeight() == 100,
+                  "with its password it rasterizes at 100 x 100: " + error);
+            if (page) {
+                // The blue square: 40..160 of 200 pt, so 20..80 of 100 px.
+                const RasterPixel middle = page->GetPixel(50, 50);
+                Check(middle.b > 180 && middle.r < 80 && middle.a == 255, "and draws its page");
+            }
+            const VectorSourceInfo plain = InspectVectorFile(svgPath, "tulip");
+            Check(plain.ok && !plain.passwordRequired, "a password given to a file without one is ignored");
+        }
+    }
 
     // ===== A FILE NOTHING READS =====
     error.clear();

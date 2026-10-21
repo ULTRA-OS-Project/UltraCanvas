@@ -14,6 +14,7 @@
 #include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace UltraCanvas {
 
@@ -107,10 +108,31 @@ namespace UltraCanvas {
     }
 
     ChartDataBounds UltraCanvasChartElementBase::CalculateDataBounds() {
+        ChartDataBounds bounds = CalculateRawDataBounds();
+        if (!bounds.hasData) return bounds;
+        PadDataBounds(bounds, true, true, true);
+        return bounds;
+    }
+
+    void UltraCanvasChartElementBase::PadDataBounds(ChartDataBounds& bounds, bool padX, bool padMinY, bool padMaxY) {
+        const double rangeX = bounds.maxX - bounds.minX;
+        const double rangeY = bounds.maxY - bounds.minY;
+        if (padX && rangeX > 0) {
+            bounds.minX -= rangeX * 0.05;
+            bounds.maxX += rangeX * 0.05;
+        }
+        if (rangeY > 0) {
+            if (padMinY) bounds.minY -= rangeY * 0.05;
+            if (padMaxY) bounds.maxY += rangeY * 0.05;
+        }
+    }
+
+    ChartDataBounds UltraCanvasChartElementBase::CalculateRawDataBounds() const {
         ChartDataBounds bounds;
         if (!dataSource || dataSource->GetPointCount() == 0) {
             return bounds;
         }
+        bounds.hasData = true;
 
         // Initialize with first point
         auto firstPoint = dataSource->GetPoint(0);
@@ -125,19 +147,6 @@ namespace UltraCanvas {
             bounds.minY = std::min(bounds.minY, point.y);
             bounds.maxY = std::max(bounds.maxY, point.y);
         }
-
-        // Add padding
-        double rangeX = bounds.maxX - bounds.minX;
-        double rangeY = bounds.maxY - bounds.minY;
-        if (rangeX > 0) {
-            bounds.minX -= rangeX * 0.05;
-            bounds.maxX += rangeX * 0.05;
-        }
-        if (rangeY > 0) {
-            bounds.minY -= rangeY * 0.05;
-            bounds.maxY += rangeY * 0.05;
-        }
-
         return bounds;
     }
 
@@ -182,20 +191,39 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::RenderGrid(IRenderContext* ctx) {
         ctx->SetStrokePaint(gridColor);
         ctx->SetStrokeWidth(1.0f);
+        ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+        const double top = cachedPlotArea.y, bottom = cachedPlotArea.GetBottom();
+        const double left = cachedPlotArea.x, right = cachedPlotArea.GetRight();
 
-        // Vertical grid lines using existing DrawLine
-        int numVerticalLines = 10;
-        for (int i = 1; i < numVerticalLines; ++i) {
-            double x = cachedPlotArea.x + (i * cachedPlotArea.width / numVerticalLines);
-            ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
+        // The grid lies on the ticks the axes label, so every line reads as
+        // a value. Lines on the plot's own border are left to the border.
+        if (useIndexBasedPositioning && dataSource) {
+            const size_t count = dataSource->GetPointCount();
+            for (size_t i = 0; i < count; i += GetXAxisLabelStep()) {
+                const double x = GetXAxisLabelPosition(i, count);
+                if (x <= left + 0.5 || x >= right - 0.5) continue;
+                ctx->DrawLine({x, top}, {x, bottom});
+            }
+        } else {
+            for (double value : GetXAxisTicks().values) {
+                const double x = transform.DataToScreenX(value);
+                if (x <= left + 0.5 || x >= right - 0.5) continue;
+                ctx->DrawLine({x, top}, {x, bottom});
+            }
         }
+        for (double value : GetYAxisTicks().values) {
+            const double y = transform.DataToScreenY(value);
+            if (y <= top + 0.5 || y >= bottom - 0.5) continue;
+            ctx->DrawLine({left, y}, {right, y});
+        }
+    }
 
-        // Horizontal grid lines using existing DrawLine
-        int numHorizontalLines = 8;
-        for (int i = 1; i < numHorizontalLines; ++i) {
-            double y = cachedPlotArea.y + (i * cachedPlotArea.height / numHorizontalLines);
-            ctx->DrawLine({cachedPlotArea.x, y}, { cachedPlotArea.x + cachedPlotArea.width, y});
-        }
+    size_t UltraCanvasChartElementBase::GetXAxisLabelStep() const {
+        // Labels for at most a dozen of the points in view.
+        if (!dataSource) return 1;
+        const int maxLabels = 12;
+        const double pointsInView = static_cast<double>(dataSource->GetPointCount()) * (xViewEnd - xViewStart);
+        return static_cast<size_t>(std::max(1, static_cast<int>(pointsInView) / maxLabels));
     }
 
     void UltraCanvasChartElementBase::RenderAxes(IRenderContext* ctx) {
@@ -264,9 +292,7 @@ namespace UltraCanvas {
 
             // Determine number of labels to show based on available space
             // (the points in view, when zoomed)
-            int maxLabels = 12;
-            double pointsInView = static_cast<double>(dataPointCount) * (xViewEnd - xViewStart);
-            int labelStep = std::max(1, static_cast<int>(pointsInView) / maxLabels);
+            const size_t labelStep = GetXAxisLabelStep();
 
             for (size_t i = 0; i < dataPointCount; i += labelStep) {
                 // Calculate X position - must match GetDataPointScreenPosition logic
@@ -299,18 +325,18 @@ namespace UltraCanvas {
                 }
             }
         } else {
-            // Use numeric values with actual data coordinates
-            int numXTicks = 8;
-            for (int i = 0; i <= numXTicks; ++i) {
-                double x = cachedPlotArea.x + (i * cachedPlotArea.width / numXTicks);
+            // Numeric x: a tick at every whole step inside the visible range
+            ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+            const ChartAxisTicks xTicks = GetXAxisTicks();
+            for (double labelValue : xTicks.values) {
+                double x = transform.DataToScreenX(labelValue);
                 double tickY = cachedPlotArea.y + cachedPlotArea.height;
 
                 // Draw tick mark
                 ctx->DrawLine({x, tickY}, { x, tickY + 5});
 
                 // Draw label
-                double labelValue = cachedDataBounds.minX + (i * (cachedDataBounds.maxX - cachedDataBounds.minX) / numXTicks);
-                std::string label = FormatAxisLabel(labelValue);
+                std::string label = xTicks.Format(labelValue);
 
                 if (rotateXAxisLabels) {
                     ctx->PushState();
@@ -319,22 +345,23 @@ namespace UltraCanvas {
                     ctx->DrawText(label, {0, 0});
                     ctx->PopState();
                 } else {
-                    ctx->DrawText(label, Point2Dd (x - 4, tickY + 8));
+                    Size2Di txtSize = ctx->GetTextLineDimensions(label);
+                    ctx->DrawText(label, Point2Dd(x - txtSize.width / 2.0, tickY + 8));
                 }
             }
         }
 
-        int numYTicks = 6;
-        for (int i = 0; i <= numYTicks; ++i) {
-            double y = cachedPlotArea.y + cachedPlotArea.height - (i * cachedPlotArea.height / numYTicks);
+        // Y: a tick at every whole step inside the value range
+        ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+        const ChartAxisTicks yTicks = GetYAxisTicks();
+        for (double labelValue : yTicks.values) {
+            double y = transform.DataToScreenY(labelValue);
             double tickX = cachedPlotArea.x;
 
             // Draw tick mark using existing DrawLine
             ctx->DrawLine({tickX - 5, y}, { tickX, y});
 
-            // Draw label using existing DrawText
-            double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
-            std::string label = FormatAxisLabel(labelValue);
+            std::string label = yTicks.Format(labelValue);
             Size2Di txtSize = ctx->GetTextLineDimensions(label);
             ctx->DrawText(label, Point2Dd (tickX - txtSize.width - 8, y - (static_cast<double>(txtSize.height) / 2)));
         }
@@ -439,17 +466,89 @@ namespace UltraCanvas {
         return labelPos;
     }
 
-    std::string UltraCanvasChartElementBase::FormatAxisLabel(double value) {
-        // Simple number formatting
-        if (std::abs(value) >= 1e6) {
-            return std::to_string(static_cast<int>(value / 1e6)) + "M";
-        } else if (std::abs(value) >= 1e3) {
-            return std::to_string(static_cast<int>(value / 1e3)) + "K";
-        } else if (std::abs(value - std::round(value)) < 0.01) {
-            return std::to_string(static_cast<int>(std::round(value)));
-        } else {
-            return std::to_string(value).substr(0, 6);
+    namespace {
+        // `value` with at most `maxDecimals` decimals, trailing zeros dropped.
+        std::string TrimmedNumber(double value, int maxDecimals) {
+            char text[64];
+            std::snprintf(text, sizeof text, "%.*f", maxDecimals, value);   // locale-ok: a label the person reads
+            std::string s = text;
+            const size_t mark = s.find_first_of(".,");
+            if (mark != std::string::npos) {
+                while (!s.empty() && s.back() == '0') s.pop_back();
+                if (!s.empty() && (s.back() == '.' || s.back() == ',')) s.pop_back();
+            }
+            if (s == "-0") s = "0";
+            return s;
         }
+    }
+
+    std::string UltraCanvasChartElementBase::FormatAxisLabel(double value) {
+        // A single value (a value label, a tooltip): K and M from a thousand
+        // and a million, with one decimal when it says something - 1500 is
+        // "1.5K", not "1K" - and up to two decimals below that.
+        if (std::abs(value) >= 1e6) return TrimmedNumber(value / 1e6, 1) + "M";
+        if (std::abs(value) >= 1e3) return TrimmedNumber(value / 1e3, 1) + "K";
+        return TrimmedNumber(value, 2);
+    }
+
+    // ===== AXIS TICKS =====
+
+    double ChartNiceStep(double range, int maxTicks) {
+        if (!(range > 0.0) || !std::isfinite(range)) return 0.0;
+        maxTicks = std::max(1, maxTicks);
+        const double rough = range / maxTicks;
+        const double magnitude = std::pow(10.0, std::floor(std::log10(rough)));
+        for (double factor : {1.0, 2.0, 2.5, 5.0, 10.0}) {
+            const double step = factor * magnitude;
+            // A hair of tolerance, so 100 / 5 is a step of 20, not 50.
+            if (step >= rough * (1.0 - 1e-9)) return step;
+        }
+        return 10.0 * magnitude;
+    }
+
+    ChartAxisTicks ComputeChartAxisTicks(double lo, double hi, int maxTicks) {
+        ChartAxisTicks ticks;
+        if (!std::isfinite(lo) || !std::isfinite(hi)) return ticks;
+        if (hi < lo) std::swap(lo, hi);
+        ticks.step = ChartNiceStep(hi - lo, maxTicks);
+        if (ticks.step <= 0.0) {
+            ticks.values.push_back(lo);   // a single value: one tick on it
+            return ticks;
+        }
+        const double eps = ticks.step * 1e-6;
+        const long long first = static_cast<long long>(std::ceil((lo - eps) / ticks.step));
+        const long long last = static_cast<long long>(std::floor((hi + eps) / ticks.step));
+        // Below 1 the step is 1/n of a whole (0.1, 0.25, 0.002): k / n is the
+        // double nearest the true value, where k * step is not (3 * 0.1 is
+        // 0.30000000000000004). Each tick is computed, never summed.
+        const double perUnit = ticks.step < 1.0 ? std::round(1.0 / ticks.step) : 0.0;
+        for (long long k = first; k <= last && ticks.values.size() < 1000; ++k) {
+            double v = perUnit > 0.0 ? static_cast<double>(k) / perUnit : static_cast<double>(k) * ticks.step;
+            if (std::abs(v) < eps) v = 0.0;
+            ticks.values.push_back(v);
+        }
+
+        double maxAbs = 0.0;
+        for (double v : ticks.values) maxAbs = std::max(maxAbs, std::abs(v));
+        if (maxAbs >= 1e7) { ticks.unitDivisor = 1e6; ticks.unitSuffix = "M"; }
+        else if (maxAbs >= 1e4) { ticks.unitDivisor = 1e3; ticks.unitSuffix = "K"; }
+        // As many decimals as the step has: 0.25 needs two, 0.5 one, 20 none.
+        const double stepInUnit = ticks.step / ticks.unitDivisor;
+        while (ticks.decimals < 9) {
+            const double scaled = stepInUnit * std::pow(10.0, ticks.decimals);
+            if (std::abs(scaled - std::round(scaled)) < 1e-6 * std::max(1.0, scaled)) break;
+            ++ticks.decimals;
+        }
+        return ticks;
+    }
+
+    std::string ChartAxisTicks::Format(double value) const {
+        char text[64];
+        std::snprintf(text, sizeof text, "%.*f", decimals, value / unitDivisor);   // locale-ok: a label the person reads
+        std::string s = text;
+        // A value that rounds to zero is zero, not "-0".
+        if (!s.empty() && s[0] == '-' && s.find_first_not_of("-0.,") == std::string::npos) s.erase(0, 1);
+        return s + unitSuffix;
     }
 
     void UltraCanvasChartElementBase::DrawSelectionIndicators(IRenderContext* ctx) {
@@ -469,19 +568,55 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext* ctx) {
-        // Use existing IRenderContext functions
-        ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(GetLocalBounds());
+        if (!ctx) return;
+        const Rect2Di local = GetLocalBounds();
+        // The chart's own background, as with data (it was a fixed grey).
+        if (showBackground) ctx->DrawFilledRectangle(local, backgroundColor);
+        const bool hasIcon = !emptyIconPath.empty();
+        if (emptyMessage.empty() && emptyDetail.empty() && !hasIcon) return;
 
-        ctx->SetTextPaint(Color(128, 128, 128, 255));
-        ctx->SetFontSize(14.0f);
+        ctx->PushState();
+        // The icon, the message and the detail under it, centred as one block.
+        constexpr double kMessageHeight = 20.0, kDetailHeight = 18.0, kGap = 2.0, kIconGap = 10.0;
+        constexpr double kBadge = 54.0, kBadgeIcon = 28.0, kBareIcon = 32.0;
+        const bool badge = hasIcon && emptyIconBadgeColor.a > 0;
+        const double iconBox = !hasIcon ? 0.0 : (badge ? kBadge : kBareIcon);
+        double text = 0.0;
+        if (!emptyMessage.empty()) text += kMessageHeight;
+        if (!emptyDetail.empty()) text += (text > 0 ? kGap : 0.0) + kDetailHeight;
+        const double block = iconBox + (iconBox > 0 && text > 0 ? kIconGap : 0.0) + text;
+        double y = local.y + (local.height - block) / 2.0;
+        const double centreX = local.x + local.width / 2.0;
 
-        std::string emptyText = "No data to display";
-        // Calculate center position (simplified)
-        double textX = static_cast<double>(GetWidth()) / 2 - 60;
-        double textY = static_cast<double>(GetHeight()) / 2;
+        if (hasIcon) {
+            if (badge) {
+                ctx->SetFillPaint(emptyIconBadgeColor);
+                ctx->FillRoundedRectangle(Rect2Dd(centreX - kBadge / 2.0, y, kBadge, kBadge), 14.0);
+            }
+            const double size = badge ? kBadgeIcon : kBareIcon;
+            const Rect2Dd iconRect(centreX - size / 2.0, y + (iconBox - size) / 2.0, size, size);
+            if (emptyIconColor.a > 0) {
+                ctx->DrawMask(emptyIconColor, emptyIconPath, iconRect, ImageFitMode::Contain);
+            } else {
+                ctx->DrawImage(emptyIconPath, iconRect, ImageFitMode::Contain);
+            }
+            y += iconBox + (text > 0 ? kIconGap : 0.0);
+        }
 
-        ctx->DrawText(emptyText, {textX, textY});
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(emptyMessageColor);
+        const double x = local.x + 8.0, width = std::max(0.0, local.width - 16.0);
+        if (!emptyMessage.empty()) {
+            ctx->SetFontSize(14.0f);
+            ctx->DrawTextInRect(emptyMessage, Rect2Dd(x, y, width, kMessageHeight));
+            y += kMessageHeight + kGap;
+        }
+        if (!emptyDetail.empty()) {
+            ctx->SetFontSize(12.0f);
+            ctx->DrawTextInRect(emptyDetail, Rect2Dd(x, y, width, kDetailHeight));
+        }
+        ctx->PopState();
     }
 
     bool UltraCanvasChartElementBase::HandleMouseMove(const UCEvent& event) {

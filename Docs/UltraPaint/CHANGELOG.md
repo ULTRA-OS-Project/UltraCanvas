@@ -1,3 +1,58 @@
+#### 2026-10-20 *0.2.27*
+- **Password-protected images.** *File > Password Protection...* gives the
+  image a password; saved as an UltraCanvas layered image (`.ucd`) it is then
+  encrypted - an Argon2id key, every section sealed with XChaCha20-Poly1305 -
+  and opens only with that password, which cannot be recovered. *Hide the
+  preview too* leaves the thumbnail out as well. The dialog also changes the
+  password or removes the protection. Opening a protected `.ucd` - from Open,
+  a drop or the command line - asks for its password, again after a wrong
+  one, and *Save* keeps it protected; *Save* or *Save As* to another format
+  says first that the file goes without the protection (framework
+  changelog, pending entry `ucd-password-protection`).
+- **A password-protected PDF imports.** Opening or dropping one only ever
+  failed: the PDF reader UltraPaint draws pages with had no way to be given
+  a password. It now asks for the password first - again when it is not
+  right - then for the raster size as for any drawing, and renders the page
+  with it (framework changelog, pending entry `vector-raster-pdf-password`).
+- **Every protected file is asked for, not only the first.** Of several
+  files dropped together, only the first could ask for a password; a
+  protected one among the rest was left out with a message. Each now asks in
+  turn - the next waiting for the answer, once the one before is on the
+  canvas - and Cancel leaves out just that file. A protected file copied in a
+  file manager and pasted (*Paste as New Layer*, *Paste as New Image*) asks
+  for its password too, where it used to stop at "needs its password"; a
+  `.ucd` pasted as a new image keeps its protection, as when it is opened.
+- **A password is typed once for a drop, not once per file.** Files dropped
+  together often share a password, or a few: every password given in the
+  drop (up to eight) is tried on the next protected file - the one that last
+  opened a file first - which then comes in without a question, so a drop
+  that alternates between two passwords asks for each once. Only a file none
+  of them opens asks, saying so. They are held zeroed-on-free and forgotten
+  when the drop has been read - or as soon as the screen locks, so a drop
+  left half-answered while you step away asks again for what comes after
+  (framework changelog, pending entry `session-lock`).
+- **Paste as New Image says what it pasted.** It left the previous status
+  message showing; it now reads *Pasted photo.png as a new image, 800 x 600
+  pixels* (or *Pasted as a new image* for a copied picture), as Paste as New
+  Layer does.
+
+#### 2026-10-19 *0.2.26*
+- **Colour palettes under the picker.** The row of swatches in the Colour
+  card is a palette manager now (the framework's
+  `UltraCanvasColorPaletteManager`). A small **+** at the end of the row
+  opens a gallery of colour schemes - basics, moods, design systems, retro
+  machines and indexed palettes up to a whole 256-colour GIF palette - and
+  each scheme's own **+** adds it as another row under the picker. With
+  several rows every row ends in a **−** that takes it away, and the **+**
+  moves to the last row. Large palettes wrap into a block of small swatches.
+- **A right click on a palette swatch edits it.** A small colour picker with
+  only the foreground colour opens next to the swatch and sets that entry
+  of the palette as it is dragged; *Revert* puts it back. (A right click on
+  a swatch used to set the background colour; the picker's own background
+  swatch still does that.)
+- The rows - with their edited colours - are kept in the settings file
+  (`picker.palettes`), so the palettes are there the next time.
+
 #### 2026-10-16 *0.2.25*
 - **The colour panel takes less room, and stays as it was left.** The
   picker in the Colour card folds its channels away: the HSV / HSL / RGB

@@ -1,5 +1,10 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.12.0 - GenerateFontAliasConfig: the generic family aliases alone, for a
+//                  config the generated fonts.conf did not make (Windows' inline one)
+// Version: 1.11.1 - the generated fonts.conf aliases "emoji" (Pango's family for an emoji
+//                  run) to the platform's colour emoji fonts, so an emoji no longer
+//                  goes to whichever font fontconfig happens to rank first
 // Version: 1.11.0 - ClosingEndsApplication
 // Version: 1.10.2 - ToFontconfigPath turns '\' into '/' only on Windows: elsewhere it is
 //                   part of a folder's name
@@ -21,7 +26,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -40,6 +45,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasEmojiSettings.h"
 
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
@@ -378,6 +384,55 @@ namespace UltraCanvas {
 #endif
         }
 
+        // The generic family aliases of the platform - without a system
+        // config nothing maps "sans-serif"/"monospace" (what Pango asks for
+        // by default) onto a real family, and every request falls back to the
+        // first font fontconfig happens to list - as <alias> elements.
+        void AppendFontAliases(std::ostringstream& conf) {
+#if defined(_WIN32) || defined(_WIN64)
+            const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
+            const char* const kSerif[] = { "Times New Roman", "Georgia" };
+            const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
+            const char* const kEmoji[] = { "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" };
+#elif defined(__ANDROID__)
+            const char* const kSans[] = { "Roboto", "Noto Sans", "Droid Sans" };
+            const char* const kSerif[] = { "Noto Serif", "Droid Serif" };
+            const char* const kMono[] = { "Droid Sans Mono", "Roboto Mono", "Cutive Mono" };
+            const char* const kEmoji[] = { "Noto Color Emoji" };
+#else
+            const char* const kSans[] = { "Ubuntu", "DejaVu Sans", "Liberation Sans", "Noto Sans" };
+            const char* const kSerif[] = { "DejaVu Serif", "Liberation Serif", "Noto Serif" };
+            const char* const kMono[] = { "Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono" };
+            const char* const kEmoji[] = { "Noto Color Emoji", "Twemoji", "JoyPixels", "Symbola" };
+#endif
+            struct GenericAlias {
+                const char* generic;
+                const char* const* preferred;
+                size_t preferredCount;
+            };
+            const GenericAlias aliases[] = {
+                { "sans-serif", kSans,  sizeof(kSans) / sizeof(kSans[0]) },
+                { "sans",       kSans,  sizeof(kSans) / sizeof(kSans[0]) },
+                { "serif",      kSerif, sizeof(kSerif) / sizeof(kSerif[0]) },
+                { "monospace",  kMono,  sizeof(kMono) / sizeof(kMono[0]) },
+                // Pango asks for the family "emoji" for a run of emoji. With
+                // no alias for it every font matches it equally badly, and the
+                // emoji went to whichever font covering it fontconfig ranked
+                // first (Unifont before Noto Color Emoji on Linux).
+                { "emoji",      kEmoji, sizeof(kEmoji) / sizeof(kEmoji[0]) },
+            };
+            for (const GenericAlias& alias : aliases) {
+                conf << "  <alias>\n"
+                     << "    <family>" << alias.generic << "</family>\n"
+                     << "    <prefer>\n";
+                for (size_t i = 0; i < alias.preferredCount; ++i) {
+                    conf << "      <family>" << alias.preferred[i] << "</family>\n";
+                }
+                conf << "    </prefer>\n"
+                     << "  </alias>\n";
+            }
+        }
+
         // Deliberately free of rendering rules (antialias/hinting/lcdfilter):
         // this config only replaces a *missing* one, so it must not change how
         // text looks compared to a system that has its own fonts.conf.
@@ -410,9 +465,6 @@ namespace UltraCanvas {
                         "  <dir>WINDOWSUSERFONTDIR</dir>\n";
             }
             conf << "  <cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>\n";
-            const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
-            const char* const kSerif[] = { "Times New Roman", "Georgia" };
-            const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
 #elif defined(__ANDROID__)
             // System fonts live in fixed directories (no /etc/fonts at all,
             // so this generated config is always the active one on Android).
@@ -420,9 +472,6 @@ namespace UltraCanvas {
                     "  <dir>/product/fonts</dir>\n"
                     "  <cachedir prefix=\"xdg\">fontconfig</cachedir>\n"
                     "  <cachedir>~/.fontconfig</cachedir>\n";
-            const char* const kSans[] = { "Roboto", "Noto Sans", "Droid Sans" };
-            const char* const kSerif[] = { "Noto Serif", "Droid Serif" };
-            const char* const kMono[] = { "Droid Sans Mono", "Roboto Mono", "Cutive Mono" };
 #else
             conf << "  <dir>/usr/share/fonts</dir>\n"
                     "  <dir>/usr/local/share/fonts</dir>\n"
@@ -431,40 +480,22 @@ namespace UltraCanvas {
                     "  <cachedir prefix=\"xdg\">fontconfig</cachedir>\n"
                     "  <cachedir>~/.fontconfig</cachedir>\n"
                     "  <include ignore_missing=\"yes\">/etc/fonts/conf.d</include>\n";
-            const char* const kSans[] = { "Ubuntu", "DejaVu Sans", "Liberation Sans", "Noto Sans" };
-            const char* const kSerif[] = { "DejaVu Serif", "Liberation Serif", "Noto Serif" };
-            const char* const kMono[] = { "Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono" };
 #endif
-            // Generic family aliases - without a system config nothing maps
-            // "sans-serif"/"monospace" (what Pango asks for by default) onto a
-            // real family, and every request falls back to the first font
-            // fontconfig happens to list.
-            struct GenericAlias {
-                const char* generic;
-                const char* const* preferred;
-                size_t preferredCount;
-            };
-            const GenericAlias aliases[] = {
-                { "sans-serif", kSans,  sizeof(kSans) / sizeof(kSans[0]) },
-                { "sans",       kSans,  sizeof(kSans) / sizeof(kSans[0]) },
-                { "serif",      kSerif, sizeof(kSerif) / sizeof(kSerif[0]) },
-                { "monospace",  kMono,  sizeof(kMono) / sizeof(kMono[0]) },
-            };
-            for (const GenericAlias& alias : aliases) {
-                conf << "  <alias>\n"
-                     << "    <family>" << alias.generic << "</family>\n"
-                     << "    <prefer>\n";
-                for (size_t i = 0; i < alias.preferredCount; ++i) {
-                    conf << "      <family>" << alias.preferred[i] << "</family>\n";
-                }
-                conf << "    </prefer>\n"
-                     << "  </alias>\n";
-            }
-
+            AppendFontAliases(conf);
             conf << "</fontconfig>\n";
             return conf.str();
         }
     } // namespace
+
+    std::string GenerateFontAliasConfig() {
+        std::ostringstream conf;
+        conf << "<?xml version=\"1.0\"?>\n"
+                "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
+                "<fontconfig>\n";
+        AppendFontAliases(conf);
+        conf << "</fontconfig>\n";
+        return conf.str();
+    }
 #endif // !__APPLE__
 
 #if !defined(__APPLE__)
@@ -514,6 +545,9 @@ namespace UltraCanvas {
             }
             FcConfigSetCurrent(config);
             FcConfigDestroy(config);   // the current-config reference keeps it
+            // The emoji font and its rule belong to the set in use: the new
+            // one gets them too.
+            ApplyEmojiSettings();
 #if defined(ULTRACANVAS_HAS_PANGOFT2)
             PangoFontMap* fontMap = pango_cairo_font_map_get_default();
             if (fontMap && PANGO_IS_FC_FONT_MAP(fontMap)) {

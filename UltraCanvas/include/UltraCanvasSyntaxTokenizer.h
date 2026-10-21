@@ -136,6 +136,8 @@ namespace UltraCanvas {
         // or the text does not say (the extension's default then applies).
         // The name can be a language the highlighter has no rules for
         // ("LaTeX", "Objective-C"): such text is plain text here.
+        // Text with no file name at all: DetectLanguageFromContent
+        // (UltraCanvasLanguageDetect.h).
         static std::string LanguageFromContent(const std::string &extension,
                                                const std::string &text);
 

@@ -31,6 +31,9 @@ enum class SmartHomeProtocolType {
     KNX,
     WiFi,
     Bluetooth,
+    // No radio: the demo home in protocols/Simulated, for development,
+    // tests and a showcase without hardware. Never mixed with a real home.
+    Simulated,
     Unknown
 };
 
@@ -72,6 +75,7 @@ enum class SmartHomeSensorType {
     AirQuality,
     Occupancy,
     Vibration,
+    Power,          // watts, from a metered plug (history only)
     Unknown
 };
 
@@ -112,6 +116,12 @@ struct SmartHomeDeviceInfo {
     // so a caller can choose a control from what the device supports rather than
     // guessing from Category alone.
     std::vector<std::string> Capabilities;
+    // The room the backend places the device in, when it knows one: a KNX
+    // project names it, a Matter device may carry a location label, the
+    // simulated home assigns one. Empty when unknown. The user's own choice
+    // will override it once the home model lands (Docs/Research/
+    // SmartHomeCenterDesignProposal.md §4.3).
+    std::string Room;
 };
 
 struct SmartHomeNetworkInfo {
@@ -176,14 +186,54 @@ struct SmartHomeScene {
     bool Active = false;
 };
 
+// An automation: when its trigger fires and every condition holds, its
+// actions run, in order. The forms are the ones SmartHomeAutomationEditor
+// writes, and the engine reads exactly these:
+//
+// TriggerConfig, JSON, by "type" (TriggerType repeats it):
+//   {"type":"device","deviceId":"…","attribute":"triggered","value":"true"}
+//       fires when the attribute comes to match - once per match, not every
+//       second it stays matched. Optional "operator" (=, !=, <, >, <=, >=;
+//       default =) and "forMinutes": fire only once it has matched that long
+//       ("door open for 10 minutes").
+//   {"type":"time","time":"07:30"}            local time; optional "days":[1,…,5]
+//   {"type":"sunrise","offsetMinutes":-15}    and "sunset"; needs SetHomeLocation
+//   {"type":"manual"}                         only RunAutomation runs it
+// Attributes a device trigger or condition can name: on, brightness (percent),
+//   colorTemp, power, energy, temperature, target, humidity, mode, running,
+//   locked, jammed, position, tilt, moving, value, triggered (also motion,
+//   open, contact, water, leak, smoke), battery, state, online.
+//
+// Conditions, one per string:
+//   "time between 22:00 and 06:30"            may wrap past midnight
+//   "on Mon,Tue,Wed,Thu,Fri"                  Sun Mon Tue Wed Thu Fri Sat
+//   "<deviceId> <attribute> <op> <value>"     e.g. "sim-22 locked = true"
+//   A condition the engine cannot read fails, so the automation does not run.
+//
+// Actions are commands, plus three that are not sent to a device:
+//   {"", "notify", {{"message","Water under the sink"}}}  -> OnAutomationNotify
+//   {"", "delay", {{"seconds","300"}}}         the following actions wait
+//   {"", "activateScene", {{"sceneId","…"}}}
+// An automation that runs more than three times in ten seconds (it keeps
+// triggering itself) is switched off and the event log says why.
 struct SmartHomeAutomation {
     std::string AutomationId;
     std::string Name;
     bool Enabled = true;
-    std::string TriggerType;    // "time", "device", "location", "sunrise", "sunset"
-    std::string TriggerConfig;  // JSON configuration
+    std::string TriggerType;    // "time", "device", "sunrise", "sunset", "manual", "location"
+    std::string TriggerConfig;  // JSON configuration, as above
     std::vector<SmartHomeCommand> Actions;
     std::vector<std::string> Conditions;
+};
+
+// One line of the home's event log: an automation ran, a scene was
+// activated, a device joined, left, went offline or came back.
+struct SmartHomeEvent {
+    int64_t Time = 0;           // seconds since the epoch
+    std::string Kind;           // "automation", "scene", "device", "error"
+    std::string DeviceId;       // empty when it is about the home
+    std::string SubjectId;      // the automation or scene, when there is one
+    std::string Text;
 };
 
 // ===== CALLBACK TYPES =====
@@ -197,6 +247,8 @@ using OnPairingComplete = std::function<void(bool success, const SmartHomeDevice
 using OnSensorRead = std::function<void(const std::string& deviceId, const SmartHomeSensorReading&)>;
 using OnAutomationTrigger = std::function<void(const std::string& automationId)>;
 using OnSmartHomeError = std::function<void(int code, const std::string& message)>;
+using OnAutomationNotify = std::function<void(const std::string& automationId, const std::string& message)>;
+using OnSmartHomeEvent = std::function<void(const SmartHomeEvent& event)>;
 
 // ===== MAIN API CLASS =====
 
@@ -265,6 +317,15 @@ public:
     SmartHomeLockState GetLockState(const std::string& deviceId) const;
     bool GetSwitchState(const std::string& deviceId) const;
     SmartHomeSensorReading GetSensorReading(const std::string& deviceId) const;
+    uint8_t GetBlindPosition(const std::string& deviceId) const;   // 0 closed - 100 open
+    int GetBatteryLevel(const std::string& deviceId) const;        // 0-100, -1 on mains
+    float GetPowerUsage(const std::string& deviceId) const;        // watts now, 0 if unmetered
+    float GetEnergyUsage(const std::string& deviceId) const;       // kWh since metering began
+    // Recorded readings, oldest first; times in milliseconds since the
+    // epoch, as SmartHomeSensorReading::Timestamp. Recorded while a store is
+    // open, when a value moves past its deadband (a tenth of a degree, a
+    // percent of humidity, a watt) and at least every 15 minutes; a
+    // thermostat records its room temperature, a metered plug its power.
     std::vector<SmartHomeSensorReading> GetSensorHistory(const std::string& deviceId, 
                                                           uint64_t startTime, 
                                                           uint64_t endTime) const;
@@ -285,6 +346,43 @@ public:
     std::vector<SmartHomeAutomation> GetAutomations() const;
     SmartHomeAutomation GetAutomation(const std::string& automationId) const;
     
+    // Runs an automation's actions now, whatever its trigger and conditions.
+    bool RunAutomation(const std::string& automationId);
+
+    // ===== THE STORE (smarthome.db) =====
+    // The home's own database: scenes, automations, the names and rooms the
+    // person gave devices, the event log, sensor history and settings. Open
+    // it once after Initialize(); what it holds replaces the scenes and
+    // automations in memory, and every change afterwards is written through.
+    // ":memory:" opens one that lasts until CloseStore (tests). Without a
+    // store everything works but nothing survives a restart and
+    // GetSensorHistory has nothing to answer with.
+    bool OpenStore(const std::string& path);
+    void CloseStore();
+    bool IsStoreOpen() const;
+    std::string GetStoreError() const;           // why the last store call failed
+    // A consistent copy of the open store at `path` (a backup); the file
+    // must not exist yet.
+    bool ExportStore(const std::string& path) const;
+
+    // ===== THE HOME =====
+    // The room the person puts a device in, kept in the store and shown in
+    // SmartHomeDeviceInfo::Room over whatever the backend says. Empty puts
+    // it back where the backend has it.
+    bool SetDeviceRoom(const std::string& deviceId, const std::string& room);
+    // Where the home is, for sunrise and sunset triggers (degrees, east and
+    // north positive). Kept in the store.
+    bool SetHomeLocation(double latitude, double longitude);
+    bool GetHomeLocation(double& latitude, double& longitude) const;
+    // Today's sunrise and sunset at the home's location, in seconds since
+    // the epoch; false without a location, or in a polar day or night.
+    bool GetSunTimes(int64_t& sunrise, int64_t& sunset) const;
+
+    // ===== EVENT LOG =====
+    // Newest first; `since` in seconds since the epoch. From the store when
+    // one is open, else from the last thousand events in memory.
+    std::vector<SmartHomeEvent> GetEventLog(int64_t since = 0, size_t limit = 200) const;
+
     // ===== NETWORK INFO =====
     std::vector<SmartHomeNetworkInfo> GetNetworks() const;
     SmartHomeNetworkInfo GetNetwork(SmartHomeProtocolType protocol) const;
@@ -299,6 +397,8 @@ public:
     void SetOnSensorRead(OnSensorRead callback);
     void SetOnAutomationTrigger(OnAutomationTrigger callback);
     void SetOnSmartHomeError(OnSmartHomeError callback);
+    void SetOnAutomationNotify(OnAutomationNotify callback);
+    void SetOnEvent(OnSmartHomeEvent callback);
     
 private:
     SmartHomeAPI();

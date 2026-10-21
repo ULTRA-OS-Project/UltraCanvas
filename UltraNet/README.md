@@ -424,11 +424,14 @@ the call runs - as bytes move, and about once a second while none do, so a
 stalled transfer is called off as promptly as a busy one; once it answers
 true the call ends as `UltraNetResultCode::Cancelled` with the message
 *called off*, and a listing is not tried again in another format. It runs on
-the calling thread inside libcurl and must answer at once (an atomic flag). As
-with the log, a caller behind a layer that builds the options sets one for
-its thread: `UltraNet_SetThreadFtpCancel(fn)`, which returns the previous one.
-UltraFiler's drive worker uses it to stop a preview download the user is no
-longer waiting for.
+the calling thread inside libcurl and must answer at once (an atomic flag).
+Beside it every FTP call - listings and `DELE` as well as transfers - asks its
+thread's abort check, `UltraNet_SetThreadAbortCheck(fn)` (`UltraNetCore.h`,
+which returns the previous one), the same check the synchronous HTTP requests
+ask: a caller behind a layer that builds the options, and a thread that wants
+every call it makes stopped at once, set that one check. UltraFiler's drive
+worker uses it to stop a preview download the user is no longer waiting for,
+on an FTP drive or a cloud drive, and every transfer when the window closes.
 
 What a failure says, whether or not anyone reads the log:
 
@@ -468,7 +471,15 @@ remove a folder - is the exception on FTP: it always logs in on a connection
 of its own and closes it, because libcurl sends those commands before it
 changes folder, and they name the entry from the folder a login lands in; on
 a kept connection that a listing left in a subfolder they would name another
-file.
+file. A server that takes one connection per address or user (vsftpd's
+`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
+away - *421 There are too many connections from your internet address.*,
+or a 530 saying the maximum number of clients is reached - while the
+thread's kept one is open. Turned away so before any of its commands was
+sent, the change closes the kept connection and is sent again: at once, and
+after 0.3 s and 1 s more if the server is still counting the closed one
+(the waits end early when the call is called off). The log says *The server
+takes one connection at a time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.
