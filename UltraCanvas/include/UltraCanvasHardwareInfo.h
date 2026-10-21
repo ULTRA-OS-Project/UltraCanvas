@@ -2,8 +2,8 @@
 // Read-only hardware inventory and sensor readings: CPU (caches, temperature),
 // GPU, NPU, memory, storage (temperature, connector), network (Ethernet/Wi-Fi),
 // USB controllers and attached devices, Bluetooth adapters and connections.
-// Version: 0.1.0
-// Last Modified: 2026-08-29
+// Version: 0.1.1
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASHARDWAREINFO_H
@@ -42,7 +42,7 @@ enum class HardwareCategory {
 // milliseconds), so a caller that only wants a status bar reading asks for one
 // category rather than the whole machine.
 enum class HardwareQuery : uint32_t {
-    None      = 0,
+    Nothing   = 0,         // not `None`: X11 #defines None, and UI headers reach X11
     System    = 1u << 0,
     CPU       = 1u << 1,
     GPU       = 1u << 2,
@@ -376,7 +376,7 @@ struct HardwareSnapshot {
     std::vector<USBDeviceInfo>        usbDevices;
     std::vector<BluetoothAdapterInfo> bluetoothAdapters;
 
-    HardwareQuery captured = HardwareQuery::None;
+    HardwareQuery captured = HardwareQuery::Nothing;
     // Why a value is missing, in the words a user can act on ("drive temperature
     // needs read access to /dev/sda"). Never an error channel: a capture that
     // reaches nothing still returns a snapshot.
