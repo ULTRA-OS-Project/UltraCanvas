@@ -28,11 +28,7 @@
 # all (MuPDF, libopusenc, c-ares), 24.04's package is new enough and is used
 # instead. Not mirrored: ccache (a CI build cache), and the services CI starts
 # for its live tests - PostgreSQL, Avahi and the IPP printer - whose tests
-# skip unless CI's environment asks for them. Beyond CI's list: the libraries
-# of the UltraNet plug-ins CI's Linux row does not build (MQTT, AMQP, CoAP,
-# SNMP, SSH), so that a change to one of them compiles in a cloud session -
-# without them a guard added to all eighteen plug-ins in 2026-10 reached five
-# of them untried. To add a package, append it.
+# skip unless CI's environment asks for them. To add a package, append it.
 #
 # It also generates a comma-decimal locale, de_DE.UTF-8, as CI does. The tests
 # that hold file formats to dot-decimal numbers (HTMLReaderTest,
@@ -71,8 +67,9 @@ PACKAGES=(
     libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev libopusenc-dev
     # UltraNet: curl, async DNS
     libcurl4-openssl-dev libpsl-dev libc-ares-dev
-    # UltraNet plug-ins CI's Linux row leaves out: MQTT (paho), AMQP (rabbitmq-c),
-    # CoAP (libcoap3), SNMP (net-snmp), SSH (libssh) - see above
+    # UltraNet's optional protocol plug-ins: MQTT (paho), AMQP (rabbitmq-c),
+    # CoAP (libcoap3), SNMP (net-snmp), SSH (libssh) - as CI installs since
+    # 2026-10; without them a change to one of the five compiled nowhere
     libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev
