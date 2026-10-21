@@ -1,3 +1,353 @@
+#### 2026-10-21 *0.9.370*
+- **CI builds an installable Android APK of the demo, for phones and for an
+  emulator.** `scripts/android-package-apk.sh` packages an app library with
+  the SDK's build tools alone - `UltraCanvasActivity` compiled to dex, the
+  launcher icon made from `media/appicon/Demo.png` at all five screen
+  densities, the manifest, icon and assets linked by aapt2, the library stripped and stored,
+  zipaligned and signed with a debug key made for the run - so it needs
+  nothing a GitHub runner lacks, and no Gradle. The assets are the set the
+  demo's WebAssembly page preloads, laid out as `$HOME/share` expects.
+  `android-build.yml` now builds `arm64-v8a` (phones) and `x86_64` (an
+  emulator on a Linux host or runner, at full speed) side by side and uploads
+  `UltraCanvasDemo-arm64-v8a` and `UltraCanvasDemo-x86_64` as run artifacts.
+  Nothing has installed one yet; that is the next step.
+
+#### 2026-10-21 *0.9.369*
+- **The session-start "Code needs to be PRed" count no longer counts main's
+  own commits.** A cloud clone can arrive with its branch cut from a newer
+  main than its `origin/main` ref; `.claude/hooks/check-delivery.sh --brief`
+  measured against that stale ref, so every commit main had gained in between
+  counted as the session's work - one chat opened on "128418 lines" with 0
+  lines to PR, and the `Stop` form repeated the figure until something
+  fetched. The session-start form now fetches the default branch first
+  (no prompt, 12-second limit), which puts the `Stop` form on the real base
+  too; when the fetch cannot run, the brief says the count may be stale.
+  AGENTS.md, *The closing line*, describes it.
+
+#### 2026-10-21 *0.9.368*
+- **Application changelogs take pending entries too, so app version numbers
+  stop colliding between pull requests.** A change to an application now drops
+  its bullets in `Docs/<App>/changelog.d/<change-name>.md` — no header, no
+  number — exactly as framework changes already did in
+  `Docs/UltraCanvas/changelog.d/`. On 2026-10-21 one pull request had to be
+  renumbered five times (UltraFiler 1.77.1 → 1.83.0 → 1.87.0, UltraPaint
+  0.2.26 → 0.2.27), because every other merge took the next app version and
+  conflicted with it on line 1 of the changelog and of UltraFiler's `.rc` and
+  `.manifest`; two files never conflict.
+  - `scripts/fold_changelog.py` folds every product's pending entries on
+    `main`, each into its own `CHANGELOG.md` under its own next version. The
+    step follows each file's habit — the component that changed between its
+    two latest releases (UltraFiler 1.88.0 → 1.89.0, UltraPaint 0.2.28 →
+    0.2.29, Texter 1.69 → 1.70, the framework 0.9.x → 0.9.x+1) — and never
+    goes below the highest version in the file. `--version UltraFiler=2.0.0`
+    overrides one app; a bare `--version` is still the framework's.
+  - Folding UltraFiler or UltraTexter runs `./set-version.sh`, and the fold
+    commit carries their `.rc` and `.manifest`; a branch no longer touches
+    them. The commit names every version folded
+    (`Changelog: 0.9.365, UltraFiler 1.89.0`).
+  - The release build skips a merge commit with any product's entry pending,
+    not only the framework's, and builds the fold commit instead — once — so
+    no app ships under its previous number.
+  - `scripts/check_changelog.py` applies the framework's rules to every
+    product's `changelog.d/` (no `####` header, not empty) and refuses entries
+    in a `changelog.d/` that belongs to no declared changelog. A hand-written
+    top entry for a hotfix is still accepted and checked as before.
+- **No exception leaves any UltraNet plug-in.** The guard the JMAP plug-in
+  got (an exception inside an entry point becomes a `PluginError` result
+  naming the call and the reason, instead of reaching a caller's worker
+  thread with no handler and ending the process) now lives in
+  `Plugins/UltraNet/common/UltraNetPluginGuard.h` (`ultranet_plugin::Guarded`,
+  `GuardedHandle`, `GuardedVoid`) and wraps every entry point of every
+  plug-in: the mail four (IMAP, SMTP, POP3, JMAP - sending, the bulk fetch,
+  folders, status, envelopes, messages, flags, moves, appends, expunge, the
+  folder reconcile, creating and deleting folders), the messaging ones
+  (MQTT, AMQP, CoAP: Connect, Publish, Subscribe), gRPC, the directories
+  (LDAP, mDNS, SNMP: Search), the streams (RTSP, RTMP, RTP: OpenStream,
+  ReadFrame), the remote shells (SSH, Telnet, SIP: OpenShell,
+  ExecuteCommand), WebDAV's file operations, and every Initialize and
+  Shutdown. A connect or open that throws reads as `UltraNetInvalidHandle`,
+  as every failure of those calls does.
+
+#### 2026-10-21 *0.9.367*
+- **UltraDatabase 0.3.1: re-registering or closing a connection no longer
+  frees it under a running call.** `UltraDb_RegisterConnection` and
+  `UltraDb_CloseConnection` dropped the registry's entry, and with it the
+  physical connection. Every query, script, schema and quoting call held
+  only a raw pointer to it, so the call running at that moment on another
+  thread ran on freed memory. AddressSanitizer reports a heap-use-after-free
+  in the SQLite driver; without a sanitizer the call hung, or failed when it
+  next touched the connection. A PostgreSQL call lost its socket.
+  - Each call now holds the connection until it returns. The old connection
+    closes after its last call and its last open handle; calls that start
+    later use the new registration.
+  - Handles get the same treatment. A prepared statement or cursor closed
+    with `UltraDb_Finalize` / `UltraDb_CloseCursor` while another thread
+    runs it now finishes that call first. A transaction keeps its connection
+    for the call even when `UltraDb_Commit` runs on another thread.
+  - `UltraDb_CancelQuery(name)` also reaches a statement that began on the
+    name before it was re-registered or closed. Without that, the old
+    connection's statement ran on out of reach: a Stop button did nothing
+    after a settings change, and a program that cancels and then waits
+    for the statement before exiting hung.
+  - `Tests/UltraDatabase/test_lifetime.cpp`: eight tests (SQLite, and
+    PostgreSQL where a server is configured) that replace or close a name
+    or a handle while a call on it runs, and cancel one by name after its
+    name changed hands. On the old code they report the use-after-free
+    under ASan and hang without it.
+
+#### 2026-10-21 *0.9.366*
+- **CI's Linux row and a cloud session build the MQTT, AMQP, CoAP, SNMP and
+  SSH plug-ins.** Neither installed paho-mqtt-c, rabbitmq-c, libcoap3,
+  net-snmp or libssh, so those five UltraNet plug-ins were built on no
+  Linux at all and a change to them - the entry-point guard of 2026-10, for
+  one - was compiled nowhere before it merged. `.github/workflows/build.yml`'s
+  Linux rows and `.claude/hooks/session-start.sh` now install the five
+  Ubuntu packages, and a step after configure fails the Linux row when one
+  of the plug-ins was left out, as the Hunspell check does.
+
+#### 2026-10-21 *0.9.365*
+- **A click on a Windows toast reaches its application after the broker host
+  quit.** The windows-presenter shows an application's notification as a
+  toast under the application's own AppUserModelID, and its click came back
+  over the bus only while the program hosting the broker ran. After that the
+  toast waited in the Action Center, and a click on it did nothing.
+  - New `UltraCanvasNotificationActivation.h` (doc
+    `UltraCanvasNotificationActivation.md`): `RegisterNotificationActivator(appId,
+    handler)` makes the program the COM activator of its AppUserModelID
+    (`Software\Classes\CLSID\<clsid>\LocalServer32` names it with
+    `-ToastActivated`, the AppUserModelID's `CustomActivator` names the class,
+    a CLSID derived from the ID). Windows hands it the click, starting the
+    program when it is not running; the handler runs on the UI thread.
+    Windows backend `OS/MSWindows/UltraCanvasWindowsNotificationActivation.cpp`;
+    a no-op elsewhere.
+  - `SystemNotification` has an optional `launch`, the application's own note
+    of what the notification is about (in the `system.notification` schema).
+    The toast's activation arguments now carry the action, the notification's
+    id and its `launch` (`FormatNotificationArguments`), so the activator
+    needs nothing from the bus. UltraMail uses it: its toast opens the mail
+    it announced (UltraMail 0.10.65).
+  - Every identity is listed under `HKCU\Software\UltraCanvas\Notifications`.
+    The installer's uninstaller walks the list and removes each
+    AppUserModelID key and activator class, then the list;
+    `RemoveNotificationRegistrations()` does the same from code.
+  - Windows CI runs the UltraMessage suite (`UltraMessageTests`), which it
+    built and never ran: the Windows presenter and listener against the
+    runner's desktop.
+  - Tested: the arguments, the CLSID and the `launch` round trip in
+    `test_adapters.cpp`, UltraMail's launch string in `test_newmail.cpp`.
+- **The notification registrations can be removed without the uninstaller.**
+  Windows keeps, for each application whose notifications were shown, its
+  name, icon and the program a click starts. The installer's uninstaller
+  removes them; a folder unpacked from the ZIP package had no way to.
+  - `ListNotificationRegistrations()` (`UltraCanvasNotificationActivation.h`)
+    lists them; `RemoveNotificationRegistrations()` now returns how many it
+    removed.
+  - UOS-Settings 0.7.0: *Notifications > Registrations* lists them with a
+    *Remove all* button, and `UOS-Settings --remove-notification-registrations`
+    removes them with no window.
+  - `package-win.sh` puts `uc-remove-registrations.cmd` in the ZIP beside the
+    programs: it runs that command, to run before deleting the folder.
+- **Every application that posts a notification registers its activator.**
+  New `scripts/check_notification_activators.py`, run by CI
+  (`notification-activators.yml`), reports an application under `Apps/` that
+  posts a `system.notification` and never calls
+  `RegisterNotificationActivator` - its Windows toast would do nothing once the
+  broker host quit. UltraMail is the only application whose notifications
+  reach the presenter today, and registers; the DemoApp's message-centre
+  samples are posted Silent and say so (`notification-activator-exempt`). The
+  DemoApp's toast page and the UltraMessage README (§3.9) show the call with
+  the notification.
+
+#### 2026-10-21 *0.9.364*
+- **DemoApp builds for Android, as the library an APK carries.** On Android
+  the demo is `libUltraCanvasDemo.so` (`add_library(... SHARED)` where the
+  desktop has an executable), and its `main()` is `ultracanvas_app_main()`,
+  which the framework's `android_main()` calls once the sandbox, the unpacked
+  assets and the first surface are ready. The X11 and signal setup in
+  `Apps/DemoApp/main.cpp` now say `!defined(__ANDROID__)` too, since bionic
+  defines `__linux__`. The packaging template's manifest names the library
+  and its Gradle file builds that target alone. No APK has been built yet, so
+  it has still not run on a device.
+- **Android: an app's library now carries the entry points called into it by
+  name.** The core is a static archive, and `ANativeActivity_onCreate` and the
+  `Java_*` functions behind `UltraCanvasActivity`'s native methods are
+  referenced by nothing in an app, so a plain link left them out. Without
+  `ANativeActivity_onCreate` the activity cannot start the app, and
+  `UltraCanvasAndroidTextInput.cpp` holds only JNI functions, so the first
+  keystroke from the IME would have thrown `UnsatisfiedLinkError`. The core's
+  link interface now passes `-u` for each, read from `OS/Android/*.cpp` at
+  configure time, so a new native method needs nothing added.
+- **The Android build workflow links the demo and checks what it exports.**
+  `android-build.yml` builds `UltraCanvasDemo` after the core (the NDK links a
+  shared library with `--no-undefined`, so a dependency missing from the
+  sysroot's link lists shows here and not in the static core), then fails if
+  `libUltraCanvasDemo.so` does not export `ANativeActivity_onCreate` and every
+  `Java_*` function. It also runs when `Apps/DemoApp/` changes now.
+- **The demo's OpenGL pages build for OpenGL ES on Android.** The 3D models,
+  shader and Zarch tabs and the 3D bubble chart included desktop `GL/gl.h`;
+  on Android they include `GLES3/gl3.h`, and their GLSL 3.30 shaders are
+  compiled as GLSL ES 3.00 (`#version 300 es` plus default precision; all 27
+  validate with glslangValidator). OpenGL ES has no `glPolygonMode`,
+  `glPointSize` or `GL_PROGRAM_POINT_SIZE`: the shader tab's point shader now
+  sets `gl_PointSize` itself, and on Android the models tab's Wireframe
+  toggle draws the model filled.
+- **Android builds for API 28 (Android 9), the level its libraries need.**
+  vcpkg's Android triplets build the dependency sysroot for API 28, so glib,
+  fontconfig and libintl call libc functions bionic has only from 28 on
+  (`iconv`, `posix_spawn`, `pthread_attr_setinheritsched`,
+  `fgets_unlocked`) - the first link of an app said so. The framework built
+  for 26, which those libraries never supported; the build, the bootstrap
+  script, the syntax check and the Gradle template's `minSdk` now say 28.
+- **Android no longer calls two desktop backends it does not compile.** File
+  associations take the "not available" backend WebAssembly uses (handing a
+  file to another app is an Intent, still to be written), and the V4L2
+  camera backend registers on desktop Linux only. Video formats are listed
+  as Android's MediaCodec plays them, with MP4 the one the recorder writes,
+  instead of as GStreamer's.
+- **The UltraNet JMAP plug-in no longer aborts on a null field.** Fastmail
+  answers `Email/get` with `"subject": null`, `"to": null`, `"cc": null`
+  and `"name": null` for a draft without a subject or recipients, and
+  nlohmann's `value()` throws on a null where the key exists (its default
+  is for a missing key only); the uncaught `type_error` took UltraMail
+  down with SIGABRT in the sync thread. Every string and number the core
+  reads from a server now goes through null-safe helpers (`Str`, `Uint`
+  in `JmapCore.h`): a null, a wrong type or a missing key reads as empty
+  or zero, and an out-of-range number is clamped. The crash report's
+  response is a test.
+- **And no exception leaves the JMAP plug-in at all.** Every entry point
+  (the folder, status, envelope, message, flag, move, append, expunge, send
+  and watch calls, and the watch's worker-thread callbacks) runs inside a
+  guard (`Guarded` / `GuardedVoid` in `JmapCore.h`): whatever is thrown -
+  a JSON type the parser did not expect, a `bad_alloc` - comes back as a
+  `PluginError` result naming the call and the reason, instead of reaching
+  a caller's worker thread with no handler and ending the process.
+- **Pull requests stop colliding over generated files and each other.**
+  - `llms.txt` / `llms-full.txt` are written on `main`: the new
+    `llms-regenerate.yml` regenerates them after every docs change lands and
+    commits the result, and `llms-txt.yml` refuses a pull request that changes
+    them (it still checks the `## Contents` inventories and the README
+    mirrors, which branches keep committing). They are the whole docs corpus,
+    so any two docs pull requests open at once conflicted there, and the
+    second to merge had to merge `main`, regenerate and run the whole CI
+    matrix again - the changelog's line-1 collision, cured the same way.
+  - `scripts/check_pr_overlap.py` predicts a branch's conflicts with the other
+    open pull requests before they reach GitHub: for each one it simulates
+    the merge order GitHub will see (that branch into `main` first, this one
+    on top) with `git merge-tree`, and reports real conflicts, two branches
+    giving one application changelog the same top version (which git can
+    merge with no conflict at all), generated files, and shared files that
+    merge cleanly. It reads the open pull requests from `gh`, from
+    `--branches`, or falls back to recently active branches. `AGENTS.md`
+    rule 4 of the branch rules: run it before opening a pull request and
+    before every push.
+  - The Windows install-and-uninstall step gives the uninstaller ten seconds
+    to remove the Start-menu folder before calling it left behind, and names
+    what is still in it when it is; it failed a pull request that changes no
+    packaging while `main` at the same base passed.
+
+#### 2026-10-21 *0.9.363*
+- **The UltraNet JMAP plug-in pushes (phase 3), and the mail plug-ins share
+  one message builder.** `IMailboxProtocolPlugin::WatchMailbox` opens a
+  watch on an account and returns its handle; the plug-in then reports a
+  change (`UltraNetMailChange`: which folders when known, and whether the
+  folder list changed) on its own thread each time the server announces
+  one, and `onEnd` once the watch is over - the stream closed, the
+  connection dropped, or `StopWatching` ended it (Cancelled); the caller
+  opens the next watch when it wants one. The JMAP plug-in holds the
+  session's event source open (`UltraNet_SseStreamAsync`, `Email,Mailbox`,
+  a ping every five minutes, a stall limit of two missed pings) and reports
+  a `StateChange` whose Email or Mailbox state it has not seen - the first
+  event only records where the account stands. The defaults report "not
+  implemented", so the IMAP plug-in and test fakes are simply polled.
+  `UltraNet_MimeBuildMailMessage` (UltraNetMime.h) builds the raw RFC 5322
+  message of a `UltraNetMailMessage` - media type and charset from
+  `contentType`, the text alternative and inline pictures of an HTML body,
+  the attachments, the extra headers - and the SMTP and JMAP plug-ins both
+  send through it instead of a copy each. The plug-in host table is ABI 3:
+  `MimeBuildMailMessage`, `SseStreamAsync`, `CancelRequest` and
+  `IsRequestActive` appended; the shim refuses an older host, since every
+  plug-in in the tree calls them.
+- **The UltraNet JMAP plug-in writes as well as reads (phase 2).**
+  `StoreFlags` patches the message's keywords (`$seen`, `$answered`,
+  `$flagged`, `$draft`); `\Deleted`, which JMAP has not, moves the message
+  to the Trash mailbox, or destroys it when it is there already or the
+  account has none, and clearing it is a no-op. `MoveMessage` replaces the
+  message's `mailboxIds`, `ExpungeMessage` destroys it, `AppendMessage`
+  uploads the raw message to the session's `uploadUrl` and imports it into
+  the folder with its keywords (`Email/import`), and `FetchAllFlags` walks
+  the folder and reads every message's keywords, so a client's reconcile
+  step sees reads and deletions made elsewhere. `SendMail` sends through
+  JMAP: the raw message (built with `UltraNet_MimeBuild`, as the SMTP
+  plug-in does) is uploaded, imported into Drafts and handed to
+  `EmailSubmission/set` with the `Identity` whose address is the From (a
+  domain wildcard identity, else the account's first); on success the
+  server files it in Sent with `$draft` cleared, or destroys it when there
+  is no Sent mailbox. The `jmap://` server URL comes in
+  `UltraNetMailOptions::serverUrl`, as for SMTP. The wire shapes live in
+  `JmapCore.h` and are tested without a server
+  (`Tests/UltraNet/test_jmap_plugin.cpp`); push over the session's event
+  source (phase 3) remains.
+
+#### 2026-10-21 *0.9.362*
+- **Chart engine: fifteen legacy charts ported, and a demo page that shows
+  each port next to its original.** Twelve engine-native elements under
+  `Plugins/Charts/Engine/Charts/` take over the charts that still painted their
+  own axes, legend and labels: `UltraCanvasEngineLineChart` (line, area,
+  stacked and 100% area, cumulative flow), `UltraCanvasEngineScatterChart`
+  (scatter and bubble), `UltraCanvasEngineWaterfallChart`,
+  `UltraCanvasEngineDivergingBarChart` (Likert, tornado, opposing bars,
+  population pyramid), `UltraCanvasEngineDumbbellChart`,
+  `UltraCanvasEngineFinancialChart` (candlestick, OHLC, Heikin-Ashi, volume
+  pane, SMA / EMA), `UltraCanvasEngineHeatmapChart`,
+  `UltraCanvasEngineMekkoChart`, `UltraCanvasEngineRadarChart`,
+  `UltraCanvasEngineRadialBarChart`, `UltraCanvasEnginePieChart` and
+  `UltraCanvasEnginePolarChart`. Each implements only the content contract;
+  themes, measured layout, the solved label plan, tooltips, the entrance
+  animation and the three projections come from the engine. The legacy charts
+  are unchanged, so applications switch one chart at a time. **Charts → Chart
+  Engine Comparison** in the demo shows every port beside the legacy chart on
+  the same data. Doc: `Docs/UltraCanvas/UltraCanvasEngineCharts.md`.
+- **Chart engine: the features the ports needed, in the engine.**
+  - Polar furniture: under Polar an edge axis follows its role - a domain
+    axis labels the rim, a value axis is the radial rule - with ring or
+    polygon grids (`SetPolarGridShape`), spokes (`SetDomainGridAxis`), a round
+    plot fill, rim labels as label obstacles, and `SetPolarAngles` /
+    `SetPolarInnerRadius`. Before, both axes were straight rules along the
+    rectangular plot and the value grid drew degenerate chords; the bar chart
+    page's Polar mode gets the round furniture with no change of its own.
+  - `ChartAxis`: `role`, sub-bands (`bandStart` / `bandEnd`, stacked price and
+    volume panes), `symmetric`, `cyclic` categories, `absoluteLabels`,
+    `rangePadding` and the `Sqrt` scale.
+  - Series: line runs (straight, monotone curved, stepped; broken at gaps;
+    `closed` loops), area outlines, line-family stacking, marker shapes and
+    `DrawChartMarker`; a UI-free analysis module (`FitLinearTrend`,
+    `MovingAverage`, `ExponentialMovingAverage`, `HeikinAshiCandles`).
+  - Pinned labels (`ChartLabelRequest::pinned`), span annotations, limiter
+    extents and domain-axis limiters, value bands that follow the axis role
+    and the projection, edge axes on one side stacking outward, and an
+    area-scaled size legend with explicit values.
+- **Chart engine: fixes the comparison showed.** An auto range rounded twice
+  (0..1072 became 0..1500, a third of the plot empty) and now rounds once
+  (0..1200); tick steps likewise. A prefixed negative reads `-$25K`, not
+  `$-25K`. Left / right axis titles are rotated along their axis instead of
+  sitting under it on the bottom axis's first label. The end labels of a
+  bottom / top axis are no longer cut off at the element's edge.
+- **Chart engine: tick labels inside the plot are label obstacles.** The labels
+  of an in-plot axis and of the radial value rule under Polar render above the
+  content but did not take part in the label plan, so a solved label could
+  land on one - the polar chart's "Under-Absorp" band caption on its "0 ppm".
+  They now claim their space before the solve (the tick declutter runs first,
+  and one helper places a tick label for the plan and the draw pass), and a
+  polar limiter's caption sits a little way round its ring instead of beside
+  the rule.
+- **Chart engine: `OnThemeChanged()` is now `OnChartThemeChanged()`.** The
+  engine's parameterless hook for a chart-theme change hid the element's
+  `OnThemeChanged(const UltraCanvasTheme&)` (`-Woverloaded-virtual` in every
+  file including the engine header), and the two hooks mean different things:
+  a chart palette swap, and the application's theme. A chart overriding the
+  old name with `override` now fails to compile and is renamed; the twelve
+  engine ports and the demo are.
+
 #### 2026-10-21 *0.9.361*
 - **Chart axes are marked at whole steps.** The line, area, scatter and bar
   charts (and every chart that uses the base class's axes) divided the value

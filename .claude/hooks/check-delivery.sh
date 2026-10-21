@@ -22,8 +22,8 @@
 # N is measured here and compared with the reply's, so a remembered figure is
 # refused the same way a missing line is.
 #
-# Version: 1.2.0
-# Last Modified: 2026-10-01
+# Version: 1.3.0
+# Last Modified: 2026-10-21
 # Author: UltraCanvas Framework
 set -u
 
@@ -70,14 +70,29 @@ fi
 # N for the closing line: the working tree against the merge base with the
 # default branch (so committed and uncommitted edits both count), insertions
 # plus deletions as `git diff --shortstat` reports them, plus every line of an
-# untracked, non-ignored file. The remote-tracking ref is used as it stands -
-# a hook must not fetch - which is also what the AGENTS.md recipe measures
-# once the session has fetched.
+# untracked, non-ignored file. The Stop form uses the remote-tracking ref as it
+# stands - it runs at the end of every turn and must stay quick - which is also
+# what the AGENTS.md recipe measures once the session has fetched.
+#
+# The SessionStart form fetches the default branch first. A cloud clone can
+# arrive with its branch cut from a newer main than its own origin/main ref:
+# measured against that stale ref, every commit main gained in between counted
+# as this checkout's own work (one session started on "128418 lines" when the
+# real difference was 0), and the Stop form went on repeating the number until
+# something fetched. Refreshing once at the start puts both forms on the real
+# base. The fetch is bounded (no prompt, a timeout well inside the hook's own)
+# and skipped where `timeout` is missing; when it does not happen the brief
+# says the count may be stale rather than presenting it as measured.
 pr_lines=""
 base_ref=""
 for ref in origin/main origin/master; do
     if git rev-parse --verify -q "$ref" >/dev/null 2>&1; then base_ref="$ref"; break; fi
 done
+base_fresh=""
+if [ "$mode" = "brief" ] && [ -n "$base_ref" ] && command -v timeout >/dev/null 2>&1 &&
+   GIT_TERMINAL_PROMPT=0 timeout 12 git fetch --quiet --no-tags origin "${base_ref#origin/}" >/dev/null 2>&1; then
+    base_fresh="yes"
+fi
 if [ -n "$base_ref" ]; then
     merge_base="$(git merge-base "$base_ref" HEAD 2>/dev/null)"
     if [ -n "$merge_base" ]; then
@@ -109,6 +124,9 @@ chat waits for the user ends with 'Code needs to be PRed (N lines)', N measured
 against $base_ref ('(0 lines)' when nothing differs; append ' - open as PR #<n>'
 when one is open). The Stop hook measures N itself and blocks a reply whose
 last line is missing or carries another number. Right now: $pr_line."
+    [ -n "$pr_line" ] && [ -z "$base_fresh" ] && brief="$brief
+($base_ref could not be fetched, so this count is against the clone's copy of
+it and may be stale - run 'git fetch origin main' before trusting it.)"
     state="At session start this checkout is clean and everything is pushed."
     if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
         state="At session start this checkout ALREADY has work that is not in the

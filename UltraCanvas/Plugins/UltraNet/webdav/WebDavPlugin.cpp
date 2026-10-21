@@ -6,6 +6,9 @@
 //
 // Build: produces libultranet_webdav.{so,dylib,dll}.
 // Entry point: UltraNet_PluginInit (v2; core functions via the host table).
+// Version: 0.1.3 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.2
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,6 +16,7 @@
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetFtp.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 #include <UltraCanvasUtils.h>
@@ -204,7 +208,9 @@ public:
         return {"webdav", "webdavs"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {}
 
@@ -212,122 +218,136 @@ public:
         const std::string& url,
         std::vector<UltraNetFtpEntry>& out,
         const UltraNetFileShareOptions& opt) override {
-        out.clear();
-        std::string listUrl = ToHttpUrl(url);
-        if (!listUrl.empty() && listUrl.back() != '/') listUrl.push_back('/');
+        return ultranet_plugin::Guarded("ListDirectory", [&]() -> UltraNetResult {
+            out.clear();
+            std::string listUrl = ToHttpUrl(url);
+            if (!listUrl.empty() && listUrl.back() != '/') listUrl.push_back('/');
 
-        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-            curl_easy_init(), curl_easy_cleanup);
-        if (!h) return UltraNetResult::Error(
-            UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                curl_easy_init(), curl_easy_cleanup);
+            if (!h) return UltraNetResult::Error(
+                UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
 
-        // Minimal PROPFIND body — request the props we actually use.
-        static const char* kBody =
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-            "<D:propfind xmlns:D=\"DAV:\">"
-              "<D:prop>"
-                "<D:displayname/>"
-                "<D:getcontentlength/>"
-                "<D:getlastmodified/>"
-                "<D:getcontenttype/>"
-                "<D:resourcetype/>"
-              "</D:prop>"
-            "</D:propfind>";
+            // Minimal PROPFIND body — request the props we actually use.
+            static const char* kBody =
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                "<D:propfind xmlns:D=\"DAV:\">"
+                  "<D:prop>"
+                    "<D:displayname/>"
+                    "<D:getcontentlength/>"
+                    "<D:getlastmodified/>"
+                    "<D:getcontenttype/>"
+                    "<D:resourcetype/>"
+                  "</D:prop>"
+                "</D:propfind>";
 
-        curl_slist* hdrs = nullptr;
-        hdrs = curl_slist_append(hdrs, "Depth: 1");
-        hdrs = curl_slist_append(hdrs, "Content-Type: application/xml; charset=\"utf-8\"");
-        std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
-            hdrsGuard(hdrs, curl_slist_free_all);
+            curl_slist* hdrs = nullptr;
+            hdrs = curl_slist_append(hdrs, "Depth: 1");
+            hdrs = curl_slist_append(hdrs, "Content-Type: application/xml; charset=\"utf-8\"");
+            std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
+                hdrsGuard(hdrs, curl_slist_free_all);
 
-        std::string body;
-        curl_easy_setopt(h.get(), CURLOPT_URL, listUrl.c_str());
-        curl_easy_setopt(h.get(), CURLOPT_CUSTOMREQUEST, "PROPFIND");
-        curl_easy_setopt(h.get(), CURLOPT_HTTPHEADER, hdrs);
-        curl_easy_setopt(h.get(), CURLOPT_POSTFIELDS, kBody);
-        curl_easy_setopt(h.get(), CURLOPT_POSTFIELDSIZE,
-                         static_cast<long>(std::strlen(kBody)));
-        curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
-        curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
-        ApplyCommon(h.get(), opt);
+            std::string body;
+            curl_easy_setopt(h.get(), CURLOPT_URL, listUrl.c_str());
+            curl_easy_setopt(h.get(), CURLOPT_CUSTOMREQUEST, "PROPFIND");
+            curl_easy_setopt(h.get(), CURLOPT_HTTPHEADER, hdrs);
+            curl_easy_setopt(h.get(), CURLOPT_POSTFIELDS, kBody);
+            curl_easy_setopt(h.get(), CURLOPT_POSTFIELDSIZE,
+                             static_cast<long>(std::strlen(kBody)));
+            curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
+            curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
+            ApplyCommon(h.get(), opt);
 
-        UltraNetResult r = Run(h.get(), listUrl);
-        // PROPFIND returns 207 Multi-Status on success; map that to ok.
-        if (r.httpStatus == 207) {
-            r.code = UltraNetResultCode::Success;
-            r.success = true;
-            r.message.clear();
-        }
-        if (r.success) ParseMultistatus(body, listUrl, out);
-        return r;
+            UltraNetResult r = Run(h.get(), listUrl);
+            // PROPFIND returns 207 Multi-Status on success; map that to ok.
+            if (r.httpStatus == 207) {
+                r.code = UltraNetResultCode::Success;
+                r.success = true;
+                r.message.clear();
+            }
+            if (r.success) ParseMultistatus(body, listUrl, out);
+            return r;
+        });
     }
 
     UltraNetResult Download(const std::string& url,
                             const std::string& localPath,
                             const UltraNetFileShareOptions& opt) override {
-        std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "wb");
-        if (!fp) return UltraNetResult::Error(
-            UltraNetResultCode::AccessDenied, "cannot open local file");
-        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-            curl_easy_init(), curl_easy_cleanup);
-        if (!h) { std::fclose(fp); return UltraNetResult::Error(
-            UltraNetResultCode::InsufficientMemory, "curl_easy_init failed"); }
-        const std::string u = ToHttpUrl(url);
-        curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
-        curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteFile);
-        curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, fp);
-        ApplyCommon(h.get(), opt);
-        UltraNetResult r = Run(h.get(), u);
-        std::fclose(fp);
-        return r;
+        return ultranet_plugin::Guarded("Download", [&]() -> UltraNetResult {
+            std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "wb");
+            if (!fp) return UltraNetResult::Error(
+                UltraNetResultCode::AccessDenied, "cannot open local file");
+            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                curl_easy_init(), curl_easy_cleanup);
+            if (!h) { std::fclose(fp); return UltraNetResult::Error(
+                UltraNetResultCode::InsufficientMemory, "curl_easy_init failed"); }
+            const std::string u = ToHttpUrl(url);
+            curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
+            curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteFile);
+            curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, fp);
+            ApplyCommon(h.get(), opt);
+            UltraNetResult r = Run(h.get(), u);
+            std::fclose(fp);
+            return r;
+        });
     }
 
     UltraNetResult Upload(const std::string& localPath,
                           const std::string& url,
                           const UltraNetFileShareOptions& opt) override {
-        std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "rb");
-        if (!fp) return UltraNetResult::Error(
-            UltraNetResultCode::NotFound, "cannot open local file");
-        std::fseek(fp, 0, SEEK_END);
-        const long size = std::ftell(fp);
-        std::fseek(fp, 0, SEEK_SET);
-        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-            curl_easy_init(), curl_easy_cleanup);
-        if (!h) { std::fclose(fp); return UltraNetResult::Error(
-            UltraNetResultCode::InsufficientMemory, "curl_easy_init failed"); }
-        const std::string u = ToHttpUrl(url);
-        curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
-        curl_easy_setopt(h.get(), CURLOPT_UPLOAD, 1L);
-        curl_easy_setopt(h.get(), CURLOPT_READFUNCTION, &ReadFile);
-        curl_easy_setopt(h.get(), CURLOPT_READDATA, fp);
-        curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
-                         static_cast<curl_off_t>(size > 0 ? size : 0));
-        ApplyCommon(h.get(), opt);
-        UltraNetResult r = Run(h.get(), u);
-        std::fclose(fp);
-        return r;
+        return ultranet_plugin::Guarded("Upload", [&]() -> UltraNetResult {
+            std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "rb");
+            if (!fp) return UltraNetResult::Error(
+                UltraNetResultCode::NotFound, "cannot open local file");
+            std::fseek(fp, 0, SEEK_END);
+            const long size = std::ftell(fp);
+            std::fseek(fp, 0, SEEK_SET);
+            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                curl_easy_init(), curl_easy_cleanup);
+            if (!h) { std::fclose(fp); return UltraNetResult::Error(
+                UltraNetResultCode::InsufficientMemory, "curl_easy_init failed"); }
+            const std::string u = ToHttpUrl(url);
+            curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
+            curl_easy_setopt(h.get(), CURLOPT_UPLOAD, 1L);
+            curl_easy_setopt(h.get(), CURLOPT_READFUNCTION, &ReadFile);
+            curl_easy_setopt(h.get(), CURLOPT_READDATA, fp);
+            curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
+                             static_cast<curl_off_t>(size > 0 ? size : 0));
+            ApplyCommon(h.get(), opt);
+            UltraNetResult r = Run(h.get(), u);
+            std::fclose(fp);
+            return r;
+        });
     }
 
     UltraNetResult Delete(const std::string& url,
                           const UltraNetFileShareOptions& opt) override {
-        return SimpleMethod(url, "DELETE", opt);
+        return ultranet_plugin::Guarded("Delete", [&]() -> UltraNetResult {
+            return SimpleMethod(url, "DELETE", opt);
+        });
     }
 
     UltraNetResult CreateDirectory(const std::string& url,
                                    const UltraNetFileShareOptions& opt) override {
-        std::string u = ToHttpUrl(url);
-        if (!u.empty() && u.back() != '/') u.push_back('/');
-        return SimpleMethod(u, "MKCOL", opt);
+        return ultranet_plugin::Guarded("CreateDirectory", [&]() -> UltraNetResult {
+            std::string u = ToHttpUrl(url);
+            if (!u.empty() && u.back() != '/') u.push_back('/');
+            return SimpleMethod(u, "MKCOL", opt);
+        });
     }
 
     UltraNetResult Move(const std::string& source, const std::string& dest,
                         const UltraNetFileShareOptions& opt) override {
-        return DestMethod(source, dest, "MOVE", opt);
+        return ultranet_plugin::Guarded("Move", [&]() -> UltraNetResult {
+            return DestMethod(source, dest, "MOVE", opt);
+        });
     }
 
     UltraNetResult Copy(const std::string& source, const std::string& dest,
                         const UltraNetFileShareOptions& opt) override {
-        return DestMethod(source, dest, "COPY", opt);
+        return ultranet_plugin::Guarded("Copy", [&]() -> UltraNetResult {
+            return DestMethod(source, dest, "COPY", opt);
+        });
     }
 
 private:

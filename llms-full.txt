@@ -718,7 +718,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -966,6 +966,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
   rule that makes Pango's `emoji` runs use it.
   See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
+  A click on an application's notification that reaches it outside the bus
+  - on Windows a toast clicked in the Action Center after the broker host
+  quit, or with the application closed, which Windows then starts - comes to
+  `RegisterNotificationActivator(appId, handler)`
+  (`UltraCanvasNotificationActivation.h`: the program as the COM activator of
+  its AppUserModelID, a CLSID derived from the ID by
+  `NotificationActivatorClassId`) as a `NotificationActivation` (the action,
+  the notification's id and its `launch` string). `RemoveNotificationRegistrations()`
+  and the installer's uninstaller remove every identity listed under
+  `HKCU\Software\UltraCanvas\Notifications` (`ListNotificationRegistrations()`
+  lists them; UOS-Settings > Notifications > Registrations, its
+  `--remove-notification-registrations` and the ZIP's
+  `uc-remove-registrations.cmd` remove them where there is no uninstaller);
+  `scripts/check_notification_activators.py` (CI) reports an application that
+  posts a notification without registering an activator; the argument format is shared,
+  header-only (`FormatNotificationArguments` / `ParseNotificationArguments`).
+  No-ops elsewhere. See `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
@@ -2776,8 +2794,10 @@ UI-framework vendors such as bit BlazorUI, and comparing it with the other
 mechanisms currently in use across the industry.
 
 Status: Phase 0 is implemented (`AGENTS.md`, `CLAUDE.md`, generated
-`llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py` with CI sync
-check, `context7.json`). Phases 1 and 2 remain proposals.
+`llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py`, `context7.json`).
+CI regenerates the two files on `main` after every docs change lands
+(`.github/workflows/llms-regenerate.yml`); pull requests never carry them, and
+`llms-txt.yml` refuses one that does. Phases 1 and 2 remain proposals.
 
 ---
 
@@ -2882,6 +2902,8 @@ alternatives — the survey shows mature projects ship every layer.
    description) and **`llms-full.txt`** (concatenation of
    `Masterfile_modules.md` + `Docs/UltraCanvas/*.md` + module READMEs) via
    a small script wired into CI, committed or published as a release asset.
+   *(Done: CI runs `scripts/generate_llms_txt.py` on `main` after each docs
+   change and commits the result; pull requests leave the two files alone.)*
 3. **Submit the repo to Context7** (free) so the large installed base of
    Context7 users resolves `ultracanvas` to real docs immediately.
 
@@ -4148,8 +4170,8 @@ Three facts about CI decide how a cloud-only developer works:
   the image says the same).
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
-  change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
-  assigned on `main` after the merge, never on the branch.
+  change needs one under `Docs/<App>/changelog.d/`. The number is assigned
+  on `main` after the merge, never on the branch.
 
 ## Step 3 — The first session: skeleton, changelog, pull request
 
@@ -4773,17 +4795,22 @@ evidence; a description of what it "should" look like is not.
 
 ## Step 8 — Version, document, regenerate
 
-- **The app's changelog is its version.** A release is a new
-  `#### YYYY-MM-DD *x.y.z*` line at the top of `Docs/MyApp/CHANGELOG.md`;
-  nothing else is hand-edited. A framework change the app needed goes in
-  `Docs/UltraCanvas/changelog.d/<change-name>.md` as bullets with no header;
-  CI assigns the framework number on `main`.
+- **The app's changelog is its version.** After the first entry, a change is
+  `Docs/MyApp/changelog.d/<change-name>.md` holding bullets with no header;
+  CI folds it into `Docs/MyApp/CHANGELOG.md` under the app's next
+  `#### YYYY-MM-DD *x.y.z*` line on `main`, and nothing else is hand-edited.
+  A framework change the app needed goes in
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` the same way.
 - **A new or changed public API gets its doc in the same change**:
   `Docs/UltraCanvas/UltraCanvas<Name>.md` for a component, a row on the
   catalogue page for a new element, the module README for a module.
-- **After any docs edit**: `python3 scripts/generate_llms_txt.py`. CI
-  verifies `llms.txt` and `llms-full.txt` are in sync, and they are what the
-  next assistant session reads.
+- **After any docs edit**: `python3 scripts/generate_doc_toc.py`, and after
+  editing a module README, `python3 scripts/generate_llms_txt.py` to refresh
+  its mirror under `Docs/Modules/` (commit the mirror). Leave `llms.txt` and
+  `llms-full.txt` alone - the script rewrites them too, so put them back with
+  `git checkout origin/main -- llms.txt llms-full.txt`: `main` regenerates
+  them after the merge (they are what the next assistant session reads), and
+  CI refuses a pull request that changes them.
 - A new third-party dependency is recorded in `Docs/Dependencies.md`,
   `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`, or it does not go
   in.
@@ -4901,8 +4928,9 @@ password refuses the published one, so on a machine still using it `-Mode Sign` 
 still packages. Delete any other copy of the old `.pfx` - it still opens with
 the old password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
-copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version; the CMake configure warns when they are stale and
+copy, because `windres` reads them from disk: the changelog fold on `main`
+runs `./set-version.sh` for the apps listed in it, and you run it yourself
+only after a hand-written top entry; the CMake configure warns when they are stale and
 `scripts/check_changelog.py` fails CI on it.
 
 </details>
@@ -4945,9 +4973,10 @@ assistant must read, which is what stops it guessing.
 
 **Before pushing**
 
-> Run the build and every `scripts/check_*.py`, fix what they report, regenerate
-> `llms.txt` if you touched docs, commit with a subject that says what changed
-> and why, push, and report the `## Delivery` block.
+> Run the build and every `scripts/check_*.py`, fix what they report, run
+> `scripts/check_pr_overlap.py` against the other open pull requests, commit
+> with a subject that says what changed and why, push, and report the
+> `## Delivery` block.
 
 **When something looks wrong**
 
@@ -4963,7 +4992,7 @@ assistant must read, which is what stops it guessing.
 - [ ] Every control comes from the catalogue; layouts from the layout engines
 - [ ] Modules used only through their public surfaces; TLS on, SQL bound
 - [ ] Build and all `scripts/check_*.py` are green locally
-- [ ] Docs updated and `llms.txt` regenerated in the same change
+- [ ] Docs updated in the same change (`llms.txt` is regenerated on `main`)
 - [ ] Committed, pushed, pull request open, `## Delivery` block read
 - [ ] App run and looked at on each platform you ship to
 
@@ -5220,9 +5249,10 @@ It is the only option that is simultaneously official, scriptable, headless,
 version-selectable and installable from a package manager. It matters here for
 three specific reasons:
 
-- **API level shopping.** The backend's floor is API 26
-  (`ClipDescription.getTimestamp` for clipboard change detection,
-  `minSdk 26` in the Gradle template) and its ceiling assumptions are
+- **API level shopping.** The floor is API 28 (`minSdk 28` in the Gradle
+  template), set by the dependency sysroot, which vcpkg builds for 28; the
+  backend alone would need 26 (`ClipDescription.getTimestamp` for clipboard
+  change detection). Its ceiling assumptions are
   `targetSdk 34`. Only the emulator lets you install *both* ends and see where
   behaviour diverges — Android 10's clipboard-read-requires-focus rule, scoped
   storage, and SAF changes all landed between those two.
@@ -5262,7 +5292,7 @@ headless by default, `adb`-driven, with an optional WebRTC screen.
 
 It is better than the emulator when you need many devices per host or you are
 tracking AOSP itself. It is worse as a first step: heavier setup, and the
-version matrix (API 26 ↔ 34) that this backend actually needs is easier to get
+version matrix (API 28 ↔ 34) that this backend actually needs is easier to get
 from the SDK's image repository. Keep it on the list for later; do not start
 here.
 
@@ -5326,7 +5356,7 @@ Mapping the emulator/Waydroid to the features
 | SAF open (`ACTION_OPEN_DOCUMENT`) + copy-to-cache | Yes — DocumentsUI ships in the images | Yes | Also the only way to observe the documented "callers read a snapshot" consequence. |
 | `SaveContent` (`ACTION_CREATE_DOCUMENT`) | Yes | Yes | |
 | `AlertDialog` message dialogs through the nested-loop bridge | Yes | Yes | The sync-over-async pump is the riskiest concurrency code in the backend; a deadlock shows up here or nowhere. |
-| Clipboard via `ClipboardManager` | Yes | Yes, plus host clipboard integration | Test on API 26 *and* 29+ — the focus restriction on reads only exists on the latter. |
+| Clipboard via `ClipboardManager` | Yes | Yes, plus host clipboard integration | Test on API 28 *and* 29+ — the focus restriction on reads only exists on the latter. |
 | Lifecycle: background/foreground, `TERM_WINDOW`/`INIT_WINDOW` | Yes — `adb shell input keyevent HOME`, then relaunch | Yes | |
 | Rotation with `configChanges` set, and (deliberately) without | Yes — emulator rotation is one keystroke or `adb emu rotate` | Awkward | Emulator only, effectively. |
 | Back button → `WindowCloseRequest` | Yes — `adb shell input keyevent BACK` | Yes | |
@@ -5350,7 +5380,7 @@ README).
 
 ```sh
 # SDK command-line tools; API 30 x86_64 is a good middle target between the
-# backend's floor (26) and the Gradle template's targetSdk (34).
+# floor (28) and the Gradle template's targetSdk (34).
 sdkmanager "platform-tools" "emulator" "system-images;android-30;default;x86_64"
 avdmanager create avd -n uc-x86_64 -k "system-images;android-30;default;x86_64"
 
@@ -5416,6 +5446,9 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
+**Status:** it is now - `android-build.yml` packages `UltraCanvasDemo-x86_64.apk`
+on every run (`scripts/android-package-apk.sh`) - so the emulator job below is
+the next step, installing that artifact.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator
@@ -5533,7 +5566,7 @@ compile gate rather than a test.
 3. **`abiFilters 'x86_64'` for the first APK**, adding `'arm64-v8a'` once the
    pipeline works end to end.
 4. **First run on an x86_64 AVD at API 30**, headless, `screencap` as the
-   evidence. Then API 26 and 34 for the clipboard/SAF divergences (§4).
+   evidence. Then API 28 and 34 for the clipboard/SAF divergences (§4).
 5. **Then Waydroid**, for the real-Mesa GLES pass and as the ULTRA OS
    experiment.
 6. **Then a physical arm64 device**, for gestures, drivers and the things no
@@ -5569,8 +5602,10 @@ lives in `UltraCanvas/OS/Android/` — see its
 [README](../../UltraCanvas/OS/Android/README.md) for what is actually built
 today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
 keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
-opening and saving, APK asset extraction); the dependency
-sysroot and APK packaging remain, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+opening and saving, APK asset extraction). The dependency sysroot builds in
+CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
+an APK carries, and CI packages that into a debug-signed APK for `arm64-v8a`
+and `x86_64`; nothing has installed one yet, so none of it has run on a device — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -6003,7 +6038,10 @@ Process lessons for the Android effort:
 - Touch→mouse translation, `AKEYCODE_*`→`UCKeys` table.
 - Stubs: cursor, dialogs, clipboard (in-process fallback already exists),
   recent files, DnD off, GL off, video off, plugins compiled-in/off.
-- **Milestone: DemoApp runs on an arm64 device/emulator.**
+- **Milestone: DemoApp runs on an arm64 device/emulator.** **Status:** DemoApp
+  builds and links for Android (`main()` is `ultracanvas_app_main()` there, the
+  target is `libUltraCanvasDemo.so`, and CI checks its exported entry points);
+  running it waits on the APK.
 
 **Phase 2 — same OS support as Linux (core services)**
 - Lifecycle virtuals (pause/resume/surface loss) + rotation-safe `Run()`.
@@ -15489,6 +15527,7 @@ FILE: Docs/UltraCanvas/UltraCanvasChartEngine.md
 - [Phase-1 services](#phase-1-services)
 - [Bar series geometry](#bar-series-geometry)
   - [Bar connections](#bar-connections)
+- [Line and area series](#line-and-area-series)
 - [Phase-3 services](#phase-3-services)
 - [Themes and palettes](#themes-and-palettes)
 - [Hit regions and tooltips](#hit-regions-and-tooltips)
@@ -15519,19 +15558,24 @@ density, bar arrangement and slot geometry, limiters, the label plan's
 declutter, legend swatches, hit-region tooltips, the animation driver, the
 dirty model and the named-property surface. The first production client is the
 parallel coordinate chart
-([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md)).
+([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md));
+the engine ports of the line, area, scatter, bubble, waterfall, diverging,
+dumbbell, financial, heatmap, Mekko, radar, radial bar, pie and polar charts are
+described in [`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md) and
+shown next to the legacy charts on **Charts → Chart Engine Comparison**.
 
 - Driver: `include/Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`
 - Axis model: `include/Plugins/Charts/Engine/UltraCanvasChartAxis.h`
-- Bar series geometry: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
+- Bar, line and area series geometry, markers: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
+- Trend lines, moving averages, Heikin-Ashi: `include/Plugins/Charts/Engine/UltraCanvasChartAnalysis.h`
 - Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
 - Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
 - Themes and palettes: `include/Plugins/Charts/Engine/UltraCanvasChartTheme.h`
 - Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.3.0
-**Last Modified:** 2026-08-20
+**Version:** 1.4.0
+**Last Modified:** 2026-10-20
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -15577,7 +15621,35 @@ reimplemented:
 | In-plot value labels | `showTickLabels` (integrated tick labels along the rule) **or** `showEndpointLabels` (min/max at the ends) — never both: endpoint labels are suppressed while the integrated axis is active, so the extremes are not printed twice |
 
 `Normalize(value)` maps into `[0,1]`; out-of-range values map outside rather
-than clamping. Tick labels are decluttered by the 1-D pass
+than clamping.
+
+Fields that cover what the ported charts each did by hand:
+
+| Field | Effect |
+|---|---|
+| `role` | `ChartAxisRole::Domain` / `Value` / `Auto` (default): which normalised coordinate the axis maps. `Auto` reads it from the side - Bottom/Top are domain, Left/Right value, transposed under `Horizontal`. Only Polar needs it (see [Projections](#projections)) |
+| `bandStart`, `bandEnd` | The sub-band of the value direction the axis occupies - stacked panes in one plot. A price axis on `0.3..1` above a volume axis on `0..0.22`: content, ticks, grid and the edge rule all land in the band |
+| `symmetric` | Auto ranges only: widen to `[-m, m]` around zero, so diverging bars and pyramids keep zero in the middle |
+| `cyclic` | Category scale only: the range runs `0..n`, one empty slot past the last, so a full-circle Polar projection spreads `n` spokes evenly with the first at the start angle - the radar layout |
+
+```cpp
+ChartAxis price("price");
+price.side = ChartAxisSide::Left;
+price.bandStart = 0.3;                 // upper 70% of the plot
+ChartAxis volume("volume");
+volume.side = ChartAxisSide::Right;
+volume.bandEnd = 0.22;                 // the strip underneath
+volume.compactNumbers = true;
+```
+
+The remaining fields of the same kind: `absoluteLabels` prints magnitudes
+(both sides of a diverging axis read positive), `rangePadding` widens an auto
+range by a fraction of its span so marks at the extremes are not cut by the
+plot edge (never across a zero baseline), and `ChartScale::Sqrt` is a signed
+square root for area-true radii. An auto range is rounded once, by its step
+(0..1072 becomes 0..1200), and a prefixed negative reads `-$25`, not `$-25`.
+
+Tick labels are decluttered by the 1-D pass
 (`PriorityGreedy`: range ends and zero survive longest) — never by the 2-D
 solver.
 
@@ -15610,12 +15682,28 @@ sectors under Polar with no chart-side change. Edge-axis furniture follows the
 projection too: the engine derives which end of an edge carries the low value
 from the projection rather than assuming.
 
-Polar has no edges to hang furniture on, so an **edge** axis would be drawn as
-a straight rule along the rectangular plot bounds beside a round chart. Give
-the value axis `inPlot = true` there instead — in-plot axes are mapped through
-the projection, so it comes out as a radial rule with its ticks along it — and
-stand the category axis down, naming its slots with annotation labels around
-the rim (what the demo's Polar mode does).
+Polar has no edges to hang furniture on, so under Polar an **edge** axis is
+drawn by its role instead of its side (`IsDomainAxis(axis)` answers which):
+
+- a **domain** axis labels the rim - the outer ring is its rule, each tick a
+  short outward mark with its label pushed outward along the radius, and the
+  measure pass reserves room for those labels on all four sides. Labels that
+  would overprint one already placed are dropped, and `0°`/`360°` on a full
+  circle are one spoke;
+- a **value** axis becomes the radial rule at the start angle (`u = 0`), with
+  its ticks along it - exactly where an in-plot axis at position 0 stands.
+
+So a chart written for the vertical projection (category axis on the bottom,
+value axis on the left) gets round furniture under Polar with no chart-side
+change. The older idiom - value axis `inPlot = true`, category axis hidden,
+slot names as rim annotations (the engine demo's Polar mode) - still works.
+
+`SetPolarAngles(startDegrees, sweepDegrees, clockwise)` and
+`SetPolarInnerRadius(fraction)` reach the polar projection (`-90` = 12
+o'clock; a radial bar chart sweeps `270`; a donut leaves `0.55` empty) and
+survive projection switches. A radial bar chart runs the value *around* the
+circle: give its value axis `role = ChartAxisRole::Domain` and its category
+axis `ChartAxisRole::Value`.
 
 ## Highlights (slot 200 wash / slot 700 overlay)
 
@@ -15639,15 +15727,31 @@ a key describes marks the chart actually draws.
 ## Phase-1 services
 
 - **Grid follows ticks**: `SetGridAxis(index)` derives gridlines from that
-  axis's ticks, so grid and labels cannot disagree.
+  axis's ticks, so grid and labels cannot disagree. A value axis rules across
+  the domain (rings under Polar - circles, or polygons through the domain
+  ticks with `SetPolarGridShape(ChartPolarGridShape::Polygon)`, the radar
+  web); a domain axis rules across the value range (spokes under Polar).
+  `SetDomainGridAxis(index)` adds the second direction, so a scatter plot
+  rules both x and y and a radar draws rings and spokes.
 - **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
   caption})` draws reference lines (average, target, threshold...); captions
-  are solved into the label plan so they never overprint value labels.
+  are solved into the label plan so they never overprint value labels. A
+  limiter on a domain axis runs across the value range (a pyramid's average
+  age), and `extentStart` / `extentEnd` trim it to part of the plot (one side
+  of a diverging chart).
+- **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
+  label, ...})` draws a dimension line between two value-space points, with
+  arrowheads and a boxed caption the label plan steers around - the lead time,
+  cycle time and WIP spans of a cumulative flow diagram.
 - **Layout is measured, not guessed**: axis tick labels, titles and the legend
   reserve their measured space in the measure pass; `MeasureContent` adds
   chart-specific needs. `SolvePlotArea` never returns an empty plot. The chart
   title owns an exclusive band above every other top reservation, so axis
-  endpoint labels can never overprint it.
+  endpoint labels can never overprint it. Edge axes on the same side stack
+  outward when their bands overlap (a Mekko chart's column names under its
+  cumulative-percent ticks); a left/right axis title is drawn rotated along
+  the axis, outside its labels; the labels at the ends of a bottom/top axis
+  reserve their overhang instead of running off the element.
 
 ## Bar series geometry
 
@@ -15731,12 +15835,51 @@ plot-area colour that keeps a line readable where it crosses a bar of its own
 colour. A run of fewer than two bars draws nothing. The demo's Bar Charts page
 shows it on the Clustered and Stacked tabs.
 
+## Line and area series
+
+The line family shares the bar family's discipline: normalised `(u, v)`
+points in, screen geometry through the projection out, so a line chart under
+Polar is a polar line chart.
+
+```cpp
+// RenderChartContent: one series, its knots in normalised space.
+std::vector<ChartNormalizedPoint> points;
+for (size_t i = 0; i < values.size(); ++i) {
+    points.emplace_back(category.Normalize(static_cast<double>(i)),
+                        value.Normalize(values[i]));   // NaN = a gap
+}
+ChartLineOptions options;
+options.shape = ChartLineShape::Curved;   // Straight, StepAfter, StepBefore, StepMiddle
+for (const ChartLineRun& run : BuildLineRuns(*frame.projection, points, options)) {
+    if (run.points.size() >= 2) ctx->DrawLinePath(run.points, false);
+    for (const Point2Dd& knot : run.knots) {
+        DrawChartMarker(ctx, ChartMarkerShape::Circle, knot, 3.5, color);
+    }
+}
+```
+
+| Helper | Meaning |
+|---|---|
+| `BuildLineRuns(projection, points, options)` | One `ChartLineRun` per unbroken run (a non-finite point breaks the line unless `bridgeGaps`): `points` to stroke, `knots` for markers, `path` in normalised space, `indices` joined. `Curved` is the bar connections' monotone cubic - it never overshoots a knot |
+| `BuildAreaOutlines(projection, top, base, options)` | Closed outlines of the band between a top and a base line, both following the shape - an area down to its baseline, or one stacked segment |
+| `StackSeriesValues(series, arrangement)` | Per series, per index, the `base` and `top` of its band: `Grouped` (all on zero), `Stacked` (positives up, negatives down, a missing value a zero-thickness band) or `PercentStacked`. Feed the value axis with `ObserveBarSeries` - the range arithmetic is the bars' |
+| `ChartMarkerShape` + `DrawChartMarker(ctx, shape, centre, radius, fill, stroke, width)` | `NoMarker`, `Circle`, `Square`, `Diamond`, `TriangleUp`, `TriangleDown`, `Cross`, `Plus` - the one marker painter of the scatter / line family; `ChartMarkerPolygon` gives the outline for hit regions |
+
+The analysis layer's arithmetic (slot 700) is
+`Engine/UltraCanvasChartAnalysis.h`: `FitLinearTrend(xs, ys)` (slope,
+intercept, r², Pearson r), `MovingAverage` / `ExponentialMovingAverage` (NaN
+until a full window, and across a gap) and `HeikinAshiCandles`. All UI-free
+and unit-tested; the content maps the results through its axes.
+
 ## Phase-3 services
 
 - **Label plan**: labels submitted in `CollectChartLabels` go through the
   collision solver **once per invalidation, never per frame**. `allowSuppress`
   drops labels that would overprint (set `priority` on the ones that must
-  survive); leaders and rotation are drawn by the engine. Solved labels are
+  survive); `pinned` keeps a label exactly on its side of the anchor and drops
+  it rather than sliding it along (column headers, a bar's total - anything
+  whose meaning is its position); leaders and rotation are drawn by the
+  engine. Solved labels are
   kept within the plot area **plus whatever margins the chart reserved for
   itself in `MeasureContent`** (`SolveLabelBounds`): reserve a text-height
   band on the value-axis end and a bar that reaches the axis maximum keeps
@@ -15764,7 +15907,8 @@ shows it on the Clustered and Stacked tabs.
     `Legend().SetColorBar({colormap, min, max, ticks, formatter, ...})`,
     `quantizeLevels >= 2` draws discrete bands), or `SizeLegend` (sample
     circles keying a bubble-size scale, largest first —
-    `Legend().SetSizeScale(...)`).
+    `Legend().SetSizeScale(...)`; `areaScaled` sizes the circles like
+    area-proportional bubbles, `values` names the sample values).
   - `Legend().SetCustomArea(size, draw)` — a host-drawn panel below the
     entries, inside the legend box, for a key richer than any swatch: an
     annotated confidence-ellipse diagram, a bubble-size scale, a mini axis.
@@ -15812,10 +15956,12 @@ ChartThemes::Names();                        // the 14 built-in names
 ```
 
 A theme is colours only, so a theme change is **repaint-only**: no layout, no
-label re-solve (proposal §5.7). The engine calls the `OnThemeChanged()` hook
+label re-solve (proposal §5.7). The engine calls the `OnChartThemeChanged()` hook
 so content can refresh anything it cached from the theme — legend entry
 colours above all (they are stored in `ChartLegendEntry`, not looked up at
-draw time). The frozen frame carries `frame.theme` for phase-2 drawing.
+draw time). The frozen frame carries `frame.theme` for phase-2 drawing. (The hook was called `OnThemeChanged()` until 1.5.0; it was
+renamed because that name is the element's own hook for the application's
+`UltraCanvasTheme`, and the parameterless overload hid it.)
 
 The built-in themes are the palettes the pre-engine charts each carried
 privately, lifted verbatim: **Light** (default furniture, Paul Tol bright),
@@ -27162,6 +27308,328 @@ void ChooseBlackAndWhiteEmoji() {
 Tested in `Tests/EmojiSettingsTest.cpp`: the file round trip, and "👤 Someone"
 laid out in Ubuntu Bold with only the bundled fonts drawing its emoji from the
 style's font with no missing glyph.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasEngineCharts.md
+==============================================================================
+
+# UltraCanvas Engine Charts Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Which charts were ported](#which-charts-were-ported)
+- [Line, area and cumulative flow](#line-area-and-cumulative-flow)
+- [Scatter and bubble](#scatter-and-bubble)
+- [Waterfall](#waterfall)
+- [Diverging and population pyramid](#diverging-and-population-pyramid)
+- [Dumbbell](#dumbbell)
+- [Financial](#financial)
+- [Heatmap](#heatmap)
+- [Mekko](#mekko)
+- [Radar](#radar)
+- [Radial bar](#radial-bar)
+- [Pie and donut](#pie-and-donut)
+- [Polar](#polar)
+- [Engine features added for the ports](#engine-features-added-for-the-ports)
+- [Switching a chart](#switching-a-chart)
+
+## Overview
+
+The engine charts are ports of the legacy chart elements onto
+`UltraCanvasChartEngineElement`
+([`UltraCanvasChartEngine.md`](UltraCanvasChartEngine.md)). Each one implements
+only the engine's content contract - its axes description, its own drawing,
+its labels - and receives the rest: edge and polar axis furniture with
+decluttered tick labels, grids derived from the ticks, a measured layout, the
+shared legend (discrete, colour bar or size key), the solved label plan,
+themes and palettes, hover hit regions with tooltips, the entrance animation,
+and the Vertical / Horizontal / Polar projections.
+
+They are written **next to** the legacy charts, not in place of them: the
+legacy classes are unchanged, so an application switches one chart at a time.
+**Charts → Chart Engine Comparison** in the demo application
+(`Apps/DemoApp/UltraCanvasEngineComparisonExamples.cpp` and the family files
+`UltraCanvasEngineComparison{Lines,Bars,Finance,Polar}.cpp`) shows every port
+beside the legacy chart it replaces, on the same data, so the two can be
+compared before the switch.
+
+- Headers: `include/Plugins/Charts/Engine/Charts/UltraCanvasEngine<Name>Chart.h`
+- Sources: `Plugins/Charts/Engine/Charts/UltraCanvasEngine<Name>Chart.cpp`
+- Each class has a `CreateEngine<Name>Chart(id, x, y, w, h)` factory and the
+  usual `(id, x, y, w, h)` constructor (position and size default to 0, for a
+  chart sized by its layout).
+
+**Version:** 1.0.0
+**Last Modified:** 2026-10-20
+**Author:** UltraCanvas Framework
+**Namespace:** `UltraCanvas`
+
+## Which charts were ported
+
+The charts that draw on axes or around a centre - the pattern the engine
+models - were ported. Charts whose layout is not an axis system at all (the
+sunburst, chord, Gantt, timeline, Kanban, funnel, pyramid, nested-area,
+quadrant, circular progress and infographic charts, the 3D scatter and
+surfaces) stay on their own renderers for now; the 3D ones wait for the
+engine's `Space3D` projection.
+
+| Legacy chart | Engine port | Notes |
+|---|---|---|
+| `UltraCanvasLineChartElement` | `UltraCanvasEngineLineChart` (`Line`) | Straight, monotone curved or stepped; markers; polar line chart under Polar |
+| `UltraCanvasAreaChartElement` | `UltraCanvasEngineLineChart` (`Area`) | Gradient fill orthogonal only (flat under Polar) |
+| `UltraCanvasCumulativeFlowChartElement` | `UltraCanvasEngineLineChart` (`StackedArea`, `SetReverseStackOrder`) | Lead / cycle time and WIP as engine span annotations; no Kanban binding |
+| `UltraCanvasScatterPlotElement` | `UltraCanvasEngineScatterChart` | Trend line with r / r², confidence ellipses, both grids |
+| `UltraCanvasBubbleChartElement` | `UltraCanvasEngineScatterChart` (size channel) | XY bubbles only - packed and hierarchical layouts have no axes |
+| `UltraCanvasBarChartElement` | the demo's `EngineBarChart` (`UltraCanvasBarChartExamples.cpp`) | Converted earlier, on its own page |
+| `UltraCanvasWaterfallChartElement` | `UltraCanvasEngineWaterfallChart` | Change / subtotal / total steps, connectors |
+| `UltraCanvasDivergingBarChart` | `UltraCanvasEngineDivergingBarChart` | Likert (neutral split across zero), tornado, opposing bars - one shared scale |
+| `UltraCanvasPopulationChart` | `UltraCanvasEngineDivergingBarChart` (`PopulationPyramid`) | Surplus shaded inside the true bar; average ages as limiters |
+| `UltraCanvasDumbbellChart` | `UltraCanvasEngineDumbbellChart` | Any number of dots per row, nine sort orders |
+| `UltraCanvasFinancialChartElement` | `UltraCanvasEngineFinancialChart` | Candles, OHLC, real Heikin-Ashi; volume pane as an axis band; SMA / EMA |
+| `UltraCanvasHeatmapChartElement` | `UltraCanvasEngineHeatmapChart` | Grid heatmap; the colour-bar legend; masks; no image mode for huge grids |
+| `UltraCanvasMekkoChartElement` | `UltraCanvasEngineMekkoChart` | Marimekko and bar-Mekko; headers pinned over their columns |
+| `UltraCanvasRadarChartElement` | `UltraCanvasEngineRadarChart` | Cyclic spokes, polygon web, per-spoke ranges |
+| `UltraCanvasRadialBarChart` | `UltraCanvasEngineRadialBarChart` | Rays from a base ring, sectors per series, caps |
+| `UltraCanvasPieChartElement` | `UltraCanvasEnginePieChart` | Pie and donut, solved outside labels with leaders; no 3D mode |
+| `UltraCanvasPolarChart` | `UltraCanvasEnginePolarChart` | Line, spline, area, scatter and column series; radial and angular bands |
+| `UltraCanvasParallelCoordinateChartElement` | (native from the start) | The engine's first client |
+
+Every port draws its series from the theme palette unless the data gives a
+colour (`Color(0, 0, 0, 0)`, alpha 0, means "from the palette"), restarts its
+entrance animation on new data, and toggles a series when its legend entry is
+clicked. None of them has the legacy zoom / pan flags, which the engine does
+not model yet.
+
+## Line, area and cumulative flow
+
+```cpp
+auto chart = CreateEngineLineChart("Sales", 0, 0, 640, 400);
+chart->SetChartTitle("Monthly sales");
+chart->SetCategories({"Jan", "Feb", "Mar", "Apr", "May", "Jun"});
+
+EngineLineSeries sales;
+sales.name = "2025";
+sales.values = {45000, 52000, 48000, 61000, 55000, 67000};
+chart->AddSeries(sales);
+
+chart->SetLineShape(ChartLineShape::Curved);     // Straight, StepAfter, ...
+chart->SetShowValueLabels(true);
+chart->SetValueFormat("$", "", true);            // $52.0K
+chart->SetMode(EngineLineChartMode::Area);       // Line, Area, StackedArea, PercentStackedArea
+```
+
+`SetXValues` replaces the categories with a numeric domain. A NaN value is a
+gap (`SetBridgeGaps(true)` joins across it). Under `ChartProjectionKind::Polar`
+the categories go round the circle and the series closes into a loop.
+
+A cumulative flow diagram is the `StackedArea` mode with the first series on
+top (`SetReverseStackOrder(true)`); `AddCumulativeFlowAnnotations()` adds the
+lead time, cycle time and WIP spans as engine span annotations, which the
+value labels steer around.
+
+## Scatter and bubble
+
+```cpp
+auto chart = CreateEngineScatterChart("Spend", 0, 0, 640, 400);
+EngineScatterGroup campaigns;
+campaigns.name = "Campaigns";
+campaigns.points = {{1200, 21000}, {2600, 26000}, {4100, 28500}, {7800, 41000}};
+chart->AddGroup(campaigns);
+chart->SetAxisTitles("Marketing spend", "Sales");
+chart->SetShowTrendLine(true);                   // least squares, with r and r^2
+chart->SetShowConfidenceEllipses(true, 0.95);    // engine highlight per group
+```
+
+A point with a finite `size` turns the chart into a bubble chart: radii are
+area-proportional (`SetSizeScale(EngineBubbleScale::Diameter)` for the other
+convention) and `SetShowSizeLegend(true, "Health")` keys them with the engine
+legend's area-scaled size key. `colorValue` drives a colour channel keyed by a
+colour bar. Names are placed by the label plan (`SetPointLabelMode`), inside
+the bubble when they fit; a name pushed away from its mark gets a leader.
+
+## Waterfall
+
+```cpp
+auto chart = CreateEngineWaterfallChart("Flow", 0, 0, 640, 400);
+chart->AddStep("Start", 500);
+chart->AddStep("Q1", 150);
+chart->AddStep("Returns", -25);
+chart->AddStep("Total", 0, WaterfallStepKind::Subtotal);
+chart->SetValueFormat("$", "K", false);
+```
+
+`Change` steps float from the running total, `Subtotal` and `Total` stand on
+zero. Connectors (`SetConnectorStyle`), cumulative labels ("+150 = 650") and
+the Horizontal projection are options.
+
+## Diverging and population pyramid
+
+```cpp
+auto chart = CreateEngineDivergingBarChart("Survey", 0, 0, 640, 400);
+chart->SetCategories({{"Disagree", Color(0, 0, 0, 0), DivergingSide::Negative},
+                      {"Neutral",  Color(0, 0, 0, 0), DivergingSide::Neutral},
+                      {"Agree",    Color(0, 0, 0, 0), DivergingSide::Positive}});
+chart->AddRow("Question 1", {20, 15, 65});
+chart->AddRow("Question 2", {45, 20, 35});
+chart->SetStyle(DivergingBarStyle::Likert);      // Tornado, OpposingBars, PopulationPyramid
+```
+
+Both sides share one symmetric value axis (`ChartAxis::symmetric`) that prints
+magnitudes (`ChartAxis::absoluteLabels`). `SetPopulationData(groups, "Males",
+color, "Females", color)` builds a population pyramid in one call; the average
+age of each side is a limiter on the age axis.
+
+## Dumbbell
+
+```cpp
+auto chart = CreateEngineDumbbellChart("Satisfaction", 0, 0, 640, 400);
+chart->SetGroups({{"Before", Color(0, 0, 0, 0)}, {"After", Color(0, 0, 0, 0)}});
+chart->AddRow("North America", 62, 78);
+chart->AddRow("Latin America", 55, 71);
+chart->SetSortOrder(DumbbellRowSort::InsertionOrder);
+chart->SetShowDifferenceLabels(true);
+```
+
+## Financial
+
+```cpp
+auto chart = CreateEngineFinancialChart("Stock", 0, 0, 800, 480);
+chart->SetData({{"2024-01-02", 100.0, 102.5, 99.1, 101.8, 2.1e6},
+                {"2024-01-03", 101.8, 103.0, 100.4, 100.9, 1.7e6}});
+chart->SetCandleStyle(ChartCandleStyle::HeikinAshi);   // Candlestick, OHLCBars
+chart->SetShowVolumePane(true);                        // a band below the price
+chart->SetShowMovingAverage(true, 20, ChartMovingAverageKind::Exponential);
+```
+
+Price and volume are two value axes in separate sub-bands of one plot
+(`ChartAxis::bandStart` / `bandEnd`) over one date axis, so the panes share the
+grid, the crosshair and the hover slot. Heikin-Ashi candles are computed with
+`HeikinAshiCandles` (`Engine/UltraCanvasChartAnalysis.h`).
+
+## Heatmap
+
+```cpp
+auto chart = CreateEngineHeatmapChart("Correlation", 0, 0, 520, 480);
+chart->SetData({{1.0, 0.4, -0.2}, {0.4, 1.0, 0.1}, {-0.2, 0.1, 1.0}});
+chart->SetColumnLabels({"Revenue", "Margin", "Churn"});
+chart->SetRowLabels({"Revenue", "Margin", "Churn"});
+chart->SetColormap(HeatmapColormap::RdBu);
+chart->SetDiverging(true, 0.0);
+chart->SetShowCellValues(true);
+```
+
+Rows and columns are Category axes (crowded labels are thinned, not
+overprinted); the key is the engine legend in `ColorBar` mode, its ticks read
+back through the cells' own scale, so a log or diverging key labels exactly
+what the cells show.
+
+## Mekko
+
+```cpp
+auto chart = CreateEngineMekkoChart("Share", 0, 0, 640, 420);
+chart->SetData({{"USA", Color(0, 0, 0, 0)}, {"China", Color(0, 0, 0, 0)}},
+               {{"Technology", {88, 44}}, {"Energy", {35, 42}}});
+chart->SetSegmentLabelMode(ChartMekkoSegmentLabel::Value);
+chart->SetColumnHeaderMode(ChartMekkoHeader::WidthPercent);
+```
+
+The domain axis runs 0-100% of the grand total and each column spans its
+share. Column headers are pinned labels: a crowded one is dropped, never slid
+over its neighbour.
+
+## Radar
+
+```cpp
+auto chart = CreateEngineRadarChart("Products", 0, 0, 480, 480);
+for (const char* axis : {"Performance", "Features", "Usability", "Price", "Support"}) {
+    chart->AddAxis(axis);                        // 0..100 unless given
+}
+chart->AddSeries("Product A", {90, 80, 70, 60, 85});
+chart->AddSeries("Product B", {75, 85, 90, 70, 65});
+chart->SetGridLevels(5);
+```
+
+The spokes are a cyclic Category domain axis (`ChartAxis::cyclic`), the web is
+the polygon value grid (`SetPolarGridShape(ChartPolarGridShape::Polygon)`),
+and the value axis is the radial rule - all engine furniture.
+
+## Radial bar
+
+```cpp
+auto chart = CreateEngineRadialBarChart("Sensors", 0, 0, 520, 520);
+chart->AddSeries("Sensor 01", {{"00:00", 420.0}, {"01:00", 515.0}, {"02:00", 658.0}});
+chart->AddSeries("Sensor 02", {{"00:00", 310.0}, {"01:00", 470.0}, {"02:00", 402.0}});
+chart->SetInnerRadiusFraction(0.25f);
+chart->SetCapStyle(EngineRadialBarCap::Round);
+chart->SetCenterText("Sensors");
+```
+
+Rays radiate from a base ring (`SetPolarInnerRadius`), each series filling an
+angular sector; the series names are the rim labels.
+
+## Pie and donut
+
+```cpp
+auto chart = CreateEnginePieChart("Market", 0, 0, 480, 400);
+chart->AddSlice("Product A", 31.2);
+chart->AddSlice("Product B", 25.0);
+chart->AddSlice("Others", 10.7);
+chart->SetDonutMode(true);
+chart->SetCenterText("Share", "2025");
+chart->SetLabelPosition(EnginePieLabelPosition::Auto);
+```
+
+A pie is the Polar projection of one 100% stacked bar: slices are ring sectors
+from `BuildBarOutline`, outside labels ride the label plan with leader lines
+(the centre text is an obstacle), and clicking a legend entry drops the slice
+from the shares.
+
+## Polar
+
+```cpp
+auto chart = CreateEnginePolarChart("Wind", 0, 0, 520, 520);
+chart->AddSeries("Gusts", EnginePolarSeriesType::Spline,
+                 {{0, 12.0}, {90, 18.0}, {180, 9.0}, {270, 15.0}});
+chart->AddCategorySeries("Monthly", EnginePolarSeriesType::Column,
+                         {3, 5, 8, 6, 4, 2, 1, 2, 4, 6, 7, 5});
+chart->SetRadialScale(EnginePolarRadialScale::SquareRoot);
+```
+
+Numeric (degrees) or categorical angles, mixed series types, radial and
+angular bands (engine value-band highlights: rings and wedges under Polar),
+linear, logarithmic or square-root radii (`ChartScale::Sqrt`).
+
+## Engine features added for the ports
+
+What a legacy chart did privately and other charts would share went into the
+engine, not into the port:
+
+| Feature | Where |
+|---|---|
+| Polar furniture: rim labels for a domain axis, a radial rule for a value axis, ring / polygon grids, round plot fill, rim labels as label obstacles | `UltraCanvasChartEngineElement` |
+| `SetPolarAngles`, `SetPolarInnerRadius`, `SetPolarGridShape`, `SetDomainGridAxis` | `UltraCanvasChartEngineElement` |
+| Axis roles, sub-bands, symmetric ranges, cyclic categories, absolute labels, range padding, the `Sqrt` scale, single nice-number rounding, `-$25` | `ChartAxis` |
+| Rotated left/right axis titles; edge labels kept inside the element; edge axes on one side stacking outward | `UltraCanvasChartEngineElement` |
+| Line runs (straight / curved / stepped, gaps, closed loops), area outlines, line-family stacking, markers (`DrawChartMarker`) | `Engine/UltraCanvasChartSeries.h` |
+| Trend fit, moving averages, Heikin-Ashi | `Engine/UltraCanvasChartAnalysis.h` |
+| Pinned labels (exact position, dropped rather than slid) | `ChartLabelRequest::pinned` |
+| Span annotations (dimension lines with captions), limiter extents and domain-axis limiters, role-aware value bands | `UltraCanvasChartEngineElement` |
+| Area-scaled size legend with explicit values | `ChartLegend` (`LegendSizeScale`) |
+
+The model-layer pieces are unit-tested in `Tests/ChartEngineTest.cpp`.
+
+## Switching a chart
+
+1. Compare the two on the demo's comparison page with the application's own
+   data shape; the notes column above lists what a port leaves out.
+2. Replace the legacy element with the port. The data structs differ (the
+   ports take plain value vectors and structs rather than
+   `IChartDataSource`), so the feeding code changes; the styling setters keep
+   their legacy names where the concept is the same.
+3. Theme the chart with `SetTheme("Dark")` or `SetPalette(...)` instead of
+   per-chart colour setters, and drop any hand-placed legend or labels - the
+   engine places them.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileAssociations.md
@@ -48970,6 +49438,138 @@ Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 - [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demos
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasNotificationActivation.md
+==============================================================================
+
+# UltraCanvasNotificationActivation
+
+A click on one of an application's notifications reaching that application -
+even when the program that put the notification on screen has quit since, and
+even when the application itself is not running. Header:
+`UltraCanvas/include/UltraCanvasNotificationActivation.h`.
+
+## Contents
+
+- [Why it is needed](#why-it-is-needed)
+- [Registering the activator](#registering-the-activator)
+- [The launch string](#the-launch-string)
+- [What is written, and how it is removed](#what-is-written-and-how-it-is-removed)
+- [API](#api)
+
+## Why it is needed
+
+An application posts its notification on the UltraMessage bus, and a presenter
+puts it on screen. On Windows that is a toast under the application's own
+AppUserModelID, shown by the program that hosts the broker. While that program
+runs, a click on the toast comes back over the bus as
+`system.notification.action`. Once it has quit, the toast still waits in the
+Action Center - and Windows hands a click on it to the COM activator registered
+for the AppUserModelID, starting the program the activator names when it is not
+running. Without one, the click did nothing.
+
+Elsewhere the notification service reports the click over the bus while the
+application runs; there is nothing to register, and the calls below do nothing.
+
+## Registering the activator
+
+Once, early in the start: when Windows starts the program for a click it waits
+for the registration.
+
+```cpp
+#include "UltraCanvasNotificationActivation.h"
+
+void RegisterForNotificationClicks() {
+    UltraCanvas::RegisterNotificationActivator(
+        "org.ultraos.ultramail",
+        [](const UltraCanvas::NotificationActivation& click) {
+            // On the UI thread. click.actionId: "default" for the toast,
+            // a button's id, "" for a toast without a default action.
+            const std::string what = click.launch;   // the notification's own note
+            (void)what;
+        });
+}
+```
+
+The program is started with `-ToastActivated` (and COM may add `-Embedding`);
+`IsNotificationActivationArgument` tells such an argument from a file to open.
+One click can arrive both ways - over the bus from a broker host still running,
+and through the activator - so an application that opens something for it
+opens it once.
+
+## The launch string
+
+`SystemNotification::launch` (UltraMessage) is the application's own note of
+what a notification is about. The presenter writes it into the toast's
+activation arguments with the notification's id and the action, so the
+activator gets it back with nothing on the bus to ask. `EncodeNotificationQuery`
+and `DecodeNotificationQuery` make a convenient one:
+
+```cpp
+#include "UltraCanvasNotificationActivation.h"
+
+std::string LaunchFor(const std::string& accountId, int64_t uid) {
+    return UltraCanvas::EncodeNotificationQuery({{"account", accountId}, {"uid", std::to_string(uid)}});
+}
+
+int64_t UidOf(const std::string& launch) {
+    const auto fields = UltraCanvas::DecodeNotificationQuery(launch);
+    auto uid = fields.find("uid");
+    return uid == fields.end() ? 0 : std::stoll(uid->second);
+}
+```
+
+## What is written, and how it is removed
+
+All per user, under `HKEY_CURRENT_USER`, no administrator rights:
+
+| Key | Written by | What |
+|---|---|---|
+| `Software\Classes\AppUserModelId\<appId>` | the presenter (`DisplayName`, `IconUri`), the activator (`CustomActivator`) | the toast's name and icon, and the class a click goes to |
+| `Software\Classes\CLSID\<clsid>\LocalServer32` | the activator | `"<program>" -ToastActivated` |
+| `Software\UltraCanvas\Notifications` | both | one value per AppUserModelID, its CLSID as the data |
+
+The CLSID is derived from the AppUserModelID (`NotificationActivatorClassId`),
+so every start of the application names the same class, and its program path is
+written again on every start, so a moved installation is followed. The
+installer's uninstaller (`Windows/Installer/UltraCanvasSetup.nsi`) walks the
+list and removes each AppUserModelID key and CLSID key, then the list;
+`RemoveNotificationRegistrations()` does the same from code.
+
+A folder unpacked from the ZIP package has no uninstaller, so the same removal
+is offered three more ways:
+
+- UOS-Settings, *Notifications > Registrations*: the list
+  (`ListNotificationRegistrations()`) and a *Remove all* button;
+- `UOS-Settings --remove-notification-registrations`, with no window;
+- `uc-remove-registrations.cmd`, which `package-win.sh` puts in the ZIP beside
+  the programs and which runs that command - to run before deleting the folder.
+
+An application registers again the next time it starts (its activator) or
+shows a notification (its name and icon), so a removal does no harm to one
+that stays.
+
+## API
+
+| Function | What it does |
+|---|---|
+| `RegisterNotificationActivator(appId, onActivated)` | Windows: writes the activator's registration and serves it; `onActivated` runs on the UI thread. False when nothing could be registered, and always elsewhere. |
+| `ListNotificationRegistrations()` | Windows: every identity the list names - `appId` and `activatorClassId` ("" when none registered one) - sorted by ID. Empty elsewhere. |
+| `RemoveNotificationRegistrations()` | Windows: removes every identity the list names, and the list; returns how many. 0 elsewhere. |
+| `NotificationActivation` | `notificationId`, `actionId`, `launch`. |
+| `FormatNotificationArguments(activation)` / `ParseNotificationArguments(arguments)` | A toast's activation arguments and back; arguments in no form of these are a click on the toast itself. |
+| `EncodeNotificationQuery(fields)` / `DecodeNotificationQuery(query)` | `key=value&...`, percent-encoded. |
+| `NotificationActivatorClassId(appId)` | The activator's CLSID, `{XXXXXXXX-XXXX-5XXX-...}`. |
+| `IsNotificationActivationArgument(argument)` | `-ToastActivated`, `-Embedding`, `/Embedding`. |
+
+Every application under `Apps/` that posts a notification registers its
+activator, or says why not (`// notification-activator-exempt: <why>`):
+`scripts/check_notification_activators.py`, run by CI
+(`notification-activators.yml`).
+
+Tested in `Tests/UltraMessage/test_adapters.cpp` (the arguments, the CLSID, the
+toast XML carrying them) and UltraMail's `test_newmail.cpp` (its launch string).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNotificationToast.md
 ==============================================================================
 
@@ -61637,7 +62237,7 @@ EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial, UltraFIBU and
 UltraWin Manager raise their window. The document applications - Texter,
 UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraVideo and AnchorPoint -
 use `ListenOpen`: a file opened from the file manager while one of them runs
-opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint`,
+opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint-cli`,
 `ultrafibu`) do not use it: scripts run several of them at once, and a helper
 process an application starts itself (UltraFiler's elevated helper) must
 never claim.
@@ -73924,6 +74524,7 @@ Each takes its data through setters and renders itself; most have a
 | A project schedule: task table, dependencies, milestones, critical path | `UltraCanvasGanttChartElement` | `Plugins/Charts/UltraCanvasGanttChart.h` |
 | A Kanban board, and the cumulative flow diagram over its history | `UltraCanvasKanbanBoardElement`, `UltraCanvasCumulativeFlowChartElement` | `Plugins/Charts/UltraCanvasKanbanBoard.h`, `Plugins/Charts/UltraCanvasCumulativeFlowChart.h` |
 | Milestones and spans on a real date axis | `UltraCanvasTimelineChart` | `Plugins/Charts/UltraCanvasTimelineChart.h` |
+| Any of the charts above **on the chart engine** — themes, measured layout, solved labels, tooltips, Vertical / Horizontal / Polar — compared with the legacy ones on the demo's *Chart Engine Comparison* page (`UltraCanvasEngineCharts.md`) | line / area / stacked area / cumulative flow `UltraCanvasEngineLineChart`; scatter and bubble `UltraCanvasEngineScatterChart`; `UltraCanvasEngineWaterfallChart`; Likert / tornado / population pyramid `UltraCanvasEngineDivergingBarChart`; `UltraCanvasEngineDumbbellChart`; candlestick / OHLC / Heikin-Ashi `UltraCanvasEngineFinancialChart`; `UltraCanvasEngineHeatmapChart`; `UltraCanvasEngineMekkoChart`; `UltraCanvasEngineRadarChart`; `UltraCanvasEngineRadialBarChart`; pie / donut `UltraCanvasEnginePieChart`; `UltraCanvasEnginePolarChart` | `Plugins/Charts/Engine/Charts/UltraCanvasEngine<Name>Chart.h` |
 | **A chart type that does not exist yet** — derive, do not paint | `UltraCanvasChartEngineElement` (three-phase engine; implement phase 2) or `UltraCanvasChartElementBase` | `Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`, `Plugins/Charts/UltraCanvasChartElementBase.h` |
 
 ### Diagrams — `Plugins/Diagrams/`
@@ -87191,6 +87792,17 @@ socket; the pool opens and reuses physical connections lazily as
 queries run, and reconnects on drop. `UltraDb_CloseConnection(name)`
 drains and removes a pool.
 
+Re-registering or closing a name never pulls a connection out from under a
+call that is using it, on any thread. Each call holds its connection until it
+returns, and so does every open statement, cursor and transaction handle. The
+old connection closes when the last of them ends; every call that starts after
+the change uses the new registration. Closing a handle (`UltraDb_Finalize`,
+`UltraDb_CloseCursor`) while another thread's call on it runs works the same
+way: the handle is gone for later calls, and the running one finishes.
+`UltraDb_CancelQuery(name)` still reaches a statement that began on the name
+before it was re-registered or closed, so a Stop button keeps working while
+the connection's settings change under it.
+
 ---
 
 ## Engines at a glance
@@ -87395,6 +88007,12 @@ and deliver results via a callback. As in UltraNet, **async callbacks
 run on a UltraDatabase worker thread — callers must marshal to their
 own loop** (`UltraCanvasApplication::PostToUIThread(fn)`) and must not
 block. The UI never waits on the database.
+
+Every call may come from any thread. Calls on one connection are serialised
+by the driver, one statement at a time. `UltraDb_CancelQuery` is the exception:
+it reaches a running statement without waiting. Registering, re-registering
+and closing a name are safe while other threads' calls run on it (see *Core
+idea* above).
 
 ---
 
@@ -88016,7 +88634,7 @@ own under a vendor prefix (`com.example.myapp.*`). Their names are in
 |---|---|---|
 | `messaging.message` | yes | `service`, `conversation{id,title,isGroup}`, `sender{id,name}`, `text`, `direction`, `read`, `attachments[]` |
 | `mail.message` | yes | `account`, `folder`, `from{name,address}`, `to[]`, `subject`, `snippet`, `read`, `flagged` |
-| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]`; optional `desktopEntry`; `displayed` names what already shows it. One an application posts goes on screen (§3.6, *Presenters*; §3.8 where no presenter can) unless it is `Silent` |
+| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]`; optional `desktopEntry`, and `launch` - the posting application's own note of what the notification is about, handed back to it with a click that reaches it outside the bus (`UltraCanvasNotificationActivation.h`); `displayed` names what already shows it. One an application posts goes on screen (§3.6, *Presenters*; §3.8 where no presenter can) unless it is `Silent` |
 | `system.notification.action` / `.dismissed`, `feed.read` / `feed.dismissed` | no | feed ↔ adapter signalling |
 | `app.lifecycle.started` / `.stopping` | no | published by the broker for every endpoint |
 | `app.open.request` | no | `paths[]` / `urls[]`, `activate` — single-instance hand-off |
@@ -88146,7 +88764,14 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   respected (an application turned off shows nothing, not a balloon). A click
   is the `"default"` action, a button its action, a dismissal
   `system.notification.dismissed`, while the broker runs; an update
-  (`UltraMsgFlag_Replace`) changes the toast in place. Where toasts are not
+  (`UltraMsgFlag_Replace`) changes the toast in place. Every activation's
+  arguments carry the action, the notification's id and its `launch`
+  (`UltraCanvas::FormatNotificationArguments`), so once the broker host has
+  quit, a click in the Action Center goes to the application's own activator
+  (`UltraCanvas::RegisterNotificationActivator`) - Windows starts the
+  application when it is not running - which has everything it needs. Each
+  AppUserModelID is listed under `HKCU\Software\UltraCanvas\Notifications`
+  for the uninstaller, which removes it with its activator. Where toasts are not
   available, or one cannot be shown, it is a notification-area balloon
   (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
   registration: Windows heads it with the name of the process hosting the
@@ -88244,6 +88869,36 @@ anywhere on the bus; a replacement updates it. The ULTRA OS desktop hosts one
 (`Apps/UltraDesktop`, top right beside its right bar). On a desktop with its
 own notification server every notification carries `displayed` and the host
 draws nothing.
+
+### 3.9 Posting a notification from an application
+
+What an application gives a `system.notification` it wants on screen, and the
+one call that makes its clicks reach it however the notification was shown:
+
+```cpp
+// Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
+// on the toast after the broker host quit - or with the application closed,
+// which Windows then starts - comes here, on the UI thread. Elsewhere a no-op.
+UltraCanvas::RegisterNotificationActivator("org.example.myapp",
+    [](const UltraCanvas::NotificationActivation& click) { Open(click.launch); });
+
+// Each notification.
+UltraMessage::SystemNotification n;
+n.appId   = "org.example.myapp";   // the AppUserModelID its Windows toast shows under
+n.appName = "MyApp";               // what Windows heads the toast with
+n.icon    = iconPngPath;           // its logo
+n.summary = "Export finished";
+n.actions = {{"default", "Open"}};
+n.launch  = UltraCanvas::EncodeNotificationQuery({{"file", exportedPath}});   // what the click opens
+UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSystemNotification(n));
+```
+
+While the broker runs, the click also comes back over the bus as
+`system.notification.action`; an application that acts on both opens the
+thing once. `scripts/check_notification_activators.py` (CI) reports an
+application under `Apps/` that posts a notification without registering an
+activator; sample traffic posted `Silent` says so with
+`// notification-activator-exempt: <why>`.
 
 ## 4. The C++ layer
 
@@ -88502,8 +89157,20 @@ FILE: Docs/Modules/UltraNet/JmapSupport.md
 
 # JMAP Support in UltraNet — Investigation & Design
 
-**Status:** Phase 1 implemented (read path) — see `Plugins/UltraNet/jmap/`;
-phases 2–3 remain as designed below
+**Status:** All three phases implemented — the read path, the write path
+(`StoreFlags`, `MoveMessage`, `AppendMessage`, `ExpungeMessage`,
+`FetchAllFlags` and `SendMail` through `EmailSubmission`) and push
+(`WatchMailbox` over the session's event source) — see
+`Plugins/UltraNet/jmap/`. UltraMail
+consumes it since 0.10.62: an account's incoming server is set to JMAP on its
+settings page (`Docs/UltraMail/AccountSetup.md`, section 5), and syncs, the
+login check, the message actions and the outbox copies then use this plug-in
+in place of the IMAP one; since 0.10.63 UltraMail also finds a JMAP server by
+itself (SRV `_jmap._tcp` and the `/.well-known/jmap` probe, between the
+provider table and the autoconfig lookup) and sends through it when the
+account names no SMTP server; since 0.10.64 it keeps a watch open on every
+JMAP account and checks the account the moment the server reports a change,
+next to the regular interval.
 **Scope:** Add JMAP (JSON Meta Application Protocol, RFC 8620 core + RFC 8621 mail)
 as an UltraNet protocol plug-in, consumable by UltraMail alongside IMAP/SMTP.
 
@@ -88643,13 +89310,18 @@ uid. Proposal, phased:
    (`Email/changes`) can be used first-class — that unlocks JMAP's cheap
    incremental sync instead of uid-window polling.
 
-### 4.3 Push (phase 3)
+### 4.3 Push (phase 3) — implemented
 
-Subscribe `UltraNet_SseStreamAsync` to the session's `eventSourceUrl`;
-`StateChange` events carry per-account `Email`/`Mailbox` state strings. Surface
-as an optional callback on the plug-in (or a future
-`IMailboxPushProtocolPlugin` mix-in) that UltraMail's `SyncScheduler` uses to
-trigger immediate `SyncMessages` instead of its poll interval.
+`IMailboxProtocolPlugin::WatchMailbox` (appended to the interface, with a
+"not implemented" default) opens a watch: the JMAP plug-in subscribes
+`UltraNet_SseStreamAsync` to the session's `eventSourceUrl` for
+`Email,Mailbox` with a five-minute ping, records the account's states from
+the first `StateChange` event and reports a change for every later one whose
+`Email` or `Mailbox` state differs; `onEnd` reports the stream's end and
+`StopWatching` ends it. UltraMail (`MaintainPushWatches`, on its sync tick)
+keeps one watch per JMAP account whose vault entry is usable, checks the
+account at once on a change, and reopens a watch that ended after a minute;
+the interval check stays as the safety net.
 
 ### 4.4 Discovery (phase 3)
 
@@ -88695,9 +89367,10 @@ account (Basic app-password auth) — phase 1 is exercisable read-only.
 2. **Interface evolution** — phase 1 ships on the uid-mapping shim
    (`JmapCore.h` `UidMap`); the `UltraNetMailEnvelope.id` extension remains a
    phase 3 follow-up.
-3. Whether `SendMail` through JMAP should be preferred by UltraMail when an
-   account is JMAP-discovered (replacing the SMTP path for those accounts) —
-   open until phase 2.
+3. *Decided with phase 2:* UltraMail sends through JMAP when the account's
+   incoming server is JMAP and no outgoing (SMTP) server is given - what a
+   JMAP-discovered account looks like; an SMTP server entered on the
+   settings page is used instead.
 
 ==============================================================================
 FILE: Docs/Modules/UltraNet/README.md
@@ -88798,10 +89471,13 @@ planned (see the status table below).
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
 `UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
-table** (`UltraNetPluginHost`, ABI 2) handed to its `UltraNet_PluginInit`:
+table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
-`UltraNet_MimeBuild`, `UltraNet_HttpGet` / `HttpRequest`, ... Plug-in sources
+`UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
+format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+`UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
+plug-in's push), ... Plug-in sources
 call those functions as usual;
 `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`, compiled into every
 plug-in, defines them inside the DSO and forwards each call to the table. So a
@@ -95090,12 +95766,13 @@ again to retry.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
-- **IMAP / SMTP plug-ins.** Mail is fetched and sent through UltraNet's
-  `ultranet_imap` and `ultranet_smtp` plug-ins. UltraMail looks for them in
-  `Plugins/UltraNet` next to the executable (or up to two levels above it,
-  then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. If they
-  are missing, Update and the first sync of a new account say so and name the
-  folder that was searched.
+- **IMAP / JMAP / SMTP plug-ins.** Mail is fetched through UltraNet's
+  `ultranet_imap` plug-in - or `ultranet_jmap` for an account whose incoming
+  server is set to JMAP - and sent through `ultranet_smtp`. UltraMail looks
+  for them in `Plugins/UltraNet` next to the executable (or up to two levels
+  above it, then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides.
+  If the one an account needs is missing, Update and the first sync of a new
+  account say so and name the folder that was searched.
 - **Changing the sign-in of an account.** Add the account again with the
   same address: the existing entry is updated, and whatever you provide this
   time (a password, an app password, or the browser sign-in) replaces what
@@ -95119,12 +95796,14 @@ reports "settings found for <domain>". The lookup runs off the UI thread
 behind a wait dialog and takes a few seconds at most.
 
 **Manual settings page.** When nothing is published, the page opens with
-*Incoming (IMAP)* and *Outgoing (SMTP)* rows — host, port, security
+a *Protocol* row (IMAP or JMAP, see below), *Incoming (IMAP)* and
+*Outgoing (SMTP)* rows — host, port, security
 (SSL/TLS, STARTTLS, None) — and the *Username*, prefilled with
 `imap.<domain>` 993 SSL/TLS, `smtp.<domain>` 587 STARTTLS and the full
 address. Correct them from your provider's "mail program settings" or
 "IMAP/SMTP" help page and **Save**. Save first **checks the sign-in**: UltraMail opens
-one IMAP session to the incoming server with the entered servers and the
+one session to the incoming server (IMAP, or JMAP's session resource) with
+the entered servers and the
 password (or the stored sign-in of an existing account), which proves the
 host, the port, the security mode and the credentials in one go. While it
 runs the page says "Checking the sign-in at …"; on success the page closes,
@@ -95135,6 +95814,50 @@ offers **Save anyway** for a server that is down right now. The outgoing
 (SMTP) server is not checked — the plug-in has no sign-in-only operation —
 so a wrong SMTP entry shows up on the first send. The page also validates
 in place (a host must be given, ports are 1–65535).
+
+**JMAP instead of IMAP.** The *Protocol* row at the top of the page chooses
+what the incoming server speaks: **IMAP** (every account from before the
+choice existed, and most providers) or **JMAP**, the JSON-over-HTTPS mail
+protocol (RFC 8620/8621) of Fastmail, Stalwart, Cyrus and Apache James.
+Choosing JMAP renames the incoming rows to *Incoming (JMAP)* and *Sign-in
+(JMAP)*, sets the port to **443** (a port that was IMAP's usual 993 or 143;
+an unusual one you typed stays), fixes the security to SSL/TLS - a JMAP
+server is HTTPS - and leaves *Automatic*, *Normal password* and *OAuth2* as
+the sign-in methods, the ones JMAP has. Enter the server as its host name
+only - `api.fastmail.com`, or the mail host of a Stalwart or Cyrus server;
+UltraMail asks it for the JMAP session at `/.well-known/jmap`. The sign-in
+check, every later sync, marking read, moving, deleting (to the Trash
+mailbox) and the copies in Drafts and Sent then go through the JMAP plug-in.
+The *Outgoing (SMTP)* server is **optional** for a JMAP account: left
+empty, mail is sent through the JMAP server too (JMAP submission, as the
+account's own identity; the server files the sent message in Sent); an
+SMTP server entered next to it is used to send instead. Switching an
+existing account between the protocols drops the mail held for it and
+fetches it anew: the same mailbox read over the other protocol numbers its
+messages differently. The choice is stored with the other server settings
+of the account and shown again on its Settings page.
+
+**JMAP is found by itself.** Before the autoconfig documents (which only
+describe IMAP), the lookup asks the domain for its JMAP server (RFC 8620
+§2.2): the DNS SRV record `_jmap._tcp.<domain>` names it, else the domain
+itself is asked at `https://<domain>/.well-known/jmap`; a server that
+answers with its session resource, or asks for a sign-in first (401, as
+Fastmail and Stalwart do), is taken - as the host the answer came from,
+after redirects (`fastmail.com` leads to `api.fastmail.com`). The wizard
+then reports *a JMAP server was found for <domain>*, and the account is
+added with that JMAP server as its incoming server, the full address as
+its username and no SMTP server: it sends through JMAP. The provider table
+comes first, so Gmail, Outlook and the other known providers are never
+probed.
+
+**New mail arrives at once.** A JMAP account is watched: UltraMail holds
+the server's event source open and checks the account the moment the
+server reports a change to its mail or folders, so new mail shows without
+waiting for the interval in *Settings > Mail > Connection* - which still
+runs, as the safety net for a change the stream missed. The watch opens
+once the account's sign-in is usable, is reopened a minute after the
+server or the network ended it, and `trace.log` in the data folder says
+when it opened, ended and fired.
 
 **Authentication method.** Under the server rows, *Sign-in (IMAP)* and
 *Sign-in (SMTP)* choose how each server is signed in to — the same choice
@@ -95178,7 +95901,9 @@ Gmail, Outlook and Yahoo.
 | *New mail could not be fetched … authentication failed* | iCloud: you typed the account password; use an app-specific password (section 2). Gmail, Outlook and Yahoo take no password: open the account's Settings and use *Sign in with …*. |
 | *The sign-in service is turned off in this build and no OAuth client is configured* | The build was configured with `-DULTRAMAIL_OAUTH_SERVICE_URL=""`, or `off` was set. Name a service (`[service] url =` in `oauth.ini`, or `ULTRAMAIL_OAUTH_SERVICE_URL`) or a client of your own (section 3). |
 | *The sign-in service did not answer … The sign-in service at … could not be reached* (and the browser never opened) | `oauth-callback.ultraos.eu` could not be reached from this computer: the name does not resolve, a proxy blocks it, or the service is down. Open `https://oauth-callback.ultraos.eu/healthz` in a browser; `trace.log` in the data folder says which way the sign-in went (*through the sign-in service …* or *directly, with this installation's own client*). An installation behind a firewall can run its own service (section 3). |
-| *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
+| *The IMAP plug-in was not found* / *The JMAP plug-in was not found* | Build the UltraNet IMAP (or JMAP) plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. An account whose *Protocol* is JMAP needs `ultranet_jmap`, every other one `ultranet_imap`. |
+| *The JMAP plug-in is not loaded, so UltraMail cannot reach a mail server* on Send | The account sends through its JMAP server (no SMTP server is entered) and `ultranet_jmap` is missing: see the row above, or enter an outgoing (SMTP) server on the account's Settings page. |
+| *The server refused the submission: forbiddenFrom* on Send from a JMAP account | The JMAP server has no sending identity for the From address. Use the address the account signs in with, or add the identity (an alias) at the provider. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
 | *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |
@@ -95353,7 +96078,8 @@ If discovery or verification fails, the wizard drops into the
 outgoing server/port/TLS, username) with everything it *did* find
 prefilled — the user corrects one field instead of typing seven.
 *(Shipped in 0.9.0 as `UltraMailServerSettingsDialog` — IMAP only, no
-POP3 yet; since 0.9.1 Save checks the IMAP sign-in first (`LoginCheck`).
+POP3 yet; since 0.9.1 Save checks the incoming sign-in first (`LoginCheck`);
+since 0.10.62 a Protocol row chooses IMAP or JMAP for the incoming server.
 The page is also the fallback when the autoconfig lookup finds nothing,
 and Reload opens it for an account without known servers.)*
 

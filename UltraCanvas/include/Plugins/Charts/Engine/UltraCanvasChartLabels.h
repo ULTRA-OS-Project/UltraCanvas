@@ -7,8 +7,10 @@
 // redraw; the solver never runs inside a paint handler. Sits on top of
 // UltraCanvasLabelPlacement and adds no UI dependency of its own.
 //
+// Version: 1.1.0 - pinned labels: placed exactly on their side of the anchor,
+//   dropped rather than slid when they collide
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,6 +93,14 @@ struct ChartLabelRequest {
     int priority = 0;
     bool allowSuppress = false;
     bool wantLeaderLine = false;
+    // Solved classes only: the label sits exactly on preferredSide of the
+    // anchor (centred on it for Auto) and never slides along it - column
+    // headers, a bar's total, anything whose meaning is its position. When
+    // it would overlap a label pinned before it (priority order) or an
+    // obstacle, it is suppressed if allowSuppress, else drawn anyway. Pinned
+    // labels are placed before the free ones, which then steer around them.
+    // Without this a crowded header slid sideways onto its neighbour's column.
+    bool pinned = false;
     size_t userData = 0;             // caller's own index, echoed back untouched
 };
 

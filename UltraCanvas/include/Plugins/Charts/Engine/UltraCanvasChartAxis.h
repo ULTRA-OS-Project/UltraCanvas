@@ -7,8 +7,15 @@
 // and leaves screen geometry to the projection, so it can be unit tested
 // without a window.
 //
+// Version: 1.5.0 - rangePadding
+// Version: 1.4.0 - one nice-number rounding for auto ranges and tick steps;
+//   the minus sign leads the unit prefix (-$25K)
+// Version: 1.3.0 - absoluteLabels (magnitudes on both sides of a diverging axis)
+// Version: 1.2.0 - the Sqrt scale (area-true polar radii)
+// Version: 1.1.0 - axis roles (polar furniture), sub-bands (stacked panes),
+//   symmetric ranges (diverging charts)
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +33,7 @@ enum class ChartScale {
     Linear,
     Log,            // logarithmic; non-positive values are clamped to the floor
     SymLog,         // linear near zero, logarithmic beyond - handles signed data
+    Sqrt,           // square root (signed): area-true radii for rose / polar column charts
     Percentile,     // rank among the observed values: uniformises skewed columns
     ZScore,         // (v - mean) / stddev
     RobustZScore,   // (v - median) / MAD - resistant to outliers
@@ -35,6 +43,15 @@ enum class ChartScale {
 // Where the axis furniture is drawn. Independent of the projection: a
 // horizontal bar chart still has a value axis, it just runs the other way.
 enum class ChartAxisSide { Left, Right, Bottom, Top };
+
+// Which normalised coordinate an edge axis maps: the domain (u - categories,
+// time, x) or the value (v). Auto infers it from the side as the vertical
+// projection reads it - Bottom/Top are domain, Left/Right are value - and
+// flips that under the horizontal projection. The engine needs it only where
+// the side alone cannot say: under Polar a domain axis labels the rim and a
+// value axis becomes a radial rule, so a chart written for the vertical
+// projection gets round furniture without a chart-side change.
+enum class ChartAxisRole { Auto, Domain, Value };
 
 struct ChartTick {
     double value = 0.0;         // the data value the tick marks
@@ -72,6 +89,29 @@ public:
     bool showTickLabels = true;
     bool showEndpointLabels = false; // min/max printed at the axis ends
     std::string title;              // drawn by the axes layer; may differ from name
+    ChartAxisRole role = ChartAxisRole::Auto;
+    // Sub-band of the normalised direction the axis occupies, for stacked
+    // panes sharing one plot: a price axis on 0.3..1 above a volume axis on
+    // 0..0.22. Normalize maps the axis range onto [bandStart, bandEnd], so the
+    // content, the ticks, the grid and the edge rule all land in the band
+    // with no chart-side arithmetic. The default is the whole direction.
+    double bandStart = 0.0;
+    double bandEnd = 1.0;
+    // Auto ranges only: widen the range to [-m, m] around zero, m being the
+    // largest magnitude observed - diverging bars, population pyramids and
+    // tornado charts keep zero in the middle whichever side is longer.
+    bool symmetric = false;
+    // Auto ranges only: widen the observed extent by this fraction of its
+    // span on each side before the nice rounding, so marks at the extremes
+    // (a scatter's outliers, a line's peak, a bubble's radius) are not cut by
+    // the plot edge. Never pads across zero: data that starts at zero keeps
+    // its zero baseline.
+    double rangePadding = 0.0;
+    // Format magnitudes: -30 reads "30". A population pyramid or a tornado
+    // chart plots one side negative only to put it left of zero; its tick,
+    // value and tooltip labels should still read as amounts. Applies before
+    // the custom formatter too.
+    bool absoluteLabels = false;
     double logBase = 10.0;
     double symLogThreshold = 1.0;   // |v| below this is linear
     int decimals = -1;              // -1 = choose from the range
@@ -85,6 +125,11 @@ public:
     // box plots) are clipped in half; 0.5 gives every slot the same width and
     // the outer marks their full footprint. Ignored by the other scales.
     double categoryPadding = 0.0;
+    // Category scale only: the range runs 0..n instead of 0..n-1, one empty
+    // slot past the last category, so under a full-circle polar projection
+    // the last slot does not land on the first - radar spokes, evenly spread
+    // with the first at the start angle. Overrides categoryPadding.
+    bool cyclic = false;
     // Explicit tick positions: when non-empty, GenerateTicks emits exactly
     // these (formatted through the axis), overriding every generation rule -
     // category slots under bars, hand-picked decades, threshold lists.
@@ -114,8 +159,9 @@ public:
     size_t SampleCount() const { return samples.size(); }
 
     // ---- mapping ---------------------------------------------------------
-    // Value -> [0,1], honouring scale and inversion. Out-of-range values map
-    // outside [0,1] rather than being clamped, so callers can decide.
+    // Value -> [0,1], honouring scale, inversion and the sub-band. Out-of-range
+    // values map outside the band rather than being clamped, so callers can
+    // decide.
     double Normalize(double value) const;
     // The inverse. Exact for Linear/Log/SymLog/Category; Percentile and the
     // z-scores invert through their statistics.

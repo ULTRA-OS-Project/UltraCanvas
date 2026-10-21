@@ -186,7 +186,7 @@ UltraMail::SyncOutcome FetchMailbox(UltraMail::LocalStore& store,
                                     const std::string& mailCacheDir,
                                     const UltraMail::Account& account,
                                     const UltraNetMailOptions& options) {
-    const std::string serverUrl = UltraMail::AutoDiscovery::ImapServerUrl(account.imap);
+    const std::string serverUrl = UltraMail::AutoDiscovery::IncomingServerUrl(account.imap);
     if (serverUrl.empty())
         return UltraMail::SyncOutcome::Fail("the account has no incoming server");
 
