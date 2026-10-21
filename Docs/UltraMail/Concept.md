@@ -155,7 +155,8 @@ If discovery or verification fails, the wizard drops into the
 outgoing server/port/TLS, username) with everything it *did* find
 prefilled — the user corrects one field instead of typing seven.
 *(Shipped in 0.9.0 as `UltraMailServerSettingsDialog` — IMAP only, no
-POP3 yet; since 0.9.1 Save checks the IMAP sign-in first (`LoginCheck`).
+POP3 yet; since 0.9.1 Save checks the incoming sign-in first (`LoginCheck`);
+since 0.10.62 a Protocol row chooses IMAP or JMAP for the incoming server.
 The page is also the fallback when the autoconfig lookup finds nothing,
 and Reload opens it for an account without known servers.)*
 

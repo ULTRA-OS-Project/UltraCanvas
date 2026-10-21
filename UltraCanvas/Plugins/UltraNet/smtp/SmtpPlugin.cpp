@@ -39,55 +39,10 @@ namespace {
 constexpr const char* kPluginVersion = "0.1.0";
 
 // ============================================================================
-// Message construction — delegates to the shared UltraNet MIME builder
-// (core UltraNet_MimeBuild) so the wire format lives in one place.
+// Message construction — the core builds the wire format
+// (UltraNet_MimeBuildMailMessage, UltraNetMime.h) for every mail plug-in that
+// sends, so SMTP and JMAP write the same message.
 // ============================================================================
-std::string BuildMessage(const UltraNetMailMessage& m) {
-    UltraNetMimeBuildInput in;
-    in.from = m.from;
-    in.to   = m.to;
-    in.cc   = m.cc;
-    in.bcc  = m.bcc;
-    in.subject = m.subject;
-    in.body = m.body;
-    in.extraHeaders = m.headers;
-
-    // Split the caller's content type into media type + charset.
-    if (!m.contentType.empty()) {
-        std::size_t semi = m.contentType.find(';');
-        in.bodyMediaType = m.contentType.substr(0, semi);
-        while (!in.bodyMediaType.empty() && in.bodyMediaType.back() == ' ')
-            in.bodyMediaType.pop_back();
-        std::size_t cs = m.contentType.find("charset=");
-        if (cs != std::string::npos) {
-            std::string charset = m.contentType.substr(cs + 8);
-            std::size_t end = charset.find(';');
-            if (end != std::string::npos) charset = charset.substr(0, end);
-            if (!charset.empty() && charset.front() == '"') charset = charset.substr(1);
-            if (!charset.empty() && charset.back() == '"') charset.pop_back();
-            in.bodyCharset = charset;
-        }
-    }
-
-    in.alternativeText = m.alternativeText;
-    for (const auto& part : m.inlineParts) {
-        UltraNetMimeBuildAttachment a;
-        a.filename = part.filename;
-        if (!part.mediaType.empty()) a.mediaType = part.mediaType;
-        a.data = part.data;
-        a.isInline = true;
-        a.contentId = part.contentId;
-        in.attachments.push_back(std::move(a));
-    }
-    for (const auto& [name, bytes] : m.attachments) {
-        UltraNetMimeBuildAttachment a;
-        a.filename = name;
-        a.data = bytes;
-        in.attachments.push_back(std::move(a));
-    }
-
-    return UltraNet_MimeBuild(in);
-}
 
 // ============================================================================
 // libcurl read callback that feeds the constructed message bytes.
@@ -214,7 +169,7 @@ public:
             recGuard(recipients, curl_slist_free_all);
         curl_easy_setopt(h.get(), CURLOPT_MAIL_RCPT, recipients);
 
-        const std::string payload = BuildMessage(message);
+        const std::string payload = UltraNet_MimeBuildMailMessage(message);
         UploadCursor cursor{payload.data(), payload.size()};
         curl_easy_setopt(h.get(), CURLOPT_READFUNCTION, &ReadCallback);
         curl_easy_setopt(h.get(), CURLOPT_READDATA,     &cursor);

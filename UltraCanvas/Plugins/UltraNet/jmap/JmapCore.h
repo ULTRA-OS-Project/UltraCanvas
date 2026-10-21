@@ -1,4 +1,9 @@
 // UltraCanvas/Plugins/UltraNet/jmap/JmapCore.h
+// Version: 0.3.0 - push: the event-source URL and the StateChange events
+//                  (phase 3)
+// Version: 0.2.0 - the write path: Email/set keyword and mailbox patches,
+//                  destroy, blob upload + Email/import, Identity/get and
+//                  EmailSubmission/set (phase 2)
 // Version: 0.1.0
 // Pure JMAP wire layer (no I/O): session-resource parsing, request building,
 // method-response navigation and the JMAP↔UltraNet type mapping used by the
@@ -28,8 +33,9 @@ namespace ultranet_jmap {
 
 using json = nlohmann::json;
 
-inline constexpr const char* kCapCore = "urn:ietf:params:jmap:core";
-inline constexpr const char* kCapMail = "urn:ietf:params:jmap:mail";
+inline constexpr const char* kCapCore       = "urn:ietf:params:jmap:core";
+inline constexpr const char* kCapMail       = "urn:ietf:params:jmap:mail";
+inline constexpr const char* kCapSubmission = "urn:ietf:params:jmap:submission";
 
 // ============================================================================
 // Session resource (RFC 8620 §2)
@@ -157,12 +163,15 @@ inline std::vector<std::string> FormatAddressList(const json& arr) {
 }
 
 // ============================================================================
-// Request builders. Every request `using`s core+mail; method calls get ids
-// "c0", "c1", … in order.
+// Request builders. Every request `using`s core+mail (plus any extra
+// capability given, e.g. submission); method calls get ids "c0", "c1", … in
+// order.
 // ============================================================================
-inline std::string BuildRequest(const std::vector<std::pair<std::string, json>>& calls) {
+inline std::string BuildRequest(const std::vector<std::pair<std::string, json>>& calls,
+                                const std::vector<std::string>& extraCapabilities = {}) {
     json req;
     req["using"] = json::array({kCapCore, kCapMail});
+    for (const auto& cap : extraCapabilities) req["using"].push_back(cap);
     json mc = json::array();
     int n = 0;
     for (const auto& [method, args] : calls)
@@ -224,6 +233,264 @@ inline std::string BuildEmailGetBodyRequest(const std::string& accountId,
     json args = {{"accountId", accountId}, {"ids", ids}, {"properties", props},
                  {"fetchAllBodyValues", true}};
     return BuildRequest({{"Email/get", args}});
+}
+
+// ============================================================================
+// The write path (RFC 8620 §5.3 /set, RFC 8621 §4.6 Email/set, §4.8
+// Email/import, §6 Identity, §7 EmailSubmission).
+// ============================================================================
+
+// The keyword patch of one Email: "keywords/$seen": true to set a flag, null
+// to clear it (RFC 8620 §5.3 PatchObject). Deleted and Recent have no keyword
+// (deletion is a move to Trash / destroy, which the plug-in does itself) and
+// patch nothing.
+inline json KeywordPatch(UltraNetMailFlags flags, bool set) {
+    json patch = json::object();
+    auto one = [&](UltraNetMailFlags f, const char* keyword) {
+        if (!UltraNetHasFlag(flags, f)) return;
+        if (set) patch[std::string("keywords/") + keyword] = true;
+        else     patch[std::string("keywords/") + keyword] = nullptr;
+    };
+    one(UltraNetMailFlags::Seen,     "$seen");
+    one(UltraNetMailFlags::Answered, "$answered");
+    one(UltraNetMailFlags::Flagged,  "$flagged");
+    one(UltraNetMailFlags::Draft,    "$draft");
+    return patch;
+}
+
+// Email/set with one update: the keyword patch of `emailId`.
+inline std::string BuildEmailSetKeywordsRequest(const std::string& accountId,
+                                                const std::string& emailId,
+                                                UltraNetMailFlags flags, bool set) {
+    json args = {{"accountId", accountId},
+                 {"update", {{emailId, KeywordPatch(flags, set)}}}};
+    return BuildRequest({{"Email/set", args}});
+}
+
+// Email/set with one update: `emailId` lives in `mailboxId` and nowhere else
+// (a move; JMAP has no copy-then-delete).
+inline std::string BuildEmailSetMailboxRequest(const std::string& accountId,
+                                               const std::string& emailId,
+                                               const std::string& mailboxId) {
+    json args = {{"accountId", accountId},
+                 {"update", {{emailId, {{"mailboxIds", {{mailboxId, true}}}}}}}};
+    return BuildRequest({{"Email/set", args}});
+}
+
+// Email/set destroying `emailIds` for good.
+inline std::string BuildEmailDestroyRequest(const std::string& accountId,
+                                            const std::vector<std::string>& emailIds) {
+    json args = {{"accountId", accountId}, {"destroy", emailIds}};
+    return BuildRequest({{"Email/set", args}});
+}
+
+// The Email/import arguments for one uploaded blob: into `mailboxId` with
+// `flags` as keywords (the shape APPEND has). `creationId` names the result
+// in the response's "created" map.
+inline json EmailImportArgs(const std::string& accountId, const std::string& creationId,
+                            const std::string& blobId, const std::string& mailboxId,
+                            UltraNetMailFlags flags) {
+    json email = {{"blobId", blobId},
+                  {"mailboxIds", {{mailboxId, true}}},
+                  {"keywords", FlagsToKeywords(flags)}};
+    return {{"accountId", accountId}, {"emails", {{creationId, email}}}};
+}
+
+inline std::string BuildEmailImportRequest(const std::string& accountId,
+                                           const std::string& creationId,
+                                           const std::string& blobId,
+                                           const std::string& mailboxId,
+                                           UltraNetMailFlags flags) {
+    return BuildRequest({{"Email/import",
+                          EmailImportArgs(accountId, creationId, blobId, mailboxId, flags)}});
+}
+
+// The answer of a POST to the session's uploadUrl (RFC 8620 §6.1):
+// {"accountId", "blobId", "type", "size"}.
+inline bool ParseUploadResponse(const std::string& body, std::string& outBlobId,
+                                std::string& err) {
+    json j = json::parse(body, nullptr, /*allow_exceptions=*/false);
+    if (j.is_discarded() || !j.is_object()) { err = "upload response is not a JSON object"; return false; }
+    outBlobId = j.value("blobId", "");
+    if (outBlobId.empty()) { err = "upload response has no blobId"; return false; }
+    return true;
+}
+
+// A /set-style response's verdict on one id: "notCreated" / "notUpdated" /
+// "notDestroyed" entries carry a SetError {type, description}. Returns true
+// (with `err` set) when the server refused that id; false when it did not
+// list it there.
+inline bool SetErrorFor(const json& args, const char* notKey, const std::string& id,
+                        std::string& err) {
+    if (!args.is_object() || !args.contains(notKey) || !args[notKey].is_object()) return false;
+    const json& failures = args[notKey];
+    if (!failures.contains(id) || !failures[id].is_object()) return false;
+    const json& e = failures[id];
+    err = e.value("type", "serverFail");
+    const std::string desc = e.value("description", "");
+    if (!desc.empty()) err += ": " + desc;
+    return true;
+}
+
+// The server id of an object made by /set create or Email/import, by its
+// creation id; "" when the response does not list it as created.
+inline std::string CreatedId(const json& args, const std::string& creationId) {
+    if (!args.is_object() || !args.contains("created") || !args["created"].is_object()) return {};
+    const json& created = args["created"];
+    if (!created.contains(creationId) || !created[creationId].is_object()) return {};
+    return created[creationId].value("id", "");
+}
+
+// Identity/get (RFC 8621 §6): the addresses the account may send as.
+inline std::string BuildIdentityGetRequest(const std::string& accountId) {
+    json args = {{"accountId", accountId}, {"ids", nullptr}};
+    return BuildRequest({{"Identity/get", args}}, {kCapSubmission});
+}
+
+struct JmapIdentity {
+    std::string id;
+    std::string name;
+    std::string email;
+};
+
+inline bool ParseIdentities(const json& args, std::vector<JmapIdentity>& out) {
+    out.clear();
+    if (!args.is_object() || !args.contains("list") || !args["list"].is_array()) return false;
+    for (const auto& i : args["list"]) {
+        if (!i.is_object()) continue;
+        JmapIdentity id;
+        id.id    = i.value("id", "");
+        id.name  = i.value("name", "");
+        id.email = i.value("email", "");
+        if (!id.id.empty()) out.push_back(std::move(id));
+    }
+    return true;
+}
+
+// The bare address of "Name <user@host>" / "<user@host>" / "user@host",
+// lower-cased for comparison.
+inline std::string BareAddress(const std::string& mailbox) {
+    std::string a = mailbox;
+    const std::size_t lt = a.find('<');
+    const std::size_t gt = a.rfind('>');
+    if (lt != std::string::npos && gt != std::string::npos && gt > lt)
+        a = a.substr(lt + 1, gt - lt - 1);
+    const std::size_t b = a.find_first_not_of(" \t");
+    const std::size_t e = a.find_last_not_of(" \t");
+    a = b == std::string::npos ? std::string() : a.substr(b, e - b + 1);
+    std::transform(a.begin(), a.end(), a.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return a;
+}
+
+// The identity to submit as: the one whose address is the message's From,
+// else one whose address is a wildcard for the domain ("*@example.com", RFC
+// 8621 §6), else the first; nullptr with no identities at all.
+inline const JmapIdentity* PickIdentity(const std::vector<JmapIdentity>& identities,
+                                        const std::string& from) {
+    if (identities.empty()) return nullptr;
+    const std::string want = BareAddress(from);
+    for (const auto& i : identities)
+        if (BareAddress(i.email) == want) return &i;
+    const std::size_t at = want.find('@');
+    if (at != std::string::npos) {
+        const std::string wildcard = "*" + want.substr(at);
+        for (const auto& i : identities)
+            if (BareAddress(i.email) == wildcard) return &i;
+    }
+    return &identities.front();
+}
+
+// The SMTP envelope of a submission: MAIL FROM and one RCPT TO per recipient
+// (To, Cc and Bcc alike - the Bcc never appears in the message itself).
+inline json SubmissionEnvelope(const std::string& from,
+                               const std::vector<std::string>& recipients) {
+    json rcpt = json::array();
+    for (const auto& r : recipients) {
+        const std::string addr = BareAddress(r);
+        if (!addr.empty()) rcpt.push_back({{"email", addr}});
+    }
+    return {{"mailFrom", {{"email", BareAddress(from)}}}, {"rcptTo", rcpt}};
+}
+
+// The whole send in one request: Email/import of the uploaded raw message
+// (creation id "m") into `holdMailboxId` (Drafts, or whatever the server
+// has), then EmailSubmission/set creating submission "s" for "#m" with
+// `identityId` and the envelope. On success the message leaves
+// `holdMailboxId` for `sentMailboxId` (when given) with $draft cleared and
+// $seen set - the copy in Sent a mail program keeps; without a Sent mailbox
+// it is destroyed instead, so nothing of the send is left behind.
+inline std::string BuildSendRequest(const std::string& accountId,
+                                    const std::string& blobId,
+                                    const std::string& holdMailboxId,
+                                    const std::string& sentMailboxId,
+                                    const std::string& identityId,
+                                    const std::string& from,
+                                    const std::vector<std::string>& recipients) {
+    json importArgs = EmailImportArgs(accountId, "m", blobId, holdMailboxId,
+                                      UltraNetMailFlags::Draft | UltraNetMailFlags::Seen);
+    json submission = {{"emailId", "#m"},
+                       {"identityId", identityId},
+                       {"envelope", SubmissionEnvelope(from, recipients)}};
+    json setArgs = {{"accountId", accountId}, {"create", {{"s", submission}}}};
+    if (!sentMailboxId.empty()) {
+        json onSuccess = {{"keywords/$draft", nullptr}, {"keywords/$seen", true},
+                          {"mailboxIds/" + sentMailboxId, true}};
+        if (holdMailboxId != sentMailboxId) onSuccess["mailboxIds/" + holdMailboxId] = nullptr;
+        setArgs["onSuccessUpdateEmail"] = {{"#s", onSuccess}};
+    } else {
+        setArgs["onSuccessDestroyEmail"] = json::array({"#s"});
+    }
+    return BuildRequest({{"Email/import", importArgs}, {"EmailSubmission/set", setArgs}},
+                        {kCapSubmission});
+}
+
+// ============================================================================
+// Push (RFC 8620 §7.3): the event source streams StateChange events.
+// ============================================================================
+
+// The types a mail client watches: new or changed mail, and the folder list.
+inline constexpr const char* kWatchedTypes = "Email,Mailbox";
+
+// The URL to open the event source at: the session's eventSourceUrl template
+// with the watched types, no closeafter and a ping every `pingSeconds` (a
+// keep-alive the server sends when nothing changes; 0 = none).
+inline std::string BuildEventSourceUrl(const std::string& eventSourceUrlResolved,
+                                       int pingSeconds) {
+    return ExpandUrlTemplate(eventSourceUrlResolved,
+                             {{"types", kWatchedTypes},
+                              {"closeafter", "no"},
+                              {"ping", std::to_string(pingSeconds < 0 ? 0 : pingSeconds)}});
+}
+
+// A "state" event's data: {"@type": "StateChange", "changed": {"<accountId>":
+// {"Email": "<state>", "Mailbox": "<state>", …}}}. Fills `outStates` with
+// the states of `accountId` (type -> state); false for anything else, or
+// when the event names no state of that account.
+inline bool ParseStateChange(const std::string& data, const std::string& accountId,
+                             std::map<std::string, std::string>& outStates) {
+    outStates.clear();
+    json j = json::parse(data, nullptr, /*allow_exceptions=*/false);
+    if (j.is_discarded() || !j.is_object() || !j.contains("changed") ||
+        !j["changed"].is_object())
+        return false;
+    const json& changed = j["changed"];
+    if (!changed.contains(accountId) || !changed[accountId].is_object()) return false;
+    for (auto it = changed[accountId].begin(); it != changed[accountId].end(); ++it)
+        if (it.value().is_string()) outStates[it.key()] = it.value().get<std::string>();
+    return !outStates.empty();
+}
+
+// The types whose state `now` reports as new or other than `known` had
+// them: what to fetch again. A type `now` leaves out has not changed.
+inline std::vector<std::string> ChangedTypes(const std::map<std::string, std::string>& known,
+                                             const std::map<std::string, std::string>& now) {
+    std::vector<std::string> out;
+    for (const auto& [type, state] : now) {
+        auto it = known.find(type);
+        if (it == known.end() || it->second != state) out.push_back(type);
+    }
+    return out;
 }
 
 // ============================================================================
@@ -340,6 +607,26 @@ inline const JmapMailbox* FindMailboxByPath(const std::vector<JmapMailbox>& mail
         for (const auto& m : mailboxes)
             if (m.role == "inbox") return &m;
     return nullptr;
+}
+
+// The mailbox with `role` ("inbox", "drafts", "sent", "trash", …); nullptr
+// when the account has none.
+inline const JmapMailbox* FindMailboxByRole(const std::vector<JmapMailbox>& mailboxes,
+                                            const std::string& role) {
+    for (const auto& m : mailboxes)
+        if (m.role == role) return &m;
+    return nullptr;
+}
+
+// Whether `emailObject` (an Email/get object with "mailboxIds") is in
+// `mailboxId`.
+inline bool EmailInMailbox(const json& emailObject, const std::string& mailboxId) {
+    if (!emailObject.is_object() || !emailObject.contains("mailboxIds") ||
+        !emailObject["mailboxIds"].is_object())
+        return false;
+    const json& boxes = emailObject["mailboxIds"];
+    return boxes.contains(mailboxId) && boxes[mailboxId].is_boolean() &&
+           boxes[mailboxId].get<bool>();
 }
 
 // ============================================================================
