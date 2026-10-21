@@ -128,7 +128,10 @@ window has two halves:
 * **Send a file** — click *Choose File…*, type the peer's address
   (`host` or `host:port`, default port 5040), and click *Send*.
 * **Receive** — set a listen port and a save folder, then click *Receive* to
-  wait for an incoming file. *Stop* cancels a pending listen.
+  wait for an incoming file.
+* **Stop** ends whatever is running: a listen still waiting for a peer, or a
+  send or receive in progress (the peer is told). A stopped receive keeps the
+  partial file; receiving the same file into the same folder again resumes it.
 
 A Unicode progress bar and status line show live transfer state. All networking
 runs on worker threads; widgets are only ever touched from the UI thread via a

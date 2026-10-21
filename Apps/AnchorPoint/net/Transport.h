@@ -30,6 +30,12 @@ public:
 
     virtual void Close() = 0;
 
+    // Wakes a SendAll / RecvAll blocked on another thread, which then fails;
+    // later calls fail at once. Safe to call from any thread while the owning
+    // thread is using the connection, unlike Close(), which only the owner
+    // may call.
+    virtual void Interrupt() = 0;
+
     // Human-readable "ip:port" of the remote peer (best effort).
     virtual std::string PeerAddress() const = 0;
 };

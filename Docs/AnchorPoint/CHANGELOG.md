@@ -1,3 +1,32 @@
+#### 2026-10-21 *0.2.5*
+- **Stop stops a transfer.** It used to cancel only a Receive still waiting
+  for a peer: once a file was moving, Stop did nothing and the transfer ran to
+  the end - and closing the window waited for it too. Stop now ends a send or a
+  receive at any point, including one stuck waiting on a peer that stopped
+  answering, and so does closing the window.
+  - The peer is told: a stopped sender's receiver reports *"sender:
+    cancelled"*. A stopped receiver's sender reports that the connection was
+    lost while sending.
+  - A stopped receive keeps the partial file, so receiving the same file into
+    the same folder again resumes it from where it stopped.
+  - `SendFile` / `ReceiveFile` (`net/Protocol.h`) take an optional cancel flag,
+    checked between chunks, and report `cancelled` in their result; a call
+    blocked on the network is woken with the new `IConnection::Interrupt()`.
+    The headless `anchorpoint` passes no flag and is unchanged.
+  - Stop does not interrupt the SHA-256 the sender takes of the whole file
+    before it connects to send; a large file still finishes hashing first.
+- **A send to a peer that has gone no longer ends the program.** On Linux and
+  macOS, writing to a connection the receiver had closed raised SIGPIPE, which
+  quit the sending AnchorPoint (or `anchorpoint`) with no message. It is now an
+  ordinary failed send.
+- **The progress bar no longer shows the last transfer next to a new
+  message.** *"Choose a file first."*, a bad peer address or a bad listen port
+  appeared beside the previous transfer's full bar, and choosing a file left
+  the old prompt standing. Those messages now empty the bar, and choosing a
+  file resets the status to *Ready.*
+- `anchorpoint_tests` covers stopping on either side, a stop that wakes a
+  blocked read, and sending to a closed socket.
+
 #### 2026-10-14 *0.2.4*
 - **One AnchorPoint at a time.** Starting AnchorPoint while it is already
   running brings the open window forward (restored if minimised; an open

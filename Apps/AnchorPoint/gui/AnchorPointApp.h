@@ -48,6 +48,7 @@ private:
 
     // ---- shared transfer state (guarded by stateMutex_) ----
     void SetStatus(const std::string& text);
+    void ShowIdleMessage(const std::string& text);   // UI thread, nothing running: also empties the bar
     void SetProgress(uint64_t done, uint64_t total);
     void FinishBusy(const std::string& finalText);
 
@@ -68,8 +69,13 @@ private:
 
     std::thread worker_;
     std::atomic<bool> cancel_{false};
-    std::mutex listenerMutex_;
-    IListener* activeListener_ = nullptr;   // so OnStop() can unblock Accept()
+    // What the worker is blocked in, so OnStop() and the destructor can wake it:
+    // Accept() on the listener, or a send / recv on the connection.
+    std::mutex activeMutex_;
+    IListener*   activeListener_ = nullptr;
+    IConnection* activeConn_ = nullptr;
+    void SetActiveConnection(IConnection* conn);
+    void WakeWorker();   // close the listener, interrupt the connection
 
     UltraCanvas::TimerId uiTimer_ = UltraCanvas::InvalidTimerId;
 };
