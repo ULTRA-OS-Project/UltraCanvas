@@ -64,3 +64,20 @@
     the panel through a real window
     and the application's dispatch; CI's Linux row now builds the Smart Home suite
     (`BUILD_TESTS` turns it on) and runs that test on a virtual display.
+- **SmartHome: device icons, and a network map that reads.**
+  - Sixteen new line icons in `media/icons/smarthome/` beside the existing
+    ones (TV, fridge, kettle, computer, heater, gate, camera, speaker, fan,
+    appliance, gateway, CO, air quality, light level, pressure, vibration),
+    and `UltraCanvasSmartHomeIcons.h`: `SmartHomeDeviceIconName` picks a
+    device's icon by category, by its kind of reading for a sensor, and by
+    its name for a plug or switch (a plug called "Kettle" gets the kettle);
+    `SmartHomeCategoryColor` gives the disc colour.
+  - `SmartHomeNetworkTopology` draws each device as a white card with its
+    icon, name and room (routers larger, bordered in their radio's colour)
+    on a light canvas, and no two cards overlap in any layout. A device is
+    linked to a router of its radio in its own room when there is one (the
+    rest are shared out evenly) instead of every device to the first
+    router; radial puts each router inside the arc of its own devices, and
+    tree puts each router over a column of its devices.
+  - The dashboard's device cards show the icon on their colour disc, and a
+    list row now shows the device's name and state.

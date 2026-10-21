@@ -386,7 +386,26 @@ int ControlsThroughWindow() {
             else            highestLeaf = std::min(highestLeaf, dn->y);
         }
         if (!(lowestRouter < highestLeaf)) return Fail("topology: the tree layout puts the routers on top");
-        std::printf("ok  topology: %zu devices as a node diagram, the layout switch works\n", topo->GetNodes().size());
+
+        // In every layout, no two cards overlap.
+        for (const char* layoutName : {"force", "radial", "tree"}) {
+            topo->SetLayout(layoutName);
+            const auto& ns = topo->GetNodes();
+            for (size_t i = 0; i < ns.size(); ++i) {
+                for (size_t j = i + 1; j < ns.size(); ++j) {
+                    const NodeDiagramNode* a = topo->GetDiagram()->GetNode(ns[i].DeviceId);
+                    const NodeDiagramNode* b = topo->GetDiagram()->GetNode(ns[j].DeviceId);
+                    const bool apart = a->x + a->width <= b->x + 0.01 || b->x + b->width <= a->x + 0.01 ||
+                                       a->y + a->height <= b->y + 0.01 || b->y + b->height <= a->y + 0.01;
+                    if (!apart) {
+                        std::printf("FAIL: topology %s: %s overlaps %s\n", layoutName, ns[i].Name.c_str(), ns[j].Name.c_str());
+                        return 1;
+                    }
+                }
+            }
+            if (topo->GetDiagram()->GetNode(ns[0].DeviceId)->iconPath.empty()) return Fail("topology: a card without an icon");
+        }
+        std::printf("ok  topology: %zu devices as icon cards, no overlaps in any layout, the layout switch works\n", topo->GetNodes().size());
         api.DisableProtocol(SmartHomeProtocolType::Simulated);
     }
 

@@ -337,7 +337,8 @@ add_library(SmartHomeUI STATIC
     ui/UltraCanvasSmartHomeDeviceControl.cpp
     ui/UltraCanvasSmartHomeDialogs.cpp
     ui/UltraCanvasSmartHomeEditors.cpp
-    ui/UltraCanvasSmartHomeAdvanced.cpp)
+    ui/UltraCanvasSmartHomeAdvanced.cpp
+    ui/UltraCanvasSmartHomeIcons.cpp)
 set_target_properties(SmartHomeUI PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "smarthome_ui")

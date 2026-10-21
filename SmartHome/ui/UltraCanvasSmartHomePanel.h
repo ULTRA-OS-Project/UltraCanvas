@@ -485,6 +485,7 @@ private:
     Color GetStateColor() const;
     
     SmartHomeDeviceInfo device;
+    std::string iconPath;     // SmartHomeDeviceIconPath, worked out when the device is set
     bool selected = false;
     bool compact = false;
     bool showName = true;

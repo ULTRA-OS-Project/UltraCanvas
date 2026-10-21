@@ -36,6 +36,11 @@ lists which elements each widget is made of.
 
 ### Device Cards (`SmartHomeDeviceCard`)
 
+Every device has an icon: the line icons in `media/icons/smarthome/`, chosen
+by `SmartHomeDeviceIconName` (`UltraCanvasSmartHomeIcons.h`) from its
+category, its kind of reading, or - for a plug - what its name says is
+plugged in.
+
 -   Visual cards showing device name, room, status, and quick toggle switch
 -   Color-coded icons by category (lights=amber, locks=green, sensors=blue, etc.)
 -   Long-press for device settings, tap for quick control
@@ -59,7 +64,7 @@ lists which elements each widget is made of.
 | **Pairing Wizard** | A button per radio, then a search with a progress bar and Cancel until a device joins ("Added ...") or the time runs out (what went wrong, Back) |
 | **Scene Editor** | A name, the actions in a list, a device dropdown to add one, Remove, Save |
 | **Automation Editor** | A name, what starts it (WHEN), what must hold (AND IF), what it does (THEN), a switch for enabled, Save |
-| **Network Topology** | The devices as a node diagram, linked to a router of their own radio; force, radial or tree layout; filter by radio |
+| **Network Topology** | Each device a card with its icon, name and room, linked to a router of its radio (in its own room where there is one); force, radial or tree layout with no overlapping cards; filter by radio |
 | **Energy Monitor** | Power now, the history as a line chart (power, energy or cost), today, average, peak and cost |
 | **Scheduler** | Timed events on a day or week grid or in a list; turn one off, remove it; a press on empty time asks the host to make one |
 | **Group Control** | All on / All off, brightness and colour temperature for the group, its devices in a list, add and remove |

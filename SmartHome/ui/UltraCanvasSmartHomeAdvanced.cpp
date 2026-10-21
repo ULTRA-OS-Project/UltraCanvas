@@ -18,10 +18,12 @@
 #include "UltraCanvasApplication.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
+#include "UltraCanvasSmartHomeIcons.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 
 namespace UltraCanvas {
 namespace SmartHome {
@@ -116,9 +118,11 @@ SmartHomeNetworkTopology::SmartHomeNetworkTopology(const std::string& identifier
     AddChild(bar);
 
     diagram = CreateNodeDiagram(identifier + "_Diagram", 0, 0, 400, 300);
-    diagram->SetBackgroundColor(Colors::White);
+    diagram->SetBackgroundColor(Color(0xF3, 0xF5, 0xF8));   // the white cards stand out on it
     diagram->SetGridVisible(false);
     diagram->SetNodesConnectable(false);   // a map of the network, not an editor of it
+    diagram->SetLinkDistance(190.0);       // room for a card between a router and its devices
+    diagram->SetChargeStrength(-30000.0);  // cards are wide: push them well apart
     diagram->SetLegendVisible(true);
     diagram->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(200));
     Grow(*diagram);
@@ -192,19 +196,30 @@ void SmartHomeNetworkTopology::LoadNetworkData() {
 
     // Without per-link data from a backend, the honest thing to draw is each
     // device's association with a router of its own protocol, not an invented
-    // mesh.
+    // mesh: a router in the same room when there is one (the nearest, in a
+    // mesh), otherwise the one with the fewest devices so far.
+    std::map<std::string, std::string> roomOf;
+    for (const auto& device : SMARTHOME_API.GetDevices()) roomOf[device.DeviceId] = device.RoomId.empty() ? device.Room : device.RoomId;
+    std::map<std::string, int> load;
     for (const auto& node : nodes) {
         if (node.IsRouter) continue;
+        const TopologyViewNode* chosen = nullptr;
         for (const auto& candidate : nodes) {
             if (!candidate.IsRouter || candidate.Protocol != node.Protocol) continue;
-            NetworkLink link;
-            link.SourceId = candidate.DeviceId;
-            link.TargetId = node.DeviceId;
-            link.LinkQuality = node.SignalStrength;
-            link.IsActive = node.State == SmartHomeDeviceState::Online;
-            links.push_back(link);
-            break;
+            if (!roomOf[node.DeviceId].empty() && roomOf[candidate.DeviceId] == roomOf[node.DeviceId]) {
+                chosen = &candidate;
+                break;
+            }
+            if (!chosen || load[candidate.DeviceId] < load[chosen->DeviceId]) chosen = &candidate;
         }
+        if (!chosen) continue;
+        ++load[chosen->DeviceId];
+        NetworkLink link;
+        link.SourceId = chosen->DeviceId;
+        link.TargetId = node.DeviceId;
+        link.LinkQuality = node.SignalStrength;
+        link.IsActive = node.State == SmartHomeDeviceState::Online;
+        links.push_back(link);
     }
 }
 
@@ -223,56 +238,118 @@ void SmartHomeNetworkTopology::FillProtocolChoice() {
     syncing = false;
 }
 
-// The nodes and links into the diagram, placed by the chosen layout: the
-// diagram's force simulation, or routers in the middle (radial) or along the
-// top (tree) with their devices around or under them.
+// The nodes and links into the diagram, placed by the chosen layout, as
+// cards: the device's icon on a disc of its radio's colour, its name, and
+// under it its room (and "router" for a router). Force runs the diagram's
+// simulation; radial puts the routers in the middle and the rest on a ring
+// big enough for them; tree puts each router over a block of its own
+// devices. Whatever the layout leaves touching is moved apart.
 void SmartHomeNetworkTopology::FillDiagram() {
     diagram->Clear();
     diagram->ClearLegendEntries();
 
+    constexpr double kLeafW = 150.0, kLeafH = 40.0;
+    constexpr double kHubW = 170.0, kHubH = 48.0;
+    constexpr double kGapX = 24.0, kGapY = 18.0;
+
+    std::map<std::string, SmartHomeDeviceInfo> infos;
+    for (const auto& d : SMARTHOME_API.GetDevices()) infos[d.DeviceId] = d;
+
     std::vector<TopologyViewNode*> hubs, leaves;
     for (auto& n : nodes) (n.IsRouter ? hubs : leaves).push_back(&n);
-    // World coordinates; FitView scales them to the element.
-    constexpr double kW = 760.0, kH = 540.0;
+
     if (layoutAlgorithm == "tree") {
-        for (size_t i = 0; i < hubs.size(); ++i) {
-            hubs[i]->X = static_cast<float>(kW * (i + 1.0) / (hubs.size() + 1.0));
-            hubs[i]->Y = 40.0f;
+        // Each router heads a column of its devices (a second column only past
+        // eight, so the connectors run straight down);
+        // devices with no router of their radio make a block of their own.
+        std::map<std::string, std::vector<TopologyViewNode*>> under;
+        std::vector<TopologyViewNode*> unrouted;
+        for (auto* leaf : leaves) {
+            auto it = std::find_if(links.begin(), links.end(),
+                                   [&](const NetworkLink& l) { return l.TargetId == leaf->DeviceId; });
+            if (it == links.end()) unrouted.push_back(leaf);
+            else under[it->SourceId].push_back(leaf);
         }
-        for (size_t i = 0; i < leaves.size(); ++i) {
-            // Two staggered rows, so neighbouring names do not run together.
-            leaves[i]->X = static_cast<float>(kW * 1.4 * (i + 1.0) / (leaves.size() + 1.0));
-            leaves[i]->Y = static_cast<float>(kH - 120.0 + (i % 3) * 45.0);
-        }
+        constexpr int kRows = 8;
+        double x = 0.0;
+        auto block = [&](TopologyViewNode* head, const std::vector<TopologyViewNode*>& members) {
+            const int columns = std::max(1, static_cast<int>((members.size() + kRows - 1) / kRows));
+            const double width = std::max(kHubW, columns * (kLeafW + kGapX) - kGapX);
+            if (head) {
+                head->X = static_cast<float>(x + width / 2.0);
+                head->Y = static_cast<float>(kHubH / 2.0);
+            }
+            for (size_t i = 0; i < members.size(); ++i) {
+                const int col = static_cast<int>(i / kRows), row = static_cast<int>(i % kRows);
+                const double blockLeft = x + (width - (columns * (kLeafW + kGapX) - kGapX)) / 2.0;
+                members[i]->X = static_cast<float>(blockLeft + col * (kLeafW + kGapX) + kLeafW / 2.0);
+                members[i]->Y = static_cast<float>(kHubH + 50.0 + row * (kLeafH + kGapY) + kLeafH / 2.0);
+            }
+            x += width + 3 * kGapX;
+        };
+        for (auto* hub : hubs) block(hub, under[hub->DeviceId]);
+        if (!unrouted.empty()) block(nullptr, unrouted);
     } else {
-        const double radius = std::min(kW, kH) / 2.0;
-        for (size_t i = 0; i < hubs.size(); ++i) {
-            const double a = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(hubs.size(), 1);
-            const double r = hubs.size() == 1 ? 0.0 : radius * 0.45;
-            hubs[i]->X = static_cast<float>(kW / 2 + r * std::cos(a));
-            hubs[i]->Y = static_cast<float>(kH / 2 + r * std::sin(a));
-        }
+        // Devices around the ring in their routers' order, so each router's
+        // devices form one arc; the router sits inside, towards its arc.
+        auto routerOf = [&](const TopologyViewNode* leaf) -> std::string {
+            for (const auto& l : links) if (l.TargetId == leaf->DeviceId) return l.SourceId;
+            return {};
+        };
+        std::stable_sort(leaves.begin(), leaves.end(), [&](const TopologyViewNode* a, const TopologyViewNode* b) {
+            auto rank = [&](const std::string& id) {
+                for (size_t i = 0; i < hubs.size(); ++i) if (hubs[i]->DeviceId == id) return static_cast<int>(i);
+                return static_cast<int>(hubs.size());
+            };
+            return rank(routerOf(a)) < rank(routerOf(b));
+        });
+        const double radius = std::max(230.0, leaves.size() * 100.0 / (2.0 * M_PI));
+        std::map<std::string, std::pair<double, double>> pull;   // router -> sum of its devices' directions
         for (size_t i = 0; i < leaves.size(); ++i) {
-            const double a = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(leaves.size(), 1);
-            leaves[i]->X = static_cast<float>(kW / 2 + radius * 1.3 * std::cos(a));
-            leaves[i]->Y = static_cast<float>(kH / 2 + radius * std::sin(a));
+            const double t = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(leaves.size(), 1) - M_PI / 2.0;
+            // Wider than tall: the cards are.
+            leaves[i]->X = static_cast<float>(radius * 1.35 * std::cos(t));
+            leaves[i]->Y = static_cast<float>(radius * std::sin(t));
+            auto& p = pull[routerOf(leaves[i])];
+            p.first += std::cos(t);
+            p.second += std::sin(t);
+        }
+        for (size_t i = 0; i < hubs.size(); ++i) {
+            const auto it = pull.find(hubs[i]->DeviceId);
+            double t = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(hubs.size(), 1);
+            if (it != pull.end() && (it->second.first != 0.0 || it->second.second != 0.0)) {
+                t = std::atan2(it->second.second, it->second.first);
+            }
+            const double r = hubs.size() == 1 ? 0.0 : radius * 0.5;
+            hubs[i]->X = static_cast<float>(r * 1.35 * std::cos(t));
+            hubs[i]->Y = static_cast<float>(r * std::sin(t));
         }
     }
 
     std::vector<SmartHomeProtocolType> shown;
     for (const auto& n : nodes) {
+        const auto info = infos.find(n.DeviceId);
+        const bool online = n.State == SmartHomeDeviceState::Online;
         NodeDiagramNode dn(n.DeviceId, n.Name);
         dn.shape = NodeShape::Rectangle;
-        dn.width = n.IsRouter ? 100.0 : 88.0;
-        dn.height = n.IsRouter ? 26.0 : 22.0;
+        dn.cornerRadius = 10.0;
+        dn.shadow = true;
+        dn.width = n.IsRouter ? kHubW : kLeafW;
+        dn.height = n.IsRouter ? kHubH : kLeafH;
         dn.x = n.X - dn.width / 2.0;
         dn.y = n.Y - dn.height / 2.0;
-        const bool online = n.State == SmartHomeDeviceState::Online;
-        dn.fillColor = online ? GetProtocolColor(n.Protocol) : kTrack;
-        dn.borderColor = n.IsRouter ? kText : dn.fillColor;
+        dn.fillColor = Colors::White;
+        dn.borderColor = n.IsRouter ? GetProtocolColor(n.Protocol) : Color(0xDD, 0xE3, 0xEA);
         dn.borderWidth = n.IsRouter ? 2.0 : 1.0;
-        dn.textColor = online ? Colors::White : kTextDim;
-        dn.fontSize = 9.0;
+        dn.textColor = online ? kText : kTextDim;
+        dn.fontSize = n.IsRouter ? 11.0 : 10.0;
+        if (info != infos.end()) {
+            dn.iconPath = SmartHomeDeviceIconPath(info->second);
+            dn.iconBackground = online ? SmartHomeCategoryColor(info->second.Category) : Color(0xB0, 0xBE, 0xC5);
+            dn.sublabel = info->second.Room.empty() ? std::string("No room") : info->second.Room;
+        }
+        if (n.IsRouter) dn.sublabel = "Router · " + dn.sublabel;
+        if (!online) dn.sublabel = DeviceStateToString(n.State) + " · " + dn.sublabel;
         dn.deletable = false;
         diagram->AddNode(dn);
         if (std::find(shown.begin(), shown.end(), n.Protocol) == shown.end()) {
@@ -286,12 +363,18 @@ void SmartHomeNetworkTopology::FillDiagram() {
         dl.directed = false;
         dl.lineColor = l.IsActive ? GetSignalColor(l.LinkQuality) : kTrack;
         dl.lineWidth = l.IsActive ? 1.5 : 1.0;
+        dl.style = layoutAlgorithm == "tree" ? LinkStyle::SmoothStep : LinkStyle::Straight;
         dl.deletable = false;
         diagram->AddLink(dl);
     }
 
-    diagram->SetLayout(layoutAlgorithm == "force" ? NodeDiagramLayout::ForceDirected : NodeDiagramLayout::Manual);
-    if (layoutAlgorithm == "force") diagram->RunLayout();
+    if (layoutAlgorithm == "force") {
+        diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+        diagram->RunLayout();
+    } else {
+        diagram->SetLayout(NodeDiagramLayout::Manual);
+        diagram->ResolveOverlaps(10.0);
+    }
     diagram->FitView();
     needsFit = true;
     if (!selectedNodeId.empty()) diagram->SelectNode(selectedNodeId);
