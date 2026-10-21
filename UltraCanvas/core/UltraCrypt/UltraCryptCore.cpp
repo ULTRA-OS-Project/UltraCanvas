@@ -1298,6 +1298,119 @@ UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm algorithm,
 }
 
 // ============================================================================
+// Key agreement (X25519)
+// ============================================================================
+
+namespace {
+constexpr size_t kX25519KeyBytes = 32;
+}
+
+size_t UltraCrypt_GetKeyExchangeKeySize() {
+    return kX25519KeyBytes;
+}
+
+size_t UltraCrypt_GetKeyExchangeSecretSize() {
+    return kX25519KeyBytes;
+}
+
+UltraCryptResult UltraCrypt_GenerateKeyExchangeKeyPair(std::vector<uint8_t>& outPublicKey,
+                                                       UltraCryptSecureBuffer& outSecretKey) {
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    static_assert(crypto_scalarmult_curve25519_BYTES == kX25519KeyBytes, "key size");
+    std::vector<uint8_t> pk(kX25519KeyBytes, 0);
+    UltraCryptSecureBuffer sk(kX25519KeyBytes);
+    if (crypto_box_keypair(pk.data(), sk.Data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "key pair generation failed");
+    }
+    outPublicKey = std::move(pk);
+    outSecretKey = std::move(sk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outPublicKey;
+    (void)outSecretKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_SignaturePublicKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const std::vector<uint8_t>& signaturePublicKey,
+        std::vector<uint8_t>& outKeyExchangePublicKey) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (signaturePublicKey.size() != kEd25519PublicKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "public key must be 32 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    std::vector<uint8_t> pk(kX25519KeyBytes, 0);
+    if (crypto_sign_ed25519_pk_to_curve25519(pk.data(), signaturePublicKey.data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "not a valid Ed25519 public key");
+    }
+    outKeyExchangePublicKey = std::move(pk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outKeyExchangePublicKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_SignatureSecretKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& signatureSecretKey,
+        UltraCryptSecureBuffer& outKeyExchangeSecretKey) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (signatureSecretKey.GetSize() != kEd25519SecretKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "secret key must be 64 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    UltraCryptSecureBuffer sk(kX25519KeyBytes);
+    if (crypto_sign_ed25519_sk_to_curve25519(sk.Data(), signatureSecretKey.Data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "secret key conversion failed");
+    }
+    outKeyExchangeSecretKey = std::move(sk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outKeyExchangeSecretKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_KeyExchange(const UltraCryptSecureBuffer& mySecretKey,
+                                        const std::vector<uint8_t>& theirPublicKey,
+                                        UltraCryptSecureBuffer& outSharedSecret) {
+    if (mySecretKey.GetSize() != kX25519KeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "secret key must be 32 bytes");
+    }
+    if (theirPublicKey.size() != kX25519KeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "public key must be 32 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    UltraCryptSecureBuffer shared(kX25519KeyBytes);
+    // crypto_scalarmult fails on the low-order points that would give an
+    // all-zero (attacker-known) secret.
+    if (crypto_scalarmult(shared.Data(), mySecretKey.Data(), theirPublicKey.data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "public key is a low-order point");
+    }
+    outSharedSecret = std::move(shared);
+    return UltraCryptResult::Ok();
+#else
+    (void)outSharedSecret;
+    return NoBackend();
+#endif
+}
+
+// ============================================================================
 // Base32 into a secure buffer
 // ============================================================================
 // The RFC 4648 codecs live in UltraCanvasUtils (UltraCanvasTextUtils.h);

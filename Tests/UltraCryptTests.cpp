@@ -912,6 +912,64 @@ static void TestEncodings() {
     // does not recognise), so there is deliberately no rejection case for it.
 }
 
+// ===== Key agreement — RFC 7748 §6.1 vector, Ed25519 conversion =====
+static void TestKeyExchange() {
+    std::printf("Key agreement (X25519)\n");
+    Check(UltraCrypt_GetKeyExchangeKeySize() == 32, "X25519 keys are 32 bytes");
+
+    const UltraCryptSecureBuffer aliceSk =
+        BufferFromHex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
+    const UltraCryptSecureBuffer bobSk =
+        BufferFromHex("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb");
+    std::vector<uint8_t> alicePk, bobPk;
+    UltraCrypt_FromHex("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a", alicePk);
+    UltraCrypt_FromHex("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f", bobPk);
+
+    UltraCryptSecureBuffer ab, ba;
+    Check(static_cast<bool>(UltraCrypt_KeyExchange(aliceSk, bobPk, ab)), "Alice derives the secret");
+    Check(static_cast<bool>(UltraCrypt_KeyExchange(bobSk, alicePk, ba)), "Bob derives the secret");
+    const std::string expected = "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742";
+    CheckHex(std::vector<uint8_t>(ab.Data(), ab.Data() + ab.GetSize()), expected, "RFC 7748 shared secret (Alice)");
+    CheckHex(std::vector<uint8_t>(ba.Data(), ba.Data() + ba.GetSize()), expected, "RFC 7748 shared secret (Bob)");
+
+    // A low-order point would give an all-zero secret; it is refused.
+    std::vector<uint8_t> zeroPoint(32, 0);
+    UltraCryptSecureBuffer unused;
+    auto low = UltraCrypt_KeyExchange(aliceSk, zeroPoint, unused);
+    Check(!low && low.code == UltraCryptResultCode::InvalidArgument, "a low-order public key is refused");
+    std::vector<uint8_t> shortPk(31, 9);
+    auto shortResult = UltraCrypt_KeyExchange(aliceSk, shortPk, unused);
+    Check(!shortResult && shortResult.code == UltraCryptResultCode::InvalidKeySize,
+          "a 31-byte public key is refused with InvalidKeySize");
+
+    // One Ed25519 identity per side: the converted pairs agree.
+    const auto alg = UltraCryptSignatureAlgorithm::Ed25519;
+    std::vector<uint8_t> edPkA, edPkB, xPkA, xPkB;
+    UltraCryptSecureBuffer edSkA, edSkB, xSkA, xSkB;
+    Check(UltraCrypt_GenerateSignatureKeyPair(alg, edPkA, edSkA) &&
+          UltraCrypt_GenerateSignatureKeyPair(alg, edPkB, edSkB), "two identities are generated");
+    Check(UltraCrypt_SignaturePublicKeyToKeyExchange(alg, edPkA, xPkA) &&
+          UltraCrypt_SignaturePublicKeyToKeyExchange(alg, edPkB, xPkB), "public keys convert");
+    Check(UltraCrypt_SignatureSecretKeyToKeyExchange(alg, edSkA, xSkA) &&
+          UltraCrypt_SignatureSecretKeyToKeyExchange(alg, edSkB, xSkB), "secret keys convert");
+    UltraCryptSecureBuffer sAB, sBA;
+    Check(UltraCrypt_KeyExchange(xSkA, xPkB, sAB) && UltraCrypt_KeyExchange(xSkB, xPkA, sBA),
+          "converted identities agree on a key");
+    Check(sAB.GetSize() == 32 && UltraCrypt_ConstantTimeEquals(sAB.Data(), sAB.GetSize(), sBA.Data(), sBA.GetSize()),
+          "both sides hold the same secret");
+
+    std::vector<uint8_t> ephPk;
+    UltraCryptSecureBuffer ephSk, sEph1, sEph2;
+    Check(static_cast<bool>(UltraCrypt_GenerateKeyExchangeKeyPair(ephPk, ephSk)), "an X25519 pair is generated");
+    Check(UltraCrypt_KeyExchange(ephSk, xPkA, sEph1) && UltraCrypt_KeyExchange(xSkA, ephPk, sEph2) &&
+          UltraCrypt_ConstantTimeEquals(sEph1.Data(), 32, sEph2.Data(), 32),
+          "an ephemeral key agrees with an identity");
+
+    std::vector<uint8_t> shortEd(edPkA.begin(), edPkA.end() - 1), out;
+    auto conv = UltraCrypt_SignaturePublicKeyToKeyExchange(alg, shortEd, out);
+    Check(!conv && conv.code == UltraCryptResultCode::InvalidKeySize, "a 31-byte Ed25519 key is refused");
+}
+
 int main() {
     std::printf("UltraCrypt tests — backend: %s\n\n",
                 UltraCrypt_GetBackendName().c_str());
@@ -930,6 +988,7 @@ int main() {
     TestAesCbc();
     TestKdf();
     TestSignatures();
+    TestKeyExchange();
     TestSecureBuffer();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);

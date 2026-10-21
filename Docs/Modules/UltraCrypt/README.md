@@ -26,7 +26,8 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8) and
+Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
+X25519 key agreement (§5.8.1) and
 AES-128/192/256-CBC for foreign formats (§5.9).
 (The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
@@ -898,6 +899,38 @@ SHA(abc)) plus a flipped message bit, a flipped signature bit, a wrong key and
 a file with a byte appended.
 
 *Serves:* UltraStore's signed catalog, and any signed manifest or update.
+
+#### 5.8.1 Key agreement (X25519)
+
+Two parties who know each other's public key derive the same secret without
+sending it. An Ed25519 identity converts to an X25519 pair, so one key pair
+both signs and agrees on keys.
+
+```cpp
+size_t UltraCrypt_GetKeyExchangeKeySize();          // 32
+size_t UltraCrypt_GetKeyExchangeSecretSize();       // 32
+UltraCryptResult UltraCrypt_GenerateKeyExchangeKeyPair(std::vector<uint8_t>& outPublicKey,
+                                                       UltraCryptSecureBuffer& outSecretKey);
+UltraCryptResult UltraCrypt_SignaturePublicKeyToKeyExchange(UltraCryptSignatureAlgorithm,
+                                                            const std::vector<uint8_t>& signaturePublicKey,
+                                                            std::vector<uint8_t>& outKeyExchangePublicKey);
+UltraCryptResult UltraCrypt_SignatureSecretKeyToKeyExchange(UltraCryptSignatureAlgorithm,
+                                                            const UltraCryptSecureBuffer& signatureSecretKey,
+                                                            UltraCryptSecureBuffer& outKeyExchangeSecretKey);
+UltraCryptResult UltraCrypt_KeyExchange(const UltraCryptSecureBuffer& mySecretKey,
+                                        const std::vector<uint8_t>& theirPublicKey,
+                                        UltraCryptSecureBuffer& outSharedSecret);
+```
+
+Rules: the raw shared secret is not a key — derive one with
+`UltraCrypt_DeriveKeyHkdf` and an `info` naming its purpose, then use it
+with `UltraCrypt_AeadSeal`. A public key that is a low-order point (it would
+give an all-zero secret) is refused with `InvalidArgument`; wrong lengths
+with `InvalidKeySize`. Covered by the RFC 7748 §6.1 vector, the low-order
+refusal, and converted Ed25519 identities and an ephemeral pair agreeing.
+
+*Serves:* ChatCube Direct's end-to-end message encryption
+(`Docs/Research/ChatCubeDirectPlan.md` §4).
 
 ---
 

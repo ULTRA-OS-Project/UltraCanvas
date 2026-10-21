@@ -463,6 +463,46 @@ UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm algorithm,
                                        const std::vector<uint8_t>& signature);
 
 // ============================================================================
+// Key agreement (X25519)
+// ============================================================================
+// Two parties who know each other's public key derive the same secret without
+// sending it: UltraCrypt_KeyExchange(mySecret, theirPublic) on one side equals
+// UltraCrypt_KeyExchange(theirSecret, myPublic) on the other. The raw X25519
+// output is not a key: feed it to UltraCrypt_DeriveKeyHkdf (with an `info`
+// naming the purpose) and use what comes out with UltraCrypt_AeadSeal.
+//
+// An Ed25519 signature key pair converts to an X25519 pair, so one identity
+// key both signs and agrees on keys (ChatCube Direct: one key pair per user).
+// Public keys and secrets are 32 bytes.
+
+size_t UltraCrypt_GetKeyExchangeKeySize();          // 32
+size_t UltraCrypt_GetKeyExchangeSecretSize();       // 32
+
+// A fresh X25519 pair (an ephemeral key, or an identity that never signs).
+UltraCryptResult UltraCrypt_GenerateKeyExchangeKeyPair(std::vector<uint8_t>& outPublicKey,
+                                                       UltraCryptSecureBuffer& outSecretKey);
+
+// The X25519 form of an Ed25519 public key. InvalidArgument when the bytes
+// are not a valid Ed25519 point.
+UltraCryptResult UltraCrypt_SignaturePublicKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const std::vector<uint8_t>& signaturePublicKey,
+        std::vector<uint8_t>& outKeyExchangePublicKey);
+
+// The X25519 form of an Ed25519 secret key (the 64-byte form the signature
+// functions use).
+UltraCryptResult UltraCrypt_SignatureSecretKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& signatureSecretKey,
+        UltraCryptSecureBuffer& outKeyExchangeSecretKey);
+
+// The shared secret. Fails with InvalidArgument for a public key that would
+// make it all zeros (a low-order point an attacker can send).
+UltraCryptResult UltraCrypt_KeyExchange(const UltraCryptSecureBuffer& mySecretKey,
+                                        const std::vector<uint8_t>& theirPublicKey,
+                                        UltraCryptSecureBuffer& outSharedSecret);
+
+// ============================================================================
 // Base32 into a secure buffer
 // ============================================================================
 // The RFC 4648 codecs — Base32 and Base64, encode and decode — live in

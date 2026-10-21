@@ -61,8 +61,8 @@ and UltraRTC include no UltraCanvas UI header.
   device; it is stored in UltraVault under `com.cloverleaf.chatcube.identity`.
 - **User id** = lowercase hex of the first 16 bytes of SHA-256 of the public
   key, shown grouped (`3f2a 9c01 …`) so two people can compare it.
-- **Key agreement** uses the X25519 form of the same key (libsodium's
-  `crypto_sign_ed25519_pk_to_curve25519` / `…_sk_to_curve25519`), so one key
+- **Key agreement** uses the X25519 form of the same key (`UltraCrypt_SignaturePublicKeyToKeyExchange` /
+  `UltraCrypt_SignatureSecretKeyToKeyExchange`), so one key
   pair both signs and encrypts.
 - **Message envelope** (the same on every path — data channel, LAN, relay):
   ```json
@@ -88,14 +88,15 @@ and UltraRTC include no UltraCanvas UI header.
 
 ### Framework additions this needs
 
-UltraCrypt has Ed25519 signatures and AEAD but no key agreement today. Two
-functions are added to it (UltraCrypt, not ChatCube, so the next caller finds
-them):
+UltraCrypt had Ed25519 signatures and AEAD but no key agreement. It was
+added to UltraCrypt (not to ChatCube, so the next caller finds it):
 
-- `UltraCrypt_SignatureKeyToKeyExchangeKey` — Ed25519 → X25519 (public and
-  secret), over libsodium's conversion functions.
-- `UltraCrypt_KeyExchange` — X25519 shared secret (`crypto_scalarmult`),
-  returned as a `UltraCryptSecureBuffer` to feed `UltraCrypt_DeriveKeyHkdf`.
+- `UltraCrypt_SignaturePublicKeyToKeyExchange` /
+  `UltraCrypt_SignatureSecretKeyToKeyExchange` — Ed25519 → X25519, over
+  libsodium's conversion functions;
+- `UltraCrypt_KeyExchange` — the X25519 shared secret, as an
+  `UltraCryptSecureBuffer` to feed `UltraCrypt_DeriveKeyHkdf`;
+- `UltraCrypt_GenerateKeyExchangeKeyPair` — an ephemeral pair.
 
 ## 5. Transport and delivery rules
 

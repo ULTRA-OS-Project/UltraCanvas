@@ -1727,6 +1727,10 @@ backing library is never visible in a public header.
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
   and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
+- `UltraCrypt_KeyExchange`, `UltraCrypt_GenerateKeyExchangeKeyPair`,
+  `UltraCrypt_SignaturePublicKeyToKeyExchange`,
+  `UltraCrypt_SignatureSecretKeyToKeyExchange`,
+  `UltraCrypt_GetKeyExchangeKeySize` / `…SecretSize` (X25519, RFC 7748)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
