@@ -3,6 +3,7 @@
 // notification's click comes back over the bus while the application runs.
 // The Windows backend (OS/MSWindows/UltraCanvasWindowsNotificationActivation.cpp)
 // is picked up by the platform glob.
+// Version: 1.1.0 - ListNotificationRegistrations
 // Version: 1.0.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -16,7 +17,9 @@ namespace UltraCanvas {
         return false;
     }
 
-    void RemoveNotificationRegistrations() {}
+    std::vector<NotificationRegistration> ListNotificationRegistrations() { return {}; }
+
+    size_t RemoveNotificationRegistrations() { return 0; }
 #endif
 
 } // namespace UltraCanvas

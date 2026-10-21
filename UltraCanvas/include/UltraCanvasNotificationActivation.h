@@ -23,18 +23,24 @@
 // Everything the framework writes for a notification identity is listed under
 // HKCU\Software\UltraCanvas\Notifications (one value per AppUserModelID, its
 // activator's CLSID as the data), which the uninstaller walks to remove it all;
-// RemoveNotificationRegistrations() does the same from code. Elsewhere than
+// RemoveNotificationRegistrations() does the same from code - UOS-Settings'
+// Notifications page and `UOS-Settings --remove-notification-registrations`,
+// which the ZIP package's uc-remove-registrations.cmd runs, since a folder
+// unpacked from a ZIP has no uninstaller. Elsewhere than
 // Windows there is nothing to register: the notification service reports the
 // click over the bus while the application runs, and both calls do nothing.
 //
 // The helpers below are platform-neutral and header-only, so the presenter
 // that writes a toast and the application that reads the click agree on the
 // format without linking each other.
+// Version: 1.1.0 - ListNotificationRegistrations; RemoveNotificationRegistrations
+//                 says how many it removed
 // Version: 1.0.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -62,10 +68,24 @@ namespace UltraCanvas {
     bool RegisterNotificationActivator(const std::string& appId,
                                        std::function<void(const NotificationActivation&)> onActivated);
 
+    // One notification identity the framework registered for this user.
+    struct NotificationRegistration {
+        std::string appId;              // the AppUserModelID, "org.ultraos.ultramail"
+        std::string activatorClassId;   // its activator's CLSID, "" when none registered one
+    };
+
+    // Windows: the notification identities the framework registered for this
+    // user, as the list under HKCU\Software\UltraCanvas\Notifications names
+    // them, sorted by ID. Empty elsewhere.
+    std::vector<NotificationRegistration> ListNotificationRegistrations();
+
     // Windows: removes every notification identity the framework registered
     // for this user - the AppUserModelID keys, the activators' CLSID keys and
-    // the list of them. What an uninstaller does; nothing elsewhere.
-    void RemoveNotificationRegistrations();
+    // the list of them - and returns how many identities it removed. What an
+    // uninstaller does. An application registers again the next time it
+    // starts (its activator) or shows a notification (its name and icon).
+    // Nothing, and 0, elsewhere.
+    size_t RemoveNotificationRegistrations();
 
     // ----- platform-neutral helpers -----
 
