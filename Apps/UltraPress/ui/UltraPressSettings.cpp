@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressSettings.cpp
 // See UltraPressSettings.h.
+// Version: 0.8.7 - NormalPath public
 // Version: 0.8.5 - over the framework's UltraCanvasAppSettings
 // Version: 0.8.4
 // Author: UltraCanvas Framework / ULTRA OS
@@ -23,19 +24,19 @@ const char* kSettingsFile = "settings.json";
 const char* kOldLookFile = "look";   // 0.8.0 to 0.8.2
 const size_t kKeep = 8;
 
-// One spelling per folder, so "./site" and "site/" are the same entry:
-// lexically_normal keeps a trailing separator, so it is dropped here too.
-std::string Normal(const std::string& dir) {
-    std::string normal = PathToUtf8(PathFromUtf8(dir).lexically_normal());
-    while (normal.size() > 1 && (normal.back() == '/' || normal.back() == '\\')) normal.pop_back();
-    return normal;
-}
-
 UltraCanvasAppSettings FileIn(const std::string& dir) {
     return UltraCanvasAppSettings::AtFile(PathToUtf8(PathFromUtf8(dir) / kSettingsFile));
 }
 
 } // namespace
+
+// One spelling per folder, so "./site" and "site/" are the same entry:
+// lexically_normal keeps a trailing separator, so it is dropped here too.
+std::string UltraPressSettings::NormalPath(const std::string& dir) {
+    std::string normal = PathToUtf8(PathFromUtf8(dir).lexically_normal());
+    while (normal.size() > 1 && (normal.back() == '/' || normal.back() == '\\')) normal.pop_back();
+    return normal;
+}
 
 std::string UltraPressSettings::Directory() {
     const std::filesystem::path folder = UltraCanvasSettingsFolder();
@@ -77,14 +78,14 @@ bool UltraPressSettings::Save(const std::string& dir) const {
 
 void UltraPressSettings::RememberSite(const std::string& siteDir) {
     if (siteDir.empty()) return;
-    const std::string site = Normal(siteDir);
+    const std::string site = NormalPath(siteDir);
     recentSites.erase(std::remove(recentSites.begin(), recentSites.end(), site), recentSites.end());
     recentSites.insert(recentSites.begin(), site);
     if (recentSites.size() > kKeep) recentSites.resize(kKeep);
 }
 
 void UltraPressSettings::ForgetSite(const std::string& siteDir) {
-    const std::string site = Normal(siteDir);
+    const std::string site = NormalPath(siteDir);
     recentSites.erase(std::remove(recentSites.begin(), recentSites.end(), site), recentSites.end());
 }
 

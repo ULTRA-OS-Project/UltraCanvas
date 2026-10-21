@@ -79,8 +79,16 @@ endif()
 if(TARGET UltraCrypt)
     target_link_libraries(UltraFIBUEngineTests PRIVATE UltraCrypt)
 endif()
-set_target_properties(UltraFIBUEngineTests PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+# On Windows beside the UltraDatabase DLL, where an executable finds it;
+# build/bin is on no search path there, and the suite died at start with
+# STATUS_DLL_NOT_FOUND (0xc0000135) on the Windows CI row.
+if(WIN32)
+    set_target_properties(UltraFIBUEngineTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:UltraDatabase>")
+else()
+    set_target_properties(UltraFIBUEngineTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 
 include(CTest)
 add_test(NAME UltraFIBUEngine COMMAND UltraFIBUEngineTests

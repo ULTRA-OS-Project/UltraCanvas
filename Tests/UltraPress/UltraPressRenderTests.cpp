@@ -287,15 +287,20 @@ static void TestLook() {
     s.RememberSite("/sites/two/");
     Check(s.Save(settingsDir) && fs::is_regular_file(dir / "UltraPress" / "settings.json", ec), "the settings are written as settings.json");
     UltraPressSettings back = UltraPressSettings::Load(settingsDir);
+    // The list keeps the platform's spelling ("\\sites\\two" on Windows), so
+    // the expectations are spelled through the same rule.
+    const auto N = [](const std::string& dir) { return UltraPressSettings::NormalPath(dir); };
+    Check(N("/sites/two/") == N("/sites/two") && N("/sites/./two") == N("/sites/two") && N("/sites/two").back() != '/',
+          "a folder has one spelling: no trailing separator, no dot parts");
     Check(back.dark && back.windowWidth == 1200 && back.windowHeight == 800 &&
-              back.recentSites == std::vector<std::string>{"/sites/two", "/sites/one"},
+              back.recentSites == std::vector<std::string>{N("/sites/two"), N("/sites/one")},
           "and read back: the look, the window's size, the sites last opened first with their spelling normalised");
     back.RememberSite("/sites/one");
-    Check(back.recentSites == std::vector<std::string>{"/sites/one", "/sites/two"}, "a site opened again moves to the front, once");
+    Check(back.recentSites == std::vector<std::string>{N("/sites/one"), N("/sites/two")}, "a site opened again moves to the front, once");
     for (int i = 0; i < 10; ++i) back.RememberSite("/sites/more" + std::to_string(i));
-    Check(back.recentSites.size() == 8 && back.recentSites.front() == "/sites/more9", "eight are kept, the newest first");
+    Check(back.recentSites.size() == 8 && back.recentSites.front() == N("/sites/more9"), "eight are kept, the newest first");
     back.ForgetSite("/sites/more9");
-    Check(back.recentSites.size() == 7 && back.recentSites.front() == "/sites/more8", "a site is forgotten");
+    Check(back.recentSites.size() == 7 && back.recentSites.front() == N("/sites/more8"), "a site is forgotten");
     // The look file of 0.8.0 to 0.8.2, read once and gone when the settings are written.
     const std::string oldDir = UltraCanvas::PathToUtf8(dir / "old");
     fs::create_directories(dir / "old", ec);

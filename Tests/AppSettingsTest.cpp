@@ -3,10 +3,12 @@
 // keys as nested objects, a list and a recent list on it, the file written
 // pretty and read back, a missing or broken file as the defaults, and the
 // file named under the settings folder the environment names. Headless.
+// Version: 1.0.1 - the application's file checked under the platform's own settings folder
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include "UltraCanvasAppSettings.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSettingsFolder.h"
 
 #include <chrono>
 #include <cstdio>
@@ -119,15 +121,22 @@ int main() {
     Check(!none.Load() && !none.Save() && none.File().empty(), "without a file nothing is read or written");
 
     std::printf("The application's file\n");
+    // Under the settings folder the platform names: $XDG_CONFIG_HOME on
+    // Linux, where it is pointed at the temp folder here; Application
+    // Support on macOS and %APPDATA% on Windows, which no variable moves,
+    // so there the file is written under a folder of the test's name and
+    // removed again.
 #ifndef _WIN32
     setenv("XDG_CONFIG_HOME", PathToUtf8(dir / "config").c_str(), 1);
-    UltraCanvasAppSettings app("UltraPress");
-    Check(app.File() == PathToUtf8(dir / "config" / "UltraCanvas" / "UltraPress" / "settings.json"),
+#endif
+    const fs::path settingsFolder = UltraCanvasSettingsFolder();
+    Check(!settingsFolder.empty(), "the platform names a settings folder: " + PathToUtf8(settingsFolder));
+    UltraCanvasAppSettings app("AppSettingsTest");
+    Check(app.File() == PathToUtf8(settingsFolder / "AppSettingsTest" / "settings.json"),
           "<settings folder>/<app>/settings.json: " + app.File());
     app.Set("dark", true);
-    Check(app.Save() && fs::is_regular_file(dir / "config" / "UltraCanvas" / "UltraPress" / "settings.json", ec),
-          "written there");
-#endif
+    Check(app.Save() && fs::is_regular_file(settingsFolder / "AppSettingsTest" / "settings.json", ec), "written there");
+    fs::remove_all(settingsFolder / "AppSettingsTest", ec);
     Check(UltraCanvasAppSettings("").File().empty(), "no application, no file");
 
     fs::remove_all(dir, ec);

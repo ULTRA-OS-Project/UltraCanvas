@@ -8,6 +8,7 @@
 // 0.8.0 to 0.8.2 kept the look in a file beside it (`look`); a folder that
 // has that and no settings.json is read from it once, and it goes when the
 // settings are first written.
+// Version: 0.8.7 - NormalPath, the list's spelling of a folder, public for the tests
 // Version: 0.8.5 - over the framework's UltraCanvasAppSettings
 // Version: 0.8.4
 // Author: UltraCanvas Framework / ULTRA OS
@@ -36,6 +37,10 @@ struct UltraPressSettings {
     // normalised), keeps the eight newest; drops it.
     void RememberSite(const std::string& siteDir);
     void ForgetSite(const std::string& siteDir);
+    // One spelling per folder, the one the list keeps: lexically normal,
+    // with the platform's separators and no trailing one ("./site" and
+    // "site/" are the same entry; "\sites\one" on Windows).
+    static std::string NormalPath(const std::string& dir);
 };
 
 } // namespace UltraPress
