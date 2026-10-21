@@ -102,7 +102,6 @@ private:
     void EditConnection();
     void RemoveConnection();
     void RefreshSelected();
-    void ReRegister(const ConnectionSpec& spec);   // the browse session, on the job queue
     std::string SaveConnection(const ConnectionSpec& spec, const std::string& password,
                                bool clearPassword);
 

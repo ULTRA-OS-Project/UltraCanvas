@@ -44,11 +44,6 @@ std::string RegisteredName(const ConnectionSpec& spec);
 // Browse page - and Stop cancels exactly the console's statement.
 std::string ConsoleName(const ConnectionSpec& spec);
 
-// Register (or re-register) one session of `spec` under `name` with
-// UltraDatabase. Replacing a registration drops the session it held, with
-// the connection inside it: only when nothing is using that session.
-UltraDbResult RegisterSession(const ConnectionSpec& spec, const std::string& name);
-
 // A one-line description for the tree's tooltip and the window title:
 // "notes.db" or "alice@db.example.com:5432/crm".
 std::string Describe(const ConnectionSpec& spec);
@@ -74,15 +69,16 @@ public:
     std::string Put(ConnectionSpec spec, const std::string& password, bool clearPassword,
                     std::string& error);
 
-    // Forget a connection and its stored password. Its sessions stay
-    // registered: the caller closes them (UltraDb_CloseConnection) once
-    // nothing is using them.
+    // Forget a connection and its stored password, and close its sessions. A
+    // query still running on one finishes first (UltraDatabase keeps a
+    // connection until its last call returns).
     bool Remove(const std::string& id, std::string& error);
 
     // Register (or re-register) the spec with UltraDatabase under both its
     // names (RegisteredName, ConsoleName), so they can be queried. Opens
-    // neither: the first query does. Re-registering drops open sessions (see
-    // RegisterSession): call it when neither is in use.
+    // neither: the first query does. Re-registering is safe at any time: a
+    // query running on the old settings finishes on them, and the next one
+    // opens a session with the new.
     UltraDbResult Register(const ConnectionSpec& spec) const;
 
     // A new id: "c" followed by 16 hex digits of randomness.

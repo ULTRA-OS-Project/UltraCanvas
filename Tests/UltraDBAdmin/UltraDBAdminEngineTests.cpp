@@ -118,7 +118,10 @@ void TestConnectionStoreInMemory() {
     Check(ConsoleName(registered) != RegisteredName(registered), "the console has a session of its own");
     Check(UltraDb_HasConnection(RegisteredName(registered)) && UltraDb_HasConnection(ConsoleName(registered)),
           "Register registers both sessions");
+    const std::string browse = RegisteredName(registered);
+    const std::string console = ConsoleName(registered);
     Check(store.Remove(id, error) && store.All().empty(), "and Remove takes it out");
+    Check(!UltraDb_HasConnection(browse) && !UltraDb_HasConnection(console), "and closes both sessions");
     Check(ConnectionStore::NewId() != ConnectionStore::NewId(), "ids do not repeat");
 }
 

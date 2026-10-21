@@ -239,8 +239,7 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
         LayoutForSize(static_cast<float>(width), static_cast<float>(height));
     };
 
-    // Every connection gets its two sessions now, before anything uses them.
-    // Later changes go through ReRegister, never while a session is busy.
+    // Every connection gets its two sessions; each opens on its first query.
     for (const auto& spec : store_.All()) {
         const UltraDbResult registered = store_.Register(spec);
         if (!registered) storeNote_ = spec.name + ": " + registered.message;
@@ -675,16 +674,6 @@ void DbAdminWindow::OnNodeSelected(TreeNode* node) {
     if (ref->kind == NodeRef::Kind::Object) OpenObject(*ref);
 }
 
-void DbAdminWindow::ReRegister(const ConnectionSpec& spec) {
-    // On the job queue: the jobs before it finish with the old session, the
-    // ones after it open the new one. Never on the UI thread, where it could
-    // drop a session a job is using that moment.
-    Background([spec]() -> std::function<void()> {
-        RegisterSession(spec, RegisteredName(spec));
-        return nullptr;
-    });
-}
-
 void DbAdminWindow::AddConnection() {
     ShowConnectionDialog(window_.get(), nullptr,
                          [this](const ConnectionSpec& spec, const std::string& password, bool clearPassword) {
@@ -704,29 +693,15 @@ void DbAdminWindow::EditConnection() {
 std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std::string& password,
                                           bool clearPassword) {
     const bool edited = !spec.id.empty();
-    // New settings replace the sessions, and a session cannot be replaced
-    // under a statement that is running on it.
-    if (edited) {
-        auto runner = runners_.find(spec.id);
-        if (runner != runners_.end()) {
-            if (runner->second->IsRunning()) return "A script is running on this connection: stop it first.";
-            runners_.erase(runner);
-        }
-    }
     std::string error;
     const std::string id = store_.Put(spec, password, clearPassword, error);
     if (id.empty()) return "Not saved: " + error;
     const ConnectionSpec saved = *store_.Find(id);
-    if (edited) {
-        if (objectConnectionId_ == id) ClearObject("The connection changed: pick the table again.");
-        // The console's session is idle (its runner is gone); the browse
-        // session is replaced on the job queue, after the jobs using it.
-        RegisterSession(saved, ConsoleName(saved));
-        ReRegister(saved);
-    } else {
-        const UltraDbResult registered = store_.Register(saved);
-        if (!registered) return "Saved, but it cannot be opened: " + registered.message;
-    }
+    if (edited && objectConnectionId_ == id) ClearObject("The connection changed: pick the table again.");
+    // New settings take effect with the next query; a script or page still
+    // running finishes on the old ones.
+    const UltraDbResult registered = store_.Register(saved);
+    if (!registered) return "Saved, but it cannot be opened: " + registered.message;
     RebuildTree();
     if (TreeNode* node = tree_->FindNode("c/" + id)) {
         tree_->SelectNode(node);
@@ -757,19 +732,8 @@ void DbAdminWindow::RemoveConnection() {
                 runners_.erase(runner);
             }
             if (objectConnectionId_ == id) ClearObject("Pick a table or view in the tree.");
-            const ConnectionSpec* gone = store_.Find(id);
-            if (!gone) return;
-            const std::string browse = RegisteredName(*gone);
-            const std::string console = ConsoleName(*gone);
             std::string error;
             if (!store_.Remove(id, error)) { SetStatus("Not removed: " + error, true); return; }
-            // Its runner is gone, so the console session is idle; the browse
-            // session closes after the jobs still queued for it.
-            UltraDb_CloseConnection(console);
-            Background([browse]() -> std::function<void()> {
-                UltraDb_CloseConnection(browse);
-                return nullptr;
-            });
             RebuildTree();
             UpdateSqlBar();
             SetStatus(name + " removed.");
@@ -785,7 +749,7 @@ void DbAdminWindow::RefreshSelected() {
     if (ref->kind == NodeRef::Kind::Object) nodeId = nodeId.substr(0, nodeId.rfind('/'));
     // A connection is opened afresh, so a server that came back is reached.
     const ConnectionSpec* spec = store_.Find(ref->connectionId);
-    if (ref->kind == NodeRef::Kind::Connection && spec) ReRegister(*spec);
+    if (ref->kind == NodeRef::Kind::Connection && spec) store_.Register(*spec);
     ResetNode(nodeId);
     if (TreeNode* node = tree_->FindNode(nodeId)) {
         tree_->ExpandNode(node);

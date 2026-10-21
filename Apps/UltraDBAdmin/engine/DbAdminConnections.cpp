@@ -184,10 +184,15 @@ bool ConnectionStore::Remove(const std::string& id, std::string& error) {
     if (it == specs_.end()) return true;
     if (vault_) vault_->Remove(id);
     else UltraVault::Delete(kKeyPrefix + id);
+    UltraDb_CloseConnection(RegisteredName(*it));
+    UltraDb_CloseConnection(ConsoleName(*it));
     specs_.erase(it);
     return Save(error);
 }
 
+namespace {
+
+// One session of `spec`, registered under `name`.
 UltraDbResult RegisterSession(const ConnectionSpec& spec, const std::string& name) {
     UltraDbConnectionConfig cfg;
     cfg.name     = name;
@@ -202,6 +207,8 @@ UltraDbResult RegisterSession(const ConnectionSpec& spec, const std::string& nam
     if (spec.hasPassword) cfg.credentials = std::string("vault:") + kKeyPrefix + spec.id;
     return UltraDb_RegisterConnection(cfg);
 }
+
+} // namespace
 
 UltraDbResult ConnectionStore::Register(const ConnectionSpec& spec) const {
     UltraDbResult result = RegisterSession(spec, RegisteredName(spec));

@@ -27,6 +27,11 @@ for minutes holds up neither the tree nor a page, and Stop cancels exactly the
 console's statement. Results come back with `PostToUIThread`; one that arrives
 after another table was picked is recognised and dropped.
 
+Editing or refreshing a connection re-registers its sessions straight away,
+even while a page loads or a script runs: UltraDatabase keeps a connection
+until the last call on it returns, so what is running finishes on the old
+settings and the next query uses the new.
+
 Editing, import and export, the ER view and server administration are the
 later stages of the proposal.
 
