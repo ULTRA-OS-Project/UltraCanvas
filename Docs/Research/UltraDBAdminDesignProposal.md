@@ -518,13 +518,13 @@ with their vault, the tree, Browse, Structure and the SQL console with Stop.
 **Stage 2 has begun with row editing** (UltraDBAdmin 0.2): Browse stages
 edits, new rows and deletions by primary key, previews them as SQL and
 commits them in one transaction (§5.3), with the destructive guard for
-deletions and production connections. **Structure editing followed**
-(UltraDBAdmin 0.3): columns added, changed, renamed and dropped, indexes
+deletions and production connections. **Structure editing followed**:
+columns added, changed, renamed and dropped, indexes
 added and dropped and the table renamed, staged, previewed as DDL and
 applied in one transaction - `ALTER TABLE` on PostgreSQL, and on SQLite its
 own `ALTER TABLE` plus the documented 12-step rebuild, working from the
 table's own `CREATE TABLE` so nothing introspection cannot see (CHECK, table
-options) is lost. **Import followed** (UltraDBAdmin 0.4): rows from CSV files
+options) is lost. **Import followed**: rows from CSV files
 and workbooks through FileLoader's spreadsheet formats and the framework's
 Text Import dialog, mapped onto a table and inserted all or none; SQL files
 (`.sql`, `.sql.gz`) summarised and run on the console as one transaction.
