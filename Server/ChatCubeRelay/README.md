@@ -72,7 +72,7 @@ WebSocket `/v1/ws`, JSON frames:
 | server → | `message.new {message}` — a queued copy for you, as `GET /v1/messages` returns it |
 | server → | `group.update {group}` (`removed: true` when you left or were removed) |
 | ↔ | `typing {to, conversation, typing}` (arrives with `from`) |
-| ↔ | `signal {to, kind, session, payload}` — `kind` is `offer`, `answer`, `ice`, `hangup`, `call-invite`, `call-accept` or `call-reject`; `payload` is forwarded untouched (arrives with `from`). Not online: `signal.undeliverable {to, session}` comes back |
+| ↔ | `signal {to, kind, session, payload}` — `kind` is `offer`, `answer`, `ice`, `hangup`, `call-invite`, `call-accept`, `call-reject` or `call-update` (a call's camera on or off); `payload` is forwarded untouched (arrives with `from`). Not online: `signal.undeliverable {to, session}` comes back |
 | ↔ | `ping` → `pong` |
 
 ## Running it

@@ -161,6 +161,13 @@ struct Events {
             changed.notify_all();
         };
     }
+    bool Any(const std::function<bool(const UltraIMEvent&)>& match) {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& e : list) {
+            if (match(e)) return true;
+        }
+        return false;
+    }
     bool WaitFor(const std::function<bool(const UltraIMEvent&)>& match, int seconds = 30) {
         std::unique_lock<std::mutex> lock(mutex);
         return changed.wait_for(lock, std::chrono::seconds(seconds), [&]() {
@@ -261,7 +268,7 @@ void TestCalls(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, 
     alice.SetCallUseDevices(false);
     bob.SetCallUseDevices(false);
     CHECK(alice.CanCall(bobId, false));
-    CHECK(!alice.CanCall(bobId, true));             // voice only for now
+    CHECK(alice.CanCall(bobId, true) == UltraRtc_GetCapabilities().video);
     CHECK((alice.GetCapabilities() & UltraIMCapabilityFlags::VoiceCalls) == UltraIMCapabilityFlags::VoiceCalls);
 
     // Declined.
@@ -341,6 +348,85 @@ void TestCalls(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, 
     CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
         return IsCallState(e, unreachable, UltraIMCallState::Ended) && e.errorText == "offline";
     }));
+}
+
+// A 1:1 video call: pictures fed into Alice's track reach Bob's remote
+// sink, Bob's camera going off reaches Alice, then Alice hangs up.
+void TestVideoCall(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, Events& bobEvents,
+                   const std::string& bobId) {
+    UltraRtcVideoConfig small;
+    small.width = 320;
+    small.height = 240;
+    small.fps = 25;
+    small.bitrateKbps = 400;
+    alice.SetCallVideoConfig(small);
+    bob.SetCallVideoConfig(small);
+    CHECK(alice.CanCall(bobId, true));
+
+    std::string callId;
+    CHECK(alice.StartCall(bobId, true, callId));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::CallReceive && e.callId == callId && e.isVideo;
+    }));
+    std::mutex mutex;
+    int bobSaw = 0, bobWidth = 0;
+    uint8_t bobCentre[3] = {0, 0, 0};
+    CHECK(bob.SetCallVideoSinks(callId, [&](const uint8_t* rgba, int width, int height) {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++bobSaw;
+        bobWidth = width;
+        const size_t at = (static_cast<size_t>(height / 2) * static_cast<size_t>(width) + static_cast<size_t>(width / 2)) * 4;
+        bobCentre[0] = rgba[at];
+        bobCentre[1] = rgba[at + 1];
+        bobCentre[2] = rgba[at + 2];
+    }, nullptr));
+    CHECK(bob.AcceptCall(callId, true));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Active); }));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Active); }));
+    const UltraRtcHandle aliceVideo = alice.GetCallVideoTrack(callId);
+    CHECK(aliceVideo != UltraRtcInvalidHandle);
+
+    // Alice's "camera": purple pictures, paced like one.
+    UltraRtcVideoFrame picture;
+    picture.width = 320;
+    picture.height = 240;
+    picture.rgba.resize(320 * 240 * 4);
+    for (size_t i = 0; i < picture.rgba.size(); i += 4) {
+        picture.rgba[i] = 150;
+        picture.rgba[i + 1] = 40;
+        picture.rgba[i + 2] = 200;
+        picture.rgba[i + 3] = 255;
+    }
+    // The video track may open a moment after the audio one.
+    for (int i = 0; i < 50 && !UltraRtc_IsTrackOpen(aliceVideo); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    for (int i = 0; i < 25; ++i) {
+        UltraRtc_SendVideoFrame(aliceVideo, picture);
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        std::printf("  video call: Bob saw %d pictures, %d wide, centre %d,%d,%d\n", bobSaw, bobWidth,
+                    bobCentre[0], bobCentre[1], bobCentre[2]);
+        CHECK(bobSaw >= 15 && bobWidth == 320);
+        CHECK(bobCentre[0] > 120 && bobCentre[0] < 180 && bobCentre[2] > 170);
+    }
+
+    // Bob's camera goes off: Alice hears of it.
+    CHECK(bob.SetCallCamera(callId, false));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::CallMediaChange && e.callId == callId && !e.isVideo;
+    }));
+    // Sinks removed: nothing is called after this returns.
+    CHECK(bob.SetCallVideoSinks(callId, nullptr, nullptr));
+
+    CHECK(alice.EndCall(callId));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Ended); }));
+    // The media connection closing before the relayed hang-up arrives is a
+    // hang-up for Bob too, not a lost call.
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    CHECK(!bobEvents.Any([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Failed); }));
 }
 #endif
 
@@ -450,6 +536,11 @@ void TestEndToEnd() {
     }));
     CHECK(!bob->CanCall(group.conversationId, false));
 
+    if (UltraRtc_GetCapabilities().audio && UltraRtc_GetCapabilities().video) {
+        TestVideoCall(*alice, aliceEvents, *bob, bobEvents, bobId);
+    } else {
+        std::printf("  video call skipped: this build has no Opus or no VP8\n");
+    }
     if (UltraRtc_GetCapabilities().audio) {
         TestCalls(*alice, aliceEvents, *bob, bobEvents, aliceId, bobId);
     } else {

@@ -294,7 +294,7 @@ media:
     # it - see THIRD_PARTY_LICENSES.md before distributing.
     ffmpeg:
       min_version: "4.4"                # libavformat 58.76 / libavcodec 58.134 (Ubuntu 22.04)
-      purpose: "VideoFX: demux, decode, filter (effects), encode and mux video / audio - optional"
+      purpose: "VideoFX: demux, decode, filter (effects), encode and mux video / audio; UltraRTC: VP8 for video calls (libavcodec with libvpx, libswscale) - optional"
       required: false
       priority: "medium"
       platforms: ["all"]

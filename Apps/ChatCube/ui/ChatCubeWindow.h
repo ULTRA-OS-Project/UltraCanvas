@@ -22,8 +22,12 @@
 //
 // A call shows a bar across the top of the chat view:
 //
-//   | Incoming call from Bob                              [Accept] [Decline] |
-//   | In call with Bob   01:42                              [Mute] [Hang up] |
+//   | Incoming video call from Bob                        [Accept] [Decline] |
+//   | In call with Bob   01:42                 [Camera off] [Mute] [Hang up] |
+//
+// and a video call the two pictures under it - the other side large, the
+// self view small and mirrored (UltraCanvasVideoTile; the provider pushes
+// the pictures into them from its media threads).
 //
 // Everything comes from UltraIM (provider "direct", ChatCube Direct), through
 // its dispatcher on the UI thread: this window never takes a lock.
@@ -52,6 +56,7 @@ class UltraCanvasLabel;
 class UltraCanvasListView;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
+class UltraCanvasVideoTile;
 }
 
 namespace ChatCube {
@@ -89,10 +94,12 @@ private:
     void ScrollToEnd();
 
     // ---- calls ---------------------------------------------------------------
-    void StartVoiceCall();
+    void StartCall(bool video);
     void AcceptCall();
     void EndCall();
     void ToggleMute();
+    void ToggleCamera();
+    void ConnectVideo();            // the call's pictures into the tiles
     void OnCallEvent(const UltraIMEvent& event);
     void UpdateCallBar();
     std::string ContactName(const std::string& contactId) const;
@@ -138,11 +145,17 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     callText_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    callAccept_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    callMute_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callCamera_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> videoPanel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoTile> remoteVideo_;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoTile> selfVideo_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    callEnd_;
     std::string      callId_;               // empty: no call
     std::string      callContact_;
     bool             callIncoming_ = false;
     bool             callMuted_ = false;
+    bool             callVideo_ = false;
+    bool             cameraOn_ = false;
     UltraIMCallState callState_ = UltraIMCallState::Ended;
     int64_t          callActiveSinceMs_ = 0;
     uint64_t         callTimer_ = 0;        // the duration ticker (0: none)

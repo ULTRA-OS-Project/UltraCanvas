@@ -111,6 +111,27 @@ struct UltraRtcAudioFrame {
 // must not block; copy what it needs and return.
 using UltraRtcAudioFrameCallback = std::function<void(const UltraRtcAudioFrame& frame)>;
 
+// A video picture: RGBA, 8 bits per channel, rows top first, width * 4
+// bytes per row.
+struct UltraRtcVideoFrame {
+    int                  width = 0;
+    int                  height = 0;
+    std::vector<uint8_t> rgba;
+};
+
+// Called on a media or capture thread for every decoded (or captured)
+// picture. It must not block; copy what it needs and return.
+using UltraRtcVideoFrameCallback = std::function<void(const UltraRtcVideoFrame& frame)>;
+
+// What a video track sends: VP8 at this size (pictures of another size are
+// scaled), at most this many frames a second, at about this bit rate.
+struct UltraRtcVideoConfig {
+    int width = 640;
+    int height = 480;
+    int fps = 24;
+    int bitrateKbps = 700;
+};
+
 // ============================================================================
 // STATES (W3C spellings)
 // ============================================================================

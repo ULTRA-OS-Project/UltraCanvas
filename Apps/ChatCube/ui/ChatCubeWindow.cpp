@@ -15,6 +15,7 @@
 #include "UltraCanvasListView.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasVideoTile.h"
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMCore.h"
 
@@ -117,6 +118,8 @@ ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId)
     : version_(std::move(version)), providerId_(std::move(providerId)) {}
 
 ChatCubeWindow::~ChatCubeWindow() {
+    // The tiles go with the window: no picture may be pushed into them after.
+    if (!callId_.empty()) UltraIM_SetCallVideoSinks(providerId_, callId_, nullptr, nullptr);
     if (subscription_) UltraIM_Unsubscribe(subscription_);
     if (callTimer_)
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(callTimer_);
@@ -290,10 +293,11 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     header->AddChild(titles);
     voiceCall_ = MakeButton("cc-call", "Call", 60);
     voiceCall_->SetDisabled(true);
-    voiceCall_->SetOnClick([this]() { StartVoiceCall(); });
+    voiceCall_->SetOnClick([this]() { StartCall(false); });
     header->AddChild(voiceCall_);
     videoCall_ = MakeButton("cc-video", "Video", 60);
     videoCall_->SetDisabled(true);
+    videoCall_->SetOnClick([this]() { StartCall(true); });
     header->AddChild(videoCall_);
     pane->AddChild(header);
 
@@ -387,6 +391,9 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
     callAccept_ = MakeButton("cc-call-accept", "Accept", 80, true);
     callAccept_->SetOnClick([this]() { AcceptCall(); });
     callBar_->AddChild(callAccept_);
+    callCamera_ = MakeButton("cc-call-camera", "Camera off", 96);
+    callCamera_->SetOnClick([this]() { ToggleCamera(); });
+    callBar_->AddChild(callCamera_);
     callMute_ = MakeButton("cc-call-mute", "Mute", 80);
     callMute_->SetOnClick([this]() { ToggleMute(); });
     callBar_->AddChild(callMute_);
@@ -397,6 +404,34 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
     callBar_->AddChild(callEnd_);
     callBar_->SetVisible(false);
     chatView_->AddChild(callBar_);
+
+    // ----- the pictures of a video call (hidden otherwise) -----
+    videoPanel_ = MakeRow("cc-video-panel", 10);
+    videoPanel_->SetPadding(10, 12, 10, 12);
+    videoPanel_->SetBackgroundColor(Color(16, 16, 20, 255));
+    videoPanel_->layout.SetFlexAlignItems(CSSLayout::AlignItems::End);
+    videoPanel_->size.height = CSSLayout::Dimension::Px(330.0f);
+    videoPanel_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(330.0f));
+    remoteVideo_ = std::make_shared<UltraCanvasVideoTile>("cc-remote-video", 0, 0, 400, 310);
+    remoteVideo_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    VideoTileStyle remoteStyle;
+    remoteStyle.cornerRadius = 6.0f;
+    remoteStyle.captionFontSize = 12.0f;
+    remoteVideo_->SetStyle(remoteStyle);
+    videoPanel_->AddChild(remoteVideo_);
+    selfVideo_ = std::make_shared<UltraCanvasVideoTile>("cc-self-video", 0, 0, 192, 144);
+    selfVideo_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    selfVideo_->SetMirrored(true);
+    selfVideo_->SetFit(VideoTileFit::Cover);
+    VideoTileStyle selfStyle;
+    selfStyle.cornerRadius = 6.0f;
+    selfStyle.captionFontSize = 10.0f;
+    selfStyle.borderColor = Color(90, 90, 100, 255);
+    selfStyle.borderWidth = 1.0f;
+    selfVideo_->SetStyle(selfStyle);
+    videoPanel_->AddChild(selfVideo_);
+    videoPanel_->SetVisible(false);
+    chatView_->AddChild(videoPanel_);
 
     auto body = std::make_shared<UltraCanvasContainer>("cc-chat-body");
     body->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -579,7 +614,7 @@ void ChatCubeWindow::UpdateHeader() {
     // Calls need UltraRTC media; the provider says when they are possible.
     // One call at a time.
     voiceCall_->SetDisabled(!callId_.empty() || !UltraIM_CanCall(providerId_, activeConversation_, false));
-    videoCall_->SetDisabled(!UltraIM_CanCall(providerId_, activeConversation_, true));
+    videoCall_->SetDisabled(!callId_.empty() || !UltraIM_CanCall(providerId_, activeConversation_, true));
 }
 
 void ChatCubeWindow::ScrollToEnd() {
@@ -627,10 +662,10 @@ std::string ChatCubeWindow::ContactName(const std::string& contactId) const {
     return GroupUserId(contactId);
 }
 
-void ChatCubeWindow::StartVoiceCall() {
+void ChatCubeWindow::StartCall(bool video) {
     if (!callId_.empty() || activeConversation_.empty()) return;
     std::string callId;
-    const UltraIMResult r = UltraIM_StartCall(providerId_, activeConversation_, false, callId);
+    const UltraIMResult r = UltraIM_StartCall(providerId_, activeConversation_, video, callId);
     if (!r) {
         SetStatus("Could not call: " + r.message);
         return;
@@ -641,14 +676,44 @@ void ChatCubeWindow::StartVoiceCall() {
     callContact_ = activeConversation_;
     callIncoming_ = false;
     callMuted_ = false;
+    callVideo_ = video;
+    cameraOn_ = video;
     callState_ = UltraIMCallState::Ringing;
+    if (video) ConnectVideo();
     UpdateCallBar();
     UpdateHeader();
 }
 
+void ChatCubeWindow::ConnectVideo() {
+    // The tiles take pictures from any thread; the window outlives the call's
+    // sinks (they are cleared when the call ends and in the destructor).
+    UltraCanvasVideoTile* remote = remoteVideo_.get();
+    UltraCanvasVideoTile* self = selfVideo_.get();
+    remote->ClearFrame();
+    self->ClearFrame();
+    remote->SetCaption("Connecting\xE2\x80\xA6");
+    self->SetCaption(cameraOn_ ? "Starting camera\xE2\x80\xA6" : "Camera off");
+    UltraIM_SetCallVideoSinks(providerId_, callId_,
+        [remote](const uint8_t* rgba, int width, int height) { remote->PushFrame(rgba, width, height); },
+        [self](const uint8_t* rgba, int width, int height) { self->PushFrame(rgba, width, height); });
+}
+
+void ChatCubeWindow::ToggleCamera() {
+    if (callId_.empty() || !callVideo_) return;
+    if (!UltraIM_SetCallCamera(providerId_, callId_, !cameraOn_)) return;
+    cameraOn_ = !cameraOn_;
+    if (!cameraOn_) {
+        selfVideo_->ClearFrame();
+        selfVideo_->SetCaption("Camera off");
+    } else {
+        selfVideo_->SetCaption("Starting camera\xE2\x80\xA6");
+    }
+    UpdateCallBar();
+}
+
 void ChatCubeWindow::AcceptCall() {
     if (callId_.empty() || !callIncoming_ || callState_ != UltraIMCallState::Ringing) return;
-    const UltraIMResult r = UltraIM_AcceptCall(providerId_, callId_, false);
+    const UltraIMResult r = UltraIM_AcceptCall(providerId_, callId_, callVideo_);
     if (!r) SetStatus("Could not answer: " + r.message);
 }
 
@@ -669,12 +734,16 @@ void ChatCubeWindow::UpdateCallBar() {
     if (!callBar_) return;
     const bool inCall = !callId_.empty();
     callBar_->SetVisible(inCall);
+    // The pictures once the call is answered (the caller sees its own while ringing).
+    const bool showVideo = inCall && callVideo_ && (callState_ != UltraIMCallState::Ringing || !callIncoming_);
+    videoPanel_->SetVisible(showVideo);
     if (inCall) {
         const std::string name = ContactName(callContact_);
         std::string text;
         switch (callState_) {
             case UltraIMCallState::Ringing:
-                text = callIncoming_ ? "Incoming call from " + name : "Calling " + name + "\xE2\x80\xA6";
+                text = callIncoming_ ? std::string(callVideo_ ? "Incoming video call from " : "Incoming call from ") + name
+                                     : "Calling " + name + "\xE2\x80\xA6";
                 break;
             case UltraIMCallState::Connecting:
                 text = "Connecting to " + name + "\xE2\x80\xA6";
@@ -696,6 +765,8 @@ void ChatCubeWindow::UpdateCallBar() {
         const bool ringingHere = callIncoming_ && callState_ == UltraIMCallState::Ringing;
         callAccept_->SetVisible(ringingHere);
         callMute_->SetVisible(!ringingHere);
+        callCamera_->SetVisible(!ringingHere && callVideo_);
+        callCamera_->SetText(cameraOn_ ? "Camera off" : "Camera on");
         callMute_->SetText(callMuted_ ? "Unmute" : "Mute");
         callEnd_->SetText(ringingHere ? "Decline" : (callState_ == UltraIMCallState::Ringing ? "Cancel" : "Hang up"));
     }
@@ -710,18 +781,34 @@ void ChatCubeWindow::OnCallEvent(const UltraIMEvent& e) {
         callContact_ = e.contactId;
         callIncoming_ = true;
         callMuted_ = false;
+        callVideo_ = e.isVideo;
+        cameraOn_ = e.isVideo;
         callState_ = UltraIMCallState::Ringing;
-        SetStatus("Incoming call from " + ContactName(e.contactId));
+        if (callVideo_) ConnectVideo();
+        SetStatus(std::string(callVideo_ ? "Incoming video call from " : "Incoming call from ") + ContactName(e.contactId));
         if (activeConversation_.empty() && conversations_->Find(e.contactId)) OpenConversation(e.contactId);
         UpdateCallBar();
         UpdateHeader();
         return;
     }
     if (e.callId != callId_) return;
+    if (e.type == UltraIMEventType::CallMediaChange) {
+        // The other side's camera: off shows a caption, not a frozen picture.
+        if (!e.isVideo) {
+            remoteVideo_->ClearFrame();
+            remoteVideo_->SetCaption(ContactName(callContact_) + " turned the camera off");
+        } else {
+            remoteVideo_->SetCaption("");
+        }
+        return;
+    }
+    const bool becameActive = e.callState == UltraIMCallState::Active && callState_ != UltraIMCallState::Active;
     callState_ = e.callState;
     if (e.callState == UltraIMCallState::Active) {
-        callActiveSinceMs_ = NowMs();
+        // Active comes again with a notice (no camera) - the clock runs on.
+        if (becameActive) callActiveSinceMs_ = NowMs();
         if (!e.errorText.empty()) SetStatus(e.errorText);           // e.g. no microphone
+        if (e.errorText.rfind("No camera", 0) == 0) selfVideo_->SetCaption("No camera");
         if (app && !callTimer_) callTimer_ = app->StartTimer(1000, true, [this](TimerId) { UpdateCallBar(); });
     }
     if (e.callState == UltraIMCallState::Ended && e.errorText == "crossed") {
@@ -741,6 +828,12 @@ void ChatCubeWindow::OnCallEvent(const UltraIMEvent& e) {
         else if (!e.errorText.empty())       why = "Call ended: " + e.errorText;
         else                                 why = "Call ended";
         if (!why.empty()) SetStatus(why);
+        if (callVideo_) {
+            UltraIM_SetCallVideoSinks(providerId_, callId_, nullptr, nullptr);
+            remoteVideo_->ClearFrame();
+            selfVideo_->ClearFrame();
+        }
+        callVideo_ = false;
         callId_.clear();
         callContact_.clear();
         if (app && callTimer_) app->StopTimer(callTimer_);
@@ -819,6 +912,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             break;
         case UltraIMEventType::CallReceive:
         case UltraIMEventType::CallStateChange:
+        case UltraIMEventType::CallMediaChange:
             OnCallEvent(e);
             break;
         case UltraIMEventType::AuthRequire:

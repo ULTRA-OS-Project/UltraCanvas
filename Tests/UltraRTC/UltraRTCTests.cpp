@@ -1,5 +1,6 @@
 // Tests/UltraRTC/UltraRTCTests.cpp
-// UltraRTC: peers, signalling pass-through, data channels, audio tracks, closing
+// UltraRTC: peers, signalling pass-through, data channels, audio and video
+// tracks, closing
 // Version: 0.1.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -254,6 +255,140 @@ void TestAudio() {
     CHECK(UltraRtc_ClosePeer(b.peer));
 }
 
+// Received pictures: how many, their size, and the colour in the middle.
+struct Pictures {
+    std::mutex mutex;
+    int count = 0;
+    int width = 0;
+    int height = 0;
+    uint8_t centre[3] = {0, 0, 0};
+};
+
+UltraRtcVideoFrameCallback CollectPictures(Pictures& into) {
+    return [&into](const UltraRtcVideoFrame& frame) {
+        std::lock_guard<std::mutex> lock(into.mutex);
+        ++into.count;
+        into.width = frame.width;
+        into.height = frame.height;
+        const size_t at = (static_cast<size_t>(frame.height / 2) * static_cast<size_t>(frame.width) +
+                           static_cast<size_t>(frame.width / 2)) * 4;
+        if (frame.rgba.size() >= at + 3) {
+            into.centre[0] = frame.rgba[at];
+            into.centre[1] = frame.rgba[at + 1];
+            into.centre[2] = frame.rgba[at + 2];
+        }
+    };
+}
+
+// Sends `count` pictures of one colour (a different size from the track's,
+// so the scaler runs), paced like a camera.
+void SendPictures(UltraRtcHandle track, int count, uint8_t r, uint8_t g, uint8_t b) {
+    UltraRtcVideoFrame frame;
+    frame.width = 400;
+    frame.height = 300;
+    frame.rgba.resize(static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4);
+    for (size_t i = 0; i < frame.rgba.size(); i += 4) {
+        frame.rgba[i] = r;
+        frame.rgba[i + 1] = g;
+        frame.rgba[i + 2] = b;
+        frame.rgba[i + 3] = 255;
+    }
+    for (int n = 0; n < count; ++n) {
+        UltraRtc_SendVideoFrame(track, frame);
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    }
+}
+
+bool Near(int a, int b) {
+    return a - b < 24 && b - a < 24;    // VP8 is lossy
+}
+
+void TestVideo() {
+    Side a, b;
+    UltraRtcPeerConfig config;
+    CHECK(UltraRtc_CreatePeer(config, MakeHandler(a, b), a.peer));
+    CHECK(UltraRtc_CreatePeer(config, MakeHandler(b, a), b.peer));
+
+    UltraRtcVideoConfig video;
+    video.width = 320;
+    video.height = 240;
+    video.fps = 25;
+    video.bitrateKbps = 400;
+    UltraRtcHandle trackA = UltraRtcInvalidHandle, trackB = UltraRtcInvalidHandle;
+    CHECK(UltraRtc_AddVideoTrack(a.peer, "video", UltraRtcDirection::SendRecv, video, trackA));
+    CHECK(UltraRtc_AddVideoTrack(b.peer, "video", UltraRtcDirection::SendRecv, video, trackB));
+    UltraRtcVideoConfig tiny;
+    tiny.width = 4;
+    UltraRtcHandle unused = UltraRtcInvalidHandle;
+    CHECK(!UltraRtc_AddVideoTrack(a.peer, "v2", UltraRtcDirection::SendRecv, tiny, unused));
+    Pictures atA, atB;
+    CHECK(UltraRtc_SetVideoFrameCallback(trackA, CollectPictures(atA)));
+    CHECK(UltraRtc_SetVideoFrameCallback(trackB, CollectPictures(atB)));
+
+    CHECK(UltraRtc_SetLocalDescription(a.peer, UltraRtcSdpType::Offer));
+    const bool open = WaitFor([&]() { return a.tracksOpen > 0 && b.tracksOpen > 0; });
+    CHECK(open);
+    if (!open) return;
+    UltraRtcSdpType type;
+    std::string sdp;
+    CHECK(UltraRtc_GetLocalDescription(a.peer, type, sdp) && sdp.find("VP8/90000") != std::string::npos);
+
+    UltraRtcVideoFrame half;
+    half.width = 10;
+    half.height = 10;
+    half.rgba.resize(10);
+    CHECK(!UltraRtc_SendVideoFrame(trackA, half));
+
+    // A to B: orange pictures arrive orange, at the track's size.
+    SendPictures(trackA, 25, 240, 140, 20);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    {
+        std::lock_guard<std::mutex> lock(atB.mutex);
+        std::printf("video A->B: %d pictures %dx%d, centre %d,%d,%d\n", atB.count, atB.width, atB.height,
+                    atB.centre[0], atB.centre[1], atB.centre[2]);
+        CHECK(atB.count >= 15);
+        CHECK(atB.width == 320 && atB.height == 240);
+        CHECK(Near(atB.centre[0], 240) && Near(atB.centre[1], 140) && Near(atB.centre[2], 20));
+    }
+
+    // Disabled: nothing more goes out.
+    CHECK(UltraRtc_SetTrackEnabled(trackA, false));
+    int before;
+    {
+        std::lock_guard<std::mutex> lock(atB.mutex);
+        before = atB.count;
+    }
+    SendPictures(trackA, 8, 240, 140, 20);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    {
+        std::lock_guard<std::mutex> lock(atB.mutex);
+        CHECK(atB.count == before);
+    }
+    // Enabled again: it resumes (from a key frame) in the new colour.
+    CHECK(UltraRtc_SetTrackEnabled(trackA, true));
+    SendPictures(trackA, 10, 30, 90, 220);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    {
+        std::lock_guard<std::mutex> lock(atB.mutex);
+        CHECK(atB.count > before);
+        CHECK(Near(atB.centre[0], 30) && Near(atB.centre[1], 90) && Near(atB.centre[2], 220));
+    }
+
+    // B to A as well.
+    SendPictures(trackB, 15, 20, 200, 60);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    {
+        std::lock_guard<std::mutex> lock(atA.mutex);
+        CHECK(atA.count >= 8);
+        CHECK(Near(atA.centre[1], 200));
+    }
+    CHECK(UltraRtc_RequestKeyFrame(trackB));
+
+    CHECK(UltraRtc_ClosePeer(a.peer));
+    CHECK(UltraRtc_SendVideoFrame(trackA, half).code == UltraRtcResultCode::InvalidHandle);
+    CHECK(UltraRtc_ClosePeer(b.peer));
+}
+
 } // namespace
 
 int main() {
@@ -271,6 +406,11 @@ int main() {
         TestAudio();
     } else {
         std::printf("UltraRTCTests: no Opus in this build - audio skipped\n");
+    }
+    if (caps.video) {
+        TestVideo();
+    } else {
+        std::printf("UltraRTCTests: no VP8 (FFmpeg) in this build - video skipped\n");
     }
     UltraRtc_Shutdown();
     std::printf("UltraRTCTests: %d checks, %d failures\n", g_checks, g_failures);

@@ -81,7 +81,8 @@ UltraRtcResult UltraRtc_SendAudioFrame(UltraRtcHandle track, const UltraRtcAudio
 // Decoded received audio, 20 ms at a time, on a media thread (lost packets
 // are concealed). Replaces any earlier callback; nullptr removes it.
 UltraRtcResult UltraRtc_SetAudioFrameCallback(UltraRtcHandle track, UltraRtcAudioFrameCallback onFrame);
-// Mute: a disabled track sends nothing (the other side conceals silence).
+// Mute / camera off: a disabled track sends nothing (the other side
+// conceals silence, or keeps the last picture).
 UltraRtcResult UltraRtc_SetTrackEnabled(UltraRtcHandle track, bool enabled);
 bool           UltraRtc_IsTrackOpen(UltraRtcHandle track);
 
@@ -92,3 +93,24 @@ UltraRtcResult UltraRtc_StartMicrophone(UltraRtcHandle track, const std::string&
 UltraRtcResult UltraRtc_StopMicrophone(UltraRtcHandle track);
 UltraRtcResult UltraRtc_StartPlayback(UltraRtcHandle track, const std::string& deviceId = std::string());
 UltraRtcResult UltraRtc_StopPlayback(UltraRtcHandle track);
+
+// ---- Video -------------------------------------------------------------------
+// A VP8 video track. As with audio, add it on both sides with the same mid
+// before the offer. A receiver that loses part of a picture asks the sender
+// for a key frame by itself and shows nothing broken meanwhile.
+UltraRtcResult UltraRtc_AddVideoTrack(UltraRtcHandle peer, const std::string& mid, UltraRtcDirection direction,
+                                      const UltraRtcVideoConfig& config, UltraRtcHandle& outTrack);
+// Encodes and sends one picture (any size; scaled to the track's). Pictures
+// faster than the track's frame rate are dropped.
+UltraRtcResult UltraRtc_SendVideoFrame(UltraRtcHandle track, const UltraRtcVideoFrame& frame);
+// Decoded received pictures. Replaces any earlier callback; nullptr removes it.
+UltraRtcResult UltraRtc_SetVideoFrameCallback(UltraRtcHandle track, UltraRtcVideoFrameCallback onFrame);
+// Asks the other side for a key frame (a receiver that joins late).
+UltraRtcResult UltraRtc_RequestKeyFrame(UltraRtcHandle track);
+// The camera feeds the track. onPreview gets every captured picture (the
+// self view), on the capture thread. deviceId "" = the default camera.
+// Stopped by UltraRtc_StopCamera or when the peer closes. A disabled track
+// (UltraRtc_SetTrackEnabled) sends nothing; the preview goes on.
+UltraRtcResult UltraRtc_StartCamera(UltraRtcHandle track, const std::string& deviceId = std::string(),
+                                    UltraRtcVideoFrameCallback onPreview = nullptr);
+UltraRtcResult UltraRtc_StopCamera(UltraRtcHandle track);

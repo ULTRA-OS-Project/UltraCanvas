@@ -1,5 +1,5 @@
 // Plugins/UltraIM/direct/DirectCalls.cpp
-// ChatCube Direct - 1:1 voice calls
+// ChatCube Direct - 1:1 voice and video calls
 // Version: 0.1.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -20,6 +20,12 @@ namespace {
 
 const char* const kCallPrefix = "call:";
 const char* const kAudioMid = "audio";
+const char* const kVideoMid = "video";
+
+// A hang-up travels through the relay, the closing connection directly, so
+// the close usually arrives first: a dropped connection waits this long for
+// the hang-up that explains it before the call counts as lost.
+constexpr int64_t kLostGraceMs = 1500;
 
 int64_t NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -56,6 +62,11 @@ void CallManager::SetTimings(const CallTimings& timings) {
     timings_ = timings;
 }
 
+void CallManager::SetVideoConfig(const UltraRtcVideoConfig& config) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    videoConfig_ = config;
+}
+
 void CallManager::SetUseDevices(bool useDevices) {
     std::lock_guard<std::mutex> lock(mutex_);
     useDevices_ = useDevices;
@@ -68,6 +79,28 @@ bool CallManager::IsCallSession(const std::string& session) {
 bool CallManager::InCall() {
     std::lock_guard<std::mutex> lock(mutex_);
     return !calls_.empty();
+}
+
+UltraRtcHandle CallManager::GetVideoTrack(const std::string& callId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = calls_.find(callId);
+    return it == calls_.end() ? UltraRtcInvalidHandle : it->second.videoTrack;
+}
+
+void CallManager::EmitMedia(const Call& call, bool remoteCamera) {
+    if (!emit) return;
+    UltraIMEvent event;
+    event.type = UltraIMEventType::CallMediaChange;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        event.providerId = providerId_;
+    }
+    event.callId = call.id;
+    event.conversationId = call.peerId;
+    event.contactId = call.peerId;
+    event.isVideo = remoteCamera;
+    event.callState = call.state;
+    emit(event);
 }
 
 UltraRtcHandle CallManager::GetAudioTrack(const std::string& callId) {
@@ -134,8 +167,6 @@ void CallManager::Finish(const std::string& callId, UltraIMCallState state, cons
 
 UltraIMResult CallManager::Start(const std::string& peerId, bool video, std::string& outCallId) {
     outCallId.clear();
-    if (video)
-        return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing, "Video calls are not available yet");
     Call call;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -146,12 +177,14 @@ UltraIMResult CallManager::Start(const std::string& peerId, bool video, std::str
         call.id = std::string(kCallPrefix) + UltraIM_NewClientMessageId();
         call.peerId = peerId;
         call.outgoing = true;
+        call.video = video;
+        call.cameraOn = video;
         call.sinceMs = NowMs();
         calls_[call.id] = call;
     }
     outCallId = call.id;
     JSONValue invite = JSONValue::MakeObject();
-    invite.Set("video", JSONValue(false));
+    invite.Set("video", JSONValue(video));
     if (!Signal(peerId, "call-invite", call.id, UltraCanvas::JSON::Serialize(invite))) {
         std::lock_guard<std::mutex> lock(mutex_);
         calls_.erase(call.id);
@@ -162,7 +195,7 @@ UltraIMResult CallManager::Start(const std::string& peerId, bool video, std::str
     return UltraIMResult::Ok();
 }
 
-UltraIMResult CallManager::Accept(const std::string& callId) {
+UltraIMResult CallManager::Accept(const std::string& callId, bool camera) {
     std::string peerId;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -171,6 +204,8 @@ UltraIMResult CallManager::Accept(const std::string& callId) {
         if (it->second.outgoing || it->second.state != UltraIMCallState::Ringing)
             return UltraIMResult::Error(UltraIMResultCode::InvalidState, "The call is not ringing here");
         peerId = it->second.peerId;
+        it->second.cameraOn = it->second.video && camera;
+        camera = it->second.cameraOn;
     }
     // The peer exists before the caller's offer can arrive.
     if (!StartMedia(callId, false)) {
@@ -178,7 +213,9 @@ UltraIMResult CallManager::Accept(const std::string& callId) {
         return UltraIMResult::Error(UltraIMResultCode::PluginError, "The call could not be set up");
     }
     SetState(callId, UltraIMCallState::Connecting);
-    Signal(peerId, "call-accept", callId);
+    JSONValue accept = JSONValue::MakeObject();
+    accept.Set("camera", JSONValue(camera));
+    Signal(peerId, "call-accept", callId, UltraCanvas::JSON::Serialize(accept));
     return UltraIMResult::Ok();
 }
 
@@ -213,6 +250,69 @@ UltraIMResult CallManager::SetMuted(const std::string& callId, bool muted) {
     return UltraIMResult::Ok();
 }
 
+UltraIMResult CallManager::SetCamera(const std::string& callId, bool on) {
+    std::string peerId;
+    UltraRtcHandle videoTrack = UltraRtcInvalidHandle;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = calls_.find(callId);
+        if (it == calls_.end()) return NoSuchCall();
+        if (!it->second.video)
+            return UltraIMResult::Error(UltraIMResultCode::InvalidState, "This is a voice call");
+        if (it->second.cameraOn == on) return UltraIMResult::Ok();
+        it->second.cameraOn = on;
+        peerId = it->second.peerId;
+        videoTrack = it->second.videoTrack;
+    }
+    if (videoTrack != UltraRtcInvalidHandle) {
+        UltraRtc_SetTrackEnabled(videoTrack, on);
+        if (on && UltraRtc_IsTrackOpen(videoTrack)) StartCamera(callId);
+        if (!on) UltraRtc_StopCamera(videoTrack);
+    }
+    JSONValue update = JSONValue::MakeObject();
+    update.Set("camera", JSONValue(on));
+    Signal(peerId, "call-update", callId, UltraCanvas::JSON::Serialize(update));
+    return UltraIMResult::Ok();
+}
+
+UltraIMResult CallManager::SetVideoSinks(const std::string& callId, UltraIMVideoFrameCallback remote,
+                                         UltraIMVideoFrameCallback local) {
+    std::shared_ptr<VideoSinks> sinks;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = calls_.find(callId);
+        if (it == calls_.end()) return NoSuchCall();
+        sinks = it->second.sinks;
+    }
+    std::lock_guard<std::mutex> lock(sinks->mutex);     // waits for a picture being handed over
+    sinks->remote = std::move(remote);
+    sinks->local = std::move(local);
+    return UltraIMResult::Ok();
+}
+
+void CallManager::StartCamera(const std::string& callId) {
+    UltraRtcHandle videoTrack = UltraRtcInvalidHandle;
+    std::shared_ptr<VideoSinks> sinks;
+    Call copy;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = calls_.find(callId);
+        if (it == calls_.end() || !useDevices_ || !it->second.cameraOn) return;
+        videoTrack = it->second.videoTrack;
+        sinks = it->second.sinks;
+        copy = it->second;
+    }
+    if (videoTrack == UltraRtcInvalidHandle) return;
+    std::weak_ptr<VideoSinks> weak = sinks;
+    UltraRtcResult r = UltraRtc_StartCamera(videoTrack, std::string(), [weak](const UltraRtcVideoFrame& frame) {
+        auto s = weak.lock();
+        if (!s) return;
+        std::lock_guard<std::mutex> lock(s->mutex);
+        if (s->local) s->local(frame.rgba.data(), frame.width, frame.height);
+    });
+    if (!r) EmitState(copy, "No camera: " + r.message);     // the call goes on without our picture
+}
+
 void CallManager::EndAll(const std::string& reason) {
     std::vector<std::string> ids;
     {
@@ -223,7 +323,7 @@ void CallManager::EndAll(const std::string& reason) {
 }
 
 void CallManager::ExpireStale(int64_t nowMs) {
-    std::vector<std::pair<std::string, int>> expired;    // 0 no answer, 1 missed, 2 no media
+    std::vector<std::pair<std::string, int>> expired;    // 0 no answer, 1 missed, 2 no media, 3 lost
     {
         std::lock_guard<std::mutex> lock(mutex_);
         for (const auto& entry : calls_) {
@@ -233,12 +333,15 @@ void CallManager::ExpireStale(int64_t nowMs) {
                 expired.push_back({call.id, call.outgoing ? 0 : 1});
             else if (call.state == UltraIMCallState::Connecting && age > timings_.connectTimeoutMs)
                 expired.push_back({call.id, 2});
+            else if (call.lostAtMs != 0 && nowMs - call.lostAtMs > kLostGraceMs)
+                expired.push_back({call.id, 3});
         }
     }
     for (const auto& entry : expired) {
         if (entry.second == 0) Finish(entry.first, UltraIMCallState::Ended, "no answer", "hangup");
         else if (entry.second == 1) Finish(entry.first, UltraIMCallState::Ended, "missed");
-        else Finish(entry.first, UltraIMCallState::Failed, "The call could not connect", "hangup");
+        else if (entry.second == 2) Finish(entry.first, UltraIMCallState::Failed, "The call could not connect", "hangup");
+        else Finish(entry.first, UltraIMCallState::Failed, "The connection was lost", "hangup");
     }
 }
 
@@ -249,12 +352,20 @@ void CallManager::ExpireStale(int64_t nowMs) {
 bool CallManager::StartMedia(const std::string& callId, bool offer) {
     UltraRtcPeerConfig config;
     bool muted = false;
+    bool video = false;
+    bool cameraOn = false;
+    UltraRtcVideoConfig videoConfig;
+    std::shared_ptr<VideoSinks> sinks;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = calls_.find(callId);
         if (it == calls_.end() || it->second.peer != UltraRtcInvalidHandle) return false;
         config.iceServers = iceServers_;
         muted = it->second.muted;
+        video = it->second.video;
+        cameraOn = it->second.cameraOn;
+        videoConfig = videoConfig_;
+        sinks = it->second.sinks;
     }
     UltraRtcHandle peer = UltraRtcInvalidHandle;
     auto onEvent = [this, callId](const UltraRtcPeerEvent& event) { OnPeerEvent(callId, event); };
@@ -265,6 +376,22 @@ bool CallManager::StartMedia(const std::string& callId, bool offer) {
         return false;
     }
     if (muted) UltraRtc_SetTrackEnabled(track, false);
+    // A video call: both sides add the video track too, before the offer.
+    UltraRtcHandle videoTrack = UltraRtcInvalidHandle;
+    if (video) {
+        if (!UltraRtc_AddVideoTrack(peer, kVideoMid, UltraRtcDirection::SendRecv, videoConfig, videoTrack)) {
+            UltraRtc_ClosePeer(peer);
+            return false;
+        }
+        if (!cameraOn) UltraRtc_SetTrackEnabled(videoTrack, false);
+        std::weak_ptr<VideoSinks> weak = sinks;
+        UltraRtc_SetVideoFrameCallback(videoTrack, [weak](const UltraRtcVideoFrame& frame) {
+            auto s = weak.lock();
+            if (!s) return;
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (s->remote) s->remote(frame.rgba.data(), frame.width, frame.height);
+        });
+    }
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = calls_.find(callId);
@@ -274,6 +401,7 @@ bool CallManager::StartMedia(const std::string& callId, bool offer) {
         }
         it->second.peer = peer;
         it->second.track = track;
+        it->second.videoTrack = videoTrack;
     }
     // Media only: nothing triggers auto-negotiation, so the caller asks.
     if (offer && !UltraRtc_SetLocalDescription(peer, UltraRtcSdpType::Offer)) return false;
@@ -283,6 +411,7 @@ bool CallManager::StartMedia(const std::string& callId, bool offer) {
 void CallManager::OnPeerEvent(const std::string& callId, const UltraRtcPeerEvent& event) {
     std::string peerId;
     UltraRtcHandle track = UltraRtcInvalidHandle;
+    UltraRtcHandle videoTrack = UltraRtcInvalidHandle;
     bool useDevices = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -290,6 +419,7 @@ void CallManager::OnPeerEvent(const std::string& callId, const UltraRtcPeerEvent
         if (it == calls_.end() || it->second.peer != event.peer) return;
         peerId = it->second.peerId;
         track = it->second.track;
+        videoTrack = it->second.videoTrack;
         useDevices = useDevices_;
     }
     switch (event.type) {
@@ -308,6 +438,10 @@ void CallManager::OnPeerEvent(const std::string& callId, const UltraRtcPeerEvent
             break;
         }
         case UltraRtcPeerEventType::TrackOpen: {
+            if (event.track != UltraRtcInvalidHandle && event.track == videoTrack) {
+                StartCamera(callId);
+                break;
+            }
             if (event.track != track) break;
             std::string problem;
             if (useDevices) {
@@ -319,12 +453,19 @@ void CallManager::OnPeerEvent(const std::string& callId, const UltraRtcPeerEvent
             SetState(callId, UltraIMCallState::Active, problem);
             break;
         }
-        case UltraRtcPeerEventType::ConnectionStateChange:
-            if (event.connectionState == UltraRtcConnectionState::Failed ||
-                event.connectionState == UltraRtcConnectionState::Disconnected ||
-                event.connectionState == UltraRtcConnectionState::Closed)
-                Finish(callId, UltraIMCallState::Failed, "The connection was lost", "hangup");
+        case UltraRtcPeerEventType::ConnectionStateChange: {
+            // Lost - unless a hang-up explains it in a moment (ExpireStale
+            // decides), or the connection comes back.
+            const bool lost = event.connectionState == UltraRtcConnectionState::Failed ||
+                              event.connectionState == UltraRtcConnectionState::Disconnected ||
+                              event.connectionState == UltraRtcConnectionState::Closed;
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = calls_.find(callId);
+            if (it == calls_.end()) break;
+            if (lost && it->second.lostAtMs == 0) it->second.lostAtMs = NowMs();
+            if (event.connectionState == UltraRtcConnectionState::Connected) it->second.lostAtMs = 0;
             break;
+        }
         default:
             break;
     }
@@ -387,7 +528,7 @@ void CallManager::HandleSignal(const std::string& from, const std::string& kind,
             emit(event);
         }
         // We were calling them too: this is the call we wanted.
-        if (!crossed.empty()) Accept(call.id);
+        if (!crossed.empty()) Accept(call.id, call.video);
         return;
     }
 
@@ -402,7 +543,14 @@ void CallManager::HandleSignal(const std::string& from, const std::string& kind,
     if (kind == "call-accept") {
         if (!call.outgoing || call.state != UltraIMCallState::Ringing) return;
         SetState(session, UltraIMCallState::Connecting);
-        if (!StartMedia(session, true)) Finish(session, UltraIMCallState::Failed, "The call could not be set up", "hangup");
+        if (!StartMedia(session, true)) {
+            Finish(session, UltraIMCallState::Failed, "The call could not be set up", "hangup");
+            return;
+        }
+        // Answered with the camera off: say so, so no empty picture waits.
+        if (call.video && !payload["camera"].GetBoolean(true)) EmitMedia(call, false);
+    } else if (kind == "call-update") {
+        if (call.video) EmitMedia(call, payload["camera"].GetBoolean(true));
     } else if (kind == "call-reject") {
         if (!call.outgoing) return;
         const std::string reason = payload["reason"].GetString();

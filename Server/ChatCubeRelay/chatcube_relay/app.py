@@ -26,7 +26,8 @@ from .config import Settings
 from .identity import decode_b64, login_message, register_message, user_id_for, verify
 from .store import GROUP_PREFIX, Store
 
-SIGNAL_KINDS = {"offer", "answer", "ice", "hangup", "call-invite", "call-accept", "call-reject"}
+SIGNAL_KINDS = {"offer", "answer", "ice", "hangup", "call-invite", "call-accept", "call-reject",
+                "call-update"}
 
 
 # ============================================================================

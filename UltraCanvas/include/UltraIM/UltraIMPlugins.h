@@ -158,6 +158,19 @@ public:
         (void)callId; (void)muted;
         return Unsupported("calls");
     }
+    // A video call's camera, on or off, during the call.
+    virtual UltraIMResult SetCallCamera(const std::string& callId, bool on) {
+        (void)callId; (void)on;
+        return Unsupported("video calls");
+    }
+    // Where a video call's pictures go: the other side's and our own camera
+    // (the self view). nullptr stops them; once this returns, the callbacks
+    // it replaced are not running and are not called again.
+    virtual UltraIMResult SetCallVideoSinks(const std::string& callId, UltraIMVideoFrameCallback remote,
+                                            UltraIMVideoFrameCallback local) {
+        (void)callId; (void)remote; (void)local;
+        return Unsupported("video calls");
+    }
 
     // ---- Stickers ------------------------------------------------------------
     virtual void FetchStickerPacks(UltraIMStickerPacksCallback onResult) {

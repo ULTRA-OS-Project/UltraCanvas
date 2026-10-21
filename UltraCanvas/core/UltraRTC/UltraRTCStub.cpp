@@ -60,3 +60,14 @@ UltraRtcResult UltraRtc_StartMicrophone(UltraRtcHandle, const std::string&) { re
 UltraRtcResult UltraRtc_StopMicrophone(UltraRtcHandle) { return NoEngine(); }
 UltraRtcResult UltraRtc_StartPlayback(UltraRtcHandle, const std::string&) { return NoEngine(); }
 UltraRtcResult UltraRtc_StopPlayback(UltraRtcHandle) { return NoEngine(); }
+
+UltraRtcResult UltraRtc_AddVideoTrack(UltraRtcHandle, const std::string&, UltraRtcDirection, const UltraRtcVideoConfig&,
+                                      UltraRtcHandle& outTrack) {
+    outTrack = UltraRtcInvalidHandle;
+    return NoEngine();
+}
+UltraRtcResult UltraRtc_SendVideoFrame(UltraRtcHandle, const UltraRtcVideoFrame&) { return NoEngine(); }
+UltraRtcResult UltraRtc_SetVideoFrameCallback(UltraRtcHandle, UltraRtcVideoFrameCallback) { return NoEngine(); }
+UltraRtcResult UltraRtc_RequestKeyFrame(UltraRtcHandle) { return NoEngine(); }
+UltraRtcResult UltraRtc_StartCamera(UltraRtcHandle, const std::string&, UltraRtcVideoFrameCallback) { return NoEngine(); }
+UltraRtcResult UltraRtc_StopCamera(UltraRtcHandle) { return NoEngine(); }

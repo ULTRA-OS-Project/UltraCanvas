@@ -799,6 +799,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCAudioDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCVideoDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
@@ -814,6 +815,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayerElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorderElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTile.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoHoverPreview.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
@@ -3623,12 +3625,16 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
     # The archive is uc-rtc; UltraRTC is its home ("MODULE HOMES").
     if(_ultrartc_engine)
         # Call audio is Opus (raw libopus; the Ogg Opus file codecs elsewhere
-        # use libopusenc / opusfile on top of it). The microphone and speaker
-        # glue (UltraRTCAudioDevices.cpp) is compiled into the core library,
-        # next to the recorder and player it uses.
+        # use libopusenc / opusfile on top of it); call video is VP8 through
+        # FFmpeg's libavcodec (VideoFX's dependency), with our own RTP
+        # payload handlers. The device glue (UltraRTCAudioDevices.cpp,
+        # UltraRTCVideoDevices.cpp) is compiled into the core library, next
+        # to the recorders and player it uses.
         add_library(uc-rtc STATIC
             ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCEngine.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCOpus.cpp)
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCOpus.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCVideoCodec.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCVp8Rtp.cpp)
         target_link_libraries(uc-rtc PRIVATE datachannel-static)
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
@@ -3639,6 +3645,15 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
             target_include_directories(uc-rtc PRIVATE ${UC_RTC_OPUS_INCLUDE_DIRS})
             target_link_directories(uc-rtc PUBLIC ${UC_RTC_OPUS_LIBRARY_DIRS})
             target_link_libraries(uc-rtc PUBLIC ${UC_RTC_OPUS_LIBRARIES})
+        endif()
+        if(PkgConfig_FOUND)
+            pkg_check_modules(UC_RTC_FFMPEG libavcodec>=58.134 libavutil>=56.70 libswscale>=5.9)
+        endif()
+        if(UC_RTC_FFMPEG_FOUND)
+            target_compile_definitions(uc-rtc PRIVATE ULTRARTC_HAVE_FFMPEG=1)
+            target_include_directories(uc-rtc PRIVATE ${UC_RTC_FFMPEG_INCLUDE_DIRS})
+            target_link_directories(uc-rtc PUBLIC ${UC_RTC_FFMPEG_LIBRARY_DIRS})
+            target_link_libraries(uc-rtc PUBLIC ${UC_RTC_FFMPEG_LIBRARIES})
         endif()
     else()
         add_library(uc-rtc STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCStub.cpp)
@@ -3659,10 +3674,16 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
     endif()
     if(_ultrartc_engine)
         if(UC_RTC_OPUS_FOUND)
-            message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION}, Opus ${UC_RTC_OPUS_VERSION})")
+            set(_ultrartc_audio "Opus ${UC_RTC_OPUS_VERSION}")
         else()
-            message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION}) - no Opus (pkg-config opus): audio calls off")
+            set(_ultrartc_audio "no Opus (pkg-config opus): audio off")
         endif()
+        if(UC_RTC_FFMPEG_FOUND)
+            set(_ultrartc_video "VP8 via libavcodec ${UC_RTC_FFMPEG_libavcodec_VERSION}")
+        else()
+            set(_ultrartc_video "no FFmpeg (libavcodec, libswscale): video off")
+        endif()
+        message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION}, ${_ultrartc_audio}, ${_ultrartc_video})")
     else()
         message(STATUS "  [✓] UltraRTC - ENABLED without an engine (no OpenSSL): every call answers Unsupported")
     endif()

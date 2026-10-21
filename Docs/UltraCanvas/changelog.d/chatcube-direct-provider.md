@@ -7,7 +7,9 @@
   with the identity keys, the ChatCube relay for sign-in, presence,
   signalling, the offline queue and groups, delivery and read receipts, and
   a local SQLite record of contacts, conversations, history and the outbox,
-  and 1:1 voice calls (signed invite / accept / reject / hang-up over the
-  relay, an UltraRTC Opus peer per call, mute).
+  and 1:1 voice and video calls (signed invite / accept / reject / camera /
+  hang-up over the relay, an UltraRTC peer per call with Opus and VP8, mute,
+  camera off; a dropped media connection waits briefly for the hang-up
+  that explains it).
   `Tests/UltraIM/DirectProviderTests.cpp` runs two providers against a local
   relay end to end; CI installs the relay for it.

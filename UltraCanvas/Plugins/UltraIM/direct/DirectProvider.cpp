@@ -87,7 +87,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
-           F::CreateGroup | F::VoiceCalls;
+           F::CreateGroup | F::VoiceCalls | F::VideoCalls;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -859,10 +859,11 @@ UltraIMResult DirectProvider::SetTyping(const std::string& conversationId, bool 
 }
 
 bool DirectProvider::CanCall(const std::string& conversationId, bool video) const {
-    // Voice, 1:1, with the relay's socket up (it carries the signalling);
-    // video and group calls come later.
-    if (video || conversationId.empty() || IsGroupId(conversationId)) return false;
-    if (state_.load() != UltraIMConnectionState::Connected || !UltraRtc_GetCapabilities().audio) return false;
+    // 1:1, voice or video, with the relay's socket up (it carries the
+    // signalling); group calls come later.
+    if (conversationId.empty() || IsGroupId(conversationId)) return false;
+    const UltraRtcCapabilities caps = UltraRtc_GetCapabilities();
+    if (state_.load() != UltraIMConnectionState::Connected || !caps.audio || (video && !caps.video)) return false;
     std::shared_ptr<RelayClient> relay = Relay();
     return relay && relay->IsSocketOpen();
 }
@@ -875,8 +876,16 @@ UltraIMResult DirectProvider::StartCall(const std::string& conversationId, bool 
 }
 
 UltraIMResult DirectProvider::AcceptCall(const std::string& callId, bool video) {
-    (void)video;        // voice only for now
-    return calls_.Accept(callId);
+    return calls_.Accept(callId, video);
+}
+
+UltraIMResult DirectProvider::SetCallCamera(const std::string& callId, bool on) {
+    return calls_.SetCamera(callId, on);
+}
+
+UltraIMResult DirectProvider::SetCallVideoSinks(const std::string& callId, UltraIMVideoFrameCallback remote,
+                                                UltraIMVideoFrameCallback local) {
+    return calls_.SetVideoSinks(callId, std::move(remote), std::move(local));
 }
 
 UltraIMResult DirectProvider::EndCall(const std::string& callId) {

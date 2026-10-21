@@ -210,7 +210,7 @@ libdatachannel's DTLS backend); without it, every call answers
 | 7 | ChatCube app on the real UltraCanvas API | starts, signs in to a relay, shows contacts, sends and receives, ticks update, a message shows once |
 | 8 | LAN without server: mDNS advertising, TCP signalling | two instances on one network chat with no relay configured |
 | 9 | Voice calls (UltraRTC phase 2) | a 1:1 call between two ChatCubes - done: audio both ways in `DirectProviderTests`, ChatCube's call bar run against `chatcube-peer` |
-| 10 | Video calls (UltraRTC phase 3) | a 1:1 video call between two ChatCubes |
+| 10 | Video calls (UltraRTC phase 3) | a 1:1 video call between two ChatCubes - done: pictures across in `UltraRTCTests` and `DirectProviderTests`, ChatCube's video panel run against `chatcube-peer`'s test picture |
 | 11 | Matrix, then Telegram and other providers | per provider |
 
 Every phase ends with a clean build, its tests, and a push.

@@ -25,10 +25,13 @@ The first ChatCube draft, which this replaces, is kept under
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    green `✓✓` read.
 
-5. **Call** rings the open contact (1:1, voice; the button is off for groups
-   and while not connected). A bar across the top shows the call:
-   *Accept* / *Decline* when it rings here, *Mute* and *Hang up* during it,
-   with its duration. Video calls come next.
+5. **Call** rings the open contact, **Video** makes it a video call (1:1;
+   the buttons are off for groups and while not connected). A bar across
+   the top shows the call: *Accept* / *Decline* when it rings here, *Mute*,
+   *Camera off* (video) and *Hang up* during it, with its duration. A video
+   call shows the other person large and you, mirrored, small; when one of
+   you turns the camera off the other sees "camera off" instead of a frozen
+   picture.
 
 ## Building and running
 

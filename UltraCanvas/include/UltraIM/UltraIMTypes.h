@@ -240,7 +240,8 @@ enum class UltraIMEventType {
     ConnectionStateChange,  // connectionState, errorText
     AuthRequire,            // the session expired; sign in again
     CallReceive,            // callId, contactId, isVideo
-    CallStateChange         // callId, callState, errorText
+    CallStateChange,        // callId, callState, errorText
+    CallMediaChange         // callId, isVideo: the other side turned its camera on or off
 };
 
 struct UltraIMEvent {
@@ -313,6 +314,11 @@ using UltraIMSubscriptionId = uint64_t;
 // Runs a task on the application's chosen thread (ChatCube: the UI thread).
 using UltraIMDispatcher           = std::function<void(std::function<void()> task)>;
 using UltraIMEventCallback        = std::function<void(const UltraIMEvent& event)>;
+// A call's picture: RGBA, 8 bits per channel, rows top first, width * 4
+// bytes per row, valid only during the call. Runs on a media or capture
+// thread, not through the dispatcher: hand it to something thread-safe
+// (UltraCanvasVideoTile::PushFrame) and return.
+using UltraIMVideoFrameCallback   = std::function<void(const uint8_t* rgba, int width, int height)>;
 using UltraIMResultCallback       = std::function<void(const UltraIMResult& result)>;
 using UltraIMConversationsCallback = std::function<void(const UltraIMResult& result,
                                                         const std::vector<UltraIMConversation>& conversations)>;

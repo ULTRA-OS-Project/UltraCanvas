@@ -101,6 +101,11 @@ UltraIMResult UltraIM_AcceptCall(const std::string& providerId, const std::strin
 UltraIMResult UltraIM_EndCall(const std::string& providerId, const std::string& callId);
 // A muted call sends no audio; the other side hears silence.
 UltraIMResult UltraIM_SetCallMuted(const std::string& providerId, const std::string& callId, bool muted);
+// Video calls: the camera on or off, and where the pictures go (see
+// UltraIMVideoFrameCallback for the thread they arrive on).
+UltraIMResult UltraIM_SetCallCamera(const std::string& providerId, const std::string& callId, bool on);
+UltraIMResult UltraIM_SetCallVideoSinks(const std::string& providerId, const std::string& callId,
+                                        UltraIMVideoFrameCallback remote, UltraIMVideoFrameCallback local);
 
 // ---- Helpers -----------------------------------------------------------------
 // A fresh client message id (a UUID v4).

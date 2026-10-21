@@ -10,5 +10,10 @@
   mono, in-band FEC, loss concealment) with the microphone and the speaker
   through `UltraCanvasAudioRecorder` (live mode) and `UltraCanvasAudioPlayer`
   (push sink), or fed and read by the application; needs libopus.
-  ChatCube's peer-to-peer chat and voice calls run on it; video is next. Doc: `Docs/Modules/UltraRTC/README.md`;
+  Video tracks: VP8 (libvpx through FFmpeg's libavcodec, an RFC 7741 payload
+  format of UltraRTC's own, key-frame recovery by RTCP PLI after a loss)
+  with the camera through `UltraCanvasVideoRecorder`'s live preview, or fed
+  and read by the application as RGBA. The RTCP handlers that answer the
+  receiver (NACK, PLI) now sit where its reports reach them. ChatCube's
+  peer-to-peer chat, voice and video calls run on it. Doc: `Docs/Modules/UltraRTC/README.md`;
   tests: `Tests/UltraRTC` (two peers in one process).

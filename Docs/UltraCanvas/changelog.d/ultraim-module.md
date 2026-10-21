@@ -9,6 +9,9 @@
   conversation fetch merges every connected provider; sends carry a client
   message id for optimistic display; calls are started, answered, muted and
   ended through the same API (`UltraIM_SetCallMuted`, result code
-  `InvalidState`). Plan:
+  `InvalidState`); a video call's pictures reach the application through
+  sinks (`UltraIM_SetCallVideoSinks`, RGBA on a media thread), its camera
+  is switched with `UltraIM_SetCallCamera`, and the other side's camera
+  arrives as `CallMediaChange`. Plan:
   `Docs/Research/ChatCubeDirectPlan.md`; doc: `Docs/Modules/UltraIM/README.md`;
   tests: `Tests/UltraIM` (`ULTRACANVAS_BUILD_ULTRAIM_TESTS`).

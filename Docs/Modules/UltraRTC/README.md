@@ -1,7 +1,7 @@
 # UltraRTC — real-time communication
 
 WebRTC behind an UltraCanvas-owned API: peer connections, data channels,
-audio calls and (next) video, as `UltraRtc_*` free functions with opaque
+audio and video calls, as `UltraRtc_*` free functions with opaque
 `UltraRtcHandle`s and an `UltraRtcResult` from every call. First user:
 ChatCube Direct, for peer-to-peer chat and calls. Design:
 [`Docs/Research/UltraRTCDesignProposal.md`](../../Research/UltraRTCDesignProposal.md);
@@ -14,7 +14,7 @@ engine choice and phases: [`Docs/Research/ChatCubeDirectPlan.md`](../../Research
 | Target | `UltraRTC` (archive `uc-rtc`, absorbed into the shared core) |
 | Option | `ULTRACANVAS_ENABLE_ULTRARTC` (ON) |
 | Engine | libdatachannel 0.24.6 + libjuice, usrsctp, libsrtp, plog — vendored, `UltraCanvas/third_party/libdatachannel/` |
-| Needs | OpenSSL (the engine's DTLS). Without it the module builds and every call answers `Unsupported`. Audio also needs libopus (pkg-config `opus`); without it `caps.audio` is false and `UltraRtc_AddAudioTrack` answers `Unsupported` |
+| Needs | OpenSSL (the engine's DTLS). Without it the module builds and every call answers `Unsupported`. Audio also needs libopus (pkg-config `opus`); without it `caps.audio` is false and `UltraRtc_AddAudioTrack` answers `Unsupported`. Video needs FFmpeg's libavcodec and libswscale (VideoFX's dependency) with a VP8 encoder (libvpx); without them `caps.video` is false |
 | Tests | `Tests/UltraRTC` (`-DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON`, binary `UltraRTCTests`) |
 
 ## Rules
@@ -106,12 +106,53 @@ delay of a call short. A device that cannot be opened makes the Start call
 fail; the track still carries the other direction. Closing the peer stops
 both devices.
 
+## Video
+
+A video track is VP8: libvpx through FFmpeg's libavcodec in its real-time
+mode (no frame lag, no B-frames, a key frame at least every 3 s), decoded by
+FFmpeg's own VP8 decoder, pictures scaled and converted by libswscale. The
+RTP payload format (RFC 7741) is UltraRTC's own - libdatachannel has
+packetizers for H.264, H.265 and AV1 only. Pictures go in and come out as
+RGBA. `UltraRtcVideoConfig` sets what is sent: the size (pictures of
+another size are scaled to it), the frame rate (faster pictures are
+dropped) and the bit rate. As with audio, both sides add the track with the
+same mid before the offer.
+
+```cpp
+UltraRtcVideoConfig video;          // 640 x 480, 24 fps, 700 kbit/s
+UltraRtcHandle track = UltraRtcInvalidHandle;
+UltraRtc_AddVideoTrack(peer, "video", UltraRtcDirection::SendRecv, video, track);
+
+// What arrives, decoded, on a media thread - into a tile, which takes
+// pictures from any thread (UltraCanvasVideoTile):
+UltraRtc_SetVideoFrameCallback(track, [](const UltraRtcVideoFrame& frame) {
+    (void)frame;    // remoteTile->PushFrame(frame.rgba.data(), frame.width, frame.height);
+});
+// On TrackOpen: the camera, with its pictures for the self view.
+UltraRtc_StartCamera(track, "", [](const UltraRtcVideoFrame& frame) {
+    (void)frame;    // selfTile->PushFrame(frame.rgba.data(), frame.width, frame.height);
+});
+UltraRtc_SetTrackEnabled(track, false);    // camera off: nothing is sent
+```
+
+Loss: a frame with a packet missing is dropped by the depacketizer, and the
+receiver shows nothing more until a key frame arrives - it asks for one with
+an RTCP PLI (at most every 300 ms), which the sender answers with its next
+picture. Re-enabling a track starts it with a key frame too.
+`UltraRtc_SendVideoFrame` feeds a track directly (tests, an application with
+its own pictures). The camera is the framework's video capture -
+`UltraCanvasVideoRecorder`'s live preview with nothing recorded (GStreamer
+on Linux, Media Foundation, AVFoundation, Android); a camera that cannot be
+opened makes `UltraRtc_StartCamera` fail, and the track still receives.
+
 ## Status
 
 Phase 1 implemented: peers, ICE servers (STUN / TURN / TURNS), transport
 policy, port range, the W3C state machines as events, data channels (ordered
 or not, reliable or partially reliable, negotiated ids), text and binary
 messages. Phase 2 implemented: Opus audio tracks, the microphone and the
-speaker. Next: video tracks with camera capture, then the
-`UltraCanvasVideoTile` / `UltraCanvasCallView` elements. Known limit: the
-miniaudio backend opens the default devices whatever `deviceId` says.
+speaker. Phase 3 implemented: VP8 video tracks, the camera, key-frame
+recovery after loss; pictures shown with `UltraCanvasVideoTile`. Not yet:
+bandwidth estimation (the bit rate is fixed), NACK retransmission requests
+from the receiving side, simulcast. Known limit: the miniaudio backend
+opens the default devices whatever `deviceId` says.

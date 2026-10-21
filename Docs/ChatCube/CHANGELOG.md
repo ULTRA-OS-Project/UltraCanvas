@@ -13,5 +13,13 @@
   shows the call - *Accept* / *Decline* when it rings, *Mute* and
   *Hang up* during it, with its duration. The voice goes directly between
   the two computers (Opus over WebRTC, encrypted), and the status line says
-  why a call ended: declined, busy, no answer, offline, missed. Video calls
-  are not in this release.
+  why a call ended: declined, busy, no answer, offline, missed.
+- **Video calls.** *Video* rings the open contact with a video call. The
+  other person fills the panel under the call bar, you see yourself small
+  and mirrored; *Camera off* stops your picture (the other side is told and
+  shows "camera off"). The picture travels directly between the two
+  computers like the voice (VP8 over WebRTC, encrypted); a lost packet costs
+  a moment, not a broken picture - the receiver asks for a fresh key frame.
+- A call the other person hangs up now always ends as a hang-up: the closing
+  connection used to arrive before the hang-up message and reported the
+  call as lost.

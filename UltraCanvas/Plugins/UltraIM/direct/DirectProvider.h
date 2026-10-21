@@ -78,12 +78,15 @@ public:
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
-    // ---- calls (1:1 voice) -------------------------------------------------
+    // ---- calls (1:1 voice and video) --------------------------------------
     bool CanCall(const std::string& conversationId, bool video) const override;
     UltraIMResult StartCall(const std::string& conversationId, bool video, std::string& outCallId) override;
     UltraIMResult AcceptCall(const std::string& callId, bool video) override;
     UltraIMResult EndCall(const std::string& callId) override;
     UltraIMResult SetCallMuted(const std::string& callId, bool muted) override;
+    UltraIMResult SetCallCamera(const std::string& callId, bool on) override;
+    UltraIMResult SetCallVideoSinks(const std::string& callId, UltraIMVideoFrameCallback remote,
+                                    UltraIMVideoFrameCallback local) override;
 
     // ---- for tests ----------------------------------------------------------
     void SetTimings(const ProviderTimings& timings) { timings_ = timings; }
@@ -95,6 +98,8 @@ public:
     // false: calls do not open the microphone and speaker.
     void SetCallUseDevices(bool useDevices) { calls_.SetUseDevices(useDevices); }
     UltraRtcHandle GetCallAudioTrack(const std::string& callId) { return calls_.GetAudioTrack(callId); }
+    UltraRtcHandle GetCallVideoTrack(const std::string& callId) { return calls_.GetVideoTrack(callId); }
+    void SetCallVideoConfig(const UltraRtcVideoConfig& config) { calls_.SetVideoConfig(config); }
 
 private:
     struct Attempt {

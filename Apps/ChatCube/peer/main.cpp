@@ -2,12 +2,12 @@
 // chatcube-peer - a ChatCube Direct identity on the command line, for trying
 // ChatCube (and the relay) with a second person when there is none: it
 // signs in, adds contacts, sends messages, and can answer what it receives
-// - messages and voice calls.
+// - messages, voice and video calls.
 //
 //   chatcube-peer --relay http://127.0.0.1:8790 --data /tmp/bob --name Bob --create --print-id
 //   chatcube-peer --data /tmp/bob --add <ChatCube ID> --send <ChatCube ID> "hello" --echo 600
 //   chatcube-peer --data /tmp/bob --answer-calls --echo 600      (answers with a tone)
-//   chatcube-peer --data /tmp/bob --call <ChatCube ID> --echo 60 --devices
+//   chatcube-peer --data /tmp/bob --call <ChatCube ID> --video --echo 60 --devices
 //
 // Version: 0.1.0
 // Last Modified: 2026-10-21
@@ -49,8 +49,9 @@ void Usage() {
                 "  --send <id> <text>   send a message to a contact (may repeat)\n"
                 "  --echo <seconds>     stay online and answer every message for that long\n"
                 "  --answer-calls       answer incoming voice calls\n"
-                "  --call <id>          call a contact\n"
-                "  --devices            calls use the microphone and speaker (default: send a tone)\n");
+                "  --call <id>          call a contact (--video: a video call)\n"
+                "  --devices            calls use the microphone, speaker and camera\n"
+                "                       (default: a tone and a moving test picture)\n");
 }
 
 // Events arrive on the provider's threads; this tool handles them on main.
@@ -73,6 +74,7 @@ int main(int argc, char** argv) {
     bool answerCalls = false;
     bool useDevices = false;
     std::string callTo;
+    bool callVideo = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -96,6 +98,7 @@ int main(int argc, char** argv) {
         else if (arg == "--answer-calls") answerCalls = true;
         else if (arg == "--call") callTo = next();
         else if (arg == "--devices") useDevices = true;
+        else if (arg == "--video") callVideo = true;
         else {
             Usage();
             return arg == "--help" ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -166,6 +169,38 @@ int main(int argc, char** argv) {
     // other side has something to hear.
     std::atomic<UltraRtcHandle> toneTrack{UltraRtcInvalidHandle};
     std::atomic<bool> toneStop{false};
+    // ... and a video call a moving test picture: colour bars with a band
+    // sweeping across.
+    std::atomic<UltraRtcHandle> pictureTrack{UltraRtcInvalidHandle};
+    std::thread picture([&]() {
+        UltraRtcVideoFrame frame;
+        frame.width = 640;
+        frame.height = 480;
+        frame.rgba.resize(640 * 480 * 4);
+        static const uint8_t bars[7][3] = {{235, 235, 235}, {235, 235, 16}, {16, 235, 235}, {16, 235, 16},
+                                           {235, 16, 235}, {235, 16, 16}, {16, 16, 235}};
+        int tick = 0;
+        while (!toneStop) {
+            const UltraRtcHandle track = pictureTrack.load();
+            if (track != UltraRtcInvalidHandle) {
+                const int band = (tick * 6) % frame.width;
+                for (int y = 0; y < frame.height; ++y) {
+                    for (int x = 0; x < frame.width; ++x) {
+                        uint8_t* p = frame.rgba.data() + (static_cast<size_t>(y) * frame.width + static_cast<size_t>(x)) * 4;
+                        const uint8_t* c = bars[x * 7 / frame.width];
+                        const bool inBand = x >= band && x < band + 40;
+                        p[0] = inBand ? 30 : c[0];
+                        p[1] = inBand ? 30 : c[1];
+                        p[2] = inBand ? 30 : c[2];
+                        p[3] = 255;
+                    }
+                }
+                UltraRtc_SendVideoFrame(track, frame);
+                ++tick;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        }
+    });
     std::thread tone([&]() {
         UltraRtcAudioFrame frame;
         frame.samples.resize(960);
@@ -185,7 +220,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 100 && !provider.CanCall(callTo, false); ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         std::string callId;
-        UltraIMResult r = provider.StartCall(callTo, false, callId);
+        UltraIMResult r = provider.StartCall(callTo, callVideo, callId);
         if (!r) std::fprintf(stderr, "chatcube-peer: cannot call: %s\n", r.message.c_str());
     }
 
@@ -215,15 +250,20 @@ int main(int argc, char** argv) {
             std::fflush(stdout);
             if (answerCalls) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-                provider.AcceptCall(e.callId, false);
+                provider.AcceptCall(e.callId, e.isVideo);
             }
         } else if (e.type == UltraIMEventType::CallStateChange) {
             static const char* const names[] = {"ringing", "connecting", "active", "ended", "failed"};
             std::printf("call %s %s\n", names[static_cast<int>(e.callState)], e.errorText.c_str());
             std::fflush(stdout);
-            if (e.callState == UltraIMCallState::Active && !useDevices) toneTrack = provider.GetCallAudioTrack(e.callId);
-            if (e.callState == UltraIMCallState::Ended || e.callState == UltraIMCallState::Failed)
+            if (e.callState == UltraIMCallState::Active && !useDevices) {
+                toneTrack = provider.GetCallAudioTrack(e.callId);
+                pictureTrack = provider.GetCallVideoTrack(e.callId);
+            }
+            if (e.callState == UltraIMCallState::Ended || e.callState == UltraIMCallState::Failed) {
                 toneTrack = UltraRtcInvalidHandle;
+                pictureTrack = UltraRtcInvalidHandle;
+            }
         } else if (e.type == UltraIMEventType::MessageDelivered) {
             std::printf("  %s -> %d\n", e.message.clientMessageId.substr(0, 8).c_str(),
                         static_cast<int>(e.deliveryStatus));
@@ -232,6 +272,7 @@ int main(int argc, char** argv) {
     }
     toneStop = true;
     tone.join();
+    picture.join();
     provider.Shutdown();
     UltraRtc_Shutdown();
     UltraNet_Shutdown();

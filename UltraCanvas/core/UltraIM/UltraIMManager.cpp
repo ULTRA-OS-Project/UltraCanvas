@@ -634,6 +634,19 @@ UltraIMResult UltraIM_SetCallMuted(const std::string& providerId, const std::str
     return provider->SetCallMuted(callId, muted);
 }
 
+UltraIMResult UltraIM_SetCallCamera(const std::string& providerId, const std::string& callId, bool on) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->SetCallCamera(callId, on);
+}
+
+UltraIMResult UltraIM_SetCallVideoSinks(const std::string& providerId, const std::string& callId,
+                                        UltraIMVideoFrameCallback remote, UltraIMVideoFrameCallback local) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->SetCallVideoSinks(callId, std::move(remote), std::move(local));
+}
+
 // ============================================================================
 // HELPERS
 // ============================================================================
