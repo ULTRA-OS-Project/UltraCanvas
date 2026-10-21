@@ -1,3 +1,58 @@
+#### 2026-10-21 *0.9.358*
+- **UltraDatabase read and wrote PostgreSQL numbers in the desktop's
+  locale.** On a comma-decimal desktop (German, French, …) a `float8` or
+  `numeric` column holding `3.14` came back as `3`, and a `Text` value read
+  with `AsDouble` did the same, because both went through `strtod`, which
+  follows `LC_NUMERIC` - and every UltraCanvas GUI program on Linux has it
+  set. Double parameters went the other way through `std::to_string`, which
+  wrote `3,140000` (refused by the server) and kept six decimals, so `1e-9`
+  was sent as zero. Numbers now cross the driver dot-decimal both ways,
+  doubles are sent with enough digits to read back exactly, and PostgreSQL's
+  `NaN` / `Infinity` / `-Infinity` still read. `UltraDbValue::AsString()` of
+  a `Double` had the same fault - `std::to_string`, so `3,140000` on a
+  German desktop and `0.000000` for `1e-9`; it now gives the shortest
+  dot-decimal text that reads back exactly (`3.14`, `2`, `1e-09`). No caller
+  in the tree read a floating-point column as a string. The two sites are off
+  `scripts/locale_numbers_baseline.txt`; `Tests/UltraDatabase` checks it
+  under `de_DE` against a live server.
+- **UltraDatabase 0.2.0: schema introspection, identifier quoting and
+  result-column metadata** - stage 0 of UltraDBAdmin
+  (`Docs/Research/UltraDBAdminDesignProposal.md`). New
+  `UltraDatabaseSchema.h`: `UltraDb_ListSchemas`, `UltraDb_ListObjects`
+  (tables, views, materialized views, foreign tables, sequences) and
+  `UltraDb_DescribeTable` (columns with type, nullability, default, identity
+  / serial, generated, collation and comment; primary key; foreign keys with
+  their actions; indexes, expression indexes included; triggers; a view's
+  definition; size and row estimate), for SQLite and PostgreSQL, every name
+  bound rather than spliced. `UltraDb_QuoteIdentifier` /
+  `UltraDb_QuoteQualifiedName` quote a table or column name by the engine's
+  rules and refuse an empty name or a NUL byte - the one sanctioned way a
+  name goes into SQL text. `UltraDbResultSet::ColumnInfo()` gives each
+  result column its declared type and, for a column read from a table, the
+  schema, table and column it came from (PostgreSQL: cached per connection,
+  emptied by DDL, looked up under a savepoint inside a transaction; SQLite:
+  where the library has column metadata, checked at configure time).
+  `UltraDb_ListConnections` lists the registered names. Driver interface:
+  `IUltraDbConnection` gains `QuoteIdentifier`, `ListSchemas`,
+  `ListObjects` and `DescribeTable`, with defaults, so existing drivers
+  still build.
+- **PostgreSQL `numeric` is exact.** It came back as a double, so a
+  `numeric(20,4)` of `12345678901234.5678` read rounded; it is now `Text`,
+  as stored, and `AsDouble` still converts it.
+- **Investigation: UltraDBAdmin, a phpMyAdmin-style manager for
+  UltraDatabase** (`Docs/Research/UltraDBAdminDesignProposal.md`). Recommends
+  a native client rather than a web page, on SQLite and PostgreSQL first and
+  MySQL/MariaDB after editing, with staged edits, previewed SQL, vault-held
+  credentials and read-only access to ULTRA OS apps' own stores - writable
+  only once the app is closed and a backup is taken. A browser build is the
+  same app compiled to WebAssembly against an authenticated relay that
+  exposes only the server's configured connections. Lists what UltraDatabase
+  must gain first - schema introspection, column metadata, cursors,
+  cancellation, identifier quoting, every result of a batch, exact `numeric`
+  values - two framework additions (in-place editing in
+  `UltraCanvasListView`, tabular export over a row source), and what
+  libmariadb's LGPL-2.1 obliges a distributor to do.
+
 #### 2026-10-20 *0.9.357*
 - **The media viewer shows a layered `.ucd` image whole.** A `UCBitmap`
   document's layers are read through `UCRasterDocument::LoadUCD` and
