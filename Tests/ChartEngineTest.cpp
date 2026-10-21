@@ -6,11 +6,14 @@
 // Exercises the real engine sources with no UI stack and no link dependencies
 // beyond the files under test.
 //
+// Version: 1.1.0 - axis bands / symmetric / cyclic, line and area series,
+//   stacking, marker polygons, the analysis helpers
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartAnalysis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
@@ -1195,6 +1198,273 @@ static void TestPaletteFromColormap() {
 }
 
 // =============================================================================
+// AXIS 1.1: SUB-BANDS, SYMMETRIC RANGES, CYCLIC CATEGORIES
+// =============================================================================
+
+static void TestAxisBandsAndSymmetry() {
+    std::printf("Axis sub-bands, symmetric ranges and cyclic categories\n");
+
+    ChartAxis price("price");
+    price.SetRange(100.0, 200.0);
+    price.bandStart = 0.3;
+    price.bandEnd = 1.0;
+    price.Finalize();
+    CHECK(Near(price.Normalize(100.0), 0.3) && Near(price.Normalize(200.0), 1.0),
+          "a sub-band maps the range onto [bandStart, bandEnd]");
+    CHECK(Near(price.Denormalize(price.Normalize(137.5)), 137.5, 1e-9),
+          "denormalise inverts the band");
+    bool ticksInBand = true;
+    for (const ChartTick& t : price.GenerateTicks(5)) {
+        ticksInBand = ticksInBand && t.normalized >= 0.3 - 1e-9 && t.normalized <= 1.0 + 1e-9;
+    }
+    CHECK(ticksInBand, "ticks land inside the band");
+
+    ChartAxis diverging("share");
+    diverging.symmetric = true;
+    diverging.Observe({-12.0, 30.0, 5.0});
+    diverging.Finalize();
+    CHECK(Near(diverging.Min(), -diverging.Max()) && diverging.Max() >= 30.0,
+          "a symmetric auto range is centred on zero and covers the longer side");
+    CHECK(Near(diverging.Normalize(0.0), 0.5), "zero sits in the middle");
+
+    ChartAxis spokes("axes");
+    spokes.scale = ChartScale::Category;
+    spokes.categories = {"A", "B", "C", "D"};
+    spokes.cyclic = true;
+    spokes.Finalize();
+    CHECK(Near(spokes.Normalize(0.0), 0.0) && Near(spokes.Normalize(3.0), 0.75),
+          "a cyclic category axis spreads n slots over [0, 1) - the last stops short of the first");
+}
+
+static void TestAbsoluteLabels() {
+    std::printf("Absolute axis labels (diverging charts)\n");
+    ChartAxis pyramid("population");
+    pyramid.symmetric = true;
+    pyramid.absoluteLabels = true;
+    pyramid.decimals = 1;
+    pyramid.unitSuffix = "M";
+    pyramid.Observe({-3.5, 3.0});
+    pyramid.Finalize();
+    CHECK(pyramid.FormatValue(-2.0) == "2.0M" && pyramid.FormatValue(2.0) == "2.0M",
+          "both sides of zero read as magnitudes");
+    bool noMinus = true;
+    for (const ChartTick& t : pyramid.GenerateTicks(5)) {
+        noMinus = noMinus && t.label.find('-') == std::string::npos;
+    }
+    CHECK(noMinus, "no tick label carries a minus sign");
+    pyramid.formatter = [](double v) { return v < 0.0 ? std::string("neg") : std::string("pos"); };
+    CHECK(pyramid.FormatValue(-1.0) == "pos", "the magnitude is taken before a custom formatter");
+}
+
+// =============================================================================
+// LINE AND AREA SERIES
+// =============================================================================
+
+static void TestLineRuns() {
+    std::printf("Line runs (shapes, gaps, knots)\n");
+    ChartVerticalProjection projection;
+    projection.SetPlotArea(Rect2Dd(0.0, 0.0, 100.0, 100.0));
+
+    const double nan = std::nan("");
+    const std::vector<ChartNormalizedPoint> points = {
+        {0.0, 0.2}, {0.25, 0.8}, {0.5, nan}, {0.75, 0.4}, {1.0, 0.6}};
+
+    ChartLineOptions options;
+    options.samplesPerSegment = 4;
+    std::vector<ChartLineRun> runs = BuildLineRuns(projection, points, options);
+    CHECK(runs.size() == 2, "a NaN breaks the line into two runs");
+    CHECK(runs.size() == 2 && runs[0].indices == std::vector<size_t>({0, 1}) &&
+          runs[1].indices == std::vector<size_t>({3, 4}), "each run lists the points it joins");
+    CHECK(!runs.empty() && runs[0].points.size() == 5 && runs[0].knots.size() == 2,
+          "a straight run is sampled per segment and keeps one knot per point");
+    CHECK(!runs.empty() && Near(runs[0].points.back().y, 20.0) && Near(runs[0].points.front().y, 80.0),
+          "the run starts and ends on its knots");
+
+    options.bridgeGaps = true;
+    runs = BuildLineRuns(projection, points, options);
+    CHECK(runs.size() == 1 && runs[0].indices.size() == 4, "bridgeGaps joins across the hole");
+
+    options.bridgeGaps = false;
+    options.shape = ChartLineShape::Curved;
+    runs = BuildLineRuns(projection, {{0.0, 0.0}, {0.5, 1.0}, {1.0, 1.0}}, options);
+    bool bounded = true;
+    for (const Point2Dd& p : runs.front().points) bounded = bounded && p.y >= -1e-9 && p.y <= 100.0 + 1e-9;
+    CHECK(bounded, "a curved line never overshoots its knots");
+
+    options.shape = ChartLineShape::StepAfter;
+    runs = BuildLineRuns(projection, {{0.0, 0.2}, {1.0, 0.8}}, options);
+    // Holds 0.2 across the whole step, then rises at u = 1.
+    bool held = true;
+    for (size_t i = 0; i + 1 < runs.front().path.size(); ++i) {
+        held = held && Near(runs.front().path[i].v, 0.2);
+    }
+    CHECK(held && Near(runs.front().path.back().v, 0.8), "StepAfter holds the value until the next point");
+
+    {
+        ChartLineOptions loop;
+        loop.samplesPerSegment = 2;
+        loop.closed = true;
+        const auto closedRuns = BuildLineRuns(projection, {{0.0, 0.2}, {0.25, 0.5}, {0.5, 0.8}}, loop);
+        CHECK(closedRuns.size() == 1 && closedRuns[0].path.size() == 7 &&
+              Near(closedRuns[0].path.back().u, 1.0) && Near(closedRuns[0].path.back().v, 0.2),
+              "a closed line returns to its first point one period on");
+        CHECK(closedRuns[0].knots.size() == 3, "closing adds no marker");
+    }
+    runs = BuildLineRuns(projection, {{0.5, 0.5}}, options);
+    CHECK(runs.size() == 1 && runs[0].points.empty() && runs[0].knots.size() == 1,
+          "a lone point keeps its marker but draws no stroke");
+}
+
+static void TestAreaOutlinesAndStacking() {
+    std::printf("Area outlines and line-family stacking\n");
+    ChartVerticalProjection projection;
+    projection.SetPlotArea(Rect2Dd(0.0, 0.0, 100.0, 100.0));
+
+    ChartLineOptions options;
+    options.samplesPerSegment = 1;
+    const std::vector<ChartNormalizedPoint> top = {{0.0, 0.5}, {0.5, 0.7}, {1.0, 0.6}};
+    const std::vector<ChartNormalizedPoint> base = {{0.0, 0.0}, {0.5, 0.0}, {1.0, 0.0}};
+    const auto outlines = BuildAreaOutlines(projection, top, base, options);
+    CHECK(outlines.size() == 1 && outlines[0].size() == 6,
+          "one band: the top forward, the base back");
+
+    const std::vector<std::vector<double>> series = {{1.0, 2.0, -1.0}, {3.0, std::nan(""), 2.0}};
+    const ChartStackedValues stacked = StackSeriesValues(series, ChartBarArrangement::Stacked);
+    CHECK(Near(stacked.base[1][0], 1.0) && Near(stacked.top[1][0], 4.0),
+          "stacked: the second band starts on the first");
+    CHECK(Near(stacked.base[1][1], 2.0) && Near(stacked.top[1][1], 2.0),
+          "stacked: a missing value is a zero-thickness band, not a hole");
+    CHECK(Near(stacked.top[0][2], -1.0) && Near(stacked.base[1][2], 0.0) && Near(stacked.top[1][2], 2.0),
+          "stacked: negatives grow downward, positives upward");
+
+    const ChartStackedValues percent = StackSeriesValues(series, ChartBarArrangement::PercentStacked);
+    CHECK(Near(percent.top[1][0], 100.0) && Near(percent.top[0][0], 25.0),
+          "percent stacking shares out the total");
+
+    const ChartStackedValues grouped = StackSeriesValues(series, ChartBarArrangement::Grouped);
+    CHECK(Near(grouped.base[1][0], 0.0) && std::isnan(grouped.top[1][1]),
+          "grouped: every band on zero, a missing value stays a hole");
+}
+
+static void TestMarkerPolygons() {
+    std::printf("Marker polygons\n");
+    const Point2Dd c(10.0, 10.0);
+    CHECK(ChartMarkerPolygon(ChartMarkerShape::Square, c, 4.0).size() == 4, "a square has four corners");
+    CHECK(ChartMarkerPolygon(ChartMarkerShape::TriangleUp, c, 4.0).size() == 3, "a triangle has three");
+    CHECK(ChartMarkerPolygon(ChartMarkerShape::Circle, c, 4.0).empty() &&
+          ChartMarkerPolygon(ChartMarkerShape::Cross, c, 4.0).empty(),
+          "circles and strokes have no polygon");
+    const auto up = ChartMarkerPolygon(ChartMarkerShape::TriangleUp, c, 4.0);
+    CHECK(up.size() == 3 && up[0].y < c.y, "TriangleUp points up");
+}
+
+// =============================================================================
+// ANALYSIS
+// =============================================================================
+
+static void TestSqrtScale() {
+    std::printf("Sqrt scale (area-true radii)\n");
+    ChartAxis radius("radius");
+    radius.scale = ChartScale::Sqrt;
+    radius.SetRange(0.0, 100.0);
+    radius.Finalize();
+    CHECK(Near(radius.Normalize(25.0), 0.5), "a quarter of the range lands halfway out");
+    CHECK(Near(radius.Denormalize(radius.Normalize(64.0)), 64.0, 1e-9), "sqrt round-trips");
+
+    ChartAxis signedAxis("signed");
+    signedAxis.scale = ChartScale::Sqrt;
+    signedAxis.SetRange(-100.0, 100.0);
+    signedAxis.Finalize();
+    CHECK(Near(signedAxis.Normalize(0.0), 0.5) && signedAxis.Normalize(-25.0) < 0.5,
+          "the signed root keeps negatives below zero");
+}
+
+static void TestAnalysisHelpers() {
+    std::printf("Analysis (trend fit, moving averages, Heikin-Ashi)\n");
+    const ChartLinearFit fit = FitLinearTrend({1.0, 2.0, 3.0, 4.0}, {3.0, 5.0, 7.0, 9.0});
+    CHECK(fit.valid && Near(fit.slope, 2.0) && Near(fit.intercept, 1.0) && Near(fit.r2, 1.0),
+          "an exact line fits with r^2 = 1");
+    CHECK(!FitLinearTrend({2.0, 2.0}, {1.0, 5.0}).valid, "identical x values have no slope");
+
+    const std::vector<double> sma = MovingAverage({1.0, 2.0, 3.0, 4.0, std::nan(""), 6.0}, 3);
+    CHECK(std::isnan(sma[1]) && Near(sma[2], 2.0) && Near(sma[3], 3.0),
+          "the moving average starts once a full window exists");
+    CHECK(std::isnan(sma[4]) && std::isnan(sma[5]), "a window holding a gap is a gap");
+
+    const std::vector<double> ema = ExponentialMovingAverage({2.0, 4.0, 6.0, 8.0}, 2);
+    CHECK(std::isnan(ema[0]) && Near(ema[1], 3.0) && Near(ema[2], 5.0),
+          "the EMA seeds from the first window's mean");
+
+    const std::vector<ChartCandle> ha = HeikinAshiCandles({{10, 12, 9, 11}, {11, 14, 10, 13}});
+    CHECK(Near(ha[0].close, 10.5) && Near(ha[0].open, 10.5) && Near(ha[1].open, 10.5),
+          "Heikin-Ashi opens on the previous bar's midpoint");
+    CHECK(ha[1].high >= ha[1].open && ha[1].low <= ha[1].close, "the HA range covers its body");
+}
+
+static void TestNiceRangeAndSignedPrefix() {
+    std::printf("Nice auto ranges and signed unit prefixes\n");
+    ChartAxis axis("value");
+    axis.Observe({0.0, 1072.0});
+    axis.Finalize();
+    CHECK(Near(axis.Max(), 1200.0), "0..1072 rounds to 0..1200, not 0..1500");
+    const std::vector<ChartTick> ticks = axis.GenerateTicks(6);
+    CHECK(ticks.size() >= 5, "a range that holds six ticks gets at least five");
+
+    ChartAxis money("money");
+    money.SetRange(-50.0, 50.0);
+    money.unitPrefix = "$";
+    money.decimals = 0;
+    money.Finalize();
+    CHECK(money.FormatValue(-25.0) == "-$25", "the minus sign leads the prefix");
+    CHECK(money.FormatValue(25.0) == "$25", "positives are unchanged");
+
+    ChartAxis padded("padded");
+    padded.rangePadding = 0.1;
+    padded.Observe({45.0, 78.0});
+    padded.Finalize();
+    CHECK(padded.Min() < 45.0 && padded.Max() > 78.0, "range padding keeps the extremes off the edges");
+    ChartAxis fromZero("fromZero");
+    fromZero.rangePadding = 0.1;
+    fromZero.Observe({0.0, 78.0});
+    fromZero.Finalize();
+    CHECK(Near(fromZero.Min(), 0.0), "padding never crosses a zero baseline");
+}
+
+static void TestPinnedLabels() {
+    std::printf("Pinned labels (exact placement, dropped rather than slid)\n");
+    LabelPlacementOptions options;
+    ChartLabelBroker broker(ChartLabelPolicy::Default(), options);
+
+    auto header = [](double x, int priority) {
+        ChartLabelRequest r;
+        r.text = "20%";
+        r.anchor = Point2Dd(x, 100.0);
+        r.textSize = Size2Dd(30.0, 12.0);
+        r.preferredSide = LabelSide::Top;
+        r.pinned = true;
+        r.allowSuppress = true;
+        r.priority = priority;
+        return r;
+    };
+    broker.Add(header(100.0, 5));
+    broker.Add(header(110.0, 1));    // overlaps the first: must drop, not slide
+    broker.Add(header(200.0, 1));    // clear of both
+    const ChartLabelPlan plan = broker.Solve(1);
+
+    CHECK(plan.labels.size() == 3, "every pinned request is in the plan");
+    bool exact = false, dropped = false, kept = false;
+    for (const PlacedChartLabel& l : plan.labels) {
+        const double cx = l.bounds.x + l.bounds.width * 0.5;
+        if (Near(cx, 100.0) && !l.suppressed && Near(l.bounds.Bottom(), 96.0)) exact = true;
+        if (Near(cx, 110.0) && l.suppressed) dropped = true;
+        if (Near(cx, 200.0) && !l.suppressed) kept = true;
+    }
+    CHECK(exact, "the winner sits exactly above its anchor");
+    CHECK(dropped, "a colliding pinned label is suppressed in place, not moved");
+    CHECK(kept, "a clear pinned label is kept");
+}
+
+// =============================================================================
 
 int main() {
     std::printf("=== ChartEngineTest ===\n\n");
@@ -1232,6 +1502,15 @@ int main() {
     TestPaletteCycling();
     TestPaletteCountAware();
     TestPaletteFromColormap();
+    TestAxisBandsAndSymmetry();
+    TestAbsoluteLabels();
+    TestLineRuns();
+    TestAreaOutlinesAndStacking();
+    TestMarkerPolygons();
+    TestAnalysisHelpers();
+    TestNiceRangeAndSignedPrefix();
+    TestPinnedLabels();
+    TestSqrtScale();
 
     std::printf("\n%s (%d failure%s)\n",
                 g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",

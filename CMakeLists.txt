@@ -808,6 +808,11 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonLines.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonBars.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonFinance.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonPolar.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp
             Apps/DemoApp/UltraCanvasFunnelChartExamples.cpp
