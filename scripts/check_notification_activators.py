@@ -10,7 +10,7 @@ Center, and Windows hands a click on it to the application's COM activator,
 which exists only when the application called
 `UltraCanvas::RegisterNotificationActivator` (UltraCanvasNotificationActivation.h).
 Without it the click does nothing - as for every application's toast until
-UltraMail registered one in 0.10.62.
+UltraMail registered one in 0.10.65.
 
 So: an application folder under Apps/ whose sources post a notification
 (`UltraMsg_Post(..., UltraMsgTopics::SystemNotification, ...)`, also across

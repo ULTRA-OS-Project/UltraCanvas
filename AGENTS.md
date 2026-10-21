@@ -38,18 +38,26 @@ before adding cross-module code.
 - `Docs/Modules/<Name>/README.md` — sibling-module docs (UltraAI, UltraNet,
   UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …). The UltraAI,
   UltraNet and VirtualFS ones are mirrors of `<Name>/README.md`: edit the
-  module's copy and run `python3 scripts/generate_llms_txt.py`; CI fails when
-  a mirror is stale (`MIRRORED_READMES` in the script lists them).
+  module's copy, run `python3 scripts/generate_llms_txt.py` and commit the
+  mirror it rewrites; CI fails when a mirror is stale (`MIRRORED_READMES` in
+  the script lists them).
 - `Docs/CSSLayout.md`, `Docs/Dependencies.md` — layout engine and
   third-party dependency policy.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
   index / full concatenation of the docs corpus for LLM consumption.
-  Regenerate with `python3 scripts/generate_llms_txt.py` after editing docs.
+  **Written on `main`, never by a branch**: `.github/workflows/llms-regenerate.yml`
+  regenerates them after every docs change lands, and `llms-txt.yml` refuses
+  a pull request that changes them. They are the whole corpus, so two docs
+  pull requests that each carried them always conflicted there - the
+  changelog's line 1 all over again, with the same cure. Running
+  `python3 scripts/generate_llms_txt.py` locally is fine (it also rewrites
+  the README mirrors, which ARE committed); leave the two files out of the
+  commit (`git checkout origin/main -- llms.txt llms-full.txt`).
 - Every document the demo app opens (the `Docs/....md` paths in
   `Apps/DemoApp/*.cpp`) starts with a generated `## Contents` inventory
   linking each `##` / `###` section. After adding, renaming or removing a
-  section, run `python3 scripts/generate_doc_toc.py` (before
-  `generate_llms_txt.py`); CI runs it with `--check`, which also fails when a
+  section, run `python3 scripts/generate_doc_toc.py`; CI runs it with
+  `--check`, which also fails when a
   demo page names a `Docs/....md` that does not exist. Never edit the list by
   hand, and never put prose inside it - it is rewritten up to the next
   heading.
@@ -710,8 +718,11 @@ number anywhere else, and never introduce a new literal copy of one:
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and
    `THIRD_PARTY_LICENSES.md`.
-6. Docs changes: regenerate `llms.txt`/`llms-full.txt`
-   (`python3 scripts/generate_llms_txt.py`) — CI verifies they are in sync.
+6. Docs changes: regenerate the `## Contents` inventories
+   (`python3 scripts/generate_doc_toc.py`) and, after editing a module
+   README, its mirror (`python3 scripts/generate_llms_txt.py`). Do **not**
+   commit `llms.txt` / `llms-full.txt`: `main` regenerates them after the
+   merge, and CI refuses a pull request that changes them.
 
 ## Reporting back (AI sessions)
 
@@ -892,6 +903,29 @@ For assistants:
 4. **Keep the base fresh.** Before the rebase in rule 2, always fetch —
    `main` usually moved while the session ran; resolve conflicts locally so
    the new PR is mergeable from the start.
+
+   **Check the other open pull requests before opening one, and before every
+   push to one:**
+
+   ```
+   python3 scripts/check_pr_overlap.py                          # gh lists the open PRs
+   python3 scripts/check_pr_overlap.py --branches <head> ...    # heads from the GitHub tools
+   ```
+
+   Without `gh`, list the open pull requests with
+   `mcp__github__list_pull_requests` (state open) and pass their head branches.
+   For each one the script simulates the order GitHub will see - that branch
+   merged into `main` first, this one on top - and reports what would really
+   conflict, a version two branches both put at the top of one application
+   changelog (git can merge that with no conflict and ship two releases under
+   one number), generated files to regenerate rather than merge, and the files
+   both touch that merge cleanly. Exit 1 means a real conflict or a version
+   collision: agree the merge order with the other branch's author (say so in
+   the PR description), or reshape the change - additive edits, a change's own
+   text in a file of its own (the `changelog.d/` pattern), no reformatting of
+   lines another branch is editing - before pushing. A conflict found here
+   costs a minute; found on GitHub it costs a merge, a regenerate and the whole
+   CI matrix, and on a busy day it is found again an hour later.
 
 5. **CI needs an open PR.** The Build and llms.txt workflows run on pull
    requests and on pushes to `main` — *not* on pushes to feature branches.

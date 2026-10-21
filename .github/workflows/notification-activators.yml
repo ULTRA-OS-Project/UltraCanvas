@@ -7,7 +7,7 @@ name: Notification activators
 # COM activator - which exists only when the application called
 # UltraCanvas::RegisterNotificationActivator (UltraCanvasNotificationActivation.h).
 # Without it the click does nothing, as it did for every toast until UltraMail
-# 0.10.62. An application with a reason not to register (Silent sample traffic)
+# 0.10.65. An application with a reason not to register (Silent sample traffic)
 # says so with `// notification-activator-exempt: <why>`.
 
 # Trigger policy matches build.yml / callback-cycles.yml: `pull_request` covers

@@ -1,6 +1,8 @@
 // Tests/UltraMail/test_logincheck.cpp
 // The login check behind the server settings page: session options from the
-// settings, and the plug-in's answer passed through unchanged.
+// settings, and the plug-in's answer passed through unchanged - for an IMAP
+// and for a JMAP incoming server.
+// Version: 0.2.0 - LoginCheck::Incoming (was Imap); a JMAP server
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
@@ -88,12 +90,12 @@ TEST(login_check_lists_once_and_passes_the_answer_through) {
     RecordingMailbox mailbox;
     UltraNetCredentials c; c.type = UltraNetAuthType::Basic; c.password = "pw";
 
-    REQUIRE(LoginCheck::Imap(mailbox, Server("mail.example.org", 993, MailSecurity::SslTls), c));
+    REQUIRE(LoginCheck::Incoming(mailbox, Server("mail.example.org", 993, MailSecurity::SslTls), c));
     REQUIRE_EQ(mailbox.lastUrl, std::string("imaps://mail.example.org:993/"));
     REQUIRE(mailbox.lastOptions.implicitTls);
 
     mailbox.answer = UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed, "LOGIN failed");
-    UltraNetResult r = LoginCheck::Imap(mailbox, Server("mail.example.org", 143, MailSecurity::StartTls), c);
+    UltraNetResult r = LoginCheck::Incoming(mailbox, Server("mail.example.org", 143, MailSecurity::StartTls), c);
     REQUIRE(!r);
     REQUIRE(r.code == UltraNetResultCode::AuthenticationFailed);
     REQUIRE_EQ(r.message, std::string("LOGIN failed"));
@@ -101,6 +103,27 @@ TEST(login_check_lists_once_and_passes_the_answer_through) {
 
     // Incomplete settings never reach the network.
     mailbox.lastUrl.clear();
-    REQUIRE(!LoginCheck::Imap(mailbox, MailServerSettings{}, c));
+    REQUIRE(!LoginCheck::Incoming(mailbox, MailServerSettings{}, c));
     REQUIRE(mailbox.lastUrl.empty());
+}
+
+TEST(login_check_lists_a_jmap_server_through_its_plugin_url) {
+    RecordingMailbox mailbox;   // stands in for the JMAP plug-in: the same interface
+    UltraNetCredentials c; c.type = UltraNetAuthType::Basic; c.password = "app-password";
+
+    MailServerSettings jmap = Server("api.fastmail.com", 443, MailSecurity::SslTls);
+    jmap.protocol = MailProtocol::Jmap;
+    REQUIRE(LoginCheck::Incoming(mailbox, jmap, c));
+    REQUIRE_EQ(mailbox.lastUrl, std::string("jmap://api.fastmail.com:443/"));
+    REQUIRE(mailbox.lastOptions.useTls);
+    REQUIRE(mailbox.lastOptions.implicitTls);
+    REQUIRE_EQ(mailbox.lastOptions.credentials.username, std::string("erika@example.org"));
+    REQUIRE_EQ(mailbox.lastOptions.credentials.password, std::string("app-password"));
+
+    // The plug-in's answer (HTTP 401 mapped to a failed sign-in) comes back as is.
+    mailbox.answer = UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
+                                           "session fetch failed with HTTP 401");
+    UltraNetResult r = LoginCheck::Incoming(mailbox, jmap, c);
+    REQUIRE(!r);
+    REQUIRE(r.code == UltraNetResultCode::AuthenticationFailed);
 }

@@ -19,7 +19,8 @@
 // UltraCanvasFilerWidget - one per tab) and
 // the detail pane (shown only while a single previewable file OR a folder is
 // selected — a folder only once the double-click interval has passed, so a
-// double-click that opens it never flashes its preview; Esc closes it): a
+// double-click that opens it never flashes its preview; a selection gathered
+// with Ctrl leaves it as it is; Esc closes it): a
 // selected media file shows in the
 // UltraCanvasMediaViewer, a selected folder shows its content through a second
 // small-thumbnail UltraCanvasFilerWidget — the two share the one pane. Plus a
@@ -901,6 +902,10 @@ private:
     // the selected file is kept scrolled into view when the pane narrows the
     // folder display.
     void UpdatePreviewPane();
+    // True while the selection change being handled came from a click, a
+    // marquee drag or Ctrl+A with Ctrl held - a multiple selection being
+    // gathered, which leaves the detail pane as it is.
+    static bool SelectionChangedWithCtrl();
     // Opens `path` in the media viewer for the preview pane and remembers the
     // file as it was when opened (size and modification time, stamped before
     // the viewer reads it) for ReloadChangedPreview. `asCopy`: a remote file's

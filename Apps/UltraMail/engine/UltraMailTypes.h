@@ -2,9 +2,11 @@
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
 // account bar (unread today · unread before · waiting for reply).
+// Version: 0.6.1 - HasServers: a JMAP account needs no outgoing server
+// Version: 0.6.0 - the protocol of the incoming server (IMAP or JMAP)
 // Version: 0.5.0 - a signature per account (plain text or HTML)
 // Version: 0.4.0 - the authentication method per server
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -41,12 +43,31 @@ enum class FolderRole {
 std::string ToString(FolderRole role);
 FolderRole  FolderRoleFromString(const std::string& s);
 
+// The protocol an incoming mail server speaks. IMAP is what every account
+// created before the choice existed uses; JMAP (RFC 8620/8621, JSON over
+// HTTPS - Fastmail, Stalwart, Cyrus, Apache James) reaches the same mailbox
+// through the UltraNet JMAP plug-in. Sending is SMTP either way.
+enum class MailProtocol {
+    Imap = 0,
+    Jmap
+};
+
+// "imap" | "jmap" - the form stored in the database. Unknown text reads as
+// Imap.
+std::string  ToString(MailProtocol protocol);
+MailProtocol MailProtocolFromString(const std::string& s);
+
 // Connection security for a mail server.
 enum class MailSecurity {
     Plain = 0,    // plaintext (discouraged); not "None" — X11 defines that macro
     StartTls,     // upgrade on the plaintext port
     SslTls        // implicit TLS from connect
 };
+
+// The port a server of that protocol usually listens on: 993 (IMAP, implicit
+// TLS), 143 (IMAP, STARTTLS or plain), 443 (JMAP: HTTPS, whatever the
+// security choice says).
+int DefaultPort(MailProtocol protocol, MailSecurity security);
 
 // "none" | "starttls" | "ssl" — the form stored in the database.
 std::string  ToString(MailSecurity security);
@@ -69,8 +90,13 @@ std::string      ToString(UltraNetMailAuth auth);
 UltraNetMailAuth MailAuthFromString(const std::string& s);
 
 struct MailServerSettings {
+    // What the server speaks. Read for the incoming server only (an outgoing
+    // server is SMTP); Imap on every account from before the choice existed.
+    MailProtocol protocol = MailProtocol::Imap;
     std::string  host;
     int          port = 0;
+    // For a JMAP server this is always SslTls: JMAP runs over HTTPS, so the
+    // settings page fixes it there, and ApplyConnection reads it as such.
     MailSecurity security = MailSecurity::SslTls;
     std::string  username;     // resolved (full address or local-part)
     bool         oauth = false; // provider expects OAuth2/XOAUTH2
@@ -83,7 +109,8 @@ struct MailServerSettings {
 };
 
 // The connection part of a session's options for `server`: TLS mode from its
-// security setting and its authentication method. Credentials are left alone.
+// security setting (always implicit TLS for a JMAP server - HTTPS) and its
+// authentication method. Credentials are left alone.
 void ApplyConnection(const MailServerSettings& server, UltraNetMailOptions& options);
 
 // Which signature an account puts under its messages.
@@ -125,6 +152,8 @@ struct Account {
     // The servers the account syncs and sends with, stored once discovered
     // (provider table, autoconfig) or entered by hand. Empty on accounts
     // created before they were stored — those fall back to the provider table.
+    // `imap` is the incoming server whatever it speaks: its `protocol` says
+    // IMAP or JMAP (the member keeps its name from before the choice existed).
     MailServerSettings imap;
     MailServerSettings smtp;
     std::string        providerName;   // "Gmail", an autoconfig display name, or ""
@@ -134,7 +163,17 @@ struct Account {
     // with LocalStore::SetAccountSignature.
     Signature          signature;
 
-    bool HasServers() const { return imap.Valid() && smtp.Valid(); }
+    // Whether the account can sync and send: an incoming server, and an
+    // outgoing one unless the incoming one is JMAP, which sends by itself
+    // (an SMTP server given next to it is used instead).
+    bool HasServers() const {
+        return imap.Valid() && (smtp.Valid() || imap.protocol == MailProtocol::Jmap);
+    }
+    // Whether mail is sent through the JMAP server: a JMAP incoming server
+    // and no outgoing (SMTP) one.
+    bool SendsThroughJmap() const {
+        return imap.protocol == MailProtocol::Jmap && !smtp.Valid();
+    }
 };
 
 // A mailbox folder within an account.

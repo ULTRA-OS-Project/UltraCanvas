@@ -17,7 +17,7 @@
     The toast's activation arguments now carry the action, the notification's
     id and its `launch` (`FormatNotificationArguments`), so the activator
     needs nothing from the bus. UltraMail uses it: its toast opens the mail
-    it announced (UltraMail 0.10.62).
+    it announced (UltraMail 0.10.65).
   - Every identity is listed under `HKCU\Software\UltraCanvas\Notifications`.
     The installer's uninstaller walks the list and removes each
     AppUserModelID key and activator class, then the list;

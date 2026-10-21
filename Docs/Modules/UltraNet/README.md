@@ -93,10 +93,13 @@ planned (see the status table below).
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
 `UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
-table** (`UltraNetPluginHost`, ABI 2) handed to its `UltraNet_PluginInit`:
+table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
-`UltraNet_MimeBuild`, `UltraNet_HttpGet` / `HttpRequest`, ... Plug-in sources
+`UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
+format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+`UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
+plug-in's push), ... Plug-in sources
 call those functions as usual;
 `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`, compiled into every
 plug-in, defines them inside the DSO and forwards each call to the table. So a

@@ -82,6 +82,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include <atomic>
 #include "UltraCanvasLabel.h"
 
 #include <chrono>
@@ -184,7 +185,8 @@ private:
     void OpenSettings();
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
-    // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
+    // the plug-in for the protocol the page chose (IMAP or JMAP); the outcome
+    // is delivered on the UI thread. A missing
     // plug-in is a failed check (the page then offers "Save anyway"). The
     // candidate carries a typed new password when the user changed it.
     ServerSettingsDialog::Verifier LoginVerifier(
@@ -202,14 +204,28 @@ private:
     struct SmtpAccount {
         std::string     email;
         DiscoveryResult settings;
+        // The plug-in that sends for it (SendPlugin), kept loaded for the
+        // worker; null when it is not loaded.
+        std::shared_ptr<IUltraNetPlugin> plugin;
     };
     std::map<std::string, SmtpAccount> SmtpAccounts() const;
-    // Fill an SMTP session's options for an account from the snapshot:
-    // username, TLS mode and sign-in method of its outgoing server, and the
+    // Fill a send session's options for an account from the snapshot:
+    // username, TLS mode and sign-in method of its outgoing server - or of
+    // its JMAP server, for an account that sends through JMAP - and the
     // credentials (see ResolveCredentials). Runs on the send worker.
     UltraNetResult PrepareSmtp(const std::map<std::string, SmtpAccount>& accounts,
                                const std::string& accountId, UltraNetMailOptions& options);
-    // A null `plugin` (no SMTP plug-in) only saves the Drafts copies.
+    // The server an account sends through: its outgoing (SMTP) server, or
+    // its JMAP server when it has no outgoing one (Account::SendsThroughJmap);
+    // "" when it has neither.
+    static std::string SendServerUrl(const DiscoveryResult& settings);
+    // The plug-in that sends for those settings: SMTP (plain or implicit
+    // TLS, by the outgoing server's security), or the JMAP plug-in for an
+    // account that sends through JMAP. Null when it is not loaded.
+    static std::shared_ptr<IUltraNetPlugin> SendPlugin(const DiscoveryResult& settings);
+    // A null `plugin` (no plug-in can send) only saves the Drafts copies;
+    // otherwise each account sends through its own plug-in (SmtpAccount),
+    // `plugin` standing in for an account whose own is not loaded.
     // Flush the outbox on a worker and call `onDone` on the UI thread. SMTP to
     // a slow or failing server - connect and operation timeouts per queued
     // message, an OAuth2 token refresh - used to run on the UI thread and hold
@@ -557,9 +573,17 @@ private:
     void OpenNotificationTarget(const NewMailTarget& target);
     // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
     IMailboxProtocolPlugin* ImapPlugin() const;
-    // Explain that no mail can be fetched because the IMAP plug-in was not
-    // found, naming the directory that was searched.
-    void ReportMissingImapPlugin();
+    // The JMAP plug-in as the mailbox interface, or null when it is not loaded.
+    IMailboxProtocolPlugin* JmapPlugin() const;
+    // The plug-in an incoming server of that protocol is read with: the IMAP
+    // one for IMAP, the JMAP one for JMAP; null when it is not loaded.
+    IMailboxProtocolPlugin* MailboxPluginFor(MailProtocol protocol) const;
+    // Whether any mailbox plug-in is loaded at all (the live sync loop and
+    // the passive body fetch need one; which one is decided per account).
+    bool AnyMailboxPlugin() const;
+    // Explain that no mail can be fetched because the plug-in for that
+    // protocol was not found, naming the directory that was searched.
+    void ReportMissingMailboxPlugin(MailProtocol protocol);
     // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else the first
     // Plugins/UltraNet directory next to (or up to two levels above) the
     // executable, else the working directory's — so the app finds its plug-ins
@@ -682,6 +706,30 @@ private:
     // True once the periodic sync timer runs, so StartBackgroundSync() can be
     // called again (after an account is added) without starting a second one.
     bool        syncTimerStarted_ = false;
+
+    // ---- Push (a JMAP account's event source) ---------------------------
+    // One watch per JMAP account (IMailboxProtocolPlugin::WatchMailbox): the
+    // server reports a change and the account is checked at once, next to
+    // the regular interval, which stays as the safety net. Kept on the sync
+    // tick (MaintainPushWatches): opened once the vault is usable, reopened a
+    // minute after one ended, ended for an account that is gone or no
+    // longer JMAP. All on the UI thread; the plug-in's callbacks post here.
+    struct PushWatch {
+        UltraNetHandle handle = UltraNetInvalidHandle;
+        std::string    serverUrl;
+    };
+    std::map<std::string, PushWatch>  pushWatches_;
+    std::set<std::string>             pushStarting_;   // a worker is opening one
+    std::map<std::string, int64_t>    pushRetryAt_;    // steady seconds; not before
+    // False once the app is going: a callback that arrives later does nothing.
+    std::shared_ptr<std::atomic<bool>> pushAlive_ = std::make_shared<std::atomic<bool>>(true);
+    void MaintainPushWatches();
+    void StartPushWatch(const Account& account, const DiscoveryResult& settings,
+                        const std::string& serverUrl, IMailboxProtocolPlugin& mailbox);
+    void StopPushWatch(const std::string& accountId);
+    // A change the server announced: the account is checked now, quietly
+    // (a failure goes the way of a timer check, never an alert of its own).
+    void SyncAccountFromPush(const std::string& accountId);
     // Notices a wake from sleep from a short periodic timer (started with the
     // sync timer), so mail is checked right after the computer wakes.
     WakeDetector wake_;

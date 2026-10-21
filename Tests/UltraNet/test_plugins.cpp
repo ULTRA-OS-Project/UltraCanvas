@@ -111,13 +111,13 @@ TEST(plugin_host_vtable_abi_version_is_set) {
     // The host vtable handed to v2 plug-in entry points carries the ABI
     // version constant. If anything ever bumps the struct, the plug-in's
     // version check will refuse mismatched hosts.
-    REQUIRE_EQ(ULTRANET_PLUGIN_HOST_ABI_VERSION, 2);
+    REQUIRE_EQ(ULTRANET_PLUGIN_HOST_ABI_VERSION, 3);
 
     UltraNetPluginHost vtable{};
     vtable.abiVersion    = ULTRANET_PLUGIN_HOST_ABI_VERSION;
     vtable.RegisterPlugin = &UltraNet_RegisterPlugin;
     REQUIRE(vtable.RegisterPlugin != nullptr);
-    REQUIRE_EQ(vtable.abiVersion, 2);
+    REQUIRE_EQ(vtable.abiVersion, 3);
 }
 
 TEST(plugin_host_table_serves_every_core_function) {
@@ -138,6 +138,11 @@ TEST(plugin_host_table_serves_every_core_function) {
     REQUIRE(host->HttpGet != nullptr);
     REQUIRE(host->HttpRequest != nullptr);
     REQUIRE(host->HttpHeadersSet != nullptr);
+    // ABI 3
+    REQUIRE(host->MimeBuildMailMessage != nullptr);
+    REQUIRE(host->SseStreamAsync != nullptr);
+    REQUIRE(host->CancelRequest != nullptr);
+    REQUIRE(host->IsRequestActive != nullptr);
 
     // The slots are the real functions, not stand-ins.
     UltraNetUrlComponents url;
