@@ -701,7 +701,9 @@ and never introduce a new literal copy of one:
    also calls `UltraCanvas::RegisterNotificationActivator` at its start and
    gives the notification a `launch`, or a click on its Windows toast does
    nothing once the broker host has quit
-   (`UltraCanvasNotificationActivation.h`) — run
+   (`UltraCanvasNotificationActivation.h`); and it gets a row in
+   `NOTIFICATION_ACTIVATORS` in `scripts/make_msix_layout.py`, which declares
+   the activator in the MSIX package's manifest — run
    `python3 scripts/check_notification_activators.py`; CI runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in

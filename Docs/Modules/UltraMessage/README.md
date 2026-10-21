@@ -333,7 +333,13 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   (`UltraCanvas::RegisterNotificationActivator`) - Windows starts the
   application when it is not running - which has everything it needs. Each
   AppUserModelID is listed under `HKCU\Software\UltraCanvas\Notifications`
-  for the uninstaller, which removes it with its activator. Where toasts are not
+  for the uninstaller, which removes it with its activator. A presenter running
+  from the MSIX package writes nothing there, because its registry writes stay
+  in the package. It shows the toast under the posting process's own package
+  AppUserModelID (`<family>!<Application Id>`, asked of Windows with the
+  process the broker saw on the connection). The package manifest declares
+  that application's name, icon and activator (*From the MSIX package* in
+  `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`). Where toasts are not
   available, or one cannot be shown, it is a notification-area balloon
   (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
   registration: Windows heads it with the name of the process hosting the

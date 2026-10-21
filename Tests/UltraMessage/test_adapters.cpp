@@ -140,6 +140,28 @@ std::string Text(const JSONValue& body, const char* key) {
 
 } // namespace
 
+TEST(presenter_content_carries_the_sender_process_only_when_verified) {
+    // A packaged Windows presenter shows the toast under the poster's own
+    // AppUserModelID, which it asks Windows for by process: only a process
+    // the broker saw on the connection itself is named.
+    using UltraMessage::Internal::PresentedContent;
+    using UltraMessage::Internal::ReadPresentedContent;
+    UltraMessage::SystemNotification n;
+    n.appId = "org.ultraos.ultramail";
+    n.summary = "New mail";
+    PresentedContent c;
+
+    UltraMsgMessage verified = PostedNotification(n, 5150);
+    verified.envelope.from.verified = true;
+    REQUIRE(ReadPresentedContent(verified, 4242, c));
+    REQUIRE_EQ(c.senderProcessId, 5150);
+
+    UltraMsgMessage claimed = PostedNotification(n, 5150);   // the client's word only
+    claimed.envelope.from.verified = false;
+    REQUIRE(ReadPresentedContent(claimed, 4242, c));
+    REQUIRE_EQ(c.senderProcessId, 0);
+}
+
 TEST(presenter_content_is_read_from_the_notification) {
     using UltraMessage::Internal::PresentedContent;
     using UltraMessage::Internal::ReadPresentedContent;
@@ -402,6 +424,10 @@ TEST(notification_activator_class_id_is_stable) {
     REQUIRE(mail[9] == '-' && mail[14] == '-' && mail[19] == '-' && mail[24] == '-');
     REQUIRE(mail[15] == '5');
     REQUIRE(mail[20] == '8' || mail[20] == '9' || mail[20] == 'A' || mail[20] == 'B');
+    // Pinned: scripts/make_msix_layout.py derives the same CLSID for the MSIX
+    // manifest's activator declaration, and scripts/check_notification_activators.py
+    // pins it there too - a change to the derivation has to change both.
+    REQUIRE_EQ(mail, std::string("{A8386CF6-5A41-5DB0-A2CF-3E7B3312307E}"));
     REQUIRE(UltraCanvas::IsNotificationActivationArgument("-ToastActivated"));
     REQUIRE(UltraCanvas::IsNotificationActivationArgument("-Embedding"));
     REQUIRE(!UltraCanvas::IsNotificationActivationArgument("mail.eml"));

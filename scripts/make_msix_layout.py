@@ -60,6 +60,7 @@ class App:
     icon: str                 # path of the PNG the logos are rendered from
     description: str
     file_types: List[FileTypes] = field(default_factory=list)
+    notification_id: str = ""   # its UltraMessage application ID, when it has a toast activator
 
     @property
     def app_id(self) -> str:
@@ -95,6 +96,45 @@ FILE_TYPES = {
     "Texter": [TEXT_TYPES],
     "UltraViewer": [MEDIA_TYPES],
 }
+
+# The applications that take the clicks on their own toasts
+# (UltraCanvas::RegisterNotificationActivator), by program, with the
+# application ID they register under. Outside a package that call writes the
+# activator under HKEY_CURRENT_USER; a packaged application's activator is
+# read from the manifest instead (windows.comServer for the class,
+# windows.toastNotificationActivation for the toasts), and the call only serves
+# it. The CLSID is derived from the ID exactly as the call derives it
+# (notification_activator_class_id). scripts/check_notification_activators.py
+# fails when an application under Apps/ registers an activator without a row
+# here, so a click on its toast cannot be lost in the package.
+NOTIFICATION_ACTIVATORS = {
+    "UltraMail": "org.ultraos.ultramail",
+}
+# The argument Windows starts the program with for a click; the program sees
+# it (UltraCanvas::IsNotificationActivationArgument) and opens no file for it.
+NOTIFICATION_ACTIVATION_ARGUMENT = "-ToastActivated"
+
+
+def notification_activator_class_id(app_id: str) -> str:
+    """UltraCanvas::NotificationActivatorClassId (UltraCanvasNotificationActivation.h),
+    byte for byte, without the braces: the CLSID the application registers and
+    the manifest has to name. Two FNV-1a 64-bit hashes of one text, laid out
+    as a version 5 UUID."""
+    text = ("UltraCanvas notification activator:" + app_id).encode("utf-8")
+
+    def fnv(seed: int) -> int:
+        value = seed
+        for byte in text:
+            value ^= byte
+            value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+        return value
+
+    high, low = fnv(1469598103934665603), fnv(0x9E3779B97F4A7C15)
+    raw = bytearray(high.to_bytes(8, "big") + low.to_bytes(8, "big"))
+    raw[6] = (raw[6] & 0x0F) | 0x50   # version 5
+    raw[8] = (raw[8] & 0x3F) | 0x80   # RFC 4122 variant
+    h = raw.hex().upper()
+    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
 # Who gets a Start menu entry. The rule is build-windows-installer.sh's (its
 # "THE START MENU"), so the installer and the package list the same
@@ -199,7 +239,8 @@ def find_apps(dist: str, repo_root: str) -> List[App]:
         candidates += [exe + ".png", cmake_icons.get(exe.lower(), ""), "UltraCanvas.png"]
         icon = next(os.path.join(appicon_dir, c) for c in candidates
                     if c and os.path.isfile(os.path.join(appicon_dir, c)))
-        apps.append(App(exe, name, icon, description, FILE_TYPES.get(exe, [])))
+        apps.append(App(exe, name, icon, description, FILE_TYPES.get(exe, []),
+                        NOTIFICATION_ACTIVATORS.get(exe, "")))
     return apps
 
 
@@ -350,6 +391,8 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
         "": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
         "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
         "uap3": "http://schemas.microsoft.com/appx/manifest/uap/windows10/3",
+        "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",
+        "desktop": "http://schemas.microsoft.com/appx/manifest/desktop/windows10",
         "rescap": "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
     }
     for prefix, uri in ns.items():
@@ -359,7 +402,7 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
         prefix, _, local = tag.rpartition(":")
         return f"{{{ns[prefix]}}}{local}"
 
-    package = ET.Element(q("Package"), {"IgnorableNamespaces": "uap uap3 rescap"})
+    package = ET.Element(q("Package"), {"IgnorableNamespaces": "uap uap3 com desktop rescap"})
     ET.SubElement(package, q("Identity"), {
         "Name": identity_name,
         "Publisher": publisher,
@@ -395,8 +438,25 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
             "Square150x150Logo": f"Assets\\{app.app_id}\\Square150x150Logo.png",
             "Square44x44Logo": f"Assets\\{app.app_id}\\Square44x44Logo.png",
         })
-        if app.file_types:
+        extensions = None
+        if app.file_types or app.notification_id:
             extensions = ET.SubElement(application, q("Extensions"))
+        if app.notification_id:
+            # The toasts' activator: Windows starts this program with the
+            # argument for a click when it is not running, and hands the click
+            # to the class it serves (UltraCanvasWindowsNotificationActivation.cpp).
+            class_id = notification_activator_class_id(app.notification_id)
+            com = ET.SubElement(extensions, q("com:Extension"), {"Category": "windows.comServer"})
+            server = ET.SubElement(ET.SubElement(com, q("com:ComServer")), q("com:ExeServer"), {
+                "Executable": f"{app.exe}.exe",
+                "Arguments": NOTIFICATION_ACTIVATION_ARGUMENT,
+                "DisplayName": f"{app.display_name} notification activator"})
+            ET.SubElement(server, q("com:Class"), {
+                "Id": class_id, "DisplayName": f"{app.display_name} notification activator"})
+            toast = ET.SubElement(extensions, q("desktop:Extension"), {
+                "Category": "windows.toastNotificationActivation"})
+            ET.SubElement(toast, q("desktop:ToastNotificationActivation"), {"ToastActivatorCLSID": class_id})
+        if app.file_types:
             for types in app.file_types:
                 extension = ET.SubElement(extensions, q("uap:Extension"), {
                     "Category": "windows.fileTypeAssociation"})

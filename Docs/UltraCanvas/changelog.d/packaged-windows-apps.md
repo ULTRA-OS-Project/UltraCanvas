@@ -1,8 +1,9 @@
 - **The applications now work when Windows starts them from the MSIX
   package.** A packaged application starts with System32 as its working
-  folder, its registry writes stay inside the package, and it may start an
-  elevated process only with a capability the Store grants on request. Five
-  things assumed otherwise:
+  folder, its registry writes stay inside the package, it may start an
+  elevated process only with a capability the Store grants on request, and
+  its toasts belong to the package's own applications. Six things assumed
+  otherwise:
   - **UltraNet's plug-in folder** defaulted to the relative path
     `Plugins/UltraNet`, which is relative to the working folder. Unless an
     application set its own folder, as UltraMail and EmailCleaner did, no
@@ -37,7 +38,25 @@
     sideloaded and enterprise packages. The new
     `OS/MSWindows/UltraCanvasWindowsPackage.{h,cpp}` holds the package check
     both of these use: whether the process has a package identity, and what
-    the installed `AppxManifest.xml` declares.
+    the installed `AppxManifest.xml` declares. It is header-only, so the
+    UltraMessage library uses it as well.
+  - **Toast notifications** registered their AppUserModelID and COM activator
+    under `HKEY_CURRENT_USER\Software\Classes`, which Windows does not see
+    from a package. From a package:
+    - The manifest now declares each activator: `windows.comServer` with
+      `-ToastActivated`, and `windows.toastNotificationActivation`. The rows
+      come from `NOTIFICATION_ACTIVATORS` in `make_msix_layout.py` (UltraMail
+      today), each CLSID derived as `NotificationActivatorClassId` derives it.
+    - `RegisterNotificationActivator` writes nothing and only serves the class.
+    - The presenter shows each toast under the posting process's own package
+      AppUserModelID, which it asks Windows for with the process the broker
+      verified. It now carries that process in `PresentedContent::senderProcessId`.
+    - `check_notification_activators.py` fails CI when an application
+      registers an activator without a row there. It also fails when a row
+      names an ID the application's sources lack, or when the Python
+      derivation stops matching the CLSID the C++ test pins.
+
+    Not yet run on Windows.
 
   With the switch explaining itself, the MSIX package gives UltraDesktop a
   Start menu entry again, as the installer does. Texter 1.70, UltraDesktop
