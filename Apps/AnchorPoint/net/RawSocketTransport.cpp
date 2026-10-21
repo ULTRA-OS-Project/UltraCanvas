@@ -5,7 +5,7 @@
 //
 // Cross-platform (Linux + Windows). This is the "today" backend; it will be
 // superseded by an UltraNet-backed implementation that exposes the same
-// AnchorPoint::IConnection / IListener interface.
+// AnchorPointApp::IConnection / IListener interface.
 #include "Transport.h"
 
 #include <cerrno>    // errno
@@ -43,7 +43,7 @@
   #define AP_SEND_FLAGS 0
 #endif
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 namespace {
 
@@ -251,4 +251,4 @@ std::unique_ptr<IListener> Listen(uint16_t port, std::string* err) {
     return std::make_unique<SocketListener>(fd, actualPort);
 }
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

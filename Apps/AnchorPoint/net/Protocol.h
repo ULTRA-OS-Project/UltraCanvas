@@ -13,7 +13,7 @@
 #include <functional>
 #include <string>
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 // Wire frame: [1 byte type][4 byte big-endian length N][N bytes payload].
 enum class MsgType : uint8_t {
@@ -86,4 +86,4 @@ TransferResult ReceiveFile(IConnection& conn,
                            ProgressFn onProgress = nullptr,
                         CancelFlag cancel = nullptr);
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

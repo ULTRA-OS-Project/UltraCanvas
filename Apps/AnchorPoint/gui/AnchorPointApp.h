@@ -21,7 +21,7 @@
 #include <string>
 #include <thread>
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 // A single-window front end over the M1 transfer core. All networking runs on
 // worker threads; UI widgets are only ever touched from the main thread via a
@@ -81,4 +81,4 @@ private:
     UltraCanvas::TimerId uiTimer_ = UltraCanvas::InvalidTimerId;
 };
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

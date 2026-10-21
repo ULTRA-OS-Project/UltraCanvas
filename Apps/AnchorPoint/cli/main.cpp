@@ -20,7 +20,7 @@
 #include <iostream>
 #include <string>
 
-using namespace AnchorPoint;
+using namespace AnchorPointApp;
 
 namespace {
 

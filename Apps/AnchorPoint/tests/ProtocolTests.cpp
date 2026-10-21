@@ -22,7 +22,7 @@
 #include <thread>
 #include <vector>
 
-using namespace AnchorPoint;
+using namespace AnchorPointApp;
 namespace fs = std::filesystem;
 using UltraCanvas::PathToUtf8;
 

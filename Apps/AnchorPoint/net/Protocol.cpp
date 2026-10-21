@@ -12,7 +12,7 @@
 #include <vector>
 #include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 namespace {
 
@@ -388,4 +388,4 @@ TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
     return Finish(ReceiveFileImpl(conn, accept, onProgress, cancel), cancel);
 }
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

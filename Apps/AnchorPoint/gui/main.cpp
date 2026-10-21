@@ -45,7 +45,7 @@ int main() {
     // (CMakeLists.txt).
     app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/AnchorPoint.png"));
 
-    AnchorPoint::AnchorPointGui gui(app);
+    AnchorPointApp::AnchorPointGui gui(app);
     if (!gui.Build()) {
         std::cerr << "Failed to build AnchorPoint window.\n";
         return 1;

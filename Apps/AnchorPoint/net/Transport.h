@@ -15,7 +15,11 @@
 #include <memory>
 #include <string>
 
-namespace AnchorPoint {
+// Not `namespace AnchorPoint`: macOS's CoreText (SFNTLayoutTypes.h, reached
+// through the framework headers the window includes) declares a global
+// `typedef struct AnchorPoint AnchorPoint;`, and a namespace of that name
+// does not compile there.
+namespace AnchorPointApp {
 
 // A reliable, ordered, bidirectional byte stream (TCP today).
 class IConnection {
@@ -62,4 +66,4 @@ std::unique_ptr<IConnection> Connect(const std::string& host, uint16_t port,
 // Binds and listens on `port` (0 = let the OS choose; query via Port()).
 std::unique_ptr<IListener> Listen(uint16_t port, std::string* err = nullptr);
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

@@ -22,7 +22,7 @@
 
 using namespace UltraCanvas;
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 namespace {
 
@@ -399,4 +399,4 @@ void AnchorPointGui::ReceiveWorker(uint16_t port, std::string saveDir) {
     else                    FinishBusy("Receive failed: " + res.error);
 }
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp
