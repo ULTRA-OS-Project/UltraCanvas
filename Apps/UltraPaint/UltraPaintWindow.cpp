@@ -3,6 +3,22 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.9.5 - a drop's passwords are forgotten when the desktop session locks; the
+//                  drop's first file is read through LoadDocumentAsking, so a password
+//                  forgotten while its import dialog was up is asked for again
+// Version: 1.9.4 - every password given in a drop is tried on the files after it, the one
+//                  that last opened a file first, before asking (DropPasswords)
+// Version: 1.9.3 - a drop's files share a password: the one given for a file is tried first
+//                  on the next protected one, forgotten when the drop is done; Paste as New
+//                  Image says what it pasted, as Paste as New Layer does
+// Version: 1.9.2 - every file that is read asks for its password when it is protected: each
+//                  of a multi-file drop in turn, the next waiting for the answer
+//                  (ApplyImports), and a file pasted (LoadDocumentAsking)
+// Version: 1.9.1 - a password-protected PDF imports: its password is asked for (again when
+//                  it is wrong) before the import dialog, and rasterizes it
+// Version: 1.9.0 - password-protected *.ucd: File > Password Protection... sets, changes or
+//                  removes it; opening one asks for its password (again when it is wrong);
+//                  Save / Save As to anything but a *.ucd says it drops the protection
 // Version: 1.8.2 - the colour picker opens with the design and channels it was left with
 //                  (settings: picker.design, picker.channels)
 // Version: 1.8.1 - the colour picker offers its design list, folds its channels and is
@@ -56,6 +72,8 @@
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasUCDContainer.h"
+#include "UltraCrypt/UltraCryptCore.h"   // a drop's password, held zeroed-on-free
 #include "UltraCanvasRasterText.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasUtils.h"
@@ -70,6 +88,7 @@
 #endif
 
 #include <algorithm>
+#include <cstring>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -391,11 +410,13 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     };
 
     // ----- first document -----
-    if (!paths.empty() && NeedsImportDialog(paths.front())) {
+    if (!paths.empty() && (NeedsImportDialog(paths.front()) ||
+                           UCRasterDocument::IsPasswordProtected(paths.front()))) {
         // Vector artwork needs a raster size, and a 3D model a view as well,
         // before either becomes an image; the dialog that asks waits for
         // Show() — this is also the path a file dropped on the application's
         // icon takes, since the shell starts us with it on the command line.
+        // So does a password-protected document's question for its password.
         pendingImport = paths.front();
         NewImage(lastNewImage);
     } else if (!paths.empty()) {
@@ -413,7 +434,10 @@ void UltraPaintWindow::Show() {
     if (!pendingImport.empty()) {
         const std::string path = pendingImport;
         pendingImport.clear();
-        ImportFile(path, false);
+        // Whatever it asks - the import dialog, a protected file's password
+        // - is asked once the editor has drawn, not over a window with
+        // nothing in it.
+        AfterNextDraw([this, path]() { ImportFile(path, false); });
     }
 }
 
@@ -510,6 +534,7 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
             M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
             M::ActionWithShortcut("Export with Options...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
+            M::Action("Password Protection...", MenuIconPath("password.svg"), [this]() { CmdPassword(); }),
             M::Separator(),
             M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
         })
@@ -992,8 +1017,15 @@ void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const 
     // the magnifying glass each add theirs in SetDocument): the panels and
     // the title follow the document without chaining behind anyone's slot.
     UCRasterDocument::Listener l;
+#ifdef HAS_LIBVIPS
+    // An open adjustment follows the image: a pasted layer, an undo, another
+    // image altogether.
+    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); SchedulePreviewRefresh(); };
+    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); SchedulePreviewRefresh(); };
+#else
     l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
     l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); };
+#endif
     documentListener = document->AddListener(std::move(l));
     surface->SetDocument(document);
     if (magnifier) magnifier->SetDocument(document);
@@ -1002,6 +1034,9 @@ void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const 
     UpdateUndoButtons();
     UpdateTitle();
     UpdateStatus();
+#ifdef HAS_LIBVIPS
+    SchedulePreviewRefresh();
+#endif
 }
 
 void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
@@ -1021,11 +1056,58 @@ void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
 void UltraPaintWindow::OpenFile(const std::string& path) {
     // Vector artwork carries no pixels and a model carries neither pixels
     // nor a view, so neither can just be opened: the import dialog asks first.
-    if (NeedsImportDialog(path)) {
+    // A password-protected document asks for its password there too.
+    if (NeedsImportDialog(path) || UCRasterDocument::IsPasswordProtected(path)) {
         ImportFile(path, false);
         return;
     }
     LoadIntoWindow(path);
+}
+
+void UltraPaintWindow::AskForFilePassword(const std::string& path,
+                                          const std::function<PasswordTry(const std::string& password,
+                                                                          std::string& error)>& attempt,
+                                          const std::function<void()>& notOpened,
+                                          const std::string& note) {
+    const std::string prompt = (note.empty() ? std::string() : note + "\n") +
+                               "Password for " + FileNameOf(path) + ":";
+    std::weak_ptr<bool> alive = lifeToken;
+    UltraCanvasDialogManager::ShowInputDialog(prompt, "Open " + FileNameOf(path), std::string(), InputType::Password,
+        [this, alive, path, attempt, notOpened](DialogResult r, const std::string& password) {
+            if (alive.expired()) return;
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (r != DialogResult::OK) {
+                // Cancelled: whatever waits on the answer goes on without
+                // the file, once this dialog has closed.
+                if (notOpened) {
+                    if (app) app->PostToUIThread([alive, notOpened]() { if (!alive.expired()) notOpened(); });
+                    else notOpened();
+                }
+                return;
+            }
+            // Asked again on the next turn of the loop, once the dialog that
+            // answered has closed.
+            auto askAgain = [this, alive, path, attempt, notOpened, app](const std::string& why) {
+                if (!app) return;
+                app->PostToUIThread([this, alive, path, attempt, notOpened, why]() {
+                    if (!alive.expired()) AskForFilePassword(path, attempt, notOpened, why);
+                });
+            };
+            if (password.empty()) { askAgain("Type the password."); return; }
+            std::string error;
+            switch (attempt(password, error)) {
+                case PasswordTry::Opened:
+                    return;
+                case PasswordTry::Wrong:
+                    askAgain("That password is not right.");
+                    return;
+                case PasswordTry::Failed:
+                    UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error), "Open",
+                        [alive, notOpened](DialogResult) { if (!alive.expired() && notOpened) notOpened(); },
+                        window.get());
+                    return;
+            }
+        }, window.get());
 }
 
 bool UltraPaintWindow::LoadIntoWindow(const std::string& path) {
@@ -1110,12 +1192,27 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
         forTheRest.width = 0;
         forTheRest.height = 0;
         forTheRest.page = 0;
-        for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
+        AfterNextDraw([this, alsoFiles, forTheRest]() {
+            ApplyImports(alsoFiles, forTheRest, std::make_shared<DropPasswords>());
+        });
     });
 }
 
 void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
-                                  const std::vector<std::string>& alsoFiles) {
+                                  const std::vector<std::string>& alsoFiles,
+                                  std::shared_ptr<UCRasterDocument> preloaded,
+                                  const std::string& password) {
+    if (!preloaded && UCRasterDocument::IsPasswordProtected(path)) {
+        // Its password first; it comes back here opened.
+        AskForFilePassword(path, [this, path, fromDrop, alsoFiles](const std::string& given, std::string& error) {
+            auto doc = std::make_shared<UCRasterDocument>();
+            if (!doc->LoadUCD(path, error, given))
+                return error == UCD::kWrongPassword ? PasswordTry::Wrong : PasswordTry::Failed;
+            ImportFile(path, fromDrop, alsoFiles, doc, given);
+            return PasswordTry::Opened;
+        });
+        return;
+    }
     if (IsModelPath(path)) {
         ImportModel(path, fromDrop, alsoFiles);
         return;
@@ -1134,9 +1231,29 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
     // artwork reports its natural size without rendering, and a bitmap is
     // decoded here so the dialog can say how big it is (and so merging it
     // does not decode it a second time).
-    std::shared_ptr<UCRasterDocument> preloaded;
-    if (IsVectorPath(path)) {
-        const VectorSourceInfo info = InspectVectorFile(path);
+    if (preloaded) {
+        request.naturalWidth = preloaded->GetWidth();
+        request.naturalHeight = preloaded->GetHeight();
+        if (!fromDrop) {
+            SetDocument(preloaded, FileNameOf(path));
+            if (statusHint) statusHint->SetText("Opened " + FileNameOf(path) + " (password-protected)");
+            return;
+        }
+    } else if (IsVectorPath(path)) {
+        const VectorSourceInfo info = InspectVectorFile(path, password);
+        if (!info.ok && info.passwordRequired && password.empty()) {
+            // A password-protected PDF: its password first - it is what
+            // measures the page as well as what draws it - and back here
+            // with it.
+            AskForFilePassword(path, [this, path, fromDrop, alsoFiles](const std::string& given, std::string& error) {
+                const VectorSourceInfo withIt = InspectVectorFile(path, given);
+                if (withIt.passwordWrong) return PasswordTry::Wrong;
+                if (!withIt.ok) { error = withIt.error; return PasswordTry::Failed; }
+                ImportFile(path, fromDrop, alsoFiles, nullptr, given);
+                return PasswordTry::Opened;
+            });
+            return;
+        }
         if (!info.ok) {
             UltraCanvasDialogManager::ShowError("Could not read " + path + "\n" + ShortError(info.error),
                                                 "Open", nullptr, window.get());
@@ -1165,10 +1282,13 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         }
     }
 
+    // The password given for this file, held for the drop (the rest try it
+    // first) in a secure buffer rather than in the dialog's callback.
+    auto remembered = std::make_shared<DropPasswords>();
+    if (!password.empty()) remembered->Remember(password);
     auto dialog = std::make_shared<UltraPaintImportDialog>(request);
-    dialog->onAccept = [this, path, alsoFiles, preloaded](const UltraPaintImportResult& result) {
-        if (result.action == UltraPaintImportResult::Action::Cancel) return;
-        ApplyImport(path, result, preloaded);
+    dialog->onAccept = [this, path, alsoFiles, preloaded, remembered](const UltraPaintImportResult& result) {
+        if (result.action == UltraPaintImportResult::Action::Cancel) { remembered->Forget(); return; }
         // The rest of a multi-file drop take the same action, but the size the
         // dialog settled on belongs to the file it was shown for: the others
         // come in at their own natural size.
@@ -1176,7 +1296,25 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         forTheRest.width = 0;
         forTheRest.height = 0;
         forTheRest.page = 0;
-        for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
+        // Once this dialog has closed and the first file is on show: the
+        // rest may ask for passwords.
+        auto rest = [this, alsoFiles, forTheRest, remembered]() {
+            AfterNextDraw([this, alsoFiles, forTheRest, remembered]() { ApplyImports(alsoFiles, forTheRest, remembered); });
+        };
+        if (preloaded) {
+            ApplyImport(path, result, preloaded);
+            rest();
+            return;
+        }
+        // Read now (a PDF is rasterized at the size chosen) with the password
+        // given for it - or, when the session locked while this dialog was up
+        // and it was forgotten, with its password asked for again.
+        LoadDocumentAsking(path, result,
+            [this, path, result, rest](std::shared_ptr<UCRasterDocument> incoming) {
+                ApplyLoaded(path, result, incoming);
+                rest();
+            },
+            rest, remembered);
     };
     // A drop answers a gesture made on this window, so the question belongs
     // over it rather than wherever the window manager would drop it.
@@ -1188,8 +1326,89 @@ void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImpo
     if (result.action == UltraPaintImportResult::Action::Cancel) return;
 
     auto incoming = preloaded ? preloaded : LoadDocument(path, result);
-    if (!incoming) return;
+    if (incoming) ApplyLoaded(path, result, incoming);
+}
 
+UltraPaintWindow::DropPasswords::~DropPasswords() {
+    Forget();
+}
+
+void UltraPaintWindow::DropPasswords::Forget() {
+    values.clear();
+    if (lockListener) {
+        RemoveSessionLockListener(lockListener);
+        lockListener = 0;
+    }
+}
+
+void UltraPaintWindow::DropPasswords::Remember(const std::string& password) {
+    if (password.empty()) return;
+    // Listened for only while a password is held; removed by Forget, which
+    // the destructor runs, so `this` never outlives it.
+    if (!lockListener) {
+        lockListener = AddSessionLockListener([this](bool locked) { if (locked) Forget(); });
+    }
+    values.erase(std::remove_if(values.begin(), values.end(),
+                                [&password](const std::shared_ptr<UltraCryptSecureBuffer>& held) {
+                                    return held && held->GetSize() == password.size() &&
+                                           std::memcmp(held->Data(), password.data(), password.size()) == 0;
+                                }),
+                 values.end());
+    values.insert(values.begin(), std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size()));
+    if (values.size() > kMax) values.resize(kMax);
+}
+
+std::vector<std::string> UltraPaintWindow::DropPasswords::All() const {
+    std::vector<std::string> out;
+    for (const auto& held : values) {
+        if (held && !held->IsEmpty())
+            out.emplace_back(reinterpret_cast<const char*>(held->Data()), held->GetSize());
+    }
+    return out;
+}
+
+std::string UltraPaintWindow::DropPasswords::Newest() const {
+    const std::vector<std::string> all = All();
+    return all.empty() ? std::string() : all.front();
+}
+
+void UltraPaintWindow::ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result,
+                                   std::shared_ptr<DropPasswords> remembered) {
+    if (files.empty() || result.action == UltraPaintImportResult::Action::Cancel) {
+        // The drop is done: its password is not kept past it.
+        if (remembered) remembered->Forget();
+        return;
+    }
+    const std::string path = files.front();
+    files.erase(files.begin());
+    // One at a time: a protected file's question has to be answered before
+    // the next file is read, or the questions would pile up on each other;
+    // and the next one comes once this one is on show.
+    auto next = [this, files, result, remembered]() {
+        if (files.empty()) { if (remembered) remembered->Forget(); return; }
+        AfterNextDraw([this, files, result, remembered]() { ApplyImports(files, result, remembered); });
+    };
+    LoadDocumentAsking(path, result,
+        [this, path, result, next](std::shared_ptr<UCRasterDocument> incoming) {
+            ApplyLoaded(path, result, incoming);
+            next();
+        },
+        next, remembered);
+}
+
+void UltraPaintWindow::AfterNextDraw(std::function<void()> task) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { task(); return; }
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([app, alive, task]() {
+        if (alive.expired()) return;
+        app->PostToUIThread([alive, task]() { if (!alive.expired()) task(); });
+    });
+}
+
+void UltraPaintWindow::ApplyLoaded(const std::string& path, const UltraPaintImportResult& result,
+                                   const std::shared_ptr<UCRasterDocument>& incoming) {
+    if (!incoming) return;
     switch (result.action) {
         case UltraPaintImportResult::Action::Merge:
             MergeDocument(incoming, path, result.scaleToFit);
@@ -1244,6 +1463,7 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
         options.width = std::max(0, result.width);
         options.height = std::max(0, result.height);
         options.page = std::max(0, result.page);
+        options.password = result.password;
         std::string error;
         auto layer = RasterizeVectorFile(path, options, error);
         if (!layer) {
@@ -1272,6 +1492,82 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
         return nullptr;
     }
     return doc;
+}
+
+void UltraPaintWindow::LoadDocumentAsking(const std::string& path, const UltraPaintImportResult& result,
+                                          const std::function<void(std::shared_ptr<UCRasterDocument>)>& loaded,
+                                          const std::function<void()>& notLoaded,
+                                          std::shared_ptr<DropPasswords> remembered) {
+    const bool protectedUCD = UCRasterDocument::IsPasswordProtected(path);
+    const bool protectedPDF = !protectedUCD && result.password.empty() && IsVectorPath(path) &&
+                              InspectVectorFile(path).passwordRequired;
+    if (!protectedUCD && !protectedPDF) {
+        if (auto doc = LoadDocument(path, result)) { if (loaded) loaded(doc); }
+        else if (notLoaded) notLoaded();
+        return;
+    }
+    // The passwords given for files before this one in the same drop, tried
+    // first and without a word - the one that last opened a file first:
+    // files dropped together often share one, or a few.
+    std::string note;
+    if (remembered && !remembered->Empty()) {
+        const std::vector<std::string> before = remembered->All();
+        for (const std::string& candidate : before) {
+            if (protectedUCD) {
+                auto doc = std::make_shared<UCRasterDocument>();
+                std::string ignored;
+                if (doc->LoadUCD(path, ignored, candidate)) {
+                    remembered->Remember(candidate);   // the next file tries it first
+                    if (loaded) loaded(doc);
+                    return;
+                }
+            } else if (InspectVectorFile(path, candidate).ok) {
+                remembered->Remember(candidate);
+                UltraPaintImportResult withPassword = result;
+                withPassword.password = candidate;
+                if (auto doc = LoadDocument(path, withPassword)) { if (loaded) loaded(doc); }
+                else if (notLoaded) notLoaded();
+                return;
+            }
+        }
+        note = before.size() == 1 ? "The password given before does not open this one."
+                                  : "None of the " + std::to_string(before.size()) +
+                                    " passwords given before opens this one.";
+    }
+    // Its password first. The answer is tried in the question's own
+    // callback; the document comes back on the next turn of the loop, once
+    // the question has closed - so whatever `loaded` asks next (the next
+    // file's password, a confirmation) is not asked over it.
+    std::weak_ptr<bool> alive = lifeToken;
+    AskForFilePassword(path,
+        [this, alive, path, result, protectedUCD, loaded, notLoaded, remembered](const std::string& given,
+                                                                                  std::string& error) {
+            std::shared_ptr<UCRasterDocument> opened;
+            if (protectedUCD) {
+                opened = std::make_shared<UCRasterDocument>();
+                if (!opened->LoadUCD(path, error, given))
+                    return error == UCD::kWrongPassword ? PasswordTry::Wrong : PasswordTry::Failed;
+            } else {
+                const VectorSourceInfo info = InspectVectorFile(path, given);
+                if (info.passwordWrong) return PasswordTry::Wrong;
+                if (!info.ok) { error = info.error; return PasswordTry::Failed; }
+            }
+            // The next protected file of the drop tries this one first.
+            if (remembered) remembered->Remember(given);
+            UltraPaintImportResult withPassword = result;
+            withPassword.password = given;
+            auto finish = [this, alive, path, withPassword, opened, loaded, notLoaded]() {
+                if (alive.expired()) return;
+                // A PDF is rasterized with it now (LoadDocument says why if not).
+                auto doc = opened ? opened : LoadDocument(path, withPassword);
+                if (doc) { if (loaded) loaded(doc); }
+                else if (notLoaded) notLoaded();
+            };
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(finish);
+            else finish();
+            return PasswordTry::Opened;
+        },
+        notLoaded, note);
 }
 
 void UltraPaintWindow::MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
@@ -1329,9 +1625,10 @@ bool UltraPaintWindow::SaveToPath(const std::string& path, const FileSaveImageSi
     }
     UpdateTitle();
     if (statusHint) {
+        const bool protectedFile = document->HasUCDPassword() && UCRasterDocument::IsUCDFile(path);
         statusHint->SetText(resized ? "Saved " + FileNameOf(path) + " at " + std::to_string(size.width) +
                                               " x " + std::to_string(size.height) + " px"
-                                    : "Saved " + FileNameOf(path));
+                                    : "Saved " + FileNameOf(path) + (protectedFile ? " (password-protected)" : ""));
     }
     return true;
 }
@@ -2121,14 +2418,29 @@ void UltraPaintWindow::CmdImport() {
     });
 }
 
+std::string UltraPaintWindow::SaveLossQuestion(const std::string& path, bool layers) const {
+    if (!document) return std::string();
+    std::vector<std::string> lost;
+    // A layered document saved to a flat format loses its layers.
+    if (layers && document->GetLayerCount() > 1 && !UCRasterDocument::IsProjectFile(path))
+        lost.push_back("flattens the layers in the file (the open image keeps them)");
+    // Only an UltraCanvas document carries a password.
+    if (document->HasUCDPassword() && !UCRasterDocument::IsUCDFile(path))
+        lost.push_back("drops the password protection (only a .ucd keeps it)");
+    if (lost.empty()) return std::string();
+    std::string q = "Saving to " + FileNameOf(path) + " " + lost.front();
+    if (lost.size() > 1) q += ", and " + lost.back();
+    return q + ". Continue?";
+}
+
 void UltraPaintWindow::CmdSave() {
     CommitTextEdit();
     if (!document) return;
     if (document->GetFilePath().empty()) { CmdSaveAs(); return; }
-    // A layered document saved to a flat format loses its layers: say so once.
-    if (document->GetLayerCount() > 1 && !UCRasterDocument::IsProjectFile(document->GetFilePath())) {
-        ConfirmDiscard("Saving to " + FileNameOf(document->GetFilePath()) + " flattens the layers in the file (the open image keeps them). Continue?",
-                       [this]() { SaveToPath(document->GetFilePath()); });
+    // What the file would lose, said once.
+    const std::string question = SaveLossQuestion(document->GetFilePath(), true);
+    if (!question.empty()) {
+        ConfirmDiscard(question, [this]() { SaveToPath(document->GetFilePath()); });
         return;
     }
     SaveToPath(document->GetFilePath());
@@ -2154,6 +2466,13 @@ void UltraPaintWindow::CmdSaveAs() {
                                                        const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
+        // The type was picked here, so its layers go without a word; a
+        // password going is not something a file type says.
+        const std::string question = SaveLossQuestion(path, false);
+        if (!question.empty()) {
+            ConfirmDiscard(question, [this, path, size]() { SaveToPath(path, size); });
+            return;
+        }
         SaveToPath(path, size);
     });
 }
@@ -2195,6 +2514,31 @@ void UltraPaintWindow::CmdExport() {
 #else
     UltraCanvasDialogManager::ShowError("Export needs a build with libvips.", "Export", nullptr, window.get());
 #endif
+}
+
+void UltraPaintWindow::CmdPassword() {
+    CommitTextEdit();
+    if (!document) return;
+    auto dlg = std::make_shared<UltraPaintPasswordDialog>(document->HasUCDPassword(),
+                                                          document->GetUCDHidesPreview(),
+                                                          UCD::EncryptionAvailable());
+    std::weak_ptr<bool> alive = lifeToken;
+    dlg->onAccept = [this, alive](const UltraPaintPasswordResult& r) {
+        if (alive.expired() || !document) return;
+        const bool had = document->HasUCDPassword();
+        document->SetUCDPassword(r.remove ? std::string() : r.password, r.hidePreview);
+        // The file changes with the next save, so the image has unsaved changes.
+        document->SetModified(true);
+        UpdateTitle();
+        if (!statusHint) return;
+        const bool asUCD = UCRasterDocument::IsUCDFile(document->GetFilePath());
+        if (r.remove) statusHint->SetText(asUCD ? "Password protection removed - Save writes the file without it"
+                                                : "Password protection removed");
+        else statusHint->SetText(std::string(had ? "Password changed" : "Password set") +
+                                 (asUCD ? " - Save writes the file protected"
+                                        : " - it protects the image saved as an UltraCanvas document (.ucd)"));
+    };
+    ShowDialog(dlg);
 }
 
 void UltraPaintWindow::CmdQuit() {
@@ -2321,11 +2665,14 @@ void UltraPaintWindow::CmdPaste() {
     if (!source.file.empty()) {
         // A copied file comes in whole, flattened, at its natural size -
         // drawings and models included, rendered the way a drop renders the
-        // extra files it carries.
-        auto incoming = LoadDocument(source.file, UltraPaintImportResult{});
-        if (!incoming) return;   // LoadDocument said why
-        source.image = incoming->Flatten();
-        layerName = FileNameOf(source.file);
+        // extra files it carries; a password-protected one once its password
+        // has been given.
+        const std::string file = source.file;
+        LoadDocumentAsking(file, UltraPaintImportResult{}, [this, file](std::shared_ptr<UCRasterDocument> incoming) {
+            if (!document) return;
+            PasteAsLayer(incoming->Flatten(), FileNameOf(file), false, FileNameOf(file) + ", ");
+        });
+        return;   // LoadDocumentAsking says why when it cannot
     }
     auto img = source.image;
     if (!img || !img->IsValid()) {
@@ -2425,40 +2772,54 @@ std::shared_ptr<UCRasterLayer> UltraPaintWindow::LastCopiedImage(std::string& wh
 void UltraPaintWindow::CmdPasteAsNew() {
     CommitTextEdit();
     PasteSource source = ReadPasteSource();
-    std::shared_ptr<UCRasterDocument> fromFile;
     if (!source.file.empty()) {
         // The file's own layers come along, but not its path: this is a new,
         // unsaved image, so Save asks where to put it instead of writing
-        // over the file that was copied.
-        fromFile = LoadDocument(source.file, UltraPaintImportResult{});
-        if (!fromFile) return;   // LoadDocument said why
-        fromFile->SetFilePath("");
-        fromFile->ClearHistory();
-        fromFile->SetModified(true);
+        // over the file that was copied. A password-protected one asks for
+        // its password first, and the new image keeps it, as the file opened
+        // would: saved as a .ucd it is protected the same way.
+        const std::string file = source.file;
+        LoadDocumentAsking(file, UltraPaintImportResult{}, [this, file](std::shared_ptr<UCRasterDocument> fromFile) {
+            fromFile->SetFilePath("");
+            fromFile->ClearHistory();
+            fromFile->SetModified(true);
+            auto go = [this, fromFile, file]() {
+                SetDocument(fromFile, "Untitled");
+                if (statusHint) {
+                    statusHint->SetText("Pasted " + FileNameOf(file) + " as a new image, " +
+                                        std::to_string(fromFile->GetWidth()) + " x " +
+                                        std::to_string(fromFile->GetHeight()) + " pixels");
+                }
+            };
+            if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
+            else go();
+        });
+        return;   // LoadDocumentAsking says why when it cannot
     }
     auto img = source.image;
-    if (fromFile) {
-        auto go = [this, fromFile]() { SetDocument(fromFile, "Untitled"); };
-        if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
-        else go();
-        return;
-    }
     if (!img || !img->IsValid()) {
-        OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) { PasteAsNewImage(std::move(last)); });
+        OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) {
+            PasteAsNewImage(std::move(last), "the last copied image");
+        });
         return;
     }
     PasteAsNewImage(img);
 }
 
-void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img) {
+void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, const std::string& what) {
     if (!img || !img->IsValid()) return;
-    auto go = [this, img]() {
+    auto go = [this, img, what]() {
         auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
         doc->GetLayer(0)->CopyFrom(*img, 0, 0);
         doc->InvalidateComposite();
         doc->ClearHistory();
         doc->SetModified(true);
         SetDocument(doc, "Untitled");
+        if (statusHint) {
+            statusHint->SetText("Pasted " + (what.empty() ? std::string() : what + " ") + "as a new image, " +
+                                std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) +
+                                " pixels");
+        }
     };
     if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
     else go();
@@ -2595,21 +2956,87 @@ void UltraPaintWindow::CmdSelectModify(int kind) {
 // ===========================================================================
 
 #ifdef HAS_LIBVIPS
+namespace {
+    // FNV-1a over the pixels, a word at a time: tells whether a layer still
+    // holds what the preview left in it without keeping a second copy.
+    uint64_t PixelHash(const UCRasterLayer& layer) {
+        uint64_t h = 1469598103934665603ULL;
+        const uint8_t* p = layer.Data();
+        const size_t n = layer.DataSize();
+        size_t i = 0;
+        for (; i + 8 <= n; i += 8) {
+            uint64_t w;
+            std::memcpy(&w, p + i, 8);
+            h = (h ^ w) * 1099511628211ULL;
+        }
+        for (; i < n; ++i) h = (h ^ p[i]) * 1099511628211ULL;
+        return h;
+    }
+}
+
 void UltraPaintWindow::BeginPreview() {
     if (!document) return;
-    auto layer = document->GetActiveLayer();
-    if (!layer) return;
-    previewOriginal = layer->Clone();
-    previewLayerIndex = document->GetActiveLayerIndex();
     previewActive = true;
+    previewOp = nullptr;
+    SyncPreviewTarget();
+}
+
+std::shared_ptr<UCRasterLayer> UltraPaintWindow::SyncPreviewTarget() {
+    auto shownOn = previewLayer.lock();
+    const bool sameDocument = document && previewDocument.lock() == document;
+    // Painted on, undone, redone by something other than the preview: what
+    // the layer holds now is the user's, and the preview starts from it.
+    const bool changedElsewhere = shownOn && PixelHash(*shownOn) != previewShownHash;
+    auto active = document ? document->GetActiveLayer() : nullptr;
+    if (shownOn && shownOn == active && sameDocument && !changedElsewhere) return active;
+
+    // The target moved - a pasted layer on top, another image: the layer
+    // left behind gets its own pixels back, unless it left with its document.
+    if (shownOn && sameDocument && !changedElsewhere && previewOriginal && LayerIndexOf(*document, shownOn) >= 0) {
+        shownOn->CopyFrom(*previewOriginal, 0, 0);
+        document->NotifyChanged(shownOn->GetRect());
+    }
+    previewOriginal.reset();
+    previewLayer.reset();
+    previewDocument = document;
+    if (!active || active->locked || active->IsTextLayer()) {
+        if (statusHint && active) {
+            statusHint->SetText(active->locked ? "The active layer is locked" : "The active layer is a text layer");
+        }
+        return nullptr;
+    }
+    previewOriginal = active->Clone();
+    previewLayer = active;
+    previewShownHash = PixelHash(*active);
+    if (previewSourceChanged) previewSourceChanged(*active);
+    return active;
+}
+
+void UltraPaintWindow::SchedulePreviewRefresh() {
+    if (!previewActive || previewRefreshPending) return;
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    previewRefreshPending = true;
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([this, alive]() {
+        if (alive.expired()) return;
+        previewRefreshPending = false;
+        if (!previewActive || !document) return;
+        auto shownOn = previewLayer.lock();
+        if (shownOn && shownOn == document->GetActiveLayer() && previewDocument.lock() == document &&
+            PixelHash(*shownOn) == previewShownHash) return;   // nothing under the preview changed
+        ShowPreview(previewOp);
+    });
 }
 
 void UltraPaintWindow::ShowPreview(const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op) {
     if (!previewActive || !document) return;
-    auto layer = document->GetLayer(previewLayerIndex);
+    previewOp = op;
+    auto layer = SyncPreviewTarget();
     if (!layer || !previewOriginal) return;
     if (!op) {   // preview off: show the original
         layer->CopyFrom(*previewOriginal, 0, 0);
+        previewShownHash = PixelHash(*layer);
         document->NotifyChanged(layer->GetRect());
         return;
     }
@@ -2631,31 +3058,39 @@ void UltraPaintWindow::ShowPreview(const std::function<PixelFX::PFXImage(const P
                 for (int c = 0; c < 4; ++c) dp[c] = static_cast<uint8_t>(dp[c] + ((sp[c] - dp[c]) * cov + 127) / 255);
             }
         }
-        document->NotifyChanged(layer->GetRect());
     } catch (const std::exception& e) {
+        layer->CopyFrom(*previewOriginal, 0, 0);
         if (statusHint) statusHint->SetText(std::string("Filter failed: ") + e.what());
     }
+    previewShownHash = PixelHash(*layer);
+    document->NotifyChanged(layer->GetRect());
 }
 
 void UltraPaintWindow::EndPreview(bool commit, const std::string& label,
                                   const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op) {
-    if (!previewActive || !document) return;
+    if (!previewActive) return;
+    // Whatever the image became while the dialog was open is what it applies to.
+    auto layer = document ? SyncPreviewTarget() : nullptr;
     previewActive = false;
-    auto layer = document->GetLayer(previewLayerIndex);
     if (layer && previewOriginal) {
         // put the original back silently, then apply through the document so
         // the change is one undo entry
         layer->CopyFrom(*previewOriginal, 0, 0);
         document->InvalidateComposite();
         if (commit && op) {
-            if (!document->ApplyFilterToLayer(label, previewLayerIndex, op) && statusHint)
+            if (!document->ApplyFilterToLayer(label, LayerIndexOf(*document, layer), op) && statusHint)
                 statusHint->SetText(label + " could not be applied");
         } else {
             document->NotifyChanged(layer->GetRect());
         }
+    } else if (commit && op && statusHint) {
+        statusHint->SetText(label + " could not be applied");
     }
     previewOriginal.reset();
-    previewLayerIndex = -1;
+    previewLayer.reset();
+    previewDocument.reset();
+    previewOp = nullptr;
+    previewSourceChanged = nullptr;
 }
 #endif
 
@@ -2698,28 +3133,32 @@ void UltraPaintWindow::CmdCurves() {
 #ifdef HAS_LIBVIPS
     if (!document) return;
     auto layer = document->GetActiveLayer();
-    if (!layer || layer->locked) return;
+    if (!layer || layer->locked) { if (statusHint) statusHint->SetText("The active layer is locked"); return; }
     if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
-    BeginPreview();
     auto dlg = std::make_shared<UltraCanvasCurvesDialog>(ToneCurveSet());
-    // histogram backdrop from the layer
-    {
+    // histogram backdrop from the layer - again whenever the layer the
+    // curves work on changes while the dialog is open
+    std::weak_ptr<UltraCanvasCurvesDialog> weakDlg = dlg;
+    previewSourceChanged = [weakDlg](const UCRasterLayer& source) {
+        auto curves = weakDlg.lock();
+        if (!curves) return;
         std::vector<uint32_t> bins[4];
         for (auto& b : bins) b.assign(256, 0);
-        for (int y = 0; y < layer->GetHeight(); ++y) {
-            const uint8_t* row = layer->Row(y);
-            for (int x = 0; x < layer->GetWidth(); ++x) {
+        for (int y = 0; y < source.GetHeight(); ++y) {
+            const uint8_t* row = source.Row(y);
+            for (int x = 0; x < source.GetWidth(); ++x) {
                 const uint8_t* p = row + static_cast<size_t>(x) * 4;
                 if (!p[3]) continue;
                 ++bins[1][p[0]]; ++bins[2][p[1]]; ++bins[3][p[2]];
                 ++bins[0][(p[0] + p[1] + p[2]) / 3];
             }
         }
-        dlg->SetHistogram(ToneCurveChannel::RGB, bins[0]);
-        dlg->SetHistogram(ToneCurveChannel::Red, bins[1]);
-        dlg->SetHistogram(ToneCurveChannel::Green, bins[2]);
-        dlg->SetHistogram(ToneCurveChannel::Blue, bins[3]);
-    }
+        curves->SetHistogram(ToneCurveChannel::RGB, bins[0]);
+        curves->SetHistogram(ToneCurveChannel::Red, bins[1]);
+        curves->SetHistogram(ToneCurveChannel::Green, bins[2]);
+        curves->SetHistogram(ToneCurveChannel::Blue, bins[3]);
+    };
+    BeginPreview();
     auto opFor = [](const ToneCurveSet& set) {
         return [set](const PixelFX::PFXImage& img) -> PixelFX::PFXImage {
             if (set.IsIdentity()) return img;

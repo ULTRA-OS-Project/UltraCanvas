@@ -7,8 +7,11 @@ its OAuth client setup): [`Docs/UltraMail/AccountSetup.md`](../../Docs/UltraMail
 
 This app versions itself: [`Docs/UltraMail/CHANGELOG.md`](../../Docs/UltraMail/CHANGELOG.md).
 
-UltraMail is built on **UltraCanvas** (UI) and the **UltraNet** (SMTP/IMAP/POP3)
-and **UltraDatabase** (local store) modules.
+UltraMail is built on **UltraCanvas** (UI) and the **UltraNet** (SMTP/IMAP/JMAP/POP3)
+and **UltraDatabase** (local store) modules. An account's incoming server is
+IMAP or JMAP - found by discovery (SRV `_jmap._tcp`, `/.well-known/jmap`)
+or chosen on its settings page; both drive the same engine, and a JMAP
+account without an SMTP server sends through JMAP.
 
 > **Status (Phase 1–2, in progress):** the headless **engine** is implemented
 > and tested — LocalStore, MIME codec + attachment cache, contact store,
@@ -77,7 +80,8 @@ Apps/UltraMail/
                                   (Family / Friends / Work / Leisure / Services)
     UltraMailContactStore.{h,cpp} the address book on UltraDatabase: sectioned
                                   contacts, emails/phones, counts, search
-    UltraMailSyncEngine.{h,cpp}   drives an IMailboxProtocolPlugin (IMAP) into
+    UltraMailSyncEngine.{h,cpp}   drives an IMailboxProtocolPlugin (IMAP or
+                                  JMAP, by the account's protocol) into
                                   LocalStore: folders, incremental envelopes,
                                   .eml body cache, two-sided flag changes;
                                   RefreshFolder also reconciles with the

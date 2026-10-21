@@ -18,6 +18,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasLanguageDetect.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasMenu.h"
@@ -26,6 +27,7 @@
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSwitch.h"
+#include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTooltipManager.h"
 
@@ -195,6 +197,22 @@ std::vector<std::string> CopiedPaths(const ClipboardSnapshot& content, bool& cut
         start = end + 1;
     }
     return paths;
+}
+
+// The extension a file of `language` (a DetectLanguageFromContent name) is
+// saved with - the first the syntax highlighter registers for it, "py" for
+// Python, "md" for Markdown; "" for none.
+std::string LanguageFileExtension(const std::string& language) {
+    if (language.empty()) return "";
+    static const SyntaxTokenizer tokenizer;
+    for (const auto& [name, extensions] : tokenizer.GetLanguageExtensions()) {
+        if (name != language || extensions.empty()) continue;
+        std::string extension = extensions.front();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return extension;
+    }
+    return "";
 }
 
 } // namespace
@@ -778,7 +796,11 @@ void UltraClipboardWindow::SaveEntryAs(int64_t id) {
 // (FileLoader's document writer) or its plain text.
 void UltraClipboardWindow::SaveTextAs(const ClipboardHistoryEntry& entry, const ClipboardSnapshot& content) {
     const bool rich = entry.kind == ClipboardEntryKind::RichText && content.Find(ClipboardMime::Html);
-    const std::string extension = rich ? "html" : "txt";
+    // Code is offered as the file of its language - a query as .sql, a
+    // script as .py - and a Markdown note as .md; plain text stays .txt.
+    const std::string language = rich ? std::string() : DetectLanguageFromContent(content.GetText());
+    const std::string languageExtension = LanguageFileExtension(language);
+    const std::string extension = rich ? "html" : !languageExtension.empty() ? languageExtension : "txt";
     FileDialogOptions opts;
     opts.SetTitle("Save as")
         .SetParentWindow(window_.get())
@@ -790,6 +812,7 @@ void UltraClipboardWindow::SaveTextAs(const ClipboardHistoryEntry& entry, const 
         opts.AddFilter("HTML document", std::vector<std::string>{"html", "htm"});
         UltraCanvasFileLoader::AddTextDocumentSaveTypes(opts);
     }
+    if (!languageExtension.empty()) opts.AddFilter(language + " file", languageExtension);
     opts.AddFilter("Plain text", "txt");
     opts.AddFilter("All files", std::vector<std::string>{"*"});
     const int64_t id = entry.id;

@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.7.0 - the inline config for an empty fontconfig carries the generic aliases
+//                 (GenerateFontAliasConfig), and the emoji setting is applied (ApplyEmojiSettings)
 // Version: 1.6.0 - every thread's Pango font map reads fontconfig (PANGOCAIRO_BACKEND=fc
 //                  once the main thread's FC map exists), and the start's symbol
 //                  fonts include Cambria Math for the mathematical symbols
@@ -15,6 +17,7 @@
 #include <winsock2.h>
 
 #include "../../include/UltraCanvasApplication.h"
+#include "../../include/UltraCanvasEmojiSettings.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
 #include "UltraCanvasWindowsDiagnostics.h"
@@ -1060,6 +1063,16 @@ namespace UltraCanvas {
                     debugOutput << "UltraCanvas: failed to add Windows system "
                                    "font dirs to fontconfig" << std::endl;
                 }
+                // The generic aliases too: without them "sans-serif" (Pango's
+                // default), "monospace" and "emoji" match every font equally
+                // badly, and text falls to whichever font fontconfig lists first.
+                const std::string aliases = GenerateFontAliasConfig();
+                if (!FcConfigParseAndLoadFromMemory(cfg,
+                        reinterpret_cast<const FcChar8*>(aliases.c_str()),
+                        FcFalse)) {
+                    debugOutput << "UltraCanvas: failed to add the generic font "
+                                   "aliases to fontconfig" << std::endl;
+                }
             }
         }
 
@@ -1103,6 +1116,11 @@ namespace UltraCanvas {
                 }
             }
         }
+
+        // The emoji font the emoji setting picks (UOS-Settings) and the rule
+        // that draws emoji in it; the full font set gets them again when it
+        // replaces this one (SwitchToSystemFonts).
+        if (cfg) ApplyEmojiSettings();
 
         if (cfg) {
             // Materialise the FontSet so FcMatch (and therefore Pango) can

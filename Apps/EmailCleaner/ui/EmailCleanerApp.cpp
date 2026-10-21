@@ -221,7 +221,7 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
 
         MailAccountAccess access;
         access.accountId    = account.accountId;
-        access.serverUrl    = UltraMail::AutoDiscovery::ImapServerUrl(discovered.imap);
+        access.serverUrl    = UltraMail::AutoDiscovery::IncomingServerUrl(discovered.imap);
         access.ownerAddress = account.email;
         const std::string username =
             discovered.imap.username.empty() ? account.email : discovered.imap.username;
@@ -278,7 +278,7 @@ void EmailCleanerApp::RegisterOwnAccount(const UltraMail::Account& account,
     if (!mailBackend_) return;
     MailAccountAccess access;
     access.accountId    = account.accountId;
-    access.serverUrl    = UltraMail::AutoDiscovery::ImapServerUrl(account.imap);
+    access.serverUrl    = UltraMail::AutoDiscovery::IncomingServerUrl(account.imap);
     access.ownerAddress = account.email;
     access.options      = SessionOptionsFor(account, password);
     mailBackend_->SetAccount(access);
@@ -714,7 +714,7 @@ void EmailCleanerApp::AddOwnAccount(const NewAccountRequest& request,
         UltraNetCredentials credentials;
         credentials.username = account.imap.username;
         credentials.password = password;
-        const UltraNetResult signIn = UltraMail::LoginCheck::Imap(*mailbox, account.imap,
+        const UltraNetResult signIn = UltraMail::LoginCheck::Incoming(*mailbox, account.imap,
                                                                   credentials);
         OnUiThread([this, signIn, account, password, done]() {
             if (!signIn) {

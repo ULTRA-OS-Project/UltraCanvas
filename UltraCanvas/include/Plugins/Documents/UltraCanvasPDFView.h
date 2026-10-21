@@ -4,8 +4,10 @@
 // wheel (about the pointer) and with the keyboard (+ / - / 0 / 1 / W), and the
 // thumbnail strip sizes its pages either relative to the view's width or at a
 // fixed pixel width (SetThumbnailWidthMode).
+// Version: 1.10.0 - GetLastOpenError: LoadFromPath says when a document needs its
+//                   password, or the one given is not right
 // Version: 1.9.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_VIEW_H
@@ -85,6 +87,11 @@ public:
     // instead of being held in RAM, and does keep a handle.
     bool LoadFromPath(const std::string& path, const std::string& password = "");
     bool HasDocument() const { return doc_ && doc_->IsOpen(); }
+    // Why the last LoadFromPath() failed: NeedsPassword for a protected
+    // document opened without a password, WrongPassword when the one given is
+    // not right (ask for it, again), Failed otherwise; NoError once one opened.
+    // A failed load leaves the document that was shown in place.
+    PDFOpenError GetLastOpenError() const { return lastOpenError_; }
 
     // The size limit above which LoadFromPath() streams instead of reading the
     // document into memory (default 256 MiB). Set 0 to always stream.
@@ -352,6 +359,7 @@ private:
     // Documents up to this size are read into memory by LoadFromPath() so that
     // nothing holds the file open while it is displayed; bigger ones stream.
     size_t maxInMemoryBytes_ = 256u * 1024u * 1024u;
+    PDFOpenError lastOpenError_ = PDFOpenError::NoError;
     PDFViewStyle style_;
 
     int      currentPage_ = 1;

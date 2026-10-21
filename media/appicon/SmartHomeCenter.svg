@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="256" height="256" viewBox="0 0 256 256">
+  <title>SmartHomeCenter</title>
+  <desc>A house with a lit window and a signal arc: the home control mark.</desc>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="#4560E6"/>
+  <path d="M128 50 L214 120 L196 120 L196 202 L60 202 L60 120 L42 120 Z" fill="#ffffff"/>
+  <rect x="104" y="128" width="48" height="48" rx="10" fill="#FFC23D"/>
+  <path d="M164 70 a40 40 0 0 1 32 22" fill="none" stroke="#FFD66B" stroke-width="10" stroke-linecap="round"/>
+  <path d="M168 44 a68 68 0 0 1 54 38" fill="none" stroke="#FFD66B" stroke-width="10" stroke-linecap="round" opacity="0.7"/>
+</svg>

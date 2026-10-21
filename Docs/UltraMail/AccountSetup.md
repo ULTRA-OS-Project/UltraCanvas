@@ -391,12 +391,13 @@ again to retry.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
-- **IMAP / SMTP plug-ins.** Mail is fetched and sent through UltraNet's
-  `ultranet_imap` and `ultranet_smtp` plug-ins. UltraMail looks for them in
-  `Plugins/UltraNet` next to the executable (or up to two levels above it,
-  then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. If they
-  are missing, Update and the first sync of a new account say so and name the
-  folder that was searched.
+- **IMAP / JMAP / SMTP plug-ins.** Mail is fetched through UltraNet's
+  `ultranet_imap` plug-in - or `ultranet_jmap` for an account whose incoming
+  server is set to JMAP - and sent through `ultranet_smtp`. UltraMail looks
+  for them in `Plugins/UltraNet` next to the executable (or up to two levels
+  above it, then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides.
+  If the one an account needs is missing, Update and the first sync of a new
+  account say so and name the folder that was searched.
 - **Changing the sign-in of an account.** Add the account again with the
   same address: the existing entry is updated, and whatever you provide this
   time (a password, an app password, or the browser sign-in) replaces what
@@ -420,12 +421,14 @@ reports "settings found for <domain>". The lookup runs off the UI thread
 behind a wait dialog and takes a few seconds at most.
 
 **Manual settings page.** When nothing is published, the page opens with
-*Incoming (IMAP)* and *Outgoing (SMTP)* rows — host, port, security
+a *Protocol* row (IMAP or JMAP, see below), *Incoming (IMAP)* and
+*Outgoing (SMTP)* rows — host, port, security
 (SSL/TLS, STARTTLS, None) — and the *Username*, prefilled with
 `imap.<domain>` 993 SSL/TLS, `smtp.<domain>` 587 STARTTLS and the full
 address. Correct them from your provider's "mail program settings" or
 "IMAP/SMTP" help page and **Save**. Save first **checks the sign-in**: UltraMail opens
-one IMAP session to the incoming server with the entered servers and the
+one session to the incoming server (IMAP, or JMAP's session resource) with
+the entered servers and the
 password (or the stored sign-in of an existing account), which proves the
 host, the port, the security mode and the credentials in one go. While it
 runs the page says "Checking the sign-in at …"; on success the page closes,
@@ -436,6 +439,50 @@ offers **Save anyway** for a server that is down right now. The outgoing
 (SMTP) server is not checked — the plug-in has no sign-in-only operation —
 so a wrong SMTP entry shows up on the first send. The page also validates
 in place (a host must be given, ports are 1–65535).
+
+**JMAP instead of IMAP.** The *Protocol* row at the top of the page chooses
+what the incoming server speaks: **IMAP** (every account from before the
+choice existed, and most providers) or **JMAP**, the JSON-over-HTTPS mail
+protocol (RFC 8620/8621) of Fastmail, Stalwart, Cyrus and Apache James.
+Choosing JMAP renames the incoming rows to *Incoming (JMAP)* and *Sign-in
+(JMAP)*, sets the port to **443** (a port that was IMAP's usual 993 or 143;
+an unusual one you typed stays), fixes the security to SSL/TLS - a JMAP
+server is HTTPS - and leaves *Automatic*, *Normal password* and *OAuth2* as
+the sign-in methods, the ones JMAP has. Enter the server as its host name
+only - `api.fastmail.com`, or the mail host of a Stalwart or Cyrus server;
+UltraMail asks it for the JMAP session at `/.well-known/jmap`. The sign-in
+check, every later sync, marking read, moving, deleting (to the Trash
+mailbox) and the copies in Drafts and Sent then go through the JMAP plug-in.
+The *Outgoing (SMTP)* server is **optional** for a JMAP account: left
+empty, mail is sent through the JMAP server too (JMAP submission, as the
+account's own identity; the server files the sent message in Sent); an
+SMTP server entered next to it is used to send instead. Switching an
+existing account between the protocols drops the mail held for it and
+fetches it anew: the same mailbox read over the other protocol numbers its
+messages differently. The choice is stored with the other server settings
+of the account and shown again on its Settings page.
+
+**JMAP is found by itself.** Before the autoconfig documents (which only
+describe IMAP), the lookup asks the domain for its JMAP server (RFC 8620
+§2.2): the DNS SRV record `_jmap._tcp.<domain>` names it, else the domain
+itself is asked at `https://<domain>/.well-known/jmap`; a server that
+answers with its session resource, or asks for a sign-in first (401, as
+Fastmail and Stalwart do), is taken - as the host the answer came from,
+after redirects (`fastmail.com` leads to `api.fastmail.com`). The wizard
+then reports *a JMAP server was found for <domain>*, and the account is
+added with that JMAP server as its incoming server, the full address as
+its username and no SMTP server: it sends through JMAP. The provider table
+comes first, so Gmail, Outlook and the other known providers are never
+probed.
+
+**New mail arrives at once.** A JMAP account is watched: UltraMail holds
+the server's event source open and checks the account the moment the
+server reports a change to its mail or folders, so new mail shows without
+waiting for the interval in *Settings > Mail > Connection* - which still
+runs, as the safety net for a change the stream missed. The watch opens
+once the account's sign-in is usable, is reopened a minute after the
+server or the network ended it, and `trace.log` in the data folder says
+when it opened, ended and fired.
 
 **Authentication method.** Under the server rows, *Sign-in (IMAP)* and
 *Sign-in (SMTP)* choose how each server is signed in to — the same choice
@@ -479,7 +526,9 @@ Gmail, Outlook and Yahoo.
 | *New mail could not be fetched … authentication failed* | iCloud: you typed the account password; use an app-specific password (section 2). Gmail, Outlook and Yahoo take no password: open the account's Settings and use *Sign in with …*. |
 | *The sign-in service is turned off in this build and no OAuth client is configured* | The build was configured with `-DULTRAMAIL_OAUTH_SERVICE_URL=""`, or `off` was set. Name a service (`[service] url =` in `oauth.ini`, or `ULTRAMAIL_OAUTH_SERVICE_URL`) or a client of your own (section 3). |
 | *The sign-in service did not answer … The sign-in service at … could not be reached* (and the browser never opened) | `oauth-callback.ultraos.eu` could not be reached from this computer: the name does not resolve, a proxy blocks it, or the service is down. Open `https://oauth-callback.ultraos.eu/healthz` in a browser; `trace.log` in the data folder says which way the sign-in went (*through the sign-in service …* or *directly, with this installation's own client*). An installation behind a firewall can run its own service (section 3). |
-| *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
+| *The IMAP plug-in was not found* / *The JMAP plug-in was not found* | Build the UltraNet IMAP (or JMAP) plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. An account whose *Protocol* is JMAP needs `ultranet_jmap`, every other one `ultranet_imap`. |
+| *The JMAP plug-in is not loaded, so UltraMail cannot reach a mail server* on Send | The account sends through its JMAP server (no SMTP server is entered) and `ultranet_jmap` is missing: see the row above, or enter an outgoing (SMTP) server on the account's Settings page. |
+| *The server refused the submission: forbiddenFrom* on Send from a JMAP account | The JMAP server has no sending identity for the From address. Use the address the account signs in with, or add the identity (an alias) at the provider. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
 | *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |

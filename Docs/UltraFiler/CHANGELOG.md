@@ -1,3 +1,105 @@
+#### 2026-10-20 *1.87.0*
+- **The preview pane shows PDFs in the PDF view, and unlocks protected
+  files.** A PDF in the preview pane had been a picture of its first page; it
+  is the PDF view again, pages and all, and PDFs on a remote drive are still
+  fetched to preview them. A password-protected PDF or UltraCanvas layered
+  image shows an **Unlock** button in the pane's info line that asks for the
+  password; while the folder is browsed it is kept, so selecting the file
+  again - or another one there with the same password - previews it without
+  asking. The passwords are forgotten - and an unlocked preview locked again -
+  when the screen locks or UltraFiler has been left alone for ten minutes,
+  and an unlocked preview says *unlocked* beside *PDF* in the info line
+  (framework changelog, pending entries `media-viewer-unlock` and
+  `session-lock`).
+- **Settings > Handling > Protected files.** How long UltraFiler may be left
+  alone before the preview forgets those passwords: a slider from *Never*
+  to 120 minutes, 10 by default. The screen lock forgets them whatever is
+  set.
+
+#### 2026-10-20 *1.86.0*
+- **Changes on an FTP server that takes one connection at a time work.** A
+  delete, a rename, a new folder - and the rename that puts an upload in
+  place - each log in on an FTP connection of their own, and a server that
+  allows one connection per address (vsftpd's `max_per_ip=1`, ProFTPD's
+  `MaxClientsPerHost 1`) turned that one away with *421 There are too many
+  connections from your internet address.* while the drive kept its listing
+  connection open: the delete failed, and an upload stayed under its hidden
+  part name until the next run. Now the connection kept open is closed and
+  the change sent again - waiting a moment if the server is still counting
+  the closed one - and the connection log says so. UltraNet does this
+  (framework changelog: `ftp-change-one-connection-server`).
+- **A folder the tree is reading for you is named on the status bar.**
+  Expanding a drive's folder in the folder tree that was already being read
+  ahead showed the thin bar on its row and nothing on the status bar, which
+  went on showing the item count: a folder read ahead reports nothing. Now,
+  until its subfolders are in, the status bar says what it waits for - *Reading
+  /photos from Studio FTP (ftp://files.example.org) - Retrieving directory
+  listing... - 3 s*, or *Waiting for Studio FTP - 1 request ahead* - after a
+  transfer's progress when one is running.
+
+#### 2026-10-20 *1.85.0*
+- **A drive's folder being opened or updated no longer covers the folder
+  display.** Opening a folder on an FTP, SFTP or cloud drive put a turning
+  ring, *Loading folder* and a line about the connection in the middle of
+  the display, and every change to the folder - an upload, a rename, a
+  delete - threw its listing away, so the files vanished behind that notice
+  until it had been read again: during a batch upload, for the whole batch.
+  Now the display keeps what it showed and marks the wait with a thin blue
+  bar sliding along its foot; the words go to the status bar - *Connecting
+  to Studio FTP (ftp://files.example.org) and reading /photos - 3 s*,
+  *Waiting for Studio FTP - 1 request ahead*, or after the item count,
+  *updating: ...* - and the display's info line says *Loading folder...*
+  rather than *0 items* until the first listing is in. After a change the
+  folder is read again next, ahead of transfers still waiting, so each file
+  of a batch upload appears as it lands; so does a folder opened during a
+  batch, which no longer waits for the whole of it. The filer widget does the
+  drawing (framework changelog: `filer-remote-loading-bar`).
+- **The folder tree marks a drive's folder being read the same way.**
+  Expanding a folder on a remote drive before its subfolders were known put a
+  row reading *...* under it until they came; now there is no such row, and
+  the folder's own row slides the same thin blue bar along its foot until
+  they are in - also while a folder whose rows are shown is read again after
+  a change. The tree view does the drawing (framework changelog:
+  `treeview-loading-rows`).
+- **An upload's last moment says *Finishing the upload...*.** Once every byte
+  of an upload was sent, the status bar stood at *146 KB of 146 KB* for as
+  long as the server took to take them in - on a slow line, many seconds -
+  and a folder waiting behind it could show libcurl's own note, *We are
+  completely uploaded and fine*, described as reading that folder. The count
+  is now followed by *Finishing the upload...* (then the server's answer),
+  libcurl's notes are put in plain words on the status bar (the connection
+  log keeps them as they were), and a folder's wait says *Reading* only
+  while the folder itself is being read.
+- **A drop onto a remote folder is asked about at once, not after the
+  upload in progress.** Before an upload replaces anything, the folder is
+  listed afresh to see which names are taken - and that listing waited in
+  the drive's one queue behind whatever was there, so a file dropped while a
+  large upload was running was asked about only once that upload had ended,
+  minutes later. The listing now goes ahead of everything queued, and while
+  an upload or download is running it is fetched beside it on a connection
+  of its own: the question appears in about a second, the transfer carrying
+  on. A server that takes only one connection at a time refuses the second
+  one; the listing then waits behind the transfer as before (the connection
+  log says so), and the question comes when that ends. A file still on its
+  way to the folder - uploading, or waiting its turn - counts as there: a
+  listing read meanwhile cannot show it yet, so dropping a file of the same
+  name again asks rather than replacing it later, unasked. A listing that
+  the upload under way changed while it was read is read again.
+- **An upload that was complete when the connection went is put in place,
+  not thrown away.** An upload to an FTP or SFTP drive goes to a hidden part
+  name and is renamed once the last byte is in; a connection that died in
+  between left the whole file under the part name, and the next use of the
+  drive deleted it as an unfinished upload. Now the error says *the upload
+  is complete, but the server stopped answering before it could be renamed
+  to "report.pdf" - it is given that name the next time this account
+  reaches the server*, and that is what happens: the next request to the
+  drive, in this run or a later one, renames it into place. If a file has
+  that name by then, the upload replaces it when it finished within the
+  hour - it was replacing that file - and is otherwise kept beside it as
+  *report (2).pdf*, so a file written there since is never lost. Only a
+  server that refuses the rename still has it removed. UltraCloud does this
+  (framework changelog: `ftp-upload-cut-off-before-rename`).
+
 #### 2026-10-20 *1.84.0*
 - **A preview copy that was called off continues where it stopped.** A
   picture or a model being fetched from a drive for the preview pane gives way

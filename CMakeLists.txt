@@ -473,6 +473,14 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
 endif()
 
+# And for the session lock (UltraCanvasSessionLock: WTS session notifications /
+# logind and the screensaver over D-Bus / the loginwindow's distributed
+# notifications). Without the define the core file compiles a backend that
+# never starts: nothing is reported, and a listener keeps its own idle timeout.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
+endif()
+
 # A build machine's private OAuth settings (the sign-in service UltraNet is
 # built with), kept out of the repository - see cmake/oauth.local.cmake.example.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
@@ -515,6 +523,14 @@ if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLis
     if(TARGET UltraVault)
         set(ULTRAAI_USE_ULTRAVAULT ON CACHE BOOL
             "Enable UltraVault credential lookup")
+    endif()
+    # The module's own suite (mock adapters, routing, the cloud adapters
+    # over scripted transports, the local runtime against a fake engine)
+    # registers with CTest when asked, like every other suite.
+    option(ULTRACANVAS_BUILD_ULTRAAI_TESTS "Build the UltraAI test suite" OFF)
+    if(ULTRACANVAS_BUILD_ULTRAAI_TESTS)
+        enable_testing()   # must be the top-level call, as for every other suite
+        set(ULTRAAI_BUILD_TESTS ON CACHE BOOL "Build UltraAI unit tests" FORCE)
     endif()
     add_subdirectory(UltraAI)
 endif()
@@ -714,6 +730,18 @@ if(BUILD_DEVICEEXPLORER)
     add_subdirectory(Apps/DeviceExplorer)
 endif()
 
+# ===== SMARTHOME CENTER =====
+# The home control window on the SmartHome module: rooms, devices, scenes,
+# energy and activity. With no radio enabled it opens the module's simulated
+# demo home. Needs the SmartHome module (BUILD_SMARTHOME, above) and its
+# SmartHomeUI target's UI library.
+option(BUILD_SMARTHOME_CENTER "Build the SmartHome Center application" ON)
+if(BUILD_SMARTHOME_CENTER AND BUILD_SMARTHOME)
+    message(STATUS "")
+    message(STATUS "── Building SmartHome Center ──")
+    add_subdirectory(Apps/SmartHomeCenter)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -791,6 +819,11 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonLines.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonBars.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonFinance.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonPolar.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp
             Apps/DemoApp/UltraCanvasFunnelChartExamples.cpp
@@ -1181,6 +1214,16 @@ option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS"
 if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
+endif()
+
+# ===== EMOJI TESTS WITHOUT THE FULL SUITE =====
+# EmojiSettingsTest alone, for builds that leave BUILD_TESTS off (the Windows
+# CI rows): the bundled emoji fonts and the emoji setting on the platform
+# where emoji drew as boxes of hex digits.
+option(ULTRACANVAS_BUILD_EMOJI_TESTS "Build EmojiSettingsTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_EMOJI_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/EmojiTests.cmake)
 endif()
 
 # ===== VIDEOFX TESTS WITHOUT THE FULL SUITE =====
@@ -2480,8 +2523,8 @@ endif()
 #
 # The apps whose command-line modes print into the prompt they were typed at
 # - DeviceExplorer (--list), UltraCleaner (--scan), UltraNetMonitor (--list),
-# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print) and
-# UltraDesktop (--windows) - are GUI programs as well, each with a console
+# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print),
+# UltraDesktop (--windows) and SmartHomeCenter (--list) - are GUI programs as well, each with a console
 # companion beside it (ultracanvas_windows_console_companion()): <App>.com,
 # which cmd and PowerShell run for the bare name, starts the .exe, waits for
 # it and returns its exit code. So the prompt waits as for a console program,
@@ -2500,7 +2543,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     unset(_uc_gui_app)
     foreach(_uc_console_app
             DeviceExplorer UltraCleaner UltraNetMonitor UltraCanvasStart UltraWeb
-            UltraClaude UltraDesktop)
+            UltraClaude UltraDesktop SmartHomeCenter)
         if(TARGET ${_uc_console_app})
             ultracanvas_windows_console_companion(${_uc_console_app})
         endif()

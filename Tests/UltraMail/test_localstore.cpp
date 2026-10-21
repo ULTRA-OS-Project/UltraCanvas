@@ -3,6 +3,7 @@
 // schema/migrations, accounts, folders, message upserts, the needs-answer
 // eligibility rules, flag updates, and the per-account status rollup that
 // drives the info-tile bar.
+// Version: 0.5.0 - the protocol of the incoming server (schema 12)
 // Version: 0.4.0 - the verified sender domain with the verdict; ListStaleVerdicts
 // Version: 0.3.0 - WeighSentRecipients
 // Version: 0.2.0 - the needs-answer rules (age, people written to)
@@ -79,6 +80,7 @@ TEST(accounts_store_their_server_settings) {
     REQUIRE_EQ(b.providerName, std::string("Example Org"));
     REQUIRE(b.imap.auth == UltraNetMailAuth::Any);   // never set: Automatic
     REQUIRE(b.smtp.auth == UltraNetMailAuth::Any);
+    REQUIRE(b.imap.protocol == MailProtocol::Imap);  // never set: IMAP
 
     a.imap.auth = UltraNetMailAuth::Password;
     a.smtp.auth = UltraNetMailAuth::None;
@@ -86,6 +88,21 @@ TEST(accounts_store_their_server_settings) {
     REQUIRE(s.ListAccounts(accs).success);
     REQUIRE(accs[0].imap.auth == UltraNetMailAuth::Password);
     REQUIRE(accs[0].smtp.auth == UltraNetMailAuth::None);
+
+    // The incoming server switched to JMAP: the protocol is stored with the
+    // other server settings and comes back with them.
+    a.imap.protocol = MailProtocol::Jmap;
+    a.imap.host = "api.example.org"; a.imap.port = 443;
+    REQUIRE(s.UpsertAccount(a).success);
+    REQUIRE(s.ListAccounts(accs).success);
+    REQUIRE(accs[0].imap.protocol == MailProtocol::Jmap);
+    REQUIRE_EQ(accs[0].imap.host, std::string("api.example.org"));
+    REQUIRE_EQ(accs[0].imap.port, 443);
+    REQUIRE(accs[0].HasServers());
+    a.imap.protocol = MailProtocol::Imap;
+    REQUIRE(s.UpsertAccount(a).success);
+    REQUIRE(s.ListAccounts(accs).success);
+    REQUIRE(accs[0].imap.protocol == MailProtocol::Imap);
 }
 
 namespace {

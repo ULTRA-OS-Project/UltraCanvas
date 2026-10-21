@@ -1,3 +1,57 @@
+#### 2026-10-21 *0.2.28*
+- **An open adjustment follows the image it works on.** An adjustment or
+  filter dialog (Levels, Curves, Colour to Alpha, Blur and the rest) took a
+  copy of the layer when it opened and put that copy back on every change in
+  the dialog: an image pasted while it was open - as a new layer or as a new
+  image - was replaced by the picture from before as soon as a slider moved,
+  and *OK* applied the adjustment to the old pixels. The preview now works on
+  the active layer as it is: a paste moves it to the pasted layer (the layer
+  it leaves gets its own pixels back), *Paste as New Image* or opening an
+  image moves it to the new picture, and a stroke or an undo on the layer is
+  kept and adjusted rather than undone. It refreshes on its own as soon as
+  the image changes, Curves redraws its histogram for the new pixels, and on
+  a locked or text layer the preview waits and says why.
+- **Curves says why on a locked layer.** *Adjust > Curves...* on a locked
+  layer did nothing at all; it now says the active layer is locked, as every
+  other adjustment does.
+#### 2026-10-20 *0.2.27*
+- **Password-protected images.** *File > Password Protection...* gives the
+  image a password; saved as an UltraCanvas layered image (`.ucd`) it is then
+  encrypted - an Argon2id key, every section sealed with XChaCha20-Poly1305 -
+  and opens only with that password, which cannot be recovered. *Hide the
+  preview too* leaves the thumbnail out as well. The dialog also changes the
+  password or removes the protection. Opening a protected `.ucd` - from Open,
+  a drop or the command line - asks for its password, again after a wrong
+  one, and *Save* keeps it protected; *Save* or *Save As* to another format
+  says first that the file goes without the protection (framework
+  changelog, pending entry `ucd-password-protection`).
+- **A password-protected PDF imports.** Opening or dropping one only ever
+  failed: the PDF reader UltraPaint draws pages with had no way to be given
+  a password. It now asks for the password first - again when it is not
+  right - then for the raster size as for any drawing, and renders the page
+  with it (framework changelog, pending entry `vector-raster-pdf-password`).
+- **Every protected file is asked for, not only the first.** Of several
+  files dropped together, only the first could ask for a password; a
+  protected one among the rest was left out with a message. Each now asks in
+  turn - the next waiting for the answer, once the one before is on the
+  canvas - and Cancel leaves out just that file. A protected file copied in a
+  file manager and pasted (*Paste as New Layer*, *Paste as New Image*) asks
+  for its password too, where it used to stop at "needs its password"; a
+  `.ucd` pasted as a new image keeps its protection, as when it is opened.
+- **A password is typed once for a drop, not once per file.** Files dropped
+  together often share a password, or a few: every password given in the
+  drop (up to eight) is tried on the next protected file - the one that last
+  opened a file first - which then comes in without a question, so a drop
+  that alternates between two passwords asks for each once. Only a file none
+  of them opens asks, saying so. They are held zeroed-on-free and forgotten
+  when the drop has been read - or as soon as the screen locks, so a drop
+  left half-answered while you step away asks again for what comes after
+  (framework changelog, pending entry `session-lock`).
+- **Paste as New Image says what it pasted.** It left the previous status
+  message showing; it now reads *Pasted photo.png as a new image, 800 x 600
+  pixels* (or *Pasted as a new image* for a copied picture), as Paste as New
+  Layer does.
+
 #### 2026-10-19 *0.2.26*
 - **Colour palettes under the picker.** The row of swatches in the Colour
   card is a palette manager now (the framework's

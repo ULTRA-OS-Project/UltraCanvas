@@ -1,12 +1,13 @@
 // Apps/UltraPaint/UltraPaintDialogs.h
 // UltraPaint's small parameter windows: New Image (size, background),
-// Scale Image, Canvas Size, layer properties, Colour to Alpha and the
-// import question a dropped file asks. Each is an UltraCanvasWindow built
+// Scale Image, Canvas Size, layer properties, Colour to Alpha, the
+// import question a dropped file asks and the password a *.ucd is saved with. Each is an UltraCanvasWindow built
 // out of framework elements (spinners, dropdowns, text input, colour picker,
 // buttons) and reports through callbacks.
+// Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
 // Version: 1.3.0 - the Text tool's entry is gone: text is typed on the canvas
 // Version: 1.2.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -85,6 +86,28 @@ private:
     std::shared_ptr<UltraCanvasCheckbox> visibleBox, lockedBox;
 };
 
+// ===== PASSWORD PROTECTION =====
+// File > Password Protection: the password the image is encrypted with when
+// it is saved as an UltraCanvas layered image (*.ucd).
+struct UltraPaintPasswordResult {
+    bool remove = false;          // take the protection off
+    std::string password;         // otherwise: the new password
+    bool hidePreview = false;     // and leave the thumbnail out
+};
+
+class UltraPaintPasswordDialog : public UltraCanvasWindow {
+public:
+    // `protectedNow`: the image has a password - the dialog offers to remove
+    // it. `available`: this build can encrypt (UCD::EncryptionAvailable()).
+    UltraPaintPasswordDialog(bool protectedNow, bool hidePreview, bool available);
+    std::function<void(const UltraPaintPasswordResult&)> onAccept;
+private:
+    void Accept();
+    std::shared_ptr<UltraCanvasTextInput> passwordInput, confirmInput;
+    std::shared_ptr<UltraCanvasCheckbox> hidePreviewBox;
+    std::shared_ptr<UltraCanvasLabel> message;
+};
+
 // ===== IMPORT (a dropped file, or opening a vector drawing) =====
 // What the window already knows about an incoming file when it asks what to
 // do with it. For a bitmap `naturalWidth`/`naturalHeight` are the pixels it
@@ -112,6 +135,9 @@ struct UltraPaintImportResult {
     int  height = 0;
     int  page = 0;                // 0-based
     bool scaleToFit = false;      // merge: shrink the image into the canvas
+    // A password-protected PDF's password, given before the dialog asked
+    // anything (the dialog leaves it alone): what rasterizes it.
+    std::string password;
 };
 
 class UltraPaintImportDialog : public UltraCanvasWindow {

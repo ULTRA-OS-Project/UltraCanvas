@@ -228,6 +228,8 @@ int main(int, char** argv) {
     history.Record(TextCopy("https://github.com/ULTRA-OS-Project/UltraCanvas"));
     history.Record(TextCopy("#3B82F6"));
     history.Record(TextCopy("auto history = CreateListView(\"history\", 0, 0, 640, 480);"));
+    history.Record(TextCopy("SELECT id, name FROM users\nWHERE active\nORDER BY name"));
+    history.Record(TextCopy("# Release notes\n\n## Fixed\n\n- the [list](https://x.org) scrolls again\n"));
     ClipboardSnapshot rich = TextCopy("Q4 planning");
     rich.formats.push_back({ClipboardMime::Html, Bytes("<h1>Q4 planning</h1>")});
     history.Record(rich);
@@ -248,6 +250,9 @@ int main(int, char** argv) {
     TEST("a colour literal is a Colour", kindOf("#3B82F6") == static_cast<int>(ClipboardEntryKind::Colour));
     TEST("a statement is Code", kindOf("auto history = CreateListView(\"history\", 0, 0, 640, 480);") ==
                                 static_cast<int>(ClipboardEntryKind::Code));
+    TEST("a query the language detector names is Code",
+         kindOf("SELECT id, name FROM users") == static_cast<int>(ClipboardEntryKind::Code));
+    TEST("Markdown is Text, not Code", kindOf("# Release notes") == static_cast<int>(ClipboardEntryKind::Text));
     TEST("HTML with text is Formatted text", kindOf("Q4 planning") == static_cast<int>(ClipboardEntryKind::RichText));
     const ClipboardHistoryEntry* fileEntry = FindTitle(entries, "Invoice.pdf, Contract.odt and 1 more");
     TEST("files are titled by their names", fileEntry != nullptr);
@@ -306,7 +311,7 @@ int main(int, char** argv) {
     TEST("from: filters", found("from:ultramail meeting") == 1 && found("from:ultramail invoice") == 0);
     ClipboardHistoryQuery onlyText;
     onlyText.kinds = {ClipboardEntryKind::Text};
-    TEST("kinds filter", history.List(onlyText).size() == 2);
+    TEST("kinds filter", history.List(onlyText).size() == 3);
 
     std::cerr << "\n--- Pin, remove, undo, edit ---" << std::endl;
     TEST("pin", history.SetPinned(id, true));

@@ -7,6 +7,7 @@
 // The public headers first: they define the base classes and then pull in the
 // OS headers through their platform alias chain (same pattern as Linux).
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasEmojiSettings.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasAndroidWindow.h"
@@ -1082,6 +1083,8 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
             }
         }
+        // The emoji font the emoji setting picks, and its rule.
+        ApplyEmojiSettings();
         FcConfigBuildFonts(cfg);
 
         PangoFontMap* fcFm = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);

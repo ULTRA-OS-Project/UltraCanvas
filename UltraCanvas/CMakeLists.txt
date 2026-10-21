@@ -354,6 +354,26 @@ else()
     set(ULTRACANVAS_HAS_LIBHEIF FALSE)
 endif()
 
+# poppler-glib - a password-protected PDF on a libvips older than 8.13
+# (Ubuntu 22.04 ships 8.12). libvips added pdfload's "password" in 8.13; an
+# older one ignores it (GObject warns of an unknown property) and opens every
+# PDF with no password, so the right password was reported as the wrong one.
+# There PixelFX::FileIO::LoadPdf opens a protected PDF through poppler-glib
+# itself - the library that libvips' pdfload is built on, and which libvips-dev
+# depends on - and renders it the way pdfload does. A libvips of 8.13 or later
+# needs none of this.
+set(ULTRACANVAS_PDF_PASSWORD_POPPLER FALSE)
+if(ULTRACANVAS_HAS_VIPS AND LIBVIPS_vips_VERSION AND LIBVIPS_vips_VERSION VERSION_LESS 8.13)
+    pkg_check_modules(POPPLER_GLIB poppler-glib)
+    if(POPPLER_GLIB_FOUND)
+        set(ULTRACANVAS_PDF_PASSWORD_POPPLER TRUE)
+        message(STATUS "  poppler-glib: ${POPPLER_GLIB_VERSION} (password-protected PDFs - libvips ${LIBVIPS_vips_VERSION} has no pdfload password)")
+    else()
+        message(WARNING "libvips ${LIBVIPS_vips_VERSION} has no pdfload \"password\" and poppler-glib was not found: "
+                        "password-protected PDFs will not open. Install libpoppler-glib-dev, or libvips 8.13 or later.")
+    endif()
+endif()
+
 # zbar - QR/barcode decoder (optional)
 pkg_check_modules(ZBAR zbar)
 if(ZBAR_FOUND)
@@ -561,6 +581,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSyntaxTokenizer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLanguageDetect.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabeledToggleBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCheckbox.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRadio.cpp
@@ -644,6 +665,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp
         # Per-format save settings (JPEG quality, PNG compression ...) kept
         # for every application, the dialog that edits them, and the Save
         # dialog's draggable file icon.
@@ -679,6 +701,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
         # picked up by the platform glob.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVolumeMonitor.cpp
+        # The desktop session locking and unlocking. The platform backend
+        # lives in OS/<Platform>/UltraCanvas*SessionLock.* and is picked up by
+        # the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSessionLock.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaCodecRegistry.cpp
@@ -797,7 +823,21 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
+        # Engine ports of the legacy charts (Docs/UltraCanvas/UltraCanvasEngineCharts.md)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineWaterfallChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineDivergingBarChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineDumbbellChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineMekkoChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineFinancialChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineHeatmapChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineRadarChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineRadialBarChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePolarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -1973,6 +2013,20 @@ if(ULTRACANVAS_HAS_LIBHEIF)
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARIES})
     target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARY_DIRS})
 endif()
+if(ULTRACANVAS_PDF_PASSWORD_POPPLER)
+    # Only PixelFX.cpp includes poppler's header (see the poppler-glib block
+    # above); the define and include path go on that one source, as libheif's.
+    set(_uc_poppler_includes ${POPPLER_GLIB_INCLUDE_DIRS})
+    if(_uc_poppler_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        list(REMOVE_ITEM _uc_poppler_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    endif()
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
+                 APPEND PROPERTY COMPILE_DEFINITIONS ULTRACANVAS_PDF_PASSWORD_POPPLER=1)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
+                 APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_poppler_includes})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${POPPLER_GLIB_LIBRARIES})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${POPPLER_GLIB_LIBRARY_DIRS})
+endif()
 
 if(ZBAR_FOUND)
     foreach(_inc_dir ${ZBAR_INCLUDE_DIRS})
@@ -2072,6 +2126,11 @@ endif()
 # PUBLIC so an app can tell a device notification from the polling fallback.
 if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
+endif()
+# The session lock: the same arrangement for UltraCanvasSessionLock. PUBLIC so
+# an app can tell whether a lock will ever be reported.
+if(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_SESSION_LOCK)
 endif()
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
@@ -3386,11 +3445,14 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     endif()
     # The Windows notification listener adapter reads the Action Center
     # through WinRT (C++/WinRT projection headers: the MSYS2 `cppwinrt`
-    # package or the Windows SDK). Skipped where the headers are absent.
+    # package or the Windows SDK), and the presenter's toasts are shown
+    # through it. Both are skipped where the headers are absent.
     set(_um_winrt_found FALSE)
     if(WIN32)
-        # The presenter puts applications' notifications on screen as tray
-        # balloons (Shell_NotifyIconW), which every Windows build has.
+        # The presenter puts applications' notifications on screen as toasts
+        # under their own AppUserModelID (UltraMessageWindowsToasts.cpp, with
+        # C++/WinRT), else as tray balloons (Shell_NotifyIconW), which every
+        # Windows build has.
         list(APPEND ULTRAMESSAGE_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp)
         include(CheckIncludeFileCXX)
@@ -3405,7 +3467,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         if(UM_HAVE_CPPWINRT)
             set(_um_winrt_found TRUE)
             list(APPEND ULTRAMESSAGE_SOURCES
-                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsToasts.cpp)
         endif()
     endif()
     # The macOS presenter puts applications' notifications in Notification
@@ -3447,7 +3510,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     endif()
     target_compile_definitions(uc-message PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
     if(WIN32)
-        target_link_libraries(uc-message PUBLIC shell32 user32)
+        # advapi32: the toasts register their application for the user (HKCU).
+        target_link_libraries(uc-message PUBLIC shell32 user32 advapi32)
     endif()
     if(_um_macos_presenter)
         target_link_libraries(uc-message PUBLIC "-framework Foundation" "-framework UserNotifications")
@@ -3478,9 +3542,9 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
             # ole32, BSTRs in oleaut32.
             target_link_libraries(uc-message PUBLIC runtimeobject ole32 oleaut32)
         endif()
-        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter and toast presenter via C++/WinRT)")
     elseif(WIN32)
-        message(STATUS "  [✓] UltraMessage - ENABLED (tray presenter; no C++/WinRT headers: no notification listener)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (balloon presenter; no C++/WinRT headers: no toasts, no notification listener)")
     elseif(_um_macos_presenter)
         message(STATUS "  [✓] UltraMessage - ENABLED (Notification Center presenter)")
     else()
