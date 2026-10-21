@@ -18,6 +18,8 @@ add_executable(UltraDBAdminEngineTests
     ${_dbadmin}/engine/DbAdminJobQueue.cpp
     ${_dbadmin}/engine/DbAdminPaths.cpp
     ${_dbadmin}/engine/DbAdminSqlRunner.cpp
+    ${_dbadmin}/engine/DbAdminSqliteTable.cpp
+    ${_dbadmin}/engine/DbAdminStructureEdit.cpp
     ${_dbadmin}/engine/DbAdminTablePager.cpp
     # The connection list is JSON; the wrapper and the parser it wraps.
     ${CMAKE_SOURCE_DIR}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp

@@ -125,10 +125,67 @@ void ResultSetModel::Replace(UltraDbResultSet rows, std::vector<std::string> col
 
 // ===== ColumnSchemaModel =====
 
-int ColumnSchemaModel::GetRowCount() const { return static_cast<int>(columns_.size()); }
+int ColumnSchemaModel::GetRowCount() const {
+    return static_cast<int>(pending_ ? pending_->Columns().size() : columns_.size());
+}
+
+ListDataValue ColumnSchemaModel::DraftData(const ListIndex& index, ListDataRole role) const {
+    const size_t at = static_cast<size_t>(index.row);
+    const ColumnDraft& draft = pending_->Columns()[at];
+    const UltraDbColumnSchema* original = pending_->Original(at);
+    const StructureEdit::ColumnState state = pending_->StateOf(at);
+    const ColumnDraft was = original ? DraftOf(*original) : ColumnDraft();
+    // " *" on what this column changes, so the eye finds it.
+    auto mark = [&](std::string text, bool changed) {
+        return state == StructureEdit::ColumnState::Changed && changed ? text + " *" : text;
+    };
+    if (role == ListDataRole::ToolTipRole) {
+        switch (state) {
+            case StructureEdit::ColumnState::New:     return std::string("Added when you apply; Revert drops it.");
+            case StructureEdit::ColumnState::Dropped: return std::string("Dropped when you apply, with its data; Drop column again restores it.");
+            case StructureEdit::ColumnState::Changed:
+                return draft.name != draft.origin ? "Was " + draft.origin + ". Changed when you apply."
+                                                  : std::string("Changed when you apply.");
+            default: break;
+        }
+        if (index.column == Default && draft.hasDefault) return draft.defaultExpression;
+        if (index.column == Comment && original) return original->comment;
+        return {};
+    }
+    if (role != ListDataRole::DisplayRole) return {};
+    switch (index.column) {
+        case Name:
+            if (state == StructureEdit::ColumnState::New) return "NEW " + draft.name;
+            if (state == StructureEdit::ColumnState::Dropped) return "DROP " + draft.name;
+            return mark(draft.name, draft.name != draft.origin);
+        case Type:    return mark(draft.type.empty() ? std::string("(any)") : draft.type, draft.type != was.type);
+        case Null:    return mark(draft.notNull ? "no" : "yes", draft.notNull != was.notNull);
+        case Default:
+            return mark(draft.hasDefault ? draft.defaultExpression : std::string(),
+                        draft.hasDefault != was.hasDefault || draft.defaultExpression != was.defaultExpression);
+        case Key: {
+            if (!original) return std::string();
+            const auto it = std::find(primaryKey_.begin(), primaryKey_.end(), original->name);
+            if (it == primaryKey_.end()) return std::string();
+            return primaryKey_.size() == 1 ? std::string("PRIMARY")
+                                           : "PRIMARY " + std::to_string(it - primaryKey_.begin() + 1);
+        }
+        case Extra: {
+            if (!original) return std::string();
+            std::string extra;
+            if (original->autoIncrement) extra = "identity";
+            if (original->generated) extra += extra.empty() ? "generated" : ", generated";
+            return extra;
+        }
+        case Collation: return original ? original->collation : std::string();
+        case Comment:   return original ? original->comment : std::string();
+        default:        return {};
+    }
+}
 
 ListDataValue ColumnSchemaModel::GetData(const ListIndex& index, ListDataRole role) const {
     if (index.row < 0 || index.row >= GetRowCount()) return {};
+    if (pending_) return DraftData(index, role);
     const UltraDbColumnSchema& c = columns_[static_cast<size_t>(index.row)];
     if (role == ListDataRole::ToolTipRole) {
         if (index.column == Default && c.hasDefault) return c.defaultExpression;
@@ -211,7 +268,19 @@ ListColumnDef ConstraintModel::GetColumnDef(int column) const {
     }
 }
 
+std::string ConstraintModel::IndexAt(int row) const {
+    if (row < 0 || row >= GetRowCount()) return std::string();
+    const Entry& e = entries_[static_cast<size_t>(row)];
+    return e.index ? e.name : std::string();
+}
+
 void ConstraintModel::Replace(const UltraDbTableSchema& table) {
+    table_ = table;
+    Refresh();
+}
+
+void ConstraintModel::Refresh() {
+    const UltraDbTableSchema& table = table_;
     entries_.clear();
     bool keyListed = false;
     for (const auto& index : table.indexes) {
@@ -219,8 +288,24 @@ void ConstraintModel::Replace(const UltraDbTableSchema& table) {
         e.kind = index.primary ? "PRIMARY KEY" : index.unique ? "UNIQUE" : "INDEX";
         e.name = index.name;
         e.columns = Join(index.columns);
+        e.index = !index.primary;
+        if (pending_ && pending_->IndexDropped(index.name)) {
+            e.kind = "DROP " + e.kind;
+            e.tooltip = "Dropped when you apply; Revert keeps it.";
+        }
         keyListed = keyListed || index.primary;
         entries_.push_back(std::move(e));
+    }
+    if (pending_) {
+        for (const auto& index : pending_->NewIndexes()) {
+            Entry e;
+            e.kind = index.unique ? "NEW UNIQUE" : "NEW INDEX";
+            e.name = index.name;
+            e.columns = Join(index.columns);
+            e.index = true;
+            e.tooltip = "Created when you apply; Drop index removes it again.";
+            entries_.push_back(std::move(e));
+        }
     }
     // SQLite's rowid key has no index of its own; it is still the key.
     if (!keyListed && !table.primaryKey.empty()) {

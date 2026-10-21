@@ -29,10 +29,13 @@ add_executable(UltraDBAdmin
     engine/DbAdminJobQueue.cpp
     engine/DbAdminPaths.cpp
     engine/DbAdminSqlRunner.cpp
+    engine/DbAdminSqliteTable.cpp
+    engine/DbAdminStructureEdit.cpp
     engine/DbAdminTablePager.cpp
     ui/DbAdminConnectionDialog.cpp
     ui/DbAdminModels.cpp
     ui/DbAdminRowDialog.cpp
+    ui/DbAdminStructureDialog.cpp
     ui/DbAdminWindow.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).

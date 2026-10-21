@@ -6,6 +6,7 @@
 #include "DbAdminConnectionDialog.h"
 #include "DbAdminFormat.h"
 #include "DbAdminRowDialog.h"
+#include "DbAdminStructureDialog.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasModalDialog.h"
@@ -243,8 +244,11 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     };
     // Staged changes are not lost to a closed window without a word.
     window_->onWindowClosing = [this]() -> bool {
-        if (committing_) { SetStatus("A commit is running: the window closes once it has finished."); return false; }
-        if (edits_.Empty()) return true;
+        if (committing_ || applying_) {
+            SetStatus("Changes are being written: close the window once that has finished.");
+            return false;
+        }
+        if (edits_.Empty() && structure_.Empty()) return true;
         ConfirmDiscard("close UltraDBAdmin", [this]() { window_->Close(); });
         return false;
     };
@@ -403,10 +407,28 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildEditBar() {
 
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
     auto page = MakeTabPage("dbaStructurePage");
-    structureInfo_ = CreateLabel("dbaStructureInfo", 0, 0, 0, 24, "");
-    structureInfo_->SetTextColor(kStatusColor);
-    page->AddChild(structureInfo_);
-    PinToolbar(structureInfo_);
+    auto infoBar = MakeToolbar("dbaStructureInfoBar");
+    structureInfo_ = MakeBarStatus("dbaStructureInfo");
+    infoBar->AddChild(structureInfo_);
+
+    structurePreviewButton_ = MakeToolbarButton("dbaStructurePreview", "Preview SQL…", "The statements Apply will run");
+    structurePreviewButton_->SetOnClick([this]() { PreviewStructure(); });
+    infoBar->AddChild(structurePreviewButton_);
+
+    structureRevertButton_ = MakeToolbarButton("dbaStructureRevert", "Revert", "Drop every staged structure change");
+    structureRevertButton_->SetOnClick([this]() { RevertStructure(); });
+    infoBar->AddChild(structureRevertButton_);
+
+    structureApplyButton_ = MakeToolbarButton("dbaStructureApply", "Apply",
+                                              "Change the table: every staged change, in one transaction");
+    structureApplyButton_->SetOnClick([this]() { ApplyStructure(); });
+    infoBar->AddChild(structureApplyButton_);
+    page->AddChild(infoBar);
+    PinToolbar(infoBar);
+
+    auto editBar = BuildStructureBar();
+    page->AddChild(editBar);
+    PinToolbar(editBar);
 
     auto split = CreateVerticalSplitPane("dbaStructureSplit", 0, 0, 0, 0);
     split->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
@@ -419,11 +441,15 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
     MakePlainColumn(constraintsPane);
     MakePlainColumn(definitionPane);
 
+    // Both lists show the table as it is to be: the staged edits over it.
     columnModel_ = std::make_shared<ColumnSchemaModel>();
+    columnModel_->SetPending(&structure_);
     columnView_ = MakeList("dbaColumns", columnModel_);
+    columnView_->onItemDoubleClicked = [this](int row) { EditColumn(row); };
     FillWith(columnsPane, columnView_);
 
     constraintModel_ = std::make_shared<ConstraintModel>();
+    constraintModel_->SetPending(&structure_);
     constraintView_ = MakeList("dbaConstraints", constraintModel_);
     FillWith(constraintsPane, constraintView_);
 
@@ -435,6 +461,43 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
 
     FillWith(page, split);
     return page;
+}
+
+std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructureBar() {
+    auto bar = MakeToolbar("dbaStructureBar");
+
+    addColumnButton_ = MakeToolbarButton("dbaAddColumn", "Add column…", "Stage a new column");
+    addColumnButton_->SetOnClick([this]() { AddColumn(); });
+    bar->AddChild(addColumnButton_);
+
+    editColumnButton_ = MakeToolbarButton("dbaEditColumn", "Edit column…",
+                                          "Stage a new name, type, NOT NULL or default for the selected column "
+                                          "(or double-click it)");
+    editColumnButton_->SetOnClick([this]() { EditColumn(SelectedColumn()); });
+    bar->AddChild(editColumnButton_);
+
+    dropColumnButton_ = MakeToolbarButton("dbaDropColumn", "Drop column",
+                                          "Stage dropping the selected column, with its data; on a column "
+                                          "already to be dropped, keep it after all");
+    dropColumnButton_->SetOnClick([this]() { DropSelectedColumn(); });
+    bar->AddChild(dropColumnButton_);
+
+    addIndexButton_ = MakeToolbarButton("dbaAddIndex", "Add index…", "Stage a new index, on the selected column to begin with");
+    addIndexButton_->SetOnClick([this]() { AddIndex(); });
+    bar->AddChild(addIndexButton_);
+
+    dropIndexButton_ = MakeToolbarButton("dbaDropIndex", "Drop index",
+                                         "Stage dropping the index selected in the list of keys and indexes");
+    dropIndexButton_->SetOnClick([this]() { DropSelectedIndex(); });
+    bar->AddChild(dropIndexButton_);
+
+    renameTableButton_ = MakeToolbarButton("dbaRenameTable", "Rename table…", "Stage a new name for the table");
+    renameTableButton_->SetOnClick([this]() { RenameTable(); });
+    bar->AddChild(renameTableButton_);
+
+    structurePending_ = MakeBarStatus("dbaStructurePending");
+    bar->AddChild(structurePending_);
+    return bar;
 }
 
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
@@ -824,6 +887,8 @@ void DbAdminWindow::ClearObject(const std::string& message) {
     pageLoading_ = false;
     browseModel_->Clear();
     browseView_->ClearSortIndicator();
+    structure_ = StructureEdit();
+    source_ = SqliteTableSource();
     columnModel_->Replace(UltraDbTableSchema());
     constraintModel_->Replace(UltraDbTableSchema());
     definitionArea_->SetText("", false);
@@ -833,6 +898,7 @@ void DbAdminWindow::ClearObject(const std::string& message) {
     edits_ = EditBuffer();
     UpdateBrowseBar();
     UpdateEditBar();
+    UpdateStructureBar();
 }
 
 void DbAdminWindow::OpenObject(const NodeRef& ref) {
@@ -840,6 +906,7 @@ void DbAdminWindow::OpenObject(const NodeRef& ref) {
     if (!spec) return;
     ClearObject("Reading " + ref.schema + "." + ref.name + "…");
     objectConnectionId_ = spec->id;
+    objectRef_ = ref;
     objectLabel_ = ref.schema + "." + ref.name;
     const uint64_t generation = objectGen_;
     const std::string connection = RegisteredName(*spec);
@@ -856,14 +923,20 @@ void DbAdminWindow::OpenObject(const NodeRef& ref) {
         });
         return;
     }
-    Background([this, connection, schema, name, generation]() -> std::function<void()> {
+    // A SQLite table's own definition comes with it: a rebuild works from it,
+    // and Apply checks it has not changed since.
+    const bool sqliteTable = spec->IsSqlite() && ref.objectKind == UltraDbObjectKind::Table;
+    Background([this, connection, schema, name, generation, sqliteTable]() -> std::function<void()> {
         UltraDbTableSchema table;
         const UltraDbResult result = UltraDb_DescribeTable(connection, schema, name, table);
-        return [this, generation, result, table]() { ApplyTable(generation, result, table); };
+        SqliteTableSource source;
+        if (result && sqliteTable) ReadSqliteTableSource(connection, schema, name, source);
+        return [this, generation, result, table, source]() { ApplyTable(generation, result, table, source); };
     });
 }
 
-void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result, const UltraDbTableSchema& table) {
+void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result, const UltraDbTableSchema& table,
+                               const SqliteTableSource& source) {
     if (generation != objectGen_) return;
     if (!result) {
         const std::string label = objectLabel_;
@@ -872,6 +945,9 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
         SetStatus(result.message, true);
         return;
     }
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    structure_ = StructureEdit(table, spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres);
+    source_ = source;
     columnModel_->Replace(table);
     constraintModel_->Replace(table);
 
@@ -892,6 +968,7 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
     pager_ = std::make_shared<TablePager>(RegisteredName(*store_.Find(objectConnectionId_)), table, kPageSize);
     edits_ = EditBuffer(table);
     UpdateEditBar();
+    UpdateStructureBar();
     LoadPage(0);
     CountRows();
 }
@@ -1025,6 +1102,7 @@ std::string DbAdminWindow::EditBlockReason() const {
     const ConnectionSpec* spec = store_.Find(objectConnectionId_);
     if (spec && spec->readOnly) return "The connection is read only.";
     if (committing_) return "Committing…";
+    if (applying_) return "Changing the table's structure…";
     return std::string();
 }
 
@@ -1187,14 +1265,25 @@ void DbAdminWindow::ApplyCommit(uint64_t generation, const UltraDbResult& result
 
 void DbAdminWindow::RevertChanges() {
     if (edits_.Empty() || committing_) return;
-    ConfirmDiscard(std::string(), [this]() {
-        SetStatus("Staged changes dropped.");
+    ConfirmRevert(edits_.Count(), "row change", [this]() {
+        edits_.Revert();
+        AfterEdit();
+        SetStatus("Staged row changes dropped.");
     });
 }
 
+void DbAdminWindow::ConfirmRevert(size_t count, const std::string& kind, std::function<void()> drop) {
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Drop " + std::to_string(count) + " staged " + kind + (count == 1 ? "" : "s") + " to " + objectLabel_ +
+            (count == 1 ? "? It has not been written." : "? None of them has been written."),
+        "Revert",
+        [drop = std::move(drop)](bool confirmed) { if (confirmed) drop(); },
+        window_.get());
+}
+
 void DbAdminWindow::ConfirmDiscard(const std::string& what, std::function<void()> then) {
-    if (edits_.Empty()) { then(); return; }
-    const size_t count = edits_.Count();
+    if (edits_.Empty() && structure_.Empty()) { then(); return; }
+    const size_t count = edits_.Count() + structure_.Count();
     UltraCanvasDialogManager::ShowConfirmation(
         "Drop " + std::to_string(count) + (count == 1 ? " staged change" : " staged changes") + " to " +
             objectLabel_ + (what.empty() ? std::string() : " and " + what) +
@@ -1203,7 +1292,9 @@ void DbAdminWindow::ConfirmDiscard(const std::string& what, std::function<void()
         [this, then](bool confirmed) {
             if (!confirmed) return;
             edits_.Revert();
+            structure_.Revert();
             AfterEdit();
+            AfterStructureEdit();
             then();
         },
         window_.get());
@@ -1238,6 +1329,313 @@ void DbAdminWindow::UpdateEditBar() {
     pendingLabel_->SetText(text);
     pendingLabel_->SetTooltip(text);
     pendingLabel_->SetTextColor(any ? kProductionColor : kStatusColor);
+    UpdateStructureBar();          // a commit holds structure edits too
+}
+
+// ===== STRUCTURE EDITING =====
+
+std::string DbAdminWindow::StructureBlockReason() const {
+    if (structure_.Table().name.empty()) return "Open a table to change its structure.";
+    const std::string reason = structure_.ReadOnlyReason();
+    if (!reason.empty()) return reason;
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (spec && spec->readOnly) return "The connection is read only.";
+    if (applying_) return "Applying…";
+    if (committing_) return "Rows are being committed…";
+    return std::string();
+}
+
+int DbAdminWindow::SelectedColumn() const {
+    IListSelection* selection = columnView_ ? columnView_->GetSelection() : nullptr;
+    if (!selection) return -1;
+    const std::vector<int> rows = selection->GetSelectedRows();
+    return rows.empty() ? -1 : rows.front();
+}
+
+void DbAdminWindow::AfterStructureEdit() {
+    columnModel_->Refresh();
+    constraintModel_->Refresh();
+    UpdateStructureBar();
+}
+
+void DbAdminWindow::AddColumn() {
+    const std::string blocked = StructureBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const uint64_t generation = objectGen_;
+    ShowColumnDialog(window_.get(), structure_, -1, [this, generation](const ColumnDraft& draft) -> std::string {
+        if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
+        std::string error;
+        if (!structure_.AddColumn(draft, error)) return error;
+        AfterStructureEdit();
+        return std::string();
+    });
+}
+
+void DbAdminWindow::EditColumn(int row) {
+    const std::string blocked = StructureBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    if (row < 0 || static_cast<size_t>(row) >= structure_.Columns().size()) {
+        SetStatus("Select a column to change (or double-click it).");
+        return;
+    }
+    if (structure_.Columns()[static_cast<size_t>(row)].dropped) {
+        SetStatus("This column is to be dropped; Drop column again keeps it.");
+        return;
+    }
+    const uint64_t generation = objectGen_;
+    const size_t at = static_cast<size_t>(row);
+    ShowColumnDialog(window_.get(), structure_, row, [this, generation, at](const ColumnDraft& draft) -> std::string {
+        if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
+        std::string error;
+        if (!structure_.UpdateColumn(at, draft, error)) return error;
+        AfterStructureEdit();
+        return std::string();
+    });
+}
+
+void DbAdminWindow::DropSelectedColumn() {
+    const std::string blocked = StructureBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const int row = SelectedColumn();
+    if (row < 0 || static_cast<size_t>(row) >= structure_.Columns().size()) {
+        SetStatus("Select the column to drop.");
+        return;
+    }
+    const size_t at = static_cast<size_t>(row);
+    const ColumnDraft draft = structure_.Columns()[at];
+    std::string error;
+    const bool restoring = draft.dropped;
+    const bool done = restoring ? structure_.RestoreColumn(at, error) : structure_.DropColumn(at, error);
+    if (!done) { SetStatus(error, true); return; }
+    SetStatus(restoring ? draft.name + " is kept."
+              : draft.origin.empty() ? "The new column " + draft.name + " is no longer staged."
+                                     : draft.name + " is to be dropped, with its data, when you apply.");
+    AfterStructureEdit();
+}
+
+void DbAdminWindow::AddIndex() {
+    const std::string blocked = StructureBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const int row = SelectedColumn();
+    std::string first;
+    if (row >= 0 && static_cast<size_t>(row) < structure_.Columns().size() &&
+        !structure_.Columns()[static_cast<size_t>(row)].dropped)
+        first = structure_.Columns()[static_cast<size_t>(row)].name;
+    const uint64_t generation = objectGen_;
+    ShowIndexDialog(window_.get(), structure_, first, [this, generation](const IndexDraft& draft) -> std::string {
+        if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
+        std::string error;
+        if (!structure_.AddIndex(draft, error)) return error;
+        AfterStructureEdit();
+        return std::string();
+    });
+}
+
+void DbAdminWindow::DropSelectedIndex() {
+    const std::string blocked = StructureBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    IListSelection* selection = constraintView_->GetSelection();
+    const std::vector<int> rows = selection ? selection->GetSelectedRows() : std::vector<int>();
+    const std::string name = rows.empty() ? std::string() : constraintModel_->IndexAt(rows.front());
+    if (name.empty()) {
+        SetStatus("Select an index in the list of keys and indexes.");
+        return;
+    }
+    std::string error;
+    if (!structure_.DropIndex(name, error)) { SetStatus(error, true); return; }
+    AfterStructureEdit();
+}
+
+void DbAdminWindow::RenameTable() {
+    const std::string blocked = StructureBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const uint64_t generation = objectGen_;
+    const std::string current = structure_.NewName().empty() ? structure_.Table().name : structure_.NewName();
+    UltraCanvasDialogManager::ShowInputDialog(
+        "New name for " + structure_.Table().name + ":", "Rename table", current, InputType::Text,
+        [this, generation](DialogResult result, const std::string& name) {
+            if (result != DialogResult::OK || generation != objectGen_) return;
+            std::string error;
+            if (!structure_.RenameTable(name, error)) { SetStatus(error, true); return; }
+            AfterStructureEdit();
+        },
+        window_.get());
+}
+
+void DbAdminWindow::PreviewStructure() {
+    if (structure_.Empty()) return;
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (!spec) return;
+    const std::string connection = RegisteredName(*spec);
+    const StructureEdit snapshot = structure_;
+    const std::string label = objectLabel_;
+    Background([this, snapshot, connection, label]() -> std::function<void()> {
+        SqliteTableSource source;
+        UltraDbResult result = UltraDbResult::Ok();
+        if (snapshot.Engine() == SqlEngine::Sqlite)
+            result = ReadSqliteTableSource(connection, snapshot.Table().schema, snapshot.Table().name, source);
+        std::vector<DdlStep> steps;
+        if (result) result = snapshot.Plan(connection, source, steps);
+        const std::string sql = StructureEdit::PlanText(steps);
+        const bool sqlite = snapshot.Engine() == SqlEngine::Sqlite;
+        return [this, result, sql, label, sqlite]() {
+            if (!result) { SetStatus(result.message, true); return; }
+            ShowSqlPreview(window_.get(), "Structure changes to " + label,
+                           sqlite ? "Apply runs these in one transaction. SQLite reads foreign_keys only outside "
+                                    "one, so a rebuild switches it off before and on after."
+                                  : "Apply runs these in one transaction: if one fails, the table stays as it was.",
+                           sql);
+        };
+    });
+}
+
+void DbAdminWindow::ApplyStructure() {
+    if (structure_.Empty() || applying_) return;
+    const std::string blocked = StructureBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    if (!edits_.Empty()) {
+        SetStatus("Commit or revert the staged rows in Browse first: they were read with the structure as it is.");
+        return;
+    }
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    const bool production = spec && spec->production;
+    const bool destructive = structure_.Destructive();
+    const bool rebuild = structure_.NeedsRebuild();
+    if (!production && !destructive && !rebuild) { RunApplyStructure(); return; }
+    std::string message;
+    if (production) message += "**" + spec->name + " is a production connection.**\n\n";
+    message += "Apply " + std::to_string(structure_.Count()) +
+               (structure_.Count() == 1 ? " structure change" : " structure changes") + " to " + objectLabel_ + "?";
+    if (destructive) message += " What is dropped is gone, data and all.";
+    if (rebuild) {
+        message += " SQLite rebuilds the table: every row is copied into a new one, which takes a while on a "
+                   "large table and holds the database meanwhile.";
+    }
+    UltraCanvasDialogManager::ShowConfirmation(message, "Apply structure changes",
+                                               [this](bool confirmed) { if (confirmed) RunApplyStructure(); },
+                                               window_.get());
+}
+
+void DbAdminWindow::RunApplyStructure() {
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (!spec || structure_.Empty() || applying_) return;
+    applying_ = true;
+    UpdateStructureBar();
+    UpdateEditBar();
+    SetStatus("Changing " + objectLabel_ + "…");
+    const std::string connection = RegisteredName(*spec);
+    const StructureEdit snapshot = structure_;
+    const SqliteTableSource loaded = source_;
+    const uint64_t generation = objectGen_;
+    const std::string finalName = snapshot.NewName().empty() ? snapshot.Table().name : snapshot.NewName();
+    const size_t count = snapshot.Count();
+    // One job, so no page load of the window lands between its statements.
+    Background([this, snapshot, loaded, connection, generation, finalName, count]() -> std::function<void()> {
+        SqliteTableSource source;
+        UltraDbResult result = UltraDbResult::Ok();
+        if (snapshot.Engine() == SqlEngine::Sqlite) {
+            result = ReadSqliteTableSource(connection, snapshot.Table().schema, snapshot.Table().name, source);
+            if (result && !loaded.createSql.empty() && !source.SameDefinition(loaded)) {
+                result = UltraDbResult::Error(UltraDbResultCode::Misuse,
+                                              "the table was changed since it was read (by another program, or in "
+                                              "the SQL tab). Open it again to see it as it is.");
+            }
+        }
+        std::vector<DdlStep> steps;
+        if (result) result = snapshot.Plan(connection, source, steps);
+        std::string failedSql;
+        if (result) {
+            size_t failed = 0;
+            result = StructureEdit::Apply(connection, steps, failed);
+            if (!result && failed < steps.size()) failedSql = steps[failed].preview;
+        }
+        return [this, generation, result, failedSql, finalName, count]() {
+            FinishApplyStructure(generation, result, failedSql, finalName, count);
+        };
+    });
+}
+
+void DbAdminWindow::FinishApplyStructure(uint64_t generation, const UltraDbResult& result, const std::string& failedSql,
+                                         const std::string& finalName, size_t count) {
+    applying_ = false;
+    if (!result) {
+        SetStatus("Nothing was changed: " + OneLine(result.message), true);
+        if (!failedSql.empty()) statusLabel_->SetTooltip(failedSql + "\n\n" + result.message);
+        UpdateStructureBar();
+        UpdateEditBar();
+        return;
+    }
+    const std::string message = std::to_string(count) + (count == 1 ? " change" : " changes") + " applied to " +
+                                objectLabel_ + (finalName != objectRef_.name ? ", now " + finalName : "") + ".";
+    if (generation != objectGen_) { SetStatus(message); UpdateStructureBar(); UpdateEditBar(); return; }
+    NodeRef ref = objectRef_;
+    if (finalName != ref.name) {
+        // The tree lists the old name: read the schema's objects again.
+        std::string schemaNode;
+        for (const auto& [id, node] : nodes_) {
+            if (node.kind == NodeRef::Kind::Schema && node.connectionId == ref.connectionId && node.schema == ref.schema)
+                schemaNode = id;
+        }
+        if (!schemaNode.empty()) {
+            ResetNode(schemaNode);
+            if (TreeNode* tree = tree_->FindNode(schemaNode)) {
+                tree_->ExpandNode(tree);
+                tree_->SelectNode(tree);
+                selectedNode_ = schemaNode;
+            }
+            LoadChildren(schemaNode);
+        }
+        ref.name = finalName;
+    }
+    // Read it again, as it now is; the edit starts afresh from that.
+    OpenObject(ref);
+    SetStatus(message);
+}
+
+void DbAdminWindow::RevertStructure() {
+    if (structure_.Empty() || applying_) return;
+    ConfirmRevert(structure_.Count(), "structure change", [this]() {
+        structure_.Revert();
+        AfterStructureEdit();
+        SetStatus("Staged structure changes dropped.");
+    });
+}
+
+void DbAdminWindow::UpdateStructureBar() {
+    if (!structurePending_) return;
+    const std::string blocked = StructureBlockReason();
+    const bool editable = blocked.empty();
+    for (const auto& button : {addColumnButton_, editColumnButton_, dropColumnButton_, addIndexButton_,
+                               dropIndexButton_, renameTableButton_})
+        button->SetDisabled(!editable);
+    const bool any = !structure_.Empty();
+    structurePreviewButton_->SetDisabled(!any || applying_);
+    structureRevertButton_->SetDisabled(!any || applying_);
+    structureApplyButton_->SetDisabled(!any || !editable);
+    std::string text;
+    if (any) {
+        std::vector<std::string> parts;
+        auto part = [&](size_t n, const char* one, const char* many) {
+            if (n > 0) parts.push_back(std::to_string(n) + " " + (n == 1 ? one : many));
+        };
+        part(structure_.Count(StructureEdit::ColumnState::Changed), "column changed", "columns changed");
+        part(structure_.Count(StructureEdit::ColumnState::New), "new column", "new columns");
+        part(structure_.Count(StructureEdit::ColumnState::Dropped), "column to drop", "columns to drop");
+        part(structure_.NewIndexes().size(), "new index", "new indexes");
+        part(structure_.DroppedIndexes().size(), "index to drop", "indexes to drop");
+        if (!structure_.NewName().empty()) parts.push_back("renamed to " + structure_.NewName());
+        for (size_t i = 0; i < parts.size(); ++i) text += (i == 0 ? "" : ", ") + parts[i];
+        if (structure_.NeedsRebuild()) text += " (a rebuild)";
+        text += applying_ ? " - applying…" : " - not yet applied";
+    } else {
+        text = editable ? std::string("Double-click a column to change it.") : blocked;
+    }
+    structurePending_->SetText(text);
+    structurePending_->SetTooltip(structure_.NeedsRebuild()
+                                      ? text + "\n\nSQLite changes a column's type, NOT NULL or default only by "
+                                               "rebuilding the table; Preview SQL… shows every step."
+                                      : text);
+    structurePending_->SetTextColor(any ? kProductionColor : kStatusColor);
 }
 
 // ===== SQL =====

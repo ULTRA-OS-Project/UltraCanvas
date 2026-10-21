@@ -3,9 +3,11 @@
 // UltraDatabase returns, so UltraCanvasListView draws them:
 //   ResultSetModel    - the rows of a result set: a Browse page, or the rows
 //                       of one statement in the SQL console;
-//   ColumnSchemaModel - a table's columns, for Structure;
+//   ColumnSchemaModel - a table's columns, for Structure, with its staged
+//                       structure edits shown over them;
 //   ConstraintModel   - its key, unique constraints, indexes, foreign keys
-//                       and triggers, one row each, for Structure;
+//                       and triggers, one row each, for Structure, with the
+//                       indexes to be added and dropped;
 //   StatementModel    - what each statement of a console script did.
 // A cell is CellText (engine/DbAdminFormat.h): NULL is not an empty string, a
 // blob says how big it is. Its tooltip is the longer text.
@@ -14,6 +16,7 @@
 #pragma once
 
 #include "DbAdminEditBuffer.h"
+#include "DbAdminStructureEdit.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 
@@ -70,7 +73,18 @@ public:
 
     void Replace(const UltraDbTableSchema& table);
 
+    // Structure's staged edits: then the rows are the edit's columns as they
+    // are to be (StructureEdit::Columns, same order, so a row is a draft's
+    // index). A changed value reads "... *", a new column starts with "NEW ",
+    // one to be dropped with "DROP ". Null: the table as read. The edit
+    // belongs to the window; call Refresh() after it changes.
+    void SetPending(const StructureEdit* pending) { pending_ = pending; }
+    void Refresh() { NotifyDataChanged(); }
+
 private:
+    UltraCanvas::ListDataValue DraftData(const UltraCanvas::ListIndex& index, UltraCanvas::ListDataRole role) const;
+
+    const StructureEdit* pending_ = nullptr;
     std::vector<UltraDbColumnSchema> columns_;
     std::vector<std::string> primaryKey_;
 };
@@ -89,10 +103,22 @@ public:
 
     void Replace(const UltraDbTableSchema& table);
 
+    // The indexes Structure stages: a new one is listed as "NEW INDEX", one
+    // to be dropped is marked "DROP ". Call Refresh() after the edit changes.
+    void SetPending(const StructureEdit* pending) { pending_ = pending; }
+    void Refresh();
+
+    // The index a row stands for, existing or staged; "" for a key, a
+    // foreign key or a trigger.
+    std::string IndexAt(int row) const;
+
 private:
     struct Entry {
         std::string kind, name, columns, details, tooltip;
+        bool index = false;
     };
+    const StructureEdit* pending_ = nullptr;
+    UltraDbTableSchema table_;
     std::vector<Entry> entries_;
 };
 

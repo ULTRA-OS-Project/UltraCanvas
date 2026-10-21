@@ -518,8 +518,13 @@ with their vault, the tree, Browse, Structure and the SQL console with Stop.
 **Stage 2 has begun with row editing** (UltraDBAdmin 0.2): Browse stages
 edits, new rows and deletions by primary key, previews them as SQL and
 commits them in one transaction (§5.3), with the destructive guard for
-deletions and production connections. Structure editing, the SQLite
-rebuild and import are still to come.
+deletions and production connections. **Structure editing followed**
+(UltraDBAdmin 0.3): columns added, changed, renamed and dropped, indexes
+added and dropped and the table renamed, staged, previewed as DDL and
+applied in one transaction - `ALTER TABLE` on PostgreSQL, and on SQLite its
+own `ALTER TABLE` plus the documented 12-step rebuild, working from the
+table's own `CREATE TABLE` so nothing introspection cannot see (CHECK, table
+options) is lost. Import is still to come.
 
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for
