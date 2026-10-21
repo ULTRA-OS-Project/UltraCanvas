@@ -11,6 +11,9 @@
   kept and adjusted rather than undone. It refreshes on its own as soon as
   the image changes, Curves redraws its histogram for the new pixels, and on
   a locked or text layer the preview waits and says why.
+- **Curves says why on a locked layer.** *Adjust > Curves...* on a locked
+  layer did nothing at all; it now says the active layer is locked, as every
+  other adjustment does.
 #### 2026-10-20 *0.2.27*
 - **Password-protected images.** *File > Password Protection...* gives the
   image a password; saved as an UltraCanvas layered image (`.ucd`) it is then

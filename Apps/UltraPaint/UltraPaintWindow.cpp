@@ -3133,7 +3133,7 @@ void UltraPaintWindow::CmdCurves() {
 #ifdef HAS_LIBVIPS
     if (!document) return;
     auto layer = document->GetActiveLayer();
-    if (!layer || layer->locked) return;
+    if (!layer || layer->locked) { if (statusHint) statusHint->SetText("The active layer is locked"); return; }
     if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
     auto dlg = std::make_shared<UltraCanvasCurvesDialog>(ToneCurveSet());
     // histogram backdrop from the layer - again whenever the layer the
