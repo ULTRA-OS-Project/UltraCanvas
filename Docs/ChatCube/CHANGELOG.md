@@ -20,6 +20,13 @@
   shows "camera off"). The picture travels directly between the two
   computers like the voice (VP8 over WebRTC, encrypted); a lost packet costs
   a moment, not a broken picture - the receiver asks for a fresh key frame.
+- **Chat on your local network, with no server at all.** Leave the relay
+  empty and ChatCube finds the other ChatCubes on your network by itself
+  (*On this network* in the sidebar, **Add**) and talks to them directly:
+  messages, read ticks, voice and video calls. Each side proves its ChatCube
+  ID with its key before anything is exchanged. Next to a relay, *Also find
+  people on this network* keeps the conversation going when the relay is
+  out of reach. Groups still need a relay.
 - A call the other person hangs up now always ends as a hang-up: the closing
   connection used to arrive before the hang-up message and reported the
   call as lost.

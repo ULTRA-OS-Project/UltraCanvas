@@ -58,6 +58,8 @@ void UltraIM_FetchMessages(const std::string& providerId,
                            int limit,
                            UltraIMMessagesCallback onResult);
 void UltraIM_FetchContacts(const std::string& providerId, UltraIMContactsCallback onResult);
+// People on the local network who are not contacts yet (NearbyChange: fetch again).
+void UltraIM_FetchNearbyContacts(const std::string& providerId, UltraIMContactsCallback onResult);
 void UltraIM_AddContact(const std::string& providerId, const std::string& address,
                         UltraIMConversationCallback onResult);
 void UltraIM_CreateGroup(const std::string& providerId, const std::string& title,

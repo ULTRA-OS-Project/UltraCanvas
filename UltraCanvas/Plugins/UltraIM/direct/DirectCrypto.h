@@ -47,6 +47,9 @@ std::string LoginMessage(const std::string& nonceBase64);
 // What a signalling payload is signed over: who, to whom, which link, what.
 std::string SignalMessage(const std::string& from, const std::string& to, const std::string& session,
                           const std::string& kind, const std::string& data);
+// What each side of a local-network connection signs to prove its identity:
+// the other side's fresh nonce, then who signs and for whom.
+std::string LanAuthMessage(const std::string& nonceBase64, const std::string& signer, const std::string& verifier);
 
 // ============================================================================
 // ENVELOPE

@@ -170,6 +170,9 @@ struct UltraIMCredentials {
     std::string password;
     std::string displayName;        // KeyPair: the name shown to contacts
     bool        createAccount = false; // KeyPair: register a new identity
+    // Also find and reach contacts on the local network, with no server
+    // between (ChatCube Direct; always on when there is no relay). Remembered.
+    bool        localNetwork = false;
     std::string phoneNumber;
     std::string otpCode;
     std::string apiId;
@@ -241,7 +244,8 @@ enum class UltraIMEventType {
     AuthRequire,            // the session expired; sign in again
     CallReceive,            // callId, contactId, isVideo
     CallStateChange,        // callId, callState, errorText
-    CallMediaChange         // callId, isVideo: the other side turned its camera on or off
+    CallMediaChange,        // callId, isVideo: the other side turned its camera on or off
+    NearbyChange            // the people on the local network changed: fetch them again
 };
 
 struct UltraIMEvent {

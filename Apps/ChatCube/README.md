@@ -17,9 +17,14 @@ The first ChatCube draft, which this replaces, is kept under
 
 1. Start ChatCube, type your name and the address of a ChatCube relay
    (`Server/ChatCubeRelay`), and press **Create my ChatCube ID**. Later starts
-   sign in by themselves.
+   sign in by themselves. **No relay?** Leave it empty: ChatCube then works on
+   your local network alone - the ChatCubes there find each other (mDNS) and
+   talk directly. *Also find people on this network* does that next to a
+   relay.
 2. **Copy** your ID and send it to the people who should reach you; paste
-   theirs into *Contact's ChatCube ID* and press **Add**.
+   theirs into *Contact's ChatCube ID* and press **Add**. People on your
+   network are listed under *On this network* - **Add** takes them over
+   without typing anything.
 3. **New group** takes a name and the members' IDs, separated by commas.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,

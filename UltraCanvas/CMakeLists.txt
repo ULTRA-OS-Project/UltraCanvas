@@ -3744,6 +3744,7 @@ if(TARGET UltraIM AND TARGET UltraRTC AND TARGET UltraNet AND TARGET UltraDataba
         ${_ultraim_direct_dir}/DirectStore.cpp
         ${_ultraim_direct_dir}/DirectRelayClient.cpp
         ${_ultraim_direct_dir}/DirectCalls.cpp
+        ${_ultraim_direct_dir}/DirectLan.cpp
         ${_ultraim_direct_dir}/DirectLinks.cpp
         ${_ultraim_direct_dir}/DirectProvider.cpp)
     set_target_properties(UltraIMDirectCore PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -8,6 +8,7 @@
 //   chatcube-peer --data /tmp/bob --add <ChatCube ID> --send <ChatCube ID> "hello" --echo 600
 //   chatcube-peer --data /tmp/bob --answer-calls --echo 600      (answers with a tone)
 //   chatcube-peer --data /tmp/bob --call <ChatCube ID> --video --echo 60 --devices
+//   chatcube-peer --data /tmp/ben --name Ben --create --echo 600     (no relay: the local network)
 //
 // Version: 0.1.0
 // Last Modified: 2026-10-21
@@ -40,7 +41,10 @@ constexpr double kPi = 3.14159265358979323846;   // M_PI is not standard C++
 
 void Usage() {
     std::printf("chatcube-peer - a ChatCube Direct identity on the command line\n\n"
-                "  --relay <url>        relay server (remembered after the first sign-in)\n"
+                "  --relay <url>        relay server (remembered after the first sign-in);\n"
+                "                       none at all: the local network only\n"
+                "  --lan                also find people on the local network (with a relay)\n"
+                "  --connect <host:port> reach a ChatCube on the local network by address\n"
                 "  --data <dir>         where the identity and messages are kept (required)\n"
                 "  --name <name>        display name\n"
                 "  --create             make a new identity if there is none\n"
@@ -74,6 +78,7 @@ int main(int argc, char** argv) {
     bool answerCalls = false;
     bool useDevices = false;
     std::string callTo;
+    std::vector<std::pair<std::string, int>> connects;
     bool callVideo = false;
 
     for (int i = 1; i < argc; ++i) {
@@ -99,6 +104,16 @@ int main(int argc, char** argv) {
         else if (arg == "--call") callTo = next();
         else if (arg == "--devices") useDevices = true;
         else if (arg == "--video") callVideo = true;
+        else if (arg == "--lan") credentials.localNetwork = true;
+        else if (arg == "--connect") {
+            const std::string address = next();
+            const size_t colon = address.rfind(':');
+            if (colon == std::string::npos) {
+                Usage();
+                return EXIT_FAILURE;
+            }
+            connects.emplace_back(address.substr(0, colon), std::atoi(address.c_str() + colon + 1));
+        }
         else {
             Usage();
             return arg == "--help" ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -149,7 +164,9 @@ int main(int argc, char** argv) {
         }))
         return EXIT_FAILURE;
     if (printId) std::printf("%s\n", provider.GetLocalUserId().c_str());
+    if (provider.GetLanPort() > 0) std::printf("on the local network, port %d\n", provider.GetLanPort());
     std::fflush(stdout);
+    for (const auto& [host, port] : connects) provider.AddLanAddress(host, port);
 
     for (const auto& id : adds) {
         wait([&](auto done) {

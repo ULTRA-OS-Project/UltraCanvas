@@ -27,7 +27,11 @@ if(TARGET UltraIMDirectCore)
     target_compile_features(DirectProviderTests PRIVATE cxx_std_20)
     target_link_libraries(DirectProviderTests PRIVATE UltraIMDirectCore)
     target_compile_definitions(DirectProviderTests PRIVATE
-        ULTRAIM_RELAY_DIR="${CMAKE_SOURCE_DIR}/Server/ChatCubeRelay")
+        ULTRAIM_RELAY_DIR="${CMAKE_SOURCE_DIR}/Server/ChatCubeRelay"
+        ULTRAIM_NET_PLUGIN_DIR="${CMAKE_BINARY_DIR}/Plugins/UltraNet")
+    if(TARGET UltraNetMdnsPlugin)
+        add_dependencies(DirectProviderTests UltraNetMdnsPlugin)
+    endif()
     add_test(NAME DirectProviderTests COMMAND DirectProviderTests)
-    set_tests_properties(DirectProviderTests PROPERTIES TIMEOUT 180)
+    set_tests_properties(DirectProviderTests PROPERTIES TIMEOUT 300)
 endif()

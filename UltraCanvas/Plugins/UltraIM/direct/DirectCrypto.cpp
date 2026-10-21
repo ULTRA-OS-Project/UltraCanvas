@@ -99,6 +99,10 @@ std::string SignalMessage(const std::string& from, const std::string& to, const 
     return "chatcube-signal-v1\n" + from + "\n" + to + "\n" + session + "\n" + kind + "\n" + data;
 }
 
+std::string LanAuthMessage(const std::string& nonceBase64, const std::string& signer, const std::string& verifier) {
+    return "chatcube-lan-v1\n" + nonceBase64 + "\n" + signer + "\n" + verifier;
+}
+
 // ============================================================================
 // ENVELOPE
 // ============================================================================

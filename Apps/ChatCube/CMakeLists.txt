@@ -35,6 +35,10 @@ target_compile_features(ChatCube PRIVATE cxx_std_20)
 # The provider ChatCube talks through is a module: build it with the app.
 if(TARGET UltraIMDirectPlugin)
     add_dependencies(ChatCube UltraIMDirectPlugin)
+    # The local network's discovery (mDNS) is an UltraNet plug-in.
+    if(TARGET UltraNetMdnsPlugin)
+        add_dependencies(ChatCube UltraNetMdnsPlugin)
+    endif()
 endif()
 
 # ChatCube versions itself: the number comes from the first line of

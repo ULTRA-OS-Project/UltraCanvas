@@ -68,7 +68,7 @@ if (!r) { /* mark the row Failed */ }
 
 Calls: ask `UltraIM_CanCall(provider, conversation, video)` before offering
 the buttons — ChatCube Direct offers 1:1 voice and video calls while its
-relay socket is up, not group calls yet. `UltraIM_StartCall` gives the call id;
+relay socket or a local connection to the contact is up, not group calls yet. `UltraIM_StartCall` gives the call id;
 the other side gets `CallReceive` and answers with `UltraIM_AcceptCall` or
 declines with `UltraIM_EndCall`. Both then follow `CallStateChange`:
 `Ringing` → `Connecting` → `Active` → `Ended` (or `Failed`), the final
@@ -146,8 +146,25 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   not connect fails after 20 s (`SetCallTimings`). A media connection that
   drops waits 1.5 s for the hang-up that may explain it (the hang-up comes
   through the relay, the close directly) before the call counts as lost.
-- **Not yet:** group calls, files and images, LAN without a relay (mDNS
-  advertising), several devices per identity.
+- **The local network, with or without a relay.** `SignIn` with no relay
+  at all (none given, none remembered) works on the local network only;
+  `credentials.localNetwork` adds it next to a relay (both remembered). The
+  provider listens on a free TCP port and announces itself over mDNS
+  (`_chatcube._tcp`, TXT `id=` and `name=`; UltraNet's mDNS plug-in), browses
+  for the others, and keeps a connection to every contact it sees there.
+  Both ends of a connection prove their identity - each signs the other's
+  fresh nonce, and the id must be the hash of the key - and it then carries
+  the same signed signalling as the relay socket, so chat links and calls are
+  set up over it unchanged (preferred over the relay when both are there).
+  `UltraIM_FetchNearbyContacts` lists the ChatCubes nearby that are not
+  contacts yet (`NearbyChange` when that changes); `AddContact` on one
+  connects and finishes once the handshake has proven its key. A contact is
+  online while the relay says so or its local connection is up. Without a
+  relay a message waits in the outbox until the other side is back, and
+  groups (which the relay keeps) are refused. `AddLanAddress(host, port)`
+  reaches a ChatCube by address where multicast does not get through.
+- **Not yet:** group calls, files and images, several devices per identity,
+  groups without a relay.
 
 Tests: `Tests/UltraIM/DirectProviderTests.cpp` - the envelope and the store,
 then two providers against a relay started from `Server/ChatCubeRelay` (P2P
@@ -156,6 +173,11 @@ identity, a group, a video call - pictures across, the camera turned off,
 hung up - and voice calls: declined, answered with audio both ways, muted,
 hung up, and a call to a contact who is offline). It needs a `python3` with the relay's packages on `PATH`
 and skips without one, unless `ULTRAIM_TEST_RELAY_REQUIRED` is set (CI).
+Then two providers with no relay at all: reached by address, the nearby
+list, adding each other, a message peer to peer, a call, groups refused, one
+side away and back (the waiting message arrives) - and two that find each
+other over mDNS alone, which skips without a responder unless
+`ULTRAIM_TEST_MDNS_REQUIRED` is set (CI starts Avahi).
 
 ## Status
 

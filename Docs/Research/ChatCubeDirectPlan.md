@@ -208,7 +208,7 @@ libdatachannel's DTLS backend); without it, every call answers
 | 5 | Relay server | pytest suite: register, login, contacts, queue, groups, WS signalling |
 | 6 | Direct plug-in: relay client, E2E envelope, data channels, offline queue, groups | integration test: two clients through a local relay exchange 1:1 messages P2P and a group message through the relay |
 | 7 | ChatCube app on the real UltraCanvas API | starts, signs in to a relay, shows contacts, sends and receives, ticks update, a message shows once |
-| 8 | LAN without server: mDNS advertising, TCP signalling | two instances on one network chat with no relay configured |
+| 8 | LAN without server: mDNS advertising, TCP signalling | two instances on one network chat with no relay configured - done: `DirectProviderTests` (by address, and over mDNS alone), ChatCube against `chatcube-peer` with no relay |
 | 9 | Voice calls (UltraRTC phase 2) | a 1:1 call between two ChatCubes - done: audio both ways in `DirectProviderTests`, ChatCube's call bar run against `chatcube-peer` |
 | 10 | Video calls (UltraRTC phase 3) | a 1:1 video call between two ChatCubes - done: pictures across in `UltraRTCTests` and `DirectProviderTests`, ChatCube's video panel run against `chatcube-peer`'s test picture |
 | 11 | Matrix, then Telegram and other providers | per provider |

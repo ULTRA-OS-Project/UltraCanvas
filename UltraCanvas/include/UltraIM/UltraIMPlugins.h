@@ -63,6 +63,12 @@ public:
     virtual void FetchContacts(UltraIMContactsCallback onResult) {
         if (onResult) onResult(UltraIMResult::Ok(), {});
     }
+    // People on the local network who are not contacts yet (a provider that
+    // finds them there; NearbyChange says when the list changed). Each can be
+    // added with AddContact(contactId).
+    virtual void FetchNearbyContacts(UltraIMContactsCallback onResult) {
+        if (onResult) onResult(UltraIMResult::Ok(), {});
+    }
 
     // ---- Contacts and groups -------------------------------------------------
     // address: whatever identifies a person on this network (a ChatCube user

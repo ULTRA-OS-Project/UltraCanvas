@@ -8,6 +8,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -185,9 +186,18 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     name_ = MakeInput("cc-signin-name", "Your name, as your contacts will see it", static_cast<int>(kFormWidth));
     name_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
     signInPage_->AddChild(name_);
-    relay_ = MakeInput("cc-signin-relay", "Relay server, e.g. https://relay.example.org", static_cast<int>(kFormWidth));
+    relay_ = MakeInput("cc-signin-relay", "Relay server (optional), e.g. https://relay.example.org",
+                       static_cast<int>(kFormWidth));
     relay_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
     signInPage_->AddChild(relay_);
+    localNetwork_ = std::make_shared<UltraCanvasCheckbox>("cc-signin-lan", 0, 0, static_cast<long>(kFormWidth), 22,
+                                                          "Also find people on this network");
+    localNetwork_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    CheckboxVisualStyle lanStyle = localNetwork_->GetVisualStyle();
+    lanStyle.base.fontSize = kTextFont;                 // the size of the page's other text
+    lanStyle.base.textColor = kTextColor;
+    localNetwork_->SetVisualStyle(lanStyle);
+    signInPage_->AddChild(localNetwork_);
 
     signIn_ = MakeButton("cc-signin-go", "Create my ChatCube ID", static_cast<int>(kFormWidth), true);
     signIn_->SetOnClick([this]() { SignIn(); });
@@ -199,11 +209,16 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     signInStatus_->size.width = CSSLayout::Dimension::Px(460);
     signInPage_->AddChild(signInStatus_);
 
-    signInPage_->AddChild(MakeLabel(
+    auto note = MakeLabel(
         "cc-signin-note",
         "Your ChatCube ID is a key made on this computer. Messages are end-to-end encrypted; "
-        "the relay only connects you and keeps messages for people who are offline.",
-        9.0f, kMutedText));
+        "the relay only connects you and keeps messages for people who are offline. "
+        "Without one, ChatCube finds the people on your network itself.",
+        9.0f, kMutedText);
+    note->SetWrap(TextWrap::WrapWord);
+    note->SetAlignment(TextAlignment::Center);
+    note->size.width = CSSLayout::Dimension::Px(460);
+    signInPage_->AddChild(note);
     return signInPage_;
 }
 
@@ -252,6 +267,13 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     groupForm_->AddChild(create);
     groupForm_->SetVisible(false);
     sidebar->AddChild(groupForm_);
+
+    // People on the local network who are not contacts yet (filled by RefreshNearby).
+    nearbyBox_ = std::make_shared<UltraCanvasContainer>("cc-nearby");
+    nearbyBox_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    nearbyBox_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    nearbyBox_->SetVisible(false);
+    sidebar->AddChild(nearbyBox_);
 
     conversations_ = std::make_shared<ConversationListModel>();
     conversationList_ = std::make_shared<UltraCanvasListView>("cc-conversations", 0, 0, kSidebarWidth - 16, 300);
@@ -478,10 +500,9 @@ void ChatCubeWindow::SignIn() {
         SetSignInStatus("Enter the name your contacts will see.");
         return;
     }
-    if (!hasIdentity_ && credentials.server.empty()) {
-        SetSignInStatus("Enter the address of a ChatCube relay server.");
-        return;
-    }
+    // No relay: the local network only (the provider says so when there is
+    // no relay remembered either).
+    credentials.localNetwork = localNetwork_->IsChecked();
     signIn_->SetDisabled(true);
     SetSignInStatus("Connecting\xE2\x80\xA6");
     UltraIM_SignIn(providerId_, credentials, [this](const UltraIMResult& r) {
@@ -498,6 +519,7 @@ void ChatCubeWindow::SignIn() {
         ShowChatView();
         SetStatus("Connected");
         RefreshConversations();
+        RefreshNearby();
     });
 }
 
@@ -521,6 +543,10 @@ void ChatCubeWindow::CopyMyId() {
 void ChatCubeWindow::AddContact() {
     const std::string id = Trim(contactId_->GetText());
     if (id.empty()) return;
+    AddContactById(id);
+}
+
+void ChatCubeWindow::AddContactById(const std::string& id) {
     SetStatus("Adding contact\xE2\x80\xA6");
     UltraIM_AddContact(providerId_, id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
@@ -531,6 +557,27 @@ void ChatCubeWindow::AddContact() {
         conversations_->Upsert(c);
         SetStatus("Added " + c.title);
         OpenConversation(c.conversationId);
+        RefreshNearby();
+    });
+}
+
+void ChatCubeWindow::RefreshNearby() {
+    UltraIM_FetchNearbyContacts(providerId_, [this](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
+        nearbyBox_->ClearChildren();
+        if (!list.empty()) nearbyBox_->AddChild(MakeLabel("cc-nearby-title", "On this network", 9.0f, kMutedText));
+        for (const UltraIMContact& person : list) {
+            auto row = MakeRow("cc-nearby-row", 6);
+            auto name = MakeLabel("cc-nearby-name", person.displayName, kTextFont);
+            name->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(name);
+            auto add = MakeButton("cc-nearby-add", "Add", 52, true);
+            const std::string id = person.contactId;
+            add->SetOnClick([this, id]() { AddContactById(id); });
+            row->AddChild(add);
+            nearbyBox_->AddChild(row);
+        }
+        nearbyBox_->SetVisible(!list.empty());
+        if (window_) window_->RequestRedraw();
     });
 }
 
@@ -914,6 +961,9 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
         case UltraIMEventType::CallStateChange:
         case UltraIMEventType::CallMediaChange:
             OnCallEvent(e);
+            break;
+        case UltraIMEventType::NearbyChange:
+            RefreshNearby();
             break;
         case UltraIMEventType::AuthRequire:
             ShowSignInPage();

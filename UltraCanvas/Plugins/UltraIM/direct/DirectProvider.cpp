@@ -114,6 +114,17 @@ UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEve
     calls_.sendSignal = sendSignal;
     calls_.emit = [this](const UltraIMEvent& event) { Emit(event); };
     calls_.SetProviderId(providerId_);
+    lan_.onPeerUp = [this](const std::string& peer, const std::vector<uint8_t>& key, const std::string& name) {
+        OnLanPeerUp(peer, key, name);
+    };
+    lan_.onPeerDown = [this](const std::string& peer) { EmitPresence(peer); };
+    lan_.onFrame = [this](const std::string& peer, const JSONValue& frame) { OnLanFrame(peer, frame); };
+    lan_.onNearbyChanged = [this]() {
+        UltraIMEvent event;
+        event.type = UltraIMEventType::NearbyChange;
+        event.providerId = providerId_;
+        Emit(event);
+    };
     links_.onOpen = [this](const std::string&) { Wake(); };
     links_.onMessage = [this](const std::string& peer, const std::string& text) { OnLinkMessage(peer, text); };
     links_.onClosed = [this](const std::string& peer) {
@@ -132,11 +143,22 @@ UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEve
 
 bool DirectProvider::SendSignal(const std::string& to, const std::string& kind, const std::string& session,
                                 const std::string& data) {
+    const std::string signature = Sign(identity_, SignalMessage(identity_.userId, to, session, kind, data));
+    // The local network when they are on it: no server in between.
+    if (lan_.IsConnected(to)) {
+        JSONValue frame = JSONValue::MakeObject();
+        frame.Set("t", JSONValue("signal"));
+        frame.Set("kind", JSONValue(kind));
+        frame.Set("session", JSONValue(session));
+        frame.Set("d", JSONValue(data));
+        frame.Set("s", JSONValue(signature));
+        if (lan_.Send(to, frame)) return true;
+    }
     std::shared_ptr<RelayClient> relay = Relay();
     if (!relay) return false;
     JSONValue payload = JSONValue::MakeObject();
     payload.Set("d", JSONValue(data));
-    payload.Set("s", JSONValue(Sign(identity_, SignalMessage(identity_.userId, to, session, kind, data))));
+    payload.Set("s", JSONValue(signature));
     JSONValue frame = JSONValue::MakeObject();
     frame.Set("type", JSONValue("signal"));
     frame.Set("to", JSONValue(to));
@@ -193,7 +215,10 @@ bool DirectProvider::SaveIdentity() {
 
 bool DirectProvider::HasStoredSession() const {
     auto* self = const_cast<DirectProvider*>(this);
-    if (!storeOpen_ || self->store_.GetSetting("relay_url").empty()) return false;
+    // An identity is a session: with a relay remembered, or for the local
+    // network alone.
+    if (!storeOpen_) return false;
+    if (self->store_.GetSetting("relay_url").empty() && self->store_.GetSetting("local_network") != "1") return false;
     std::lock_guard<std::mutex> lock(g_vaultMutex);
     return self->vault_.TryAutoUnlock() && self->vault_.Has("identity");
 }
@@ -222,11 +247,11 @@ void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
         finish(UltraIMResult::Ok());
         return;
     }
+    // No relay at all: the local network only.
     const std::string relayUrl = credentials.server.empty() ? store_.GetSetting("relay_url") : credentials.server;
-    if (relayUrl.empty()) {
-        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "No relay server is configured"));
-        return;
-    }
+    if (credentials.localNetwork) store_.SetSetting("local_network", "1");
+    lanOn_ = relayUrl.empty() || store_.GetSetting("local_network") == "1";
+    if (relayUrl.empty()) store_.SetSetting("local_network", "1");
 
     std::string error;
     if (!identity_.IsValid() && !LoadIdentity(error)) {
@@ -250,6 +275,21 @@ void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
     store_.SetSetting("display_name", displayName_);
     links_.SetLocalUserId(identity_.userId);
     calls_.SetLocalUserId(identity_.userId);
+
+    if (lanOn_ && !StartLan(error)) {
+        // Without a relay that is the end of it; with one, the relay still works.
+        if (relayUrl.empty()) {
+            SetState(UltraIMConnectionState::Error, error);
+            finish(UltraIMResult::Error(UltraIMResultCode::NetworkError, error));
+            return;
+        }
+    }
+    if (relayUrl.empty()) {
+        SetState(UltraIMConnectionState::Connected);
+        finish(UltraIMResult::Ok());
+        Wake();
+        return;
+    }
 
     auto relayOwner = std::make_shared<RelayClient>();
     {
@@ -347,8 +387,9 @@ void DirectProvider::AfterLogin() {
 }
 
 void DirectProvider::SignOut() {
-    calls_.EndAll("signed out");      // while the relay can still carry the hang-ups
+    calls_.EndAll("signed out");      // while the relay and the local network can still carry the hang-ups
     links_.CloseAll();
+    lan_.Stop();
     std::shared_ptr<RelayClient> relay;
     {
         std::lock_guard<std::mutex> lock(relayMutex_);
@@ -359,6 +400,11 @@ void DirectProvider::SignOut() {
         std::lock_guard<std::mutex> lock(mutex_);
         attempts_.clear();
         presence_.clear();
+        lanKeys_.clear();
+        for (auto& pending : pendingAdds_) {
+            if (pending.onResult) pending.onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Signed out"), {});
+        }
+        pendingAdds_.clear();
     }
     keyRing_.Clear();
     SetState(UltraIMConnectionState::Disconnected);
@@ -370,8 +416,138 @@ void DirectProvider::SignOut() {
 
 std::vector<uint8_t> DirectProvider::KeyOf(const std::string& userId) {
     StoredContact contact;
-    if (!store_.GetContact(userId, contact)) return {};
-    return FromBase64(contact.publicKey);
+    if (store_.GetContact(userId, contact)) return FromBase64(contact.publicKey);
+    // Someone on the local network who proved their key but is no contact.
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = lanKeys_.find(userId);
+    return it == lanKeys_.end() ? std::vector<uint8_t>() : it->second.first;
+}
+
+UltraIMPresence DirectProvider::EffectivePresence(const std::string& userId) {
+    if (lan_.IsConnected(userId)) return UltraIMPresence::Online;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = presence_.find(userId);
+    if (it != presence_.end()) return it->second;
+    return Relay() ? UltraIMPresence::Unknown : UltraIMPresence::Offline;
+}
+
+void DirectProvider::EmitPresence(const std::string& userId) {
+    UltraIMEvent event;
+    event.type = UltraIMEventType::PresenceChange;
+    event.providerId = providerId_;
+    event.contactId = userId;
+    event.conversationId = userId;
+    event.presence = EffectivePresence(userId);
+    Emit(event);
+    if (event.presence == UltraIMPresence::Online) Wake();
+}
+
+// ============================================================================
+// THE LOCAL NETWORK
+// ============================================================================
+
+bool DirectProvider::StartLan(std::string& error) {
+    if (!lan_.Start(&identity_, displayName_, true, timings_.lanDiscoveryMs, error)) return false;
+    std::set<std::string> wanted;
+    for (const auto& c : store_.ListContacts()) wanted.insert(c.userId);
+    lan_.SetWanted(wanted);
+    return true;
+}
+
+void DirectProvider::OnLanPeerUp(const std::string& peerId, const std::vector<uint8_t>& key, const std::string& name) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        lanKeys_[peerId] = {key, name};
+    }
+    // A contact's record learns its name if the relay never gave one.
+    StoredContact contact;
+    if (store_.GetContact(peerId, contact) && contact.displayName.empty() && !name.empty()) {
+        contact.displayName = name;
+        store_.UpsertContact(contact);
+    }
+    EmitPresence(peerId);
+    UltraIMEvent event;
+    event.type = UltraIMEventType::NearbyChange;
+    event.providerId = providerId_;
+    Emit(event);
+}
+
+void DirectProvider::OnLanFrame(const std::string& peerId, const JSONValue& frame) {
+    if (frame["t"].GetString() != "signal") return;
+    const std::string kind = frame["kind"].GetString();
+    const std::string session = frame["session"].GetString();
+    const std::string data = frame["d"].GetString();
+    // Signed like the relay's signals: the connection proved who it is, the
+    // signature proves this message.
+    if (!Verify(KeyOf(peerId), SignalMessage(peerId, identity_.userId, session, kind, data), frame["s"].GetString()))
+        return;
+    if (CallManager::IsCallSession(session)) calls_.HandleSignal(peerId, kind, session, data);
+    else links_.HandleSignal(peerId, kind, session, data);
+}
+
+UltraIMConversation DirectProvider::StoreLanContact(const std::string& userId) {
+    StoredContact contact;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = lanKeys_.find(userId);
+        if (it == lanKeys_.end()) return {};
+        contact.userId = userId;
+        contact.publicKey = Base64(it->second.first);
+        contact.displayName = it->second.second;
+    }
+    StoredContact existing;
+    if (store_.GetContact(userId, existing) && !existing.displayName.empty()) contact.displayName = existing.displayName;
+    contact.presence = UltraIMPresence::Online;
+    store_.UpsertContact(contact);
+    lan_.AddWanted(userId);
+    return EnsureDirectConversation(userId);
+}
+
+void DirectProvider::CompletePendingAdds(int64_t nowMs) {
+    std::vector<PendingAdd> done, expired;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto it = pendingAdds_.begin(); it != pendingAdds_.end();) {
+            if (lanKeys_.count(it->userId)) {
+                done.push_back(*it);
+                it = pendingAdds_.erase(it);
+            } else if (nowMs > it->deadlineMs) {
+                expired.push_back(*it);
+                it = pendingAdds_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    for (auto& p : done) p.onResult(UltraIMResult::Ok(), StoreLanContact(p.userId));
+    for (auto& p : expired)
+        p.onResult(UltraIMResult::Error(UltraIMResultCode::Timeout, "That ChatCube did not answer on this network"), {});
+}
+
+void DirectProvider::FetchNearbyContacts(UltraIMContactsCallback onResult) {
+    std::vector<UltraIMContact> out;
+    std::set<std::string> seen;
+    auto add = [&](const std::string& id, const std::string& name) {
+        StoredContact existing;
+        if (id == identity_.userId || seen.count(id) || store_.GetContact(id, existing)) return;
+        seen.insert(id);
+        UltraIMContact contact;
+        contact.contactId = id;
+        contact.providerId = providerId_;
+        contact.displayName = name.empty() ? id.substr(0, 8) : name;
+        contact.presence = UltraIMPresence::Online;
+        out.push_back(contact);
+    };
+    std::vector<std::pair<std::string, std::string>> proven;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto& entry : lanKeys_) proven.push_back({entry.first, entry.second.second});
+    }
+    for (const auto& p : proven) {
+        if (lan_.IsConnected(p.first)) add(p.first, p.second);
+    }
+    for (const LanPeer& peer : lan_.Nearby()) add(peer.userId, peer.displayName);
+    onResult(UltraIMResult::Ok(), out);
 }
 
 void DirectProvider::FetchUser(const std::string& userId, std::function<void(bool known)> onDone) {
@@ -411,11 +587,7 @@ UltraIMConversation DirectProvider::EnsureDirectConversation(const std::string& 
     conversation.memberIds = {identity_.userId, userId};
     store_.UpsertConversation(conversation);
     store_.GetConversation(userId, conversation);
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = presence_.find(userId);
-        if (it != presence_.end()) conversation.presence = it->second;
-    }
+    conversation.presence = EffectivePresence(userId);
     UltraIMEvent event;
     event.type = UltraIMEventType::ConversationUpdate;
     event.providerId = providerId_;
@@ -470,12 +642,8 @@ void DirectProvider::RefreshGroups() {
 
 void DirectProvider::FetchConversations(UltraIMConversationsCallback onResult) {
     std::vector<UltraIMConversation> list = store_.ListConversations();
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        for (auto& c : list) {
-            auto it = presence_.find(c.directContactId);
-            if (it != presence_.end()) c.presence = it->second;
-        }
+    for (auto& c : list) {
+        if (!c.isGroup && !c.directContactId.empty()) c.presence = EffectivePresence(c.directContactId);
     }
     onResult(UltraIMResult::Ok(), list);
 }
@@ -492,9 +660,7 @@ void DirectProvider::FetchContacts(UltraIMContactsCallback onResult) {
         contact.contactId = c.userId;
         contact.providerId = providerId_;
         contact.displayName = c.displayName;
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = presence_.find(c.userId);
-        contact.presence = it != presence_.end() ? it->second : c.presence;
+        contact.presence = EffectivePresence(c.userId);
         out.push_back(contact);
     }
     onResult(UltraIMResult::Ok(), out);
@@ -507,10 +673,39 @@ void DirectProvider::AddContact(const std::string& address, UltraIMConversationC
                                       "A ChatCube id is 32 hexadecimal characters"), {});
         return;
     }
-    std::shared_ptr<RelayClient> relay = Relay();
-    if (!relay || state_ != UltraIMConnectionState::Connected) {
+    if (state_ != UltraIMConnectionState::Connected) {
         onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in"), {});
         return;
+    }
+    std::shared_ptr<RelayClient> relay = Relay();
+    // On the local network and proven: no server needed. (The relay, when
+    // there is one, still learns the contact for presence.)
+    bool proven = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proven = lanKeys_.count(userId) > 0;
+    }
+    if (proven) {
+        if (relay) relay->Request("PUT", "/v1/contacts/" + userId, nullptr, [](const RelayResponse&) {});
+        onResult(UltraIMResult::Ok(), StoreLanContact(userId));
+        return;
+    }
+    // Seen nearby but not connected yet: connect, and finish once its
+    // handshake proves the key (CompletePendingAdds).
+    if (lanOn_ && (!relay || !relay->IsSocketOpen())) {
+        bool nearby = false;
+        for (const LanPeer& peer : lan_.Nearby()) nearby = nearby || peer.userId == userId;
+        if (!nearby && !relay) {
+            onResult(UltraIMResult::Error(UltraIMResultCode::NotFound,
+                                          "That ChatCube is not on this network (no relay server is set)"), {});
+            return;
+        }
+        if (nearby) {
+            lan_.AddWanted(userId);
+            std::lock_guard<std::mutex> lock(mutex_);
+            pendingAdds_.push_back({userId, onResult, NowMs() + timings_.lanAddTimeoutMs});
+            return;
+        }
     }
     relay->Request("PUT", "/v1/contacts/" + userId, nullptr, [this, userId, onResult](const RelayResponse& r) {
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
@@ -527,6 +722,7 @@ void DirectProvider::AddContact(const std::string& address, UltraIMConversationC
             std::lock_guard<std::mutex> lock(mutex_);
             presence_[userId] = contact.presence;
         }
+        if (lanOn_) lan_.AddWanted(userId);
         onResult(UltraIMResult::Ok(), EnsureDirectConversation(userId));
     });
 }
@@ -534,8 +730,13 @@ void DirectProvider::AddContact(const std::string& address, UltraIMConversationC
 void DirectProvider::CreateGroup(const std::string& title, const std::vector<std::string>& memberIds,
                                  UltraIMConversationCallback onResult) {
     std::shared_ptr<RelayClient> relay = Relay();
-    if (!relay || state_ != UltraIMConnectionState::Connected) {
+    if (state_ != UltraIMConnectionState::Connected) {
         onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in"), {});
+        return;
+    }
+    if (!relay) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                      "Groups need a relay server - this ChatCube uses the local network only"), {});
         return;
     }
     JSONValue body = JSONValue::MakeObject();
@@ -864,6 +1065,7 @@ bool DirectProvider::CanCall(const std::string& conversationId, bool video) cons
     if (conversationId.empty() || IsGroupId(conversationId)) return false;
     const UltraRtcCapabilities caps = UltraRtc_GetCapabilities();
     if (state_.load() != UltraIMConnectionState::Connected || !caps.audio || (video && !caps.video)) return false;
+    if (lan_.IsConnected(conversationId)) return true;
     std::shared_ptr<RelayClient> relay = Relay();
     return relay && relay->IsSocketOpen();
 }
@@ -995,10 +1197,12 @@ std::shared_ptr<RelayClient> DirectProvider::Relay() const {
 }
 
 void DirectProvider::Pump() {
-    if (!identity_.IsValid() || !Relay()) return;
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!identity_.IsValid() || (!relay && !lan_.IsRunning())) return;
     const int64_t now = NowMs();
     links_.ExpireStale(now, timings_.linkTimeoutMs);
     calls_.ExpireStale(now);
+    CompletePendingAdds(now);
 
     std::map<std::string, std::vector<OutboxEntry>> groupCopies;   // client id -> copies
     for (const auto& entry : store_.Outbox()) {
@@ -1038,17 +1242,14 @@ void DirectProvider::Pump() {
             continue;
         }
 
-        UltraIMPresence presence = UltraIMPresence::Unknown;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = presence_.find(entry.recipient);
-            if (it != presence_.end()) presence = it->second;
-        }
-        const bool online = presence == UltraIMPresence::Online;
+        const bool online = EffectivePresence(entry.recipient) == UltraIMPresence::Online;
         if (online) links_.Ensure(entry.recipient);
-        if (!online || now - entry.timestampMs > timings_.relayFallbackMs) PostToRelay({entry});
+        // Without a relay a message waits in the outbox until the link is up.
+        if (relay && (!online || now - entry.timestampMs > timings_.relayFallbackMs)) PostToRelay({entry});
     }
-    for (const auto& group : groupCopies) PostToRelay(group.second);
+    if (relay) {
+        for (const auto& group : groupCopies) PostToRelay(group.second);
+    }
 }
 
 void DirectProvider::Wake() {

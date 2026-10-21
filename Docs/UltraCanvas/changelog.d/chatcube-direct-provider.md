@@ -10,6 +10,10 @@
   and 1:1 voice and video calls (signed invite / accept / reject / camera /
   hang-up over the relay, an UltraRTC peer per call with Opus and VP8, mute,
   camera off; a dropped media connection waits briefly for the hang-up
-  that explains it).
+  that explains it), and the local network with or without a relay: an
+  mDNS announcement (`_chatcube._tcp`) and discovery, a TCP connection both
+  ends authenticate with their identity keys carrying the same signed
+  signalling, the nearby list, and the outbox waiting for the link when
+  there is no relay.
   `Tests/UltraIM/DirectProviderTests.cpp` runs two providers against a local
   relay end to end; CI installs the relay for it.

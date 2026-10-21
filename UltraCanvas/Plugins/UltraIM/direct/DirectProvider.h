@@ -1,7 +1,8 @@
 // Plugins/UltraIM/direct/DirectProvider.h
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider:
 // key-pair identity, end-to-end encrypted messages peer to peer over WebRTC
-// data channels, the relay for rendezvous, the offline queue and groups
+// data channels, the relay for rendezvous, the offline queue and groups, and
+// the local network for all of that between two ChatCubes with no relay
 // Version: 0.1.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -9,6 +10,7 @@
 
 #include "DirectCalls.h"
 #include "DirectCrypto.h"
+#include "DirectLan.h"
 #include "DirectLinks.h"
 #include "DirectRelayClient.h"
 #include "DirectStore.h"
@@ -35,6 +37,8 @@ struct ProviderTimings {
     int64_t relayFallbackMs = 8000;     // an unconfirmed 1:1 message goes to the relay queue after this
     int64_t linkAckTimeoutMs = 10000;   // a copy sent on a channel and not acknowledged is resent
     int     tickMs = 250;
+    int     lanDiscoveryMs = 4000;      // how often the local network is browsed (0: never)
+    int64_t lanAddTimeoutMs = 10000;    // adding someone nearby waits this long for the handshake
 };
 
 class DirectProvider : public IUltraIMProviderPlugin {
@@ -54,9 +58,10 @@ public:
     void Shutdown() override;
 
     // ---- session ------------------------------------------------------------
-    // credentials.server: the relay URL (remembered); createAccount makes a
-    // new identity on this device when it has none; displayName is shown to
-    // contacts.
+    // credentials.server: the relay URL (remembered) - none at all: the
+    // local network only; createAccount makes a new identity on this device
+    // when it has none; displayName is shown to contacts; localNetwork also
+    // finds and reaches contacts on the local network (remembered).
     void SignIn(const UltraIMCredentials& credentials, UltraIMResultCallback onResult) override;
     void SignOut() override;
     UltraIMConnectionState GetConnectionState() const override { return state_.load(); }
@@ -68,6 +73,7 @@ public:
     void FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                        UltraIMMessagesCallback onResult) override;
     void FetchContacts(UltraIMContactsCallback onResult) override;
+    void FetchNearbyContacts(UltraIMContactsCallback onResult) override;
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;
     void CreateGroup(const std::string& title, const std::vector<std::string>& memberIds,
                      UltraIMConversationCallback onResult) override;
@@ -100,6 +106,11 @@ public:
     UltraRtcHandle GetCallAudioTrack(const std::string& callId) { return calls_.GetAudioTrack(callId); }
     UltraRtcHandle GetCallVideoTrack(const std::string& callId) { return calls_.GetVideoTrack(callId); }
     void SetCallVideoConfig(const UltraRtcVideoConfig& config) { calls_.SetVideoConfig(config); }
+    // The local network: the port we listen on (0: not running), and an
+    // address to reach without mDNS (a person typed it in; tests).
+    int  GetLanPort() const { return lan_.GetPort(); }
+    void AddLanAddress(const std::string& host, int port) { lan_.AddAddress(host, port); }
+    bool IsOnLan(const std::string& userId) { return lan_.IsConnected(userId); }
 
 private:
     struct Attempt {
@@ -123,6 +134,15 @@ private:
     void RefreshGroups();
     void UpsertGroup(const UltraCanvas::JSONValue& group);
     void FetchQueue();
+    // Online if the relay says so or a local connection to them is up.
+    UltraIMPresence EffectivePresence(const std::string& userId);
+    void EmitPresence(const std::string& userId);
+    bool StartLan(std::string& error);
+    void OnLanPeerUp(const std::string& peerId, const std::vector<uint8_t>& key, const std::string& name);
+    void OnLanFrame(const std::string& peerId, const UltraCanvas::JSONValue& frame);
+    // A contact added from the local network: known once the handshake proves its key.
+    UltraIMConversation StoreLanContact(const std::string& userId);
+    void CompletePendingAdds(int64_t nowMs);
 
     // ---- incoming ---------------------------------------------------------------
     void OnFrame(const UltraCanvas::JSONValue& frame);
@@ -156,6 +176,8 @@ private:
     KeyRing         keyRing_;
     LinkManager     links_;
     CallManager     calls_;
+    LanTransport    lan_;
+    bool            lanOn_ = false;
     std::shared_ptr<RelayClient> relay_;   // replaced per sign-in; read through Relay()
     mutable std::mutex relayMutex_;
     std::shared_ptr<RelayClient> Relay() const;
@@ -164,6 +186,14 @@ private:
     std::map<std::string, Attempt> attempts_;           // clientId|recipient
     std::map<std::string, UltraIMPresence> presence_;   // user id -> presence
     std::set<std::string> fetchingUsers_;
+    // Proven by a local connection's handshake: user id -> (key, name).
+    std::map<std::string, std::pair<std::vector<uint8_t>, std::string>> lanKeys_;
+    struct PendingAdd {
+        std::string userId;
+        UltraIMConversationCallback onResult;
+        int64_t deadlineMs = 0;
+    };
+    std::vector<PendingAdd> pendingAdds_;
 
     std::thread     worker_;
     std::condition_variable wake_;

@@ -5,8 +5,10 @@
 //                        ChatCube
 //      Chat directly with the people you know - no account, no password
 //                 [ Your name               ]
-//                 [ Relay server            ]
+//                 [ Relay server (optional) ]
+//                 [x] Also find people on this network
 //                 [ Create my ChatCube ID   ]   (or: Sign in)
+//      No relay at all: ChatCube works on the local network only.
 //                       status line
 //
 // Chat view:
@@ -14,6 +16,8 @@
 //   | My ID 3f2a 9c01 ... [Copy]   | Bob            ●  online          [Call] [Video] |
 //   | [ Contact's ChatCube ID ][Add]| ---------------- 21.10.2026 ---------------   |
 //   | [New group]                   |  ( hello )                                    |
+//   | On this network               |                                               |
+//   |   Carol            [Add]      |                                               |
 //   | ● Bob              14:05      |                          ( hi, how are you ) |
 //   |   hi, how are you        [2]  |                                    14:06 ✓✓   |
 //   | # Team             13:40      |                                               |
@@ -51,6 +55,7 @@
 
 namespace UltraCanvas {
 class UltraCanvasButton;
+class UltraCanvasCheckbox;
 class UltraCanvasContainer;
 class UltraCanvasLabel;
 class UltraCanvasListView;
@@ -82,6 +87,8 @@ private:
     // ---- actions -------------------------------------------------------------
     void SignIn();
     void AddContact();
+    void AddContactById(const std::string& id);
+    void RefreshNearby();           // the "On this network" list
     void ToggleGroupForm();
     void CreateGroup();
     void CopyMyId();
@@ -116,6 +123,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> signInPage_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> relay_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>  localNetwork_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     signInStatus_;
     bool hasIdentity_ = false;
@@ -126,6 +134,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> groupForm_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupMembers_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> nearbyBox_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;
 

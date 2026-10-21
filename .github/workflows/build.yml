@@ -555,6 +555,9 @@ jobs:
           # The test skips without them, and "Run unit tests" turns that skip
           # into a failure, so it cannot quietly stop running.
           scripts/ci-apt.sh install cups-ipp-utils avahi-daemon
+          # The UltraNet mDNS plug-in (browsing, and advertising for ChatCube's
+          # local network) builds on Avahi's client library.
+          scripts/ci-apt.sh install libavahi-client-dev
           # IODeviceScannerESCLLiveTest scans over https:// from a scanner the
           # test runs itself (Tests/IODeviceScannerESCLLiveScanner.py, so
           # Python 3) with certificates it makes with the openssl command. Both
@@ -1440,6 +1443,9 @@ jobs:
         env:
           # DirectProviderTests: no relay is a failure, not a skip.
           ULTRAIM_TEST_RELAY_REQUIRED: 1
+          # Avahi is up (started for the IPP test): DirectProviderTests' two
+          # ChatCubes must find each other over mDNS, not skip.
+          ULTRAIM_TEST_MDNS_REQUIRED: 1
           # IODevicePrinterIPPLiveTest prints to a real ippeveprinter; a skip
           # would look like a pass, so forbid it, as for the database test.
           ULTRACANVAS_TEST_IPP_REQUIRED: 1

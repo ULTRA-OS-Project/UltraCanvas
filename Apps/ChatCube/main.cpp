@@ -22,6 +22,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraIM/UltraIMCore.h"
 #include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetPlugins.h"
 #include "UltraRTC/UltraRTCCore.h"
 
 #include <cstdio>
@@ -112,6 +113,10 @@ int main(int argc, char** argv) {
     UltraIMConfig config;
     config.appId = "org.ultraos.chatcube";
     config.pluginDirectory = ResolvePluginDirectory();
+    // UltraNet's plug-ins (mDNS for the local network) sit next to UltraIM's.
+    const fs::path netPlugins = UltraCanvas::PathFromUtf8(config.pluginDirectory).parent_path() / "UltraNet";
+    std::error_code netError;
+    if (fs::is_directory(netPlugins, netError)) UltraNet_SetPluginDirectory(UltraCanvas::PathToUtf8(netPlugins));
     const fs::path data = UltraCanvas::UltraCanvasDataFolder("ChatCube");
     config.dataDirectory = UltraCanvas::PathToUtf8(data);
     config.cacheDirectory = UltraCanvas::PathToUtf8(data / "cache");

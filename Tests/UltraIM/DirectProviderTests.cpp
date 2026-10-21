@@ -1,6 +1,7 @@
 // Tests/UltraIM/DirectProviderTests.cpp
 // ChatCube Direct: the envelope, the store, and two providers end to end
-// through a local relay (P2P, read receipts, offline queue, groups, calls)
+// through a local relay (P2P, read receipts, offline queue, groups, calls),
+// and two on the local network with no relay at all
 // Version: 0.1.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -12,6 +13,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
+#include "UltraNet/UltraNetPlugins.h"
 #include "UltraRTC/UltraRTCCore.h"
 
 #include <atomic>
@@ -430,6 +432,190 @@ void TestVideoCall(DirectProvider& alice, Events& aliceEvents, DirectProvider& b
 }
 #endif
 
+// ============================================================================
+// THE LOCAL NETWORK, NO RELAY
+// ============================================================================
+#if !defined(_WIN32)
+
+bool WaitUntil(const std::function<bool()>& condition, int seconds = 20) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    while (std::chrono::steady_clock::now() < end) {
+        if (condition()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return condition();
+}
+
+std::vector<UltraIMContact> Nearby(DirectProvider& provider) {
+    std::vector<UltraIMContact> out;
+    provider.FetchNearbyContacts([&](const UltraIMResult&, const std::vector<UltraIMContact>& list) { out = list; });
+    return out;
+}
+
+bool HasNearby(DirectProvider& provider, const std::string& userId) {
+    for (const auto& c : Nearby(provider)) {
+        if (c.contactId == userId) return true;
+    }
+    return false;
+}
+
+// Carol and Dave sign in with no relay server at all. Dave is told Carol's
+// address (mDNS is the next test): the connection proves who each is, they
+// add each other, chat peer to peer, call, and a message waits for Dave
+// while he is away.
+void TestLocalNetwork() {
+    const fs::path base = TempDir("lan");
+    ProviderTimings timings;
+    timings.lanDiscoveryMs = 0;             // addresses only here
+    Events carolEvents, daveEvents;
+    auto carol = std::make_unique<DirectProvider>("carol");
+    auto dave = std::make_unique<DirectProvider>("dave");
+    carol->SetTimings(timings);
+    dave->SetTimings(timings);
+    carol->SetCallUseDevices(false);
+    dave->SetCallUseDevices(false);
+    UltraIMConfig carolConfig, daveConfig;
+    carolConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "carol");
+    daveConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "dave");
+    CHECK(carol->Initialize(carolConfig, carolEvents.Sink()));
+    CHECK(dave->Initialize(daveConfig, daveEvents.Sink()));
+
+    UltraIMCredentials login;
+    login.loginType = UltraIMLoginType::KeyPair;
+    login.createAccount = true;             // and no server: the local network only
+    login.displayName = "Carol";
+    UltraIMResult r;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { carol->SignIn(login, cb); }, r) && r);
+    // The next start signs in by itself. (Asked now: UltraVault keeps one
+    // open store per process, and Dave's sign-in below opens his.)
+    CHECK(carol->HasStoredSession());
+    login.displayName = "Dave";
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { dave->SignIn(login, cb); }, r) && r);
+    CHECK(carol->GetConnectionState() == UltraIMConnectionState::Connected);
+    const std::string carolId = carol->GetLocalUserId();
+    const std::string daveId = dave->GetLocalUserId();
+    CHECK(carol->GetLanPort() > 0 && dave->GetLanPort() > 0);
+
+    // Without a relay nobody far away can be found, and groups need one.
+    UltraIMConversation none;
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) {
+        carol->AddContact("0123456789abcdef0123456789abcdef", cb);
+    }, none));
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { carol->CreateGroup("Team", {daveId}, cb); }, none));
+
+    dave->AddLanAddress("127.0.0.1", carol->GetLanPort());
+    CHECK(WaitUntil([&]() { return carol->IsOnLan(daveId) && dave->IsOnLan(carolId); }));
+    CHECK(HasNearby(*carol, daveId));
+    CHECK(HasNearby(*dave, carolId));
+    {
+        auto nearby = Nearby(*carol);
+        CHECK(nearby.size() == 1 && nearby[0].displayName == "Dave");
+    }
+
+    UltraIMConversation withDave, withCarol;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { carol->AddContact(daveId, cb); }, withDave));
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { dave->AddContact(carolId, cb); }, withCarol));
+    CHECK(withDave.title == "Dave" && withCarol.title == "Carol");
+    CHECK(withDave.presence == UltraIMPresence::Online);
+    CHECK(!HasNearby(*carol, daveId));      // a contact now, not a stranger nearby
+
+    // A message: the data channel is set up through the local connection.
+    UltraIMSendOptions o1;
+    o1.clientMessageId = "lan-1";
+    CHECK(carol->SendText(daveId, "hello across the room", o1));
+    CHECK(daveEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "hello across the room"); }));
+    CHECK(carolEvents.WaitFor([](const UltraIMEvent& e) { return IsDelivered(e, "lan-1", UltraIMDeliveryStatus::Delivered); }));
+    CHECK(carol->CountSentOverLink() >= 1 && carol->CountSentOverRelay() == 0);
+    CHECK(dave->MarkRead(carolId, ""));
+    CHECK(carolEvents.WaitFor([](const UltraIMEvent& e) { return IsDelivered(e, "lan-1", UltraIMDeliveryStatus::Read); }));
+
+    // A call over the local network.
+    if (UltraRtc_GetCapabilities().audio) {
+        CHECK(carol->CanCall(daveId, false));
+        std::string callId;
+        CHECK(carol->StartCall(daveId, false, callId));
+        CHECK(daveEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::CallReceive && e.callId == callId;
+        }));
+        CHECK(dave->AcceptCall(callId, false));
+        CHECK(carolEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Active); }));
+        CHECK(carol->EndCall(callId));
+        CHECK(daveEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Ended); }));
+    }
+
+    // Dave goes away: Carol sees him offline, and her message waits.
+    dave->SignOut();
+    CHECK(carolEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::PresenceChange && e.contactId == daveId &&
+               e.presence == UltraIMPresence::Offline;
+    }));
+    UltraIMSendOptions o2;
+    o2.clientMessageId = "lan-2";
+    CHECK(carol->SendText(daveId, "when you are back", o2));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    CHECK(!carolEvents.Any([](const UltraIMEvent& e) { return IsDelivered(e, "lan-2", UltraIMDeliveryStatus::Delivered); }));
+    // Back (the stored identity, no server): he dials Carol again and gets it.
+    UltraIMCredentials again;
+    again.loginType = UltraIMLoginType::KeyPair;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { dave->SignIn(again, cb); }, r) && r);
+    CHECK(dave->GetLocalUserId() == daveId);
+    CHECK(daveEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "when you are back"); }));
+    CHECK(carolEvents.WaitFor([](const UltraIMEvent& e) { return IsDelivered(e, "lan-2", UltraIMDeliveryStatus::Delivered); }));
+
+    carol->Shutdown();
+    dave->Shutdown();
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+// Finding each other over mDNS (_chatcube._tcp), with no address given.
+// Needs the system's mDNS responder (Avahi, Bonjour, Windows 10 1703+).
+void TestLocalNetworkDiscovery() {
+    const fs::path base = TempDir("mdns");
+    ProviderTimings timings;
+    timings.lanDiscoveryMs = 1000;
+    Events eveEvents, frankEvents;
+    auto eve = std::make_unique<DirectProvider>("eve");
+    auto frank = std::make_unique<DirectProvider>("frank");
+    eve->SetTimings(timings);
+    frank->SetTimings(timings);
+    UltraIMConfig eveConfig, frankConfig;
+    eveConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "eve");
+    frankConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "frank");
+    CHECK(eve->Initialize(eveConfig, eveEvents.Sink()));
+    CHECK(frank->Initialize(frankConfig, frankEvents.Sink()));
+    UltraIMCredentials login;
+    login.loginType = UltraIMLoginType::KeyPair;
+    login.createAccount = true;
+    login.displayName = "Eve";
+    UltraIMResult r;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { eve->SignIn(login, cb); }, r) && r);
+    login.displayName = "Frank";
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { frank->SignIn(login, cb); }, r) && r);
+    const std::string eveId = eve->GetLocalUserId();
+    const std::string frankId = frank->GetLocalUserId();
+
+    const bool found = WaitUntil([&]() { return HasNearby(*eve, frankId) && HasNearby(*frank, eveId); }, 15);
+    const bool required = !UltraCanvas::GetEnvUtf8("ULTRAIM_TEST_MDNS_REQUIRED").empty();
+    if (!found && !required) {
+        std::printf("  mDNS discovery: SKIP (no mDNS responder answered - Avahi not running?)\n");
+    } else {
+        CHECK(found);
+        CHECK(eveEvents.Any([](const UltraIMEvent& e) { return e.type == UltraIMEventType::NearbyChange; }));
+        // Added from the nearby list alone: the connection is made, then proven.
+        UltraIMConversation withFrank;
+        CHECK(WaitConversation([&](UltraIMConversationCallback cb) { eve->AddContact(frankId, cb); }, withFrank));
+        CHECK(withFrank.title == "Frank");
+        CHECK(eve->IsOnLan(frankId));
+        std::printf("  mDNS discovery: found each other, %s added %s\n", "Eve", withFrank.title.c_str());
+    }
+    eve->Shutdown();
+    frank->Shutdown();
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+#endif
+
 void TestEndToEnd() {
 #if defined(_WIN32)
     std::printf("DirectProviderTests: end-to-end part skipped on Windows\n");
@@ -568,6 +754,14 @@ int main() {
     TestEnvelope();
     TestStore();
     TestEndToEnd();
+#if !defined(_WIN32)
+    UltraNet_Initialize();
+    UltraNet_SetPluginDirectory(ULTRAIM_NET_PLUGIN_DIR);     // the mDNS plug-in of this build
+    UltraRtc_Initialize();
+    TestLocalNetwork();
+    TestLocalNetworkDiscovery();
+    UltraRtc_Shutdown();
+#endif
     std::printf("DirectProviderTests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -491,6 +491,17 @@ void UltraIM_FetchContacts(const std::string& providerId, UltraIMContactsCallbac
     provider->FetchContacts(callback ? callback : [](const UltraIMResult&, const std::vector<UltraIMContact>&) {});
 }
 
+void UltraIM_FetchNearbyContacts(const std::string& providerId, UltraIMContactsCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, std::vector<UltraIMContact>>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    provider->FetchNearbyContacts(callback ? callback
+                                           : [](const UltraIMResult&, const std::vector<UltraIMContact>&) {});
+}
+
 void UltraIM_AddContact(const std::string& providerId, const std::string& address,
                         UltraIMConversationCallback onResult) {
     auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));

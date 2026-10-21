@@ -2502,6 +2502,7 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
+- `UltraIM_FetchNearbyContacts` (people on the local network)
 
 **Implementation status:** Phase 1 core implemented — target `UltraIM`
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
@@ -2513,7 +2514,9 @@ identity, end-to-end encrypted messages peer to peer over UltraRTC data
 channels, the relay (`Server/ChatCubeRelay`) for rendezvous, the offline
 queue and groups, delivery and read receipts, local history, and 1:1 voice
 and video calls (signed invite / accept / reject / camera / hang-up over the
-relay, Opus and VP8 over an UltraRTC peer per call). Tests in `Tests/UltraIM`. See
+relay, Opus and VP8 over an UltraRTC peer per call), and the local network
+with or without a relay (mDNS announcement and discovery, a TCP connection
+both ends authenticate with their identity keys carrying the signalling). Tests in `Tests/UltraIM`. See
 `Docs/Modules/UltraIM/README.md`.
 
 ---

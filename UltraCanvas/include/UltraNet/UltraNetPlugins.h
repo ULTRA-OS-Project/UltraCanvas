@@ -3,6 +3,7 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.4.3 - IServiceDiscoveryPlugin (mDNS / DNS-SD advertising)
 // Version: 0.4.2 - IMailboxProtocolPlugin::CreateFolder / DeleteFolder
 // Version: 0.4.1 - IMailboxProtocolPlugin::ExpungeMessage
 // Version: 0.4.0 (Stage 3)
@@ -108,6 +109,15 @@ struct UltraNetDirectoryQuery {
 struct UltraNetDirectoryEntry {
     std::string dn;
     std::map<std::string, std::vector<std::string>> attributes;
+};
+
+// A service this program offers, announced on the local network (mDNS /
+// DNS-SD) until it is withdrawn.
+struct UltraNetServiceAdvertisement {
+    std::string              serviceType;    // "_chatcube._tcp"
+    std::string              instanceName;   // shown to people; a clash is renamed ("Alice #2")
+    int                      port = 0;
+    std::vector<std::string> txt;            // "key=value" records, each at most 255 bytes
 };
 
 struct UltraNetStreamOptions {
@@ -455,6 +465,18 @@ public:
         const std::string& url,
         const UltraNetDirectoryQuery& query,
         std::vector<UltraNetDirectoryEntry>& outEntries) = 0;
+};
+
+// mDNS / DNS-SD: browsing is the directory Search above (baseDn = the
+// service type); this adds announcing a service of our own. Reach it by
+// dynamic_cast from the "mdns" plug-in. An advertisement stays up -
+// renamed on a name clash, re-announced when the system's responder
+// restarts - until StopAdvertising or the plug-in shuts down.
+class IServiceDiscoveryPlugin : public IDirectoryProtocolPlugin {
+public:
+    virtual UltraNetResult Advertise(const UltraNetServiceAdvertisement& advertisement,
+                                     UltraNetHandle& outHandle) = 0;
+    virtual UltraNetResult StopAdvertising(UltraNetHandle handle) = 0;
 };
 
 // RTSP / RTMP / RTP.

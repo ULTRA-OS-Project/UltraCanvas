@@ -24,12 +24,18 @@
 //                          both IP versions is one entry with all of them.
 //   attributes["txt"]    = TXT record key=value entries (one per push_back)
 //
+// And IServiceDiscoveryPlugin::Advertise announces a service of our own
+// until StopAdvertising: Avahi's entry group on a threaded poll, Bonjour's
+// DNSServiceRegister serviced on a thread, Windows' DnsServiceRegister
+// (1703+, bound at run time like the browse calls). A name another host
+// already uses is renamed by the backend.
+//
 // Browsing alone is not discovery. It returns names; a caller needs a host
 // and a port, which is a second query on every platform. The Windows branch
 // used to stop after the first one and hand back names nothing could connect
 // to, so eSCL scanners were discoverable everywhere except there.
-// Version: 0.3.1
-// Last Modified: 2026-10-08
+// Version: 0.4.0
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
@@ -39,6 +45,7 @@
 #include "MdnsNames.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -47,6 +54,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <map>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -54,7 +62,10 @@
 #if defined(__linux__)
   #include <avahi-client/client.h>
   #include <avahi-client/lookup.h>
+  #include <avahi-client/publish.h>
+  #include <avahi-common/alternative.h>
   #include <avahi-common/simple-watch.h>
+  #include <avahi-common/thread-watch.h>
   #include <avahi-common/malloc.h>
   #include <avahi-common/error.h>
 #elif defined(__APPLE__)
@@ -109,6 +120,14 @@ void AddAnswer(BrowseState& state, UltraNetDirectoryEntry&& entry) {
         state.stop = true;
     }
 }
+
+// One announced service, whatever the backend. Stop() withdraws it and
+// waits for the backend's thread; the destructor stops it too.
+class Advertiser {
+public:
+    virtual ~Advertiser() = default;
+    virtual void Stop() = 0;
+};
 
 #if defined(__linux__)
 // ============================================================================
@@ -202,6 +221,133 @@ bool RunAvahiBrowse(const std::string& serviceType, BrowseState& state,
     avahi_client_free(ctx.client);
     avahi_simple_poll_free(ctx.poll);
     return true;
+}
+
+// ---- advertising ------------------------------------------------------------
+// A threaded poll per advertisement: the client reconnects to the daemon by
+// itself (AVAHI_CLIENT_NO_FAIL), and every time it is running the entry group
+// is (re)built; a name clash takes Avahi's alternative name ("Alice #2").
+
+class AvahiAdvertiser final : public Advertiser {
+public:
+    explicit AvahiAdvertiser(const UltraNetServiceAdvertisement& ad) : ad_(ad), name_(ad.instanceName) {}
+    ~AvahiAdvertiser() override { Stop(); }
+
+    bool Start(std::string& error) {
+        poll_ = avahi_threaded_poll_new();
+        if (!poll_) {
+            error = "Avahi: no poll";
+            return false;
+        }
+        int err = 0;
+        // The callback can run inside avahi_client_new, before it returns:
+        // it records the client itself.
+        client_ = avahi_client_new(avahi_threaded_poll_get(poll_), AVAHI_CLIENT_NO_FAIL, &OnClient, this, &err);
+        if (!client_) {
+            error = std::string("Avahi: ") + avahi_strerror(err);
+            avahi_threaded_poll_free(poll_);
+            poll_ = nullptr;
+            return false;
+        }
+        if (avahi_threaded_poll_start(poll_) < 0) {
+            error = "Avahi: the poll thread did not start";
+            avahi_client_free(client_);
+            avahi_threaded_poll_free(poll_);
+            client_ = nullptr;
+            poll_ = nullptr;
+            return false;
+        }
+        return true;
+    }
+
+    void Stop() override {
+        if (!poll_) return;
+        avahi_threaded_poll_stop(poll_);
+        if (group_) avahi_entry_group_free(group_);
+        if (client_) avahi_client_free(client_);
+        avahi_threaded_poll_free(poll_);
+        group_ = nullptr;
+        client_ = nullptr;
+        poll_ = nullptr;
+    }
+
+private:
+    // On the poll thread (or inside avahi_client_new).
+    static void OnClient(AvahiClient* client, AvahiClientState state, void* userdata) {
+        auto* self = static_cast<AvahiAdvertiser*>(userdata);
+        self->client_ = client;
+        switch (state) {
+            case AVAHI_CLIENT_S_RUNNING:
+                self->Publish();
+                break;
+            case AVAHI_CLIENT_S_COLLISION:
+            case AVAHI_CLIENT_S_REGISTERING:
+                // The host name changes: withdraw, and publish again once running.
+                if (self->group_) avahi_entry_group_reset(self->group_);
+                break;
+            case AVAHI_CLIENT_FAILURE:
+                // The daemon went away. The group dies with the connection;
+                // NO_FAIL brings the client back and S_RUNNING republishes.
+                if (self->group_) {
+                    avahi_entry_group_free(self->group_);
+                    self->group_ = nullptr;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    static void OnGroup(AvahiEntryGroup* group, AvahiEntryGroupState state, void* userdata) {
+        auto* self = static_cast<AvahiAdvertiser*>(userdata);
+        self->group_ = group;
+        if (state == AVAHI_ENTRY_GROUP_COLLISION) {
+            self->Rename();
+            avahi_entry_group_reset(group);
+            self->Publish();
+        }
+    }
+
+    void Rename() {
+        char* next = avahi_alternative_service_name(name_.c_str());
+        if (next) {
+            name_ = next;
+            avahi_free(next);
+        }
+    }
+
+    void Publish() {
+        if (!client_) return;
+        if (!group_) group_ = avahi_entry_group_new(client_, &OnGroup, this);
+        if (!group_ || !avahi_entry_group_is_empty(group_)) return;
+        for (int attempt = 0; attempt < 10; ++attempt) {
+            AvahiStringList* txt = nullptr;
+            for (const std::string& record : ad_.txt) txt = avahi_string_list_add(txt, record.c_str());
+            const int r = avahi_entry_group_add_service_strlst(
+                group_, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, static_cast<AvahiPublishFlags>(0), name_.c_str(),
+                ad_.serviceType.c_str(), nullptr, nullptr, static_cast<uint16_t>(ad_.port), txt);
+            avahi_string_list_free(txt);
+            if (r == AVAHI_ERR_COLLISION) {
+                Rename();
+                avahi_entry_group_reset(group_);
+                continue;
+            }
+            if (r >= 0) avahi_entry_group_commit(group_);
+            return;
+        }
+    }
+
+    UltraNetServiceAdvertisement ad_;
+    std::string name_;
+    AvahiThreadedPoll* poll_ = nullptr;
+    AvahiClient* client_ = nullptr;
+    AvahiEntryGroup* group_ = nullptr;
+};
+
+std::unique_ptr<Advertiser> StartAdvertiser(const UltraNetServiceAdvertisement& ad, std::string& error) {
+    auto advertiser = std::make_unique<AvahiAdvertiser>(ad);
+    if (!advertiser->Start(error)) return nullptr;
+    return advertiser;
 }
 
 #elif defined(__APPLE__)
@@ -347,6 +493,66 @@ bool RunBonjourBrowse(const std::string& serviceType, BrowseState& state,
     return true;
 }
 
+// ---- advertising ------------------------------------------------------------
+// DNSServiceRegister renames on a clash by itself (no NoAutoRename flag);
+// its socket is serviced on a thread until Stop.
+
+class BonjourAdvertiser final : public Advertiser {
+public:
+    ~BonjourAdvertiser() override { Stop(); }
+
+    bool Start(const UltraNetServiceAdvertisement& ad, std::string& error) {
+        // TXT: each record one length byte and its bytes.
+        std::vector<unsigned char> txt;
+        for (const std::string& record : ad.txt) {
+            const size_t n = std::min<size_t>(record.size(), 255);
+            txt.push_back(static_cast<unsigned char>(n));
+            txt.insert(txt.end(), record.begin(), record.begin() + static_cast<std::ptrdiff_t>(n));
+        }
+        if (txt.empty()) txt.push_back(0);      // an empty TXT record is one zero byte
+        const DNSServiceErrorType err = DNSServiceRegister(
+            &ref_, 0, 0, ad.instanceName.c_str(), ad.serviceType.c_str(), nullptr, nullptr,
+            htons(static_cast<uint16_t>(ad.port)), static_cast<uint16_t>(txt.size()), txt.data(), nullptr, nullptr);
+        if (err != kDNSServiceErr_NoError) {
+            error = "Bonjour: DNSServiceRegister failed (" + std::to_string(err) + ")";
+            ref_ = nullptr;
+            return false;
+        }
+        thread_ = std::thread([this]() {
+            const int fd = DNSServiceRefSockFD(ref_);
+            while (!stop_) {
+                fd_set fds;
+                FD_ZERO(&fds);
+                FD_SET(fd, &fds);
+                timeval tv{0, 200000};
+                if (select(fd + 1, &fds, nullptr, nullptr, &tv) > 0) {
+                    if (DNSServiceProcessResult(ref_) != kDNSServiceErr_NoError) break;
+                }
+            }
+        });
+        return true;
+    }
+
+    void Stop() override {
+        if (!ref_) return;
+        stop_ = true;
+        if (thread_.joinable()) thread_.join();
+        DNSServiceRefDeallocate(ref_);
+        ref_ = nullptr;
+    }
+
+private:
+    DNSServiceRef ref_ = nullptr;
+    std::atomic<bool> stop_{false};
+    std::thread thread_;
+};
+
+std::unique_ptr<Advertiser> StartAdvertiser(const UltraNetServiceAdvertisement& ad, std::string& error) {
+    auto advertiser = std::make_unique<BonjourAdvertiser>();
+    if (!advertiser->Start(ad, error)) return nullptr;
+    return advertiser;
+}
+
 #elif defined(_WIN32) || defined(_WIN64)
 // ============================================================================
 // Win32 DNS-SD backend (Windows 10 1703+) - DnsServiceBrowse + DnsServiceResolve
@@ -394,16 +600,24 @@ struct DnsSdApi {
                                                  PDNS_SERVICE_CANCEL);
     using ResolveCancelFn = DNS_STATUS (WINAPI*)(PDNS_SERVICE_CANCEL);
     using FreeInstanceFn  = VOID (WINAPI*)(PDNS_SERVICE_INSTANCE);
+    using ConstructFn     = PDNS_SERVICE_INSTANCE (WINAPI*)(PCWSTR, PCWSTR, PIP4_ADDRESS, PIP6_ADDRESS, WORD,
+                                                            WORD, WORD, DWORD, PCWSTR*, PCWSTR*);
+    using RegisterFn      = DWORD (WINAPI*)(PDNS_SERVICE_REGISTER_REQUEST, PDNS_SERVICE_CANCEL);
+    using DeRegisterFn    = DWORD (WINAPI*)(PDNS_SERVICE_REGISTER_REQUEST, PDNS_SERVICE_CANCEL);
 
     BrowseFn        Browse        = nullptr;
     BrowseCancelFn  BrowseCancel  = nullptr;
     ResolveFn       Resolve       = nullptr;
     ResolveCancelFn ResolveCancel = nullptr;
     FreeInstanceFn  FreeInstance  = nullptr;
+    ConstructFn     Construct     = nullptr;
+    RegisterFn      Register      = nullptr;
+    DeRegisterFn    DeRegister    = nullptr;
 
     bool Ready() const {
         return Browse && BrowseCancel && Resolve && ResolveCancel && FreeInstance;
     }
+    bool CanRegister() const { return Construct && Register && DeRegister && FreeInstance; }
 };
 
 const DnsSdApi& GetDnsSdApi() {
@@ -426,6 +640,9 @@ const DnsSdApi& GetDnsSdApi() {
             reinterpret_cast<DnsSdApi::ResolveCancelFn>(get("DnsServiceResolveCancel"));
         bound.FreeInstance =
             reinterpret_cast<DnsSdApi::FreeInstanceFn>(get("DnsServiceFreeInstance"));
+        bound.Construct = reinterpret_cast<DnsSdApi::ConstructFn>(get("DnsServiceConstructInstance"));
+        bound.Register = reinterpret_cast<DnsSdApi::RegisterFn>(get("DnsServiceRegister"));
+        bound.DeRegister = reinterpret_cast<DnsSdApi::DeRegisterFn>(get("DnsServiceDeRegister"));
         return bound;
     }();
     return api;
@@ -680,20 +897,167 @@ bool RunWindowsBrowse(const std::string& serviceType, BrowseState& state,
     return true;
 }
 
+// ---- advertising ------------------------------------------------------------
+// DnsServiceRegister announces an instance named "<name>.<type>.local" on
+// this computer's "<computer>.local" host; DnsServiceDeRegister withdraws it.
+// Both complete asynchronously; the registration is kept until Stop.
+
+// The register and the deregister both complete here (on a DNS thread),
+// with a copy of the instance that is ours to free; `context` is the
+// advertiser's completion event.
+void WINAPI OnWindowsRegistered(DWORD, PVOID context, PDNS_SERVICE_INSTANCE instance) {
+    if (instance) {
+        const DnsSdApi& api = GetDnsSdApi();
+        if (api.FreeInstance) api.FreeInstance(instance);
+    }
+    if (context) SetEvent(static_cast<HANDLE>(context));
+}
+
+class WindowsAdvertiser final : public Advertiser {
+public:
+    ~WindowsAdvertiser() override { Stop(); }
+
+    bool Start(const UltraNetServiceAdvertisement& ad, std::string& error) {
+        const DnsSdApi& api = GetDnsSdApi();
+        if (!api.CanRegister()) {
+            error = "DNS-SD registration needs Windows 10 1703 or later";
+            return false;
+        }
+        wchar_t computer[256] = {0};
+        DWORD size = 256;
+        if (!GetComputerNameExW(ComputerNameDnsHostname, computer, &size) || size == 0) {
+            error = "No computer name";
+            return false;
+        }
+        const std::string type = Mdns::ServiceTypeOnly(ad.serviceType);
+        instanceName_ = WideFromUtf8(ad.instanceName + "." + type + ".local");
+        hostName_ = std::wstring(computer) + L".local";
+        std::vector<std::wstring> keys, values;
+        for (const std::string& record : ad.txt) {
+            const size_t eq = record.find('=');
+            keys.push_back(WideFromUtf8(record.substr(0, eq)));
+            values.push_back(eq == std::string::npos ? std::wstring() : WideFromUtf8(record.substr(eq + 1)));
+        }
+        std::vector<PCWSTR> keyPtrs, valuePtrs;
+        for (size_t i = 0; i < keys.size(); ++i) {
+            keyPtrs.push_back(keys[i].c_str());
+            valuePtrs.push_back(values[i].c_str());
+        }
+        instance_ = api.Construct(instanceName_.c_str(), hostName_.c_str(), nullptr, nullptr,
+                                  static_cast<WORD>(ad.port), 0, 0, static_cast<DWORD>(keyPtrs.size()),
+                                  keyPtrs.empty() ? nullptr : keyPtrs.data(),
+                                  valuePtrs.empty() ? nullptr : valuePtrs.data());
+        if (!instance_) {
+            error = "DnsServiceConstructInstance failed";
+            return false;
+        }
+        completed_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        request_ = DNS_SERVICE_REGISTER_REQUEST{};
+        request_.Version = DNS_QUERY_REQUEST_VERSION1;
+        request_.InterfaceIndex = 0;
+        request_.pServiceInstance = instance_;
+        request_.pRegisterCompletionCallback = &OnWindowsRegistered;
+        request_.pQueryContext = completed_;
+        request_.unicastEnabled = FALSE;
+        if (api.Register(&request_, nullptr) != DNS_REQUEST_PENDING) {
+            api.FreeInstance(instance_);
+            instance_ = nullptr;
+            error = "DnsServiceRegister failed";
+            return false;
+        }
+        registered_ = true;
+        return true;
+    }
+
+    void Stop() override {
+        const DnsSdApi& api = GetDnsSdApi();
+        if (registered_) {
+            // The withdrawal finishes on a DNS thread that still reads the
+            // instance: wait for it (briefly) before freeing.
+            if (completed_) ResetEvent(completed_);
+            if (api.DeRegister(&request_, nullptr) == DNS_REQUEST_PENDING && completed_)
+                WaitForSingleObject(completed_, 2000);
+            registered_ = false;
+        }
+        if (instance_) {
+            api.FreeInstance(instance_);
+            instance_ = nullptr;
+        }
+        if (completed_) {
+            CloseHandle(completed_);
+            completed_ = nullptr;
+        }
+    }
+
+private:
+    std::wstring instanceName_;
+    std::wstring hostName_;
+    PDNS_SERVICE_INSTANCE instance_ = nullptr;
+    DNS_SERVICE_REGISTER_REQUEST request_{};
+    HANDLE completed_ = nullptr;
+    bool registered_ = false;
+};
+
+std::unique_ptr<Advertiser> StartAdvertiser(const UltraNetServiceAdvertisement& ad, std::string& error) {
+    auto advertiser = std::make_unique<WindowsAdvertiser>();
+    if (!advertiser->Start(ad, error)) return nullptr;
+    return advertiser;
+}
+
 #endif
 
 
-class MdnsPlugin : public IDirectoryProtocolPlugin {
+class MdnsPlugin : public IServiceDiscoveryPlugin {
 public:
     std::string GetName() const override { return "UltraNet-mDNS"; }
-    std::string GetVersion() const override { return "0.3.1"; }
+    std::string GetVersion() const override { return "0.4.0"; }
     std::vector<std::string> GetSupportedSchemes() const override {
         return {"mdns", "dns-sd"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
         return UltraNetResult::Ok();
     }
-    void Shutdown() override {}
+    void Shutdown() override {
+        std::map<UltraNetHandle, std::unique_ptr<Advertiser>> ads;
+        {
+            std::lock_guard<std::mutex> lock(adsMutex_);
+            ads.swap(ads_);
+        }
+        for (auto& entry : ads) entry.second->Stop();
+    }
+
+    UltraNetResult Advertise(const UltraNetServiceAdvertisement& ad, UltraNetHandle& outHandle) override {
+        outHandle = UltraNetInvalidHandle;
+        if (ad.serviceType.empty() || ad.instanceName.empty() || ad.port <= 0 || ad.port > 65535)
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "An advertisement needs a service type, a name and a port");
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32) || defined(_WIN64)
+        std::string error;
+        std::unique_ptr<Advertiser> advertiser = StartAdvertiser(ad, error);
+        if (!advertiser) return UltraNetResult::Error(UltraNetResultCode::Unknown, error);
+        std::lock_guard<std::mutex> lock(adsMutex_);
+        outHandle = nextHandle_++;
+        ads_[outHandle] = std::move(advertiser);
+        return UltraNetResult::Ok();
+#else
+        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
+                                     "mDNS plug-in: no backend for this platform");
+#endif
+    }
+
+    UltraNetResult StopAdvertising(UltraNetHandle handle) override {
+        std::unique_ptr<Advertiser> advertiser;
+        {
+            std::lock_guard<std::mutex> lock(adsMutex_);
+            auto it = ads_.find(handle);
+            if (it == ads_.end())
+                return UltraNetResult::Error(UltraNetResultCode::InvalidHandle, "No such advertisement");
+            advertiser = std::move(it->second);
+            ads_.erase(it);
+        }
+        advertiser->Stop();
+        return UltraNetResult::Ok();
+    }
 
     UltraNetResult Search(const std::string& /*url*/,
                           const UltraNetDirectoryQuery& q,
@@ -726,6 +1090,11 @@ public:
         out = std::move(state.entries);
         return UltraNetResult::Ok();
     }
+
+private:
+    std::mutex adsMutex_;
+    std::map<UltraNetHandle, std::unique_ptr<Advertiser>> ads_;
+    UltraNetHandle nextHandle_ = 1;
 };
 
 } // namespace

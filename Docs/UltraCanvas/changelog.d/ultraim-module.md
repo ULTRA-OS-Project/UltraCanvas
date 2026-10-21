@@ -12,6 +12,8 @@
   `InvalidState`); a video call's pictures reach the application through
   sinks (`UltraIM_SetCallVideoSinks`, RGBA on a media thread), its camera
   is switched with `UltraIM_SetCallCamera`, and the other side's camera
-  arrives as `CallMediaChange`. Plan:
+  arrives as `CallMediaChange`; `UltraIM_FetchNearbyContacts` and the
+  `NearbyChange` event list the people on the local network, and
+  `UltraIMCredentials::localNetwork` asks a provider to look there. Plan:
   `Docs/Research/ChatCubeDirectPlan.md`; doc: `Docs/Modules/UltraIM/README.md`;
   tests: `Tests/UltraIM` (`ULTRACANVAS_BUILD_ULTRAIM_TESTS`).

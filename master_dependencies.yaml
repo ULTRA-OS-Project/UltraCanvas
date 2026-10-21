@@ -167,7 +167,7 @@ networking:
 
     avahi:
       min_version: "0.8"
-      purpose: "mDNS / Zeroconf service discovery (Linux) - Tier 2 plugin"
+      purpose: "mDNS / Zeroconf service discovery and announcement (Linux) - Tier 2 plugin; ChatCube's local network"
       required: false
       priority: "low"
       platforms: ["Linux"]
