@@ -504,7 +504,7 @@ struct ImapResponse {
         return !segments.empty() && segments.front().compare(0, tag.size() + 1, tag + " ") == 0;
     }
     // "OK" / "NO" / "BAD" of a tagged response (upper-cased), "" otherwise.
-    std::string Status() const {
+    std::string StatusWord() const {
         if (segments.empty()) return {};
         const std::string& line = segments.front();
         const std::size_t sp = line.find(' ');

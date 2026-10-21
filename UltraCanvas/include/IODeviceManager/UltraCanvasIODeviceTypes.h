@@ -11,17 +11,6 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Bool` and `Status` as macros, which
-// would break the declarations below. UltraCanvas's Linux platform glue pulls X11 in transitively, so
-// any TU including both an UltraCanvas header and this one would otherwise
-// fail to compile. Same guard as UltraNetCore.h.
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
-
 namespace UltraCanvas {
 
 // ============================================================================

@@ -15,14 +15,6 @@
 #include <limits>
 #include <cmath>
 
-// UltraCanvasCommonTypes.h transitively includes <X11/Xlib.h> on Linux/BSD,
-// which #defines several macros that clash with our identifiers.
-#ifdef Status
-#undef Status
-#endif
-#ifdef Always
-#undef Always
-#endif
 
 namespace UltraCanvas {
 

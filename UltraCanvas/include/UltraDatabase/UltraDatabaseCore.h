@@ -11,17 +11,6 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h (pulled in transitively by UltraCanvas's Linux
-// platform glue) defines Bool / Status as macros, which would
-// break the declarations below. Undef them so any
-// translation unit that includes both an X11 header and this one compiles.
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
-
 // Opaque handle for prepared statements, transactions and (Stage 2) cursors
 // and async queries. Zero is always invalid.
 using UltraDbHandle = uint64_t;

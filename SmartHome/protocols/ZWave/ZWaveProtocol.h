@@ -249,7 +249,7 @@ enum class ZWaveNotificationType {
  * @brief Z-Wave value type
  */
 enum class ZWaveValueType {
-    Bool,
+    Boolean,
     Byte,
     Decimal,
     Int,
@@ -313,7 +313,7 @@ struct ZWaveValue {
     ZWaveCommandClass CommandClass = ZWaveCommandClass::NoOperation;
     uint8_t Instance = 0;
     uint16_t Index = 0;
-    ZWaveValueType Type = ZWaveValueType::Bool;
+    ZWaveValueType Type = ZWaveValueType::Boolean;
     
     std::string Label;
     std::string Units;

@@ -7,17 +7,6 @@
 
 #include "UltraCanvasCommonTypes.h"
 
-// UltraCanvasCommonTypes.h pulls in X11/Xlib.h on Linux, whose Status/
-// Always macros collide with eBook enum members and factory methods
-#ifdef Status
-#undef Status
-#endif
-#ifdef Always
-#undef Always
-#endif
-#ifdef Bool
-#undef Bool
-#endif
 
 #include <string>
 #include <vector>

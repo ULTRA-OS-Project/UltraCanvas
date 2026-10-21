@@ -17,19 +17,6 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Bool` and `Status` as macros, which
-// would break the declarations below. UltraCanvas's Linux
-// platform glue pulls X11 in transitively, so any TU that includes both an
-// UltraCanvas header and an UltraNet header would otherwise fail to compile.
-// We can't put X11 headers below UltraNet ones reliably, so just undef the
-// known conflict names here.
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
-
 // ============================================================================
 // Opaque handle. Zero is reserved for "invalid handle". Returned by
 // connection-oriented or async operations (sockets, sessions, websockets,

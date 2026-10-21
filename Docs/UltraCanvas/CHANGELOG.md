@@ -37,7 +37,14 @@
   `StoreResultCode::Ok` - and the factories `WasmStatus::Success()` and
   `VaultResult::Success()` are `WasmStatus::Ok()` (like `UltraNetResult::Ok()`)
   and `VaultResult::NoError()` (`VaultResult::Ok()` is its query). Every
-  `#undef Success` is gone; the `Bool` and `Status` guards stay.
+  `#undef Success` is gone.
+- **And no `#undef` of an X11 macro is left at all.** The `Status`, `Always`
+  and `Bool` guards in UltraNet, UltraWin, UltraDatabase, IODevice, EBook,
+  Spreadsheet and RequirementModel headers are gone with the identifiers
+  they covered: `RequirementField::Status` is `State` (the ReqIF field
+  names are unchanged), `UltraDbType::Bool` and `ZWaveValueType::Bool` are
+  `Boolean`, `AiStatus::Status()` is `StatusOf()` and the IMAP response's
+  `Status()` is `StatusWord()`. Nothing was named `Always` any more.
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

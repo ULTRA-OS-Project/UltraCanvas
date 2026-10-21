@@ -12,16 +12,6 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Bool` and `Status` as macros, which would
-// break the declarations below (same guard as UltraNetCore.h — UltraCanvas's
-// Linux platform glue pulls X11 in transitively).
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
-
 // ============================================================================
 // Opaque handle. Zero is reserved for "invalid handle". Returned for running
 // application instances (Stage 1) and, later, VM lifecycle operations.

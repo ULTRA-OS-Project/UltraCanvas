@@ -21,11 +21,6 @@
 
 #include "UltraCanvasCommonTypes.h"
 
-// UltraCanvasCommonTypes.h pulls in X11/Xlib.h on Linux, whose Status
-// macro collides with the enum members below.
-#ifdef Status
-#undef Status
-#endif
 
 #include <functional>
 #include <map>
@@ -104,7 +99,7 @@ enum class RequirementField {
     Source,
     Risk,
     VerifyMethod,
-    Status,
+    State,
     Owner,
     Priority,
     DocRef,

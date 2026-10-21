@@ -276,7 +276,7 @@ public:
             while (reader_.Next(r)) {
                 if (r.IsTagged(tag)) {
                     Touch();
-                    if (r.Status() == "OK") return UltraNetResult::Ok();
+                    if (r.StatusWord() == "OK") return UltraNetResult::Ok();
                     const std::string verb = command.substr(0, command.find(' ', 4));
                     return UltraNetResult::Error(UltraNetResultCode::Unknown,
                         "The mail server refused " + verb + ": " + r.Text());

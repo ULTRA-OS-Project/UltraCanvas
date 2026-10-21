@@ -462,7 +462,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildComputerStep(
         auto row = Theme::MakeKeyRow("ucsSysAssistants", "AI assistants");
         bool any = false;
         for (auto assistant : kAssistants) {
-            const AssistantStatus* status = ai_.Status(assistant);
+            const AssistantStatus* status = ai_.StatusOf(assistant);
             if (!status || !status->installed) continue;
             any = true;
             row->AddChild(Theme::MakeStatusBadge("ucsSysAssistant" + AssistantName(assistant), true,

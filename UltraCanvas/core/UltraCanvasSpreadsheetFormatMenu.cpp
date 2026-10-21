@@ -12,14 +12,6 @@
 #include <cmath>
 #include <sstream>
 
-// UltraCanvasWindow.h reaches <X11/Xlib.h> on Linux/BSD, whose macros clash
-// with identifiers below.
-#ifdef Status
-#undef Status
-#endif
-#ifdef Always
-#undef Always
-#endif
 
 namespace UltraCanvas {
 

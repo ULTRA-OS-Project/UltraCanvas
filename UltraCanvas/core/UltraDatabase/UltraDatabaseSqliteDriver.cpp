@@ -63,7 +63,7 @@ UltraDbResult BindParams(sqlite3* db, sqlite3_stmt* stmt,
             case UltraDbType::Null:
                 rc = sqlite3_bind_null(stmt, idx);
                 break;
-            case UltraDbType::Bool:
+            case UltraDbType::Boolean:
             case UltraDbType::Int:
                 rc = sqlite3_bind_int64(stmt, idx, v.AsInt64());
                 break;
