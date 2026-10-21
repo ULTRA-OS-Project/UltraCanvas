@@ -73,7 +73,11 @@ UltraDbResult UltraDb_ExecBatch(const std::string& connection,
 // - the Stop button of a console. The running call returns with
 // UltraDbResultCode::Cancelled. Success means the request was made, including
 // when nothing was running (then nothing happens); a connection not yet
-// opened has nothing to cancel.
+// opened has nothing to cancel. It also reaches a statement that began on
+// the name before the name was re-registered or closed - such a statement
+// runs on to its end on the old connection, and is still the name's to stop.
+// ConnectionNotFound only when the name has neither a connection nor such a
+// statement.
 UltraDbResult UltraDb_CancelQuery(const std::string& connection);
 
 // ---- Cursors ---------------------------------------------------------------

@@ -82,8 +82,8 @@ Three facts about CI decide how a cloud-only developer works:
   the image says the same).
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
-  change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
-  assigned on `main` after the merge, never on the branch.
+  change needs one under `Docs/<App>/changelog.d/`. The number is assigned
+  on `main` after the merge, never on the branch.
 
 ## Step 3 — The first session: skeleton, changelog, pull request
 

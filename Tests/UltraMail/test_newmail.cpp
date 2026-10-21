@@ -124,6 +124,30 @@ TEST(newmail_text_for_one_message) {
     REQUIRE_EQ(FormatNewMail(s).body, std::string("Line one  line two"));
 }
 
+// The notification carries where a click leads (its launch string), so a
+// click that reaches UltraMail outside the bus - a Windows toast clicked after
+// the broker host quit - opens the same message.
+TEST(newmail_launch_names_the_message) {
+    NewMailTarget target;
+    target.accountId = "erika@example.org";
+    target.folder = "INBOX/Rechnungen & Belege";
+    target.uid = 4711;
+    NewMailTarget back;
+    REQUIRE(ParseNewMailLaunch(NewMailLaunch(target), back));
+    REQUIRE(back == target);
+
+    NewMailTarget inbox;
+    inbox.accountId = "a1";
+    REQUIRE(ParseNewMailLaunch(NewMailLaunch(inbox), back));
+    REQUIRE(back.folder.empty());
+    REQUIRE(back.uid == 0);
+
+    REQUIRE(!ParseNewMailLaunch("", back));
+    REQUIRE(!ParseNewMailLaunch("folder=INBOX&uid=3", back));
+    REQUIRE(ParseNewMailLaunch("account=a1&uid=12x", back));
+    REQUIRE(back.uid == 0);   // not a number: no single message
+}
+
 TEST(newmail_text_for_several_messages) {
     NewMailSummary s;
     s.accountId = "erika";
@@ -175,6 +199,11 @@ TEST(newmail_notification_is_posted_and_its_click_comes_back) {
     n.accountId = "erika";
     n.summary = "New mail from Ada Lovelace";
     n.body = "The engine notes";
+    NewMailTarget target;
+    target.accountId = "erika";
+    target.folder = "INBOX";
+    target.uid = 77;
+    n.launch = NewMailLaunch(target);
     const std::string id = publisher.Notify(n);
     REQUIRE(!id.empty());
 
@@ -217,6 +246,12 @@ TEST(newmail_notification_is_posted_and_its_click_comes_back) {
         REQUIRE(account && account->GetString() == "erika");
         const UltraCanvas::JSONValue* actions = got.body.Find("actions");
         REQUIRE(actions && actions->IsArray() && actions->GetSize() == 1);
+        // Where a click leads, for one that reaches UltraMail outside the bus.
+        const UltraCanvas::JSONValue* launch = got.body.Find("launch");
+        REQUIRE(launch && launch->IsString());
+        NewMailTarget back;
+        REQUIRE(ParseNewMailLaunch(launch->GetString(), back));
+        REQUIRE(back == target);
     }
 
     // Not journaled: the feed's query never returns it.

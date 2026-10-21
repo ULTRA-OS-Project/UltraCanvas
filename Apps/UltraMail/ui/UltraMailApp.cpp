@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.37 - the new-mail notification carries where its click leads
+//                   (launch), and UltraMail is the activator of its Windows
+//                   toasts, so a click opens the mail after the broker host
+//                   quit or with UltraMail closed
 // Version: 0.9.36 - the quit question says that what an upload to an FTP or
 //                   SFTP account sent is removed the next time it is used
 // Version: 0.9.35 - the last-window test is the framework's
@@ -271,6 +275,11 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
         if (!app) return;
         app->PostToUIThread([this, notificationId]() { OpenFromNotification(notificationId); });
     });
+    // On Windows a click on a toast in the Action Center after the broker
+    // host quit - or with UltraMail closed, which Windows then starts - comes
+    // to UltraMail's own activator (on the UI thread). Elsewhere a no-op.
+    UltraCanvas::RegisterNotificationActivator(
+        kUltraMailAppId, [this](const UltraCanvas::NotificationActivation& click) { OpenFromActivation(click); });
     return true;
 }
 
@@ -3604,6 +3613,7 @@ void UltraMailApp::AnnounceNewMail(const std::string& accountId, const SyncOutco
         target.folder = summary.latest.front().folder;
         target.uid    = summary.latest.front().uid;
     }
+    notification.launch = NewMailLaunch(target);
     // Posted from a worker: the publisher may be connecting to the bus (or
     // hosting its broker) for a sync worker right now, and the window must
     // not wait for that.
@@ -3625,6 +3635,33 @@ void UltraMailApp::OpenFromNotification(const std::string& notificationId) {
     if (it == notificationTargets_.end()) return;
     const NotificationTarget target = it->second;
     notificationTargets_.erase(it);
+    OpenNotificationTarget(target);
+}
+
+void UltraMailApp::OpenFromActivation(const UltraCanvas::NotificationActivation& click) {
+    NotificationTarget target;
+    if (ParseNewMailLaunch(click.launch, target)) {
+        notificationTargets_.erase(click.notificationId);
+        OpenNotificationTarget(target);
+        return;
+    }
+    if (notificationTargets_.count(click.notificationId)) {
+        OpenFromNotification(click.notificationId);
+        return;
+    }
+    // A notification of an older UltraMail, without a launch string: the
+    // window at least.
+    if (window_) {
+        if (window_->IsMinimized()) window_->Restore();
+        window_->RaiseAndFocus();
+    }
+}
+
+void UltraMailApp::OpenNotificationTarget(const NewMailTarget& target) {
+    const auto now = std::chrono::steady_clock::now();
+    if (target == lastOpenedTarget_ && now - lastOpenedAt_ < std::chrono::seconds(5)) return;
+    lastOpenedTarget_ = target;
+    lastOpenedAt_ = now;
     if (window_) {
         if (window_->IsMinimized()) window_->Restore();
         window_->RaiseAndFocus();
