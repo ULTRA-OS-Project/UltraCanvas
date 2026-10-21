@@ -8,7 +8,10 @@
   - `deps/plog`     94899e0 (MIT)
 - Licence: MPL-2.0 (`LICENSE`).
 
-The sources are unmodified. Removed to keep the tree small, none of it built
+The sources are unmodified but for one line: `src/configuration.cpp` includes
+`<algorithm>` for its `std::transform`, which newer libc++ (MSYS2 clang64) no
+longer pulls in through `<regex>`. Re-apply it on an update unless upstream has
+it. Removed to keep the tree small, none of it built
 by UltraCanvas: `.git` metadata, `examples/`, `pages/`, `test/`, `.github/`,
 `deps/json` (only the examples use it), `deps/libsrtp/{test,crypto/test,fuzzer}`,
 `deps/usrsctp/{fuzzer,programs}`, `deps/libjuice/test`, `deps/plog/{samples,doc}`.

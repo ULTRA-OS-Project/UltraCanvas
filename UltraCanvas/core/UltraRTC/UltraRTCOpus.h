@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
