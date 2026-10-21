@@ -28,7 +28,7 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Icon (icon mode)   │
 │ pal- │ ┌──────────────────────────────────────┐    │ Colour (fill/line) │
-│ ette │ │                                       │    │   + swatches       │
+│ ette │ │                                       │    │   + palettes       │
 │      │ │ pasteboard, page, grid, guides,       │    │ Tool Options       │
 │      │ │ the drawing, selection handles        │    │ Gradient (Fill)    │
 │      │ │                                       │    │ Line (line tools)  │
@@ -54,6 +54,13 @@ down with it, and it opens with the design and the channels it was left
 with: `picker.design` and `picker.channels` in
 `~/.config/UltraCanvas/ArtCreator/config.ini` (the platform's settings folder
 elsewhere).
+
+Under the picker are the colour palettes, one row of swatches each, as in
+UltraPaint. A click on a swatch sets the fill; a right click opens a small
+picker that changes that one entry (*Revert* puts it back). The **+** at the
+end of the last row opens a gallery of colour schemes, and a scheme's own
+**+** adds it as another row; with several rows each one ends in a **−** that
+takes it away. The rows are kept in the same file (`picker.palettes`).
 
 ## Tools
 

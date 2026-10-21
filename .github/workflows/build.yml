@@ -57,9 +57,10 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  # A merge commit that brings in a pending changelog entry does not carry its
-  # version yet: changelog-fold.yml assigns it in the commit that follows, and
-  # line 1 of CHANGELOG.md here is still the PREVIOUS release. Building the
+  # A merge commit that brings in a pending changelog entry - the framework's
+  # or any app's - does not carry its version yet: changelog-fold.yml assigns
+  # it in the commit that follows, and line 1 of that product's CHANGELOG.md
+  # here is still the PREVIOUS release. Building the
   # release from this commit would package new code under an already-published
   # number, so the release build waits for the fold commit - which carries the
   # right one - and this gate skips the commit before it.
@@ -88,8 +89,13 @@ jobs:
       - id: check
         shell: bash
         run: |
-          count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
-                       ! -name 'README.md' 2>/dev/null | wc -l)
+          # Every product's pending entries, not only the framework's: the
+          # artifacts carry every app stamped with its own changelog's line 1,
+          # so an app entry left unfolded here would ship that app under its
+          # previous number. The fold commit (framework number unchanged when
+          # only apps were folded) is the one release build for this merge.
+          count=$(find Docs -path '*/changelog.d/*.md' ! -name 'README.md' \
+                       2>/dev/null | wc -l)
           # A release dispatch is gated like a push. It names the fold commit,
           # so nothing is pending there - unless the fold had to rebase onto
           # a merge that landed meanwhile: then that merge's entry is still
@@ -548,6 +554,12 @@ jobs:
           # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
           # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
           scripts/ci-apt.sh install libudev-dev libcups2-dev libsane-dev
+          # UltraNet's optional protocol plug-ins are compiled only when configure
+          # finds their library too; without these the MQTT, AMQP, CoAP, SNMP and
+          # SSH plug-ins were never built on Linux and a change to them went
+          # unseen (the cloud session hook installs the same five). The check
+          # after configure fails the row if one of them was left out.
+          scripts/ci-apt.sh install libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
           # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest -
           # over ipp://, and over ipps:// with the self-signed certificate it makes,
           # which exercises trusting a device on first use (UltraCanvasIODeviceTlsTrust) -
@@ -933,6 +945,22 @@ jobs:
             exit 1
           fi
           echo "Spell checking verified: $(grep -oE 'Hunspell: [0-9][^ ]*' configure.log | head -1)"
+
+      # The five UltraNet plug-ins above degrade the same way: CMake leaves one
+      # out without a word when its library is missing, so configure has to
+      # say it enabled each of them.
+      - name: Verify the MQTT, AMQP, CoAP, SNMP and SSH plug-ins are built (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          for plugin in MQTT AMQP CoAP SNMP SSH; do
+            if ! grep -q "UltraNet $plugin plug-in - ENABLED" configure.log; then
+              echo "::error::The UltraNet $plugin plug-in was not enabled during configure (its library missing?)"
+              exit 1
+            fi
+          done
+          echo "UltraNet plug-ins verified: MQTT, AMQP, CoAP, SNMP, SSH enabled"
 
       # libcurl selection is asserted per platform so a silent regression is caught:
       #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
@@ -1327,6 +1355,17 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^EmojiSettingsTest$"
 
+      # The UltraMessage suite on Windows, which ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS
+      # builds there but nothing ran: the channel through Windows' named
+      # pipes, and the Windows adapters against the runner's desktop - the
+      # windows-presenter starts in toast mode (Windows 10 1903 and later, in
+      # this C++/WinRT build) or balloon mode, and the notification listener
+      # reports its state. Linux runs it in the full pass.
+      - name: Run UltraMessage tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraMessage$"
+
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)
       # against the runner's desktop: the test opens a window of its own,
@@ -1654,7 +1693,17 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "The uninstaller exited with $($p.ExitCode)" }
           $left = @(Get-ChildItem $dir -Recurse -File | Where-Object Name -ne 'Uninstall.exe')
           if ($left.Count -gt 0) { throw "Left behind: $(($left | Select-Object -First 10 | ForEach-Object FullName) -join ', ')" }
-          if (Test-Path $menu) { throw 'The Start-menu folder was left behind' }
+          # The folder can outlive the uninstaller for a moment: the shell
+          # may still hold it while it drops the removed shortcuts (a pull
+          # request that changes no packaging failed here while main at the
+          # same base passed). Allow it ten seconds before calling it left
+          # behind, and name what is still in it when it really is.
+          $deadline = (Get-Date).AddSeconds(10)
+          while ((Test-Path $menu) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $menu) {
+            $inside = @(Get-ChildItem $menu -Force | ForEach-Object Name)
+            throw "The Start-menu folder was left behind, holding: $(if ($inside) { $inside -join ', ' } else { 'nothing' })"
+          }
           if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe' -ErrorAction SilentlyContinue) {
             throw 'The App Paths entry was left behind'
           }
