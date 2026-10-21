@@ -1,0 +1,33 @@
+[Desktop Entry]
+# "AnchorPoint Receive": a terminal that waits for one file with
+# anchorpoint-cli and saves it in the Downloads folder - the quick way to take
+# a file from a peer without opening the window. The window has its own
+# entry, AnchorPoint.desktop.
+#
+# Exec runs a small sh script: the Downloads folder is the one
+# xdg-user-dirs names (it sources user-dirs.dirs, as xdg-user-dir does, so a
+# localised folder name is found), ~/Downloads when there is none or it is
+# $HOME itself; it is created if missing. After the transfer the terminal
+# waits for Enter, so its result - or its error - stays readable. The script
+# is quoted the way the Desktop Entry spec wants: inside the double quotes
+# `"`, `$` and `\` are escaped with a backslash, and every backslash is then
+# doubled as in any value. Readable, it is:
+#   f="${XDG_CONFIG_HOME:-$HOME/.config}/user-dirs.dirs"; [ -r "$f" ] && . "$f"; d="${XDG_DOWNLOAD_DIR:-$HOME/Downloads}"; [ "$d" = "$HOME" ] && d="$HOME/Downloads"; mkdir -p "$d" && anchorpoint-cli recv --out "$d" --listen; echo; printf "Press Enter to close. "; read _
+#
+# Windows: build-windows-installer.sh and make_msix_layout.py give a Start
+# menu entry to the program an entry's Exec names - `sh` here, which is in no
+# Windows package - so anchorpoint-cli stays out of the Start menu there, as
+# the command-line tool it is.
+#
+# Installed to share/applications with the CLI (Apps/AnchorPoint/CMakeLists.txt).
+Type=Application
+Version=1.5
+Name=AnchorPoint Receive
+GenericName=Receive a File
+Comment=Wait for one file from a peer in a terminal and save it in Downloads
+Exec=sh -c "f=\\"\\${XDG_CONFIG_HOME:-\\$HOME/.config}/user-dirs.dirs\\"; [ -r \\"\\$f\\" ] && . \\"\\$f\\"; d=\\"\\${XDG_DOWNLOAD_DIR:-\\$HOME/Downloads}\\"; [ \\"\\$d\\" = \\"\\$HOME\\" ] && d=\\"\\$HOME/Downloads\\"; mkdir -p \\"\\$d\\" && anchorpoint-cli recv --out \\"\\$d\\" --listen; echo; printf \\"Press Enter to close. \\"; read _"
+TryExec=anchorpoint-cli
+Icon=AnchorPoint
+Terminal=true
+Categories=Network;FileTransfer;ConsoleOnly;
+Keywords=receive;file;transfer;peer;p2p;LAN;terminal;

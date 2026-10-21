@@ -123,6 +123,11 @@ anchorpoint-cli recv --out ./downloads --from 192.168.1.10:5040 # machine B
 Transfers show live progress, resume from interrupted partials, and refuse to
 report success unless the received bytes hash-match the source.
 
+On Linux the application menu also has **AnchorPoint Receive**
+(`anchorpoint-cli.desktop`): a terminal running `anchorpoint-cli recv --listen`
+into your Downloads folder (the xdg-user-dirs one, else `~/Downloads`), which
+stays open after the transfer until you press Enter.
+
 ---
 
 ## GUI usage (M2)
