@@ -1,5 +1,6 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.10.2 - that layout is an UltraCanvasTextLayoutCache, the label's pattern too
 // Version: 2.10.1 - the shortened text's layout is kept from draw to draw and rebuilt when its inputs change
 // Version: 2.10.0 - ButtonStyle::ellipsize / SetEllipsize: a text that does not fit shortened in the middle or at the start
 // Version: 2.9.0 - ButtonVariant (Standard, Ghost, Primary, Selected): FromTheme maps the
@@ -15,6 +16,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <functional>
@@ -177,23 +179,11 @@ namespace UltraCanvas {
         Rect2Df iconRect;
         Rect2Df textRect;
         // The text layout a middle- or start-shortened text is drawn with,
-        // kept from draw to draw (as the label keeps its own) and rebuilt
-        // only when what it was built from changes: the text, the width it
-        // fits, the font, the alignment, the mode. Built on the first draw
-        // that needs it; a button shortened at the end has none.
-        struct ShortenedTextKey {
-            std::string text;
-            bool markup = false;
-            double width = 0;
-            std::string fontFamily;
-            float fontSize = 0;
-            FontWeight fontWeight = FontWeight::Normal;
-            TextAlignment align = TextAlignment::Center;
-            EllipsizeMode mode = EllipsizeMode::EllipsizeEnd;
-            bool operator==(const ShortenedTextKey&) const = default;
-        };
-        std::unique_ptr<ITextLayout> shortenedLayout;
-        ShortenedTextKey shortenedKey;
+        // kept from draw to draw and rebuilt only when what it was built
+        // from changes (UltraCanvasTextLayoutCache, as the label keeps its
+        // own). Built on the first draw that needs it; a button shortened at
+        // the end has none.
+        UltraCanvasTextLayoutCache shortenedLayout;
         Rect2Df secondaryTextRect;  // For split button secondary section
         Rect2Df secondaryIconRect;  // For split button secondary icon (new)
         Rect2Df primarySectionRect;  // Primary section bounds

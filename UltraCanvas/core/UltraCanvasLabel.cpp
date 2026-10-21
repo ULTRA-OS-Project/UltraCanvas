@@ -11,9 +11,13 @@
 //   3. MeasureOwnContent() returns the text's content-box size: nullopt
 //      width → max-content width; a definite width → height at that width
 //      (wrapping). The block layout adds padding/border + size.*/constraints.
-//   4. Property setters call textLayout.reset() + InvalidateLayout()
-//      (bubbles engine caches up) + RequestRedraw() (damage).
+//   4. Property setters call InvalidateLayout() (bubbles engine caches up)
+//      + RequestRedraw() (damage). The text layout itself is an
+//      UltraCanvasTextLayoutCache: EnsureTextLayout hands it the inputs as a
+//      key and it rebuilds when one changed, so no setter resets it - only
+//      the inline images, which are not in the key, do (Reset()).
 //
+// Version: 2.19.0 - the layout is an UltraCanvasTextLayoutCache keyed on its inputs
 // Version: 2.18.0 - FromTheme by LabelVariant
 // Version: 2.17.0 - LabelStyle::FromTheme
 // Version: 2.16.0 - a quiet LabelTextLink shows no tooltip and reports no hover
@@ -104,7 +108,6 @@ namespace UltraCanvas {
     void UltraCanvasLabel::SetText(const std::string &newText) {
         if (text != newText) {
             text = newText;
-            textLayout.reset();
             InvalidateLayout();
             RequestRedraw();
             // The selected bytes counted the old text.
@@ -120,7 +123,6 @@ namespace UltraCanvas {
 
     void UltraCanvasLabel::SetStyle(const LabelStyle &newStyle) {
         style = newStyle;
-        textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
     }
@@ -129,21 +131,18 @@ namespace UltraCanvas {
         style.fontStyle.fontFamily = fontFamily;
         style.fontStyle.fontSize = fontSize;
         style.fontStyle.fontWeight = weight;
-        textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetFontSize(float fontSize) {
         style.fontStyle.fontSize = fontSize;
-        textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetFontWeight(const FontWeight w) {
         style.fontStyle.fontWeight = w;
-        textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
     }
@@ -157,14 +156,12 @@ namespace UltraCanvas {
     void UltraCanvasLabel::SetAlignment(TextAlignment horizontal, VerticalAlignment vertical) {
         style.horizontalAlign = horizontal;
         style.verticalAlign = vertical;
-        textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetWrap(TextWrap wrap) {
         style.wrap = wrap;
-        textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
     }
@@ -176,7 +173,6 @@ namespace UltraCanvas {
             if (textSelection) textSelection->LabelTextChanged(this);
         }
         isMarkup = markup;
-        textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
     }
@@ -188,18 +184,24 @@ namespace UltraCanvas {
     // (element not attached to a window), in which case callers should
     // bail gracefully without crashing.
     bool UltraCanvasLabel::EnsureTextLayout(IRenderContext* context) {
-        if (textLayout) return true;
+        // The inputs as the cache's key: the layout held stays while they
+        // are what it was built with, and is rebuilt when one changed. The
+        // explicit width is not in it - the callers set that themselves.
+        TextLayoutKey key;
+        key.text = text;
+        key.markup = isMarkup;
+        key.font = style.fontStyle;
+        key.wrap = style.wrap;
+        key.align = style.horizontalAlign;
+        key.valign = style.verticalAlign;
+        key.lineHeightPx = style.lineHeightPx;
         // The context we are about to draw into first, the element's window
         // second: a label rendered into an offscreen surface has no window,
         // and asking one it does not have is what left the layout null.
         IRenderContext* ctx = context ? context : GetRenderContext();
-        if (!ctx) return false;
-        textLayout = ctx->CreateTextLayout(text, isMarkup);
-        if (!textLayout) return false;
-        textLayout->SetFontStyle(style.fontStyle);
-        textLayout->SetWrap(style.wrap);
-        textLayout->SetAlignment(style.horizontalAlign);
-        textLayout->SetVerticalAlignment(style.verticalAlign);
+        bool rebuilt = false;
+        if (!textLayout.Get(ctx, key, &rebuilt)) return false;
+        if (!rebuilt) return true;
         // CSS line-height: each run of text that tall. The inline images'
         // placeholders are left out, so a taller picture still grows its line.
         if (style.lineHeightPx > 0.f) {
@@ -356,7 +358,7 @@ namespace UltraCanvas {
     void UltraCanvasLabel::SetInlineImages(std::vector<LabelInlineImage> images) {
         inlineImages = std::move(images);
         inlineFitWidth = -1.f;
-        textLayout.reset();
+        textLayout.Reset();   // not in the layout's key
         InvalidateLayout();
         RequestRedraw();
     }
@@ -384,7 +386,7 @@ namespace UltraCanvas {
             if (wasScaled || isScaled) { changes = true; break; }
         }
         inlineFitWidth = fit;
-        if (changes) textLayout.reset();
+        if (changes) textLayout.Reset();
     }
 
     Rect2Df UltraCanvasLabel::InlineImageRect(size_t index) {

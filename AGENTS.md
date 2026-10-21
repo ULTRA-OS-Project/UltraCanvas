@@ -517,6 +517,11 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
 | `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
 
+A framework header carries its own history in its head - `// Version: x.y.z -
+what changed` lines, newest first - so a reader sees what moved without the
+changelog; `scripts/check_version_history.py` lists the headers under
+`UltraCanvas/include` that have none.
+
 Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
 write that line at all**: drop your bullets in a new file under
 [`Docs/UltraCanvas/changelog.d/`](Docs/UltraCanvas/changelog.d/README.md) with
