@@ -142,7 +142,7 @@ MESSAGES = {
     "x11-enumerator": "is an X11 macro - rename the enumerator (NoBorder, Ok, AboveBaseline, ...)",
     "x11-declaration": "is an X11 macro - rename the function or member",
     "objc-macro": "is an Objective-C macro - rename it (the .mm files see it rewritten)",
-    "objc-global": "is an Objective-C runtime type - declare it in a namespace, or rename it",
+    "objc-global": "is a global name of the Objective-C runtime or MacTypes.h - declare it in a namespace, or rename it",
     "objc-undef": "guards an Objective-C name - rename the identifier it protects instead",
 }
 
@@ -589,8 +589,8 @@ def objc_check_text(text: str, names: set[str], path: Path) -> list[Finding]:
         line = line_of(code, m.start("name"))
         if line not in exempt and at_file_scope(code, m.start("name")):
             findings.append(Finding(path, line, "objc-global", name))
-    findings.sort(key=lambda f: (f.line, f.kind))
-    return findings
+    unique = {(f.line, f.kind, f.name): f for f in findings}
+    return [unique[k] for k in sorted(unique)]
 
 
 OBJC_SELF_TEST = """\
