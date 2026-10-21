@@ -181,9 +181,36 @@ Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `std::shared
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `std::string CherryPick(const std::string& sha)` - the header has: std::string CherryPick(const std::string& sha, const std::string& subject = "");
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void SetDataSource(std::shared_ptr<IGitGraphDataSource> source)` - the header has: void   SetDataSource(std::shared_ptr<IGitGraphDataSource> source, size_t chunkSize = 500);
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void ZoomToFit()` - the header has: void  ZoomToFit(double padding = 24.0);
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'AddHostAppearanceHandler' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'DetectHostAppearanceNative' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'Font' is not a member of UltraCanvasTheme
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'FontSize' is not a member of UltraCanvasTheme
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'FromHost' is not a member of UltraCanvasTheme
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'GetHostAppearance' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'RemoveHostAppearanceHandler' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'SetThemePolicy' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'SetThemeProvider' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'UltraCanvasTheme::fonts' does not exist (no member named 'fonts' in 'UltraCanvas::UltraCanvasTheme')
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `DarkHighContrast(`, which no header declares
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `LightHighContrast(`, which no header declares
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `SetFollowThemeByDefault(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `FitColumns(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `GetStageCounts(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::prose names `FT_Load_Glyph(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'Tr' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasMenu, nor a free function
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrC' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasMenu, nor a free function
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrN' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasMenu, nor a free function
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `TrC(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `TrF(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `TrN(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::unknown type name 'DateStyle'
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::unknown type name 'TimeStyle'
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `bool ImportMatrixCsv(const std::string& csv, MatrixModel& out)` - the header has: bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel = 0);
