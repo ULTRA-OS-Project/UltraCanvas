@@ -1886,6 +1886,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
+        Apps/UltraAIApp/UltraAISettingsWidgets.cpp
+        Apps/UltraAIApp/UltraAILocalModelsPage.cpp
+        Apps/UltraAIApp/UltraAILocalModelDialog.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
         Apps/UltraAIApp/UltraAITranslatorDialog.cpp
     )

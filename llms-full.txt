@@ -84967,9 +84967,12 @@ LocalRuntime::Instance().SetSettings(s);
   they are pinned; sizes are approximate until then.
 - The gallery index is not yet signed; it is fetched over TLS from a URL
   the settings control.
-- No framework dialog and no dashboard page yet (phase 2 of the plan): an
-  application reads `"needs-install"` and asks with its own UI, or sets
-  `allow_download` after asking once.
+- The dashboard (`Apps/UltraAIApp`) has the *Local models* settings page
+  and the *Get a local model* dialog (`UltraAILocalModelsPage`,
+  `UltraAILocalModelDialog`, used by its Chat dialog); another application
+  reads `"needs-install"` and asks with its own UI, or sets
+  `allow_download` after asking once, until the dialog moves into the
+  framework.
 
 ==============================================================================
 FILE: Docs/Modules/UltraAI/README.md

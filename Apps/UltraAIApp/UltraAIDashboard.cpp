@@ -5,6 +5,7 @@
 #include "UltraAIDashboard.h"
 #include "UltraAIDialogs.h"
 #include "UltraAIChatDialog.h"
+#include "UltraAILocalModelDialog.h"
 #include "UltraAITranslatorDialog.h"
 #include "UltraAISettingsWindow.h"
 
@@ -167,8 +168,12 @@ void ShowServiceDialog(UltraCanvas::UltraCanvasWindow* parent, Args&&... args) {
 
 } // namespace
 
-void UltraAIDashboard::OpenSettingsDialog() {
-    UltraAISettingsWindow::Show(window_.get());
+void UltraAIDashboard::OpenSettingsDialog(UltraAISettingsWindow::Page page) {
+    UltraAISettingsWindow::Show(window_.get(), page);
+}
+
+void UltraAIDashboard::OpenLocalModelDialog() {
+    UltraAILocalModelDialog::Show(window_.get(), "Chat", "textllm", "", nullptr);
 }
 
 void UltraAIDashboard::OpenChatDialog() {

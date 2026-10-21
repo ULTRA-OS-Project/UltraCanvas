@@ -1,3 +1,30 @@
+#### 2026-10-21 *0.1.17*
+- **Local models in the dashboard.** Settings > Services has a *Local models*
+  page: what this computer is (memory, cores, GPU) and which acceleration
+  the engine will use, with the choice to override it; the llama-server
+  engine's state with Install / Remove; a table of the catalogue's models and
+  the user's own with service, size, fit (GPU / CPU / too large) and state
+  (installed, running, not installed), and Install, Remove, Stop and Forget
+  for the selected one; the progress of the install in flight, with Cancel;
+  *Add model file...* (a GGUF of your own, used in place), *Add from Hugging
+  Face...* (organisation/repository:file), *Refresh catalogue* and *Open
+  folder*; the download policy (ask, automatic, never) and the idle time
+  after which an unused engine stops; disk use. Restore defaults puts the
+  policy back to Ask, the accelerator to Auto and the idle time to 15 min.
+- **A service that needs a model asks for it.** The first time Chat is sent
+  to a `local` endpoint whose model is not installed, the *Get a local model*
+  dialog opens: the models that fit this computer with the recommended one
+  preselected, size, licence and what else is downloaded (the engine), a
+  checkbox to download future models without asking, and *Download and
+  continue*, which shows the download's progress and then sends the message
+  that was waiting. *Not now* leaves everything as it was.
+- **The endpoint editor knows the `local` provider.** With it picked, *Fetch
+  models* lists the local runtime's models (installed or not) instead of
+  asking a server, and the hint under the provider says so.
+- The settings pages' shared parts (the type scale, the page skeleton, the
+  control factories) moved into `UltraAISettingsWidgets.h` so the new page is
+  built from the same ones as the rest of the window.
+
 #### 2026-10-20 *0.1.16*
 - **Models run on this computer with nothing to install.** The new local
   runtime (`UltraAILocalRuntime.h`, `UltraAI/runtime/`) downloads an inference
