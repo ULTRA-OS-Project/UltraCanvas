@@ -50,13 +50,15 @@
 //     the window every program's Shell_NotifyIcon talks to
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx.
+// Version: 1.4.0 - no desktop switch from an MSIX package: its registry
+//                  writes are the package's own (RunningFromPackage)
 // Version: 1.3.0 - Microsoft Store applications (ListPackagedApplications,
 //                  LaunchPackagedApplication); "Super" alone, a tap of the
 //                  Win key
 // Version: 1.2.0 - DesktopReplacement::Instead, EndSession, LaunchShortcut;
 //                  our own Shell_TrayWnd is not Explorer's taskbar
 // Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 // IVirtualDesktopManager, DWMWA_CLOAKED and the cloaking events are declared
@@ -1597,7 +1599,39 @@ bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
 
 // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
 
+// Is this process running from an MSIX package (the Microsoft Store copy)?
+// Both switches below are values under HKEY_CURRENT_USER, and a packaged
+// program's writes there land in the package's own registry, which sign-in
+// never reads: the switch would report success and change nothing. Looked up
+// at run time, as this file promises at its top for anything an older Windows
+// lacks: Windows 7 has no GetCurrentPackageFullName, and nothing there is
+// packaged.
+static bool RunningFromPackage() {
+    using GetCurrentPackageFullNameFn = LONG(WINAPI*)(UINT32*, PWSTR);
+    static const bool packaged = [] {
+        const HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
+        const auto getName = kernel ? reinterpret_cast<GetCurrentPackageFullNameFn>(
+                                              reinterpret_cast<void*>(GetProcAddress(kernel, "GetCurrentPackageFullName")))
+                                    : nullptr;
+        if (!getName) return false;
+        UINT32 length = 0;
+        // APPMODEL_ERROR_NO_PACKAGE (15700) without a package; with one, the
+        // buffer is too small for the name.
+        return getName(&length, nullptr) == ERROR_INSUFFICIENT_BUFFER;
+    }();
+    return packaged;
+}
+
+std::string SystemDesktopSwitchUnavailableReason() {
+    if (!RunningFromPackage()) return {};
+    return "This UltraDesktop runs from an MSIX package (the Microsoft Store version), and Windows keeps a "
+           "packaged program's settings inside the package, where sign-in never sees them - so it cannot "
+           "become the Windows desktop. To use UltraDesktop as your desktop, install it with the UltraCanvas "
+           "installer.";
+}
+
 bool CanReplaceSystemDesktop(DesktopReplacement how) {
+    if (RunningFromPackage()) return false;
     return how == DesktopReplacement::Beside || how == DesktopReplacement::Instead;
 }
 
@@ -1611,6 +1645,10 @@ DesktopReplacement GetSystemDesktopReplacement() {
 
 bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::string>& arguments,
                           DesktopReplacement how, std::string& error) {
+    if (RunningFromPackage()) {
+        error = SystemDesktopSwitchUnavailableReason();
+        return false;
+    }
     const std::wstring wideProgram = Widen(program);
     // The program always in quotes: "C:\Program Files\..." has a space.
     std::wstring command = L"\"" + wideProgram + L"\"";
@@ -1663,6 +1701,17 @@ bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::str
 }
 
 bool RestoreSystemDesktop(std::string& error) {
+    // From the package a removal would be the package's alone as well. With
+    // nothing replaced there is nothing to undo; otherwise the installed copy
+    // that made the switch is the one that can take it back.
+    if (RunningFromPackage()) {
+        if (GetSystemDesktopReplacement() == DesktopReplacement::Off) return true;
+        error = "UltraDesktop was made the Windows desktop by the copy the UltraCanvas installer installed. "
+                "Switch back from that copy (UltraDesktop or UOS-Settings from the installer's Start menu "
+                "folder): this one runs from an MSIX package (the Microsoft Store version), whose registry "
+                "changes sign-in never sees.";
+        return false;
+    }
     if (!RemoveRunValue(error)) return false;
     if (!RemoveOurShell(error)) return false;
     // The taskbar as it was. Kept for later when Explorer is not running to
