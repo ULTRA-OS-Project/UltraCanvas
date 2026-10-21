@@ -68,4 +68,9 @@ target_include_directories(UltraNetMdnsPlugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 if(NOT MSVC)
     set_source_files_properties(${_ultranet_host_shim} PROPERTIES
         COMPILE_OPTIONS "-fvisibility=hidden")
+    # MdnsNames' helpers are in namespace UltraCanvas too, and the plug-in's
+    # own: hidden, so it exports no framework names (UltraNetPluginHostImports
+    # reads an exported UltraCanvas:: symbol as a copy of the core).
+    set_source_files_properties(MdnsNames.cpp PROPERTIES
+        COMPILE_OPTIONS "-fvisibility=hidden")
 endif()

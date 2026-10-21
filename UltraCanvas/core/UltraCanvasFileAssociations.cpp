@@ -407,7 +407,10 @@ namespace FileAssociationsBackend {
 // ===== BACKEND FOR PLATFORMS WITHOUT ONE =====
 // WebAssembly has no application registry to enumerate or launch into; give
 // it inline no-op backends so the core compiles without a platform file.
-#if defined(__EMSCRIPTEN__)
+// Android has no backend yet either: handing a file to another app is an
+// ACTION_VIEW Intent through a content:// URI, not an association database,
+// so until OS/Android does that it reports "not available" here too.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 namespace FileAssociationsBackend {
     bool RefreshGlobalIndex() { return false; }
     std::vector<FileAssociationApp> ResolveFile(const std::string&) { return {}; }

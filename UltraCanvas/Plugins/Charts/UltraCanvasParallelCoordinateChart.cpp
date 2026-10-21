@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasParallelCoordinateChart.cpp
 // Parallel coordinate chart element - first native client of the chart engine
+// Version: 1.0.1 - the shared common-scale axis declares ChartAxisRole::Value
 // Version: 1.0.0
-// Last Modified: 2026-08-06
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasParallelCoordinateChart.h"
@@ -307,6 +308,9 @@ void UltraCanvasParallelCoordinateChartElement::DescribeAxes(ChartAxisSet& axes)
         // No title: a left-axis title lands below the plot at the same spot
         // as the first in-plot axis's dimension title and would overprint it.
         shared.side = ChartAxisSide::Left;
+        // A value axis whatever the projection: its ticks are the shared
+        // range, so its gridlines rule across the axes, never along them.
+        shared.role = ChartAxisRole::Value;
         shared.SetRange(lo, hi);
         const size_t sharedIndex = axes.Add(shared);
         SetGridAxis(sharedIndex);

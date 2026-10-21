@@ -29,7 +29,7 @@ on:
       # pull requests touch no CHANGELOG.md at all. Without this line the
       # check never ran on them, so its rule that a pending entry carries no
       # version header went unenforced in CI.
-      - 'Docs/UltraCanvas/changelog.d/**'
+      - 'Docs/**/changelog.d/**'
       - 'cmake/UltraCanvasVersion.cmake'
       - 'scripts/check_changelog.py'
       - '.github/workflows/changelog.yml'
@@ -58,7 +58,7 @@ on:
       # pull requests touch no CHANGELOG.md at all. Without this line the
       # check never ran on them, so its rule that a pending entry carries no
       # version header went unenforced in CI.
-      - 'Docs/UltraCanvas/changelog.d/**'
+      - 'Docs/**/changelog.d/**'
       - 'cmake/UltraCanvasVersion.cmake'
       - 'scripts/check_changelog.py'
       - '.github/workflows/changelog.yml'

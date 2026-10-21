@@ -539,7 +539,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -787,6 +787,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
   rule that makes Pango's `emoji` runs use it.
   See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
+  A click on an application's notification that reaches it outside the bus
+  - on Windows a toast clicked in the Action Center after the broker host
+  quit, or with the application closed, which Windows then starts - comes to
+  `RegisterNotificationActivator(appId, handler)`
+  (`UltraCanvasNotificationActivation.h`: the program as the COM activator of
+  its AppUserModelID, a CLSID derived from the ID by
+  `NotificationActivatorClassId`) as a `NotificationActivation` (the action,
+  the notification's id and its `launch` string). `RemoveNotificationRegistrations()`
+  and the installer's uninstaller remove every identity listed under
+  `HKCU\Software\UltraCanvas\Notifications` (`ListNotificationRegistrations()`
+  lists them; UOS-Settings > Notifications > Registrations, its
+  `--remove-notification-registrations` and the ZIP's
+  `uc-remove-registrations.cmd` remove them where there is no uninstaller);
+  `scripts/check_notification_activators.py` (CI) reports an application that
+  posts a notification without registering an activator; the argument format is shared,
+  header-only (`FormatNotificationArguments` / `ParseNotificationArguments`).
+  No-ops elsewhere. See `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it

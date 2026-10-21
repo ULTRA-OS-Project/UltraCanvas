@@ -301,6 +301,7 @@ JSONValue MakeSystemNotification(const SystemNotification& n) {
     }
     body.Set("actions", std::move(actions));
     body.Set("origin", n.origin);
+    if (!n.launch.empty()) body.Set("launch", n.launch);
     return body;
 }
 
@@ -315,6 +316,7 @@ bool ParseSystemNotification(const JSONValue& body, SystemNotification& out) {
     out.urgency = Str(body, "urgency");
     if (out.urgency.empty()) out.urgency = "normal";
     out.origin = Str(body, "origin");
+    out.launch = Str(body, "launch");
     out.actions.clear();
     const JSONValue& actions = Obj(body, "actions");
     if (actions.IsArray()) {

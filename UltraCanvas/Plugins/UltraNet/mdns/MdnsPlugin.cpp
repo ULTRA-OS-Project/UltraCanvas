@@ -34,12 +34,18 @@
 // and a port, which is a second query on every platform. The Windows branch
 // used to stop after the first one and hand back names nothing could connect
 // to, so eSCL scanners were discoverable everywhere except there.
-// Version: 0.4.0
+// Version: 0.4.0 - IServiceDiscoveryPlugin::Advertise / StopAdvertising (Avahi
+//                  entry group, Bonjour DNSServiceRegister, DnsServiceRegister)
+// Version: 0.3.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
+// Version: 0.3.1
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 
 #include "MdnsNames.h"
@@ -1015,80 +1021,90 @@ public:
         return {"mdns", "dns-sd"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        std::map<UltraNetHandle, std::unique_ptr<Advertiser>> ads;
-        {
-            std::lock_guard<std::mutex> lock(adsMutex_);
-            ads.swap(ads_);
-        }
-        for (auto& entry : ads) entry.second->Stop();
+        ultranet_plugin::GuardedVoid([&]() {
+            std::map<UltraNetHandle, std::unique_ptr<Advertiser>> ads;
+            {
+                std::lock_guard<std::mutex> lock(adsMutex_);
+                ads.swap(ads_);
+            }
+            for (auto& entry : ads) entry.second->Stop();
+        });
     }
 
     UltraNetResult Advertise(const UltraNetServiceAdvertisement& ad, UltraNetHandle& outHandle) override {
         outHandle = UltraNetInvalidHandle;
-        if (ad.serviceType.empty() || ad.instanceName.empty() || ad.port <= 0 || ad.port > 65535)
-            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                         "An advertisement needs a service type, a name and a port");
+        return ultranet_plugin::Guarded("Advertise", [&]() -> UltraNetResult {
+            if (ad.serviceType.empty() || ad.instanceName.empty() || ad.port <= 0 || ad.port > 65535)
+                return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                             "An advertisement needs a service type, a name and a port");
 #if defined(__linux__) || defined(__APPLE__) || defined(_WIN32) || defined(_WIN64)
-        std::string error;
-        std::unique_ptr<Advertiser> advertiser = StartAdvertiser(ad, error);
-        if (!advertiser) return UltraNetResult::Error(UltraNetResultCode::Unknown, error);
-        std::lock_guard<std::mutex> lock(adsMutex_);
-        outHandle = nextHandle_++;
-        ads_[outHandle] = std::move(advertiser);
-        return UltraNetResult::Ok();
+            std::string error;
+            std::unique_ptr<Advertiser> advertiser = StartAdvertiser(ad, error);
+            if (!advertiser) return UltraNetResult::Error(UltraNetResultCode::Unknown, error);
+            std::lock_guard<std::mutex> lock(adsMutex_);
+            outHandle = nextHandle_++;
+            ads_[outHandle] = std::move(advertiser);
+            return UltraNetResult::Ok();
 #else
-        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-                                     "mDNS plug-in: no backend for this platform");
+            return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
+                                         "mDNS plug-in: no backend for this platform");
 #endif
+        });
     }
 
     UltraNetResult StopAdvertising(UltraNetHandle handle) override {
-        std::unique_ptr<Advertiser> advertiser;
-        {
-            std::lock_guard<std::mutex> lock(adsMutex_);
-            auto it = ads_.find(handle);
-            if (it == ads_.end())
-                return UltraNetResult::Error(UltraNetResultCode::InvalidHandle, "No such advertisement");
-            advertiser = std::move(it->second);
-            ads_.erase(it);
-        }
-        advertiser->Stop();
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("StopAdvertising", [&]() -> UltraNetResult {
+            std::unique_ptr<Advertiser> advertiser;
+            {
+                std::lock_guard<std::mutex> lock(adsMutex_);
+                auto it = ads_.find(handle);
+                if (it == ads_.end())
+                    return UltraNetResult::Error(UltraNetResultCode::InvalidHandle, "No such advertisement");
+                advertiser = std::move(it->second);
+                ads_.erase(it);
+            }
+            advertiser->Stop();
+            return UltraNetResult::Ok();
+        });
     }
 
     UltraNetResult Search(const std::string& /*url*/,
                           const UltraNetDirectoryQuery& q,
                           std::vector<UltraNetDirectoryEntry>& out) override {
-        out.clear();
-        if (q.baseDn.empty()) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                "baseDn (DNS-SD service type, e.g. \"_http._tcp\") is required");
-        }
-        const int timeoutMs = q.timeLimitSeconds > 0
-                                  ? q.timeLimitSeconds * 1000 : 2000;
-        BrowseState state{};
-        state.sizeLimit = q.sizeLimit;
+        return ultranet_plugin::Guarded("Search", [&]() -> UltraNetResult {
+            out.clear();
+            if (q.baseDn.empty()) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                    "baseDn (DNS-SD service type, e.g. \"_http._tcp\") is required");
+            }
+            const int timeoutMs = q.timeLimitSeconds > 0
+                                      ? q.timeLimitSeconds * 1000 : 2000;
+            BrowseState state{};
+            state.sizeLimit = q.sizeLimit;
 
-        bool ok = false;
-#if defined(__linux__)
-        ok = RunAvahiBrowse(q.baseDn, state, timeoutMs);
-#elif defined(__APPLE__)
-        ok = RunBonjourBrowse(q.baseDn, state, timeoutMs);
-#elif defined(_WIN32) || defined(_WIN64)
-        ok = RunWindowsBrowse(q.baseDn, state, timeoutMs);
-#else
-        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-            "mDNS plug-in: no backend for this platform");
-#endif
-        if (!ok && state.entries.empty()) {
-            return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                         "DNS-SD browse failed to start");
-        }
-        out = std::move(state.entries);
-        return UltraNetResult::Ok();
+            bool ok = false;
+    #if defined(__linux__)
+            ok = RunAvahiBrowse(q.baseDn, state, timeoutMs);
+    #elif defined(__APPLE__)
+            ok = RunBonjourBrowse(q.baseDn, state, timeoutMs);
+    #elif defined(_WIN32) || defined(_WIN64)
+            ok = RunWindowsBrowse(q.baseDn, state, timeoutMs);
+    #else
+            return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
+                "mDNS plug-in: no backend for this platform");
+    #endif
+            if (!ok && state.entries.empty()) {
+                return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                             "DNS-SD browse failed to start");
+            }
+            out = std::move(state.entries);
+            return UltraNetResult::Ok();
+        });
     }
 
 private:
