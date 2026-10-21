@@ -1622,7 +1622,7 @@ jobs:
           }
           $companions = @()
           foreach ($app in 'UltraDesktop', 'UltraCleaner', 'UltraNetMonitor', 'UltraWeb', 'UltraClaude',
-                           'UltraCanvasStart', 'DeviceExplorer', 'ultrafibu', 'ultrapress') {
+                           'UltraCanvasStart', 'DeviceExplorer', 'SmartHomeCenter', 'ultrafibu', 'ultrapress') {
             $exe = Join-Path $dir "$app.exe"
             if (-not (Test-Path $exe)) { continue }
             $com = Join-Path $dir "$app.com"

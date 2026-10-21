@@ -1,8 +1,18 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
-// Version: 2.2.0
-// Last Modified: 2026-09-23
+// Version: 2.3.0
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
+// V2.3.0 changelog: the six linear (bar) modes fit the box they are given.
+//   One layout for all of them: the full card (title, bar, value line) where
+//   there is room, then a tight one, then the bar alone - nothing is drawn
+//   outside the element any more, in either orientation. LinearSegmented runs
+//   vertically too; LinearWithArrow's label sits under its arrow and carries
+//   the unit; MultiPointer and WithArrow no longer keep 80 / 60 px empty on
+//   the right. The value is clamped to the range whenever the range changes,
+//   not only when the value is set: SetValue(150) then SetMaxValue(200) shows
+//   150 (it showed 100), and a range shrunk under the value no longer draws
+//   past the track.
 // V2.2.0 changelog: SetIndeterminate - a LinearBar can say "busy, total
 //   unknown" by sliding a block along its track, on a timer it owns. Also:
 //   a LinearBar fits the box it is given. Below the height
@@ -193,6 +203,8 @@ public:
     void SetMode(GaugeMode m);
     GaugeMode GetMode() const { return mode; }
 
+    // Clamped to min..max for display. The value asked for is kept, so a
+    // range set after the value (or changed later) shows it correctly.
     void SetValue(double val);
     double GetValue() const { return currentValue; }
     void SetMinValue(double v);
@@ -211,6 +223,8 @@ public:
     GaugeNeedleStyle GetNeedleStyle() const { return needleStyle; }
     void SetTickPosition(GaugeTickPosition p);
     GaugeTickPosition GetTickPosition() const { return tickPos; }
+    // The linear modes run horizontally or vertically (LinearScale, a tuner
+    // dial, is horizontal only); the round modes ignore it.
     void SetOrientation(GaugeOrientation o);
     GaugeOrientation GetOrientation() const { return orientation; }
     void SetBatteryStyle(GaugeBatteryStyle s);
@@ -376,6 +390,7 @@ public:
 private:
     GaugeMode mode = GaugeMode::Speedometer;
     double currentValue = 0.0;
+    double requestedValue = 0.0;     // what SetValue was given, before clamping
     double minValue = 0.0;
     double maxValue = 100.0;
 
@@ -470,6 +485,28 @@ private:
     void RenderLinearMultiPointer(IRenderContext* ctx);
     void RenderLinearWithArrow(IRenderContext* ctx);
     void RenderLinearScale(IRenderContext* ctx);
+
+    // Where a linear mode puts its bar in the box it has. `thickness` is the
+    // bar's preferred cross size; the extras are room the mode needs around
+    // the bar for its own marks (arrows, pointer labels, tuner labels), in
+    // screen directions. `valueLine`: the mode draws the value under the bar.
+    struct LinearLayout {
+        Rect2Df bar;
+        int level = 0;             // 0 the full card, 1 tight, 2 the bar alone
+        bool showTitle = false;
+        bool showValue = false;
+        bool showExtras = false;   // the room asked for around the bar was given
+        float titleTop = 0.0f;     // top of the title text
+        float titleBottom = 0.0f;  // below it, 0 without a title
+        float valueTop = 0.0f;     // top of the value text
+    };
+    LinearLayout ComputeLinearLayout(IRenderContext* ctx, float thickness, bool valueLine,
+                                     float extraLeft = 0.0f, float extraRight = 0.0f,
+                                     float extraTop = 0.0f, float extraBottom = 0.0f) const;
+    void DrawLinearTitle(IRenderContext* ctx, const LinearLayout& layout);
+    void DrawLinearValue(IRenderContext* ctx, const LinearLayout& layout);
+    // Re-applies min..max to the value asked for, after a range change.
+    void ReclampValue();
     void RenderCircularRing(IRenderContext* ctx, const Point2Df& center, float radius);
     // CircularRing sub-renderers (round-gauge style system)
     void DrawRingTrackAndValue(IRenderContext* ctx, const Point2Df& center, float radius);
