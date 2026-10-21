@@ -5926,6 +5926,25 @@ else()
     message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== NODE DIAGRAM: NO OVERLAPS, CARD NODES =====
+# ResolveOverlaps and the force layout leave no two nodes overlapping, wide
+# card nodes in a small element included; the card fields round-trip
+# through JSON. Headless.
+if(TARGET UltraCanvas)
+    add_executable(NodeDiagramOverlapTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/NodeDiagramOverlapTest.cpp
+    )
+    target_include_directories(NodeDiagramOverlapTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(NodeDiagramOverlapTest PRIVATE cxx_std_20)
+    target_link_libraries(NodeDiagramOverlapTest PRIVATE UltraCanvas)
+    set_target_properties(NodeDiagramOverlapTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME NodeDiagramOverlapTest COMMAND NodeDiagramOverlapTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: NodeDiagramOverlapTest")
+endif()
+
 # ===== DIAGRAM JSON UNDER A COMMA-DECIMAL LOCALE =====
 # The node and compositor diagrams' JSON is the same text under a
 # comma-decimal C++ global locale as under "C" (their streams are pinned to
