@@ -7,6 +7,10 @@ design brief was *good usability above all*, so this document first surveys the
 common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
+**File Location**: `include/UltraCanvasDatePicker.h`
+**Version**: 1.4.0 - the version history is in the header's head
+**Author**: UltraCanvas Framework
+
 ## 1. Selection philosophies surveyed
 
 Picking a date sounds trivial but the "right" UI depends heavily on **what kind
