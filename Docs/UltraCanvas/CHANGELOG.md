@@ -1,3 +1,56 @@
+#### 2026-10-21 *0.9.365*
+- **A click on a Windows toast reaches its application after the broker host
+  quit.** The windows-presenter shows an application's notification as a
+  toast under the application's own AppUserModelID, and its click came back
+  over the bus only while the program hosting the broker ran. After that the
+  toast waited in the Action Center, and a click on it did nothing.
+  - New `UltraCanvasNotificationActivation.h` (doc
+    `UltraCanvasNotificationActivation.md`): `RegisterNotificationActivator(appId,
+    handler)` makes the program the COM activator of its AppUserModelID
+    (`Software\Classes\CLSID\<clsid>\LocalServer32` names it with
+    `-ToastActivated`, the AppUserModelID's `CustomActivator` names the class,
+    a CLSID derived from the ID). Windows hands it the click, starting the
+    program when it is not running; the handler runs on the UI thread.
+    Windows backend `OS/MSWindows/UltraCanvasWindowsNotificationActivation.cpp`;
+    a no-op elsewhere.
+  - `SystemNotification` has an optional `launch`, the application's own note
+    of what the notification is about (in the `system.notification` schema).
+    The toast's activation arguments now carry the action, the notification's
+    id and its `launch` (`FormatNotificationArguments`), so the activator
+    needs nothing from the bus. UltraMail uses it: its toast opens the mail
+    it announced (UltraMail 0.10.65).
+  - Every identity is listed under `HKCU\Software\UltraCanvas\Notifications`.
+    The installer's uninstaller walks the list and removes each
+    AppUserModelID key and activator class, then the list;
+    `RemoveNotificationRegistrations()` does the same from code.
+  - Windows CI runs the UltraMessage suite (`UltraMessageTests`), which it
+    built and never ran: the Windows presenter and listener against the
+    runner's desktop.
+  - Tested: the arguments, the CLSID and the `launch` round trip in
+    `test_adapters.cpp`, UltraMail's launch string in `test_newmail.cpp`.
+- **The notification registrations can be removed without the uninstaller.**
+  Windows keeps, for each application whose notifications were shown, its
+  name, icon and the program a click starts. The installer's uninstaller
+  removes them; a folder unpacked from the ZIP package had no way to.
+  - `ListNotificationRegistrations()` (`UltraCanvasNotificationActivation.h`)
+    lists them; `RemoveNotificationRegistrations()` now returns how many it
+    removed.
+  - UOS-Settings 0.7.0: *Notifications > Registrations* lists them with a
+    *Remove all* button, and `UOS-Settings --remove-notification-registrations`
+    removes them with no window.
+  - `package-win.sh` puts `uc-remove-registrations.cmd` in the ZIP beside the
+    programs: it runs that command, to run before deleting the folder.
+- **Every application that posts a notification registers its activator.**
+  New `scripts/check_notification_activators.py`, run by CI
+  (`notification-activators.yml`), reports an application under `Apps/` that
+  posts a `system.notification` and never calls
+  `RegisterNotificationActivator` - its Windows toast would do nothing once the
+  broker host quit. UltraMail is the only application whose notifications
+  reach the presenter today, and registers; the DemoApp's message-centre
+  samples are posted Silent and say so (`notification-activator-exempt`). The
+  DemoApp's toast page and the UltraMessage README (§3.9) show the call with
+  the notification.
+
 #### 2026-10-21 *0.9.364*
 - **DemoApp builds for Android, as the library an APK carries.** On Android
   the demo is `libUltraCanvasDemo.so` (`add_library(... SHARED)` where the
