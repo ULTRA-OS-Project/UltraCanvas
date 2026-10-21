@@ -101,6 +101,9 @@ old connection closes when the last of them ends; every call that starts after
 the change uses the new registration. Closing a handle (`UltraDb_Finalize`,
 `UltraDb_CloseCursor`) while another thread's call on it runs works the same
 way: the handle is gone for later calls, and the running one finishes.
+`UltraDb_CancelQuery(name)` still reaches a statement that began on the name
+before it was re-registered or closed, so a Stop button keeps working while
+the connection's settings change under it.
 
 ---
 

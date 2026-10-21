@@ -54,6 +54,26 @@ std::map<std::string, std::shared_ptr<ConnEntry>>& Registry() {
     return r;
 }
 
+// Entries a name had before it was re-registered or closed, while calls that
+// started on them still keep them alive (see Session). Weak: a retired
+// connection closes with its last call, as before. Kept so a cancel by name
+// (UltraDb_CancelQuery) still reaches a statement that began under the name
+// before it changed hands. Guarded by RegistryMutex.
+std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>>& Retired() {
+    static std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>> r;
+    return r;
+}
+
+// Under RegistryMutex: remember `entry` as retired under `name`, forgetting
+// those no call keeps any more.
+void Retire(const std::string& name, const std::shared_ptr<ConnEntry>& entry) {
+    auto& list = Retired()[name];
+    list.erase(std::remove_if(list.begin(), list.end(),
+                              [](const std::weak_ptr<ConnEntry>& w) { return w.expired(); }),
+               list.end());
+    list.push_back(entry);
+}
+
 std::shared_ptr<ConnEntry> FindEntry(const std::string& name) {
     std::lock_guard<std::mutex> lk(RegistryMutex());
     auto it = Registry().find(name);
@@ -199,7 +219,9 @@ UltraDbResult UltraDb_RegisterConnection(const UltraDbConnectionConfig& config) 
     entry->config = config;
 
     std::lock_guard<std::mutex> lk(RegistryMutex());
-    Registry()[config.name] = std::move(entry);  // replaces any prior entry
+    auto& slot = Registry()[config.name];
+    if (slot) Retire(config.name, slot);
+    slot = std::move(entry);  // replaces any prior entry
     return UltraDbResult::Ok();
 }
 
@@ -221,7 +243,8 @@ UltraDbResult UltraDb_CloseConnection(const std::string& name) {
     if (it == Registry().end())
         return UltraDbResult::Error(UltraDbResultCode::ConnectionNotFound,
                                     "no connection named '" + name + "'");
-    Registry().erase(it);  // shared_ptr drop closes the physical connection
+    Retire(name, it->second);
+    Registry().erase(it);  // the last call on it closes the physical connection
     return UltraDbResult::Ok();
 }
 
@@ -602,20 +625,38 @@ UltraDbResult UltraDb_ExecBatch(const std::string& connection, const std::string
 }
 
 UltraDbResult UltraDb_CancelQuery(const std::string& connection) {
-    auto e = FindEntry(connection);
-    if (!e)
+    // The name's current entry and every one it had before that a call still
+    // runs on: a statement that began before the name was re-registered or
+    // closed is still the name's statement to stop.
+    std::vector<std::shared_ptr<ConnEntry>> entries;
+    {
+        std::lock_guard<std::mutex> lk(RegistryMutex());
+        auto it = Registry().find(connection);
+        if (it != Registry().end()) entries.push_back(it->second);
+        auto retired = Retired().find(connection);
+        if (retired != Retired().end()) {
+            for (const auto& weak : retired->second)
+                if (auto entry = weak.lock()) entries.push_back(std::move(entry));
+        }
+    }
+    if (entries.empty())
         return UltraDbResult::Error(UltraDbResultCode::ConnectionNotFound,
                                     "no connection named '" + connection + "'");
-    // Not Resolve: a cancel must not open a connection, and must not wait on
-    // anything the running statement holds. openMtx is held only while a
-    // connection is being opened, never while a statement runs.
-    IUltraDbConnection* conn = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(e->openMtx);
-        conn = e->conn.get();
+    UltraDbResult result = UltraDbResult::Ok();
+    for (const auto& e : entries) {
+        // Not Resolve: a cancel must not open a connection, and must not wait
+        // on anything the running statement holds. openMtx is held only while
+        // a connection is being opened, never while a statement runs.
+        IUltraDbConnection* conn = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(e->openMtx);
+            conn = e->conn.get();
+        }
+        if (!conn) continue;   // never opened: nothing is running
+        UltraDbResult cancelled = conn->Cancel();
+        if (!cancelled && result) result = cancelled;
     }
-    if (!conn) return UltraDbResult::Ok();   // never opened: nothing is running
-    return conn->Cancel();
+    return result;
 }
 
 UltraDbHandle UltraDb_OpenCursor(const std::string& connection, const std::string& sql,

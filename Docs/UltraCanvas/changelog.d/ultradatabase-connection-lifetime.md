@@ -13,7 +13,13 @@
     with `UltraDb_Finalize` / `UltraDb_CloseCursor` while another thread
     runs it now finishes that call first. A transaction keeps its connection
     for the call even when `UltraDb_Commit` runs on another thread.
-  - `Tests/UltraDatabase/test_lifetime.cpp`: six tests (SQLite, and
+  - `UltraDb_CancelQuery(name)` also reaches a statement that began on the
+    name before it was re-registered or closed. Without that, the old
+    connection's statement ran on out of reach: a Stop button did nothing
+    after a settings change, and a program that cancels and then waits
+    for the statement before exiting hung.
+  - `Tests/UltraDatabase/test_lifetime.cpp`: eight tests (SQLite, and
     PostgreSQL where a server is configured) that replace or close a name
-    or a handle while a call on it runs. On the old code they report the
-    use-after-free under ASan and hang without it.
+    or a handle while a call on it runs, and cancel one by name after its
+    name changed hands. On the old code they report the use-after-free
+    under ASan and hang without it.
