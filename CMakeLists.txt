@@ -264,6 +264,9 @@ if(ANDROID)
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
+    # APPLE) and asks pkg-config for X11.
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
     # libvips is not in this list: it is part of UltraCanvas on Android as on
     # every platform, built into the sysroot with the rest of the stack
@@ -343,6 +346,7 @@ if(EMSCRIPTEN)
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
+    set(BUILD_ULTRADBADMIN OFF CACHE BOOL "Build the UltraDBAdmin application")
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
@@ -350,6 +354,7 @@ if(EMSCRIPTEN)
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
     set(BUILD_ULTRAPASSWORD OFF CACHE BOOL "Build the UltraPassword application")
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_ULTRAWIN_MANAGER OFF CACHE BOOL "Build the UltraWin Manager application")
     set(BUILD_ULTRAWIN_SETUP OFF CACHE BOOL "Build the ultrawin-setup CLI tool")
     set(BUILD_ULTRAMSG_CLI OFF CACHE BOOL "Build the ultramsg command-line tool")
@@ -661,6 +666,16 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRADBADMIN =====
+# Browse and query the databases UltraDatabase reaches - SQLite files and
+# PostgreSQL servers (Docs/Research/UltraDBAdminDesignProposal.md).
+option(BUILD_ULTRADBADMIN "Build the UltraDBAdmin application" ON)
+if(BUILD_ULTRADBADMIN)
+    message(STATUS "")
+    message(STATUS "── Building UltraDBAdmin ──")
+    add_subdirectory(Apps/UltraDBAdmin)
+endif()
+
 # ===== ULTRAWEB =====
 # The ULTRA OS browser. This version runs WebAssembly apps that build their UI
 # out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
@@ -755,6 +770,20 @@ endif()
 option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
 if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraPassword)
+endif()
+
+# ===== ANCHORPOINT =====
+# Peer-to-peer file sharing with no server file storage. Apps/AnchorPoint is
+# also its own CMake project (core + CLI build without the framework); here it
+# gets the framework's library and UltraCrypt, so the window is built wherever
+# the framework is. Its command line is `anchorpoint-cli`, so it and the
+# window's `AnchorPoint` stay two files in bin/ on case-insensitive file
+# systems.
+option(BUILD_ANCHORPOINT "Build the AnchorPoint application" ON)
+if(BUILD_ANCHORPOINT AND TARGET UltraCrypt AND ULTRACANVAS_LIBRARY)
+    message(STATUS "")
+    message(STATUS "── Building AnchorPoint ──")
+    add_subdirectory(Apps/AnchorPoint)
 endif()
 
 # ===== DEMO APPLICATION =====
@@ -1424,6 +1453,18 @@ if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
     add_subdirectory(Tests/UltraFIBU)
     message(STATUS "")
     message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
+endif()
+
+# ===== ULTRADBADMIN ENGINE TESTS =====
+# The database admin's engine: the connection list and its password vault,
+# cell formatting, the Browse pager, the SQL runner (with Stop). Compiles the
+# engine sources directly, so it runs where the UI library cannot be built.
+option(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS "Build the UltraDBAdmin engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS AND TARGET UltraDatabase AND TARGET UltraVault)
+    enable_testing()
+    add_subdirectory(Tests/UltraDBAdmin)
+    message(STATUS "")
+    message(STATUS "── UltraDBAdmin engine test suite enabled (target: UltraDBAdminEngineTests) ──")
 endif()
 
 # ===== ULTRAPRESS ENGINE TESTS =====
@@ -2528,7 +2569,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()
@@ -2579,6 +2620,9 @@ endif()
 # so the asset copy has to exist before the binary is run out of the build tree.
 if(TARGET UltraNetMonitor)
     add_dependencies(UltraNetMonitor copy_assets)
+endif()
+if(TARGET UltraDBAdmin)
+    add_dependencies(UltraDBAdmin copy_assets)
 endif()
 if(TARGET UltraAuthenticator)
     add_dependencies(UltraAuthenticator copy_assets)

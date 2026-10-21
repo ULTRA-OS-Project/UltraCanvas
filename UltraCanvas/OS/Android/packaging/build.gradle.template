@@ -1,10 +1,10 @@
 // Template app/build.gradle for an UltraCanvas Android app.
 //
-// NEVER RUN. The cross-compiled dependency sysroot it points at builds for
-// arm64-v8a in CI (scripts/android-bootstrap-sysroot.sh, see README.md in this
-// directory), and so does the demo's app library, libUltraCanvasDemo.so, but
-// no APK has been built with this file. Treat it as a checklist of the
-// settings the backend needs, not as a working build file.
+// NEVER RUN. CI builds the demo's APK without Gradle
+// (scripts/android-package-apk.sh, see README.md in this directory); this file
+// is for an app with a Gradle project of its own, and has not been tried.
+// Treat it as a checklist of the settings the backend needs, not as a working
+// build file.
 
 plugins {
     id 'com.android.application'
@@ -80,6 +80,9 @@ android {
             // Anything the app loads by path at runtime. Unpacked to
             // $HOME/share on first launch by UltraCanvasAndroidAssets.cpp.
             assets.srcDirs = ['src/main/assets']
+            // The launcher icon the manifest names: res/mipmap-*/ic_launcher.png
+            // at each density (scripts/android-package-apk.sh shows the sizes).
+            res.srcDirs = ['src/main/res']
             // The cross-compiled cairo/pango/glib/... .so files.
             jniLibs.srcDirs = ['src/main/jniLibs']
         }

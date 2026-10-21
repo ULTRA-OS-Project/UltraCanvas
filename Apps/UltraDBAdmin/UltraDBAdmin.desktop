@@ -1,0 +1,18 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraDBAdmin: the application menu entry, and
+# the name the icon is found by (`Icon=UltraDBAdmin`, installed into
+# share/icons/hicolor by the project's install rules), as for UltraNetMonitor.
+# It opens no files yet, so Exec takes no argument.
+Type=Application
+Version=1.5
+Name=UltraDBAdmin
+GenericName=Database Administration
+Comment=Browse and query SQLite and PostgreSQL databases
+Exec=UltraDBAdmin
+TryExec=UltraDBAdmin
+Icon=UltraDBAdmin
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraDBAdmin
+Categories=Development;Database;
+Keywords=database;sql;sqlite;postgresql;query;table;admin;

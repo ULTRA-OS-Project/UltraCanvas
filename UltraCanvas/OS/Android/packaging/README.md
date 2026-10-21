@@ -1,15 +1,17 @@
 # Packaging an UltraCanvas app as an APK
 
-**Status: the sysroot builds; no APK has been built yet.** The manifest is
-complete and every attribute in it is load-bearing (each is annotated with
-what breaks without it). `vcpkg.json` and
+**Status: CI builds an installable demo APK; it has not been run yet.** The
+manifest is complete and every attribute in it is load-bearing (each is
+annotated with what breaks without it). `vcpkg.json` and
 `scripts/android-bootstrap-sysroot.sh` cross-compile cairo, pango, glib,
-harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips for `arm64-v8a`:
-`.github/workflows/android-build.yml` runs them on every pull request that
-touches the Android build, compiles the core library against the result, and
+harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips for `arm64-v8a` and
+`x86_64`: `.github/workflows/android-build.yml` runs them on every pull request
+that touches the Android build, compiles the core library against the result,
 links the demo into `libUltraCanvasDemo.so`, the library the manifest here
-names (see *The app library* below). `build.gradle.template` has never been
-run, so no APK has been produced.
+names (see *The app library* below), and packages it with
+`scripts/android-package-apk.sh` (see *Building the APK*). Each run uploads
+`UltraCanvasDemo-arm64-v8a` and `UltraCanvasDemo-x86_64`, a debug-signed APK
+each, as artifacts. `build.gradle.template` has still never been run.
 
 ## Building the sysroot
 
@@ -69,12 +71,48 @@ DemoApp shows the shape every app takes:
   `OS/Android/*.cpp` at configure time), so any app linking it gets them, and
   CI checks the demo library exports every one.
 
+## Building the APK
+
+`scripts/android-package-apk.sh` makes the APK from an app library with the
+SDK's build tools alone, no Gradle:
+
+```sh
+scripts/android-package-apk.sh --abi x86_64 \
+    --lib build-android/lib/libUltraCanvasDemo.so \
+    --out UltraCanvasDemo-x86_64.apk --ndk "$ANDROID_NDK_HOME"
+```
+
+1. `UltraCanvasActivity.java` is compiled against `android.jar` and turned
+   into `classes.dex` (`javac`, `d8`).
+2. The launcher icon the manifest names (`@mipmap/ic_launcher`) is made from
+   `media/appicon/Demo.png` (`--icon` picks another) at the five launcher
+   densities, 48 to 192 px, each square with the image centred on
+   transparency, so a non-square icon is not stretched (ImageMagick, then
+   `aapt2 compile`).
+3. `aapt2 link` writes the manifest here, with `minSdk 28` and
+   `targetSdk 34`, the icon and the assets.
+4. The library goes in stripped (the NDK's Release build keeps its debug
+   information) and stored, under `lib/<abi>/`.
+5. `zipalign` puts the library on a page boundary, and `apksigner` signs with
+   a key made for the run: a debug APK for a test install, not one for a
+   store. The script then verifies the signature and prints what a device
+   reads from the package.
+
+The assets are the set the demo's WebAssembly page preloads (about 53 MB):
+the media its pages show, without the largest 3D samples and the audio and
+video ones, plus `Docs/` and the demo's own sources for its source viewer.
+The script lists them; another app would pass its own.
+
+Install one with `adb install UltraCanvasDemo-x86_64.apk` on an x86_64
+emulator, or the `arm64-v8a` one on a phone.
+
 ## What already works without packaging
 
 Everything in `OS/Android/` is compiled in CI against the real NDK
 (`scripts/android-syntax-check.sh`), and the Java against `android.jar`
 (`scripts/android-java-check.sh`). So the code is type-checked continuously —
-but **none of it has run on a device**, and it cannot until an APK is built.
+but **none of it has run on a device** yet: CI builds the APK, and nothing
+has installed it.
 Treat every runtime behaviour described in the backend README as designed and
 reviewed, not as observed.
 

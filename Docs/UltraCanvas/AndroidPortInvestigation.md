@@ -9,7 +9,8 @@ today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
 keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
 opening and saving, APK asset extraction). The dependency sysroot builds in
 CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
-an APK carries; APK packaging remains, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+an APK carries, and CI packages that into a debug-signed APK for `arm64-v8a`
+and `x86_64`; nothing has installed one yet, so none of it has run on a device — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).

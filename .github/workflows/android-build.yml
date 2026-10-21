@@ -3,10 +3,13 @@ name: Android build
 # Builds the framework for Android against a real cross-compiled sysroot:
 # scripts/android-bootstrap-sysroot.sh builds cairo, pango, glib, harfbuzz,
 # fontconfig, freetype, tinyxml2, fmt and libvips (with its JPEG, PNG, WebP,
-# TIFF, EXIF and colour management codecs) for arm64-android with vcpkg and
-# the runner's NDK, and the core library is then compiled with the NDK's
-# toolchain against them - libvips included, as on every platform - and so is
-# the demo, linked into libUltraCanvasDemo.so the way an APK carries it. The Build
+# TIFF, EXIF and colour management codecs) with vcpkg and the runner's NDK,
+# and the core library is then compiled with the NDK's toolchain against them
+# - libvips included, as on every platform - and so is the demo, linked into
+# libUltraCanvasDemo.so and packaged with scripts/android-package-apk.sh into
+# a debug-signed APK, uploaded as the run's UltraCanvasDemo-<abi> artifact.
+# Two ABIs: arm64-v8a is what phones run, x86_64 what an emulator on a Linux
+# host or a CI runner runs at full speed (AndroidOnLinuxInvestigation.md). The Build
 # workflow's "Android backend check" only syntax-checks OS/Android with host
 # headers standing in; this is the build those headers stand in for.
 #
@@ -30,6 +33,7 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/android-package-apk.sh'
       - 'UltraCanvas/OS/Android/**'
       - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
@@ -40,6 +44,7 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/android-package-apk.sh'
       - 'UltraCanvas/OS/Android/**'
       - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
@@ -59,12 +64,21 @@ concurrency:
 
 jobs:
   android:
-    name: android (arm64-v8a)
+    name: android (${{ matrix.abi }})
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    strategy:
+      # One ABI failing says nothing about the other; let both finish.
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            triplet: arm64-android
+          - abi: x86_64
+            triplet: x64-android
     env:
-      ABI: arm64-v8a
-      TRIPLET: arm64-android
+      ABI: ${{ matrix.abi }}
+      TRIPLET: ${{ matrix.triplet }}
       VCPKG_CACHE: ${{ github.workspace }}/.vcpkg/binary-cache
       # Where vcpkg keeps the source archives and patches it fetched (it
       # honours VCPKG_DOWNLOADS over its own downloads/ folder).
@@ -75,14 +89,15 @@ jobs:
       # What vcpkg's ports build with on a Linux host besides the compilers
       # (the NDK's) and cmake / ninja / meson (vcpkg fetches its own):
       # autotools for gettext, libiconv and libffi, gperf for fontconfig,
-      # bison and flex for the odd generator.
+      # bison and flex for the odd generator. ImageMagick: the APK's launcher
+      # icons, sized from media/appicon/Demo.png (android-package-apk.sh).
       - name: Install host tools
         timeout-minutes: 20
         run: |
           scripts/ci-apt.sh update
           scripts/ci-apt.sh install --no-install-recommends \
             autoconf autoconf-archive automake libtool gperf bison flex \
-            pkg-config python3 python3-venv curl zip unzip tar git
+            pkg-config python3 python3-venv curl zip unzip tar git imagemagick
 
       # vcpkg's binary cache: each library it built, as one archive per
       # package. Keyed by the manifest, the libvips overlay and the script
@@ -113,7 +128,9 @@ jobs:
       # line of the framework was compiled. vcpkg checks every file it finds
       # here against the SHA512 in its port, so a stale entry is harmless:
       # it is fetched again. Saved, like the binary cache, only when a run
-      # added something.
+      # added something, under a key that names the triplet: the two ABI jobs
+      # run at once and a key can be written once, so a shared one would keep
+      # only the first job's. Either restores the other's (restore-keys).
       #
       # The `path` here must be the save step's, line for line: actions/cache
       # files a cache under a version made from its paths, and a restore
@@ -127,7 +144,7 @@ jobs:
             ${{ env.VCPKG_DOWNLOADS }}
             !${{ env.VCPKG_DOWNLOADS }}/tools
             !${{ env.VCPKG_DOWNLOADS }}/temp
-          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ env.TRIPLET }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
             android-vcpkg-downloads-
@@ -180,14 +197,14 @@ jobs:
             ${{ env.VCPKG_DOWNLOADS }}
             !${{ env.VCPKG_DOWNLOADS }}/tools
             !${{ env.VCPKG_DOWNLOADS }}/temp
-          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ env.TRIPLET }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # What vcpkg's logs say when a port fails: the build trees hold them.
       - name: Upload vcpkg logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: android-vcpkg-logs
+          name: android-vcpkg-logs-${{ matrix.abi }}
           path: |
             .vcpkg/vcpkg/buildtrees/*/*.log
           if-no-files-found: ignore
@@ -257,11 +274,30 @@ jobs:
           ls -l "$lib"
           exit "$missing"
 
+      # The installable app: the library stripped, UltraCanvasActivity as
+      # dex, the manifest from packaging/, the demo's assets, a debug
+      # signature. The script verifies the signature and prints what a device
+      # reads from the package (name, SDK levels, native code).
+      - name: Package the demo APK
+        run: |
+          scripts/android-package-apk.sh --abi "$ABI" \
+            --lib build-android/lib/libUltraCanvasDemo.so \
+            --out "apk/UltraCanvasDemo-$ABI.apk" \
+            --ndk "$ANDROID_NDK_LATEST_HOME"
+
+      - name: Upload the demo APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvasDemo-${{ matrix.abi }}
+          path: apk/UltraCanvasDemo-${{ matrix.abi }}.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload the CMake logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: android-cmake-logs
+          name: android-cmake-logs-${{ matrix.abi }}
           path: |
             build-android/CMakeFiles/CMakeOutput.log
             build-android/CMakeFiles/CMakeError.log

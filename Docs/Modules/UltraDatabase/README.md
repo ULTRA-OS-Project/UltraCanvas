@@ -94,6 +94,17 @@ socket; the pool opens and reuses physical connections lazily as
 queries run, and reconnects on drop. `UltraDb_CloseConnection(name)`
 drains and removes a pool.
 
+Re-registering or closing a name never pulls a connection out from under a
+call that is using it, on any thread. Each call holds its connection until it
+returns, and so does every open statement, cursor and transaction handle. The
+old connection closes when the last of them ends; every call that starts after
+the change uses the new registration. Closing a handle (`UltraDb_Finalize`,
+`UltraDb_CloseCursor`) while another thread's call on it runs works the same
+way: the handle is gone for later calls, and the running one finishes.
+`UltraDb_CancelQuery(name)` still reaches a statement that began on the name
+before it was re-registered or closed, so a Stop button keeps working while
+the connection's settings change under it.
+
 ---
 
 ## Engines at a glance
@@ -298,6 +309,12 @@ and deliver results via a callback. As in UltraNet, **async callbacks
 run on a UltraDatabase worker thread — callers must marshal to their
 own loop** (`UltraCanvasApplication::PostToUIThread(fn)`) and must not
 block. The UI never waits on the database.
+
+Every call may come from any thread. Calls on one connection are serialised
+by the driver, one statement at a time. `UltraDb_CancelQuery` is the exception:
+it reaches a running statement without waiting. Registering, re-registering
+and closing a name are safe while other threads' calls run on it (see *Core
+idea* above).
 
 ---
 

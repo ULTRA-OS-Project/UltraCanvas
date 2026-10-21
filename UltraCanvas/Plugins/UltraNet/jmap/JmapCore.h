@@ -1,4 +1,5 @@
 // UltraCanvas/Plugins/UltraNet/jmap/JmapCore.h
+// Version: 0.3.3 - Guarded / GuardedVoid moved to common/UltraNetPluginGuard.h
 // Version: 0.3.2 - Guarded / GuardedVoid: an exception inside a plug-in
 //                  entry point becomes a PluginError result
 // Version: 0.3.1 - a null where a string or number is expected (Fastmail's
@@ -21,6 +22,7 @@
 #pragma once
 
 #include <UltraNet/UltraNetPlugins.h>
+#include "../common/UltraNetPluginGuard.h"
 
 #include <nlohmann/json.hpp>
 
@@ -38,37 +40,10 @@ namespace ultranet_jmap {
 
 using json = nlohmann::json;
 
-// Nothing may leave a plug-in entry point as an exception: the caller is
-// usually a worker thread with no handler, where std::terminate ends the
-// whole process (SIGABRT - how a null subject once took UltraMail down).
-// `body` runs inside a handler; what it throws - a JSON type the parser did
-// not expect, a bad_alloc, anything - comes back as a PluginError result
-// that names the call and the reason.
-template <typename Body>
-UltraNetResult Guarded(const char* what, Body&& body) {
-    try {
-        return body();
-    } catch (const std::exception& e) {
-        return UltraNetResult::Error(UltraNetResultCode::PluginError,
-                                     std::string(what) + ": " + e.what());
-    } catch (...) {
-        return UltraNetResult::Error(UltraNetResultCode::PluginError,
-                                     std::string(what) + ": an unexpected error");
-    }
-}
-
-// The same for a call with nothing to return (Shutdown, StopWatching, the
-// callbacks on the HTTP worker thread): an exception is swallowed. True when
-// the body ran through.
-template <typename Body>
-bool GuardedVoid(Body&& body) {
-    try {
-        body();
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
+// The guard around every entry point (UltraNetPluginGuard.h), reachable as
+// ultranet_jmap::Guarded too.
+using ultranet_plugin::Guarded;
+using ultranet_plugin::GuardedVoid;
 
 // A string / number member of `o`, or `def` when `o` is not an object, has no
 // such member, or holds another type there - a null above all. JSON mail

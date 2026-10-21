@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>AnchorPoint</title>
+  <desc>A black anchor on a white tile, drawn in the UltraCanvas logo's strokes and colours: a cyan ring, yellow and magenta fluke tips, and the binary 101011 in green on a black plate across the shank - files moored from one computer to another.</desc>
+  <rect x="16" y="16" width="224" height="224" rx="48" ry="48" fill="#ffffff"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="128" cy="50" r="15" stroke="#00D5FF" stroke-width="11"/>
+    <path d="M128 66 V216" stroke="#000000" stroke-width="14"/>
+    <path d="M90 84 H166" stroke="#000000" stroke-width="14"/>
+    <path d="M52 180 Q58 216 128 218 Q198 216 204 180" stroke="#000000" stroke-width="14"/>
+    <path d="M32 184 L50 158 L68 178" stroke="#FFFC00" stroke-width="12"/>
+    <path d="M224 184 L206 158 L188 178" stroke="#FF00FC" stroke-width="12"/>
+  </g>
+  <rect x="52.0" y="98" width="152.0" height="50" rx="12" fill="#000000"/>
+  <g fill="none" stroke="#00FF03" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M68.0 114 L73.0 108 V134"/>
+    <rect x="88.0" y="108" width="14" height="26" rx="7"/>
+    <path d="M114.0 114 L119.0 108 V134"/>
+    <rect x="134.0" y="108" width="14" height="26" rx="7"/>
+    <path d="M160.0 114 L165.0 108 V134"/>
+    <path d="M180.0 114 L185.0 108 V134"/>
+  </g>
+</svg>

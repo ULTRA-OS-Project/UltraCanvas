@@ -1,3 +1,163 @@
+#### 2026-10-21 *0.9.370*
+- **CI builds an installable Android APK of the demo, for phones and for an
+  emulator.** `scripts/android-package-apk.sh` packages an app library with
+  the SDK's build tools alone - `UltraCanvasActivity` compiled to dex, the
+  launcher icon made from `media/appicon/Demo.png` at all five screen
+  densities, the manifest, icon and assets linked by aapt2, the library stripped and stored,
+  zipaligned and signed with a debug key made for the run - so it needs
+  nothing a GitHub runner lacks, and no Gradle. The assets are the set the
+  demo's WebAssembly page preloads, laid out as `$HOME/share` expects.
+  `android-build.yml` now builds `arm64-v8a` (phones) and `x86_64` (an
+  emulator on a Linux host or runner, at full speed) side by side and uploads
+  `UltraCanvasDemo-arm64-v8a` and `UltraCanvasDemo-x86_64` as run artifacts.
+  Nothing has installed one yet; that is the next step.
+
+#### 2026-10-21 *0.9.369*
+- **The session-start "Code needs to be PRed" count no longer counts main's
+  own commits.** A cloud clone can arrive with its branch cut from a newer
+  main than its `origin/main` ref; `.claude/hooks/check-delivery.sh --brief`
+  measured against that stale ref, so every commit main had gained in between
+  counted as the session's work - one chat opened on "128418 lines" with 0
+  lines to PR, and the `Stop` form repeated the figure until something
+  fetched. The session-start form now fetches the default branch first
+  (no prompt, 12-second limit), which puts the `Stop` form on the real base
+  too; when the fetch cannot run, the brief says the count may be stale.
+  AGENTS.md, *The closing line*, describes it.
+
+#### 2026-10-21 *0.9.368*
+- **Application changelogs take pending entries too, so app version numbers
+  stop colliding between pull requests.** A change to an application now drops
+  its bullets in `Docs/<App>/changelog.d/<change-name>.md` — no header, no
+  number — exactly as framework changes already did in
+  `Docs/UltraCanvas/changelog.d/`. On 2026-10-21 one pull request had to be
+  renumbered five times (UltraFiler 1.77.1 → 1.83.0 → 1.87.0, UltraPaint
+  0.2.26 → 0.2.27), because every other merge took the next app version and
+  conflicted with it on line 1 of the changelog and of UltraFiler's `.rc` and
+  `.manifest`; two files never conflict.
+  - `scripts/fold_changelog.py` folds every product's pending entries on
+    `main`, each into its own `CHANGELOG.md` under its own next version. The
+    step follows each file's habit — the component that changed between its
+    two latest releases (UltraFiler 1.88.0 → 1.89.0, UltraPaint 0.2.28 →
+    0.2.29, Texter 1.69 → 1.70, the framework 0.9.x → 0.9.x+1) — and never
+    goes below the highest version in the file. `--version UltraFiler=2.0.0`
+    overrides one app; a bare `--version` is still the framework's.
+  - Folding UltraFiler or UltraTexter runs `./set-version.sh`, and the fold
+    commit carries their `.rc` and `.manifest`; a branch no longer touches
+    them. The commit names every version folded
+    (`Changelog: 0.9.365, UltraFiler 1.89.0`).
+  - The release build skips a merge commit with any product's entry pending,
+    not only the framework's, and builds the fold commit instead — once — so
+    no app ships under its previous number.
+  - `scripts/check_changelog.py` applies the framework's rules to every
+    product's `changelog.d/` (no `####` header, not empty) and refuses entries
+    in a `changelog.d/` that belongs to no declared changelog. A hand-written
+    top entry for a hotfix is still accepted and checked as before.
+- **No exception leaves any UltraNet plug-in.** The guard the JMAP plug-in
+  got (an exception inside an entry point becomes a `PluginError` result
+  naming the call and the reason, instead of reaching a caller's worker
+  thread with no handler and ending the process) now lives in
+  `Plugins/UltraNet/common/UltraNetPluginGuard.h` (`ultranet_plugin::Guarded`,
+  `GuardedHandle`, `GuardedVoid`) and wraps every entry point of every
+  plug-in: the mail four (IMAP, SMTP, POP3, JMAP - sending, the bulk fetch,
+  folders, status, envelopes, messages, flags, moves, appends, expunge, the
+  folder reconcile, creating and deleting folders), the messaging ones
+  (MQTT, AMQP, CoAP: Connect, Publish, Subscribe), gRPC, the directories
+  (LDAP, mDNS, SNMP: Search), the streams (RTSP, RTMP, RTP: OpenStream,
+  ReadFrame), the remote shells (SSH, Telnet, SIP: OpenShell,
+  ExecuteCommand), WebDAV's file operations, and every Initialize and
+  Shutdown. A connect or open that throws reads as `UltraNetInvalidHandle`,
+  as every failure of those calls does.
+
+#### 2026-10-21 *0.9.367*
+- **UltraDatabase 0.3.1: re-registering or closing a connection no longer
+  frees it under a running call.** `UltraDb_RegisterConnection` and
+  `UltraDb_CloseConnection` dropped the registry's entry, and with it the
+  physical connection. Every query, script, schema and quoting call held
+  only a raw pointer to it, so the call running at that moment on another
+  thread ran on freed memory. AddressSanitizer reports a heap-use-after-free
+  in the SQLite driver; without a sanitizer the call hung, or failed when it
+  next touched the connection. A PostgreSQL call lost its socket.
+  - Each call now holds the connection until it returns. The old connection
+    closes after its last call and its last open handle; calls that start
+    later use the new registration.
+  - Handles get the same treatment. A prepared statement or cursor closed
+    with `UltraDb_Finalize` / `UltraDb_CloseCursor` while another thread
+    runs it now finishes that call first. A transaction keeps its connection
+    for the call even when `UltraDb_Commit` runs on another thread.
+  - `UltraDb_CancelQuery(name)` also reaches a statement that began on the
+    name before it was re-registered or closed. Without that, the old
+    connection's statement ran on out of reach: a Stop button did nothing
+    after a settings change, and a program that cancels and then waits
+    for the statement before exiting hung.
+  - `Tests/UltraDatabase/test_lifetime.cpp`: eight tests (SQLite, and
+    PostgreSQL where a server is configured) that replace or close a name
+    or a handle while a call on it runs, and cancel one by name after its
+    name changed hands. On the old code they report the use-after-free
+    under ASan and hang without it.
+
+#### 2026-10-21 *0.9.366*
+- **CI's Linux row and a cloud session build the MQTT, AMQP, CoAP, SNMP and
+  SSH plug-ins.** Neither installed paho-mqtt-c, rabbitmq-c, libcoap3,
+  net-snmp or libssh, so those five UltraNet plug-ins were built on no
+  Linux at all and a change to them - the entry-point guard of 2026-10, for
+  one - was compiled nowhere before it merged. `.github/workflows/build.yml`'s
+  Linux rows and `.claude/hooks/session-start.sh` now install the five
+  Ubuntu packages, and a step after configure fails the Linux row when one
+  of the plug-ins was left out, as the Hunspell check does.
+
+#### 2026-10-21 *0.9.365*
+- **A click on a Windows toast reaches its application after the broker host
+  quit.** The windows-presenter shows an application's notification as a
+  toast under the application's own AppUserModelID, and its click came back
+  over the bus only while the program hosting the broker ran. After that the
+  toast waited in the Action Center, and a click on it did nothing.
+  - New `UltraCanvasNotificationActivation.h` (doc
+    `UltraCanvasNotificationActivation.md`): `RegisterNotificationActivator(appId,
+    handler)` makes the program the COM activator of its AppUserModelID
+    (`Software\Classes\CLSID\<clsid>\LocalServer32` names it with
+    `-ToastActivated`, the AppUserModelID's `CustomActivator` names the class,
+    a CLSID derived from the ID). Windows hands it the click, starting the
+    program when it is not running; the handler runs on the UI thread.
+    Windows backend `OS/MSWindows/UltraCanvasWindowsNotificationActivation.cpp`;
+    a no-op elsewhere.
+  - `SystemNotification` has an optional `launch`, the application's own note
+    of what the notification is about (in the `system.notification` schema).
+    The toast's activation arguments now carry the action, the notification's
+    id and its `launch` (`FormatNotificationArguments`), so the activator
+    needs nothing from the bus. UltraMail uses it: its toast opens the mail
+    it announced (UltraMail 0.10.65).
+  - Every identity is listed under `HKCU\Software\UltraCanvas\Notifications`.
+    The installer's uninstaller walks the list and removes each
+    AppUserModelID key and activator class, then the list;
+    `RemoveNotificationRegistrations()` does the same from code.
+  - Windows CI runs the UltraMessage suite (`UltraMessageTests`), which it
+    built and never ran: the Windows presenter and listener against the
+    runner's desktop.
+  - Tested: the arguments, the CLSID and the `launch` round trip in
+    `test_adapters.cpp`, UltraMail's launch string in `test_newmail.cpp`.
+- **The notification registrations can be removed without the uninstaller.**
+  Windows keeps, for each application whose notifications were shown, its
+  name, icon and the program a click starts. The installer's uninstaller
+  removes them; a folder unpacked from the ZIP package had no way to.
+  - `ListNotificationRegistrations()` (`UltraCanvasNotificationActivation.h`)
+    lists them; `RemoveNotificationRegistrations()` now returns how many it
+    removed.
+  - UOS-Settings 0.7.0: *Notifications > Registrations* lists them with a
+    *Remove all* button, and `UOS-Settings --remove-notification-registrations`
+    removes them with no window.
+  - `package-win.sh` puts `uc-remove-registrations.cmd` in the ZIP beside the
+    programs: it runs that command, to run before deleting the folder.
+- **Every application that posts a notification registers its activator.**
+  New `scripts/check_notification_activators.py`, run by CI
+  (`notification-activators.yml`), reports an application under `Apps/` that
+  posts a `system.notification` and never calls
+  `RegisterNotificationActivator` - its Windows toast would do nothing once the
+  broker host quit. UltraMail is the only application whose notifications
+  reach the presenter today, and registers; the DemoApp's message-centre
+  samples are posted Silent and say so (`notification-activator-exempt`). The
+  DemoApp's toast page and the UltraMessage README (§3.9) show the call with
+  the notification.
+
 #### 2026-10-21 *0.9.364*
 - **DemoApp builds for Android, as the library an APK carries.** On Android
   the demo is `libUltraCanvasDemo.so` (`add_library(... SHARED)` where the

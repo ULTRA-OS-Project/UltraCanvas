@@ -1552,6 +1552,15 @@ package_if_built "UltraNetMonitor" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraDBAdmin
+package_if_built "UltraDBAdmin" build_app_bundle \
+    "UltraDBAdmin" \
+    "UltraDBAdmin" \
+    "com.cloverleaf.UltraDBAdmin" \
+    "media/appicon/UltraDBAdmin.png" \
+    "public.app-category.developer-tools" \
+    ""
+
 # Package DeviceExplorer
 package_if_built "DeviceExplorer" build_app_bundle \
     "DeviceExplorer" \

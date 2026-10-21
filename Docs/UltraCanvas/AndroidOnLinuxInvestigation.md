@@ -272,6 +272,9 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
+**Status:** it is now - `android-build.yml` packages `UltraCanvasDemo-x86_64.apk`
+on every run (`scripts/android-package-apk.sh`) - so the emulator job below is
+the next step, installing that artifact.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator
