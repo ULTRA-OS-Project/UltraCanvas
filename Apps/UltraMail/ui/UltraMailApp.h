@@ -584,10 +584,10 @@ private:
     // Explain that no mail can be fetched because the plug-in for that
     // protocol was not found, naming the directory that was searched.
     void ReportMissingMailboxPlugin(MailProtocol protocol);
-    // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else the first
-    // Plugins/UltraNet directory next to (or up to two levels above) the
-    // executable, else the working directory's — so the app finds its plug-ins
-    // wherever it is started from, not only from the build directory.
+    // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else
+    // UltraNet's own default - the first Plugins/UltraNet directory next to
+    // (or up to two levels above) the executable - so the app finds its
+    // plug-ins wherever it is started from, not only from the build directory.
     static std::string ResolvePluginDirectory();
 
     // Session-lifetime: the master password is entered once, and the derived

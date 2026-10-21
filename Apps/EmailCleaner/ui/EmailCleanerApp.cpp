@@ -6,7 +6,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
-#include "UltraCanvasUtils.h"      // GetExecutableDir
+#include "UltraCanvasUtils.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasModalDialog.h"
@@ -52,40 +52,13 @@ const UltraVault::DeviceKeyVaultProfile kOwnVaultProfile{
     /*keyPrefix=*/    "mail.emailcleaner."};
 
 // Where UltraNet's protocol plug-ins (the IMAP DSO among them) are: the
-// EMAILCLEANER_PLUGIN_DIR override, else Plugins/UltraNet next to the
-// executable or up to two levels above it (the build tree, bin/), else the
-// registry's own working-directory default. A directory counts only when it
-// holds a DSO, so an empty one does not shadow the real one.
+// EMAILCLEANER_PLUGIN_DIR override, else UltraNet's own default -
+// Plugins/UltraNet next to the executable or one or two folders above it (the
+// build tree, bin/), whichever holds a plug-in, and the one beside the
+// executable when none does, so the diagnostic names a concrete place.
 std::string ResolvePluginDirectory() {
-    namespace fs = std::filesystem;
-    if (const char* dir = std::getenv("EMAILCLEANER_PLUGIN_DIR"); dir && *dir) return dir;
-
-    auto holdsPlugin = [](const fs::path& dir) {
-        std::error_code ec;
-        if (!fs::is_directory(dir, ec) || ec) return false;
-        for (const auto& entry : fs::directory_iterator(dir, ec)) {
-            if (ec) return false;
-            const std::string ext = PathToUtf8(entry.path().extension());
-            if (ext == ".so" || ext == ".dll" || ext == ".dylib") return true;
-        }
-        return false;
-    };
-
-    const fs::path relative = PathFromUtf8("Plugins") / "UltraNet";
-    std::vector<fs::path> candidates;
-    if (const std::string exeDir = GetExecutableDir(); !exeDir.empty()) {
-        fs::path base = PathFromUtf8(exeDir);
-        for (int up = 0; up < 3; ++up) {
-            candidates.push_back(base / relative);
-            base = base.parent_path();
-        }
-    }
-    candidates.push_back(relative);
-
-    for (const auto& candidate : candidates)
-        if (holdsPlugin(candidate)) return PathToUtf8(candidate.lexically_normal());
-    // Nothing found: name a concrete place in the diagnostic.
-    return PathToUtf8(candidates.front().lexically_normal());
+    if (const std::string dir = GetEnvUtf8("EMAILCLEANER_PLUGIN_DIR"); !dir.empty()) return dir;
+    return UltraNet_GetPluginDirectory();
 }
 
 // Run `task` on the UI thread (from a worker). Dropped when the app is gone.

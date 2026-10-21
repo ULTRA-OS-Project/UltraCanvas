@@ -1,3 +1,9 @@
+#### 2026-10-21 *0.4.9*
+- **The UltraNet plug-in folder comes from UltraNet.** EmailCleaner looked for
+  `Plugins/UltraNet` beside its executable itself, with the same code as
+  UltraMail. UltraNet now does that by default, so EmailCleaner keeps only its
+  `EMAILCLEANER_PLUGIN_DIR` override, which it now reads as UTF-8.
+
 #### 2026-10-13 *0.4.8*
 - **UltraMail's mail is found on macOS and Windows.** EmailCleaner looked for
   UltraMail's data folder, and kept its own, under `$XDG_DATA_HOME` or
