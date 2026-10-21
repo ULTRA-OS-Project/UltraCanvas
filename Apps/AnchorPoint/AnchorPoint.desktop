@@ -1,0 +1,26 @@
+[Desktop Entry]
+# The freedesktop shortcut for AnchorPoint. It puts it in the application menu
+# and gives desktop-aware programs a name for its icon: `Icon=AnchorPoint` is
+# an icon *name*, resolved through the installed icon themes, and the install
+# rules put media/appicon/AnchorPoint.png into share/icons/hicolor/256x256/apps
+# and media/appicon/AnchorPoint.svg into share/icons/hicolor/scalable/apps.
+# The window and taskbar icon come from the same PNG by another route -
+# gui/main.cpp hands it to SetDefaultWindowIcon.
+#
+# No %f: the window opens no files from its command line.
+#
+# Installed to share/applications by the install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=AnchorPoint
+GenericName=File Sharing
+Comment=Send files directly from one computer to another, with no server storing them
+Exec=AnchorPoint
+TryExec=AnchorPoint
+Icon=AnchorPoint
+Terminal=false
+StartupNotify=true
+StartupWMClass=AnchorPoint
+Categories=Network;FileTransfer;
+Keywords=send;receive;share;transfer;file;peer;p2p;LAN;

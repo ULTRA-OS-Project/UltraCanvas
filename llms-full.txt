@@ -718,7 +718,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -966,6 +966,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
   rule that makes Pango's `emoji` runs use it.
   See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
+  A click on an application's notification that reaches it outside the bus
+  - on Windows a toast clicked in the Action Center after the broker host
+  quit, or with the application closed, which Windows then starts - comes to
+  `RegisterNotificationActivator(appId, handler)`
+  (`UltraCanvasNotificationActivation.h`: the program as the COM activator of
+  its AppUserModelID, a CLSID derived from the ID by
+  `NotificationActivatorClassId`) as a `NotificationActivation` (the action,
+  the notification's id and its `launch` string). `RemoveNotificationRegistrations()`
+  and the installer's uninstaller remove every identity listed under
+  `HKCU\Software\UltraCanvas\Notifications` (`ListNotificationRegistrations()`
+  lists them; UOS-Settings > Notifications > Registrations, its
+  `--remove-notification-registrations` and the ZIP's
+  `uc-remove-registrations.cmd` remove them where there is no uninstaller);
+  `scripts/check_notification_activators.py` (CI) reports an application that
+  posts a notification without registering an activator; the argument format is shared,
+  header-only (`FormatNotificationArguments` / `ParseNotificationArguments`).
+  No-ops elsewhere. See `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
@@ -2651,8 +2669,10 @@ UI-framework vendors such as bit BlazorUI, and comparing it with the other
 mechanisms currently in use across the industry.
 
 Status: Phase 0 is implemented (`AGENTS.md`, `CLAUDE.md`, generated
-`llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py` with CI sync
-check, `context7.json`). Phases 1 and 2 remain proposals.
+`llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py`, `context7.json`).
+CI regenerates the two files on `main` after every docs change lands
+(`.github/workflows/llms-regenerate.yml`); pull requests never carry them, and
+`llms-txt.yml` refuses one that does. Phases 1 and 2 remain proposals.
 
 ---
 
@@ -2757,6 +2777,8 @@ alternatives — the survey shows mature projects ship every layer.
    description) and **`llms-full.txt`** (concatenation of
    `Masterfile_modules.md` + `Docs/UltraCanvas/*.md` + module READMEs) via
    a small script wired into CI, committed or published as a release asset.
+   *(Done: CI runs `scripts/generate_llms_txt.py` on `main` after each docs
+   change and commits the result; pull requests leave the two files alone.)*
 3. **Submit the repo to Context7** (free) so the large installed base of
    Context7 users resolves `ultracanvas` to real docs immediately.
 
@@ -4021,8 +4043,8 @@ Three facts about CI decide how a cloud-only developer works:
   the image says the same).
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
-  change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
-  assigned on `main` after the merge, never on the branch.
+  change needs one under `Docs/<App>/changelog.d/`. The number is assigned
+  on `main` after the merge, never on the branch.
 
 ## Step 3 — The first session: skeleton, changelog, pull request
 
@@ -4646,17 +4668,22 @@ evidence; a description of what it "should" look like is not.
 
 ## Step 8 — Version, document, regenerate
 
-- **The app's changelog is its version.** A release is a new
-  `#### YYYY-MM-DD *x.y.z*` line at the top of `Docs/MyApp/CHANGELOG.md`;
-  nothing else is hand-edited. A framework change the app needed goes in
-  `Docs/UltraCanvas/changelog.d/<change-name>.md` as bullets with no header;
-  CI assigns the framework number on `main`.
+- **The app's changelog is its version.** After the first entry, a change is
+  `Docs/MyApp/changelog.d/<change-name>.md` holding bullets with no header;
+  CI folds it into `Docs/MyApp/CHANGELOG.md` under the app's next
+  `#### YYYY-MM-DD *x.y.z*` line on `main`, and nothing else is hand-edited.
+  A framework change the app needed goes in
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` the same way.
 - **A new or changed public API gets its doc in the same change**:
   `Docs/UltraCanvas/UltraCanvas<Name>.md` for a component, a row on the
   catalogue page for a new element, the module README for a module.
-- **After any docs edit**: `python3 scripts/generate_llms_txt.py`. CI
-  verifies `llms.txt` and `llms-full.txt` are in sync, and they are what the
-  next assistant session reads.
+- **After any docs edit**: `python3 scripts/generate_doc_toc.py`, and after
+  editing a module README, `python3 scripts/generate_llms_txt.py` to refresh
+  its mirror under `Docs/Modules/` (commit the mirror). Leave `llms.txt` and
+  `llms-full.txt` alone - the script rewrites them too, so put them back with
+  `git checkout origin/main -- llms.txt llms-full.txt`: `main` regenerates
+  them after the merge (they are what the next assistant session reads), and
+  CI refuses a pull request that changes them.
 - A new third-party dependency is recorded in `Docs/Dependencies.md`,
   `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`, or it does not go
   in.
@@ -4774,8 +4801,9 @@ password refuses the published one, so on a machine still using it `-Mode Sign` 
 still packages. Delete any other copy of the old `.pfx` - it still opens with
 the old password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
-copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version; the CMake configure warns when they are stale and
+copy, because `windres` reads them from disk: the changelog fold on `main`
+runs `./set-version.sh` for the apps listed in it, and you run it yourself
+only after a hand-written top entry; the CMake configure warns when they are stale and
 `scripts/check_changelog.py` fails CI on it.
 
 </details>
@@ -4818,9 +4846,10 @@ assistant must read, which is what stops it guessing.
 
 **Before pushing**
 
-> Run the build and every `scripts/check_*.py`, fix what they report, regenerate
-> `llms.txt` if you touched docs, commit with a subject that says what changed
-> and why, push, and report the `## Delivery` block.
+> Run the build and every `scripts/check_*.py`, fix what they report, run
+> `scripts/check_pr_overlap.py` against the other open pull requests, commit
+> with a subject that says what changed and why, push, and report the
+> `## Delivery` block.
 
 **When something looks wrong**
 
@@ -4836,7 +4865,7 @@ assistant must read, which is what stops it guessing.
 - [ ] Every control comes from the catalogue; layouts from the layout engines
 - [ ] Modules used only through their public surfaces; TLS on, SQL bound
 - [ ] Build and all `scripts/check_*.py` are green locally
-- [ ] Docs updated and `llms.txt` regenerated in the same change
+- [ ] Docs updated in the same change (`llms.txt` is regenerated on `main`)
 - [ ] Committed, pushed, pull request open, `## Delivery` block read
 - [ ] App run and looked at on each platform you ship to
 
@@ -5093,9 +5122,10 @@ It is the only option that is simultaneously official, scriptable, headless,
 version-selectable and installable from a package manager. It matters here for
 three specific reasons:
 
-- **API level shopping.** The backend's floor is API 26
-  (`ClipDescription.getTimestamp` for clipboard change detection,
-  `minSdk 26` in the Gradle template) and its ceiling assumptions are
+- **API level shopping.** The floor is API 28 (`minSdk 28` in the Gradle
+  template), set by the dependency sysroot, which vcpkg builds for 28; the
+  backend alone would need 26 (`ClipDescription.getTimestamp` for clipboard
+  change detection). Its ceiling assumptions are
   `targetSdk 34`. Only the emulator lets you install *both* ends and see where
   behaviour diverges — Android 10's clipboard-read-requires-focus rule, scoped
   storage, and SAF changes all landed between those two.
@@ -5135,7 +5165,7 @@ headless by default, `adb`-driven, with an optional WebRTC screen.
 
 It is better than the emulator when you need many devices per host or you are
 tracking AOSP itself. It is worse as a first step: heavier setup, and the
-version matrix (API 26 ↔ 34) that this backend actually needs is easier to get
+version matrix (API 28 ↔ 34) that this backend actually needs is easier to get
 from the SDK's image repository. Keep it on the list for later; do not start
 here.
 
@@ -5199,7 +5229,7 @@ Mapping the emulator/Waydroid to the features
 | SAF open (`ACTION_OPEN_DOCUMENT`) + copy-to-cache | Yes — DocumentsUI ships in the images | Yes | Also the only way to observe the documented "callers read a snapshot" consequence. |
 | `SaveContent` (`ACTION_CREATE_DOCUMENT`) | Yes | Yes | |
 | `AlertDialog` message dialogs through the nested-loop bridge | Yes | Yes | The sync-over-async pump is the riskiest concurrency code in the backend; a deadlock shows up here or nowhere. |
-| Clipboard via `ClipboardManager` | Yes | Yes, plus host clipboard integration | Test on API 26 *and* 29+ — the focus restriction on reads only exists on the latter. |
+| Clipboard via `ClipboardManager` | Yes | Yes, plus host clipboard integration | Test on API 28 *and* 29+ — the focus restriction on reads only exists on the latter. |
 | Lifecycle: background/foreground, `TERM_WINDOW`/`INIT_WINDOW` | Yes — `adb shell input keyevent HOME`, then relaunch | Yes | |
 | Rotation with `configChanges` set, and (deliberately) without | Yes — emulator rotation is one keystroke or `adb emu rotate` | Awkward | Emulator only, effectively. |
 | Back button → `WindowCloseRequest` | Yes — `adb shell input keyevent BACK` | Yes | |
@@ -5223,7 +5253,7 @@ README).
 
 ```sh
 # SDK command-line tools; API 30 x86_64 is a good middle target between the
-# backend's floor (26) and the Gradle template's targetSdk (34).
+# floor (28) and the Gradle template's targetSdk (34).
 sdkmanager "platform-tools" "emulator" "system-images;android-30;default;x86_64"
 avdmanager create avd -n uc-x86_64 -k "system-images;android-30;default;x86_64"
 
@@ -5289,6 +5319,9 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
+**Status:** it is now - `android-build.yml` packages `UltraCanvasDemo-x86_64.apk`
+on every run (`scripts/android-package-apk.sh`) - so the emulator job below is
+the next step, installing that artifact.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator
@@ -5406,7 +5439,7 @@ compile gate rather than a test.
 3. **`abiFilters 'x86_64'` for the first APK**, adding `'arm64-v8a'` once the
    pipeline works end to end.
 4. **First run on an x86_64 AVD at API 30**, headless, `screencap` as the
-   evidence. Then API 26 and 34 for the clipboard/SAF divergences (§4).
+   evidence. Then API 28 and 34 for the clipboard/SAF divergences (§4).
 5. **Then Waydroid**, for the real-Mesa GLES pass and as the ULTRA OS
    experiment.
 6. **Then a physical arm64 device**, for gestures, drivers and the things no
@@ -5442,8 +5475,10 @@ lives in `UltraCanvas/OS/Android/` — see its
 [README](../../UltraCanvas/OS/Android/README.md) for what is actually built
 today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
 keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
-opening and saving, APK asset extraction); the dependency
-sysroot and APK packaging remain, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+opening and saving, APK asset extraction). The dependency sysroot builds in
+CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
+an APK carries, and CI packages that into a debug-signed APK for `arm64-v8a`
+and `x86_64`; nothing has installed one yet, so none of it has run on a device — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -5876,7 +5911,10 @@ Process lessons for the Android effort:
 - Touch→mouse translation, `AKEYCODE_*`→`UCKeys` table.
 - Stubs: cursor, dialogs, clipboard (in-process fallback already exists),
   recent files, DnD off, GL off, video off, plugins compiled-in/off.
-- **Milestone: DemoApp runs on an arm64 device/emulator.**
+- **Milestone: DemoApp runs on an arm64 device/emulator.** **Status:** DemoApp
+  builds and links for Android (`main()` is `ultracanvas_app_main()` there, the
+  target is `libUltraCanvasDemo.so`, and CI checks its exported entry points);
+  running it waits on the APK.
 
 **Phase 2 — same OS support as Linux (core services)**
 - Lifecycle virtuals (pause/resume/surface loss) + rotation-safe `Run()`.
@@ -49346,6 +49384,138 @@ diagram->SetDetailZoom(0.7);      // zoomed out further: icons only, named on ho
 - [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demos
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasNotificationActivation.md
+==============================================================================
+
+# UltraCanvasNotificationActivation
+
+A click on one of an application's notifications reaching that application -
+even when the program that put the notification on screen has quit since, and
+even when the application itself is not running. Header:
+`UltraCanvas/include/UltraCanvasNotificationActivation.h`.
+
+## Contents
+
+- [Why it is needed](#why-it-is-needed)
+- [Registering the activator](#registering-the-activator)
+- [The launch string](#the-launch-string)
+- [What is written, and how it is removed](#what-is-written-and-how-it-is-removed)
+- [API](#api)
+
+## Why it is needed
+
+An application posts its notification on the UltraMessage bus, and a presenter
+puts it on screen. On Windows that is a toast under the application's own
+AppUserModelID, shown by the program that hosts the broker. While that program
+runs, a click on the toast comes back over the bus as
+`system.notification.action`. Once it has quit, the toast still waits in the
+Action Center - and Windows hands a click on it to the COM activator registered
+for the AppUserModelID, starting the program the activator names when it is not
+running. Without one, the click did nothing.
+
+Elsewhere the notification service reports the click over the bus while the
+application runs; there is nothing to register, and the calls below do nothing.
+
+## Registering the activator
+
+Once, early in the start: when Windows starts the program for a click it waits
+for the registration.
+
+```cpp
+#include "UltraCanvasNotificationActivation.h"
+
+void RegisterForNotificationClicks() {
+    UltraCanvas::RegisterNotificationActivator(
+        "org.ultraos.ultramail",
+        [](const UltraCanvas::NotificationActivation& click) {
+            // On the UI thread. click.actionId: "default" for the toast,
+            // a button's id, "" for a toast without a default action.
+            const std::string what = click.launch;   // the notification's own note
+            (void)what;
+        });
+}
+```
+
+The program is started with `-ToastActivated` (and COM may add `-Embedding`);
+`IsNotificationActivationArgument` tells such an argument from a file to open.
+One click can arrive both ways - over the bus from a broker host still running,
+and through the activator - so an application that opens something for it
+opens it once.
+
+## The launch string
+
+`SystemNotification::launch` (UltraMessage) is the application's own note of
+what a notification is about. The presenter writes it into the toast's
+activation arguments with the notification's id and the action, so the
+activator gets it back with nothing on the bus to ask. `EncodeNotificationQuery`
+and `DecodeNotificationQuery` make a convenient one:
+
+```cpp
+#include "UltraCanvasNotificationActivation.h"
+
+std::string LaunchFor(const std::string& accountId, int64_t uid) {
+    return UltraCanvas::EncodeNotificationQuery({{"account", accountId}, {"uid", std::to_string(uid)}});
+}
+
+int64_t UidOf(const std::string& launch) {
+    const auto fields = UltraCanvas::DecodeNotificationQuery(launch);
+    auto uid = fields.find("uid");
+    return uid == fields.end() ? 0 : std::stoll(uid->second);
+}
+```
+
+## What is written, and how it is removed
+
+All per user, under `HKEY_CURRENT_USER`, no administrator rights:
+
+| Key | Written by | What |
+|---|---|---|
+| `Software\Classes\AppUserModelId\<appId>` | the presenter (`DisplayName`, `IconUri`), the activator (`CustomActivator`) | the toast's name and icon, and the class a click goes to |
+| `Software\Classes\CLSID\<clsid>\LocalServer32` | the activator | `"<program>" -ToastActivated` |
+| `Software\UltraCanvas\Notifications` | both | one value per AppUserModelID, its CLSID as the data |
+
+The CLSID is derived from the AppUserModelID (`NotificationActivatorClassId`),
+so every start of the application names the same class, and its program path is
+written again on every start, so a moved installation is followed. The
+installer's uninstaller (`Windows/Installer/UltraCanvasSetup.nsi`) walks the
+list and removes each AppUserModelID key and CLSID key, then the list;
+`RemoveNotificationRegistrations()` does the same from code.
+
+A folder unpacked from the ZIP package has no uninstaller, so the same removal
+is offered three more ways:
+
+- UOS-Settings, *Notifications > Registrations*: the list
+  (`ListNotificationRegistrations()`) and a *Remove all* button;
+- `UOS-Settings --remove-notification-registrations`, with no window;
+- `uc-remove-registrations.cmd`, which `package-win.sh` puts in the ZIP beside
+  the programs and which runs that command - to run before deleting the folder.
+
+An application registers again the next time it starts (its activator) or
+shows a notification (its name and icon), so a removal does no harm to one
+that stays.
+
+## API
+
+| Function | What it does |
+|---|---|
+| `RegisterNotificationActivator(appId, onActivated)` | Windows: writes the activator's registration and serves it; `onActivated` runs on the UI thread. False when nothing could be registered, and always elsewhere. |
+| `ListNotificationRegistrations()` | Windows: every identity the list names - `appId` and `activatorClassId` ("" when none registered one) - sorted by ID. Empty elsewhere. |
+| `RemoveNotificationRegistrations()` | Windows: removes every identity the list names, and the list; returns how many. 0 elsewhere. |
+| `NotificationActivation` | `notificationId`, `actionId`, `launch`. |
+| `FormatNotificationArguments(activation)` / `ParseNotificationArguments(arguments)` | A toast's activation arguments and back; arguments in no form of these are a click on the toast itself. |
+| `EncodeNotificationQuery(fields)` / `DecodeNotificationQuery(query)` | `key=value&...`, percent-encoded. |
+| `NotificationActivatorClassId(appId)` | The activator's CLSID, `{XXXXXXXX-XXXX-5XXX-...}`. |
+| `IsNotificationActivationArgument(argument)` | `-ToastActivated`, `-Embedding`, `/Embedding`. |
+
+Every application under `Apps/` that posts a notification registers its
+activator, or says why not (`// notification-activator-exempt: <why>`):
+`scripts/check_notification_activators.py`, run by CI
+(`notification-activators.yml`).
+
+Tested in `Tests/UltraMessage/test_adapters.cpp` (the arguments, the CLSID, the
+toast XML carrying them) and UltraMail's `test_newmail.cpp` (its launch string).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNotificationToast.md
 ==============================================================================
 
@@ -62013,7 +62183,7 @@ EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial, UltraFIBU and
 UltraWin Manager raise their window. The document applications - Texter,
 UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraVideo and AnchorPoint -
 use `ListenOpen`: a file opened from the file manager while one of them runs
-opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint`,
+opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint-cli`,
 `ultrafibu`) do not use it: scripts run several of them at once, and a helper
 process an application starts itself (UltraFiler's elevated helper) must
 never claim.
@@ -87510,6 +87680,17 @@ socket; the pool opens and reuses physical connections lazily as
 queries run, and reconnects on drop. `UltraDb_CloseConnection(name)`
 drains and removes a pool.
 
+Re-registering or closing a name never pulls a connection out from under a
+call that is using it, on any thread. Each call holds its connection until it
+returns, and so does every open statement, cursor and transaction handle. The
+old connection closes when the last of them ends; every call that starts after
+the change uses the new registration. Closing a handle (`UltraDb_Finalize`,
+`UltraDb_CloseCursor`) while another thread's call on it runs works the same
+way: the handle is gone for later calls, and the running one finishes.
+`UltraDb_CancelQuery(name)` still reaches a statement that began on the name
+before it was re-registered or closed, so a Stop button keeps working while
+the connection's settings change under it.
+
 ---
 
 ## Engines at a glance
@@ -87714,6 +87895,12 @@ and deliver results via a callback. As in UltraNet, **async callbacks
 run on a UltraDatabase worker thread — callers must marshal to their
 own loop** (`UltraCanvasApplication::PostToUIThread(fn)`) and must not
 block. The UI never waits on the database.
+
+Every call may come from any thread. Calls on one connection are serialised
+by the driver, one statement at a time. `UltraDb_CancelQuery` is the exception:
+it reaches a running statement without waiting. Registering, re-registering
+and closing a name are safe while other threads' calls run on it (see *Core
+idea* above).
 
 ---
 
@@ -88062,7 +88249,7 @@ own under a vendor prefix (`com.example.myapp.*`). Their names are in
 |---|---|---|
 | `messaging.message` | yes | `service`, `conversation{id,title,isGroup}`, `sender{id,name}`, `text`, `direction`, `read`, `attachments[]` |
 | `mail.message` | yes | `account`, `folder`, `from{name,address}`, `to[]`, `subject`, `snippet`, `read`, `flagged` |
-| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]`; optional `desktopEntry`; `displayed` names what already shows it. One an application posts goes on screen (§3.6, *Presenters*; §3.8 where no presenter can) unless it is `Silent` |
+| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]`; optional `desktopEntry`, and `launch` - the posting application's own note of what the notification is about, handed back to it with a click that reaches it outside the bus (`UltraCanvasNotificationActivation.h`); `displayed` names what already shows it. One an application posts goes on screen (§3.6, *Presenters*; §3.8 where no presenter can) unless it is `Silent` |
 | `system.notification.action` / `.dismissed`, `feed.read` / `feed.dismissed` | no | feed ↔ adapter signalling |
 | `app.lifecycle.started` / `.stopping` | no | published by the broker for every endpoint |
 | `app.open.request` | no | `paths[]` / `urls[]`, `activate` — single-instance hand-off |
@@ -88192,7 +88379,14 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   respected (an application turned off shows nothing, not a balloon). A click
   is the `"default"` action, a button its action, a dismissal
   `system.notification.dismissed`, while the broker runs; an update
-  (`UltraMsgFlag_Replace`) changes the toast in place. Where toasts are not
+  (`UltraMsgFlag_Replace`) changes the toast in place. Every activation's
+  arguments carry the action, the notification's id and its `launch`
+  (`UltraCanvas::FormatNotificationArguments`), so once the broker host has
+  quit, a click in the Action Center goes to the application's own activator
+  (`UltraCanvas::RegisterNotificationActivator`) - Windows starts the
+  application when it is not running - which has everything it needs. Each
+  AppUserModelID is listed under `HKCU\Software\UltraCanvas\Notifications`
+  for the uninstaller, which removes it with its activator. Where toasts are not
   available, or one cannot be shown, it is a notification-area balloon
   (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
   registration: Windows heads it with the name of the process hosting the
@@ -88290,6 +88484,36 @@ anywhere on the bus; a replacement updates it. The ULTRA OS desktop hosts one
 (`Apps/UltraDesktop`, top right beside its right bar). On a desktop with its
 own notification server every notification carries `displayed` and the host
 draws nothing.
+
+### 3.9 Posting a notification from an application
+
+What an application gives a `system.notification` it wants on screen, and the
+one call that makes its clicks reach it however the notification was shown:
+
+```cpp
+// Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
+// on the toast after the broker host quit - or with the application closed,
+// which Windows then starts - comes here, on the UI thread. Elsewhere a no-op.
+UltraCanvas::RegisterNotificationActivator("org.example.myapp",
+    [](const UltraCanvas::NotificationActivation& click) { Open(click.launch); });
+
+// Each notification.
+UltraMessage::SystemNotification n;
+n.appId   = "org.example.myapp";   // the AppUserModelID its Windows toast shows under
+n.appName = "MyApp";               // what Windows heads the toast with
+n.icon    = iconPngPath;           // its logo
+n.summary = "Export finished";
+n.actions = {{"default", "Open"}};
+n.launch  = UltraCanvas::EncodeNotificationQuery({{"file", exportedPath}});   // what the click opens
+UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSystemNotification(n));
+```
+
+While the broker runs, the click also comes back over the bus as
+`system.notification.action`; an application that acts on both opens the
+thing once. `scripts/check_notification_activators.py` (CI) reports an
+application under `Apps/` that posts a notification without registering an
+activator; sample traffic posted `Silent` says so with
+`// notification-activator-exempt: <why>`.
 
 ## 4. The C++ layer
 
@@ -88548,8 +88772,20 @@ FILE: Docs/Modules/UltraNet/JmapSupport.md
 
 # JMAP Support in UltraNet — Investigation & Design
 
-**Status:** Phase 1 implemented (read path) — see `Plugins/UltraNet/jmap/`;
-phases 2–3 remain as designed below
+**Status:** All three phases implemented — the read path, the write path
+(`StoreFlags`, `MoveMessage`, `AppendMessage`, `ExpungeMessage`,
+`FetchAllFlags` and `SendMail` through `EmailSubmission`) and push
+(`WatchMailbox` over the session's event source) — see
+`Plugins/UltraNet/jmap/`. UltraMail
+consumes it since 0.10.62: an account's incoming server is set to JMAP on its
+settings page (`Docs/UltraMail/AccountSetup.md`, section 5), and syncs, the
+login check, the message actions and the outbox copies then use this plug-in
+in place of the IMAP one; since 0.10.63 UltraMail also finds a JMAP server by
+itself (SRV `_jmap._tcp` and the `/.well-known/jmap` probe, between the
+provider table and the autoconfig lookup) and sends through it when the
+account names no SMTP server; since 0.10.64 it keeps a watch open on every
+JMAP account and checks the account the moment the server reports a change,
+next to the regular interval.
 **Scope:** Add JMAP (JSON Meta Application Protocol, RFC 8620 core + RFC 8621 mail)
 as an UltraNet protocol plug-in, consumable by UltraMail alongside IMAP/SMTP.
 
@@ -88689,13 +88925,18 @@ uid. Proposal, phased:
    (`Email/changes`) can be used first-class — that unlocks JMAP's cheap
    incremental sync instead of uid-window polling.
 
-### 4.3 Push (phase 3)
+### 4.3 Push (phase 3) — implemented
 
-Subscribe `UltraNet_SseStreamAsync` to the session's `eventSourceUrl`;
-`StateChange` events carry per-account `Email`/`Mailbox` state strings. Surface
-as an optional callback on the plug-in (or a future
-`IMailboxPushProtocolPlugin` mix-in) that UltraMail's `SyncScheduler` uses to
-trigger immediate `SyncMessages` instead of its poll interval.
+`IMailboxProtocolPlugin::WatchMailbox` (appended to the interface, with a
+"not implemented" default) opens a watch: the JMAP plug-in subscribes
+`UltraNet_SseStreamAsync` to the session's `eventSourceUrl` for
+`Email,Mailbox` with a five-minute ping, records the account's states from
+the first `StateChange` event and reports a change for every later one whose
+`Email` or `Mailbox` state differs; `onEnd` reports the stream's end and
+`StopWatching` ends it. UltraMail (`MaintainPushWatches`, on its sync tick)
+keeps one watch per JMAP account whose vault entry is usable, checks the
+account at once on a change, and reopens a watch that ended after a minute;
+the interval check stays as the safety net.
 
 ### 4.4 Discovery (phase 3)
 
@@ -88741,9 +88982,10 @@ account (Basic app-password auth) — phase 1 is exercisable read-only.
 2. **Interface evolution** — phase 1 ships on the uid-mapping shim
    (`JmapCore.h` `UidMap`); the `UltraNetMailEnvelope.id` extension remains a
    phase 3 follow-up.
-3. Whether `SendMail` through JMAP should be preferred by UltraMail when an
-   account is JMAP-discovered (replacing the SMTP path for those accounts) —
-   open until phase 2.
+3. *Decided with phase 2:* UltraMail sends through JMAP when the account's
+   incoming server is JMAP and no outgoing (SMTP) server is given - what a
+   JMAP-discovered account looks like; an SMTP server entered on the
+   settings page is used instead.
 
 ==============================================================================
 FILE: Docs/Modules/UltraNet/README.md
@@ -88844,10 +89086,13 @@ planned (see the status table below).
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
 `UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
-table** (`UltraNetPluginHost`, ABI 2) handed to its `UltraNet_PluginInit`:
+table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
-`UltraNet_MimeBuild`, `UltraNet_HttpGet` / `HttpRequest`, ... Plug-in sources
+`UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
+format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+`UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
+plug-in's push), ... Plug-in sources
 call those functions as usual;
 `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`, compiled into every
 plug-in, defines them inside the DSO and forwards each call to the table. So a
@@ -94972,12 +95217,13 @@ again to retry.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
-- **IMAP / SMTP plug-ins.** Mail is fetched and sent through UltraNet's
-  `ultranet_imap` and `ultranet_smtp` plug-ins. UltraMail looks for them in
-  `Plugins/UltraNet` next to the executable (or up to two levels above it,
-  then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. If they
-  are missing, Update and the first sync of a new account say so and name the
-  folder that was searched.
+- **IMAP / JMAP / SMTP plug-ins.** Mail is fetched through UltraNet's
+  `ultranet_imap` plug-in - or `ultranet_jmap` for an account whose incoming
+  server is set to JMAP - and sent through `ultranet_smtp`. UltraMail looks
+  for them in `Plugins/UltraNet` next to the executable (or up to two levels
+  above it, then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides.
+  If the one an account needs is missing, Update and the first sync of a new
+  account say so and name the folder that was searched.
 - **Changing the sign-in of an account.** Add the account again with the
   same address: the existing entry is updated, and whatever you provide this
   time (a password, an app password, or the browser sign-in) replaces what
@@ -95001,12 +95247,14 @@ reports "settings found for <domain>". The lookup runs off the UI thread
 behind a wait dialog and takes a few seconds at most.
 
 **Manual settings page.** When nothing is published, the page opens with
-*Incoming (IMAP)* and *Outgoing (SMTP)* rows — host, port, security
+a *Protocol* row (IMAP or JMAP, see below), *Incoming (IMAP)* and
+*Outgoing (SMTP)* rows — host, port, security
 (SSL/TLS, STARTTLS, None) — and the *Username*, prefilled with
 `imap.<domain>` 993 SSL/TLS, `smtp.<domain>` 587 STARTTLS and the full
 address. Correct them from your provider's "mail program settings" or
 "IMAP/SMTP" help page and **Save**. Save first **checks the sign-in**: UltraMail opens
-one IMAP session to the incoming server with the entered servers and the
+one session to the incoming server (IMAP, or JMAP's session resource) with
+the entered servers and the
 password (or the stored sign-in of an existing account), which proves the
 host, the port, the security mode and the credentials in one go. While it
 runs the page says "Checking the sign-in at …"; on success the page closes,
@@ -95017,6 +95265,50 @@ offers **Save anyway** for a server that is down right now. The outgoing
 (SMTP) server is not checked — the plug-in has no sign-in-only operation —
 so a wrong SMTP entry shows up on the first send. The page also validates
 in place (a host must be given, ports are 1–65535).
+
+**JMAP instead of IMAP.** The *Protocol* row at the top of the page chooses
+what the incoming server speaks: **IMAP** (every account from before the
+choice existed, and most providers) or **JMAP**, the JSON-over-HTTPS mail
+protocol (RFC 8620/8621) of Fastmail, Stalwart, Cyrus and Apache James.
+Choosing JMAP renames the incoming rows to *Incoming (JMAP)* and *Sign-in
+(JMAP)*, sets the port to **443** (a port that was IMAP's usual 993 or 143;
+an unusual one you typed stays), fixes the security to SSL/TLS - a JMAP
+server is HTTPS - and leaves *Automatic*, *Normal password* and *OAuth2* as
+the sign-in methods, the ones JMAP has. Enter the server as its host name
+only - `api.fastmail.com`, or the mail host of a Stalwart or Cyrus server;
+UltraMail asks it for the JMAP session at `/.well-known/jmap`. The sign-in
+check, every later sync, marking read, moving, deleting (to the Trash
+mailbox) and the copies in Drafts and Sent then go through the JMAP plug-in.
+The *Outgoing (SMTP)* server is **optional** for a JMAP account: left
+empty, mail is sent through the JMAP server too (JMAP submission, as the
+account's own identity; the server files the sent message in Sent); an
+SMTP server entered next to it is used to send instead. Switching an
+existing account between the protocols drops the mail held for it and
+fetches it anew: the same mailbox read over the other protocol numbers its
+messages differently. The choice is stored with the other server settings
+of the account and shown again on its Settings page.
+
+**JMAP is found by itself.** Before the autoconfig documents (which only
+describe IMAP), the lookup asks the domain for its JMAP server (RFC 8620
+§2.2): the DNS SRV record `_jmap._tcp.<domain>` names it, else the domain
+itself is asked at `https://<domain>/.well-known/jmap`; a server that
+answers with its session resource, or asks for a sign-in first (401, as
+Fastmail and Stalwart do), is taken - as the host the answer came from,
+after redirects (`fastmail.com` leads to `api.fastmail.com`). The wizard
+then reports *a JMAP server was found for <domain>*, and the account is
+added with that JMAP server as its incoming server, the full address as
+its username and no SMTP server: it sends through JMAP. The provider table
+comes first, so Gmail, Outlook and the other known providers are never
+probed.
+
+**New mail arrives at once.** A JMAP account is watched: UltraMail holds
+the server's event source open and checks the account the moment the
+server reports a change to its mail or folders, so new mail shows without
+waiting for the interval in *Settings > Mail > Connection* - which still
+runs, as the safety net for a change the stream missed. The watch opens
+once the account's sign-in is usable, is reopened a minute after the
+server or the network ended it, and `trace.log` in the data folder says
+when it opened, ended and fired.
 
 **Authentication method.** Under the server rows, *Sign-in (IMAP)* and
 *Sign-in (SMTP)* choose how each server is signed in to — the same choice
@@ -95060,7 +95352,9 @@ Gmail, Outlook and Yahoo.
 | *New mail could not be fetched … authentication failed* | iCloud: you typed the account password; use an app-specific password (section 2). Gmail, Outlook and Yahoo take no password: open the account's Settings and use *Sign in with …*. |
 | *The sign-in service is turned off in this build and no OAuth client is configured* | The build was configured with `-DULTRAMAIL_OAUTH_SERVICE_URL=""`, or `off` was set. Name a service (`[service] url =` in `oauth.ini`, or `ULTRAMAIL_OAUTH_SERVICE_URL`) or a client of your own (section 3). |
 | *The sign-in service did not answer … The sign-in service at … could not be reached* (and the browser never opened) | `oauth-callback.ultraos.eu` could not be reached from this computer: the name does not resolve, a proxy blocks it, or the service is down. Open `https://oauth-callback.ultraos.eu/healthz` in a browser; `trace.log` in the data folder says which way the sign-in went (*through the sign-in service …* or *directly, with this installation's own client*). An installation behind a firewall can run its own service (section 3). |
-| *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
+| *The IMAP plug-in was not found* / *The JMAP plug-in was not found* | Build the UltraNet IMAP (or JMAP) plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. An account whose *Protocol* is JMAP needs `ultranet_jmap`, every other one `ultranet_imap`. |
+| *The JMAP plug-in is not loaded, so UltraMail cannot reach a mail server* on Send | The account sends through its JMAP server (no SMTP server is entered) and `ultranet_jmap` is missing: see the row above, or enter an outgoing (SMTP) server on the account's Settings page. |
+| *The server refused the submission: forbiddenFrom* on Send from a JMAP account | The JMAP server has no sending identity for the From address. Use the address the account signs in with, or add the identity (an alias) at the provider. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
 | *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |
@@ -95235,7 +95529,8 @@ If discovery or verification fails, the wizard drops into the
 outgoing server/port/TLS, username) with everything it *did* find
 prefilled — the user corrects one field instead of typing seven.
 *(Shipped in 0.9.0 as `UltraMailServerSettingsDialog` — IMAP only, no
-POP3 yet; since 0.9.1 Save checks the IMAP sign-in first (`LoginCheck`).
+POP3 yet; since 0.9.1 Save checks the incoming sign-in first (`LoginCheck`);
+since 0.10.62 a Protocol row chooses IMAP or JMAP for the incoming server.
 The page is also the fallback when the autoconfig lookup finds nothing,
 and Reload opens it for an account without known servers.)*
 

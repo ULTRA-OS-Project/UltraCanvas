@@ -7,6 +7,10 @@
 // on the server (ServerCopies): it is there on every device until the message
 // has gone out, and is deleted from Drafts once it has - when a copy goes to
 // the Sent folder instead (unless the server files sent mail itself).
+// Version: 0.10.0 - Flush with a plug-in per account (PluginResolver): a JMAP
+//                   account sends through the JMAP plug-in, the rest through SMTP
+// Version: 0.9.0 - ServerFolders::mailbox: the copies of a JMAP account go
+//                  through the JMAP plug-in
 // Version: 0.8.0 - withdrawn messages: a Drafts copy that cannot be deleted
 //                  now is deleted by a later pass; copies are expunged
 // Version: 0.7.0 - a copy in the Sent folder once sent; ServerCopies (was
@@ -69,19 +73,29 @@ bool ServerFilesSentMail(const std::string& imapHost);
 
 // Where an account's copies go, and how to sign in there.
 struct ServerFolders {
-    std::string serverUrl;          // the IMAP server
+    std::string serverUrl;          // the incoming server (imap(s):// or jmap://)
     std::string draftsFolder;       // "" = no Drafts copy
     std::string sentFolder;         // "" = no Sent copy (or the server files it itself)
     UltraNetMailOptions options;    // credentials, TLS
+    // The plug-in that speaks the server's protocol (IMAP or JMAP). Left null
+    // by `prepare`, ServerCopies::imap is used.
+    IMailboxProtocolPlugin* mailbox = nullptr;
 };
 
-// Keeps the copies on the account's IMAP server: the Drafts copy while a
+// Keeps the copies on the account's incoming server: the Drafts copy while a
 // message waits, the Sent copy once it has gone out.
 struct ServerCopies {
+    // The IMAP plug-in - the one for every account whose `prepare` names no
+    // other. Null means no copies at all.
     IMailboxProtocolPlugin* imap = nullptr;
-    // For an account: its server, folders and sign-in. A failure means no
-    // copies this time; the message is still sent, and still safe in the outbox.
+    // For an account: its server, folders, sign-in and (for a JMAP account)
+    // its plug-in. A failure means no copies this time; the message is still
+    // sent, and still safe in the outbox.
     std::function<UltraNetResult(const std::string& accountId, ServerFolders& out)> prepare;
+    // The plug-in for the account `where` was prepared for.
+    IMailboxProtocolPlugin& MailboxFor(const ServerFolders& where) const {
+        return where.mailbox ? *where.mailbox : *imap;
+    }
 };
 
 // Persistent queue storage (contacts-style, on its own UltraDatabase connection).
@@ -194,6 +208,13 @@ public:
     // A held message (OutboxStore::SetHeld) is skipped: neither sent nor failed.
     // With `copies`, the copies of withdrawn messages are deleted first.
     FlushStats Flush(IMailProtocolPlugin& smtp, const OptionsResolver& prepare,
+                     const ServerCopies* copies = nullptr);
+    // Same, with the plug-in chosen per account: SMTP for most, the JMAP
+    // plug-in for an account that sends through its JMAP server. Null for an
+    // account counts as a failed send of its items, recorded on them, so the
+    // reason reaches the user; the rest are still sent.
+    using PluginResolver = std::function<IMailProtocolPlugin*(const std::string& accountId)>;
+    FlushStats Flush(const PluginResolver& pluginFor, const OptionsResolver& prepare,
                      const ServerCopies* copies = nullptr);
 
 private:

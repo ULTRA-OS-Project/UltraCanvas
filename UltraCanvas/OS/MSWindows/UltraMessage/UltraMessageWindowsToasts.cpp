@@ -1,6 +1,9 @@
 // UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsToasts.cpp
 // See UltraMessageWindowsToasts.h. Built where the C++/WinRT headers are (the
 // MSYS2 `cppwinrt` package or the Windows SDK), with the notification listener.
+// Version: 0.2.0 - the activations carry the notification's id and launch
+//                 (UltraCanvasNotificationActivation.h), for the application's
+//                 own activator; the ID is listed for the uninstaller
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -83,6 +86,15 @@ bool RegisterToastApplication(const std::wstring& appUserModelId, const std::str
     bool ok = SetRegistryText(key, L"DisplayName", Widen(displayName));
     if (ok && !iconFile.empty()) ok = SetRegistryText(key, L"IconUri", Widen(iconFile));
     RegCloseKey(key);
+    // Listed for the uninstaller (UltraCanvasNotificationActivation.h); the
+    // application's own activator, when it registers one, puts its CLSID there.
+    HKEY index = nullptr;
+    if (ok && RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\UltraCanvas\\Notifications", 0, nullptr, 0,
+                              KEY_QUERY_VALUE | KEY_SET_VALUE, nullptr, &index, nullptr) == ERROR_SUCCESS) {
+        if (RegQueryValueExW(index, appUserModelId.c_str(), nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS)
+            SetRegistryText(index, appUserModelId.c_str(), std::wstring());
+        RegCloseKey(index);
+    }
     return ok;
 }
 

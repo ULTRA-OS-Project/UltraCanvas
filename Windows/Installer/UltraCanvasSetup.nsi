@@ -23,7 +23,10 @@
 ;     no start at sign-in, beside Explorer or instead of it, the taskbar as
 ;     it was - and the account's shell setting cleared here as well, should
 ;     UltraDesktop no longer run), then exactly the files the installer put
-;     there - never anything else in the folder.
+;     there - never anything else in the folder - and the notification
+;     identities the applications registered for the account (their toasts'
+;     AppUserModelIDs and activators, listed under
+;     HKCU\Software\UltraCanvas\Notifications).
 ;
 ; Defines (all given by the build script):
 ;   UC_VERSION    the framework version, "0.9.258"
@@ -34,6 +37,8 @@
 ;   UC_REMOVE     the generated list of what to remove (Delete / RMDir lines)
 ;   UC_LICENSE    the licence text shown before installing
 ;   UC_ICON       optional: the installer's icon (.ico)
+; Version: 0.3.0 - the uninstaller removes the notification identities (the
+;                  AppUserModelId and activator CLSID keys the list names)
 ; Version: 0.2.0 - instead of Explorer: the shell setting cleared on uninstall,
 ;                  the guard waited for; App Paths for UltraDesktop
 ; Version: 0.1.0
@@ -58,6 +63,9 @@ ${UnStrStr}
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraCanvas"
 !define SETUP_KEY "Software\UltraCanvas\Setup"
 !define APP_PATHS_KEY "Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe"
+; One value per notification identity: the AppUserModelID, its activator's
+; CLSID as the data (UltraCanvasNotificationActivation.h).
+!define NOTIFY_KEY "Software\UltraCanvas\Notifications"
 !define WINLOGON_KEY "Software\Microsoft\Windows NT\CurrentVersion\Winlogon"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -178,6 +186,25 @@ Section "Uninstall"
   !include "${UC_REMOVE}"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
+
+  ; The notification identities: each application's toast registration
+  ; (Software\Classes\AppUserModelId\<id>) and its activator's class
+  ; (Software\Classes\CLSID\<clsid>), then the list naming them. Read
+  ; whole first: the values are counted by index.
+  StrCpy $3 0
+  notify_loop:
+    ClearErrors
+    EnumRegValue $4 HKCU "${NOTIFY_KEY}" $3
+    IfErrors notify_done
+    StrCmp $4 "" notify_done
+    ReadRegStr $5 HKCU "${NOTIFY_KEY}" $4
+    DeleteRegKey HKCU "Software\Classes\AppUserModelId\$4"
+    StrCmp $5 "" +2
+      DeleteRegKey HKCU "Software\Classes\CLSID\$5"
+    IntOp $3 $3 + 1
+    Goto notify_loop
+  notify_done:
+  DeleteRegKey HKCU "${NOTIFY_KEY}"
 
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   DeleteRegKey HKCU "${SETUP_KEY}"

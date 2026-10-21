@@ -1,3 +1,72 @@
+#### 2026-10-21 *0.10.65*
+- **A click on a new-mail toast opens the mail even after the program that
+  showed it has quit.** On Windows the toast is put up by whichever program
+  hosts the message bus (UltraFiler, say). Once that program had quit, the
+  toast still waited in the Action Center, and a click on it did nothing.
+  UltraMail is now the activator of its own toasts: Windows hands the click
+  to it, or starts UltraMail for it when it is closed, and the toast says
+  which mail it was about - the account, and the folder and message when it
+  announced one - so that mail opens. A click that reaches UltraMail both
+  ways opens it once (framework changelog: `notification-activator`).
+
+#### 2026-10-21 *0.10.64*
+- **A JMAP account is checked the moment its server reports new mail.**
+  UltraMail keeps a watch open on every JMAP account (the server's event
+  source, through the UltraNet JMAP plug-in's new push - framework
+  changelog: `jmap-push`) and checks the account at once when the server
+  announces a change to its mail or folders, instead of waiting for the
+  interval chosen in *Settings > Mail*, which stays as the safety net. The
+  watch opens once the vault is usable, is reopened a minute after the
+  server or the network ended it, follows a changed server, and ends with
+  the account; `trace.log` says when one opens, ends and fires.
+
+#### 2026-10-21 *0.10.63*
+- **A JMAP account is found by itself, and sends, marks, moves and deletes
+  through JMAP.** Adding an account at a domain the provider table does not
+  know now asks the domain for its JMAP server before the autoconfig
+  documents: the DNS SRV record `_jmap._tcp.<domain>`, else
+  `https://<domain>/.well-known/jmap`; a server that answers with its
+  session resource, or asks for a sign-in first (Fastmail, Stalwart), is
+  taken - as the host the answer came from, after redirects - and the
+  wizard says *a JMAP server was found for <domain>*. Such an account has
+  no SMTP server and sends through JMAP (the UltraNet JMAP plug-in's new
+  write path - framework changelog: `jmap-write-path`): the message is
+  uploaded, submitted as the account's identity for the From address and
+  filed in Sent by the server. On the settings page the *Outgoing (SMTP)*
+  rows are optional for a JMAP account - *empty sends through JMAP* - and
+  an SMTP server entered there is used instead. Marking read or flagged,
+  moving to a folder, Junk and Delete (to the Trash mailbox, or gone for
+  good when there is none), the reconcile of reads and deletions made
+  elsewhere, and the copies in Drafts and Sent now work for a JMAP
+  account; the *phase 1 is read-only* answers are gone. A message queued
+  for an account whose plug-in is not loaded stays in the outbox with that
+  reason while the others are sent. Also: on the settings page, typing a
+  port for a JMAP server no longer flips the (disabled) security dropdown
+  to STARTTLS.
+
+#### 2026-10-21 *0.10.62*
+- **An account's incoming server can be JMAP instead of IMAP.** The server
+  settings page - the account's Settings, and the manual page when nothing
+  is published for a domain - starts with a *Protocol* row: **IMAP**, as
+  every account was, or **JMAP**, the JSON-over-HTTPS mail protocol of
+  Fastmail, Stalwart, Cyrus and Apache James. Choosing JMAP renames the
+  incoming rows, sets the port to 443 (an unusual port you typed stays),
+  fixes the security to SSL/TLS - a JMAP server is HTTPS - and offers the
+  sign-in methods JMAP has (Automatic, Normal password, OAuth2). The sign-in
+  check on Save, every sync, the message actions and the Drafts and Sent
+  copies of such an account go through UltraNet's JMAP plug-in
+  (`ultranet_jmap`), and a missing plug-in is reported by name - *the JMAP
+  plug-in was not found* - as the IMAP one was. Sending still goes through
+  the outgoing (SMTP) server; what the JMAP plug-in does not yet do (flag
+  changes, moves, copies) says so when tried. The choice is stored with the
+  account (`incoming_protocol` in `mail.db`, schema 12) and switching an
+  account between the protocols fetches its mail anew. Engine:
+  `MailProtocol` on `MailServerSettings` (`UltraMailTypes.h`),
+  `AutoDiscovery::IncomingServerUrl` (replaces `ImapServerUrl`: `jmap://`
+  for a JMAP server), `LoginCheck::Incoming` (was `Imap`),
+  `ServerFolders::mailbox` for the outbox copies; `Docs/UltraMail/AccountSetup.md`
+  section 5 describes the page.
+
 #### 2026-10-19 *0.10.61*
 - **An *Attach cloud link* upload that was complete when the connection
   went is put in place, not thrown away.** To an FTP or SFTP account the

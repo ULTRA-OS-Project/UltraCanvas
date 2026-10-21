@@ -1,9 +1,10 @@
 // Template app/build.gradle for an UltraCanvas Android app.
 //
-// NEVER RUN. The cross-compiled dependency sysroot it points at builds for
-// arm64-v8a in CI (scripts/android-bootstrap-sysroot.sh, see README.md in this
-// directory), but no APK has been built with this file. Treat it as a
-// checklist of the settings the backend needs, not as a working build file.
+// NEVER RUN. CI builds the demo's APK without Gradle
+// (scripts/android-package-apk.sh, see README.md in this directory); this file
+// is for an app with a Gradle project of its own, and has not been tried.
+// Treat it as a checklist of the settings the backend needs, not as a working
+// build file.
 
 plugins {
     id 'com.android.application'
@@ -11,13 +12,17 @@ plugins {
 
 android {
     namespace 'org.ultraos.ultracanvas.demo'
-    // API 26 is the backend's floor: ClipDescription.getTimestamp (clipboard
-    // change detection) and the SAF behaviour it relies on are 26+.
+    // API 28 is the floor, set by the dependency sysroot: vcpkg's Android
+    // triplets build for API 28, so glib, fontconfig and libintl call libc
+    // functions bionic only has from 28 on (iconv, posix_spawn,
+    // pthread_attr_setinheritsched, fgets_unlocked). The backend itself needs
+    // 26 (ClipDescription.getTimestamp for clipboard change detection, and
+    // the SAF behaviour it relies on).
     compileSdk 34
 
     defaultConfig {
         applicationId 'org.ultraos.ultracanvas.demo'
-        minSdk 26
+        minSdk 28
         targetSdk 34
         versionCode 1
         versionName '1.0'
@@ -35,7 +40,7 @@ android {
                 // you must cross-compile
                 // (Docs/UltraCanvas/AndroidOnLinuxInvestigation.md section 3).
                 abiFilters 'x86_64'
-                arguments '-DANDROID_PLATFORM=android-26',
+                arguments '-DANDROID_PLATFORM=android-28',
                           '-DANDROID_STL=c++_shared',
                           // The cross-compiled sysroot, from
                           // scripts/android-bootstrap-sysroot.sh for this ABI
@@ -45,6 +50,12 @@ android {
                           // directories too (the script prints it).
                           "-DCMAKE_FIND_ROOT_PATH=${project.properties['ultracanvas.sysroot'] ?: ''}",
                           '-DPKG_CONFIG_ARGN=--static'
+                // Only the app's library: Gradle otherwise builds every
+                // target the root CMakeLists configures, and the desktop
+                // apps that stay on there are executables an APK cannot
+                // carry. libUltraCanvasDemo.so is what the manifest's
+                // android.app.lib_name names.
+                targets 'UltraCanvasDemo'
             }
         }
     }
@@ -52,9 +63,9 @@ android {
     externalNativeBuild {
         cmake {
             // The repository's root CMakeLists. Its `if(ANDROID)` block
-            // already defaults the desktop apps, plugins, UltraNet, database
-            // and VirtualFS off, so only the core library (libvips included,
-            // as on every platform) and your app are built.
+            // defaults the main desktop apps, plugins, UltraNet, database
+            // and VirtualFS off and leaves the demo on, which builds as a
+            // shared library there; `targets` above picks it out.
             path '../../../../../CMakeLists.txt'
             version '3.22.1+'
         }
@@ -69,6 +80,9 @@ android {
             // Anything the app loads by path at runtime. Unpacked to
             // $HOME/share on first launch by UltraCanvasAndroidAssets.cpp.
             assets.srcDirs = ['src/main/assets']
+            // The launcher icon the manifest names: res/mipmap-*/ic_launcher.png
+            // at each density (scripts/android-package-apk.sh shows the sizes).
+            res.srcDirs = ['src/main/res']
             // The cross-compiled cairo/pango/glib/... .so files.
             jniLibs.srcDirs = ['src/main/jniLibs']
         }

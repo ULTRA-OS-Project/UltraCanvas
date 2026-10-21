@@ -38,18 +38,26 @@ before adding cross-module code.
 - `Docs/Modules/<Name>/README.md` — sibling-module docs (UltraAI, UltraNet,
   UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …). The UltraAI,
   UltraNet and VirtualFS ones are mirrors of `<Name>/README.md`: edit the
-  module's copy and run `python3 scripts/generate_llms_txt.py`; CI fails when
-  a mirror is stale (`MIRRORED_READMES` in the script lists them).
+  module's copy, run `python3 scripts/generate_llms_txt.py` and commit the
+  mirror it rewrites; CI fails when a mirror is stale (`MIRRORED_READMES` in
+  the script lists them).
 - `Docs/CSSLayout.md`, `Docs/Dependencies.md` — layout engine and
   third-party dependency policy.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
   index / full concatenation of the docs corpus for LLM consumption.
-  Regenerate with `python3 scripts/generate_llms_txt.py` after editing docs.
+  **Written on `main`, never by a branch**: `.github/workflows/llms-regenerate.yml`
+  regenerates them after every docs change lands, and `llms-txt.yml` refuses
+  a pull request that changes them. They are the whole corpus, so two docs
+  pull requests that each carried them always conflicted there - the
+  changelog's line 1 all over again, with the same cure. Running
+  `python3 scripts/generate_llms_txt.py` locally is fine (it also rewrites
+  the README mirrors, which ARE committed); leave the two files out of the
+  commit (`git checkout origin/main -- llms.txt llms-full.txt`).
 - Every document the demo app opens (the `Docs/....md` paths in
   `Apps/DemoApp/*.cpp`) starts with a generated `## Contents` inventory
   linking each `##` / `###` section. After adding, renaming or removing a
-  section, run `python3 scripts/generate_doc_toc.py` (before
-  `generate_llms_txt.py`); CI runs it with `--check`, which also fails when a
+  section, run `python3 scripts/generate_doc_toc.py`; CI runs it with
+  `--check`, which also fails when a
   demo page names a `Docs/....md` that does not exist. Never edit the list by
   hand, and never put prose inside it - it is rewritten up to the next
   heading.
@@ -345,7 +353,9 @@ library out without a word - so `.claude/settings.json` also runs
 (`$CLAUDE_CODE_REMOTE=true`) it installs every package in its `PACKAGES` list
 that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
 Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
-builds them from source. Without it, UltraCrypt built without libsodium and
+builds them from source - the libraries of the MQTT, AMQP, CoAP, SNMP and
+SSH plug-ins among them, which neither installed until 2026-10, so a change
+to one of those five compiled nowhere. Without it, UltraCrypt built without libsodium and
 every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
@@ -530,6 +540,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
 | `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
+| `Docs/UltraDBAdmin/CHANGELOG.md` | UltraDBAdmin — the database browser |
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
@@ -538,13 +549,14 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
 | `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
 
-Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
-write that line at all**: drop your bullets in a new file under
-[`Docs/UltraCanvas/changelog.d/`](Docs/UltraCanvas/changelog.d/README.md) with
-no header and no number, and CI assigns the number on `main` after the merge
-(see *Pending entries* below). For an application changelog, adding the entry
-at the top is still the whole bump. Either way, do **not** hand-edit a version
-number anywhere else, and never introduce a new literal copy of one:
+Format: `#### YYYY-MM-DD *x.y.z*`. **You do not write that line at all, for
+the framework or for an application**: drop your bullets in a new file in the
+`changelog.d/` next to the product's changelog —
+[`Docs/UltraCanvas/changelog.d/`](Docs/UltraCanvas/changelog.d/README.md) for
+the framework, `Docs/<App>/changelog.d/` for an app — with no header and no
+number, and CI assigns each product's number on `main` after the merge (see
+*Pending entries* below). Do **not** hand-edit a version number anywhere else,
+and never introduce a new literal copy of one:
 
 - `cmake/UltraCanvasVersion.cmake` parses the first line of each file at
   configure time and sets one `<PREFIX>_VERSION` per row of the table above —
@@ -585,7 +597,7 @@ number anywhere else, and never introduce a new literal copy of one:
   it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
   what shipped in each framework release. Do not backfill it into the app
   files — that would put one change in two places under two numbers.
-- **Pending entries: the framework's number is assigned on `main`, not by
+- **Pending entries: every product's number is assigned on `main`, not by
   you.** Line 1 of a shared file was the most contended line in the
   repository, and two open pull requests collided there every time, in one of
   two ways. Either a branch picked the next number, `main` released past it
@@ -598,20 +610,29 @@ number anywhere else, and never introduce a new literal copy of one:
   any of this was checked, and on 2026-09-23 one branch was renumbered five
   times in a morning (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each
   renumber throwing away a six-platform CI matrix, with 0.9.29 consumed and
-  lost in the churn.
+  lost in the churn. The app changelogs went the same way once several
+  branches touched one app: on 2026-10-21 one pull request (#924) was
+  renumbered five times (UltraFiler 1.77.1 → 1.83.0 → 1.87.0, UltraPaint
+  0.2.26 → 0.2.27), conflicting each time on line 1 of the changelog and of
+  UltraFiler's `.rc` and `.manifest`.
   So the routine case no longer touches line 1: write
-  `Docs/UltraCanvas/changelog.d/<change-name>.md` containing just the bullets.
-  Two branches adding two files cannot collide, there is nothing to renumber
-  when `main` moves, and `.github/workflows/changelog-fold.yml` folds whatever
-  is pending into `CHANGELOG.md` under the next free version once it lands —
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` for a framework change and
+  `Docs/<App>/changelog.d/<change-name>.md` for an app change (the directory
+  next to the changelog in the table above; create it with your first entry),
+  containing just the bullets. Two branches adding two files cannot collide,
+  there is nothing to renumber when `main` moves, and
+  `.github/workflows/changelog-fold.yml` folds whatever is pending into each
+  product's `CHANGELOG.md` under that product's next version once it lands —
   `scripts/fold_changelog.py` does the same locally if you want to see it.
+  The next version keeps each file's own habit: the component that changed
+  between its two latest releases is bumped (UltraFiler 1.88.0 → 1.89.0,
+  UltraPaint 0.2.28 → 0.2.29, Texter 1.69 → 1.70, the framework a patch).
   Name the file after the change, not the branch. Never put a `####` header in
   one: a number chosen on a branch is the collision this ends, and
   `scripts/check_changelog.py` refuses it.
   A release that must carry a *specific* number — a hand-cut hotfix — can
   still be written straight into the changelog as a top entry, and the same
-  rules apply to it: unique, and above every version below it. Application
-  changelogs are unchanged; they see little contention, one product to a file.
+  rules apply to it: unique, and above every version below it.
   Run `git fetch origin main` and then
   `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
   runs it too. The check compares a top entry with line 1 of `main`'s copy of
@@ -640,9 +661,11 @@ number anywhere else, and never introduce a new literal copy of one:
   `package-macos.sh`) parse the same line for artefact file names.
 - Only the Windows resource files still hold literals, because windres reads
   them from disk: `Apps/Texter/UltraTexter.{rc,manifest}` and
-  `Apps/UltraFiler/UltraFiler.{rc,manifest}`. Run `./set-version.sh` after
-  bumping either app's version; a CMake configure on any platform warns when
-  they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
+  `Apps/UltraFiler/UltraFiler.{rc,manifest}`. The fold runs `./set-version.sh`
+  and commits them with the new line 1, so a branch with a `changelog.d/`
+  entry leaves them alone. Run it yourself only after a hand-written top entry
+  for either app (the hotfix case); a CMake configure on any platform warns
+  when they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
   fails the pull request - the warning alone let UltraFiler 1.72.4 ship with
   a 1.72.3 version resource. Nothing else may hold a literal — UltraFiler's compile
   definition did, and titled its window `UltraFiler 0.8.0` for thirteen
@@ -674,7 +697,12 @@ number anywhere else, and never introduce a new literal copy of one:
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
-   runs that too.
+   runs that too. Posting a `system.notification` from an application? It
+   also calls `UltraCanvas::RegisterNotificationActivator` at its start and
+   gives the notification a `launch`, or a click on its Windows toast does
+   nothing once the broker host has quit
+   (`UltraCanvasNotificationActivation.h`) — run
+   `python3 scripts/check_notification_activators.py`; CI runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
@@ -705,8 +733,11 @@ number anywhere else, and never introduce a new literal copy of one:
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and
    `THIRD_PARTY_LICENSES.md`.
-6. Docs changes: regenerate `llms.txt`/`llms-full.txt`
-   (`python3 scripts/generate_llms_txt.py`) — CI verifies they are in sync.
+6. Docs changes: regenerate the `## Contents` inventories
+   (`python3 scripts/generate_doc_toc.py`) and, after editing a module
+   README, its mirror (`python3 scripts/generate_llms_txt.py`). Do **not**
+   commit `llms.txt` / `llms-full.txt`: `main` regenerates them after the
+   merge, and CI refuses a pull request that changes them.
 
 ## Reporting back (AI sessions)
 
@@ -822,10 +853,13 @@ being finished (`last_assistant_message`, or the transcript's last assistant
 text on older Claude Code builds). A reply whose last non-blank line is not
 `Code needs to be PRed (N lines)` with the measured `N` is blocked once, with
 the line it found and the line it expected; surrounding backticks or bold and
-the ` — open as PR #<n>` suffix are accepted. The hook does not fetch, so it
-measures against `origin/main` as the clone last saw it — fetch before
-measuring and the two agree. The `SessionStart --brief` message states the
-rule and the current `N`.
+the ` — open as PR #<n>` suffix are accepted. The `Stop` form does not
+fetch, so it measures against `origin/main` as the clone last saw it — fetch
+before measuring and the two agree. The `SessionStart --brief` message
+fetches the default branch first (a clone can arrive with an `origin/main`
+older than the commit its branch was cut from, which counts all of main's
+newer commits as this checkout's), then states the rule and the current `N`;
+if the fetch fails it says the figure may be stale.
 
 `Next Task` and `Other recommendations` describe the repository, not the
 conversation. "Waiting for the test suite" belongs in `Next Task`; "the
@@ -887,6 +921,29 @@ For assistants:
 4. **Keep the base fresh.** Before the rebase in rule 2, always fetch —
    `main` usually moved while the session ran; resolve conflicts locally so
    the new PR is mergeable from the start.
+
+   **Check the other open pull requests before opening one, and before every
+   push to one:**
+
+   ```
+   python3 scripts/check_pr_overlap.py                          # gh lists the open PRs
+   python3 scripts/check_pr_overlap.py --branches <head> ...    # heads from the GitHub tools
+   ```
+
+   Without `gh`, list the open pull requests with
+   `mcp__github__list_pull_requests` (state open) and pass their head branches.
+   For each one the script simulates the order GitHub will see - that branch
+   merged into `main` first, this one on top - and reports what would really
+   conflict, a version two branches both put at the top of one application
+   changelog (git can merge that with no conflict and ship two releases under
+   one number), generated files to regenerate rather than merge, and the files
+   both touch that merge cleanly. Exit 1 means a real conflict or a version
+   collision: agree the merge order with the other branch's author (say so in
+   the PR description), or reshape the change - additive edits, a change's own
+   text in a file of its own (the `changelog.d/` pattern), no reformatting of
+   lines another branch is editing - before pushing. A conflict found here
+   costs a minute; found on GitHub it costs a merge, a regenerate and the whole
+   CI matrix, and on a busy day it is found again an hour later.
 
 5. **CI needs an open PR.** The Build and llms.txt workflows run on pull
    requests and on pushes to `main` — *not* on pushes to feature branches.

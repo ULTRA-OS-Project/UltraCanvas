@@ -36,11 +36,12 @@
 # ModelMS3DTest, DiagramJsonLocaleTest) run under one and skip without it - and
 # the image has none (no de_DE, checked 2026-10-15), so here they had never run.
 #
+# Version: 1.3.0 - the libraries of the MQTT, AMQP, CoAP, SNMP and SSH plug-ins
 # Version: 1.2.0 - the de_DE.UTF-8 locale the locale tests need
 # Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
-# Last Modified: 2026-10-15
+# Last Modified: 2026-10-21
 # Author: UltraCanvas Framework
 set -u
 
@@ -66,6 +67,10 @@ PACKAGES=(
     libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev libopusenc-dev
     # UltraNet: curl, async DNS
     libcurl4-openssl-dev libpsl-dev libc-ares-dev
+    # UltraNet's optional protocol plug-ins: MQTT (paho), AMQP (rabbitmq-c),
+    # CoAP (libcoap3), SNMP (net-snmp), SSH (libssh) - as CI installs since
+    # 2026-10; without them a change to one of the five compiled nowhere
+    libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev
     # locale-gen, for the comma-decimal locale below

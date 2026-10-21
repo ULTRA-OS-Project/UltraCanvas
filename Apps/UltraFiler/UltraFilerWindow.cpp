@@ -5386,6 +5386,11 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onSelectionChanged = [this, tab](const std::vector<FilerEntry>&) {
         if (!IsActiveTab(tab)) return;
         UpdateStatusBar();
+        // Ctrl+click (a Ctrl marquee, Ctrl+A) gathers several files: the
+        // detail pane keeps what it shows rather than folding away on the
+        // second file and opening again when one is left. The next selection
+        // made without Ctrl brings it back in step.
+        if (SelectionChangedWithCtrl()) return;
         UpdatePreviewPane();
     };
     // A drive's folder being fetched, or fetched again: what it waits for is
@@ -7229,6 +7234,20 @@ const FilerEntry* UltraFilerWindow::SingleSelectedEntry() const {
     const std::vector<FilerEntry>& entries = filer->GetEntries();
     if (sel.front() >= entries.size()) return nullptr;
     return &entries[sel.front()];
+}
+
+bool UltraFilerWindow::SelectionChangedWithCtrl() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return false;
+    // The event being handled, not the remembered key state: a selection
+    // changed by a rescan or a timer has no input event of its own, and the
+    // last one may be a Ctrl click long finished. Of the Ctrl keys only
+    // Ctrl+A selects - Ctrl+D / Ctrl+F select the copy or the new folder they
+    // make, which the pane should show.
+    const UCEvent& ev = app->GetCurrentEvent();
+    if (!ev.ctrl) return false;
+    return ev.IsMouseEvent() ||
+           (ev.type == UCEventType::KeyDown && ev.virtualKey == UCKeys::A);
 }
 
 void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
