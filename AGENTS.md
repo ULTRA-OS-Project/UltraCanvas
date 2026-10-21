@@ -227,6 +227,18 @@ before adding cross-module code.
   `scripts/x11_macro_names.txt` (generated from the X11 headers);
   `scripts/x11_names_baseline.txt` is empty and stays so. A site that is
   correct as it stands says so with `// x11-name-ok: <why>`.
+- **Nor like an Objective-C runtime name.** The macOS and iOS glue is
+  Objective-C++, and every C++ header a `.mm` file includes is parsed with
+  `<objc/objc.h>` in effect: `YES`, `NO`, `nil` and `Nil` are macros that
+  rewrite any identifier of that name, and `id`, `Class`, `SEL`, `IMP`,
+  `BOOL` and `Protocol` are global typedefs that a file-scope declaration
+  of the same name redefines. Inside a namespace, a class, an enum or a
+  parameter list those six are free (`struct S { int id; }` is fine), so
+  the rule is: no enumerator or member named `YES` / `NO` / `nil` / `Nil`,
+  and nothing at file scope named like the types - put it in a namespace.
+  `scripts/check_objc_names.py` enforces this in CI (`objc-names.yml`);
+  `scripts/objc_names_baseline.txt` is empty and stays so. A site that is
+  correct as it stands says so with `// objc-name-ok: <why>`.
 - **An inline body in a public header uses all its parameters.** It is
   compiled into every file that includes the header, so a parameter it
   leaves unused warns in every build with `-Wextra` (the Models plugin, the
@@ -685,7 +697,8 @@ number anywhere else, and never introduce a new literal copy of one:
    `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
    CI runs that too. Nor after an X11 macro (`None`, `Success`, `Status`,
    `Bool`, `Above`) — run `python3 scripts/check_x11_names.py`; CI runs that
-   too. Reading HTML, CSS or an `&entity;`? Through the
+   too. Nor `YES` / `NO` / `nil`, nor `id` / `Class` / `BOOL` at file scope —
+   run `python3 scripts/check_objc_names.py`; CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI

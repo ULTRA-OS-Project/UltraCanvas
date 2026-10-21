@@ -1,0 +1,12 @@
+# Identifiers of ours that the Objective-C runtime takes in a .mm file -
+# enumerators or members named YES / NO / nil / Nil, and file-scope
+# declarations named id / Class / SEL / IMP / BOOL / Protocol - recorded so CI
+# can block *new* ones while these are worked off. Each line is
+# <path>::<kind>::<name>.
+#
+# Do not add to this file to silence a new finding. A site that is correct as
+# it stands says so where it is:
+#     int NO = 0;   // objc-name-ok: <why>
+#
+# Regenerate with:
+#     python3 scripts/check_objc_names.py --update-baseline

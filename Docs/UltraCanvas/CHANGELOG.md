@@ -55,6 +55,15 @@
   `AboveBaseline` / `BelowBaseline`, the IPP tag is `IppTag::NoValueTag`, the
   Zigbee frames' `Status` fields are `StatusCode`, and a handful of file-local
   helpers named `Bool`, `Below` or `CurrentTime` are renamed.
+- **And the Objective-C runtime's names the same way.** In a `.mm` file
+  `YES`, `NO`, `nil` and `Nil` are macros and `id`, `Class`, `SEL`, `IMP`,
+  `BOOL` and `Protocol` are global typedefs. `scripts/check_objc_names.py`
+  (`objc-names.yml`) fails on an enumerator or member named like a macro and
+  on a file-scope declaration named like a type; inside a namespace, a
+  class, an enum or a parameter list the names are free, as clang confirms,
+  so the framework's `int id` members and `const std::string& id` parameters
+  are not findings. Its first run found nothing; the baseline is empty, and
+  a site that is correct as it stands says `// objc-name-ok: <why>`.
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

@@ -1,0 +1,64 @@
+name: Objective-C runtime names
+
+# Blocks new identifiers that the Objective-C runtime takes in a .mm file.
+# The macOS and iOS glue is Objective-C++, and every C++ header it includes
+# is parsed with <objc/objc.h> in effect: YES, NO, nil and Nil are macros
+# that rewrite any identifier of that name, and id, Class, SEL, IMP, BOOL and
+# Protocol are global typedefs that a file-scope declaration of the same name
+# redefines ("redefinition of 'id' as different kind of symbol"). Inside a
+# namespace, a class, an enum or a parameter list the names are free, and
+# the framework lives in namespaces - so only enumerators and members named
+# like the macros, and file-scope declarations named like the types, are
+# reported. See AGENTS.md; scripts/check_x11_names.py is the same idea for
+# the Linux window headers.
+#
+# Sites that predate the check would be listed in
+# scripts/objc_names_baseline.txt (empty when the check was introduced); only
+# additions fail. A site that is correct as it stands says so with
+# `// objc-name-ok: <why>`.
+
+# Trigger policy matches build.yml / locale-numbers.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    # Every folder the check scans (SEARCH_ROOTS in scripts/check_x11_names.py).
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'VirtualFS/**'
+      - 'UltraNet/**'
+      - 'VideoFX/**'
+      - 'Apps/**'
+      - 'Tests/**'
+      - 'scripts/check_objc_names.py'
+      - 'scripts/check_x11_names.py'
+      - 'scripts/objc_names_baseline.txt'
+      - '.github/workflows/objc-names.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The rules first, against examples of their own - a rule that stopped
+      # matching would otherwise pass the scan below by finding nothing.
+      - name: Self-test the check
+        run: python3 scripts/check_objc_names.py --self-test
+      - name: Check for identifiers the Objective-C runtime takes
+        run: python3 scripts/check_objc_names.py --strict
