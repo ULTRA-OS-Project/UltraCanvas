@@ -343,8 +343,8 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
     if (!libraryPath_.empty()) candidates.push_back(libraryPath_);
     if (!config_.pluginDirectory.empty()) {
         const std::filesystem::path plugins = UltraCanvas::PathFromUtf8(config_.pluginDirectory);
-        candidates.push_back(UltraCanvas::PathToUtf8(plugins / "tdlib" / LibraryName()));
-        candidates.push_back(UltraCanvas::PathToUtf8(plugins / LibraryName()));
+        candidates.push_back(UltraCanvas::PathToUtf8(plugins / "tdlib" / UltraCanvas::PathFromUtf8(LibraryName())));
+        candidates.push_back(UltraCanvas::PathToUtf8(plugins / UltraCanvas::PathFromUtf8(LibraryName())));
     }
     if (!TdJsonLibrary::Instance().Load(candidates, error)) {
         finish(UltraIMResult::Error(UltraIMResultCode::PluginError, error));
