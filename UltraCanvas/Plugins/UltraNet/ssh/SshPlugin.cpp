@@ -13,12 +13,16 @@
 //   - else                                         → user agent fallback
 //                                                    (ssh-agent), then
 //                                                    default identity files
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
@@ -97,53 +101,59 @@ public:
         return {"ssh"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions.clear();
+        ultranet_plugin::GuardedVoid([&]() {
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            g_sessions.clear();
+        });
     }
 
     UltraNetHandle OpenShell(const std::string& url,
                              const UltraNetRemoteOptions& options) override {
-        UltraNetUrlComponents c;
-        if (!UltraNet_ParseUrl(url, c) || c.scheme != "ssh") {
-            return UltraNetInvalidHandle;
-        }
-        if (c.host.empty()) return UltraNetInvalidHandle;
-        const int port = c.port > 0 ? c.port : 22;
-        const std::string user =
-            !options.credentials.username.empty()
-                ? options.credentials.username
-                : (!c.username.empty() ? c.username : std::string{});
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            UltraNetUrlComponents c;
+            if (!UltraNet_ParseUrl(url, c) || c.scheme != "ssh") {
+                return UltraNetInvalidHandle;
+            }
+            if (c.host.empty()) return UltraNetInvalidHandle;
+            const int port = c.port > 0 ? c.port : 22;
+            const std::string user =
+                !options.credentials.username.empty()
+                    ? options.credentials.username
+                    : (!c.username.empty() ? c.username : std::string{});
 
-        auto s = std::make_shared<Session>();
-        s->opts = options;
-        s->user = user;
-        s->session = ssh_new();
-        if (!s->session) return UltraNetInvalidHandle;
+            auto s = std::make_shared<Session>();
+            s->opts = options;
+            s->user = user;
+            s->session = ssh_new();
+            if (!s->session) return UltraNetInvalidHandle;
 
-        ssh_options_set(s->session, SSH_OPTIONS_HOST, c.host.c_str());
-        ssh_options_set(s->session, SSH_OPTIONS_PORT, &port);
-        if (!user.empty()) {
-            ssh_options_set(s->session, SSH_OPTIONS_USER, user.c_str());
-        }
-        if (options.connectTimeoutMs > 0) {
-            const long sec = options.connectTimeoutMs / 1000;
-            ssh_options_set(s->session, SSH_OPTIONS_TIMEOUT, &sec);
-        }
+            ssh_options_set(s->session, SSH_OPTIONS_HOST, c.host.c_str());
+            ssh_options_set(s->session, SSH_OPTIONS_PORT, &port);
+            if (!user.empty()) {
+                ssh_options_set(s->session, SSH_OPTIONS_USER, user.c_str());
+            }
+            if (options.connectTimeoutMs > 0) {
+                const long sec = options.connectTimeoutMs / 1000;
+                ssh_options_set(s->session, SSH_OPTIONS_TIMEOUT, &sec);
+            }
 
-        if (ssh_connect(s->session) != SSH_OK) return UltraNetInvalidHandle;
-        if (!TryAuthenticate(s->session, options)) return UltraNetInvalidHandle;
+            if (ssh_connect(s->session) != SSH_OK) return UltraNetInvalidHandle;
+            if (!TryAuthenticate(s->session, options)) return UltraNetInvalidHandle;
 
-        const UltraNetHandle h =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        s->handle = h;
-        {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions[h] = s;
-        }
-        return h;
+            const UltraNetHandle h =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            s->handle = h;
+            {
+                std::lock_guard<std::mutex> lk(g_sessionsMutex);
+                g_sessions[h] = s;
+            }
+            return h;
+        });
     }
 
     UltraNetResult ExecuteCommand(UltraNetHandle handle,
@@ -151,49 +161,51 @@ public:
                                   std::string& outStdOut,
                                   std::string& outStdErr,
                                   int& outExitCode) override {
-        outStdOut.clear();
-        outStdErr.clear();
-        outExitCode = -1;
+        return ultranet_plugin::Guarded("ExecuteCommand", [&]() -> UltraNetResult {
+            outStdOut.clear();
+            outStdErr.clear();
+            outExitCode = -1;
 
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(
-            UltraNetResultCode::InvalidHandle, "no such SSH session");
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(
+                UltraNetResultCode::InvalidHandle, "no such SSH session");
 
-        ssh_channel ch = ssh_channel_new(s->session);
-        if (!ch) return UltraNetResult::Error(
-            UltraNetResultCode::InsufficientMemory, "ssh_channel_new failed");
-        std::unique_ptr<ssh_channel_struct, decltype(&ssh_channel_free)>
-            chGuard(ch, ssh_channel_free);
+            ssh_channel ch = ssh_channel_new(s->session);
+            if (!ch) return UltraNetResult::Error(
+                UltraNetResultCode::InsufficientMemory, "ssh_channel_new failed");
+            std::unique_ptr<ssh_channel_struct, decltype(&ssh_channel_free)>
+                chGuard(ch, ssh_channel_free);
 
-        if (ssh_channel_open_session(ch) != SSH_OK) {
-            return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                         "ssh_channel_open_session failed");
-        }
-        if (s->opts.requestPty) {
-            ssh_channel_request_pty_size(
-                ch,
-                s->opts.term.empty() ? "xterm" : s->opts.term.c_str(),
-                80, 24);
-        }
-        if (ssh_channel_request_exec(ch, command.c_str()) != SSH_OK) {
-            return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                         "ssh_channel_request_exec failed");
-        }
-
-        // Drain stdout (is_stderr=0) and stderr (is_stderr=1) until EOF.
-        char buf[4096];
-        for (int stream = 0; stream <= 1; ++stream) {
-            for (;;) {
-                const int n = ssh_channel_read(ch, buf, sizeof buf, stream);
-                if (n <= 0) break;
-                (stream == 0 ? outStdOut : outStdErr).append(buf, n);
+            if (ssh_channel_open_session(ch) != SSH_OK) {
+                return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                             "ssh_channel_open_session failed");
             }
-        }
-        ssh_channel_send_eof(ch);
-        ssh_channel_close(ch);
-        outExitCode = ssh_channel_get_exit_status(ch);
-        if (outExitCode < 0) outExitCode = 0;   // -1 = "unknown", treat as ok
-        return UltraNetResult::Ok();
+            if (s->opts.requestPty) {
+                ssh_channel_request_pty_size(
+                    ch,
+                    s->opts.term.empty() ? "xterm" : s->opts.term.c_str(),
+                    80, 24);
+            }
+            if (ssh_channel_request_exec(ch, command.c_str()) != SSH_OK) {
+                return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                             "ssh_channel_request_exec failed");
+            }
+
+            // Drain stdout (is_stderr=0) and stderr (is_stderr=1) until EOF.
+            char buf[4096];
+            for (int stream = 0; stream <= 1; ++stream) {
+                for (;;) {
+                    const int n = ssh_channel_read(ch, buf, sizeof buf, stream);
+                    if (n <= 0) break;
+                    (stream == 0 ? outStdOut : outStdErr).append(buf, n);
+                }
+            }
+            ssh_channel_send_eof(ch);
+            ssh_channel_close(ch);
+            outExitCode = ssh_channel_get_exit_status(ch);
+            if (outExitCode < 0) outExitCode = 0;   // -1 = "unknown", treat as ok
+            return UltraNetResult::Ok();
+        });
     }
 };
 
