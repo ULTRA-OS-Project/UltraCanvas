@@ -159,5 +159,5 @@ mkdir -p "$(dirname "$out")"
 # native code it declares.
 "$build_tools/apksigner" verify --min-sdk-version "$min_sdk" "$out"
 "$build_tools/aapt2" dump badging "$out" |
-    grep -E "^(package|sdkVersion|targetSdkVersion|application-icon-[0-9]+|launchable-activity|native-code):" || true
+    grep -E "^(package|minSdkVersion|sdkVersion|targetSdkVersion|application-icon-[0-9]+|launchable-activity|native-code):" || true
 echo "android-package-apk: $out ($(du -h "$out" | cut -f1))"
