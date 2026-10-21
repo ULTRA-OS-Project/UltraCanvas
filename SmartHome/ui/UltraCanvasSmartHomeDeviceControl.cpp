@@ -83,12 +83,10 @@ SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
                                              float x, float y, float w, float h)
     : UltraCanvasContainer(identifier, x, y, w, h) {
     AsControl(*this, 0, true);
-    // The rows sit in a column of their own: a scrolling container lays its
-    // children out across its full width but clips them a scrollbar short,
-    // so the column keeps that strip free and nothing is cut at the right.
+    // The rows, in a column the control scrolls when it is too short for
+    // them (the container keeps them clear of its scrollbar).
     auto body = CreateContainer(identifier + "_Body");
     AsColumn(*body, 8, 0);
-    body->SetPadding(0, GetContainerStyle().scrollbarStyle.trackSize, 0, 0);
     body->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
     body->layoutItem.SetFlexShrink(0);
     AddChild(body);
