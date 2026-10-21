@@ -409,6 +409,12 @@ void SetAutoFitOnLayout(bool autoFit);
 // 2.3.0: move overlapping nodes apart (their rectangles plus `margin`),
 // until none overlap. Returns the passes it took; refit the view after.
 int  ResolveOverlaps(double margin = 8.0, int maxPasses = 400);
+
+// 2.3.0: level of detail - below `zoom`, a node with an icon draws as its
+// icon disc alone, named while hovered or selected. 0 (default) = off.
+void   SetDetailZoom(double zoom);
+double GetDetailZoom() const;
+bool   IsShowingIconsOnly() const;
 ```
 
 The force-directed layout ends with `ResolveOverlaps`, so its result has no
@@ -919,6 +925,7 @@ diagram->AddLink("l2", "router", "smoke");
 
 diagram->ResolveOverlaps(10.0);   // the smoke alarm moves off the fridge
 diagram->FitView();
+diagram->SetDetailZoom(0.7);      // zoomed out further: icons only, named on hover
 ```
 
 ## Keyboard Shortcuts

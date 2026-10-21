@@ -135,12 +135,24 @@ static void TestCardJson() {
     CHECK(p && p->iconPath.empty() && p->cornerRadius < 0.0 && !p->shadow, "a plain node stays plain");
 }
 
+static void TestDetailZoom() {
+    std::printf("\n[level of detail]\n");
+    UltraCanvasNodeDiagram d("z", 0, 0, 400, 300);
+    CHECK(!d.IsShowingIconsOnly(), "off by default");
+    d.SetDetailZoom(0.7);
+    d.SetZoomLevel(0.5);
+    CHECK(d.IsShowingIconsOnly(), "icons only below the detail zoom");
+    d.SetZoomLevel(1.0);
+    CHECK(!d.IsShowingIconsOnly(), "full cards at or above it");
+}
+
 int main() {
     std::printf("NodeDiagramOverlapTest\n");
     TestResolveOverlaps();
     TestFallbackPlacement();
     TestForceLayoutWideNodes();
     TestCardJson();
+    TestDetailZoom();
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED", g_failures, g_failures == 1 ? "" : "s");
     return g_failures ? 1 : 0;
 }

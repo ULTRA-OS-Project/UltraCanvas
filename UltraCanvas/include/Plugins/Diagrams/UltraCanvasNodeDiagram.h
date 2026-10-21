@@ -22,6 +22,8 @@
 //         in a small element came out overlapping. It separates by
 //         rectangles now and does not clamp (the view fits the content).
 //  - NEW: SetChargeStrength() for the force layout's repulsion.
+//  - NEW: SetDetailZoom(zoom): below that zoom, icon nodes draw as their
+//         icon disc alone and show their name when hovered or selected.
 //
 // CHANGELOG 2.2.0 (minor - organizational network analysis features):
 //  - NEW: Data-driven node sizing. NodeSizeMode (Fixed / ByDegree / ByValue)
@@ -142,6 +144,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include <algorithm>
 #include "Plugins/Diagrams/UltraCanvasDiagramViewport.h"
 #include <vector>
 #include <map>
@@ -661,6 +664,14 @@ public:
     // Returns the passes it took (0 = there was nothing to do). The view is
     // not refitted: call FitView() after.
     int ResolveOverlaps(double margin = 8.0, int maxPasses = 400);
+
+    // NEW in 2.3.0: level of detail. Below `zoom` a node with an icon draws
+    // as its icon disc alone - its name would be too small to read - and
+    // shows its name only while hovered or selected; zoom in past it and the
+    // cards come back. 0 (the default) always draws the full nodes.
+    void SetDetailZoom(double zoom) { detailZoom = std::max(0.0, zoom); RequestRedraw(); }
+    double GetDetailZoom() const { return detailZoom; }
+    bool IsShowingIconsOnly() const;
     
     // =============================================================================
     // SELECTION & INTERACTION
@@ -829,6 +840,7 @@ private:
     void RenderNodes(IRenderContext* ctx);
     void RenderNodeShape(IRenderContext* ctx, const NodeDiagramNode& node);
     void RenderNodeLabel(IRenderContext* ctx, const NodeDiagramNode& node);
+    void RenderNodeIconOnly(IRenderContext* ctx, const NodeDiagramNode& node, bool withLabel);   // 2.3.0
     void RenderNodeHandles(IRenderContext* ctx, const NodeDiagramNode& node);  // NEW
     void RenderLink(IRenderContext* ctx, const NodeDiagramLink& link);          // NEW
     void RenderLinkLabel(IRenderContext* ctx, const NodeDiagramLink& link);
@@ -969,6 +981,7 @@ private:
 
     // NEW in 2.0.1
     bool autoFitOnLayout = true;
+    double detailZoom = 0.0;   // 2.3.0: below this zoom, icon nodes draw as their icon alone
 };
 
 // =============================================================================

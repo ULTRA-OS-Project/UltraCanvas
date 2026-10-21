@@ -15,5 +15,8 @@
     small element came out on top of each other. It no longer clamps; the
     view fits the content.
   - `SetChargeStrength()` sets the force layout's repulsion.
+  - `SetDetailZoom(zoom)`: below that zoom, nodes with an icon draw as their
+    icon disc alone - a name too small to read is left out - and show their
+    name in a pill while hovered or selected (`IsShowingIconsOnly()`).
   - `NodeDiagramOverlapTest` covers the overlap removal (and its fallback), the force layout
     with thirty wide nodes in a 300 x 200 element, and the JSON fields.
