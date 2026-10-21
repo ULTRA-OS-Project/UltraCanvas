@@ -6,8 +6,8 @@ The design, the roadmap and the decisions behind it are in
 [`Docs/Research/UltraDBAdminDesignProposal.md`](../../Docs/Research/UltraDBAdminDesignProposal.md).
 
 This is **stage 1, a browser with a SQL console, and stage 2: editing rows
-in Browse and the table's structure in Structure, and importing rows and
-SQL files.** The console runs
+in Browse and the table's structure in Structure, importing rows and SQL
+files, and exporting tables and query results.** The console runs
 whatever SQL it is given, so a connection marked *read only* (the database
 refuses every change, and neither Browse nor Structure offers editing) is
 the way to make it safe.
@@ -22,6 +22,7 @@ the way to make it safe.
 | **Structure editing** | **Add column…**, **Edit column…** (or a double-click: name, type, NOT NULL, default), **Drop column**, **Add index…**, **Drop index** and **Rename table…** stage a change; the lists mark it (`NEW`, `DROP`, a changed value followed by `*`) and the bar counts it. **Preview SQL…** shows the DDL, **Apply** runs it all in one transaction, **Revert** drops it. The statements run in a fixed order - drop indexes, change definitions under the old names, rename columns, drop columns, add columns, create indexes, rename the table - so none needs a name another has not made yet. PostgreSQL: `ALTER TABLE` throughout, a type change converting with `USING CAST(column AS type)` and the column's default dropped before it and set again after (one written for the old type, `'1'::text`, then fails with PostgreSQL's own advice and nothing is changed). SQLite: its own `ALTER TABLE` where it has one (rename, add and drop a column, rename the table); a change of a column's type, NOT NULL or default is SQLite's documented rebuild - a new table from the old `CREATE TABLE` with only that column's definition rewritten (CHECK, foreign keys, COLLATE, AUTOINCREMENT and WITHOUT ROWID kept as written), the rows copied with their rowids, the old table dropped, the new one renamed, its indexes, triggers and AUTOINCREMENT counter put back, with `foreign_keys` off around the transaction and `foreign_key_check` before it commits. SQLite's refusals are said when a change is staged, not at Apply (a NOT NULL column added without a default, dropping a key column or one an index uses). A type and a default are SQL, checked to be one fragment - no `;`, no comment, closed quotes and parentheses - before they are written in. A drop, a rebuild and anything on a *production* connection ask first; a SQLite table that changed since it was read is not touched; staged rows in Browse must be committed or reverted first (`engine/DbAdminStructureEdit`, `engine/DbAdminSqliteTable`). |
 | **Import rows** | Browse's **Import…** puts the rows of a file into the table shown. The file types are FileLoader's spreadsheet formats (`AddLoadTypes` with `Spreadsheet`: CSV, TSV, ODS, XLSX, XLS). Delimited text goes through the framework's Text Import dialog (`ShowCSVImportDialog`: encoding, separators, quote, decimal mark, preview) and is read with `UltraCanvasFileLoader::LoadFile` and the CSV engine; a workbook is read by the framework's spreadsheet, one grid per sheet. A form then gives each column of the table a column of the file, or leaves it to its default: by name when the first row names them (guessed when one of its cells is a column's name), else in order - a file one column short of the table leaves the numbered key out. It says whether an empty cell is NULL or empty text, refuses what cannot work (a NOT NULL column without a default left out, a computed column given a value) and shows the first 50 rows as they will be inserted. Every row is an `INSERT` with bound values, all in one transaction: when one fails, nothing stays, and the status names the file row (`engine/DbAdminImport`). A column of numbers - by value type, or by declared type, as PostgreSQL's `numeric` comes back as text - gets a cell's number (`1.234,50` from a German export is `1234.50`, grouping checked in threes, so `1,5` is not 15); a text column gets the text as written (`01067` stays `01067`). A workbook's dates and times are ISO 8601, TRUE / FALSE are 1 / 0 for a number column. A production connection asks first. |
 | **Import SQL** | The SQL tab's **Import SQL…** reads a `.sql` file - or `.sql.gz`, unpacked by `UltraCanvasFileLoader::LoadFile` - and says first what is in it: how many statements (split as SQLite and psql split them: not at a `;` in a quote, a comment, a PostgreSQL dollar quote or a trigger's body), and which of them DROP, DELETE, TRUNCATE, ALTER or UPDATE (`engine/DbAdminSqlScript`). It runs on the console's own session, so the statement list shows what each did and Stop cancels it - by default as one transaction, so a failure or Stop leaves nothing of the file; a file that begins and commits its own transactions (a SQLite `.dump`) runs as written. A file only psql can run - pg_dump's `COPY ... FROM stdin`, backslash commands - is refused with the reason. The file is not put in the history. |
+| **Export** | Browse's **Export…** writes every row of the table or view shown (`SELECT *` in key order, every name quoted), read through a cursor 1 000 rows at a time (`UltraDb_OpenCursor`), so a table of millions of rows is never held; the status counts them as they go. The SQL tab's **Export rows…** writes the rows shown below the console. The Save dialog offers FileLoader's spreadsheet writers (`AddSaveTypes` with `Spreadsheet`: ODS, XLSX, CSV, TSV) and the two this app writes itself, JSON and SQL; the extension chosen picks the format (`engine/DbAdminExport`). **CSV / TSV**: the framework's Text Export dialog (`ShowCSVExportDialog`: separator, quote, quoting, line ending, charset, BOM) previewed on the rows at hand, and its writer's quoting (`CSVFormatRecord`, `CSVEncodeFromUtf8`); NULL is an empty field, a blob `\x` hex. **JSON**: an array of objects, one per row and line; numbers as numbers, NULL as null. **SQL**: `INSERT` statements in the engine's dialect (SQLite `X'..'`, PostgreSQL `decode('..', 'hex')` for a blob) between `BEGIN` and `COMMIT`, after a SQLite table's own `CREATE TABLE` and `CREATE INDEX` statements, so running the file rebuilds the table; a PostgreSQL table's definition is pg_dump's to write, and the file says so. **Workbook**: written by the framework's spreadsheet - column names in bold, numbers as numbers (an exact numeric too, by its declared type; `01067` stays text), TRUE / FALSE, everything else as text and never as a formula - up to a sheet's 1 048 575 rows, and the status says when a table had more. A file is written beside its name and moved there when complete, so an export that fails, or is stopped by the window closing, leaves the file that was there. |
 | **SQL** | A console that runs the selection, or the whole script (**Run** or Ctrl+Enter), on the connection picked in the tree, and lists what every statement did (`UltraDb_ExecBatch`); a click on one shows its rows, sortable. **Stop** cancels the running statement (`UltraDb_CancelQuery`). The history dropdown puts an earlier script back. |
 
 ## Threads and sessions
@@ -39,8 +40,8 @@ even while a page loads or a script runs: UltraDatabase keeps a connection
 until the last call on it returns, so what is running finishes on the old
 settings and the next query uses the new.
 
-Export, editing in the grid cell itself, the ER view and server
-administration are the later stages of the proposal.
+Editing in the grid cell itself, the ER view and server administration are
+the later stages of the proposal.
 
 ## Data folder
 
@@ -60,6 +61,7 @@ Apps/UltraDBAdmin/
 ├── engine/                       no UI - compiled headless by Tests/UltraDBAdmin
 │   ├── DbAdminConnections        the connection list and its vault
 │   ├── DbAdminEditBuffer         staged row edits, their SQL, the commit
+│   ├── DbAdminExport             rows to CSV, JSON, SQL through a cursor; a workbook's cells
 │   ├── DbAdminFormat             a value as one line of a grid cell
 │   ├── DbAdminImport             a file's rows mapped onto a table, inserted all or none
 │   ├── DbAdminJobQueue           the worker the window's queries run on
@@ -74,7 +76,7 @@ Apps/UltraDBAdmin/
     ├── DbAdminModels             list models over result sets
     ├── DbAdminRowDialog          the row form, the SQL preview
     ├── DbAdminStructureDialog    the column and index forms
-    ├── DbAdminImportDialog       the SQL import, the row import's mapping, the workbook reader
+    ├── DbAdminImportDialog       the SQL import, the row import's mapping, workbook reading and writing
     └── DbAdminConnectionDialog   add / edit a connection
 ```
 
@@ -97,4 +99,7 @@ the line each row came from, header guessing and mapping by name or order,
 the preview, an import that fails on one row leaving nothing, a SQL file's
 statements counted past quotes, triggers and dollar quotes, its own
 transactions and psql-only parts found, and a file run as one transaction
-rolled back on failure.
+rolled back on failure - and the exports: literals per engine, CSV, TSV and
+JSON read back byte for byte, a SQL file that rebuilds its SQLite table and
+refills a PostgreSQL one exactly (numeric, boolean, time, quotes, bytea), a
+stopped export leaving the file that was there, and a workbook's cells.

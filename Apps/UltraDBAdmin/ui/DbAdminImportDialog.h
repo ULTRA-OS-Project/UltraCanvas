@@ -1,5 +1,6 @@
 // Apps/UltraDBAdmin/ui/DbAdminImportDialog.h
-// The two import forms, and the workbook reader the table import needs:
+// The two import forms, and the workbook reader and writer the table import
+// and export need:
 //   the SQL import - a file's name, size and statements, what of it changes
 //                    or removes data (DROP, DELETE...), and "all or nothing",
 //                    before anything runs; a file only psql can run says so
@@ -52,5 +53,13 @@ void ShowRowImportDialog(UltraCanvas::UltraCanvasWindowBase* parent, const Ultra
 // TRUE / FALSE are 1 / 0 for a number column and true / false for text.
 // On the UI thread: the reader is the spreadsheet element.
 bool GridsFromWorkbook(const std::string& path, std::vector<ImportGrid>& out, std::string& error);
+
+// The other way: rows as a workbook (ODS, XLSX - by the path's extension),
+// written by the framework's spreadsheet: the column names in bold on the
+// first row, numbers as numbers - also an exact numeric that comes back as
+// text, by its declared type - TRUE / FALSE as such, the rest as text, never
+// as a formula. On the UI thread.
+bool WriteWorkbook(const std::string& path, const std::string& sheetName, const UltraDbResultSet& rows,
+                   std::string& error);
 
 } // namespace UltraDBAdmin

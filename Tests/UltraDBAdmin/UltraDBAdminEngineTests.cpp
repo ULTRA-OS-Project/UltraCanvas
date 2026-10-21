@@ -11,11 +11,15 @@
 // one (ULTRAFIBU_TEST_PG_*, as CI sets them; REQUIRED makes a missing server
 // a failure, not a skip). And importing: a SQL file read and summarised and
 // run as one transaction, rows from a CSV file mapped onto a table and
-// inserted all or none.
+// inserted all or none. And exporting: CSV, TSV, JSON and SQL written row by
+// row through a cursor, read back exactly, a SQL file that rebuilds the table
+// on SQLite and refills one on PostgreSQL, and a stopped export leaving the
+// file that was there.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
 #include "DbAdminEditBuffer.h"
+#include "DbAdminExport.h"
 #include "DbAdminFormat.h"
 #include "DbAdminImport.h"
 #include "DbAdminJobQueue.h"
@@ -901,6 +905,171 @@ void TestStructureEditPostgres() {
     UltraDb_CloseConnection(c);
 }
 
+void TestExport() {
+    Section("Exporting rows");
+    Check(SqlLiteral(UltraDbValue(std::string("it's")), SqlEngine::Sqlite) == "'it''s'" &&
+              SqlLiteral(UltraDbValue::Null(), SqlEngine::Postgres) == "NULL" &&
+              SqlLiteral(UltraDbValue(std::vector<uint8_t>{0x00, 0xff}), SqlEngine::Sqlite) == "X'00ff'" &&
+              SqlLiteral(UltraDbValue(std::vector<uint8_t>{0x00, 0xff}), SqlEngine::Postgres) == "decode('00ff', 'hex')",
+          "SQL literals per engine: quotes doubled, a blob as hex");
+    Check(JsonValue(UltraDbValue(std::string("a\"b\n\x01"))) == "\"a\\\"b\\n\\u0001\"" &&
+              JsonValue(UltraDbValue(int64_t(3))) == "3" && JsonValue(UltraDbValue::Null()) == "null",
+          "JSON values: escaped strings, bare numbers, null");
+    Check(CsvField(UltraDbValue(std::vector<uint8_t>{0xab})) == "\\xab" && CsvField(UltraDbValue::Null()).empty(),
+          "a CSV field: a blob as \\x hex, NULL empty");
+    const UltraDbValue exact(std::string("1234.50")), zip(std::string("01067"));
+    Check(WorkbookValue(exact, true).kind == WorkbookCell::Kind::Number && WorkbookValue(exact, true).number == 1234.5 &&
+              WorkbookValue(exact, false).kind == WorkbookCell::Kind::Text &&
+              WorkbookValue(zip, true).kind == WorkbookCell::Kind::Text &&
+              WorkbookValue(UltraDbValue::Null(), true).kind == WorkbookCell::Kind::Empty &&
+              WorkbookValue(UltraDbValue(int64_t(7)), false).kind == WorkbookCell::Kind::Number,
+          "a workbook cell: an exact numeric a number in a number column, \"01067\" text, NULL empty");
+
+    TempDir dir;
+    ConnectionStore store;
+    store.OpenInMemory();
+    const std::string c = MakeSqlite(store, dir, 0);
+    UltraDb_Exec(c, "CREATE TABLE goods(id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL, data BLOB)");
+    UltraDb_Exec(c, "CREATE INDEX goods_name ON goods(name)");
+    UltraDb_Exec(c, "INSERT INTO goods VALUES (2, 'Äpfel, \"rot\"', 1.5, X'00ff'), (1, 'two\nlines', NULL, NULL)");
+    UltraDbTableSchema goods;
+    UltraDb_DescribeTable(c, "main", "goods", goods);
+    std::string sql;
+    Check(TableQuery(c, goods, sql).success && sql == "SELECT * FROM \"main\".\"goods\" ORDER BY \"id\"",
+          "the whole table, in key order: " + sql);
+
+    const std::string csvPath = UltraCanvas::PathToUtf8(dir.path / "goods.csv");
+    ExportOptions options;
+    size_t written = 0;
+    UltraDbResult result = ExportQuery(c, sql, csvPath, options, written);
+    Check(result.success && written == 2, "a table is exported to CSV (" + result.message + ")");
+    Check(ReadFile(dir.path / "goods.csv") ==
+              "id,name,price,data\n1,\"two\nlines\",,\n2,\"Äpfel, \"\"rot\"\"\",1.5,\\x00ff\n",
+          "with the framework's quoting, in key order: " + ReadFile(dir.path / "goods.csv"));
+    Check(!fs::exists(dir.path / "goods.csv.part"), "and nothing left beside it");
+
+    options.csv.fieldSeparator = '\t';
+    options.csv.lineEnding = UltraCanvas::CSVExportOptions::LineEnding::CRLF;
+    options.csv.writeBOM = true;
+    options.header = false;
+    const std::string tsvPath = UltraCanvas::PathToUtf8(dir.path / "goods.tsv");
+    ExportQuery(c, sql, tsvPath, options, written);
+    const std::string tsv = ReadFile(dir.path / "goods.tsv");
+    Check(tsv.rfind("\xEF\xBB\xBF" "1\t\"two\nlines\"\t\t\r\n", 0) == 0, "TSV: a tab, CRLF, the BOM once, no header");
+
+    options = ExportOptions();
+    options.format = ExportFormat::Json;
+    const std::string jsonPath = UltraCanvas::PathToUtf8(dir.path / "goods.json");
+    ExportQuery(c, sql, jsonPath, options, written);
+    Check(ReadFile(dir.path / "goods.json") ==
+              "[\n{\"id\": 1, \"name\": \"two\\nlines\", \"price\": null, \"data\": null},\n"
+              "{\"id\": 2, \"name\": \"Äpfel, \\\"rot\\\"\", \"price\": 1.5, \"data\": \"\\\\x00ff\"}\n]\n",
+          "JSON: an object per row: " + ReadFile(dir.path / "goods.json"));
+
+    // SQL: the table's own definition, its index, the rows - and it rebuilds the table.
+    options = ExportOptions();
+    options.format = ExportFormat::Sql;
+    options.engine = SqlEngine::Sqlite;
+    UltraDb_QuoteQualifiedName(c, "", "goods", options.table);
+    Check(SqlitePreamble(c, goods, options.preamble).success && Has(options.preamble, "CREATE INDEX goods_name"),
+          "a SQLite table's preamble is its CREATE TABLE and its indexes");
+    const std::string sqlPath = UltraCanvas::PathToUtf8(dir.path / "goods.sql");
+    result = ExportQuery(c, sql, sqlPath, options, written);
+    const std::string script = ReadFile(dir.path / "goods.sql");
+    Check(result.success && Has(script, "BEGIN;\nINSERT INTO \"goods\" (\"id\", \"name\", \"price\", \"data\") VALUES (1, 'two\nlines', NULL, NULL);"),
+          "INSERTs between BEGIN and COMMIT");
+    ConnectionSpec copySpec;
+    copySpec.name = "copy";
+    copySpec.database = UltraCanvas::PathToUtf8(dir.path / "copy.db");
+    std::string error;
+    const ConnectionSpec* copy = store.Find(store.Put(copySpec, "", false, error));
+    store.Register(*copy);
+    const std::string cc = RegisteredName(*copy);
+    std::vector<UltraDbStatementResult> statements;
+    result = UltraDb_ExecBatch(cc, script, statements);
+    const UltraDbResultSet copied = Rows(cc, "SELECT id, name, price, hex(data) AS data FROM goods ORDER BY id");
+    Check(result.success && copied.Size() == 2 && copied.Row(1)["name"].AsString() == "Äpfel, \"rot\"" &&
+              copied.Row(1)["data"].AsString() == "00FF" && copied.Row(0)["price"].IsNull() &&
+              Rows(cc, "SELECT count(*) AS n FROM sqlite_master WHERE name = 'goods_name'").Row(0)["n"].AsInt64() == 1,
+          "running the file rebuilds the table, its index and its rows (" + result.message + ")");
+    UltraDb_CloseConnection(cc);
+
+    // Stopped: the file that was there stays.
+    {
+        std::ofstream keep(dir.path / "goods.csv", std::ios::binary | std::ios::trunc);
+        keep << "the old file";
+    }
+    std::atomic<bool> stop{true};
+    result = ExportQuery(c, sql, csvPath, ExportOptions(), written, &stop);
+    Check(result.code == UltraDbResultCode::Cancelled && ReadFile(dir.path / "goods.csv") == "the old file" &&
+              !fs::exists(dir.path / "goods.csv.part"),
+          "a stopped export leaves the file that was there, and no part of its own");
+
+    UltraDbResultSet some;
+    bool truncated = false;
+    Check(ReadRows(c, sql, 1, some, truncated).success && some.Size() == 1 && truncated && some.Columns().size() == 4,
+          "rows for a workbook stop at the limit, and say so");
+    UltraDbResultSet console = Rows(c, "SELECT name FROM goods WHERE id = 2");
+    result = ExportResult(c, console, UltraCanvas::PathToUtf8(dir.path / "one.csv"), ExportOptions(), written);
+    Check(result.success && ReadFile(dir.path / "one.csv") == "name\n\"Äpfel, \"\"rot\"\"\"\n",
+          "a console result is exported from memory");
+    UltraDb_CloseConnection(c);
+
+    // PostgreSQL: its literals refill a copy of the table exactly.
+    const char* database = std::getenv("ULTRAFIBU_TEST_PG_DB");
+    if (!database || !*database) {
+        Check(std::getenv("ULTRAFIBU_TEST_PG_REQUIRED") == nullptr, "a PostgreSQL server is configured");
+        return;
+    }
+    auto env = [](const char* name, const char* fallback) {
+        const char* v = std::getenv(name);
+        return std::string(v && *v ? v : fallback);
+    };
+    UltraDbConnectionConfig cfg;
+    cfg.name = "dbadmin-export-pg";
+    cfg.driver = "postgresql";
+    cfg.database = database;
+    cfg.host = env("ULTRAFIBU_TEST_PG_HOST", "/var/run/postgresql");
+    cfg.port = std::atoi(env("ULTRAFIBU_TEST_PG_PORT", "5432").c_str());
+    cfg.user = env("ULTRAFIBU_TEST_PG_USER", "");
+    cfg.tls = UltraDbTls::Disable;
+    const std::string pg = cfg.name;
+    if (!UltraDb_RegisterConnection(cfg) || !UltraDb_OpenConnection(pg)) {
+        Check(std::getenv("ULTRAFIBU_TEST_PG_REQUIRED") == nullptr, "the PostgreSQL server is reached");
+        return;
+    }
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    UltraDb_Exec(pg, "CREATE SCHEMA \"" + schema + "\"");
+    const std::string columns = "(id integer PRIMARY KEY, amount numeric(14,2), ok boolean, at timestamptz, "
+                                "note text, data bytea)";
+    UltraDb_Exec(pg, "CREATE TABLE \"" + schema + "\".src " + columns);
+    UltraDb_Exec(pg, "CREATE TABLE \"" + schema + "\".dst " + columns);
+    UltraDb_Exec(pg, "INSERT INTO \"" + schema + "\".src VALUES (1, 12345678901.25, true, '2026-10-21 08:30:00+00', "
+                     "'it''s \\ back', '\\x00ff'), (2, NULL, false, NULL, NULL, NULL)");
+    Check(Rows(pg, "SELECT count(*) AS n FROM \"" + schema + "\".src").Row(0)["n"].AsInt64() == 2,
+          "the PostgreSQL source holds its two rows");
+    UltraDbTableSchema src;
+    UltraDb_DescribeTable(pg, schema, "src", src);
+    TableQuery(pg, src, sql);
+    options = ExportOptions();
+    options.format = ExportFormat::Sql;
+    options.engine = SqlEngine::Postgres;
+    UltraDb_QuoteQualifiedName(pg, schema, "dst", options.table);
+    const std::string pgPath = UltraCanvas::PathToUtf8(dir.path / "pg.sql");
+    result = ExportQuery(pg, sql, pgPath, options, written);
+    Check(result.success && written == 2, "a PostgreSQL table is exported to SQL (" + std::to_string(written) + " rows; " + result.message + ")");
+    statements.clear();
+    result = UltraDb_ExecBatch(pg, ReadFile(dir.path / "pg.sql"), statements);
+    Check(result.success, "the file runs (" + result.message + ")");
+    const UltraDbResultSet differ = Rows(pg, "SELECT count(*) AS n FROM ((SELECT * FROM \"" + schema +
+                                                 "\".src EXCEPT SELECT * FROM \"" + schema + "\".dst) UNION ALL (SELECT * FROM \"" +
+                                                 schema + "\".dst EXCEPT SELECT * FROM \"" + schema + "\".src)) AS d");
+    Check(differ.Size() == 1 && differ.Row(0)["n"].AsInt64() == 0,
+          "and the copy holds exactly the rows: exact numeric, boolean, time, quotes, backslash, bytea");
+    UltraDb_Exec(pg, "DROP SCHEMA \"" + schema + "\" CASCADE");
+    UltraDb_CloseConnection(pg);
+}
+
 void TestJobQueue() {
     Section("Job queue");
     std::mutex m;
@@ -958,6 +1127,7 @@ int main() {
     TestStructureEditPostgres();
     TestSqlScript();
     TestImport();
+    TestExport();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

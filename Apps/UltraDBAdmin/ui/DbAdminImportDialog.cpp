@@ -3,6 +3,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminImportDialog.h"
 
+#include "DbAdminExport.h"
 #include "DbAdminModels.h"
 
 #include "UltraCanvasButton.h"
@@ -152,7 +153,7 @@ std::string Two(int n) {
 }
 
 // One cell of a workbook as the import reads it.
-ImportCell WorkbookCell(const SpreadsheetCell* cell) {
+ImportCell ReadSheetCell(const SpreadsheetCell* cell) {
     if (!cell) return ImportCell();
     switch (cell->GetValueType()) {
         case CellValueType::Empty:
@@ -378,7 +379,7 @@ bool GridsFromWorkbook(const std::string& path, std::vector<ImportGrid>& out, st
             std::vector<ImportCell> row;
             bool any = false;
             for (int c = 0; c <= used.end.col; ++c) {
-                row.push_back(WorkbookCell(sheet->GetCellIfExists(r, c)));
+                row.push_back(ReadSheetCell(sheet->GetCellIfExists(r, c)));
                 any = any || !row.back().empty;
             }
             if (any) grid.AddRow(std::move(row), static_cast<size_t>(r) + 1);
@@ -386,6 +387,46 @@ bool GridsFromWorkbook(const std::string& path, std::vector<ImportGrid>& out, st
         if (!grid.rows.empty()) out.push_back(std::move(grid));
     }
     if (out.empty()) { error = "it holds no rows"; return false; }
+    return true;
+}
+
+} // namespace UltraDBAdmin
+
+namespace UltraDBAdmin {
+
+bool WriteWorkbook(const std::string& path, const std::string& sheetName, const UltraDbResultSet& rows,
+                   std::string& error) {
+    UltraCanvasSpreadsheet book("dbaExportBook", 0, 0, 10, 10);
+    SpreadsheetSheet* sheet = book.GetSheet(0);
+    if (!sheet) sheet = book.AddSheet(sheetName);
+    if (!sheet) { error = "no sheet to write to"; return false; }
+    if (!sheetName.empty()) book.RenameSheet(0, sheetName.substr(0, 31));   // a sheet name's limit
+    const std::vector<std::string>& columns = rows.Columns();
+    std::vector<bool> numeric(columns.size(), false);
+    for (size_t c = 0; c < columns.size() && c < rows.ColumnInfo().size(); ++c)
+        numeric[c] = NumericType(rows.ColumnInfo()[c].declaredType);
+    for (size_t c = 0; c < columns.size(); ++c) {
+        sheet->SetCellValue(0, static_cast<int>(c), columns[c]);
+        sheet->GetCell(0, static_cast<int>(c))->SetBold(true);
+    }
+    int r = 1;
+    for (const auto& row : rows) {
+        for (size_t c = 0; c < row.Size(); ++c) {
+            const int col = static_cast<int>(c);
+            const WorkbookCell cell = WorkbookValue(row[c], c < numeric.size() && numeric[c]);
+            switch (cell.kind) {
+                case WorkbookCell::Kind::Empty:   break;
+                case WorkbookCell::Kind::Number:  sheet->SetCellValue(r, col, cell.number); break;
+                case WorkbookCell::Kind::Boolean: sheet->SetCellValue(r, col, cell.boolean); break;
+                case WorkbookCell::Kind::Text:    sheet->SetCellValue(r, col, cell.text); break;
+            }
+        }
+        ++r;
+    }
+    if (!book.SaveToFile(path)) {
+        error = book.GetLastError().empty() ? std::string("it could not be written") : book.GetLastError();
+        return false;
+    }
     return true;
 }
 

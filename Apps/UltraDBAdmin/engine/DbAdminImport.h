@@ -83,6 +83,11 @@ std::string CheckMapping(const UltraDbTableSchema& table, const ImportGrid& grid
 // The rows to insert: the grid's, less the header.
 size_t DataRows(const ImportGrid& grid, const ImportMapping& mapping);
 
+// A declared type that holds numbers, read as SQLite reads it for affinity:
+// int, numeric, decimal, real, double, float, serial. An exact numeric comes
+// back from PostgreSQL as text; its type says it is a number.
+bool NumericType(const std::string& declaredType);
+
 // What a cell is bound as for `column`: its number for a column of numbers
 // (by value type, or by declared type - int, numeric, decimal, real,
 // double, float, serial - as PostgreSQL's numeric comes back as text), else

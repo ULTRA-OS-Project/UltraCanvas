@@ -18,7 +18,9 @@
 // And imports: Browse's Import... puts the rows of a CSV file or a workbook
 // into the table shown, mapped column by column, all or none; the SQL tab's
 // Import SQL... runs a SQL file on the console's session, as one transaction
-// unless the file manages its own.
+// unless the file manages its own. And exports: Browse's Export... writes the
+// whole table, the SQL tab's Export rows... the rows shown, as CSV / TSV,
+// JSON, SQL INSERTs or a workbook.
 // Nothing is painted by hand: UltraCanvasTreeView, UltraCanvasListView over
 // the models in DbAdminModels, UltraCanvasTextArea.
 //
@@ -35,6 +37,7 @@
 
 #include "DbAdminConnections.h"
 #include "DbAdminEditBuffer.h"
+#include "DbAdminExport.h"
 #include "DbAdminImport.h"
 #include "DbAdminJobQueue.h"
 #include "DbAdminModels.h"
@@ -54,6 +57,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -189,6 +193,15 @@ private:
                       const std::string& file);
     void ImportSql();                       // pick a SQL file, read it, ask, run it on the console
 
+    // ===== EXPORT =====
+    // Browse: the whole table, read through a cursor; SQL: the rows shown.
+    enum class ExportSource { Table, Result };
+    void ExportRows(ExportSource source);
+    void StartExport(ExportSource source, const std::string& path);
+    void RunExport(ExportSource source, const std::string& path, ExportOptions options);
+    void FinishExport(const UltraDbResult& result, size_t rows, const std::string& path, bool truncated);
+    void UpdateExportButtons();
+
     // ===== SQL =====
     SqlRunner* RunnerFor(const ConnectionSpec& spec);
     void RunSql();
@@ -221,6 +234,11 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> reloadButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> importButton_;
     bool importing_ = false;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> exportButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> exportRowsButton_;
+    bool exporting_ = false;
+    // Set when the window closes: a long export stops at its next page.
+    std::shared_ptr<std::atomic<bool>> exportStop_ = std::make_shared<std::atomic<bool>>(false);
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> browseInfo_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> browseNote_;
     std::shared_ptr<ResultSetModel> browseModel_;
