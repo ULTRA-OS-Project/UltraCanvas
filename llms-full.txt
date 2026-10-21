@@ -958,6 +958,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+  Emoji come from a bundled font the emoji setting picks
+  (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
+  `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
+  folder, edited in UOS-Settings > Appearance > Emoji): Noto Color Emoji or
+  Noto Emoji in `media/emoji/`. `ApplyEmojiSettings()`, run by every
+  fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
+  rule that makes Pango's `emoji` runs use it.
+  See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
   covers, a size control and an information line. Built on
@@ -2278,7 +2287,7 @@ the shared chat / mail mirrors with category guessing from the application's
 identity, the presenters that put an application's `system.notification` on
 screen through the platform's own notification service and report its click
 back (`freedesktop-presenter`: `Notify` to the desktop's server;
-`windows-presenter`: notification-area balloons, shown as toasts;
+`windows-presenter`: toasts under the posting application's own AppUserModelID, balloons before Windows 10 1903;
 `macos-presenter`: Notification Center from an application bundle, osascript
 outside one), the toast
 host that draws the notifications nothing else draws - where UltraMessage
@@ -3471,6 +3480,7 @@ their *License* is likewise marked **—** (OS component).
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
+| Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenCV frontal-face Haar cascade (data only, bundled) | [opencv.org](https://opencv.org/) | [github.com/opencv/opencv](https://github.com/opencv/opencv/tree/4.x/data/haarcascades) | Intel License Agreement (BSD 3 style) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
@@ -26847,6 +26857,99 @@ one known way for that to happen - a DLL in the package carrying a Windows
 system DLL's name, which the loader then answers imports of that name with -
 is kept out of the package by `package-win.sh`; see [*"Entry point not found"
 in a Windows DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasEmojiSettings.md
+==============================================================================
+
+# UltraCanvasEmojiSettings
+
+Which emoji every UltraCanvas application draws, and the two emoji fonts the
+framework ships for them. Header: `UltraCanvas/include/UltraCanvasEmojiSettings.h`.
+
+## Contents
+
+- [The choices](#the-choices)
+- [Where it is kept](#where-it-is-kept)
+- [How it reaches the text](#how-it-reaches-the-text)
+- [API](#api)
+
+## The choices
+
+| `EmojiStyle` | Font | Notes |
+|---|---|---|
+| `Colour` (default) | Noto Color Emoji 2.047 (`media/emoji/NotoColorEmoji.ttf`, CBDT, 10.8 MB) | The same pictures on every computer. |
+| `Monochrome` | Noto Emoji 3.006 (`media/emoji/NotoEmoji-Regular.ttf`, outlines, 0.9 MB) | Drawn in the colour of the surrounding text. |
+| `System` | The system's emoji font | Segoe UI Emoji on Windows, the one fontconfig prefers on Linux; Noto Color Emoji is loaded behind it for what it lacks. |
+
+The user chooses in UOS-Settings, *Appearance > Emoji*.
+
+## Where it is kept
+
+`Emoji.conf` in the UltraCanvas settings folder (`UltraCanvasSettingsFolder()`:
+`%APPDATA%\UltraCanvas`, `~/Library/Application Support/UltraCanvas`,
+`$XDG_CONFIG_HOME/UltraCanvas`), one line:
+
+```
+style=monochrome        # colour | monochrome | system
+```
+
+A missing file, or a value the reader does not know, is `Colour`.
+
+## How it reaches the text
+
+Each platform's `LoadBundledFontsNative` calls `ApplyEmojiSettings()` at
+start, and the Windows switch to the full system font set calls it again for
+the new configuration. It reads `Emoji.conf`, adds the style's font to the
+current fontconfig configuration as an application font (only that one - the
+fonts are kept out of `media/fonts/` for this reason) and loads the style's
+rule:
+
+- Pango asks for the family `emoji` and for a colour font on a run of emoji.
+  The rule puts the style's family first (`prepend_first`, ahead of what the
+  system's own `60-generic.conf` prefers).
+- For `Monochrome` it also withdraws the request for colour, which fontconfig
+  weighs above the family - otherwise an installed colour font would still
+  win.
+
+A change applies to the applications started after it. Where the text engine
+is not fontconfig the call does nothing: macOS draws Apple Color Emoji (its
+bundles leave `media/emoji/` out), and the WebAssembly pages do not preload
+the fonts.
+
+## API
+
+```cpp
+#include "UltraCanvasEmojiSettings.h"
+
+void ChooseBlackAndWhiteEmoji() {
+    UltraCanvas::EmojiSettings settings = UltraCanvas::EmojiSettings::Load();
+    settings.style = UltraCanvas::EmojiStyle::Monochrome;
+    if (!settings.Save()) {
+        // the settings folder is not writable
+    }
+    // What an application started now loads, and the rule it applies:
+    const std::string file  = UltraCanvas::BundledEmojiFontFile(settings.style);   // .../media/emoji/NotoEmoji-Regular.ttf
+    const std::string rules = UltraCanvas::EmojiFontconfigRules(settings.style);   // a <fontconfig> document
+    (void)file;
+    (void)rules;
+}
+```
+
+| Function | What it does |
+|---|---|
+| `EmojiStyleKey(style)` / `ParseEmojiStyle(key, out)` | The style as the file writes it (`colour`, `monochrome`, `system`) and back. |
+| `EmojiSettings::Parse(text)` / `Serialize()` | The file's text and back. |
+| `EmojiSettings::FilePath()` / `Load()` / `Save()` | `Emoji.conf`; `Save` writes beside it and renames over it. |
+| `GetBundledEmojiDir()` | `media/emoji/` in the resources dir. |
+| `BundledEmojiFontFile(style)` | The bundled file the style loads. |
+| `EmojiFontFamily(style)` | `"Noto Color Emoji"`, `"Noto Emoji"`, or `""` for `System`. |
+| `EmojiFontconfigRules(style)` | The rule, as a `<fontconfig>` document; empty for `System`. |
+| `ApplyEmojiSettings()` | Reads the setting and applies it to the current fontconfig configuration, once per configuration. |
+
+Tested in `Tests/EmojiSettingsTest.cpp`: the file round trip, and "👤 Someone"
+laid out in Ubuntu Bold with only the bundled fonts drawing its emoji from the
+style's font with no missing glyph.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileAssociations.md
@@ -87095,7 +87198,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | `freedesktop-presenter` adapter (GDBus): applications' notifications on screen | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp` |
-| `windows-presenter` adapter (notification-area balloons) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp` |
+| `windows-presenter` adapter (toasts under the poster's AppUserModelID, notification-area balloons before Windows 10 1903) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp`, `UltraMessageWindowsToasts.cpp` |
 | `macos-presenter` adapter (Notification Center, osascript outside a bundle) | `UltraCanvas/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm` |
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
@@ -87357,16 +87460,30 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   would draw it: mode `none`, `Present` declines, and a toast host on the bus
   draws it instead (§3.8); the state says so, with the remedy for a session
   without one.
-- **`windows-presenter`** (every Windows build) shows a notification-area
-  balloon (`Shell_NotifyIconW`, `NIF_INFO`), which Windows 10 and 11 present as
-  a toast and keep in the Action Center; focus assist is respected, `critical`
-  shows the warning icon and `low` makes no sound. It needs no package
-  identity, shortcut or registration. Windows heads the toast with the name of
-  the process hosting the broker, so another application's notification carries
-  its `appName` in the title. A click is the `"default"` action; the tray icon
-  the click needs exists from the first balloon until it is clicked or ten
-  minutes have passed. The `windows-notification-listener` skips the toasts
-  the presenter put up (`Internal::NotePresented` / `WasPresented`).
+- **`windows-presenter`** (every Windows build) shows a toast under the
+  posting application's own AppUserModelID - its `appId`, as
+  `org.ultraos.ultramail` - so Windows heads it with that application's name
+  and icon, not the broker host's (mode `toast`; Windows 10 1903 and later, in
+  a build with C++/WinRT). The ID is registered for the user under
+  `HKCU\Software\Classes\AppUserModelId\<appId>` (`DisplayName` = `appName`,
+  `IconUri` = the icon file), which Windows accepts from a program with no
+  package identity and no Start-menu shortcut; the key stays, like an
+  installed application's. The toast carries the icon as its logo, the
+  notification's actions as up to three buttons, and is silent for `low`;
+  focus assist and the user's per-application switch in Settings are
+  respected (an application turned off shows nothing, not a balloon). A click
+  is the `"default"` action, a button its action, a dismissal
+  `system.notification.dismissed`, while the broker runs; an update
+  (`UltraMsgFlag_Replace`) changes the toast in place. Where toasts are not
+  available, or one cannot be shown, it is a notification-area balloon
+  (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
+  registration: Windows heads it with the name of the process hosting the
+  broker, so another application's notification carries its `appName` in the
+  title, and its picture is the notification's icon file; `critical` shows the
+  warning icon. A balloon's click is the `"default"` action; the tray icon the
+  click needs exists from the first balloon until it is clicked or ten minutes
+  have passed. The `windows-notification-listener` skips what the presenter
+  put up (`Internal::NotePresented` / `WasPresented`).
 - **`macos-presenter`** (every macOS build) hands the notification to
   Notification Center through the UserNotifications framework: a banner that
   stays in the Notification Center list, the notification's other actions as

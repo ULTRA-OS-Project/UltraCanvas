@@ -697,6 +697,11 @@ else()
     message(STATUS "  FontChangeRepaintTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== EMOJI SETTINGS TEST =====
+# Defined in EmojiTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_EMOJI_TESTS) where BUILD_TESTS is off - the Windows row.
+include(${CMAKE_CURRENT_SOURCE_DIR}/EmojiTests.cmake)
+
 # ===== NEW DOCUMENT DIALOG LAYOUT TEST =====
 # The new-document dialog's list names, "File name:" label and file preview
 # are drawn on the rows and fields they belong to, headless.

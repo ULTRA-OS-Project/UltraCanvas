@@ -665,6 +665,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp
         # Per-format save settings (JPEG quality, PNG compression ...) kept
         # for every application, the dialog that edits them, and the Save
         # dialog's draggable file icon.
@@ -3430,11 +3431,14 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     endif()
     # The Windows notification listener adapter reads the Action Center
     # through WinRT (C++/WinRT projection headers: the MSYS2 `cppwinrt`
-    # package or the Windows SDK). Skipped where the headers are absent.
+    # package or the Windows SDK), and the presenter's toasts are shown
+    # through it. Both are skipped where the headers are absent.
     set(_um_winrt_found FALSE)
     if(WIN32)
-        # The presenter puts applications' notifications on screen as tray
-        # balloons (Shell_NotifyIconW), which every Windows build has.
+        # The presenter puts applications' notifications on screen as toasts
+        # under their own AppUserModelID (UltraMessageWindowsToasts.cpp, with
+        # C++/WinRT), else as tray balloons (Shell_NotifyIconW), which every
+        # Windows build has.
         list(APPEND ULTRAMESSAGE_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp)
         include(CheckIncludeFileCXX)
@@ -3449,7 +3453,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         if(UM_HAVE_CPPWINRT)
             set(_um_winrt_found TRUE)
             list(APPEND ULTRAMESSAGE_SOURCES
-                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsToasts.cpp)
         endif()
     endif()
     # The macOS presenter puts applications' notifications in Notification
@@ -3491,7 +3496,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     endif()
     target_compile_definitions(uc-message PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
     if(WIN32)
-        target_link_libraries(uc-message PUBLIC shell32 user32)
+        # advapi32: the toasts register their application for the user (HKCU).
+        target_link_libraries(uc-message PUBLIC shell32 user32 advapi32)
     endif()
     if(_um_macos_presenter)
         target_link_libraries(uc-message PUBLIC "-framework Foundation" "-framework UserNotifications")
@@ -3522,9 +3528,9 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
             # ole32, BSTRs in oleaut32.
             target_link_libraries(uc-message PUBLIC runtimeobject ole32 oleaut32)
         endif()
-        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter and toast presenter via C++/WinRT)")
     elseif(WIN32)
-        message(STATUS "  [✓] UltraMessage - ENABLED (tray presenter; no C++/WinRT headers: no notification listener)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (balloon presenter; no C++/WinRT headers: no toasts, no notification listener)")
     elseif(_um_macos_presenter)
         message(STATUS "  [✓] UltraMessage - ENABLED (Notification Center presenter)")
     else()

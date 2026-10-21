@@ -1188,6 +1188,16 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== EMOJI TESTS WITHOUT THE FULL SUITE =====
+# EmojiSettingsTest alone, for builds that leave BUILD_TESTS off (the Windows
+# CI rows): the bundled emoji fonts and the emoji setting on the platform
+# where emoji drew as boxes of hex digits.
+option(ULTRACANVAS_BUILD_EMOJI_TESTS "Build EmojiSettingsTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_EMOJI_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/EmojiTests.cmake)
+endif()
+
 # ===== VIDEOFX TESTS WITHOUT THE FULL SUITE =====
 # VideoFXTest and UltraVideoDocumentTest alone, for builds that leave
 # BUILD_TESTS off (the Windows CI rows): the engine on the FFmpeg the Windows

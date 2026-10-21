@@ -481,6 +481,29 @@ text_processing:
         do, so on those the word goes to the system list instead and no second
         copy is kept here.
 
+  # Runtime data, not a build dependency: vendored in media/emoji/.
+  emoji_fonts:
+    noto_color_emoji:
+      version: "2.047"
+      purpose: "Colour emoji (CBDT bitmaps) for every application - the default emoji setting"
+      license: "OFL-1.1"
+      upstream: "https://github.com/googlefonts/noto-emoji"
+      vendored_at: "media/emoji/NotoColorEmoji.ttf"
+      platforms: ["linux", "windows", "android"]
+    noto_emoji:
+      version: "3.006"
+      purpose: "Black-and-white emoji (outlines, drawn in the text colour) - the Monochrome emoji setting"
+      license: "OFL-1.1"
+      upstream: "https://github.com/googlefonts/noto-emoji"
+      vendored_at: "media/emoji/NotoEmoji-Regular.ttf"
+      platforms: ["linux", "windows", "android"]
+    notes: >
+      Chosen in UOS-Settings (Appearance > Emoji; Emoji.conf,
+      UltraCanvasEmojiSettings.h) and loaded at start by fontconfig as an
+      application font - only the one the setting picks. macOS draws Apple
+      Color Emoji and its bundles leave media/emoji out; the WebAssembly pages
+      do not preload it.
+
 # ===== AI CAPABILITIES (UltraAI) =====
 #
 # The interfaces, registry, mock adapters, and shared adapter infrastructure
