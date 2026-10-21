@@ -1,8 +1,10 @@
 // Apps/SmartHomeCenter/ui/SmartHomeCenterWindow.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "SmartHomeCenterWindow.h"
 #include "SmartHomeCenterDemo.h"   // the demo scenes' ids
+#include "SmartHomeCenterStyle.h"
+#include "SmartHomeCenterControls.h"
 
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "UltraCanvasApplication.h"
@@ -31,68 +33,12 @@ namespace SmartHomeCenter {
 
 namespace {
 
-// ===== LOOK =====
-// One palette for the whole window: a cool grey canvas, white cards, one
-// accent, and a warm colour per kind of "active" so a glance at the Home page
-// says what is on: amber for light and power, coral for heat, green for an
-// open lock or blind, blue for a sensor reporting, red for an alarm.
-const Color kCanvas(243, 245, 250);
-const Color kSurface(255, 255, 255);
-const Color kBorder(228, 232, 240);
-const Color kInk(27, 33, 50);
-const Color kMuted(107, 115, 133);
-const Color kFaint(160, 167, 182);
-const Color kAccent(69, 96, 230);
-const Color kAccentSoft(232, 236, 253);
-const Color kHover(240, 242, 247);
-
-struct Tone { Color fg, soft, border; };
-const Tone kIdle    {Color(120, 128, 146), Color(241, 243, 247), kBorder};
-const Tone kLit     {Color(232, 150, 20),  Color(255, 246, 229), Color(249, 213, 140)};
-const Tone kHeat    {Color(240, 100, 60),  Color(255, 240, 234), Color(250, 196, 176)};
-const Tone kOpen    {Color(34, 160, 107),  Color(229, 246, 238), Color(160, 220, 190)};
-const Tone kSense   {Color(46, 124, 246),  Color(232, 241, 253), Color(170, 200, 248)};
-const Tone kAlarm   {Color(229, 72, 77),   Color(253, 236, 236), Color(246, 180, 182)};
-const Tone kClimate {Color(46, 124, 246),  Color(236, 244, 255), kBorder};
-
 constexpr float kSidebarWidth = 236.0f;
 constexpr float kInspectorWidth = 330.0f;
 constexpr float kTileWidth = 206.0f;
 constexpr float kTileHeight = 118.0f;
 constexpr unsigned kUiTimerMs = 250;
 constexpr size_t kActivityLimit = 500;
-
-Tone ToneOf(const DeviceView& v) {
-    if (v.alert) return kAlarm;
-    switch (v.kind) {
-        case DeviceKind::Light:
-        case DeviceKind::Switch: return v.active ? kLit : kIdle;
-        case DeviceKind::Thermostat: return v.active ? kHeat : kClimate;
-        case DeviceKind::Lock:
-        case DeviceKind::Blind: return v.active ? kOpen : kIdle;
-        case DeviceKind::ClimateSensor: return kClimate;
-        case DeviceKind::BinarySensor: return v.active ? kSense : kIdle;
-        default: return kIdle;
-    }
-}
-
-int64_t NowSeconds() {
-    return std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-std::string ClockText(int64_t seconds) {
-    std::time_t t = static_cast<std::time_t>(seconds);
-    std::tm local{};
-#ifdef _WIN32
-    localtime_s(&local, &t);
-#else
-    localtime_r(&t, &local);
-#endif
-    char text[16];
-    std::strftime(text, sizeof text, "%H:%M:%S", &local);
-    return text;
-}
 
 std::string TodayText() {
     std::time_t t = std::time(nullptr);
@@ -119,89 +65,6 @@ std::string Greeting() {
     if (local.tm_hour < 12) return "Good morning";
     if (local.tm_hour < 18) return "Good afternoon";
     return "Good evening";
-}
-
-std::string AgoText(uint64_t lastSeenMs) {
-    if (lastSeenMs == 0) return "never";
-    const int64_t seconds = NowSeconds() - static_cast<int64_t>(lastSeenMs / 1000);
-    if (seconds < 10) return "just now";
-    if (seconds < 60) return std::to_string(seconds) + " s ago";
-    if (seconds < 3600) return std::to_string(seconds / 60) + " min ago";
-    return std::to_string(seconds / 3600) + " h ago";
-}
-
-std::string SecurityText(SmartHomeSecurityLevel level) {
-    switch (level) {
-        case SmartHomeSecurityLevel::Certified: return "Certified (attested)";
-        case SmartHomeSecurityLevel::Encrypted: return "Encrypted";
-        case SmartHomeSecurityLevel::Basic: return "Basic";
-        default: return "Unencrypted";
-    }
-}
-
-// ===== BUILDING BLOCKS =====
-
-void NoScrollbars(const std::shared_ptr<UltraCanvasContainer>& c) {
-    ContainerStyle plain;
-    plain.autoShowScrollbars = false;
-    c->SetContainerStyle(plain);
-}
-
-std::shared_ptr<UltraCanvasContainer> Column(const std::string& id, float gap) {
-    auto c = CreateContainer(id);
-    c->layout.SetFlexColumn().SetFlexGap(gap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    NoScrollbars(c);
-    return c;
-}
-
-std::shared_ptr<UltraCanvasContainer> Row(const std::string& id, float gap,
-                                          CSSLayout::AlignItems align = CSSLayout::AlignItems::Center) {
-    auto c = CreateContainer(id);
-    c->layout.SetFlexRow().SetFlexGap(gap).SetFlexAlignItems(align);
-    NoScrollbars(c);
-    return c;
-}
-
-void Fixed(const std::shared_ptr<UltraCanvasUIElement>& e, float w, float h) {
-    e->SetElementSize(w < 0 ? CSSLayout::Dimension::Auto() : CSSLayout::Dimension::Px(w),
-                      h < 0 ? CSSLayout::Dimension::Auto() : CSSLayout::Dimension::Px(h));
-    e->layoutItem.SetFlexGrow(0);
-    e->layoutItem.SetFlexShrink(0);
-}
-
-void Grow(const std::shared_ptr<UltraCanvasUIElement>& e) {
-    e->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    e->layoutItem.SetFlexGrow(1);
-    e->layoutItem.SetFlexShrink(1);
-    e->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-}
-
-// A flexible gap that pushes what follows it to the far end of a row.
-std::shared_ptr<UltraCanvasContainer> Spacer(const std::string& id) {
-    auto s = CreateContainer(id);
-    NoScrollbars(s);
-    s->layoutItem.SetFlexGrow(1);
-    s->layoutItem.SetFlexShrink(1);
-    s->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    s->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(1));
-    return s;
-}
-
-void Card(const std::shared_ptr<UltraCanvasContainer>& c, float padding = 16.0f) {
-    c->SetBackgroundColor(kSurface);
-    c->SetBorders(1.0f, kBorder, 14.0f);
-    c->SetPadding(padding);
-}
-
-std::shared_ptr<UltraCanvasLabel> Text(const std::string& id, const std::string& text, float size,
-                                       const Color& color, bool bold = false, float height = -1) {
-    auto label = CreateLabel(id, 0, 0, 0, height > 0 ? height : size + 10, text);
-    label->SetFontSize(size);
-    label->SetTextColor(color);
-    if (bold) label->SetFontWeight(FontWeight::Bold);
-    label->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(height > 0 ? height : size + 10));
-    label->layoutItem.SetFlexShrink(0);
-    return label;
 }
 
 } // namespace
@@ -281,9 +144,12 @@ private:
 
 // ===== LIFECYCLE =====
 
+SmartHomeCenterWindow::SmartHomeCenterWindow() = default;
+
 SmartHomeCenterWindow::~SmartHomeCenterWindow() {
     // The API outlives the window: stop it calling into us first.
     auto& api = SmartHomeAPI::Instance();
+    api.SetOnHomeChange(nullptr);
     api.SetOnDeviceUpdate(nullptr);
     api.SetOnDeviceStateChange(nullptr);
     api.SetOnDeviceDiscover(nullptr);
@@ -295,16 +161,22 @@ SmartHomeCenterWindow::~SmartHomeCenterWindow() {
     }
 }
 
-bool SmartHomeCenterWindow::Initialize(bool demoHome) {
+bool SmartHomeCenterWindow::Initialize(bool demoHome, bool firstRun) {
     demoHome_ = demoHome;
     iconsDir_ = NormalizePath(GetResourcesDir() + "media/icons/smarthome/");
+    inspectorControls_ = std::make_unique<DeviceControls>("shcInsp", iconsDir_, demoHome_);
+    roomsPage_ = std::make_unique<RoomsPage>(*this);
+    devicePage_ = std::make_unique<DevicePage>(*this);
+    scenesPage_ = std::make_unique<ScenesPage>(*this);
+    settingsPage_ = std::make_unique<SettingsPage>(*this);
+    firstRunPage_ = std::make_unique<FirstRunPage>(*this);
 
     WindowConfig config;
     config.title = std::string("SmartHome Center ") + SMARTHOMECENTER_VERSION;
     config.width = 1360;
     config.height = 860;
     config.minWidth = 1000;
-    config.minHeight = 640;
+    config.minHeight = 720;   // the navigation and the demo panel, one above the other
     config.backgroundColor = kCanvas;
     window_ = CreateWindow(config);
     if (!window_) return false;
@@ -328,9 +200,14 @@ bool SmartHomeCenterWindow::Initialize(bool demoHome) {
     header->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     pages_[Page::Home] = BuildHomePage();
+    pages_[Page::Rooms] = roomsPage_->Build();
     pages_[Page::Devices] = BuildDevicesPage();
+    pages_[Page::Scenes] = scenesPage_->Build();
     pages_[Page::Energy] = BuildEnergyPage();
     pages_[Page::Activity] = BuildActivityPage();
+    pages_[Page::Settings] = settingsPage_->Build();
+    pages_[Page::Device] = devicePage_->Build();
+    pages_[Page::FirstRun] = firstRunPage_->Build();
     for (auto& [page, container] : pages_) {
         content_->AddChild(container);
         Grow(container);
@@ -345,6 +222,10 @@ bool SmartHomeCenterWindow::Initialize(bool demoHome) {
     ConnectApi();
     ShowPage(Page::Home);
     ReloadAll();
+    if (firstRun) {
+        firstRunPage_->Start();
+        ShowPage(Page::FirstRun);
+    }
     Log("SmartHome Center", "", demoHome_ ? "Opened the demo home - every device here is simulated"
                                           : "Opened the home", false);
 
@@ -398,12 +279,15 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildSidebar() {
 
     const struct { Page page; const char* text; const char* icon; } items[] = {
         {Page::Home, "Home", "home"},
+        {Page::Rooms, "Rooms", "rooms"},
         {Page::Devices, "Devices", "devices"},
+        {Page::Scenes, "Scenes", "scenes"},
         {Page::Energy, "Energy", "energy"},
         {Page::Activity, "Activity", "activity"},
+        {Page::Settings, "Settings", "settings"},
     };
     for (const auto& item : items) {
-        auto button = CreateButton(std::string("shcNav") + item.text, 0, 0, 200, 42, item.text);
+        auto button = CreateButton(std::string("shcNav") + item.text, 0, 0, 200, 40, item.text);
         button->SetIcon(iconsDir_ + item.icon + ".svg");
         button->SetIconSize(20, 20);
         button->SetIconPosition(ButtonIconPosition::Left);
@@ -413,7 +297,7 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildSidebar() {
         button->SetCornerRadius(10);
         button->SetBorder(0, Colors::Transparent);
         button->SetPadding(0, 14);
-        Fixed(button, -1, 42);
+        Fixed(button, -1, 40);
         button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         const Page page = item.page;
         button->SetOnClick([this, page]() { ShowPage(page); });
@@ -556,17 +440,20 @@ SmartHomeCenterWindow::Stat SmartHomeCenterWindow::MakeStat(const std::string& i
     return stat;
 }
 
-std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildScenesRow() {
-    auto row = Row("shcScenes", 12);
-    const struct { const char* id; const char* name; const char* icon; const char* hint; } scenes[] = {
-        {kSceneMorning, "Good morning", "sunrise", "Blinds up, kitchen on, heating to 21 °C"},
-        {kSceneEvening, "Evening", "sunset", "Warm living room light, blinds down"},
-        {kSceneAway, "Away", "away", "Everything off, doors locked"},
-        {kSceneNight, "Good night", "moon", "Lights off, doors locked, heating to 18 °C"},
-    };
-    for (const auto& s : scenes) {
-        auto button = CreateButton(std::string("shcScene_") + s.id, 0, 0, 180, 52, s.name);
-        button->SetIcon(iconsDir_ + s.icon + ".svg");
+void SmartHomeCenterWindow::RebuildScenesRow() {
+    // The home's scenes, four at most; the Scenes page has them all.
+    std::vector<SmartHomeScene> scenes = SmartHomeAPI::Instance().GetScenes();
+    std::sort(scenes.begin(), scenes.end(), [](const SmartHomeScene& a, const SmartHomeScene& b) { return a.Name < b.Name; });
+    std::string signature;
+    for (const auto& s : scenes) signature += s.SceneId + "=" + s.Name + "/" + s.Icon + ";";
+    if (signature == scenesRowSignature_) return;
+    scenesRowSignature_ = signature;
+    scenesRow_->ClearChildren();
+    const size_t shown = std::min<size_t>(scenes.size(), 4);
+    for (size_t i = 0; i < shown; ++i) {
+        const SmartHomeScene& scene = scenes[i];
+        auto button = CreateButton("shcScene_" + std::to_string(i), 0, 0, 180, 52, scene.Name);
+        button->SetIcon(iconsDir_ + (scene.Icon.empty() ? std::string("scenes") : scene.Icon) + ".svg");
         button->SetIconSize(22, 22);
         button->SetIconMaskColor(kAccent);
         button->SetIconSpacing(10);
@@ -577,15 +464,26 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildScenesRow() {
         button->SetBorder(1, kBorder);
         button->SetCornerRadius(12);
         button->SetPadding(0, 16);
-        button->SetTooltip(s.hint);
+        std::string hint;
+        for (size_t k = 0; k < scene.Actions.size() && k < 4; ++k)
+            hint += (k ? ", " : "") + ScenesPage::DescribeAction(scene.Actions[k]);
+        if (scene.Actions.size() > 4) hint += " …";
+        button->SetTooltip(hint);
         button->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(52));
         Grow(button);
         button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Auto);
-        const std::string id = s.id, name = s.name;
+        const std::string id = scene.SceneId, name = scene.Name;
         button->SetOnClick([this, id, name]() { ActivateScene(id, name); });
-        row->AddChild(button);
+        scenesRow_->AddChild(button);
     }
-    return row;
+    // The way to the rest, when there is a rest (or nothing yet).
+    if (scenes.empty() || scenes.size() > shown) {
+        auto more = MakeButton("shcSceneMore", scenes.empty() ? "Make a scene" : "All scenes", ButtonKind::Quiet, 52);
+        Fixed(more, 120, 52);
+        more->SetOnClick([this]() { ShowPage(Page::Scenes); });
+        scenesRow_->AddChild(more);
+    }
+    scenesRow_->InvalidateLayout();
 }
 
 std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildHomePage() {
@@ -631,10 +529,11 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildHomePage() {
     roomsColumn_->AddChild(stats);
 
     roomsColumn_->AddChild(Text("shcScenesTitle", "Scenes", 15, kInk, true, 22));
-    auto scenes = BuildScenesRow();
-    Fixed(scenes, -1, 52);
-    scenes->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    roomsColumn_->AddChild(scenes);
+    scenesRow_ = Row("shcScenes", 12);
+    Fixed(scenesRow_, -1, 52);
+    scenesRow_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    roomsColumn_->AddChild(scenesRow_);
+    RebuildScenesRow();
 
     roomsHolder_ = Column("shcRooms", 18);
     roomsHolder_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
@@ -847,18 +746,11 @@ const DeviceView* SmartHomeCenterWindow::Selected() const {
 
 void SmartHomeCenterWindow::RebuildInspector() {
     inspectorBody_->ClearChildren();
-    inspectorToggle_.reset();
-    inspectorLevel_.reset();
-    inspectorWarmth_.reset();
-    inspectorMode_.reset();
-    inspectorTarget_.reset();
-    inspectorAction_.reset();
-    inspectorValue_.reset();
     inspectorFacts_.clear();
+    inspectorControls_->Clear();
 
     const DeviceView* v = Selected();
     if (!v) {
-        inspectorBuiltFor_.clear();
         inspectorName_->SetText("Nothing selected");
         inspectorType_->SetText("Choose a device to see its controls");
         inspectorStatus_->SetVisible(false);
@@ -868,225 +760,14 @@ void SmartHomeCenterWindow::RebuildInspector() {
         return;
     }
     inspectorStatus_->SetVisible(true);
-    inspectorBuiltFor_ = v->info.DeviceId + "/" + std::to_string(static_cast<int>(v->kind)) + "/" + (v->online ? "1" : "0");
     const std::string id = v->info.DeviceId;
-    auto& api = SmartHomeAPI::Instance();
 
-    auto section = [&](const std::string& key, const std::string& caption) {
-        inspectorBody_->AddChild(Text("shcInspCap_" + key, caption, 11, kFaint, true, 18));
-    };
-    auto controlRow = [&](const std::string& key, const std::string& caption) {
-        auto row = Row("shcInspRow_" + key, 10);
-        Fixed(row, -1, 32);
-        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        auto label = Text("shcInspRowLabel_" + key, caption, 14, kInk, false, 22);
-        Grow(label);
-        label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
-        row->AddChild(label);
-        inspectorBody_->AddChild(row);
-        return row;
-    };
-    auto bigValue = [&](const std::string& text) {
-        inspectorValue_ = Text("shcInspValue", text, 34, kInk, true, 46);
-        inspectorBody_->AddChild(inspectorValue_);
-    };
-    auto slider = [&](const std::string& key, float min, float max) {
-        auto s = CreateHorizontalSlider("shcInspSlider_" + key, 0, 0, 280, 28, min, max);
-        s->SetColors(Color(226, 230, 239), kAccent, kSurface);
-        s->SetTrackHeight(6);
-        s->SetHandleSize(20);
-        s->SetValueDisplay(SliderValueDisplay::NoDisplay);
-        Fixed(s, -1, 28);
-        s->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        inspectorBody_->AddChild(s);
-        return s;
-    };
-    auto actionButton = [&](const std::string& key, const std::string& text, bool primary) {
-        auto b = CreateButton("shcInspAction_" + key, 0, 0, 120, 40, text);
-        b->SetFontSize(14);
-        b->SetCornerRadius(10);
-        if (primary) {
-            b->SetColors(kAccent, Color(56, 82, 214), Color(46, 68, 190), Color(170, 180, 220));
-            b->SetTextColors(Colors::White);
-            b->SetBorder(0, Colors::Transparent);
-        } else {
-            b->SetColors(kSurface, kHover, Color(228, 232, 240), kSurface);
-            b->SetTextColors(kInk);
-            b->SetBorder(1, kBorder);
-        }
-        b->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(40));
-        return b;
-    };
+    inspectorBody_->AddChild(Caption("shcInspCap_controls", "CONTROLS"));
+    inspectorControls_->Build(*v);
+    inspectorBody_->AddChild(inspectorControls_->Panel());
 
-    section("controls", "CONTROLS");
-    if (!v->online) {
-        auto note = Text("shcInspOffline", "This device is not answering. Check its power, or that it is in range.", 13, kAlarm.fg, false, 40);
-        note->SetWrap(TextWrap::WrapWord);
-        inspectorBody_->AddChild(note);
-    } else {
-        switch (v->kind) {
-            case DeviceKind::Light: {
-                auto row = controlRow("power", "Power");
-                inspectorToggle_ = UltraCanvasSwitch::Create("shcInspToggle", 0, 0, "", v->on);
-                inspectorToggle_->SetTrackSize(46, 26);
-                SwitchVisualStyle style = inspectorToggle_->GetVisualStyle();
-                style.trackOnColor = kAccent;
-                style.trackOffColor = Color(214, 219, 230);
-                style.trackBorderColor = Colors::Transparent;
-                style.thumbBorderColor = Colors::Transparent;
-                inspectorToggle_->SetVisualStyle(style);
-                Fixed(inspectorToggle_, 48, 28);
-                inspectorToggle_->onStateChanged = [this, id](CheckedState, CheckedState now) {
-                    if (!updating_) ToggleDevice(id, now == CheckedState::Checked);
-                };
-                row->AddChild(inspectorToggle_);
-                const SmartHomeLightState light = api.GetLightState(id);
-                if (light.Capabilities & static_cast<uint32_t>(SmartHomeLightCapability::Brightness)) {
-                    controlRow("brightness", "Brightness");
-                    inspectorLevel_ = slider("brightness", 1, 100);
-                    inspectorLevel_->onValueChanged = [this, id](float value) {
-                        if (updating_) return;
-                        SmartHomeLightState state;
-                        state.On = true;
-                        state.Brightness = static_cast<uint8_t>(std::lround(value * 255.0f / 100.0f));
-                        SmartHomeAPI::Instance().SetLightState(id, state);
-                    };
-                }
-                if (light.Capabilities & static_cast<uint32_t>(SmartHomeLightCapability::ColorTemp)) {
-                    controlRow("warmth", "Colour temperature");
-                    inspectorWarmth_ = slider("warmth", 2200, 6500);
-                    inspectorWarmth_->SetTrackGradient({GradientStop(0.0, Color(255, 176, 80)),
-                                                        GradientStop(0.5, Color(255, 236, 210)),
-                                                        GradientStop(1.0, Color(200, 222, 255))});
-                    inspectorWarmth_->onValueChanged = [this, id](float value) {
-                        if (updating_) return;
-                        SmartHomeLightState state = SmartHomeAPI::Instance().GetLightState(id);
-                        state.On = true;
-                        state.ColorTemp = static_cast<uint16_t>(std::lround(value));
-                        state.Red = state.Green = state.Blue = 0;   // "unchanged"
-                        SmartHomeAPI::Instance().SetLightState(id, state);
-                    };
-                }
-                break;
-            }
-            case DeviceKind::Switch: {
-                if (v->metered) bigValue(FormatPower(v->power));
-                auto row = controlRow("power", "Power");
-                inspectorToggle_ = UltraCanvasSwitch::Create("shcInspToggle", 0, 0, "", v->on);
-                inspectorToggle_->SetTrackSize(46, 26);
-                SwitchVisualStyle style = inspectorToggle_->GetVisualStyle();
-                style.trackOnColor = kAccent;
-                style.trackOffColor = Color(214, 219, 230);
-                style.trackBorderColor = Colors::Transparent;
-                style.thumbBorderColor = Colors::Transparent;
-                inspectorToggle_->SetVisualStyle(style);
-                Fixed(inspectorToggle_, 48, 28);
-                inspectorToggle_->onStateChanged = [this, id](CheckedState, CheckedState now) {
-                    if (!updating_) ToggleDevice(id, now == CheckedState::Checked);
-                };
-                row->AddChild(inspectorToggle_);
-                break;
-            }
-            case DeviceKind::Thermostat: {
-                const SmartHomeThermostatState t = api.GetThermostatState(id);
-                bigValue(FormatTemperature(t.CurrentTemperature));
-                pendingTarget_ = t.TargetTemperature;
-                auto row = controlRow("target", "Target");
-                auto minus = actionButton("minus", "−", false);
-                Fixed(minus, 40, 36);
-                inspectorTarget_ = Text("shcInspTarget", FormatTemperature(t.TargetTemperature), 16, kInk, true, 24);
-                inspectorTarget_->SetAlignment(TextAlignment::Center);
-                Fixed(inspectorTarget_, 86, 24);
-                auto plus = actionButton("plus", "+", false);
-                Fixed(plus, 40, 36);
-                auto step = [this, id](float delta) {
-                    pendingTarget_ = std::clamp(pendingTarget_ + delta, 10.0f, 30.0f);
-                    if (inspectorTarget_) inspectorTarget_->SetText(FormatTemperature(pendingTarget_));
-                    SmartHomeAPI::Instance().SetThermostatTarget(id, pendingTarget_);
-                };
-                minus->SetOnClick([step]() { step(-0.5f); });
-                plus->SetOnClick([step]() { step(0.5f); });
-                row->AddChild(minus);
-                row->AddChild(inspectorTarget_);
-                row->AddChild(plus);
-
-                inspectorMode_ = CreateSegmentedControl("shcInspMode", 0, 0, 280, 34);
-                for (const char* m : {"Heat", "Auto", "Off"}) inspectorMode_->AddSegment(m);
-                Fixed(inspectorMode_, -1, 34);
-                inspectorMode_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-                inspectorMode_->onSegmentSelected = [this, id](int index) {
-                    if (updating_) return;
-                    static const char* modes[] = {"heat", "auto", "off"};
-                    if (index >= 0 && index < 3) SmartHomeAPI::Instance().SetThermostatMode(id, modes[index]);
-                };
-                inspectorBody_->AddChild(inspectorMode_);
-                break;
-            }
-            case DeviceKind::Lock: {
-                const bool locked = !v->active;
-                inspectorAction_ = actionButton("lock", locked ? "Unlock" : "Lock", true);
-                inspectorAction_->SetIcon(iconsDir_ + (locked ? "unlock.svg" : "lock.svg"));
-                inspectorAction_->SetIconSize(18, 18);
-                inspectorAction_->SetIconMaskColor(Colors::White);
-                inspectorAction_->SetIconSpacing(8);
-                inspectorAction_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-                inspectorAction_->SetOnClick([this, id]() {
-                    const bool nowLocked = SmartHomeAPI::Instance().GetLockState(id).Locked;
-                    SmartHomeAPI::Instance().SetLockState(id, !nowLocked);
-                });
-                inspectorBody_->AddChild(inspectorAction_);
-                break;
-            }
-            case DeviceKind::Blind: {
-                bigValue(v->value);
-                controlRow("position", "Position");
-                inspectorLevel_ = slider("position", 0, 100);
-                inspectorLevel_->onValueChanged = [this, id](float value) {
-                    if (!updating_) SmartHomeAPI::Instance().SetBlindPosition(id, static_cast<uint8_t>(std::lround(value)));
-                };
-                auto buttons = Row("shcInspBlindButtons", 10, CSSLayout::AlignItems::Stretch);
-                Fixed(buttons, -1, 40);
-                buttons->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-                auto open = actionButton("open", "Open", false);
-                auto close = actionButton("close", "Close", false);
-                Grow(open);
-                Grow(close);
-                open->SetOnClick([id]() { SmartHomeAPI::Instance().SetBlindPosition(id, 100); });
-                close->SetOnClick([id]() { SmartHomeAPI::Instance().SetBlindPosition(id, 0); });
-                buttons->AddChild(open);
-                buttons->AddChild(close);
-                inspectorBody_->AddChild(buttons);
-                break;
-            }
-            case DeviceKind::ClimateSensor:
-                bigValue(v->value);
-                break;
-            case DeviceKind::BinarySensor: {
-                bigValue(v->state);
-                inspectorValue_->SetFontSize(24);
-                if (demoHome_) {
-                    auto buttons = Row("shcInspSimButtons", 10, CSSLayout::AlignItems::Stretch);
-                    Fixed(buttons, -1, 40);
-                    buttons->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-                    auto trigger = actionButton("trigger", "Simulate event", false);
-                    auto clear = actionButton("clear", "Clear", false);
-                    Grow(trigger);
-                    Grow(clear);
-                    trigger->SetOnClick([id]() { SmartHomeAPI::Instance().SendCommand({id, "simulateTrigger", {}}); });
-                    clear->SetOnClick([id]() { SmartHomeAPI::Instance().SendCommand({id, "simulateClear", {}}); });
-                    buttons->AddChild(trigger);
-                    buttons->AddChild(clear);
-                    inspectorBody_->AddChild(buttons);
-                }
-                break;
-            }
-            default:
-                break;
-        }
-    }
-
-    section("details", "DETAILS");
-    for (const char* fact : {"Room", "Type", "Model", "Made by", "Protocol", "Security", "Battery", "Last seen"}) {
+    inspectorBody_->AddChild(Caption("shcInspCap_details", "DETAILS"));
+    for (const char* fact : {"Room", "Type", "Protocol", "Battery", "Last seen"}) {
         auto row = Row(std::string("shcInspFact_") + fact, 8);
         Fixed(row, -1, 22);
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -1100,11 +781,19 @@ void SmartHomeCenterWindow::RebuildInspector() {
         inspectorFacts_.emplace_back(fact, value);
     }
 
+    auto open = MakeButton("shcInspOpen", "Open device page", ButtonKind::Secondary, 36);
+    open->SetIcon(iconsDir_ + "devices.svg");
+    open->SetIconSize(16, 16);
+    open->SetIconSpacing(8);
+    open->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    open->SetTooltip("History, every detail, name and room");
+    open->SetOnClick([this, id]() { OpenDevice(id); });
+    inspectorBody_->AddChild(open);
+
     if (demoHome_) {
-        auto offline = actionButton("offline", v->online ? "Simulate: take offline" : "Simulate: bring back online", false);
+        auto offline = MakeButton("shcInspSimOffline", v->online ? "Simulate: take offline" : "Simulate: bring back online",
+                                  ButtonKind::Quiet, 32);
         offline->SetFontSize(12);
-        offline->SetTextColors(kMuted, kInk);
-        offline->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(32));
         offline->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         const bool online = v->online;
         offline->SetOnClick([id, online]() {
@@ -1119,8 +808,7 @@ void SmartHomeCenterWindow::RebuildInspector() {
 void SmartHomeCenterWindow::UpdateInspector() {
     const DeviceView* v = Selected();
     if (!v) return;
-    const std::string builtFor = v->info.DeviceId + "/" + std::to_string(static_cast<int>(v->kind)) + "/" + (v->online ? "1" : "0");
-    if (builtFor != inspectorBuiltFor_) {
+    if (!inspectorControls_->Update(*v)) {
         RebuildInspector();   // a device that went offline gets a different body
         return;
     }
@@ -1129,63 +817,16 @@ void SmartHomeCenterWindow::UpdateInspector() {
     inspectorIcon_->LoadFromFile(iconsDir_ + v->icon + ".svg");
     inspectorIcon_->SetTintColor(v->online ? tone.fg : kFaint);
     inspectorName_->SetText(v->info.Name);
-    inspectorType_->SetText(v->typeName + " · " + (v->info.Room.empty() ? std::string(kNoRoom) : v->info.Room));
+    inspectorType_->SetText(v->typeName + " · " + RoomText(v->info.Room));
     inspectorStatus_->SetText(v->state);
-    // The pill takes the tile's colour: amber for light, heat and power,
-    // green for open, blue for a sensor reporting, red for an alarm.
-    BadgeVariant variant = BadgeVariant::Neutral;
-    if (v->alert) variant = BadgeVariant::Danger;
-    else if (v->active && (v->kind == DeviceKind::Light || v->kind == DeviceKind::Switch ||
-                           v->kind == DeviceKind::Thermostat)) variant = BadgeVariant::Warning;
-    else if (v->active && v->kind == DeviceKind::BinarySensor) variant = BadgeVariant::Info;
-    else if (v->active) variant = BadgeVariant::Successful;
-    inspectorStatus_->SetVariant(variant);
-
-    auto& api = SmartHomeAPI::Instance();
-    const std::string& id = v->info.DeviceId;
-    updating_ = true;
-    if (inspectorToggle_) inspectorToggle_->SetChecked(v->on);
-    if (v->kind == DeviceKind::Light) {
-        const SmartHomeLightState light = api.GetLightState(id);
-        if (inspectorLevel_ && !inspectorLevel_->IsDragging())
-            inspectorLevel_->SetValue(std::max(1.0f, std::round(light.Brightness * 100.0f / 255.0f)));
-        if (inspectorWarmth_ && !inspectorWarmth_->IsDragging() && light.ColorTemp > 0)
-            inspectorWarmth_->SetValue(static_cast<float>(light.ColorTemp));
-    }
-    if (v->kind == DeviceKind::Switch && inspectorValue_) inspectorValue_->SetText(FormatPower(v->power));
-    if (v->kind == DeviceKind::Thermostat) {
-        const SmartHomeThermostatState t = api.GetThermostatState(id);
-        if (inspectorValue_) inspectorValue_->SetText(FormatTemperature(t.CurrentTemperature));
-        if (inspectorTarget_) inspectorTarget_->SetText(FormatTemperature(t.TargetTemperature));
-        pendingTarget_ = t.TargetTemperature;
-        if (inspectorMode_) inspectorMode_->SetSelectedIndex(t.Mode == "auto" ? 1 : t.Mode == "off" ? 2 : 0);
-    }
-    if (v->kind == DeviceKind::Lock && inspectorAction_) {
-        const bool locked = !v->active;
-        inspectorAction_->SetText(locked ? "Unlock" : "Lock");
-        inspectorAction_->SetIcon(iconsDir_ + (locked ? "unlock.svg" : "lock.svg"));
-    }
-    if (v->kind == DeviceKind::Blind) {
-        if (inspectorValue_) inspectorValue_->SetText(v->value);
-        if (inspectorLevel_ && !inspectorLevel_->IsDragging())
-            inspectorLevel_->SetValue(static_cast<float>(api.GetBlindPosition(id)));
-    }
-    if ((v->kind == DeviceKind::ClimateSensor) && inspectorValue_) inspectorValue_->SetText(v->value);
-    if (v->kind == DeviceKind::BinarySensor && inspectorValue_) {
-        inspectorValue_->SetText(v->state);
-        inspectorValue_->SetTextColor(v->alert ? kAlarm.fg : v->active ? kSense.fg : kInk);
-    }
-    updating_ = false;
+    inspectorStatus_->SetVariant(StatusVariant(*v));
 
     for (auto& [fact, label] : inspectorFacts_) {
         std::string text;
-        if (fact == "Room") text = v->info.Room.empty() ? std::string(kNoRoom) : v->info.Room;
+        if (fact == "Room") text = RoomText(v->info.Room);
         else if (fact == "Type") text = v->typeName;
-        else if (fact == "Model") text = v->info.Model;
-        else if (fact == "Made by") text = v->info.Manufacturer;
         else if (fact == "Protocol") text = v->info.Protocol == SmartHomeProtocolType::Simulated
                                           ? "Simulated (demo home)" : ProtocolTypeToString(v->info.Protocol);
-        else if (fact == "Security") text = SecurityText(v->info.Security);
         else if (fact == "Battery") text = v->battery >= 0 ? FormatPercent(v->battery) : "Mains powered";
         else if (fact == "Last seen") text = AgoText(v->info.LastSeen);
         label->SetText(text);
@@ -1216,32 +857,6 @@ std::string SmartHomeCenterWindow::FindDeviceByName(const std::string& name) con
 
 // ===== DEVICES =====
 
-namespace {
-// Both tables: the window's ink and type sizes, a quiet header, hover rows.
-void StyleTable(const std::shared_ptr<UltraCanvasListView>& list) {
-    ListViewStyle style;
-    style.headerBackgroundColor = Color(247, 248, 251);
-    style.headerTextColor = kMuted;
-    style.headerFontSize = 11;
-    style.headerHeight = 34;
-    style.gridLineColor = Color(238, 240, 245);
-    style.showGridLines = false;
-    style.alternateRowColors = true;
-    style.alternateRowColor = Color(250, 251, 253);
-    style.selectionBackgroundColor = kAccentSoft;
-    style.hoverBackgroundColor = Color(244, 246, 250);
-    style.showHeader = true;
-    list->SetStyle(style);
-    list->SetBorders(0.0f, Colors::Transparent);   // the card around it is the frame
-    if (auto* delegate = dynamic_cast<UltraCanvasDefaultListDelegate*>(list->GetDelegate())) {
-        delegate->SetTextColor(kInk);
-        delegate->SetSelectedTextColor(kAccent);
-        delegate->SetFontSize(13);
-        delegate->SetTextPadding(12);
-    }
-}
-} // namespace
-
 std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildDevicesPage() {
     auto page = Column("shcDevicesPage", 12);
     Card(page, 8);
@@ -1252,10 +867,7 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildDevicesPage() 
     devicesList_->SetShowHeader(true);
     devicesList_->SetRowHeight(34);
     devicesList_->onItemActivated = [this](int row) {
-        if (const DeviceView* v = devicesModel_->At(row)) {
-            ShowPage(Page::Home);
-            SelectDevice(v->info.DeviceId);
-        }
+        if (const DeviceView* v = devicesModel_->At(row)) OpenDevice(v->info.DeviceId);
     };
     Grow(devicesList_);
     page->AddChild(devicesList_);
@@ -1433,6 +1045,11 @@ void SmartHomeCenterWindow::ConnectApi() {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingNotes_.push_back("Error: " + message);
     });
+    api.SetOnHomeChange([this]() {
+        std::lock_guard<std::mutex> lock(pendingMutex_);
+        pendingHome_ = true;
+        pendingAll_ = true;   // devices may carry new room names
+    });
     // The engine's own log: automations that ran and why, their notices,
     // scenes, problems. Device changes the window logs itself.
     api.SetOnEvent([this](const SmartHomeEvent& event) {
@@ -1446,7 +1063,7 @@ void SmartHomeCenterWindow::OnTimer() {
     std::set<std::string> ids;
     std::vector<std::string> notes;
     std::vector<SmartHomeEvent> events;
-    bool all = false;
+    bool all = false, home = false;
     {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         ids.swap(pendingIds_);
@@ -1454,6 +1071,8 @@ void SmartHomeCenterWindow::OnTimer() {
         events.swap(pendingEvents_);
         all = pendingAll_;
         pendingAll_ = false;
+        home = pendingHome_;
+        pendingHome_ = false;
     }
     for (const std::string& note : notes) Log("SmartHome Center", "", note, note.rfind("Error", 0) == 0);
     for (const SmartHomeEvent& event : events) {
@@ -1465,6 +1084,15 @@ void SmartHomeCenterWindow::OnTimer() {
     } else if (!ids.empty()) {
         ApplyChanged(ids);
     }
+    if (home) {
+        if (page_ == Page::Rooms) roomsPage_->Refresh();
+        devicePage_->RoomsChanged();
+    }
+    if (all || !ids.empty()) {
+        // The page in view follows the home at once.
+        if (page_ == Page::Rooms) roomsPage_->UpdateStates();
+        if (page_ == Page::Device) devicePage_->UpdateStates();
+    }
     // Once a second, the things that change with time alone: "last seen",
     // the subtitle, the pairing button.
     if (++ticks_ % 4 == 0) {
@@ -1474,7 +1102,12 @@ void SmartHomeCenterWindow::OnTimer() {
             addButton_->SetDisabled(pairing);
         }
         if (page_ == Page::Devices) UpdateDevicesTable();
-        if (page_ == Page::Home) UpdateInspector();
+        if (page_ == Page::Home) {
+            UpdateInspector();
+            RebuildScenesRow();   // scenes made or deleted on the Scenes page or by --scene's store
+        }
+        if (page_ == Page::Device) devicePage_->Tick();
+        if (page_ == Page::Scenes) scenesPage_->Refresh();
     }
 }
 
@@ -1505,7 +1138,13 @@ void SmartHomeCenterWindow::ApplyChanged(const std::set<std::string>& ids) {
     bool selectedChanged = false;
     for (DeviceView& v : views_) {
         if (!ids.count(v.info.DeviceId)) continue;
-        v = DescribeDevice(SmartHomeAPI::Instance().GetDevice(v.info.DeviceId));
+        const SmartHomeDeviceInfo info = SmartHomeAPI::Instance().GetDevice(v.info.DeviceId);
+        if (info.DeviceId.empty()) {
+            // Removed: the module reports that as going offline.
+            roomsSignature_.clear();
+            continue;
+        }
+        v = DescribeDevice(info);
         auto tile = tiles_.find(v.info.DeviceId);
         if (tile != tiles_.end()) {
             // A switch that appeared or went (a device going offline) needs
@@ -1577,10 +1216,13 @@ void SmartHomeCenterWindow::UpdateSummary() {
 // ===== PAGES =====
 
 void SmartHomeCenterWindow::ShowPage(Page page) {
+    if (page != Page::Device && page != Page::FirstRun) backPage_ = page;
     page_ = page;
     for (auto& [p, container] : pages_) container->SetVisible(p == page);
+    // A device's page belongs to the page it was opened from.
+    const Page highlighted = page == Page::Device ? backPage_ : page;
     for (auto& [p, button] : navButtons_) {
-        const bool current = p == page;
+        const bool current = p == highlighted && page != Page::FirstRun;
         button->SetColors(current ? kAccentSoft : Colors::Transparent, current ? kAccentSoft : kHover);
         button->SetTextColors(current ? kAccent : Color(58, 66, 86));
         button->SetIconMaskColor(current ? kAccent : kMuted);
@@ -1606,12 +1248,57 @@ void SmartHomeCenterWindow::ShowPage(Page page) {
             pageSubtitle_->SetText("Everything that happened since SmartHome Center opened, newest first");
             if (activityModel_) activityModel_->Changed();
             break;
+        case Page::Rooms:
+            pageTitle_->SetText("Rooms");
+            pageSubtitle_->SetText(roomsPage_->Subtitle());
+            roomsPage_->Refresh();
+            break;
+        case Page::Scenes:
+            pageTitle_->SetText("Scenes");
+            pageSubtitle_->SetText(scenesPage_->Subtitle());
+            scenesPage_->Refresh();
+            break;
+        case Page::Settings:
+            pageTitle_->SetText("Settings");
+            pageSubtitle_->SetText(std::string("SmartHome Center ") + SMARTHOMECENTER_VERSION +
+                                   (demoHome_ ? "  ·  demo home" : ""));
+            settingsPage_->Refresh();
+            break;
+        case Page::Device:
+            // The page's own head names the device.
+            pageTitle_->SetText("Device");
+            pageSubtitle_->SetText("Its controls, history and details  ·  Back returns to " +
+                                   std::string(backPage_ == Page::Rooms ? "Rooms" : backPage_ == Page::Devices ? "Devices"
+                                               : backPage_ == Page::Scenes ? "Scenes" : "Home"));
+            break;
+        case Page::FirstRun:
+            pageTitle_->SetText("Getting started");
+            pageSubtitle_->SetText("A minute to set up the home - every step can be changed later");
+            break;
     }
+    addButton_->SetVisible(page != Page::FirstRun);
     content_->InvalidateLayout();
     if (window_) window_->RequestRedraw();
 }
 
 // ===== ACTIONS =====
+
+void SmartHomeCenterWindow::OpenDevice(const std::string& deviceId) {
+    bool known = false;
+    for (const DeviceView& v : views_) known = known || v.info.DeviceId == deviceId;
+    if (!known) return;
+    selectedId_ = deviceId;
+    devicePage_->Show(deviceId);
+    ShowPage(Page::Device);
+}
+
+void SmartHomeCenterWindow::GoBack() {
+    ShowPage(backPage_ == Page::Device ? Page::Home : backPage_);
+}
+
+void SmartHomeCenterWindow::Note(const std::string& text) {
+    Log("SmartHome Center", "", text, false);
+}
 
 void SmartHomeCenterWindow::ToggleDevice(const std::string& id, bool on) {
     SmartHomeAPI::Instance().SetSwitchState(id, on);

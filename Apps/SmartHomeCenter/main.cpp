@@ -25,6 +25,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
@@ -32,6 +33,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <system_error>
 #include <string>
 #include <vector>
 
@@ -74,7 +77,9 @@ void PrintUsage(const char* programName) {
         "  --log [--since 1h]  Print the event log\n"
         "\n"
         "Window options:\n"
-        "  --page <name>       Open on a page: home, devices, energy or activity\n"
+        "  --page <name>       Open on a page: home, rooms, devices, scenes, energy, activity,\n"
+        "                      settings, or device (the one --select names)\n"
+        "  --first-run         Open on the getting-started guide, as on the very first start\n"
         "  --select <device>   Open with a device selected, by its name\n"
         "  --trigger <device>  Demo home: set a sensor off as the window opens\n"
         "                      (\"Under-sink leak sensor\", \"Hallway motion\", ...)\n"
@@ -84,10 +89,15 @@ void PrintUsage(const char* programName) {
 }
 
 bool ParsePage(const std::string& text, SmartHomeCenter::Page& page) {
-    if (text == "home") page = SmartHomeCenter::Page::Home;
-    else if (text == "devices") page = SmartHomeCenter::Page::Devices;
-    else if (text == "energy") page = SmartHomeCenter::Page::Energy;
-    else if (text == "activity") page = SmartHomeCenter::Page::Activity;
+    using SmartHomeCenter::Page;
+    if (text == "home") page = Page::Home;
+    else if (text == "rooms") page = Page::Rooms;
+    else if (text == "devices") page = Page::Devices;
+    else if (text == "scenes") page = Page::Scenes;
+    else if (text == "energy") page = Page::Energy;
+    else if (text == "activity") page = Page::Activity;
+    else if (text == "settings") page = Page::Settings;
+    else if (text == "device") page = Page::Device;   // with --select
     else return false;
     return true;
 }
@@ -104,6 +114,7 @@ int main(int argc, char* argv[]) {
     SmartHomeCenter::Page page = SmartHomeCenter::Page::Home;
     std::string select;
     std::vector<std::string> triggers;
+    bool forceFirstRun = false;
 
     auto takeAction = [&](Action a, int args, int& i, const char* what) {
         if (action != Action::Window) {
@@ -148,9 +159,11 @@ int main(int argc, char* argv[]) {
             since = argv[++i];
         } else if (arg == "--demo") {
             demo = true;
+        } else if (arg == "--first-run") {
+            forceFirstRun = true;
         } else if (arg == "--page") {
             if (i + 1 >= argc || !ParsePage(argv[++i], page)) {
-                std::fprintf(stderr, "--page needs one of: home, devices, energy, activity\n");
+                std::fprintf(stderr, "--page needs one of: home, rooms, devices, scenes, energy, activity, settings, device\n");
                 return EXIT_FAILURE;
             }
         } else if (arg == "--select") {
@@ -225,6 +238,12 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         const bool simulated = SmartHomeCenter::StartHome(demo);
+        // A home whose data file does not exist yet is new: the window opens
+        // on the getting-started guide.
+        const std::string storeFile = SmartHomeCenter::DefaultStorePath(simulated);
+        std::error_code ec;
+        const bool firstRun = forceFirstRun ||
+                              (!storeFile.empty() && !std::filesystem::exists(PathFromUtf8(storeFile), ec));
         // The home's own database: rooms, scenes, automations, names, the
         // log and the history. Without one the window still works; it just
         // forgets on exit, and says so in the log.
@@ -233,14 +252,17 @@ int main(int argc, char* argv[]) {
             debugOutput << "SmartHome store not opened: " << storeError << std::endl;
         {
             SmartHomeCenter::SmartHomeCenterWindow window;
-            if (!window.Initialize(simulated)) {
+            if (!window.Initialize(simulated, firstRun)) {
                 debugOutput << "Failed to create the SmartHome Center window" << std::endl;
                 exitCode = EXIT_FAILURE;
             } else {
-                window.ShowPage(page);
+                if (!firstRun) window.ShowPage(page == SmartHomeCenter::Page::Device ? SmartHomeCenter::Page::Home : page);
                 if (!select.empty()) {
                     const std::string id = window.FindDeviceByName(select);
-                    if (!id.empty()) window.SelectDevice(id);
+                    if (!id.empty()) {
+                        window.SelectDevice(id);
+                        if (page == SmartHomeCenter::Page::Device && !firstRun) window.OpenDevice(id);
+                    }
                 }
                 // Through the API like any command; only the demo home's
                 // devices answer these.

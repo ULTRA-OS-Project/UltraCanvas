@@ -36,6 +36,13 @@ target_compile_features(SmartHomeCenterCore PUBLIC cxx_std_20)
 
 add_executable(SmartHomeCenter
     main.cpp
+    ui/SmartHomeCenterControls.cpp
+    ui/SmartHomeCenterDevicePage.cpp
+    ui/SmartHomeCenterFirstRun.cpp
+    ui/SmartHomeCenterRoomsPage.cpp
+    ui/SmartHomeCenterScenesPage.cpp
+    ui/SmartHomeCenterSettingsPage.cpp
+    ui/SmartHomeCenterStyle.cpp
     ui/SmartHomeCenterWindow.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h): it owns the radios.
