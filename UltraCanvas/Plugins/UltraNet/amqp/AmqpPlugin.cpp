@@ -13,12 +13,16 @@
 //                                amqp_consume_message and dispatches.
 // Apps wanting advanced AMQP semantics (custom exchanges, headers,
 // confirms) can extend this plug-in or use librabbitmq directly.
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
@@ -166,133 +170,143 @@ public:
         return {"amqp", "amqps"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        // Stop every receiver before the sessions go (and, for CoAP, before the
-        // library is cleaned up under a running coap_io_process).
-        std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> all;
-        {
-            std::lock_guard<std::mutex> lk(G().sessionsMutex);
-            all.swap(G().sessions);
-        }
-        for (auto& [handle, s] : all) s->Stop();
-        all.clear();
+        ultranet_plugin::GuardedVoid([&]() {
+            // Stop every receiver before the sessions go (and, for CoAP, before the
+            // library is cleaned up under a running coap_io_process).
+            std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> all;
+            {
+                std::lock_guard<std::mutex> lk(G().sessionsMutex);
+                all.swap(G().sessions);
+            }
+            for (auto& [handle, s] : all) s->Stop();
+            all.clear();
+        });
     }
 
     UltraNetHandle Connect(const std::string& url,
                            const UltraNetMessagingOptions& options) override {
-        UltraNetUrlComponents c;
-        if (!UltraNet_ParseUrl(url, c)) return UltraNetInvalidHandle;
-        if (c.scheme != "amqp" && c.scheme != "amqps") return UltraNetInvalidHandle;
-        const bool tls = (c.scheme == "amqps");
-        const int  port = c.port > 0 ? c.port : (tls ? 5671 : 5672);
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            UltraNetUrlComponents c;
+            if (!UltraNet_ParseUrl(url, c)) return UltraNetInvalidHandle;
+            if (c.scheme != "amqp" && c.scheme != "amqps") return UltraNetInvalidHandle;
+            const bool tls = (c.scheme == "amqps");
+            const int  port = c.port > 0 ? c.port : (tls ? 5671 : 5672);
 
-        auto s = std::make_shared<Session>();
-        s->qos   = options.qos;
-        s->vhost = c.path.empty() || c.path == "/" ? "/" : c.path;
+            auto s = std::make_shared<Session>();
+            s->qos   = options.qos;
+            s->vhost = c.path.empty() || c.path == "/" ? "/" : c.path;
 
-        s->conn = amqp_new_connection();
-        if (!s->conn) return UltraNetInvalidHandle;
-        amqp_socket_t* sock = tls ? amqp_ssl_socket_new(s->conn)
-                                  : amqp_tcp_socket_new(s->conn);
-        if (!sock) return UltraNetInvalidHandle;
+            s->conn = amqp_new_connection();
+            if (!s->conn) return UltraNetInvalidHandle;
+            amqp_socket_t* sock = tls ? amqp_ssl_socket_new(s->conn)
+                                      : amqp_tcp_socket_new(s->conn);
+            if (!sock) return UltraNetInvalidHandle;
 
-        if (amqp_socket_open(sock, c.host.c_str(), port) != AMQP_STATUS_OK) {
-            return UltraNetInvalidHandle;
-        }
+            if (amqp_socket_open(sock, c.host.c_str(), port) != AMQP_STATUS_OK) {
+                return UltraNetInvalidHandle;
+            }
 
-        // Credentials precedence: explicit options first, URL userinfo
-        // second, "guest"/"guest" last-resort default.
-        const std::string user = !options.credentials.username.empty()
-                                     ? options.credentials.username
-                                     : (!c.username.empty() ? c.username : "guest");
-        const std::string pass = !options.credentials.password.empty()
-                                     ? options.credentials.password
-                                     : (!c.password.empty() ? c.password : "guest");
+            // Credentials precedence: explicit options first, URL userinfo
+            // second, "guest"/"guest" last-resort default.
+            const std::string user = !options.credentials.username.empty()
+                                         ? options.credentials.username
+                                         : (!c.username.empty() ? c.username : "guest");
+            const std::string pass = !options.credentials.password.empty()
+                                         ? options.credentials.password
+                                         : (!c.password.empty() ? c.password : "guest");
 
-        amqp_rpc_reply_t login = amqp_login(
-            s->conn, s->vhost.c_str(), 0, 131072,
-            options.keepAliveSeconds > 0 ? options.keepAliveSeconds : 60,
-            AMQP_SASL_METHOD_PLAIN, user.c_str(), pass.c_str());
-        if (login.reply_type != AMQP_RESPONSE_NORMAL) return UltraNetInvalidHandle;
+            amqp_rpc_reply_t login = amqp_login(
+                s->conn, s->vhost.c_str(), 0, 131072,
+                options.keepAliveSeconds > 0 ? options.keepAliveSeconds : 60,
+                AMQP_SASL_METHOD_PLAIN, user.c_str(), pass.c_str());
+            if (login.reply_type != AMQP_RESPONSE_NORMAL) return UltraNetInvalidHandle;
 
-        amqp_channel_open(s->conn, s->channel);
-        if (amqp_get_rpc_reply(s->conn).reply_type != AMQP_RESPONSE_NORMAL) {
-            return UltraNetInvalidHandle;
-        }
+            amqp_channel_open(s->conn, s->channel);
+            if (amqp_get_rpc_reply(s->conn).reply_type != AMQP_RESPONSE_NORMAL) {
+                return UltraNetInvalidHandle;
+            }
 
-        const UltraNetHandle h =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        s->handle = h;
-        s->Start([s]() { ReceiverLoop(s); });
-        {
-            std::lock_guard<std::mutex> lk(G().sessionsMutex);
-            G().sessions[h] = s;
-        }
-        return h;
+            const UltraNetHandle h =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            s->handle = h;
+            s->Start([s]() { ReceiverLoop(s); });
+            {
+                std::lock_guard<std::mutex> lk(G().sessionsMutex);
+                G().sessions[h] = s;
+            }
+            return h;
+        });
     }
 
     UltraNetResult Publish(UltraNetHandle handle,
                            const std::string& topic,
                            const std::vector<uint8_t>& payload) override {
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                             "no such AMQP session");
-        amqp_basic_properties_t props{};
-        props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
-        props.content_type  = amqp_cstring_bytes("application/octet-stream");
-        props.delivery_mode = 2;   // persistent
+        return ultranet_plugin::Guarded("Publish", [&]() -> UltraNetResult {
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                                 "no such AMQP session");
+            amqp_basic_properties_t props{};
+            props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
+            props.content_type  = amqp_cstring_bytes("application/octet-stream");
+            props.delivery_mode = 2;   // persistent
 
-        amqp_bytes_t body;
-        body.len   = payload.size();
-        body.bytes = const_cast<uint8_t*>(payload.data());
+            amqp_bytes_t body;
+            body.len   = payload.size();
+            body.bytes = const_cast<uint8_t*>(payload.data());
 
-        // Default exchange: routing_key == queue name. Same shape we tell
-        // Subscribe() to use, so a publish/subscribe pair on the same
-        // topic round-trips end-to-end.
-        const int rc = amqp_basic_publish(
-            s->conn, s->channel,
-            amqp_empty_bytes,                      // default exchange
-            StrToBytes(topic),                     // routing key
-            0, 0,                                  // mandatory/immediate
-            &props, body);
-        if (rc != AMQP_STATUS_OK) {
-            return UltraNetResult::Error(UltraNetResultCode::SendFailed,
-                                         "amqp_basic_publish failed");
-        }
-        return UltraNetResult::Ok();
+            // Default exchange: routing_key == queue name. Same shape we tell
+            // Subscribe() to use, so a publish/subscribe pair on the same
+            // topic round-trips end-to-end.
+            const int rc = amqp_basic_publish(
+                s->conn, s->channel,
+                amqp_empty_bytes,                      // default exchange
+                StrToBytes(topic),                     // routing key
+                0, 0,                                  // mandatory/immediate
+                &props, body);
+            if (rc != AMQP_STATUS_OK) {
+                return UltraNetResult::Error(UltraNetResultCode::SendFailed,
+                                             "amqp_basic_publish failed");
+            }
+            return UltraNetResult::Ok();
+        });
     }
 
     UltraNetResult Subscribe(UltraNetHandle handle,
                              const std::string& topic,
                              MessageHandler onMessage) override {
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                             "no such AMQP session");
-        if (!onMessage) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                         "onMessage callback is required");
-        }
-        // Declare a queue with the topic name; durable, not exclusive.
-        amqp_queue_declare(s->conn, s->channel, StrToBytes(topic),
-                           0, 1, 0, 0, amqp_empty_table);
-        if (amqp_get_rpc_reply(s->conn).reply_type != AMQP_RESPONSE_NORMAL) {
-            return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                         "amqp_queue_declare failed");
-        }
-        // Start consuming. no_ack=1 (auto-ack) for simplicity.
-        amqp_basic_consume(s->conn, s->channel, StrToBytes(topic),
-                           amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
-        if (amqp_get_rpc_reply(s->conn).reply_type != AMQP_RESPONSE_NORMAL) {
-            return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                         "amqp_basic_consume failed");
-        }
-        {
-            std::lock_guard<std::mutex> lk(s->handlersMutex);
-            s->handlers[topic] = std::move(onMessage);
-        }
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Subscribe", [&]() -> UltraNetResult {
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                                 "no such AMQP session");
+            if (!onMessage) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                             "onMessage callback is required");
+            }
+            // Declare a queue with the topic name; durable, not exclusive.
+            amqp_queue_declare(s->conn, s->channel, StrToBytes(topic),
+                               0, 1, 0, 0, amqp_empty_table);
+            if (amqp_get_rpc_reply(s->conn).reply_type != AMQP_RESPONSE_NORMAL) {
+                return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                             "amqp_queue_declare failed");
+            }
+            // Start consuming. no_ack=1 (auto-ack) for simplicity.
+            amqp_basic_consume(s->conn, s->channel, StrToBytes(topic),
+                               amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
+            if (amqp_get_rpc_reply(s->conn).reply_type != AMQP_RESPONSE_NORMAL) {
+                return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                             "amqp_basic_consume failed");
+            }
+            {
+                std::lock_guard<std::mutex> lk(s->handlersMutex);
+                s->handlers[topic] = std::move(onMessage);
+            }
+            return UltraNetResult::Ok();
+        });
     }
 };
 

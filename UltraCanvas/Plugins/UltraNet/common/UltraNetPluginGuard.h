@@ -7,6 +7,8 @@
 // comes back as a PluginError result that names the call and the reason.
 // Header-only, so every plug-in DSO carries its own copy (the plug-in import
 // check stays clean).
+// Version: 0.2.0 - GuardedHandle, for the connect / open entry points of the
+//                  messaging, streaming and remote-shell plug-ins
 // Version: 0.1.0 - moved here from the JMAP plug-in's JmapCore.h, for the
 //                  IMAP, SMTP and POP3 plug-ins too
 // Author: UltraCanvas Framework / ULTRA OS
@@ -32,6 +34,18 @@ UltraNetResult Guarded(const char* what, Body&& body) {
     } catch (...) {
         return UltraNetResult::Error(UltraNetResultCode::PluginError,
                                      std::string(what) + ": an unexpected error");
+    }
+}
+
+// The same for an entry point that returns a handle (Connect, OpenStream,
+// OpenShell): an exception reads as UltraNetInvalidHandle, which is how
+// those calls report every failure.
+template <typename Body>
+UltraNetHandle GuardedHandle(Body&& body) {
+    try {
+        return body();
+    } catch (...) {
+        return UltraNetInvalidHandle;
     }
 }
 
