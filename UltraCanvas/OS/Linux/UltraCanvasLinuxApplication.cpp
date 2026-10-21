@@ -10,6 +10,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLinuxClipboard.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasEmojiSettings.h"
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
@@ -1092,6 +1093,9 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
             }
         }
+        // The emoji font the emoji setting picks (UOS-Settings), and the rule
+        // that draws emoji in it.
+        ApplyEmojiSettings();
         // Materialise the FontSet so FcMatch (and therefore Pango) can
         // actually find the just-added app fonts. No-op on a system-loaded
         // config; required on a FcConfigCreate'd fallback one.

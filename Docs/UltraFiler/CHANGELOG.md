@@ -1,3 +1,21 @@
+#### 2026-10-20 *1.87.0*
+- **The preview pane shows PDFs in the PDF view, and unlocks protected
+  files.** A PDF in the preview pane had been a picture of its first page; it
+  is the PDF view again, pages and all, and PDFs on a remote drive are still
+  fetched to preview them. A password-protected PDF or UltraCanvas layered
+  image shows an **Unlock** button in the pane's info line that asks for the
+  password; while the folder is browsed it is kept, so selecting the file
+  again - or another one there with the same password - previews it without
+  asking. The passwords are forgotten - and an unlocked preview locked again -
+  when the screen locks or UltraFiler has been left alone for ten minutes,
+  and an unlocked preview says *unlocked* beside *PDF* in the info line
+  (framework changelog, pending entries `media-viewer-unlock` and
+  `session-lock`).
+- **Settings > Handling > Protected files.** How long UltraFiler may be left
+  alone before the preview forgets those passwords: a slider from *Never*
+  to 120 minutes, 10 by default. The screen lock forgets them whatever is
+  set.
+
 #### 2026-10-20 *1.86.0*
 - **Changes on an FTP server that takes one connection at a time work.** A
   delete, a rename, a new folder - and the rename that puts an upload in

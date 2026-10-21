@@ -52,6 +52,16 @@ the front; a start without arguments just brings it forward
   or several files to view just those.
 - **e-books:** PageUp / PageDown switch chapters, the TOC panel toggles from
   the reading toolbar.
+- **Password-protected files:** a protected PDF or UltraCanvas image shows
+  an **Unlock** button (Enter does the same); its password is kept while
+  the folder is browsed, and forgotten - the file locked again - when the
+  screen locks or UltraViewer has had no input for a while.
+- **Settings:** the gear at the right end of the bottom bar. *Forget
+  passwords after* sets that while: 1 minute to 2 hours, 10 minutes by
+  default, or *Never* (the screen lock still forgets them). Kept in
+  `UltraViewer/config.ini` of the UltraCanvas settings folder
+  (`~/.config/UltraCanvas` on Linux, `%APPDATA%\UltraCanvas` on Windows,
+  `~/Library/Application Support/UltraCanvas` on macOS).
 
 ## Building
 

@@ -2,7 +2,7 @@
 // The built-in SQLite driver: opens file / in-memory databases and executes
 // parameterized statements on top of libsqlite3. Registered automatically the
 // first time the manager resolves a driver.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
 
@@ -10,7 +10,9 @@
 
 #include <sqlite3.h>
 
+#include <cctype>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -35,6 +37,7 @@ UltraDbResultCode MapSqliteError(int rc) {
         case SQLITE_NOTADB:     return UltraDbResultCode::ConnectionFailed;
         case SQLITE_MISMATCH:   return UltraDbResultCode::TypeMismatch;
         case SQLITE_NOTFOUND:   return UltraDbResultCode::NotFound;
+        case SQLITE_INTERRUPT:  return UltraDbResultCode::Cancelled;
         default:                return UltraDbResultCode::QueryFailed;
     }
 }
@@ -86,11 +89,11 @@ UltraDbResult BindParams(sqlite3* db, sqlite3_stmt* stmt,
     return UltraDbResult::Ok();
 }
 
-// Read column metadata + step the statement to completion, appending rows to
-// `out`. Assumes the statement has already been reset and bound.
-UltraDbResult RunStatement(sqlite3* db, sqlite3_stmt* stmt, UltraDbResultSet& out) {
-    out.Clear();
-
+// A prepared statement's column names, and what else SQLite knows about each
+// column: the declared type always, the table and column it came from where
+// the library has column metadata (checked at configure time:
+// ULTRADATABASE_SQLITE_COLUMN_METADATA).
+void SetColumns(sqlite3_stmt* stmt, UltraDbResultSet& out) {
     const int ncol = sqlite3_column_count(stmt);
     std::vector<std::string> cols;
     cols.reserve(ncol);
@@ -100,39 +103,67 @@ UltraDbResult RunStatement(sqlite3* db, sqlite3_stmt* stmt, UltraDbResultSet& ou
     }
     out.SetColumns(std::move(cols));
 
-    int rc;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        std::vector<UltraDbValue> vals;
-        vals.reserve(ncol);
-        for (int c = 0; c < ncol; ++c) {
-            switch (sqlite3_column_type(stmt, c)) {
-                case SQLITE_INTEGER:
-                    vals.emplace_back(static_cast<int64_t>(sqlite3_column_int64(stmt, c)));
-                    break;
-                case SQLITE_FLOAT:
-                    vals.emplace_back(sqlite3_column_double(stmt, c));
-                    break;
-                case SQLITE_TEXT: {
-                    const unsigned char* t = sqlite3_column_text(stmt, c);
-                    int n = sqlite3_column_bytes(stmt, c);
-                    vals.emplace_back(std::string(reinterpret_cast<const char*>(t),
-                                                  static_cast<size_t>(n)));
-                    break;
-                }
-                case SQLITE_BLOB: {
-                    const uint8_t* b = static_cast<const uint8_t*>(sqlite3_column_blob(stmt, c));
-                    int n = sqlite3_column_bytes(stmt, c);
-                    vals.emplace_back(std::vector<uint8_t>(b, b + n));
-                    break;
-                }
-                case SQLITE_NULL:
-                default:
-                    vals.emplace_back(nullptr);
-                    break;
-            }
-        }
-        out.AddRow(std::move(vals));
+    std::vector<UltraDbColumnInfo> info;
+    info.reserve(ncol);
+    auto text = [](const char* s) { return s ? std::string(s) : std::string(); };
+    for (int c = 0; c < ncol; ++c) {
+        UltraDbColumnInfo ci;
+        ci.name         = out.Columns()[static_cast<size_t>(c)];
+        ci.declaredType = text(sqlite3_column_decltype(stmt, c));
+#if defined(ULTRADATABASE_SQLITE_COLUMN_METADATA)
+        ci.sourceSchema = text(sqlite3_column_database_name(stmt, c));
+        ci.sourceTable  = text(sqlite3_column_table_name(stmt, c));
+        ci.sourceColumn = text(sqlite3_column_origin_name(stmt, c));
+#endif
+        info.push_back(std::move(ci));
     }
+    out.SetColumnInfo(std::move(info));
+}
+
+// The current row of a statement that has just stepped to SQLITE_ROW.
+std::vector<UltraDbValue> ReadRow(sqlite3_stmt* stmt) {
+    const int ncol = sqlite3_column_count(stmt);
+    std::vector<UltraDbValue> vals;
+    vals.reserve(ncol);
+    for (int c = 0; c < ncol; ++c) {
+        switch (sqlite3_column_type(stmt, c)) {
+            case SQLITE_INTEGER:
+                vals.emplace_back(static_cast<int64_t>(sqlite3_column_int64(stmt, c)));
+                break;
+            case SQLITE_FLOAT:
+                vals.emplace_back(sqlite3_column_double(stmt, c));
+                break;
+            case SQLITE_TEXT: {
+                const unsigned char* t = sqlite3_column_text(stmt, c);
+                int n = sqlite3_column_bytes(stmt, c);
+                vals.emplace_back(std::string(reinterpret_cast<const char*>(t),
+                                              static_cast<size_t>(n)));
+                break;
+            }
+            case SQLITE_BLOB: {
+                const uint8_t* b = static_cast<const uint8_t*>(sqlite3_column_blob(stmt, c));
+                int n = sqlite3_column_bytes(stmt, c);
+                vals.emplace_back(std::vector<uint8_t>(b, b + n));
+                break;
+            }
+            case SQLITE_NULL:
+            default:
+                vals.emplace_back(nullptr);
+                break;
+        }
+    }
+    return vals;
+}
+
+// Read column metadata + step the statement to completion, appending rows to
+// `out`. Assumes the statement has already been reset and bound.
+UltraDbResult RunStatement(sqlite3* db, sqlite3_stmt* stmt, UltraDbResultSet& out) {
+    out.Clear();
+    SetColumns(stmt, out);
+
+    int rc;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+        out.AddRow(ReadRow(stmt));
 
     UltraDbResult result;
     if (rc != SQLITE_DONE)
@@ -141,6 +172,15 @@ UltraDbResult RunStatement(sqlite3* db, sqlite3_stmt* stmt, UltraDbResultSet& ou
     result.affectedRows = sqlite3_changes(db);
     result.lastInsertId = sqlite3_last_insert_rowid(db);
     return result;
+}
+
+std::string Trimmed(const char* first, const char* last) {
+    while (first < last && std::isspace(static_cast<unsigned char>(*first))) ++first;
+    while (last > first && std::isspace(static_cast<unsigned char>(last[-1]))) --last;
+    // The statement text SQLite hands back ends at its ';', inclusive.
+    if (last > first && last[-1] == ';') --last;
+    while (last > first && std::isspace(static_cast<unsigned char>(last[-1]))) --last;
+    return std::string(first, last);
 }
 
 // ---- Statement -------------------------------------------------------------
@@ -158,6 +198,21 @@ public:
 private:
     SqliteConnection* owner_;
     sqlite3_stmt*     stmt_;
+};
+
+// ---- Cursor ----------------------------------------------------------------
+
+class SqliteCursor : public IUltraDbCursor {
+public:
+    SqliteCursor(SqliteConnection* owner, sqlite3_stmt* stmt) : owner_(owner), stmt_(stmt) {}
+    ~SqliteCursor() override;
+
+    UltraDbResult Fetch(size_t maxRows, UltraDbResultSet& out, bool& exhausted) override;
+
+private:
+    SqliteConnection* owner_;
+    sqlite3_stmt*     stmt_;
+    bool              done_ = false;
 };
 
 // ---- Connection ------------------------------------------------------------
@@ -232,6 +287,114 @@ public:
         return meta;
     }
 
+    // Introspection is plain SQL through ExecuteDirect, so it takes the
+    // connection mutex statement by statement; see UltraDatabaseSqliteSchema.cpp.
+    UltraDbResult ListSchemas(std::vector<std::string>& out) override {
+        return SqliteListSchemas(*this, out);
+    }
+    UltraDbResult ListObjects(const std::string& schema,
+                              std::vector<UltraDbObjectSummary>& out) override {
+        return SqliteListObjects(*this, schema, out);
+    }
+    UltraDbResult DescribeTable(const std::string& schema, const std::string& table,
+                                UltraDbTableSchema& out) override {
+        return SqliteDescribeTable(*this, schema, table, out);
+    }
+
+    // Each statement of the script with its own result: the same tail loop as
+    // ExecuteDirect's batch, keeping every result instead of the last.
+    UltraDbResult ExecuteBatch(const std::string& sql,
+                               std::vector<UltraDbStatementResult>& out) override {
+        std::lock_guard<std::mutex> lk(mtx_);
+        out.clear();
+        const char* tail = sql.c_str();
+        while (tail && *tail) {
+            sqlite3_stmt* stmt = nullptr;
+            const char* next = nullptr;
+            int rc = sqlite3_prepare_v2(db_, tail, -1, &stmt, &next);
+            if (rc != SQLITE_OK) {
+                // SQLite says nothing of where a statement it cannot parse
+                // ends, so the rest of the script stands in for it.
+                UltraDbStatementResult failed;
+                failed.sql = Trimmed(tail, tail + std::strlen(tail));
+                failed.result = SqliteError(db_, rc, "prepare");
+                out.push_back(std::move(failed));
+                return out.back().result;
+            }
+            if (!stmt) { tail = next; continue; }   // only whitespace / a comment
+
+            UltraDbStatementResult one;
+            one.sql = Trimmed(tail, next);
+            one.returnsRows = sqlite3_column_count(stmt) > 0;
+            one.result = RunStatement(db_, stmt, one.rows);
+            sqlite3_finalize(stmt);
+            const bool ok = one.result.success;
+            out.push_back(std::move(one));
+            if (!ok) return out.back().result;
+            tail = next;
+        }
+        return UltraDbResult::Ok();
+    }
+
+    // sqlite3_interrupt is the one SQLite call made for exactly this: safe
+    // from another thread, and it does not take the connection's lock - which
+    // the running statement holds.
+    UltraDbResult Cancel() override {
+        sqlite3_interrupt(db_);
+        return UltraDbResult::Ok();
+    }
+
+    std::unique_ptr<IUltraDbCursor> OpenCursor(const std::string& sql,
+                                               const UltraDbParams& params,
+                                               UltraDbResult& error) override {
+        std::lock_guard<std::mutex> lk(mtx_);
+        sqlite3_stmt* stmt = nullptr;
+        const char* tail = nullptr;
+        int rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, &tail);
+        if (rc != SQLITE_OK || !stmt) {
+            error = stmt ? SqliteError(db_, rc, "prepare")
+                         : UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                                "a cursor needs a statement", kDriverId);
+            if (stmt) sqlite3_finalize(stmt);
+            return nullptr;
+        }
+        // One statement: what would a cursor over the second one even mean.
+        for (const char* t = tail; t && *t; ++t) {
+            if (!std::isspace(static_cast<unsigned char>(*t)) && *t != ';') {
+                sqlite3_finalize(stmt);
+                error = UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                             "a cursor takes one statement", kDriverId);
+                return nullptr;
+            }
+        }
+        UltraDbResult bound = BindParams(db_, stmt, params);
+        if (!bound) { sqlite3_finalize(stmt); error = bound; return nullptr; }
+        error = UltraDbResult::Ok();
+        return std::make_unique<SqliteCursor>(this, stmt);
+    }
+
+    // Called by SqliteCursor; takes the connection mutex for one page.
+    UltraDbResult FetchCursor(sqlite3_stmt* stmt, bool& done, size_t maxRows,
+                              UltraDbResultSet& out, bool& exhausted) {
+        std::lock_guard<std::mutex> lk(mtx_);
+        out.Clear();
+        SetColumns(stmt, out);
+        exhausted = done;
+        while (!done && out.Size() < maxRows) {
+            const int rc = sqlite3_step(stmt);
+            if (rc == SQLITE_ROW) { out.AddRow(ReadRow(stmt)); continue; }
+            done = true;
+            exhausted = true;
+            if (rc != SQLITE_DONE) return SqliteError(db_, rc, "step");
+        }
+        return UltraDbResult::Ok();
+    }
+
+    void FinalizeCursor(sqlite3_stmt* stmt) {
+        std::lock_guard<std::mutex> lk(mtx_);
+        sqlite3_finalize(stmt);
+    }
+
     // Called by SqliteStatement::Execute under the connection mutex.
     UltraDbResult ExecuteStatement(sqlite3_stmt* stmt, const UltraDbParams& params,
                                    UltraDbResultSet& out) {
@@ -247,6 +410,14 @@ private:
     sqlite3*   db_;
     std::mutex mtx_;
 };
+
+SqliteCursor::~SqliteCursor() {
+    if (stmt_ && owner_) owner_->FinalizeCursor(stmt_);
+}
+
+UltraDbResult SqliteCursor::Fetch(size_t maxRows, UltraDbResultSet& out, bool& exhausted) {
+    return owner_->FetchCursor(stmt_, done_, maxRows, out, exhausted);
+}
 
 UltraDbResult SqliteStatement::Execute(const UltraDbParams& params, UltraDbResultSet& out) {
     if (!stmt_ || !owner_)

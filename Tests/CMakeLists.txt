@@ -697,6 +697,11 @@ else()
     message(STATUS "  FontChangeRepaintTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== EMOJI SETTINGS TEST =====
+# Defined in EmojiTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_EMOJI_TESTS) where BUILD_TESTS is off - the Windows row.
+include(${CMAKE_CURRENT_SOURCE_DIR}/EmojiTests.cmake)
+
 # ===== NEW DOCUMENT DIALOG LAYOUT TEST =====
 # The new-document dialog's list names, "File name:" label and file preview
 # are drawn on the rows and fields they belong to, headless.
@@ -757,6 +762,24 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ChartElementBehaviourTest")
 else()
     message(STATUS "  ChartElementBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== GAUGE LINEAR MODES TEST =====
+# The gauge's six bar modes: inside their box at every size and orientation,
+# the bar drawn where there is room, the value following a changed range.
+if(TARGET UltraCanvas)
+    add_executable(GaugeLinearModesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/GaugeLinearModesTest.cpp
+    )
+    target_include_directories(GaugeLinearModesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(GaugeLinearModesTest PRIVATE cxx_std_20)
+    target_link_libraries(GaugeLinearModesTest PRIVATE UltraCanvas)
+    set_target_properties(GaugeLinearModesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME GaugeLinearModesTest COMMAND GaugeLinearModesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: GaugeLinearModesTest")
 endif()
 
 # ===== IMAGE AND RADIO BEHAVIOUR TEST =====
@@ -1586,11 +1609,14 @@ message(STATUS "  Building EBookArchiveTest...")
 
 # miniz is C; the top-level project only declares C++.
 enable_language(C)
-# glibc's 64-bit file calls for miniz, as UltraCanvas/CMakeLists.txt explains:
-# without them it warns (#pragma message) in every test that compiles it.
+# glibc's and bionic's 64-bit file calls for miniz, as UltraCanvas/CMakeLists.txt
+# explains: without them it warns (#pragma message) in every test that compiles it.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_property(SOURCE ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
                  APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set_property(SOURCE ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+                 APPEND PROPERTY COMPILE_DEFINITIONS __USE_LARGEFILE64)
 endif()
 
 add_executable(EBookArchiveTest
@@ -5427,6 +5453,8 @@ if(TARGET UltraCanvas)
     target_include_directories(VectorRasterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(VectorRasterTest PRIVATE cxx_std_20)
     target_link_libraries(VectorRasterTest PRIVATE UltraCanvas)
+    target_compile_definitions(VectorRasterTest PRIVATE
+        UC_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     set_target_properties(VectorRasterTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -5810,7 +5838,8 @@ if(TARGET UltraCanvas)
     target_include_directories(MediaViewerToolsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(MediaViewerToolsTest PRIVATE cxx_std_20)
     target_compile_definitions(MediaViewerToolsTest PRIVATE
-        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media"
+        UC_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(MediaViewerToolsTest PRIVATE UltraCanvas)
     set_target_properties(MediaViewerToolsTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -5820,6 +5849,59 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MediaViewerToolsTest")
 else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ULTRAVIEWER SETTINGS TEST =====
+# UltraViewer's settings file (Apps/UltraViewer/UltraViewerSettings.h,
+# header-only): the minutes before Unlock's passwords are forgotten - the
+# default, never, and hand-edited values. Works in a temporary folder.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraViewerSettingsTest...")
+    add_executable(UltraViewerSettingsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraViewerSettingsTest.cpp
+    )
+    target_include_directories(UltraViewerSettingsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraViewer)
+    target_compile_features(UltraViewerSettingsTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraViewerSettingsTest PRIVATE UltraCanvas)
+    set_target_properties(UltraViewerSettingsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraViewerSettingsTest COMMAND UltraViewerSettingsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraViewerSettingsTest")
+else()
+    message(STATUS "  UltraViewerSettingsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== SESSION LOCK TEST =====
+# Session-lock listeners hear a lock and an unlock once each; on Linux the
+# D-Bus backend turns a screensaver's ActiveChanged into those calls. That
+# half needs a display and a session bus, so CTest gives it a bus of its own
+# through dbus-run-session where one is installed; it skips without either.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SessionLockTest...")
+    add_executable(SessionLockTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SessionLockTest.cpp
+    )
+    target_include_directories(SessionLockTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SessionLockTest PRIVATE cxx_std_20)
+    target_link_libraries(SessionLockTest PRIVATE UltraCanvas)
+    set_target_properties(SessionLockTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    find_program(ULTRACANVAS_DBUS_RUN_SESSION dbus-run-session)
+    if(ULTRACANVAS_DBUS_RUN_SESSION AND UNIX AND NOT APPLE)
+        add_test(NAME SessionLockTest
+                 COMMAND ${ULTRACANVAS_DBUS_RUN_SESSION} -- $<TARGET_FILE:SessionLockTest>
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    else()
+        add_test(NAME SessionLockTest COMMAND SessionLockTest
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
+    message(STATUS "    Test registered: SessionLockTest")
+else()
+    message(STATUS "  SessionLockTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== MEDIA VIEWER SAVE TEST =====

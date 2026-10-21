@@ -1,5 +1,7 @@
 // Plugins/Charts/UltraCanvasSpecificChartElements.cpp
 // Specific chart element implementations with aligned X-axis positioning
+// Version: 1.3.0 - bars: the value axis reaches 0 before it is padded; a
+//                  horizontal orientation; a fixed value range; value labels
 // Version: 1.2.0 - zoomed line/area/scatter clip to the plot and hover only
 //                  points in view; bars rise from the zero line
 // Version: 1.1.0
@@ -141,89 +143,107 @@ namespace UltraCanvas {
 // BAR CHART IMPLEMENTATION
 // =============================================================================
 
+    double UltraCanvasBarChartElement::ValueToScreen(double value) const {
+        const double lo = cachedDataBounds.minY, hi = cachedDataBounds.maxY;
+        const double t = hi > lo ? (value - lo) / (hi - lo) : 0.5;
+        if (orientation == BarChartOrientation::Horizontal) {
+            return cachedPlotArea.x + t * cachedPlotArea.width;
+        }
+        return cachedPlotArea.GetBottom() - t * cachedPlotArea.height;
+    }
+
+    Rect2Dd UltraCanvasBarChartElement::GetBarRect(size_t index) {
+        UpdateRenderingCache();
+        if (!dataSource || index >= dataSource->GetPointCount()) return Rect2Dd();
+        const size_t count = dataSource->GetPointCount();
+        const double value = dataSource->GetPoint(index).y;
+        // The zero line, kept inside the plot when a value range leaves 0 out.
+        const double lo = cachedDataBounds.minY, hi = cachedDataBounds.maxY;
+        const double base = ValueToScreen(std::clamp(0.0, lo, hi));
+        const double end = ValueToScreen(std::clamp(value, lo, hi));
+
+        if (orientation == BarChartOrientation::Horizontal) {
+            // One row per category, first at the top.
+            const double row = cachedPlotArea.height / static_cast<double>(count);
+            const double gap = row * barSpacing;
+            const double y = cachedPlotArea.y + index * row + gap / 2;
+            return Rect2Dd(std::min(base, end), y, std::abs(end - base), row - gap);
+        }
+        const double slot = cachedPlotArea.width / static_cast<double>(count);
+        const double gap = slot * barSpacing;
+        const double x = cachedPlotArea.x + index * slot + gap / 2;
+        return Rect2Dd(x, std::min(base, end), slot - gap, std::abs(end - base));
+    }
+
     void UltraCanvasBarChartElement::RenderChart(IRenderContext* ctx) {
         if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
 
-        size_t pointCount = dataSource->GetPointCount();
-
+        const size_t pointCount = dataSource->GetPointCount();
         for (size_t i = 0; i < pointCount; ++i) {
-            auto point = dataSource->GetPoint(i);
+            const Rect2Dd bar = GetBarRect(i);
+            if (bar.width <= 0 && bar.height <= 0) continue;
 
-            double barX, barY, barHeight;
+            // A point's own colour, where it has one, wins over the series'.
+            const Color fill = dataSource->GetPoint(i).color.a > 0 ? dataSource->GetPoint(i).color : barColor;
+            ctx->SetFillPaint(fill);
+            ctx->FillRectangle(bar);
 
-            if (IsUsingIndexBasedPositioning()) {
-                // When using labels, distribute bars evenly across width
-                double totalWidth = cachedPlotArea.width;
-                double barWidth = totalWidth / pointCount;
-                double actualBarSpacing = barWidth * barSpacing;
-                double actualBarWidth = barWidth - actualBarSpacing;
-
-                barX = cachedPlotArea.x + (i * barWidth) + (actualBarSpacing / 2);
-
-                // Calculate Y position for the bar top; the bar starts at 0
-                ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                auto topPos = transform.DataToScreen(point.x, point.y);
-                auto bottomPos = transform.DataToScreen(point.x, 0.0);
-
-                barY = topPos.y;
-                barHeight = bottomPos.y - topPos.y;
-
-                if (barHeight < 0) {
-                    barHeight = -barHeight;
-                    barY = bottomPos.y;
-                }
-
-                // Draw the bar
-                ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(Rect2Dd(barX, barY, actualBarWidth, barHeight));
-
-                // Draw border if enabled
-                if (barBorderWidth > 0) {
-                    ctx->SetStrokePaint(barBorderColor);
-                    ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(Rect2Dd(barX, barY, actualBarWidth, barHeight));
-                }
-            } else {
-                // Use original numeric positioning
-                ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                double barWidth = cachedPlotArea.width / static_cast<double>(pointCount);
-                double actualBarSpacing = barWidth * barSpacing;
-                double actualBarWidth = barWidth - actualBarSpacing;
-
-                barX = cachedPlotArea.x + (i * barWidth) + (actualBarSpacing / 2);
-
-                auto topPos = transform.DataToScreen(point.x, point.y);
-                auto bottomPos = transform.DataToScreen(point.x, 0.0);   // the zero line
-
-                barHeight = bottomPos.y - topPos.y;
-                if (barHeight < 0) {
-                    barHeight = -barHeight;
-                    topPos.y = bottomPos.y;
-                }
-
-                ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(Rect2Dd(barX, topPos.y, actualBarWidth, barHeight));
-
-                if (barBorderWidth > 0) {
-                    ctx->SetStrokePaint(barBorderColor);
-                    ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(Rect2Dd(barX, topPos.y, actualBarWidth, barHeight));
-                }
+            if (barBorderWidth > 0) {
+                ctx->SetStrokePaint(barBorderColor);
+                ctx->SetStrokeWidth(barBorderWidth);
+                ctx->DrawRectangle(bar);
             }
         }
+
+        if (showValueLabels) {
+            ctx->SetTextPaint(valueLabelColor);
+            ctx->SetFontSize(valueLabelFontSize);
+            for (size_t i = 0; i < pointCount; ++i) {
+                DrawBarValueLabel(ctx, GetBarRect(i), dataSource->GetPoint(i).y);
+            }
+        }
+    }
+
+    void UltraCanvasBarChartElement::DrawBarValueLabel(IRenderContext* ctx, const Rect2Dd& bar, double value) {
+        // Past the bar's end: above a rising bar, below a hanging one, right
+        // of a bar running right, left of one running left.
+        const std::string text = FormatAxisLabel(value);
+        const Size2Di size = ctx->GetTextLineDimensions(text);
+        const double gap = 4.0;
+        Point2Dd at;
+        if (orientation == BarChartOrientation::Horizontal) {
+            const double y = bar.y + (bar.height - size.height) / 2.0;
+            at = value >= 0 ? Point2Dd(bar.x + bar.width + gap, y)
+                            : Point2Dd(bar.x - gap - size.width, y);
+        } else {
+            const double x = bar.x + (bar.width - size.width) / 2.0;
+            at = value >= 0 ? Point2Dd(x, bar.y - gap - size.height)
+                            : Point2Dd(x, bar.y + bar.height + gap);
+        }
+        ctx->DrawText(text, at);
     }
 
     bool UltraCanvasBarChartElement::HandleChartMouseMove(const Point2Di& mousePos) {
         if (!dataSource || !enableTooltips) return false;
 
-        size_t pointCount = dataSource->GetPointCount();
-        double barWidth = cachedPlotArea.width / static_cast<double>(pointCount);
+        const size_t pointCount = dataSource->GetPointCount();
+        if (pointCount == 0) return false;
 
-        // Check if mouse is over any bar
+        // The whole slot (column or row) of a bar answers, not just the bar:
+        // a short bar is still easy to point at.
         for (size_t i = 0; i < pointCount; ++i) {
-            double barX = cachedPlotArea.x + (i * barWidth);
-
-            if (mousePos.x >= barX && mousePos.x <= barX + barWidth) {
+            bool inSlot;
+            if (orientation == BarChartOrientation::Horizontal) {
+                const double row = cachedPlotArea.height / static_cast<double>(pointCount);
+                const double y = cachedPlotArea.y + i * row;
+                inSlot = mousePos.y >= y && mousePos.y <= y + row &&
+                         mousePos.x >= cachedPlotArea.x && mousePos.x <= cachedPlotArea.GetRight();
+            } else {
+                const double slot = cachedPlotArea.width / static_cast<double>(pointCount);
+                const double x = cachedPlotArea.x + i * slot;
+                inSlot = mousePos.x >= x && mousePos.x <= x + slot;
+            }
+            if (inSlot) {
                 auto point = dataSource->GetPoint(i);
                 ShowChartPointTooltip(mousePos, point, i);
                 return true;
@@ -238,16 +258,111 @@ namespace UltraCanvas {
     }
 
     ChartDataBounds UltraCanvasBarChartElement::CalculateDataBounds() {
-        ChartDataBounds bounds = UltraCanvasChartElementBase::CalculateDataBounds();
-        if (!dataSource || dataSource->GetPointCount() == 0) return bounds;
+        ChartDataBounds bounds = CalculateRawDataBounds();
+        if (!bounds.hasData) return bounds;
+        PadDataBounds(bounds, true, false, false);   // x as every chart; the value axis below
 
-        // A bar's length is its value, so the value axis must reach 0: all
-        // positive data starts at 0, all negative data ends at 0 (the 5 %
-        // padding stays on the far side only).
-        if (bounds.minY > 0.0) bounds.minY = 0.0;
-        if (bounds.maxY < 0.0) bounds.maxY = 0.0;
-        if (bounds.minY == bounds.maxY) bounds.maxY = bounds.minY + 1.0;   // every value 0
+        if (hasValueRange) {
+            bounds.minY = valueRangeMin;
+            bounds.maxY = valueRangeMax;
+            return bounds;
+        }
+
+        // A bar's length is its value, so the value axis must reach 0. That
+        // has to happen before the padding: padded first, a series whose
+        // smallest value is 0 had its axis start at -5 % of the range, and
+        // the zero line floated above the bottom of the plot.
+        double lo = std::min(bounds.minY, 0.0);
+        double hi = std::max(bounds.maxY, 0.0);
+        if (hi == lo) hi = lo + 1.0;   // every value 0
+        const double range = hi - lo;
+        // Padding only away from zero, then out to the next whole tick, so
+        // the last grid line is the plot's edge.
+        if (hi > 0.0) hi += range * 0.05;
+        if (lo < 0.0) lo -= range * 0.05;
+        const double step = ChartNiceStep(hi - lo, GetYAxisTickTarget());
+        if (step > 0.0) {
+            if (hi > 0.0) hi = std::ceil(hi / step - 1e-9) * step;
+            if (lo < 0.0) lo = std::floor(lo / step + 1e-9) * step;
+        }
+        bounds.minY = lo;
+        bounds.maxY = hi;
         return bounds;
+    }
+
+    ChartPlotArea UltraCanvasBarChartElement::CalculatePlotArea() {
+        if (orientation != BarChartOrientation::Horizontal) {
+            return UltraCanvasChartElementBase::CalculatePlotArea();
+        }
+        // Room for the longest category name, estimated from its length (the
+        // plot is worked out before anything is measured): about 6.5 px a
+        // character at the 10 px label size, within a fifth to two fifths of
+        // the width.
+        size_t longest = 0;
+        if (dataSource) {
+            for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
+                longest = std::max(longest, dataSource->GetPoint(i).label.size());
+            }
+        }
+        const double width = GetWidth();
+        const double left = std::clamp(16.0 + 6.5 * static_cast<double>(longest), width * 0.2, width * 0.4);
+        const double right = showValueLabels ? 56.0 : 20.0;   // value labels past the longest bar
+        const double top = chartTitle.empty() ? 16.0 : 40.0;
+        const double bottom = 34.0;
+        return ChartPlotArea(static_cast<float>(left), static_cast<float>(top),
+                             static_cast<float>(std::max(10.0, width - left - right)),
+                             static_cast<float>(std::max(10.0, GetHeight() - top - bottom)));
+    }
+
+    void UltraCanvasBarChartElement::RenderGrid(IRenderContext* ctx) {
+        ctx->SetStrokePaint(gridColor);
+        ctx->SetStrokeWidth(1.0f);
+        for (double value : GetYAxisTicks().values) {
+            const double at = ValueToScreen(value);
+            if (orientation == BarChartOrientation::Horizontal) {
+                if (at <= cachedPlotArea.x + 0.5 || at >= cachedPlotArea.GetRight() - 0.5) continue;
+                ctx->DrawLine({at, cachedPlotArea.y}, {at, cachedPlotArea.GetBottom()});
+            } else {
+                if (at <= cachedPlotArea.y + 0.5 || at >= cachedPlotArea.GetBottom() - 0.5) continue;
+                ctx->DrawLine({cachedPlotArea.x, at}, {cachedPlotArea.GetRight(), at});
+            }
+        }
+    }
+
+    void UltraCanvasBarChartElement::RenderAxisLabels(IRenderContext* ctx) {
+        if (orientation != BarChartOrientation::Horizontal) {
+            UltraCanvasChartElementBase::RenderAxisLabels(ctx);
+            return;
+        }
+        if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
+
+        ctx->SetStrokePaint(Color(0, 0, 0, 255));
+        ctx->SetTextPaint(Color(0, 0, 0, 255));
+        ctx->SetFontSize(10.0f);
+
+        // The categories down the left, each centred on its row and ending
+        // just short of the axis.
+        const size_t count = dataSource->GetPointCount();
+        const double row = cachedPlotArea.height / static_cast<double>(count);
+        for (size_t i = 0; i < count; ++i) {
+            const auto point = dataSource->GetPoint(i);
+            const std::string label = point.label.empty() ? FormatAxisLabel(point.x) : point.label;
+            const Size2Di size = ctx->GetTextLineDimensions(label);
+            const double y = cachedPlotArea.y + (i + 0.5) * row;
+            ctx->DrawLine({cachedPlotArea.x - 5, y}, {cachedPlotArea.x, y});
+            ctx->DrawText(label, Point2Dd(cachedPlotArea.x - 8 - size.width, y - size.height / 2.0));
+        }
+
+        // The values along the bottom, at whole steps.
+        const ChartAxisTicks ticks = GetYAxisTicks();
+        const double bottom = cachedPlotArea.GetBottom();
+        for (double value : ticks.values) {
+            const double x = ValueToScreen(value);
+            ctx->DrawLine({x, bottom}, {x, bottom + 5});
+            const std::string label = ticks.Format(value);
+            const Size2Di size = ctx->GetTextLineDimensions(label);
+            ctx->DrawText(label, Point2Dd(x - size.width / 2.0, bottom + 8));
+        }
     }
 
     double UltraCanvasBarChartElement::GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) {

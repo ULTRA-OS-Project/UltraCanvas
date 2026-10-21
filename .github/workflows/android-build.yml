@@ -14,6 +14,15 @@ name: Android build
 # part of an hour to build from nothing; vcpkg's binary cache keeps every
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
+#
+# Also once a week on main, to keep that cache warm for everyone. A cache a
+# pull request saves can be read by that pull request alone; only main's are
+# shared. Main otherwise builds this only when the Android build itself
+# changes, so most pull requests found nothing there and each rebuilt all 46
+# libraries from source on its first run. The weekly run restores main's
+# cache, which also keeps GitHub from evicting it after 7 days unused; when
+# eviction has come first, the scheduled run pays for the cold build, not a
+# pull request. It saves only what it built.
 
 on:
   pull_request:
@@ -34,10 +43,16 @@ on:
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
   workflow_dispatch:
+  # Mondays 03:17 UTC: off the hour, when GitHub's scheduler is least
+  # crowded. A schedule always runs on the default branch.
+  schedule:
+    - cron: '17 3 * * 1'
 
+# A newer push cancels a pull request's run in progress; on main nothing is
+# cancelled, so the weekly run and a push's run each finish (as build.yml).
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   android:
@@ -48,6 +63,9 @@ jobs:
       ABI: arm64-v8a
       TRIPLET: arm64-android
       VCPKG_CACHE: ${{ github.workspace }}/.vcpkg/binary-cache
+      # Where vcpkg keeps the source archives and patches it fetched (it
+      # honours VCPKG_DOWNLOADS over its own downloads/ folder).
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.vcpkg/downloads
     steps:
       - uses: actions/checkout@v5
 
@@ -65,17 +83,62 @@ jobs:
 
       # vcpkg's binary cache: each library it built, as one archive per
       # package. Keyed by the manifest, the libvips overlay and the script
-      # (which pins the vcpkg commit), and saved under a fresh key by every
-      # run - a failed one too, so the libraries it did build are kept -
-      # and `restore-keys` falls back to the newest cache.
+      # (which pins the vcpkg commit), and `restore-keys` falls back to the
+      # newest cache. Saved only when the run built something - a failed run
+      # too, so the libraries it did build are kept - because a cache saved
+      # by every run regardless (about 350 MB each) is what pushes the
+      # repository past its cache quota, and GitHub then evicts the oldest
+      # entries, this one included: on 2026-10-20 a run on a PR found none of
+      # the cache an earlier run of the same PR had saved two hours before and
+      # rebuilt all 46 packages. The key carries the run attempt: a key can be
+      # written once, so a re-run that finished what the first attempt could
+      # not would otherwise be refused its save and the half-built set kept.
       - name: Restore vcpkg binary cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.VCPKG_CACHE }}
-          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}
+          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
             android-vcpkg-${{ env.TRIPLET }}-
+
+      # vcpkg's downloads: the source archives and patches a port fetches
+      # before it builds. The binary cache above makes a rebuild rare, but
+      # any port it misses is rebuilt from source - and its sources then come
+      # from the internet again. On 2026-10-20 fmt's backport patch got HTTP
+      # 503 from github.com three times and failed the whole job before a
+      # line of the framework was compiled. vcpkg checks every file it finds
+      # here against the SHA512 in its port, so a stale entry is harmless:
+      # it is fetched again. Saved, like the binary cache, only when a run
+      # added something.
+      #
+      # The `path` here must be the save step's, line for line: actions/cache
+      # files a cache under a version made from its paths, and a restore
+      # with any other list - even the folder alone - finds nothing. The
+      # first cut had the exclusions only on the save, and its 316 MB were
+      # never found again.
+      - name: Restore vcpkg downloads
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ env.VCPKG_DOWNLOADS }}
+            !${{ env.VCPKG_DOWNLOADS }}/tools
+            !${{ env.VCPKG_DOWNLOADS }}/temp
+          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
+            android-vcpkg-downloads-
+
+      # What the two caches held when restored, as a hash of their file names
+      # and sizes; the same listing after the build tells whether a save would
+      # store anything new. Downloads: the archives at the top level only -
+      # downloads/tools holds tools vcpkg unpacked, fetched once and cheaply.
+      - name: List the restored caches
+        id: caches-before
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "binary=$(find "$VCPKG_CACHE" -type f -printf '%P %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "downloads=$(find "$VCPKG_DOWNLOADS" -maxdepth 1 -type f -printf '%f %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       # The runner's NDK (ANDROID_NDK_LATEST_HOME, preinstalled on GitHub's
       # Ubuntu images).
@@ -91,12 +154,30 @@ jobs:
           export VCPKG_BINARY_SOURCES="clear;files,$VCPKG_CACHE,readwrite"
           scripts/android-bootstrap-sysroot.sh "$ABI"
 
-      - name: Save vcpkg binary cache
+      - name: List the caches after the build
+        id: caches-after
         if: always()
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "binary=$(find "$VCPKG_CACHE" -type f -printf '%P %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "downloads=$(find "$VCPKG_DOWNLOADS" -maxdepth 1 -type f -printf '%f %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.caches-after.outputs.binary != steps.caches-before.outputs.binary
         uses: actions/cache/save@v5
         with:
           path: ${{ env.VCPKG_CACHE }}
-          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}
+          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save vcpkg downloads
+        if: always() && steps.caches-after.outputs.downloads != steps.caches-before.outputs.downloads
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ env.VCPKG_DOWNLOADS }}
+            !${{ env.VCPKG_DOWNLOADS }}/tools
+            !${{ env.VCPKG_DOWNLOADS }}/temp
+          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # What vcpkg's logs say when a port fails: the build trees hold them.
       - name: Upload vcpkg logs

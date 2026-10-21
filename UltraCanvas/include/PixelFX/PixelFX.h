@@ -1,9 +1,10 @@
 // PixelFX/include/PixelFX.h
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
+// Version: 1.5.0 - LoadPdf takes the password of a protected PDF
 // Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
 //                  FileLoader's lists
 // Version: 1.3.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -220,7 +221,10 @@ namespace PixelFX {
         PFXImage LoadTiff(const std::string& filename);
         PFXImage LoadGif(const std::string& filename);
         PFXImage LoadHeif(const std::string& filename);
-        PFXImage LoadPdf(const std::string& filename, int page = 0, double dpi = 72.0);
+        // `password` opens a password-protected PDF; without the right one
+        // libvips refuses it ("Document is encrypted").
+        PFXImage LoadPdf(const std::string& filename, int page = 0, double dpi = 72.0,
+                         const std::string& password = std::string());
         PFXImage LoadSvg(const std::string& filename, double dpi = 72.0, double scale = 1.0);
         PFXImage LoadRaw(const std::string& filename, int width, int height, int bands);
 

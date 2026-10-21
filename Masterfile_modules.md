@@ -779,6 +779,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+  Emoji come from a bundled font the emoji setting picks
+  (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
+  `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
+  folder, edited in UOS-Settings > Appearance > Emoji): Noto Color Emoji or
+  Noto Emoji in `media/emoji/`. `ApplyEmojiSettings()`, run by every
+  fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
+  rule that makes Pango's `emoji` runs use it.
+  See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
   covers, a size control and an information line. Built on
@@ -984,6 +993,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
 
+- **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
+  desktop session locks and when it unlocks, so a program forgets what should
+  not outlive the user stepping away (a kept password, a decrypted document on
+  screen). Listener list in `core/UltraCanvasSessionLock.cpp`; per-platform
+  backends under `OS/<Platform>/` (Linux/BSD: logind `Lock` / `Unlock` and
+  `LockedHint` on the system bus plus the screensaver's `ActiveChanged` on the
+  session bus, through GDBus on the application's loop; Windows: WTS session
+  notifications on a message-only window; macOS: the
+  `com.apple.screenIsLocked` / `screenIsUnlocked` distributed notifications).
+  Public surface: `AddSessionLockListener(onChange)` /
+  `RemoveSessionLockListener(id)` (the platform is watched only while one is
+  registered; calls on the UI thread, once per change),
+  `IsWatchingSessionLock`, `NotifySessionLockChanged` (what backends, hosts
+  with a lock of their own and tests call). Wired up by
+  `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` in the **top-level** `CMakeLists.txt`;
+  without it nothing is reported. Used by `UltraCanvasMediaViewer` to forget
+  Unlock's passwords, and by UltraPaint for the passwords of a drop. See
+  `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
+
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
   jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a
@@ -1185,7 +1213,9 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
   `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
   `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
-  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips; password
+  protection with `SetUCDPassword` / `LoadUCD(path, error, password)` /
+  `IsPasswordProtected`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1201,7 +1231,10 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
   `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
   `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
-  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  little-endian `ByteWriter` / `ByteReader`; password protection (UCD 2.2):
+  `Writer::SetPassword`, `Reader::NeedsPassword/Unlock` (Argon2id key,
+  XChaCha20-Poly1305 per section, through UltraCrypt; fails closed without
+  libsodium, `EncryptionAvailable()`). Doc:
   `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -1542,9 +1575,16 @@ extended or replaced without changing callers.
 - `UltraDb_Query`, `UltraDb_Exec`, `UltraDb_QueryAsync`
 - `UltraDb_Prepare`, `UltraDb_ExecPrepared`, `UltraDb_Finalize`
 - `UltraDb_Begin`, `UltraDb_ExecInTx`, `UltraDb_Commit`, `UltraDb_Rollback`
-- `UltraDb_OpenCursor`, `UltraDb_FetchRow`, `UltraDb_CloseCursor`
-- `UltraDb_Migrate`, `UltraDb_CancelQuery`
+- `UltraDb_OpenCursor`, `UltraDb_FetchRows`, `UltraDb_CloseCursor` (page at
+  a time; server-side cursors on PostgreSQL)
+- `UltraDb_ExecBatch` (every statement of a script with its own result)
+- `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
+- `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
+  `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
+  indexes, triggers), `UltraDb_QuoteIdentifier`, `UltraDb_QuoteQualifiedName`
+  (the one way a name goes into SQL text), `UltraDbResultSet::ColumnInfo`
+  (declared type and source table / column per result column)
 
 **Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
 - Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server
@@ -1564,9 +1604,10 @@ migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
 `Tests/UltraDatabase`); the PostgreSQL driver
 (`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
 found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
-networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
-queries, pooling, streaming cursors and at-rest encryption. Details in
+UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
+plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
+DuckDB), async queries, pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
@@ -2070,7 +2111,7 @@ the shared chat / mail mirrors with category guessing from the application's
 identity, the presenters that put an application's `system.notification` on
 screen through the platform's own notification service and report its click
 back (`freedesktop-presenter`: `Notify` to the desktop's server;
-`windows-presenter`: notification-area balloons, shown as toasts;
+`windows-presenter`: toasts under the posting application's own AppUserModelID, balloons before Windows 10 1903;
 `macos-presenter`: Notification Center from an application bundle, osascript
 outside one), the toast
 host that draws the notifications nothing else draws - where UltraMessage
