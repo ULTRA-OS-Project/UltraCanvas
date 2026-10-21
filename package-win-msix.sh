@@ -30,6 +30,9 @@
 #   MSIX_PUBLISHER               default the subject SignUltraDemo.ps1 uses
 #   MSIX_PUBLISHER_DISPLAY_NAME  default ULTRA OS Development GmbH
 #   MSIX_TIMESTAMP_URL           default http://timestamp.digicert.com
+#   MSIX_ALLOW_ELEVATION=1       declare allowElevation, so UltraFiler's "Delete
+#                                as administrator" works from the package. The
+#                                Store grants it only on request; off otherwise
 #   WINDOWS_SDK_BIN              folder holding makeappx.exe, if not found
 #
 set -euo pipefail
@@ -162,6 +165,7 @@ LAYOUT_ARGS=(
     --publisher-display-name "$PUBLISHER_DISPLAY_NAME"
 )
 [ "$MODE" = test ] && LAYOUT_ARGS+=(--unsigned-test)
+[ "${MSIX_ALLOW_ELEVATION:-}" = 1 ] && LAYOUT_ARGS+=(--allow-elevation)
 PYTHON="$(command -v python3 || command -v python)"
 "$PYTHON" scripts/make_msix_layout.py "${LAYOUT_ARGS[@]}"
 

@@ -11,10 +11,13 @@
 // report file the caller creates in its temp folder and names on that
 // command line (out: what could not be deleted, and why). The helper reads
 // nothing else, so a tampered file cannot widen what the user consented to.
+// Version: 1.2.0 - NativeCanStartElevatedCopy: not from an MSIX package without
+//                  allowElevation
 // Version: 1.1.0
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasWindowsPackage.h"
 
 // TokenElevation needs the Vista-era declarations and SetThreadErrorMode
 // the Windows 7 ones; the same guard as the file-associations backend, and
@@ -166,6 +169,16 @@ namespace UltraCanvas {
                                                 sizeof(elevation), &returned) != FALSE;
             CloseHandle(token);
             return ok && elevation.TokenIsElevated != 0;
+        }
+
+        bool NativeCanStartElevatedCopy() {
+            // From an MSIX package Windows grants elevation only to a package
+            // that declares allowElevation (package-win-msix.sh
+            // --allow-elevation); the Store accepts that capability only on
+            // request. Without it the "runas" relaunch fails, so the Filer's
+            // "Delete as administrator" would be offered and then fail.
+            return !WindowsPackage::IsRunningFromPackage() ||
+                   WindowsPackage::DeclaresCapability("allowElevation");
         }
 
         bool NativeIsPermissionFailure(const std::error_code& ec) {

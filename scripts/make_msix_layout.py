@@ -344,7 +344,8 @@ def copy_dist(dist: str, layout: str) -> None:
 def build_manifest(apps: List[App], identity_name: str, publisher: str,
                    publisher_display_name: str, display_name: str,
                    description: str, version: str, arch: str,
-                   min_version: str, max_version_tested: str) -> ET.ElementTree:
+                   min_version: str, max_version_tested: str,
+                   allow_elevation: bool = False) -> ET.ElementTree:
     ns = {
         "": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
         "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
@@ -414,6 +415,14 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
     # one. runFullTrust is a restricted capability: a Store submission says
     # why it needs it (it is a desktop application).
     ET.SubElement(capabilities, q("rescap:Capability"), {"Name": "runFullTrust"})
+    if allow_elevation:
+        # UltraFiler's "Delete as administrator" restarts the program elevated,
+        # which Windows allows a packaged program only with this capability.
+        # Without it UltraCanvasElevatedFileOperations::IsAvailable() is false
+        # in the package and the command is not offered. The Store grants it
+        # only on request, so it is off unless asked for (sideloaded and
+        # enterprise packages).
+        ET.SubElement(capabilities, q("rescap:Capability"), {"Name": "allowElevation"})
 
     ET.indent(package, space="  ")
     return ET.ElementTree(package)
@@ -454,6 +463,10 @@ def main() -> None:
     parser.add_argument("--description",
                         default="UltraCanvas applications: editors, viewers, mail, "
                                 "file management and utilities")
+    parser.add_argument("--allow-elevation", action="store_true",
+                        help="declare the restricted capability allowElevation, so UltraFiler's "
+                             "'Delete as administrator' works from the package (the Store grants "
+                             "it only on request)")
     parser.add_argument("--unsigned-test", action="store_true",
                         help=f"add {UNSIGNED_PUBLISHER_OID} to the Publisher, so Windows 11 "
                              "installs the unsigned package with Add-AppxPackage -AllowUnsigned")
@@ -501,7 +514,7 @@ def main() -> None:
     manifest = build_manifest(
         apps, args.identity_name, publisher, args.publisher_display_name,
         args.display_name, args.description, version, args.arch,
-        args.min_version, args.max_version_tested)
+        args.min_version, args.max_version_tested, args.allow_elevation)
     manifest_path = os.path.join(args.layout, "AppxManifest.xml")
     manifest.write(manifest_path, encoding="utf-8", xml_declaration=True)
 
