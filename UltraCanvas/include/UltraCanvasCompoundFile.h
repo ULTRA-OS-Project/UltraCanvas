@@ -1,14 +1,16 @@
 // include/UltraCanvasCompoundFile.h
-// Read-only access to an OLE2 Compound File Binary (CFB) container - the
+// Access to an OLE2 Compound File Binary (CFB) container - the
 // "structured storage" mini filesystem the legacy Microsoft Office formats are
 // stored in: Word 97-2003 (.doc), Excel 5.0-2003 (.xls), PowerPoint (.ppt),
 // Outlook (.msg). A compound file is a FAT of fixed-size sectors holding named
 // streams; small streams live in a second, finer-grained "mini" stream.
 // The .doc importer (Plugins/Documents/Word) and the .xls reader
 // (UltraCanvasSpreadsheetXls.h) both read their streams through this class.
+// UCCompoundFileWriter builds one, for the password-protected Office files
+// UltraCanvasOfficeEncryption.h writes.
 // Specification: [MS-CFB] Compound File Binary File Format.
-// Version: 1.0.0
-// Last Modified: 2026-10-09
+// Version: 1.1.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -82,6 +84,33 @@ private:
     bool ReadMiniChain(uint32_t firstSector, uint64_t maxSize, std::vector<uint8_t>& out) const;
     bool ReadEntry(const DirEntry& entry, std::vector<uint8_t>& out) const;
     const DirEntry* FindStream(const std::string& name) const;
+};
+
+// Builds a compound file in memory: version 3 (512-byte sectors), streams
+// under 4096 bytes in the mini stream as the format requires, a FAT of any
+// size (DIFAT sectors past the header's 109 entries), and each storage's
+// children in a valid red-black tree. Readers that check the tree - Office
+// among them - accept it.
+class UCCompoundFileWriter {
+public:
+    // `path` names the stream, its storages separated by '/', e.g.
+    // "\x06DataSpaces/TransformInfo/StrongEncryptionTransform/\x06Primary".
+    // Storages are created on the way. A name may have at most 31 characters
+    // (ASCII here); adding the same path twice replaces the stream. Returns
+    // false for an empty, over-long or clashing name.
+    bool AddStream(const std::string& path, std::vector<uint8_t> data);
+
+    // The whole file.
+    std::vector<uint8_t> Build() const;
+
+private:
+    struct Node {
+        std::string name;
+        bool storage = false;
+        std::vector<uint8_t> data;
+        std::vector<size_t> children;   // indices into nodes_
+    };
+    std::vector<Node> nodes_{Node{"Root Entry", true, {}, {}}};
 };
 
 } // namespace UltraCanvas

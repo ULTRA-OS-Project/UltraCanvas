@@ -10,10 +10,15 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.16.0 - overlay effects (filter text, the export, the preview, project files);
+//                  blur radii scaled on proxies
+// Version: 0.15.0 - the Fill crop around a video segment's keepInView
+// Version: 0.14.1 - a frame that failed to extract reads as black, not a crash;
+//                  the project tests run on Windows (drive-rooted paths, compared as paths)
 // Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
 //                  VideoFX_SetPictureReader: picture types the application reads
 // Version: 0.13.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -32,6 +37,7 @@
 #include <clocale>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <locale>
@@ -171,6 +177,33 @@ static void TestEffectChains() {
     CHECK(!BuildVideoEffectChain({VideoFXEffect::Gamma(0.0)}, 5.0, chain, error), "gamma 0 refused");
     CHECK(!BuildVideoEffectChain({VideoFXEffect::LUT("", 1.0)}, 5.0, chain, error), "LUT without file refused");
     CHECK(!BuildAudioEffectChain({VideoFXEffect::NormalizeAudio(0.0)}, 5.0, chain, error), "0 LUFS refused");
+}
+
+static void TestOverlayEffectGraph() {
+    std::printf("Overlay effects (filter text)\n");
+    std::string graph, error;
+    CHECK(IsOverlayEffect(VideoFXEffectType::Grayscale) && IsOverlayEffect(VideoFXEffectType::Blur) &&
+          IsOverlayEffect(VideoFXEffectType::Temperature), "colour and detail effects go on an overlay");
+    CHECK(!IsOverlayEffect(VideoFXEffectType::Crop) && !IsOverlayEffect(VideoFXEffectType::Rotate90) &&
+          !IsOverlayEffect(VideoFXEffectType::FadeIn) && !IsOverlayEffect(VideoFXEffectType::Volume) &&
+          !IsOverlayEffect(VideoFXEffectType::LUT), "geometry, fades, sound and LUTs do not");
+    CHECK(BuildOverlayEffectGraph({}, "ov0", "ov0fx", "p", graph, error) && graph.empty(), "no effects: no fragment");
+    CHECK(BuildOverlayEffectGraph({VideoFXEffect::Grayscale(), VideoFXEffect::Blur(2.0)}, "ov0", "ov0fx", "p", graph, error),
+          "a look and a blur build");
+    CHECK_EQ(graph, "[ov0]format=rgba,split[pa][pb];[pb]alphaextract[pal];[pa]hue=s=0,gblur=sigma=2[pc];[pc][pal]alphamerge[ov0fx];",
+             "the alpha goes round the effects");
+    CHECK(BuildOverlayEffectGraph({VideoFXEffect::Blur(0.0)}, "a", "b", "p", graph, error) && graph.find("[pa]null[pc]") != std::string::npos,
+          "a blur of 0 passes the picture through");
+    CHECK(!BuildOverlayEffectGraph({VideoFXEffect::Crop(0, 0, 10, 10)}, "a", "b", "p", graph, error), "a crop refused");
+    CHECK(!BuildOverlayEffectGraph({VideoFXEffect::Brightness(3.0)}, "a", "b", "p", graph, error), "a bad value refused");
+    VideoFXOverlay text = VideoFXOverlay::Text("Hi");
+    text.effects = {VideoFXEffect::Grayscale()};
+    CHECK(!ValidateOverlay(text, 5.0, error), "a text overlay takes no effects");
+    VideoFXOverlay pic = VideoFXOverlay::Image("logo.png");
+    pic.effects = {VideoFXEffect::Sepia()};
+    CHECK(ValidateOverlay(pic, 5.0, error), "an image overlay takes a look");
+    pic.effects = {VideoFXEffect::FlipHorizontal()};
+    CHECK(!ValidateOverlay(pic, 5.0, error), "but not a flip");
 }
 
 static void TestTransitionAndOverlayText() {
@@ -743,6 +776,22 @@ static void TestFaceDetector() {
 
 // A project with every field away from its default, so a field the reader
 // forgets shows as a difference when the loaded project is written again
+// The start of an absolute path on this system. The project tests write
+// paths only as text, and "/work/holiday" has no drive on Windows: there it
+// is relative, and the project makes it absolute against the current drive.
+#ifdef _WIN32
+static const std::string kRoot = "C:/";
+#else
+static const std::string kRoot = "/";
+#endif
+
+// Whether two UTF-8 paths name the same place. A path read back from a
+// project is the system's own spelling - on Windows with '\' where the
+// project's text has '/' - so it is compared as a path, not as text.
+static bool SamePath(const std::string& a, const std::string& b) {
+    return UltraCanvas::PathFromUtf8(a) == UltraCanvas::PathFromUtf8(b);
+}
+
 static VideoFXProject RichTimeline(const std::string& dir) {
     VideoFXSegment clip = VideoFXSegment::FromFile(dir + "/clips/beach.mp4", 2.5, 9.75);
     clip.speed = 1.5;
@@ -750,7 +799,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     clip.effects = {VideoFXEffect::Brightness(0.25), VideoFXEffect::Crop(10, 20, 640, 360),
                     VideoFXEffect::LUT(dir + "/looks/warm.cube", 0.7), VideoFXEffect::FadeOut(1.25)};
     VideoFXOverlay title = VideoFXOverlay::Text("Sommer \xC3\xBC 2026\nZweite Zeile", VideoFXAnchor::Custom, 0.08);
-    title.fontPath = "/fonts/Brand.ttf";             // outside the project: stays absolute
+    title.fontPath = kRoot + "fonts/Brand.ttf";      // outside the project: stays absolute
     title.textColor = 0x12AB9F;
     title.shadow = false;
     title.box = true;
@@ -788,7 +837,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     settings.audioBitRate = 96000;
     settings.threads = 3;
     settings.music = VideoFXMusic::FromFile(dir + "/music/one.mp3", 0.6);
-    settings.music.playlist = {dir + "/music/two.flac", "/library/three.ogg"};
+    settings.music.playlist = {dir + "/music/two.flac", kRoot + "library/three.ogg"};
     settings.music.crossfade = 4.5;
     settings.music.start = 12.0;
     settings.music.loop = false;
@@ -798,7 +847,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
     VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver(dir + "/sound/intro.wav", 1.25, 0.8);
     voice.start = 0.5; voice.end = 7.5; voice.fadeIn = 0.2; voice.fadeOut = 0.3;
-    settings.audioClips = {voice, VideoFXAudioClip::Sound("/library/whoosh.wav", 9.0, 1.5)};
+    settings.audioClips = {voice, VideoFXAudioClip::Sound(kRoot + "library/whoosh.wav", 9.0, 1.5)};
 
     VideoFXProject p = VideoFXProject::FromTimeline({clip, photo, card, pattern}, settings);
     p.title = "Ferien \xE2\x80\x93 Sommer";
@@ -824,7 +873,7 @@ static VideoFXProject RichSlideshow(const std::string& dir) {
     settings.container = VideoFXContainer::MKV;
     settings.videoCodec = VideoFXVideoCodec::FFV1;
     settings.audioCodec = VideoFXAudioCodec::FLAC;
-    VideoFXProject p = VideoFXProject::FromSlideshow({dir + "/p/1.jpg", dir + "/p/2.jpg", "/elsewhere/3.png"}, o,
+    VideoFXProject p = VideoFXProject::FromSlideshow({dir + "/p/1.jpg", dir + "/p/2.jpg", kRoot + "elsewhere/3.png"}, o,
                                                      settings);
     p.title = "Trip";
     return p;
@@ -833,7 +882,7 @@ static VideoFXProject RichSlideshow(const std::string& dir) {
 static void TestProjectFiles() {
     std::printf("Project files: round trip, paths, versions, errors\n");
     namespace stdfs = std::filesystem;
-    const std::string dir = "/work/holiday";        // nothing is read: the paths are only text here
+    const std::string dir = kRoot + "work/holiday"; // nothing is read: the paths are only text here
     std::string json, again, error;
 
     // ---- every field survives a save and a load ----
@@ -846,15 +895,15 @@ static void TestProjectFiles() {
     CHECK(loaded.segments.size() == 4 && loaded.title == rich.title, "four segments, the UTF-8 title");
     if (loaded.segments.size() == 4) {
         const VideoFXSegment& c = loaded.segments[0];
-        CHECK(c.path == dir + "/clips/beach.mp4" && Near(c.start, 2.5, 1e-12) && Near(c.end, 9.75, 1e-12) &&
+        CHECK(SamePath(c.path, dir + "/clips/beach.mp4") && Near(c.start, 2.5, 1e-12) && Near(c.end, 9.75, 1e-12) &&
               Near(c.speed, 1.5, 1e-12) && c.mute, "the clip: path back absolute, range, speed, mute");
         CHECK(c.effects.size() == 4 && c.effects[1].type == VideoFXEffectType::Crop && c.effects[1].width == 640 &&
-              c.effects[2].path == dir + "/looks/warm.cube", "effects: a crop's rectangle, a LUT's file");
+              SamePath(c.effects[2].path, dir + "/looks/warm.cube"), "effects: a crop's rectangle, a LUT's file");
         CHECK(c.overlays.size() == 3 && c.overlays[0].text == rich.segments[0].overlays[0].text &&
-              c.overlays[0].textColor == 0x12AB9F && c.overlays[0].fontPath == "/fonts/Brand.ttf" &&
-              c.overlays[1].imagePath == dir + "/logo.png", "overlays: text, colour, font, image");
+              c.overlays[0].textColor == 0x12AB9F && SamePath(c.overlays[0].fontPath, kRoot + "fonts/Brand.ttf") &&
+              SamePath(c.overlays[1].imagePath, dir + "/logo.png"), "overlays: text, colour, font, image");
         CHECK(c.overlays.size() == 3 && c.overlays[2].kind == VideoFXOverlayKind::Video &&
-              c.overlays[2].videoPath == dir + "/clips/cam.mp4" && Near(c.overlays[2].videoStart, 1.5, 1e-12) &&
+              SamePath(c.overlays[2].videoPath, dir + "/clips/cam.mp4") && Near(c.overlays[2].videoStart, 1.5, 1e-12) &&
               Near(c.overlays[2].imageHeight, 0.3, 1e-12) && Near(c.overlays[2].end, 6.0, 1e-12),
               "a video overlay: its file (relative in the text), start, size, window");
         CHECK(json.find("\"video\": \"clips/cam.mp4\"") != std::string::npos, "the overlay's file stored relative to the project");
@@ -872,15 +921,15 @@ static void TestProjectFiles() {
           Near(st.frameRate, 29.97, 1e-12) && st.fitMode == VideoFXFitMode::Fill && st.quality == 77 &&
           st.videoBitRate == 4000000 && st.encoderPreset == "slow" && st.channels == 1 && st.threads == 3 &&
           Near(st.keyframeInterval, 1.5, 1e-12) && st.acceleration == VideoFXAcceleration::QuickSync &&
-          st.audioClips.size() == 2 && st.audioClips[0].path == dir + "/sound/intro.wav" && st.audioClips[0].ducksMusic &&
+          st.audioClips.size() == 2 && SamePath(st.audioClips[0].path, dir + "/sound/intro.wav") && st.audioClips[0].ducksMusic &&
           Near(st.audioClips[0].at, 1.25, 1e-12) && Near(st.audioClips[0].end, 7.5, 1e-12) &&
           Near(st.audioClips[0].fadeOut, 0.3, 1e-12) && !st.audioClips[1].ducksMusic &&
-          st.audioClips[1].path == "/library/whoosh.wav" && Near(st.audioClips[1].volume, 1.5, 1e-12),
+          SamePath(st.audioClips[1].path, kRoot + "library/whoosh.wav") && Near(st.audioClips[1].volume, 1.5, 1e-12),
           "export settings");
     CHECK(st.music.Songs().size() == 3 && Near(st.music.crossfade, 4.5, 1e-12) && !st.music.loop &&
           Near(st.music.duckingThresholdDb, -15.0, 1e-12) && Near(st.music.duckingLevel, 0.2, 1e-12),
           "music: the song list, crossfade, loop, ducking");
-    CHECK(loaded.outputPath == dir + "/out/holiday.webm", "the output file");
+    CHECK(SamePath(loaded.outputPath, dir + "/out/holiday.webm"), "the output file");
 
     const VideoFXProject show = RichSlideshow(dir);
     CHECK(VideoFX_ProjectToJson(show, json, dir) == VideoFXResult::Ok &&
@@ -894,10 +943,10 @@ static void TestProjectFiles() {
           "images, captions, regions, beats, faces off, songs, codecs");
 
     // ---- paths: inside the project relative, outside absolute ----
-    CHECK(json.find("\"p/1.jpg\"") != std::string::npos && json.find("\"/elsewhere/3.png\"") != std::string::npos,
+    CHECK(json.find("\"p/1.jpg\"") != std::string::npos && json.find("\"" + kRoot + "elsewhere/3.png\"") != std::string::npos,
           "media in the project's folder relative, others absolute");
-    CHECK(VideoFX_ProjectFromJson(json, loaded, "/moved/there") == VideoFXResult::Ok &&
-          loaded.images[0] == "/moved/there/p/1.jpg" && loaded.images[2] == "/elsewhere/3.png",
+    CHECK(VideoFX_ProjectFromJson(json, loaded, kRoot + "moved/there") == VideoFXResult::Ok &&
+          SamePath(loaded.images[0], kRoot + "moved/there/p/1.jpg") && SamePath(loaded.images[2], kRoot + "elsewhere/3.png"),
           "a moved project finds its own media where it now is");
     CHECK(VideoFX_ProjectToJson(show, json) == VideoFXResult::Ok && json.find("\"" + dir + "/p/1.jpg\"") != std::string::npos,
           "no base directory: paths kept as given");
@@ -940,7 +989,7 @@ static void TestProjectFiles() {
     std::vector<std::string> missing;
     CHECK(VideoFX_LoadProject(file, loaded, &missing) == VideoFXResult::Ok && loaded.images.size() == 2,
           "loaded back");
-    CHECK(missing.size() == 1 && missing[0] == base + "/photos/2.jpg", "the one missing photo reported");
+    CHECK(missing.size() == 1 && SamePath(missing[0], base + "/photos/2.jpg"), "the one missing photo reported");
     CHECK(VideoFX_LoadProject(base + "/none.vfxproj", loaded) == VideoFXResult::FileNotFound, "no such project");
     CHECK(VideoFX_SaveProject(onDisk, base + "/no/such/dir/x.vfxproj") == VideoFXResult::WriteError,
           "an unwritable place refused");
@@ -1114,9 +1163,12 @@ static bool Exists(const std::string& p) {
     return fs::exists(UltraCanvas::PathFromUtf8(p), ec);
 }
 
-// Average of a frame's centre 8x8 block
+// Average of a frame's centre 8x8 block. A frame that is not valid (its
+// extraction failed, which a check already reported) reads as black rather
+// than ending the run on a stray read.
 static void CentreColour(const VideoFXFrame& f, double& r, double& g, double& b) {
     r = g = b = 0.0;
+    if (!f.IsValid() || f.width < 8 || f.height < 8) return;
     int n = 0;
     for (int y = f.height / 2 - 4; y < f.height / 2 + 4; ++y)
         for (int x = f.width / 2 - 4; x < f.width / 2 + 4; ++x) {
@@ -1128,6 +1180,8 @@ static void CentreColour(const VideoFXFrame& f, double& r, double& g, double& b)
 }
 
 static void PixelAt(const VideoFXFrame& f, int x, int y, int& r, int& g, int& b) {
+    r = g = b = 0;
+    if (!f.IsValid() || x < 0 || y < 0 || x >= f.width || y >= f.height) return;
     const uint8_t* p = &f.pixels[(static_cast<size_t>(y) * f.width + x) * 4];
     r = p[0]; g = p[1]; b = p[2];
 }
@@ -1146,6 +1200,7 @@ static void TestEncoders(const VideoFXExportSettings& base);
 static void TestAudioClips(const VideoFXExportSettings& base);
 static void TestFileFormats();
 static void TestPictureReader();
+static void TestOverlayEffects(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1221,6 +1276,60 @@ static void TestEngine() {
         CHECK_OK(VideoFX_ExtractFrame(fadePath, 0.0, f), "first frame of fade");
         CentreColour(f, r, g, b);
         CHECK(r < 40, "fade-in begins black");
+    }
+
+    // ---- a clip of another shape filling the frame: the crop around what it keeps in view ----
+    {
+        // a portrait clip: red top third, green middle, blue bottom
+        VideoFXFrame bands;
+        bands.width = 180; bands.height = 320;
+        bands.pixels.assign(static_cast<size_t>(bands.width) * bands.height * 4, 255);
+        for (int y = 0; y < bands.height; ++y) {
+            const int band = y * 3 / bands.height;
+            for (int x = 0; x < bands.width; ++x) {
+                uint8_t* px = &bands.pixels[(static_cast<size_t>(y) * bands.width + x) * 4];
+                px[0] = band == 0 ? 255 : 0; px[1] = band == 1 ? 255 : 0; px[2] = band == 2 ? 255 : 0;
+            }
+        }
+        VideoFXSegment still = VideoFXSegment::FromImageFrame(bands, 1.0, VideoFXImageMotion::Make(VideoFXMotionStyle::Still));
+        const std::string portrait = TempPath("portrait.mkv");
+        VideoFXExportSettings tall = base;
+        tall.width = 180; tall.height = 320;
+        CHECK_OK(VideoFX_Export({still}, portrait, tall), "a portrait clip of three bands");
+        VideoFXExportSettings fill = base;
+        fill.width = 320; fill.height = 180; fill.fitMode = VideoFXFitMode::Fill;
+        auto centreOf = [&](const VideoFXSegment& seg, const char* name, double& r, double& g, double& b) {
+            const std::string out = TempPath(std::string(name) + ".mkv");
+            VideoFXFrame f;
+            r = g = b = -1.0;
+            if (VideoFX_Export({seg}, out, fill) == VideoFXResult::Ok && VideoFX_ExtractFrame(out, 0.5, f) == VideoFXResult::Ok)
+                CentreColour(f, r, g, b);
+        };
+        double r, g, b;
+        VideoFXSegment wide = VideoFXSegment::FromFile(portrait);
+        centreOf(wide, "fill-centre", r, g, b);
+        CHECK(g > 200 && r < 60 && b < 60, "Fill with nothing to keep crops the middle: green");
+        wide.keepInView = {VideoFXRect::Make(0.1, 0.0, 0.8, 0.3)};
+        centreOf(wide, "fill-top", r, g, b);
+        CHECK(r > 200 && g < 60 && b < 60, "a region at the top keeps the top: red");
+        wide.keepInView = {VideoFXRect::Make(0.1, 0.7, 0.8, 0.3)};
+        centreOf(wide, "fill-bottom", r, g, b);
+        CHECK(b > 200 && r < 60 && g < 60, "a region at the bottom keeps the bottom: blue");
+        wide.keepInView.clear();
+        wide.keepFacesInView = true;
+        centreOf(wide, "fill-faces", r, g, b);
+        CHECK(g > 200 && r < 60 && b < 60, "faces asked for, none in the bands: the middle again");
+        wide.keepInView = {VideoFXRect::Make(0.5, 0.5, 2.0, 2.0)};
+        CHECK(VideoFX_Export({wide}, TempPath("fill-bad.mkv"), fill) == VideoFXResult::InvalidArgument,
+              "a region outside the picture is refused on a clip too");
+        wide.keepInView = {VideoFXRect::Make(0.1, 0.0, 0.8, 0.3)};
+        VideoFXExportSettings bars = fill;
+        bars.fitMode = VideoFXFitMode::Letterbox;
+        VideoFXFrame f;
+        CHECK_OK(VideoFX_Export({wide}, TempPath("bars.mkv"), bars), "Letterbox ignores the region");
+        CHECK_OK(VideoFX_ExtractFrame(TempPath("bars.mkv"), 0.5, f), "frame of the letterboxed clip");
+        CentreColour(f, r, g, b);
+        CHECK(g > 200 && r < 60, "the whole clip is shown: green in the middle");
     }
 
     // ---- trim ----
@@ -1361,6 +1470,7 @@ static void TestEngine() {
     TestAudioClips(base);
     TestFileFormats();
     TestPictureReader();
+    TestOverlayEffects(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -2450,9 +2560,10 @@ static void TestProxies(const VideoFXExportSettings& base) {
     }
     VideoFXSegment first = VideoFXSegment::FromFile(clip, 0.0, 1.5);
     VideoFXSegment second = VideoFXSegment::FromFile(clip, 1.0, 2.5);
-    second.effects = {VideoFXEffect::Crop(160, 90, 320, 180)};
+    second.effects = {VideoFXEffect::Crop(160, 90, 320, 180), VideoFXEffect::Blur(2.0)};
     VideoFXOverlay pip = VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopLeft, 0.25);
     pip.margin = 0.0;
+    pip.effects = {VideoFXEffect::Blur(3.0)};
     second.overlays = {pip};
     const std::vector<VideoFXSegment> timeline = {first, VideoFXSegment::FromFile(small), second};
     CHECK_OK(VideoFX_ClearProxies(ps), "start from an empty cache");
@@ -2468,8 +2579,13 @@ static void TestProxies(const VideoFXExportSettings& base) {
     const std::vector<VideoFXSegment> proxied = VideoFX_UseProxies(timeline, ps, &replaced);
     CHECK(replaced == 3, "two segments and the overlay switched");
     CHECK(proxied[1].path == small, "the small clip plays itself");
-    CHECK(proxied[2].effects.size() == 1 && proxied[2].effects[0].x == 80 && proxied[2].effects[0].y == 45 &&
+    CHECK(proxied[2].effects.size() == 2 && proxied[2].effects[0].x == 80 && proxied[2].effects[0].y == 45 &&
           proxied[2].effects[0].width == 160 && proxied[2].effects[0].height == 90, "the crop scaled to the proxy");
+    CHECK(Near(proxied[2].effects[1].amount, 1.0, 1e-9), "the blur too: half the radius on a proxy half as tall");
+    CHECK(proxied[2].overlays.size() == 1 && Near(proxied[2].overlays[0].effects[0].amount, 2.0, 1e-9),
+          "and the picture-in-picture's blur, on its 180-line proxy of 270 lines");
+    CHECK(Near(timeline[2].effects[1].amount, 2.0, 1e-9) && Near(timeline[2].overlays[0].effects[0].amount, 3.0, 1e-9),
+          "the timeline itself keeps its radii");
 
     // the preview over proxies matches the preview over the originals
     VideoFXExportSettings s = base;
@@ -2726,6 +2842,84 @@ static double LevelAt(const VideoFXWaveform& w, double seconds) {
     return i >= 0 && i < w.totalBlocks ? w.rmsValues[static_cast<size_t>(i)] : -1.0;
 }
 
+// An overlay's own look: on its picture only, its transparency kept, in the
+// export and the preview, and through a project file
+static void TestOverlayEffects(const VideoFXExportSettings& base) {
+    std::printf("Overlay effects\n");
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 240; s.frameRate = 25.0;
+    // 80x80: the left half opaque red, the right half transparent
+    VideoFXFrame half;
+    half.width = 80;
+    half.height = 80;
+    half.pixels.assign(80 * 80 * 4, 0);
+    for (int y = 0; y < 80; ++y)
+        for (int x = 0; x < 40; ++x) {
+            uint8_t* px = &half.pixels[(static_cast<size_t>(y) * 80 + x) * 4];
+            px[0] = 255; px[3] = 255;
+        }
+    VideoFXSegment card = VideoFXSegment::SolidColor(0x0000FF, 1.0);
+    VideoFXOverlay logo = VideoFXOverlay::ImageFromFrame(half, VideoFXAnchor::TopLeft, 0.0);
+    logo.margin = 0.0;
+    card.overlays = {logo};
+    VideoFXFrame f;
+    int r = 0, g = 0, b = 0;
+    CHECK_OK(VideoFX_RenderFrame({card}, 0.5, f, s), "a red picture over blue");
+    PixelAt(f, 20, 40, r, g, b);
+    CHECK(r > 200 && g < 60 && b < 60, "red as it is");
+
+    card.overlays[0].effects = {VideoFXEffect::Grayscale()};
+    CHECK_OK(VideoFX_RenderFrame({card}, 0.5, f, s), "the same picture in black and white");
+    PixelAt(f, 20, 40, r, g, b);
+    CHECK(std::abs(r - g) < 12 && std::abs(g - b) < 12 && r > 30 && r < 200, "grey where it was red");
+    PixelAt(f, 60, 40, r, g, b);
+    CHECK(b > 200 && r < 60 && g < 60, "its transparent half still shows the blue");
+    PixelAt(f, 200, 200, r, g, b);
+    CHECK(b > 200 && r < 60, "and the frame under it untouched");
+
+    const std::string out = TempPath("overlay-effects.mkv");
+    CHECK_OK(VideoFX_Export({card}, out, s), "exported");
+    CHECK_OK(VideoFX_ExtractFrame(out, 0.5, f), "a frame of the export");
+    PixelAt(f, 20, 40, r, g, b);
+    CHECK(std::abs(r - g) < 16 && std::abs(g - b) < 16, "the export is grey there too");
+
+    // a picture-in-picture video
+    const std::string red = TempPath("red-pip.mkv");
+    {
+        VideoFXExportSettings rs = base;
+        rs.width = 160; rs.height = 120; rs.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 1.0)}, red, rs), "a red clip");
+    }
+    VideoFXSegment under = VideoFXSegment::SolidColor(0x0000FF, 1.0);
+    VideoFXOverlay pip = VideoFXOverlay::Video(red, VideoFXAnchor::TopLeft, 0.5);
+    pip.margin = 0.0;
+    pip.effects = {VideoFXEffect::Sepia()};
+    under.overlays = {pip};
+    CHECK_OK(VideoFX_RenderFrame({under}, 0.5, f, s), "a red clip in sepia over the picture");
+    PixelAt(f, 40, 40, r, g, b);
+    CHECK(r > g && g > b && g > 60, "brown, not red");
+
+    // refused up front
+    VideoFXSegment bad = card;
+    bad.overlays[0].effects = {VideoFXEffect::Rotate90()};
+    CHECK(VideoFX_RenderFrame({bad}, 0.5, f, s) == VideoFXResult::InvalidArgument, "a quarter turn on an overlay: InvalidArgument");
+    bad.overlays = {VideoFXOverlay::Text("Hello")};
+    bad.overlays[0].effects = {VideoFXEffect::Grayscale()};
+    CHECK(VideoFX_Export({bad}, TempPath("bad.mkv"), s) == VideoFXResult::InvalidArgument, "effects on a text overlay: InvalidArgument");
+
+    // through a project file
+    VideoFXProject project;
+    under.overlays[0].effects = {VideoFXEffect::Sepia(), VideoFXEffect::Blur(2.5)};
+    project.segments = {under};
+    std::string text;
+    CHECK_OK(VideoFX_ProjectToJson(project, text, ""), "a project with overlay effects");
+    VideoFXProject back;
+    CHECK_OK(VideoFX_ProjectFromJson(text, back, ""), "read back");
+    CHECK(back.segments.size() == 1 && back.segments[0].overlays.size() == 1 && back.segments[0].overlays[0].effects.size() == 2 &&
+          back.segments[0].overlays[0].effects[0].type == VideoFXEffectType::Sepia &&
+          Near(back.segments[0].overlays[0].effects[1].amount, 2.5, 1e-9), "the overlay keeps its effects");
+}
+
 static void TestAudioClips(const VideoFXExportSettings& base) {
     std::printf("\n-- free audio clips --\n");
     // a 1 s tone, and a 6 s one for music
@@ -2831,6 +3025,7 @@ int main() {
     TestKenBurnsMath();
     TestMusicMath();
     TestAudioClipMath();
+    TestOverlayEffectGraph();
     TestBeatMath();
     TestFaceDetector();
     TestProjectFiles();

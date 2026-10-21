@@ -1,10 +1,13 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.9.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
+// Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
+// Version: 1.10.0 - GenerateFontAliasConfig: the generic family aliases as a fontconfig document
+// Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
+// Version: 1.8.1 - IsKeyPressed checks the key code against the table (KeyStateCount)
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-08-03
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -45,6 +48,24 @@ namespace UltraCanvas {
     // resources dir (GetResourcesDir), absolute and ending in a separator, so
     // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
+
+#if !defined(__APPLE__)
+    // The platform's generic family aliases - "sans-serif", "sans", "serif",
+    // "monospace" and Pango's "emoji" onto real families - as a <fontconfig>
+    // document of <alias> elements alone. The fonts.conf the framework writes
+    // where the system has none carries the same aliases; a configuration
+    // made another way loads this into it (FcConfigParseAndLoadFromMemory).
+    std::string GenerateFontAliasConfig();
+#endif
+
+    // Every font family this process can set text in: the fonts installed on
+    // the system (TrueType, OpenType, Type 1, ...) with the bundled ones and
+    // any added with RegisterFontFile, as the text engine sees them (Pango:
+    // fontconfig on Linux and Windows, CoreText on macOS). Scalable families
+    // only - a family that has bitmaps alone cannot be drawn at any size -
+    // sorted regardless of case, each name once. For a font picker; it is
+    // asked afresh on every call, so a font installed meanwhile is in it.
+    std::vector<std::string> GetInstalledFontFamilies();
 
     // Pins hinting / antialias / autohint / lcdfilter defaults for the bundled
     // DejaVu families so system fontconfig (which differs between MSYS2 and
@@ -231,8 +252,11 @@ namespace UltraCanvas {
         mutable std::mutex registeredFontsMutex_;
         std::vector<std::string> registeredFontFiles_;
 
-        // Keyboard state
-        bool keyStates[256];
+        // Keyboard state: one entry per key code below KeyStateCount. The
+        // platforms make a UCKeys out of any key code they are given, so every
+        // index into it is checked against the bound, not trusted.
+        static constexpr int KeyStateCount = 256;
+        bool keyStates[KeyStateCount];
         bool shiftHeld = false;
         bool ctrlHeld = false;
         bool altHeld = false;
@@ -277,6 +301,15 @@ namespace UltraCanvas {
         // input while its parent is already gone.
         void CloseChildWindows(UltraCanvasWindowBase* parent);
 
+        // Whether closing `window` leaves the application without a window, so
+        // that Run() returns and the process ends: every other window is
+        // already closing, or is a child of `window` (its config parentWindow,
+        // at any depth), which CloseChildWindows takes down with it. An
+        // application that has something to lose by quitting - an upload still
+        // running - asks in that window's onWindowClosing when this is true,
+        // and lets any other window close as it always did.
+        bool ClosingEndsApplication(UltraCanvasWindowBase* window);
+
         void ProcessEvents();
         bool PopEvent(UCEvent& event);
         void PushEvent(const UCEvent& event);
@@ -304,7 +337,11 @@ namespace UltraCanvas {
         static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
         static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
-        bool IsKeyPressed(UCKeys keyCode) { return keyStates[keyCode]; }
+        // False for a key code outside the table rather than a read past its end.
+        bool IsKeyPressed(UCKeys keyCode) const {
+            const int key = static_cast<int>(keyCode);
+            return key >= 0 && key < KeyStateCount && keyStates[key];
+        }
         // Keys the application currently believes are held down. Modal dialogs
         // snapshot this on open so a key that was already down when they
         // appeared cannot act as input to them.

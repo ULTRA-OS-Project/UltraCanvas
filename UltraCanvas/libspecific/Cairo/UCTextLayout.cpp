@@ -1,10 +1,11 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.1.6 - FontStyle::ToFontDesc names the Normal slant and weight (-Wswitch)
 // Version: 1.1.5 - a new layout wraps a word too long for its line between
 //                  characters (Pango's own default left it whole, running
 //                  past the width it was given)
 // Version: 1.1.4
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-15
 // V1.1.4: text that is not valid UTF-8 is repaired before it reaches Pango,
 //   which would otherwise log "Invalid UTF-8 string passed to
 //   pango_layout_set_text()" and drop the string.
@@ -1034,6 +1035,8 @@ namespace UltraCanvas {
         std::string slant = "Normal";
         std::string weight = "Regular";
         switch(fontSlant) {
+            case FontSlant::Normal:
+                break;
             case FontSlant::Italic:
                 slant = "Italic";
                 break;
@@ -1042,6 +1045,8 @@ namespace UltraCanvas {
                 break;
         }
         switch(fontWeight) {
+            case FontWeight::Normal:
+                break;
             case FontWeight::Bold:
                 weight = "Bold";
                 break;

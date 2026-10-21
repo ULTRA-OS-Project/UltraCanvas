@@ -17,6 +17,14 @@ public and reusable anywhere a compact live meter is needed.
 
 Header: `include/UltraCanvasAudioRecorderElement.h`
 
+## Contents
+
+- [Creating](#creating)
+- [API](#api)
+- [Driving the meter](#driving-the-meter)
+- [Theming](#theming)
+- [Demo](#demo)
+
 ## Creating
 
 ```cpp

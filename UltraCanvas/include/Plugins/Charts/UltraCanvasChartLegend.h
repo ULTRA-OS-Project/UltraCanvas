@@ -18,8 +18,10 @@
 //     ... draw the chart into plotArea ...
 //     legend.Render(ctx, consumed);
 //
-// Version: 1.1.0
-// Last Modified: 2026-08-20
+// Version: 1.2.0
+// Last Modified: 2026-10-20
+// V1.2.0: LegendSizeScale::areaScaled and explicit sample values, so the size
+//   key of an area-proportional bubble chart matches its bubbles.
 // V1.1.0: Paint-mirroring swatches (Outline, Hatched, Image + a real Gradient
 //   ramp) lifted from the chart engine's private legend, which now delegates
 //   to this component.
@@ -107,6 +109,13 @@ namespace UltraCanvas {
         std::function<std::string(double)> formatter;   // default: %g
         Color fillColor = Color(150, 150, 150, 110);
         Color strokeColor = Color(90, 90, 90, 255);
+        // Radius from value: false interpolates the radius linearly; true
+        // interpolates the circle AREA, matching a bubble chart whose bubble
+        // area is proportional to the value (the perceptually honest key).
+        bool areaScaled = false;
+        // Explicit sample values ("46.1 / 20.5 / 5.1"), drawn largest first;
+        // empty = sampleCount values spread evenly over [minValue, maxValue].
+        std::vector<double> values;
     };
 
 // =============================================================================

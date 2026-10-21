@@ -1,91 +1,23 @@
-#### 2026-10-20 *0.8.6*
-- **The settings are read once and written once.** The program holds one
-  settings object: the look and the editor window's size are written
-  together as the editor closes, the recent list as the start window
-  changes it. *Dark look* / *Light look* no longer writes a file on every
-  click, and nothing reads the file back before writing it.
-- **The start window's form is laid out by the page.** The name field, the
-  create button and the note are rows the framework's start page places
-  (`AddField`, `AddButton`, `AddNote`); the window has no coordinates of
-  its own left.
-- **The engine and render tests run on macOS and Windows too**, in a CI
-  step of their own, on each platform's own path rules and settings folder.
-
-#### 2026-10-20 *0.8.5*
-- **The settings file is the framework's.** `settings.json` is now read
-  and written through `UltraCanvasAppSettings`, the file every UltraCanvas
-  application keeps its preferences in; its content is unchanged (`look`,
-  `recent`, `window.width`, `window.height`). The `look` file of 0.8.0 to
-  0.8.3 is still read once and removed.
-- **The start window has a headless test.** `BuildPage` builds the page
-  without a window, and the render tests build it: what it says, the sites
-  opened last as buttons, a gone one said and dropped, an existing one
-  handed over, the editor's refusal shown, the name field filled from the
-  folder that was given.
-- **A start-up and shut-down test ends the program by itself.** With
-  `ULTRACANVAS_CLOSE_AFTER_MS=<ms>` the framework closes the window after
-  that long, through the same path as the close button, so the window's
-  size is saved and the settings written; no X client is needed under Xvfb.
-
-#### 2026-10-20 *0.8.4*
-- **One settings file.** The look, the sites opened last and now the
-  editor window's size live in `<settings folder>/UltraPress/settings.json`
-  (`ui/UltraPressSettings.h`), the place for the next preference; the two
-  files of 0.8 (`look`, `recent`) are read once and go when the settings
-  are first written. The editor window opens at the size it had last.
-- **The start window is the framework's start page.** Title, hint, *Opened
-  last*, the open button, the new-site form and the status line are laid
-  out by the new `UltraCanvasStartPage`, which UltraFIBU's start window
-  is built on too; what UltraPress says and asks is unchanged.
-- **The importer checks the export's address.** `ultrapress import` says
-  when an export's `<link>` is not an address (`IsSiteAddress`), or names
-  none, instead of writing it into every page unseen.
-
-#### 2026-10-20 *0.8.3*
-- **The address is checked as typed.** `IsSiteAddress` in the model says
-  what a site's address has to be - `https://` or `http://`, a host with a
-  dot in it or `localhost`, no spaces, no trailing slash - and the Site
-  settings pane says under the field, in the error colour, when the typed
-  one is not that yet; `ultrapress check` and the editor's validation
-  report it too, so a slip is seen before the first publish writes it into
-  every page's canonical link, the sitemap and the feed.
-- **A recent site's button names its whole path in a tooltip**, where the
-  button shortens it and two sites share a folder name.
-- **The recent list is the framework's.** `UltraCanvasRecentList.h` keeps
-  it now (one entry per line in a settings file, the newest first, eight
-  by default); UltraPress normalises its folders and reads the list
-  through it, and UltraFIBU's start window takes the same list for its
-  bookkeeping files.
-
-#### 2026-10-15 *0.8.2*
-- **The site's settings in the window.** *Site settings…* in the side
-  column puts the site itself into the property pane: its name, tagline,
-  address (the published site's root, kept without a trailing slash),
-  language and owner, each written into the model as typed and the page
-  re-rendered; selecting a page or a block returns to them. Until now the
-  name came from the start window or `ultrapress new --name` and the
-  address stayed `https://example.org` unless `site.json` was edited.
-- **The sites opened last.** The editor remembers the folders it opened
-  (`<settings folder>/UltraPress/recent`, eight at most, the last first)
-  and the start window offers the five newest as buttons under *Opened
-  last*; a folder that holds no site any more is said so and dropped.
-- **A Start-menu entry on Windows.** The installer gave one only to
-  GUI-subsystem programs, so `ultrapress`, a console program for its
-  commands' sake, had none; it and `ultrafibu` now get theirs (*UltraPress*,
-  *UltraFIBU*), which start them with nothing - the start window.
+#### 2026-10-16 *0.8.2*
+- **A file with a `\` in its name is published, deployed and listed as
+  itself on Linux and macOS.** The media library, the import of a file
+  already in it, the deploy and the publish's sweep of stale files turned
+  every `\` in a relative path into `/` - right on Windows, where `\` joins
+  the parts, but on Linux and macOS `\` is a character of a name: a file
+  `a\b.html` became `b.html` in a folder `a`, which the deploy then failed to
+  read (or, were there such a file, uploaded in its place), and a media file
+  `x\y.png` was listed, referenced and removed under a name that is not its
+  own. One helper, `SitePathText` (`UltraPressModel.h`), turns `\` into `/`
+  on Windows only; the four places use it. `UltraPressEngineTests` checks a
+  `\` in a deployed and in a media file name.
 
 #### 2026-10-15 *0.8.1*
-- **Started with nothing, the program opens a start window instead of
-  ending.** `ultrapress` with no argument - a double-click on Windows -
-  printed its usage to a console that closed again before it could be
-  read, which looked like a crash; a folder that held no site ended the
-  same way. Both now open a start window (`ui/UltraPressStart.h`) that
-  says why and offers the two ways on: *Open a site folder…* through the
-  folder dialog onto an existing site, or a name and *Create it in a
-  folder…* for a new one (the starter site `ultrapress new` writes; a
-  folder that already holds a site is refused). The editor opens from
-  there and the start window closes once it has, the way UltraFIBU's
-  does. `ultrapress <site-dir> --check` still answers at the prompt.
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `ultrapress.exe` is a GUI program now. Beside it,
+  `ultrapress.com` is its console companion, which a prompt runs for the
+  bare name: `ultrapress mysite --check` starts the `.exe`, waits for it and
+  returns its exit code, as before. Typed as `ultrapress.exe`, the prompt no
+  longer waits (framework changelog: `windows-console-companions`).
 
 #### 2026-10-15 *0.8.0*
 - **The look follows the framework's theme, light or dark.** The window

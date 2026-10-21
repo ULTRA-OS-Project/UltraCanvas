@@ -296,7 +296,7 @@ static void TestLook() {
     Check(back.recentSites.size() == 8 && back.recentSites.front() == "/sites/more9", "eight are kept, the newest first");
     back.ForgetSite("/sites/more9");
     Check(back.recentSites.size() == 7 && back.recentSites.front() == "/sites/more8", "a site is forgotten");
-    // The look file of 0.8.0 to 0.8.3, read once and gone when the settings are written.
+    // The look file of 0.8.0 to 0.8.2, read once and gone when the settings are written.
     const std::string oldDir = UltraCanvas::PathToUtf8(dir / "old");
     fs::create_directories(dir / "old", ec);
     WriteTextFile(UltraCanvas::PathToUtf8(dir / "old" / "look"), "dark\n");

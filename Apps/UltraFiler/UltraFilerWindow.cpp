@@ -61,6 +61,20 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.35.0 - a drive's folder being fetched or updated says so on the
+//                  status bar (the display only slides a thin bar along its
+//                  foot); a drop is asked about at once during a transfer,
+//                  counting the uploads still on their way
+// Version: 1.34.0 - closing during an upload or a download asks first
+//                  ("An upload is still running — quit anyway?"); for one to
+//                  an FTP drive it says what was sent is removed later
+// Version: 1.34.0 - the split view's right-hand display is retired like a closed tab
+//                  when the split view goes off (its workers stop, it is destroyed
+//                  once they have) and made again, with its folder and history,
+//                  when it comes back
+// Version: 1.33.0 - a closed tab's folder display is told to stop its workers and
+//                  destroyed once they are gone (RetireDisplay), so a busy worker
+//                  no longer freezes the window as the tab closes
 // Version: 1.32.0 - the connection log button on every remote drive; add-drive
 //                  sign-ins in the connection log; "+ Drive > Connection log..."
 // Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
@@ -68,7 +82,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -76,6 +90,7 @@
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasCheckbox.h"      // the upload conflict question's "Apply to all"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
@@ -110,10 +125,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <unordered_set>
@@ -926,6 +944,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
     CancelPreviewReloadTimer(); // and so does this one's
+    ClearTransferNote();        // and the status note's
     StopSubfolderSearch();
     ReapSearchWorkers(true);    // now the search threads are waited for
     exportWindows.clear();      // each joins the walk building its text
@@ -947,6 +966,14 @@ UltraFilerWindow::~UltraFilerWindow() {
         remoteDrives->onConnectionLogChanged = nullptr;
         remoteDrives->Stop();
     }
+    // Its callback captures the window. A display still retiring is
+    // destroyed with the window, waiting for its workers as before.
+    if (retiredReapTimer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(retiredReapTimer);
+        retiredReapTimer = InvalidTimerId;
+    }
+    StopTreeFetchTimer();   // its callback captures the window too
     // The log window lives on its own, but its Clear button calls back here.
     if (connectionLogRefreshTimer != InvalidTimerId) {
         if (auto* app = UltraCanvasApplication::GetInstance())
@@ -970,6 +997,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
+    // Quitting stops the remote drives' uploads and downloads: asked first.
+    window->onWindowClosing = [this]() { return AllowCloseDuringTransfers(); };
 
     // Whether this system can make RAM discs, and which are mounted: asked
     // on a worker, since the first question launches a shell on Windows and
@@ -1124,6 +1153,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     WireDisplayFormatCallbacks(folderPreview.get());
     WireFolderIconProvider(folderPreview.get());
     WireFavoriteMarkProvider(folderPreview.get());
+    WireTransferNotice(folderPreview.get());
 
     // The pane is narrow, so it carries the one way out of it: a round button
     // floating over the middle of its left edge that moves the folder it
@@ -1431,6 +1461,7 @@ bool UltraFilerWindow::IsRemotePreviewKind(const std::string& path) {
     switch (UltraCanvasMediaViewer::ClassifyFile(path)) {
         case MediaKind::Image:    // bitmaps, and SVG through the image pipeline
         case MediaKind::Vector:   // DXF, CorelDRAW, EPS, ...
+        case MediaKind::Document: // PDF, now shown in the PDF view rather than as a drawing
         case MediaKind::Model:    // STL, OBJ, ...
             return true;
         default:
@@ -1556,6 +1587,10 @@ void UltraFilerWindow::ApplySettings() {
         else
             preview->SetPDFThumbnailWidthFraction(
                     settings.pdfThumbnailWidthPercent / 100.0f);
+        // Handling > Protected files: how long without input before the
+        // preview forgets Unlock's passwords (0: only a screen lock does).
+        preview->SetForgetPasswordsAfterIdle(
+                std::chrono::minutes(settings.forgetPasswordsAfterMinutes));
     }
     // Handling > Drag & Drop: every tab's folder display, so the choice holds
     // for tabs that were already open when it changed. The folder preview
@@ -2102,7 +2137,7 @@ void UltraFilerWindow::UnpinTargetsFromTree() {
     if (changed) RefreshPinnedTreeNodes();
 }
 
-// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb + settings) =====
+// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh / Home + breadcrumb + settings) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
@@ -2136,6 +2171,16 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     row->AddChild(forwardButton);
     row->AddChild(upButton);
     row->AddChild(refresh);
+
+    // Home: the host's home folder (HOME / USERPROFILE) in the active folder
+    // display, from wherever the window is - History, Favorites and the
+    // Computer page included, which NavigateTo leaves for the folder view.
+    auto home = MakeToolButton("ufl-home", "", "home.svg", 30, [this]() {
+        const std::string dir = UserHomeDir();
+        if (!dir.empty()) NavigateTo(dir);
+    });
+    home->SetTooltip("Home folder");
+    row->AddChild(home);
 
     // The split screen: two folder displays side by side in place of the
     // tree and the one display, each with a tree button and a breadcrumb of
@@ -2622,9 +2667,13 @@ void UltraFilerWindow::AddRemoteTreePlaceholder(const std::string& path) {
     if (treeChildrenLoaded.count(path)) return;   // its real children are in
     TreeNode* node = folderTree->FindNode(path);
     if (!node || !node->children.empty()) return;
+    // Only for the expand button: hidden, so a row expanded before its
+    // listing is in shows no "..." row under it - its own row slides the
+    // loading bar instead (TreeNodeData::loading, LoadRemoteTreeChildren).
     TreeNodeData placeholder;
     placeholder.nodeId = PlaceholderId(path);
     placeholder.text = "...";
+    placeholder.visible = false;
     folderTree->AddNode(path, placeholder);
 }
 
@@ -2656,10 +2705,19 @@ void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
     if (!remoteDrives->List(path, entries, error)) {
         // The drive refused it - an account that is gone, a folder the server
         // will not list. Nothing below it, and no button promising there is.
+        node->data.loading = false;
         folderTree->RemoveNode(PlaceholderId(path));
         folderTree->RequestRedraw();
         ScheduleTreeFit();
         return;
+    }
+    // Being fetched - for the first time, or again behind the rows it has:
+    // the row slides the loading bar along its foot, as the folder display
+    // does, until the answer is in (listingReady) and this runs again.
+    const bool fetching = !listingReady && !remoteDrives->ListingStatus(path).empty();
+    if (node->data.loading != fetching) {
+        node->data.loading = fetching;
+        folderTree->RequestRedraw();
     }
 
     std::vector<TreeChild> wanted;
@@ -2764,8 +2822,9 @@ void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
                                    std::string& error) {
         return remoteDrives->List(path, out, error);
     };
-    // What the display says under its progress ring while that fetch is
-    // on its way: queued behind other requests, or waiting on the server.
+    // What that fetch is waiting for - queued behind other requests, or on
+    // the server - while the display slides its bar along the foot. A tab's
+    // display hands it to the status bar (WireFilerCallbacks).
     widget->remoteListingStatus = [this](const std::string& path) {
         return remoteDrives->ListingStatus(path);
     };
@@ -3670,6 +3729,22 @@ void UltraFilerWindow::BuildFolderTree() {
         ScheduleConnectionLogRefresh();
     };
     remoteDrives->onListingArrived = [this](const std::string& path) {
+        // Uploads that waited for this folder's listing go on: the names
+        // taken there are known now (or the listing failed, and there is
+        // nothing to ask about).
+        for (std::size_t i = 0; i < uploadsAwaitingListing.size();) {
+            if (uploadsAwaitingListing[i].folder != path) { ++i; continue; }
+            const std::vector<std::string> files = std::move(uploadsAwaitingListing[i].files);
+            uploadsAwaitingListing.erase(uploadsAwaitingListing.begin() +
+                                         static_cast<std::ptrdiff_t>(i));
+            std::vector<FilerEntry> there;
+            remoteDrives->CachedListing(path, there);
+            // ... and the names of uploads into it not in yet, which a
+            // listing taken while they are on their way does not show.
+            remoteDrives->AddUploadsUnderWay(path, there);
+            std::string why;
+            PlanRemoteUploads(path, files, there, why);
+        }
         // Only the display actually showing that folder needs redoing.
         RefreshRemoteFolderDisplays(path);
         // The tree too: this is the answer its row was waiting for, whether
@@ -3693,15 +3768,16 @@ void UltraFilerWindow::BuildFolderTree() {
         if (e && e->path == path) UpdatePreviewPane();
     };
     // A change to a drive finished: the folder it touched has already been
-    // dropped from the cache, so refreshing it refetches from the server.
+    // marked out of date in the cache (Stale), so refreshing it shows what it
+    // held while the server is asked again, ahead of transfers still waiting.
     remoteDrives->onOperationFinished = [this](const std::string& folderPath,
                                                const std::string& message) {
         if (IsRemoteFilerPath(folderPath)) {
             RefreshRemoteFolderDisplays(folderPath);
-            // The folder was dropped from the cache when the change finished,
-            // so this queues the refetch that brings the tree's rows back in
-            // line - a folder created, renamed or deleted on the drive. The
-            // rows are not touched until that answer arrives.
+            // The folder was marked out of date when the change finished, so
+            // this queues the refetch (if the display did not) that brings the
+            // tree's rows back in line - a folder created, renamed or deleted
+            // on the drive. No row is removed until that answer arrives.
             LoadRemoteTreeChildren(folderPath, /*listingReady=*/false);
         } else if (!folderPath.empty()) {
             // A download: nothing on the drive moved, a folder on this disk
@@ -3774,6 +3850,14 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->onFilesDroppedOnNode =
             [this](TreeNode* target, const std::vector<std::string>& files) {
         return DropFilesOnTreeNode(target, files);
+    };
+    // A Save dialog's file icon dropped on a folder row is saved in that
+    // folder - not on the Pinned header, and not on a drive's folder, which
+    // has no local disk to write to.
+    folderTree->onDropFolderOfNode = [this](TreeNode* node) {
+        const std::string path = TreeNodeTargetPath(node);
+        if (path.empty() || IsRemoteFilerPath(path)) return std::string();
+        return path;
     };
 }
 
@@ -3876,15 +3960,264 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
     return true;
 }
 
+// One drop's files whose names are taken in the folder they go to, asked
+// about one at a time (UltraFilerWindow::AskRemoteUploadConflict).
+struct RemoteUploadConflicts {
+    std::string folder;
+    std::vector<std::string> files;   // the local files, in the order dropped
+    std::size_t next = 0;
+    std::vector<FilerEntry> there;    // the folder's listing
+    std::set<std::string> taken;      // its names, and those Keep both gave out since
+    bool applyToAll = false;
+    std::size_t applied = 0;          // the answer applied to the rest
+};
+
+namespace {
+
+// "28 B", "512.0 KB", "40.0 MB": the sizes the status bar shows.
+std::string SizeForConflict(uint64_t bytes) {
+    if (bytes < 1024) return std::to_string(bytes) + " B";
+    const char* units[] = {"KB", "MB", "GB", "TB"};
+    double value = static_cast<double>(bytes) / 1024.0;
+    std::size_t unit = 0;
+    while (value >= 1024.0 && unit + 1 < sizeof(units) / sizeof(units[0])) {
+        value /= 1024.0;
+        ++unit;
+    }
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.1f %s", value, units[unit]);
+    return buf;
+}
+
+// "40.0 MB, modified 17 Oct 2026 20:10" for the conflict question's two lines.
+std::string DescribeForConflict(uint64_t size, std::time_t modified) {
+    std::string out = SizeForConflict(size);
+    if (modified > 0) {
+        std::tm tm{};
+#if defined(_WIN32)
+        localtime_s(&tm, &modified);
+#else
+        localtime_r(&modified, &tm);
+#endif
+        char buf[64];
+        if (std::strftime(buf, sizeof buf, "%d %b %Y %H:%M", &tm) > 0)
+            out += std::string(", modified ") + buf;
+    }
+    return out;
+}
+
+// A local file's modification time as a time_t: the file clock's distance
+// from now, laid onto the system clock (no clock_cast in every library).
+std::time_t LocalFileTime(fs::file_time_type t) {
+    using namespace std::chrono;
+    const auto sys = time_point_cast<system_clock::duration>(
+            t - fs::file_time_type::clock::now() + system_clock::now());
+    return system_clock::to_time_t(sys);
+}
+
+} // namespace
+
 int UltraFilerWindow::UploadToRemoteFolder(const std::string& folder,
                                            const std::vector<std::string>& files,
                                            std::string& firstRefusal) {
     firstRefusal.clear();
     if (!remoteDrives || files.empty()) return 0;
-    int queued = 0, skipped = 0;
+    // What is there now, not what the cache saw when the folder was last
+    // opened - someone may have put a file of that name there since. Asked
+    // for like any listing, so it never holds this thread; the display goes
+    // on showing what it has, and the files wait for the answer.
+    uploadsAwaitingListing.push_back({folder, files});
+    remoteDrives->Revalidate(folder);
+    if (statusLabel) {
+        RemoteDrive drive;
+        std::string where = remoteDrives->Find(RemoteFilerAccountId(folder), drive)
+                                    ? drive.displayName : std::string("the drive");
+        const std::string sub = RemoteFilerName(folder);
+        if (!sub.empty()) where += " / " + sub;
+        statusLabel->SetText("Looking in " + where + " for names already taken...");
+    }
+    return static_cast<int>(files.size());
+}
+
+int UltraFilerWindow::PlanRemoteUploads(const std::string& folder,
+                                        const std::vector<std::string>& files,
+                                        const std::vector<FilerEntry>& there,
+                                        std::string& firstRefusal) {
+    auto run = std::make_shared<RemoteUploadConflicts>();
+    run->folder = folder;
+    run->there = there;
+    for (const FilerEntry& e : there) run->taken.insert(e.name);
+    auto findThere = [&there](const std::string& name) -> const FilerEntry* {
+        for (const FilerEntry& e : there)
+            if (e.name == name) return &e;
+        return nullptr;
+    };
+
+    std::vector<std::pair<std::string, std::string>> now;
+    std::error_code ec;
     for (const std::string& f : files) {
+        const std::string name = PathToUtf8(PathFromUtf8(f).filename());
+        const FilerEntry* existing = findThere(name);
+        // Nothing in the way - or nothing that is an upload at all (a folder,
+        // a remote path), which the drives refuse with their own reason.
+        if (!existing || IsRemoteFilerPath(f) || fs::is_directory(PathFromUtf8(f), ec)) {
+            now.emplace_back(f, std::string());
+            continue;
+        }
+        FilerConflictPolicy policy = settings.conflictPolicy;
+        // A file cannot replace a folder: beside it, then.
+        if (existing->isDirectory && policy == FilerConflictPolicy::Replace)
+            policy = FilerConflictPolicy::KeepBoth;
+        switch (policy) {
+            case FilerConflictPolicy::KeepBoth: {
+                const std::string free = UniqueRemoteFilerName(
+                        name, [&run](const std::string& n) { return run->taken.count(n) > 0; });
+                run->taken.insert(free);
+                now.emplace_back(f, free);
+                break;
+            }
+            case FilerConflictPolicy::Replace:
+                now.emplace_back(f, std::string());
+                break;
+            case FilerConflictPolicy::Skip:
+                break;
+            case FilerConflictPolicy::Ask:
+                run->files.push_back(f);
+                break;
+        }
+    }
+    const int queued = now.empty() ? 0 : QueueRemoteUploads(folder, now, firstRefusal);
+    if (!run->files.empty()) AskRemoteUploadConflict(run);
+    return queued + static_cast<int>(run->files.size());
+}
+
+void UltraFilerWindow::AskRemoteUploadConflict(const std::shared_ptr<RemoteUploadConflicts>& run) {
+    // The answers, in the order the buttons are offered.
+    enum Answer : std::size_t { KeepBoth = 0, Replace = 1, Skip = 2, Stop = 3 };
+    auto apply = [this, run](std::size_t answer, const std::string& f) {
+        const std::string name = PathToUtf8(PathFromUtf8(f).filename());
         std::string why;
-        if (remoteDrives->Upload(folder, f, why)) ++queued;
+        if (answer == KeepBoth) {
+            const std::string free = UniqueRemoteFilerName(
+                    name, [&run](const std::string& n) { return run->taken.count(n) > 0; });
+            run->taken.insert(free);
+            QueueRemoteUploads(run->folder, {{f, free}}, why);
+        } else if (answer == Replace) {
+            QueueRemoteUploads(run->folder, {{f, std::string()}}, why);
+        }
+    };
+
+    while (run->next < run->files.size()) {
+        const std::string f = run->files[run->next];
+        const std::string name = PathToUtf8(PathFromUtf8(f).filename());
+        const FilerEntry* existing = nullptr;
+        for (const FilerEntry& e : run->there)
+            if (e.name == name) { existing = &e; break; }
+        // "Apply to all" - except Replace onto a folder, which cannot be.
+        if (run->applyToAll && !(run->applied == Replace && existing && existing->isDirectory)) {
+            ++run->next;
+            apply(run->applied, f);
+            continue;
+        }
+
+        const std::size_t remaining = run->files.size() - run->next - 1;
+        RemoteDrive drive;
+        const std::string driveName =
+                remoteDrives && remoteDrives->Find(RemoteFilerAccountId(run->folder), drive)
+                        ? drive.displayName : std::string("the drive");
+        std::string folderName = RemoteFilerName(run->folder);
+        if (folderName.empty()) folderName = driveName;
+        const bool isFolder = existing && existing->isDirectory;
+        const std::string keepBothName = UniqueRemoteFilerName(
+                name, [&run](const std::string& n) { return run->taken.count(n) > 0; });
+
+        std::error_code ec;
+        const uint64_t localSize = static_cast<uint64_t>(fs::file_size(PathFromUtf8(f), ec));
+        std::time_t localModified = 0;
+        {
+            std::error_code tec;
+            const fs::file_time_type t = fs::last_write_time(PathFromUtf8(f), tec);
+            if (!tec) localModified = LocalFileTime(t);
+        }
+        std::string details;
+        details += isFolder ? "Existing: a folder\n"
+                            : "Existing: " + DescribeForConflict(existing ? existing->size : 0,
+                                                                 existing ? existing->modifiedTime : 0) + "\n";
+        details += "Uploaded: " + DescribeForConflict(ec ? 0 : localSize, localModified) + "\n\n";
+        details += isFolder ? "A file cannot replace a folder. "
+                            : "Replace overwrites the file on the drive. ";
+        details += "Keep both uploads this one as \"" + keepBothName + "\".";
+
+        DialogConfig cfg;
+        cfg.title = "Upload: the name is already taken";
+        cfg.dialogType = DialogType::Question;
+        cfg.message = isFolder ? "A folder \"" + name + "\" already exists in \"" + folderName +
+                                         "\" on " + driveName + "."
+                               : "\"" + name + "\" already exists in \"" + folderName +
+                                         "\" on " + driveName + ".";
+        cfg.details = details;
+        cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+        cfg.width = 560;
+        cfg.height = 240;
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) return;   // no dialogs: nothing is replaced, nothing more goes up
+
+        auto applyToAll = std::make_shared<bool>(run->applyToAll);
+        if (remaining > 0) {
+            const std::string label = "Apply to all " + std::to_string(remaining) +
+                                      " remaining conflict" + (remaining == 1 ? "" : "s");
+            const float fontSize = dialog->GetStyle().detailsFontSize;
+            // An explicit width, as the filer's own question has: the bar is
+            // laid out before there is a context to measure the label with.
+            const float width = 26.0f + 0.58f * fontSize * static_cast<float>(label.size());
+            auto box = std::make_shared<UltraCanvasCheckbox>("UploadConflictApplyAll", 0, 0,
+                                                             width, 22.0f, label);
+            box->SetFontSize(fontSize);
+            box->size.width = CSSLayout::Dimension::Px(width);
+            box->size.height = CSSLayout::Dimension::Px(22);
+            box->onStateChanged = [applyToAll](CheckedState, CheckedState state) {
+                *applyToAll = state == CheckedState::Checked;
+            };
+            dialog->AddFooterElement(box);
+        }
+        // The buttons only record which one was pressed; the answer runs once
+        // the dialog has closed, so the next question never stacks on it.
+        auto chosen = std::make_shared<std::optional<std::size_t>>();
+        dialog->AddCustomButton("Keep both", DialogResult::Yes, DialogButtonRole::Default,
+                                [chosen]() { *chosen = KeepBoth; });
+        if (!isFolder)
+            dialog->AddCustomButton("Replace", DialogResult::Yes, DialogButtonRole::Normal,
+                                    [chosen]() { *chosen = Replace; });
+        dialog->AddCustomButton("Skip", DialogResult::Yes, DialogButtonRole::Normal,
+                                [chosen]() { *chosen = Skip; });
+        dialog->AddCustomButton("Stop", DialogResult::Cancel, DialogButtonRole::Cancel,
+                                [chosen]() { *chosen = Stop; });
+        dialog->onResult = [this, run, chosen, applyToAll, apply, f](DialogResult) {
+            // Escape and the close box are Stop: nothing more goes up.
+            const std::size_t answer = chosen->has_value() ? **chosen : Stop;
+            if (answer == Stop) return;
+            ++run->next;
+            run->applyToAll = *applyToAll;
+            run->applied = answer;
+            apply(answer, f);
+            auto next = [this, run]() { AskRemoteUploadConflict(run); };
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(next);
+            else next();
+        };
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
+        return;
+    }
+}
+
+int UltraFilerWindow::QueueRemoteUploads(
+        const std::string& folder, const std::vector<std::pair<std::string, std::string>>& items,
+        std::string& firstRefusal) {
+    firstRefusal.clear();
+    if (!remoteDrives || items.empty()) return 0;
+    int queued = 0, skipped = 0;
+    for (const auto& [f, remoteName] : items) {
+        std::string why;
+        if (remoteDrives->Upload(folder, f, why, remoteName)) ++queued;
         else { ++skipped; if (firstRefusal.empty()) firstRefusal = why; }
     }
     if (statusLabel) {
@@ -4254,6 +4587,11 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // used for remote paths.
     if (IsRemoteFilerPath(path)) {
         LoadRemoteTreeChildren(path, /*listingReady=*/false);
+        // Expanded by the user and not in yet: the status bar says what it
+        // waits for - a folder being read ahead reports nothing of its own.
+        if (TreeNode* row = folderTree ? folderTree->FindNode(path) : nullptr;
+            row && row->data.loading)
+            WatchTreeFetch(path);
         return;
     }
     // Once per node: the placeholder is only a hint that a scan is due, and a
@@ -4869,6 +5207,9 @@ void UltraFilerWindow::BuildTabbedContainer() {
                 searchStatus.clear();
                 searchQueryText.clear();
             }
+            // Not destroyed here: its workers may be busy, and the
+            // destructor would wait for them on this thread.
+            RetireDisplay(std::move(tabStates[index]));
             tabStates.erase(tabStates.begin() + index);
         }
         return true;
@@ -4884,6 +5225,34 @@ void UltraFilerWindow::BuildTabbedContainer() {
         tabStates.erase(tabStates.begin() + from);
         tabStates.insert(tabStates.begin() + to, std::move(st));
     };
+}
+
+void UltraFilerWindow::RetireDisplay(std::unique_ptr<FilerTabState> state) {
+    if (!state) return;
+    if (state->filer) state->filer->RequestBackgroundStop();
+    retiredDisplays.push_back(std::move(state));
+    ReapRetiredDisplays();   // the common case: nothing was running
+    if (retiredDisplays.empty() || retiredReapTimer != InvalidTimerId) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;   // no timers: destroyed with the window
+    retiredReapTimer = app->StartTimer(100, true, [this](TimerId) {
+        ReapRetiredDisplays();
+        if (!retiredDisplays.empty()) return;
+        if (auto* a = UltraCanvasApplication::GetInstance())
+            a->StopTimer(retiredReapTimer);
+        retiredReapTimer = InvalidTimerId;
+    });
+}
+
+void UltraFilerWindow::ReapRetiredDisplays() {
+    // Only displays whose workers have all returned: their destructor's
+    // waits are then instant.
+    retiredDisplays.erase(
+            std::remove_if(retiredDisplays.begin(), retiredDisplays.end(),
+                           [](const std::unique_ptr<FilerTabState>& st) {
+                               return !st->filer || st->filer->BackgroundStopped();
+                           }),
+            retiredDisplays.end());
 }
 
 void UltraFilerWindow::ApplyTabStripStyle() {
@@ -5017,7 +5386,17 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onSelectionChanged = [this, tab](const std::vector<FilerEntry>&) {
         if (!IsActiveTab(tab)) return;
         UpdateStatusBar();
+        // Ctrl+click (a Ctrl marquee, Ctrl+A) gathers several files: the
+        // detail pane keeps what it shows rather than folding away on the
+        // second file and opening again when one is left. The next selection
+        // made without Ctrl brings it back in step.
+        if (SelectionChangedWithCtrl()) return;
         UpdatePreviewPane();
+    };
+    // A drive's folder being fetched, or fetched again: what it waits for is
+    // said on the status bar, not over the files.
+    tab->filer->onListingPendingChanged = [this, tab](const std::string&) {
+        if (IsActiveTab(tab)) UpdateStatusBar();
     };
     tab->filer->onFolderRefreshed = [this, tab]() {
         // The folder listing changed (a file operation, a drop, a rename):
@@ -5146,6 +5525,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
     WireFavoriteMarkProvider(tab->filer.get());
+    WireTransferNotice(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -5468,6 +5848,7 @@ void UltraFilerWindow::BuildHistoryView() {
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
         WireFavoriteMarkProvider(histFiler.get());
+        WireTransferNotice(histFiler.get());
         // Display > Type from the page's own context menu.
         histFiler->onViewTypeChanged = [this](FilerViewType) {
             SyncCommandBarToVisibleDisplay();
@@ -5717,6 +6098,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onFolderModified = [this, self = favFiler.get()](const std::string& folder) {
             HandleFolderModified(folder, self);
         };
+        WireTransferNotice(favFiler.get());
         favFiler->onError = [this](const std::string& message) {
             if (statusLabel) statusLabel->SetText("Error: " + message);
         };
@@ -5844,6 +6226,7 @@ void UltraFilerWindow::BuildComputerPage() {
     computerFolders->onPathChanged = [this](const std::string& path) {
         OpenHistoryEntry(path, true);
     };
+    WireTransferNotice(computerFolders.get());
     computerFolders->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
@@ -6165,6 +6548,7 @@ void UltraFilerWindow::NavigateTo(const std::string& path) {
     ShowBrowsingView();
     // A new folder ends whatever the last drop onto a drive had to report.
     remoteDropNote.clear();
+    ClearTransferNote();
     if (!filer || path.empty() || path == filer->GetPath()) return;
     filer->SetPath(path);
 }
@@ -6365,6 +6749,13 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
                         " of " +
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesTotal));
+                // Every byte sent, the server still taking them in - which on a
+                // slow line is a while: the step says so ("Finishing the
+                // upload...", then the server's answer) rather than the count
+                // standing still.
+                if (remoteActivity.bytesDone >= remoteActivity.bytesTotal &&
+                    !remoteActivity.step.empty())
+                    text += " - " + remoteActivity.step;
             } else if (remoteActivity.bytesDone > 0) {
                 // A server that never said how big the file is: what has gone
                 // is still worth showing, and is all there is to show.
@@ -6517,6 +6908,104 @@ void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
     }
 }
 
+bool UltraFilerWindow::AllowCloseDuringTransfers() {
+    if (quitConfirmed || !remoteDrives || !window) return true;
+    // Asked already, and not answered yet: the question stays the one on
+    // screen.
+    if (quitQuestionOpen) return false;
+    // A window that is not the last one closes as it always did: the drives
+    // work on behind the ones still open.
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (app && !app->ClosingEndsApplication(window.get())) return true;
+    const std::vector<RemoteTransfer> transfers = remoteDrives->PendingTransfers();
+    if (transfers.empty()) return true;
+    AskQuitDuringTransfers(transfers);
+    return false;
+}
+
+void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>& transfers) {
+    std::size_t uploads = 0, running = 0;
+    for (const RemoteTransfer& t : transfers) {
+        if (t.upload) ++uploads;
+        if (t.running) ++running;
+    }
+    const std::size_t waiting = transfers.size() - running;
+    // "An upload is still running", "3 downloads are still waiting",
+    // "4 transfers are still running or waiting".
+    std::string what;
+    if (transfers.size() == 1) {
+        what = uploads ? "An upload is" : "A download is";
+    } else {
+        const char* kind = uploads == transfers.size() ? " uploads"
+                         : uploads == 0                ? " downloads"
+                                                       : " transfers";
+        what = std::to_string(transfers.size()) + kind + " are";
+    }
+    const char* state = waiting == 0 ? " still running"
+                      : running == 0 ? " still waiting"
+                                     : " still running or waiting";
+
+    std::string details;
+    for (const RemoteTransfer& t : transfers) {
+        if (!t.running) continue;
+        details += "\"" + t.name + "\" is being " +
+                   (t.upload ? "uploaded to " : "downloaded from ") + t.drive + ".\n";
+    }
+    if (waiting > 0) {
+        details += running ? "Waiting after it: " : "Waiting: ";
+        std::size_t named = 0;
+        for (const RemoteTransfer& t : transfers) {
+            if (t.running) continue;
+            if (named == 3) break;
+            details += (named ? ", " : "") + ("\"" + t.name + "\"");
+            ++named;
+        }
+        if (waiting > named) details += " and " + std::to_string(waiting - named) + " more";
+        details += ".\n";
+    }
+    details += running == 0  ? "Quitting drops them before they start."
+             : waiting == 0  ? "Quitting stops it part way: the file does not arrive whole."
+                             : "Quitting stops the one running part way, and drops the rest "
+                               "before they start.";
+    // An upload to an FTP or SFTP drive leaves what it sent on the server,
+    // which UltraFiler removes the next time that drive is used; a file it
+    // was replacing is left as it was.
+    for (const RemoteTransfer& t : transfers) {
+        if (!t.running || !t.cleanedUpIfStopped) continue;
+        details += " What was sent is removed from " + t.drive +
+                   " the next time you use it.";
+        break;
+    }
+
+    DialogConfig cfg;
+    cfg.title = "Quit UltraFiler?";
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = what + state + " — quit anyway?";
+    cfg.details = details;
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 500;
+    cfg.height = 200;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: the window stays, and so do the transfers
+    // The safe answer is the one Return gives: UltraFiler stays.
+    dialog->AddCustomButton("Keep UltraFiler open", DialogResult::Cancel,
+                            DialogButtonRole::Default);
+    dialog->AddCustomButton("Quit anyway", DialogResult::Yes, DialogButtonRole::Destructive);
+    dialog->onResult = [this](DialogResult result) {
+        quitQuestionOpen = false;
+        if (result != DialogResult::Yes) return;
+        quitConfirmed = true;
+        // The close the question held back, once the dialog has finished
+        // closing - not from inside it. Raw `this`: the window outlives the
+        // event loop that runs this.
+        auto close = [this]() { if (window) window->Close(); };
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(close);
+        else close();
+    };
+    quitQuestionOpen = true;
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
+}
+
 void UltraFilerWindow::OpenConnectionLog() {
     if (!remoteDrives) return;
     const std::vector<RemoteLogSession> sessions = remoteDrives->ConnectionLog().Snapshot();
@@ -6541,6 +7030,40 @@ void UltraFilerWindow::OpenConnectionLog() {
     // Shown now, so no longer news.
     connectionLogSeenErrors = remoteDrives->ConnectionLog().ErrorCount();
     UpdateConnectionLogButton();
+}
+
+void UltraFilerWindow::WatchTreeFetch(const std::string& path) {
+    treeFetchPath = path;
+    UpdateStatusBar();
+    if (treeFetchTimer != InvalidTimerId) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    // A quarter of a second: the step and the seconds waited follow the
+    // fetch, as the display's own wait does.
+    treeFetchTimer = app->StartTimer(250, true, [this](TimerId) {
+        const TreeNode* row = folderTree ? folderTree->FindNode(treeFetchPath) : nullptr;
+        if (!row || !row->data.loading) {
+            treeFetchPath.clear();
+            StopTreeFetchTimer();
+        }
+        UpdateStatusBar();
+    });
+}
+
+void UltraFilerWindow::StopTreeFetchTimer() {
+    if (treeFetchTimer == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(treeFetchTimer);
+    treeFetchTimer = InvalidTimerId;
+}
+
+std::string UltraFilerWindow::TreeFetchStatus() const {
+    if (treeFetchPath.empty() || !remoteDrives || !folderTree) return {};
+    const TreeNode* row = folderTree->FindNode(treeFetchPath);
+    if (!row || !row->data.loading) return {};
+    if (filer && filer->GetPath() == treeFetchPath && !historyShown && !favoritesShown &&
+        !computerShown)
+        return {};
+    return remoteDrives->ListingStatus(treeFetchPath);
 }
 
 void UltraFilerWindow::ScheduleConnectionLogRefresh() {
@@ -6572,12 +7095,33 @@ void UltraFilerWindow::RefreshConnectionLogWindow() {
 void UltraFilerWindow::UpdateStatusBar() {
     if (!statusLabel) return;
     UpdateRemoteProgressBar();
+    // The drive's folder on show being fetched or updated: what it waits for
+    // ("Waiting for Studio FTP - 1 request ahead", "Reading /up from Studio
+    // FTP - Command: LIST - 3 s"). The display only slides a bar along its
+    // foot; the words are said here.
+    const bool folderShown = filer && !historyShown && !favoritesShown && !computerShown;
+    const std::string pending = folderShown ? filer->GetListingPendingStatus() : std::string();
     // A drive is busy whatever the window happens to be showing - the History
     // view, the Computer page, another tab - so this is said first and in
     // place of the rest. What a server is doing is the one thing in this
-    // window the user cannot see for themselves.
+    // window the user cannot see for themselves. The folder's own wait goes
+    // after it, unless the drive is busy reading a folder - most likely that
+    // one, said already.
+    // A drive's folder the user expanded in the tree, still being fetched:
+    // what it waits for - said like the drive's activity, since a folder
+    // read ahead has none of its own to report.
+    const std::string treeWait = TreeFetchStatus();
     if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
-        statusLabel->SetText(activity);
+        std::string text = activity;
+        if (remoteActivity.kind != RemoteActivity::Kind::Listing) {
+            if (!pending.empty()) text += "    |    " + pending;
+            if (!treeWait.empty()) text += "    |    " + treeWait;
+        }
+        statusLabel->SetText(text);
+        return;
+    }
+    if (!treeWait.empty()) {
+        statusLabel->SetText(treeWait);
         return;
     }
     // What a drop onto a drive could not send. Held until the next drop or the
@@ -6585,6 +7129,12 @@ void UltraFilerWindow::UpdateStatusBar() {
     // files that DID go are going.
     if (!remoteDropNote.empty()) {
         statusLabel->SetText(remoteDropNote);
+        return;
+    }
+    // A copy or move that just ended: its refresh would otherwise replace the
+    // confirmation with the folder's counts the moment it is written.
+    if (!transferNote.empty()) {
+        statusLabel->SetText(transferNote);
         return;
     }
     if (!remotePreviewNote.empty()) {
@@ -6644,7 +7194,15 @@ void UltraFilerWindow::UpdateStatusBar() {
             return;
         }
     }
+    // Nothing of the folder in yet: the wait is all there is to say, not
+    // "0 items".
+    if (!pending.empty() && filer->GetEntries().empty()) {
+        statusLabel->SetText(pending);
+        return;
+    }
     std::string text = DescribeFilerContent(filer.get());
+    // What it shows is being fetched again.
+    if (!pending.empty()) text += "    |    updating: " + pending;
     // A live filter changes what the counts describe — say so.
     if (!filer->GetNameFilter().empty())
         text += "    |    filtered by \"" + filer->GetNameFilter() + "\"";
@@ -6676,6 +7234,20 @@ const FilerEntry* UltraFilerWindow::SingleSelectedEntry() const {
     const std::vector<FilerEntry>& entries = filer->GetEntries();
     if (sel.front() >= entries.size()) return nullptr;
     return &entries[sel.front()];
+}
+
+bool UltraFilerWindow::SelectionChangedWithCtrl() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return false;
+    // The event being handled, not the remembered key state: a selection
+    // changed by a rescan or a timer has no input event of its own, and the
+    // last one may be a Ctrl click long finished. Of the Ctrl keys only
+    // Ctrl+A selects - Ctrl+D / Ctrl+F select the copy or the new folder they
+    // make, which the pane should show.
+    const UCEvent& ev = app->GetCurrentEvent();
+    if (!ev.ctrl) return false;
+    return ev.IsMouseEvent() ||
+           (ev.type == UCEventType::KeyDown && ev.virtualKey == UCKeys::A);
 }
 
 void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
@@ -6800,6 +7372,39 @@ void UltraFilerWindow::ArmPreviewReloadTimer(unsigned int delayMs) {
         previewReloadTimer = InvalidTimerId;
         ReloadChangedPreview();
     });
+}
+
+void UltraFilerWindow::WireTransferNotice(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->onTransferFinished = [this](const FilerTransferResult& result) {
+        ShowTransferNote(result.message);
+    };
+    target->onDeleteFinished = [this](const FilerDeleteResult& result) {
+        ShowTransferNote(result.message);
+    };
+}
+
+void UltraFilerWindow::ShowTransferNote(const std::string& message) {
+    ClearTransferNote();
+    if (message.empty()) return;
+    transferNote = message;
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        transferNoteTimer = app->StartTimer(kTransferNoteMs, false, [this](TimerId) {
+            transferNoteTimer = InvalidTimerId;
+            transferNote.clear();
+            UpdateStatusBar();
+        });
+    }
+    UpdateStatusBar();
+}
+
+void UltraFilerWindow::ClearTransferNote() {
+    if (transferNoteTimer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(transferNoteTimer);
+        transferNoteTimer = InvalidTimerId;
+    }
+    transferNote.clear();
 }
 
 void UltraFilerWindow::CancelPreviewReloadTimer() {
@@ -7181,12 +7786,21 @@ void UltraFilerWindow::BuildSplitViewPanes() {
 
     // The second display: everything a tab's display is, in no tab. Its
     // folder is set when the split view first shows it.
-    secondPane = CreateFolderDisplayState("split");
+    CreateSecondPane();
+}
+
+void UltraFilerWindow::CreateSecondPane() {
+    if (secondPane || !rightPaneBody) return;
+    // A name of its own each time: the one it replaces may still be
+    // retiring, and two widgets do not share an identifier.
+    secondPane = CreateFolderDisplayState("split-" + std::to_string(++tabCounter));
     rightPaneBody->AddChild(secondPane->page);
 }
 
 void UltraFilerWindow::SetSplitViewVisible(bool visible) {
-    if (visible == splitViewShown || !split || !filerPane || !secondPane) return;
+    if (visible == splitViewShown || !split || !filerPane) return;
+    if (visible) CreateSecondPane();   // retired when the split view last went off
+    if (!secondPane) return;
     // The split has to be on screen for the change to mean anything - and
     // showing a second folder is showing a folder.
     ShowBrowsingView();
@@ -7252,7 +7866,20 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
                                   (!fs::is_directory(UltraCanvas::PathFromUtf8(start), ec) || ec)))
                 start = filer ? filer->GetPath() : std::string();
             if (start.empty()) start = UserHomeDir();
+            // A display made again after the split view was off takes up the
+            // Back / Forward history of the one it replaces, when it opens on
+            // the folder that one was showing.
+            const bool resume = splitHistoryIndex < splitHistory.size() &&
+                                splitHistory[splitHistoryIndex] == start;
+            secondPane->navigatingHistory = resume;
             secondPane->filer->SetPath(start);
+            secondPane->navigatingHistory = false;
+            if (resume) {
+                secondPane->history = std::move(splitHistory);
+                secondPane->historyIndex = splitHistoryIndex;
+            }
+            splitHistory.clear();
+            splitHistoryIndex = 0;
         }
         StyleSplitHeaders();
         RefreshPaneBreadcrumbs();
@@ -7272,6 +7899,22 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             rightPane->RemoveChild(rightPaneBox);
             split->RemovePane(rightPane.get());
             rightPane.reset();
+        }
+        // The right-hand display goes the way of a closed tab: its workers
+        // are told to stop and it is destroyed once they have, rather than
+        // left running behind a hidden pane. Its folder (already in
+        // settings.splitSecondFolder) and its history are what the next one
+        // opens with.
+        if (secondPane) {
+            if (searchTab == secondPane.get()) {
+                StopSubfolderSearch();
+                searchStatus.clear();
+                searchQueryText.clear();
+            }
+            splitHistory = secondPane->history;
+            splitHistoryIndex = secondPane->historyIndex;
+            if (rightPaneBody) rightPaneBody->RemoveChild(secondPane->page);
+            RetireDisplay(std::move(secondPane));
         }
         const int leftIndex = split->GetPaneIndex(filerPane.get());
         if (leftIndex >= 0)

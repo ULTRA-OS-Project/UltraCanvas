@@ -174,6 +174,13 @@ namespace UltraCanvas {
         // State
         bool canToggled = false;
         bool canAcceptFocus = true;
+        // Grow-to-fit: the width the caller gave the button, and the width
+        // it was grown to (or -1 when it is at its given width).
+        bool growToFitText = true;
+        float declaredWidth = -1.f;
+        float grownWidth = -1.f;
+        float fitMinWidth = -1.f;   // the min-width the fit set, -1 when none
+        float relayoutForMinWidth = -1.f;   // the minimum a relayout was last asked for
 
         // Cached layout calculations
         Rect2Df iconRect;
@@ -243,6 +250,14 @@ namespace UltraCanvas {
         // ===== TEXT & ICON METHODS =====
         void SetText(const std::string& buttonText);
         std::string GetText() const { return text; }
+
+        // A button with text never comes out narrower than its text: a fixed
+        // width given in the constructor or SetSize() is the least it takes,
+        // and it grows when the text (a translation, a larger font) needs
+        // more. On by default; turn it off for a button that must keep its
+        // width and may cut its text. Buttons without text are not affected.
+        void SetGrowToFitText(bool grow);
+        bool GetGrowToFitText() const { return growToFitText; }
 
         // ===== ACCESSIBILITY =====
         // A push button, or a toggle button with its pressed state. Named by
@@ -353,6 +368,9 @@ namespace UltraCanvas {
         // Content-box size (text + primary icon + split secondary section),
         // excluding padding/border. Used by MeasureOwnContent/ComputeIntrinsicSizes.
         Size2Df MeasureContentSize(IRenderContext* rc) const;
+        // Widens a fixed-width button to its text (see SetGrowToFitText), or
+        // returns it to its given width; true when the width changed.
+        bool FitWidthToText(IRenderContext* rc);
         void CalculateLayout();
         void CalculateSplitLayout();
         bool IsPointInPrimarySection(int x, int y) const;

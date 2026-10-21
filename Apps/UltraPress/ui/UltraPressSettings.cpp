@@ -20,7 +20,7 @@ namespace UltraPress {
 namespace {
 
 const char* kSettingsFile = "settings.json";
-const char* kOldLookFile = "look";   // 0.8.0 to 0.8.3
+const char* kOldLookFile = "look";   // 0.8.0 to 0.8.2
 const size_t kKeep = 8;
 
 // One spelling per folder, so "./site" and "site/" are the same entry:

@@ -3,10 +3,12 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.3.0 - the selector's handles keep the aspect ratio under the transform bar's lock
+//                 (an edge handle scales both ways about its middle; shift frees a corner)
 // Version: 1.2.2 - the arrow keys nudge by one icon pixel in icon mode
 // Version: 1.2.1 - the Shape Editor button reads "Line / curve", not "Line ⇄ curve"
 // Version: 1.2.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorTools.h"
@@ -553,11 +555,21 @@ private:
         if (left) { pivot.x = cur.x + cur.width; sx = (pivot.x - e.snapped.x) / cur.width; }
         if (bottom) { pivot.y = cur.y; sy = (e.snapped.y - cur.y) / cur.height; }
         if (top) { pivot.y = cur.y + cur.height; sy = (pivot.y - e.snapped.y) / cur.height; }
-        if (e.shift && (left || right) && (top || bottom)) sx = sy = std::max(sx, sy);
+        const bool corner = (left || right) && (top || bottom);
         if (e.ctrl) {   // about the centre
             pivot = Point2Dd(cur.x + cur.width / 2, cur.y + cur.height / 2);
             if (left || right) sx = 2 * sx - 1;
             if (top || bottom) sy = 2 * sy - 1;
+        }
+        // Width and height alike: with the transform bar's ratio lock, or
+        // shift on a corner (shift frees a corner while the lock is on). An
+        // edge handle under the lock scales the other way by as much, about
+        // the middle of its edge.
+        if (corner && (ctx.lockAspectRatio != e.shift)) {
+            sx = sy = std::max(sx, sy);
+        } else if (!corner && ctx.lockAspectRatio) {
+            if (left || right) { sy = sx; if (!e.ctrl) pivot.y = cur.y + cur.height / 2; }
+            else               { sx = sy; if (!e.ctrl) pivot.x = cur.x + cur.width / 2; }
         }
         if (std::fabs(sx) < 0.01 || std::fabs(sy) < 0.01 || !std::isfinite(sx) || !std::isfinite(sy)) return;
         ScaleElements(ctx.selection->Elements(), sx, sy, pivot);
@@ -1240,7 +1252,7 @@ public:
     void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         ArtToolOptions& o = *ctx.options;
         AddDropdown(panel, "ac-fill-kind", "Fill type", { "Flat", "Linear", "Radial" }, o.fillKind, [&o](int i) { o.fillKind = i; });
-        AddCaption(panel, "ac-fill-cap", "The gradient's stops are edited in the Fill panel.");
+        AddCaption(panel, "ac-fill-cap", "Stops: the Gradient card below");
         AddButtonRow(panel, "ac-fill-ops", {
             {"No fill", [&ctx]() { if (ctx.selection->Empty()) return; ctx.history->Record("No Fill", [&]() { for (auto& e : ctx.selection->Elements()) e->Style.Fill.reset(); }); }},
             {"Flat fill", [&ctx]() { if (ctx.selection->Empty()) return; ctx.history->Record("Flat Fill", [&]() { for (auto& e : ctx.selection->Elements()) e->Style.Fill = ctx.fillColor ? ctx.fillColor() : Colors::Black; }); }},

@@ -882,17 +882,7 @@ void UltraCanvasJitterPlotElement::Render(IRenderContext* ctx, const Rect2Df& di
     Rect2Di local = GetLocalBounds();
 
     if (categoryData.empty()) {
-        ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(Rect2Dd(local.x, local.y, local.width, local.height));
-
-        ctx->SetTextPaint(Color(128, 128, 128, 255));
-        ctx->SetFontSize(14.0f);
-
-        std::string emptyText = "No data to display";
-        int textX = local.x + local.width / 2 - 60;
-        int textY = local.y + local.height / 2;
-
-        ctx->DrawText(emptyText, {static_cast<double>(textX), static_cast<double>(textY)});
+        DrawEmptyState(ctx);
         ctx->PopState();
         return;
     }

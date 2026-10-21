@@ -1,8 +1,11 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
-// New Image, Scale Image / Canvas Size, Text, Layer Properties, Import and
-// Colour to Alpha windows.
+// New Image, Scale Image / Canvas Size, Layer Properties, Import, Colour to
+// Alpha and Password Protection windows.
+// Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
+// Version: 1.3.0 - the Text window is gone: text is typed on the canvas
+// Version: 1.2.1 - Colour to Alpha: the picker in the framework's light style, as the panel's
 // Version: 1.2.0
-// Last Modified: 2026-09-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
@@ -223,58 +226,6 @@ void UltraPaintResizeDialog::SyncFromHeight() {
 }
 
 // ===========================================================================
-// TEXT
-// ===========================================================================
-
-UltraPaintTextDialog::UltraPaintTextDialog(const UltraPaintTextResult& initial) : UltraCanvasWindow() {
-    config_.title = "Text";
-    config_.width = 420; config_.height = 210;
-    config_.minWidth = 320; config_.minHeight = 180;
-    config_.deleteOnClose = true;
-    SetPadding(12);
-    layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-    auto form = FormGrid("upt-form");
-    AddChild(form);
-
-    textInput = CreateTextInput("upt-text", 0, 0, 0, 26);
-    textInput->SetText(initial.text);
-    FormRow(form, "upt-text-row", "Text:", textInput);
-
-    fontDrop = CreateDropdown("upt-font", 0, 0, 160, 24);
-    for (const char* n : { "Sans", "Serif", "Monospace" }) fontDrop->AddItem(n);
-    fontDrop->SetSelectedIndex(initial.font == "Serif" ? 1 : initial.font == "Monospace" ? 2 : 0, false);
-    FormRow(form, "upt-font-row", "Font:", fontDrop);
-
-    sizeSpin = CreateIntSpinner("upt-size", 0, 0, 120, 24, 4, 500, initial.size, 1);
-    sizeSpin->SetSuffix(" px");
-    FormRow(form, "upt-size-row", "Size:", sizeSpin);
-
-    boldBox = std::make_shared<UltraCanvasCheckbox>("upt-bold", 0, 0, 0, 24, "Bold");
-    boldBox->SetChecked(initial.bold);
-    FormWideRow(form, boldBox);
-
-    AddChild(ButtonRow("upt-buttons", this, [this]() {
-        UltraPaintTextResult r;
-        r.text = textInput->GetText();
-        r.font = fontDrop->GetSelectedIndex() == 1 ? "Serif" : fontDrop->GetSelectedIndex() == 2 ? "Monospace" : "Sans";
-        r.size = static_cast<int>(sizeSpin->GetValue());
-        r.bold = boldBox->IsChecked();
-        if (onAccept) onAccept(r);
-    }, "Place"));
-    textInput->onEnterPressed = [this](const std::string&) -> bool {
-        UltraPaintTextResult r;
-        r.text = textInput->GetText();
-        r.font = fontDrop->GetSelectedIndex() == 1 ? "Serif" : fontDrop->GetSelectedIndex() == 2 ? "Monospace" : "Sans";
-        r.size = static_cast<int>(sizeSpin->GetValue());
-        r.bold = boldBox->IsChecked();
-        if (onAccept) onAccept(r);
-        Close();
-        return true;
-    };
-}
-
-// ===========================================================================
 // LAYER PROPERTIES
 // ===========================================================================
 
@@ -318,6 +269,100 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
         r.locked = lockedBox->IsChecked();
         if (onAccept) onAccept(r);
     }));
+}
+
+// ===========================================================================
+// PASSWORD PROTECTION
+// ===========================================================================
+
+UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hidePreview, bool available)
+    : UltraCanvasWindow() {
+    config_.title = "Password Protection";
+    config_.width = 440; config_.height = 250;
+    config_.minWidth = 380; config_.minHeight = 260;
+    config_.resizable = true;
+    config_.deleteOnClose = true;
+    SetPadding(12);
+    layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    // What it does and what it costs, before anything is typed.
+    auto note = CreateLabel("upw-note", 0, 0, 0, 0,
+        protectedNow
+            ? "This image is password-protected: saved as an UltraCanvas layered image (.ucd), "
+              "it is encrypted with its password. Change the password, or remove the protection."
+            : "Saved as an UltraCanvas layered image (.ucd), the image is encrypted with this "
+              "password. Without it the file cannot be opened - a forgotten password cannot be "
+              "recovered.");
+    note->SetWrap(TextWrap::WrapWord);
+    note->size.height = CSSLayout::Dimension::Auto();
+    note->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddChild(note);
+
+    auto form = FormGrid("upw-form");
+    AddChild(form);
+    passwordInput = CreateRevealablePasswordInput("upw-password", 0, 0, 0, 26);
+    FormRow(form, "upw-password-row", protectedNow ? "New password:" : "Password:", passwordInput);
+    confirmInput = CreateRevealablePasswordInput("upw-confirm", 0, 0, 0, 26);
+    FormRow(form, "upw-confirm-row", "Again:", confirmInput);
+    hidePreviewBox = std::make_shared<UltraCanvasCheckbox>("upw-private", 0, 0, 0, 24,
+                                                           "Hide the preview too (no thumbnail in file managers)");
+    hidePreviewBox->SetChecked(hidePreview);
+    FormWideRow(form, hidePreviewBox);
+    // Enter in the second field is OK.
+    confirmInput->onEnterPressed = [this](const std::string&) { Accept(); return true; };
+
+    message = CreateLabel("upw-message", 0, 0, 0, 20, "");
+    message->SetTextColor(Color(176, 32, 32, 255));
+    message->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddChild(message);
+    if (!available) {
+        message->SetText("This build cannot encrypt: it has no cryptography library (libsodium).");
+        passwordInput->SetDisabled(true);
+        confirmInput->SetDisabled(true);
+        hidePreviewBox->SetDisabled(true);
+    }
+
+    auto row = std::make_shared<UltraCanvasContainer>("upw-buttons", 0, 0, 0, 34);
+    row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center)
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
+    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    if (protectedNow) {
+        auto remove = std::make_shared<UltraCanvasButton>("upw-remove", 0, 0, 84, 28, "Remove Protection");
+        remove->onClick = [this]() {
+            UltraPaintPasswordResult r;
+            r.remove = true;
+            if (onAccept) onAccept(r);
+            Close();
+        };
+        SizeButtonToText(remove);
+        row->AddChild(remove);
+    }
+    auto cancel = std::make_shared<UltraCanvasButton>("upw-cancel", 0, 0, 84, 28, "Cancel");
+    cancel->onClick = [this]() { Close(); };
+    SizeButtonToText(cancel);
+    row->AddChild(cancel);
+    auto ok = std::make_shared<UltraCanvasButton>("upw-ok", 0, 0, 84, 28, protectedNow ? "Change" : "Protect");
+    ok->onClick = [this]() { Accept(); };
+    ok->SetStyle(ButtonStyles::PrimaryStyle());
+    ok->SetDisabled(!available);
+    SizeButtonToText(ok);
+    row->AddChild(ok);
+    AddChild(row);
+}
+
+void UltraPaintPasswordDialog::Accept() {
+    if (passwordInput->IsDisabled()) return;
+    const std::string password = passwordInput->GetText();
+    if (password.empty()) { message->SetText("Type a password."); return; }
+    if (password != confirmInput->GetText()) {
+        message->SetText("The two passwords differ - type it again.");
+        return;
+    }
+    UltraPaintPasswordResult r;
+    r.password = password;
+    r.hidePreview = hidePreviewBox->IsChecked();
+    if (onAccept) onAccept(r);
+    Close();
 }
 
 // ===========================================================================
@@ -505,6 +550,11 @@ UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintCol
     // Same proportions the right-hand panel's picker uses, so it reads as the
     // same control.
     picker = CreateColorPicker("upc-colour", params.colour, 0, 0, 290, 300);
+    // The panel's light style, on the dialog's own grey rather than as a
+    // white block on it.
+    ColorPickerStyle pickerStyle = ColorPickerStyle::Light();
+    pickerStyle.backgroundColor = config_.backgroundColor;
+    picker->SetStyle(pickerStyle);
     picker->SetUIScale(0.78f);
     picker->SetShowAlpha(false);
     picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);

@@ -3,12 +3,15 @@
 // tab is empty; pages from file:// give it their title, address and
 // history; a link to a file is handed to the window as a download; the
 // built-in app runs in the tab's own area; and a tab can go while its app
-// runs. Two tabs keep two histories.
+// runs. Two tabs keep two histories. A local path opens as a file:// page,
+// with '\' a separator only on Windows.
+// Version: 1.1.0 - local paths, '\' in a file's name (TestLocalPaths)
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "ui/UltraWebTab.h"
+#include "host/UltraWebPages.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetCore.h"
@@ -117,6 +120,31 @@ void TestPages(const std::filesystem::path& dir) {
     Check(tab.Title() == "Page One", "and the page stays");
 }
 
+// A local path typed as an address (ToPageUrl). '\' separates folders only on
+// Windows; elsewhere it is a character of a file's name, which the URL keeps
+// (%5C) - it was turned into a '/' on every system, and such a file did not
+// open.
+void TestLocalPaths(const std::filesystem::path& dir) {
+    std::printf("local paths as addresses\n");
+    Check(ToPageUrl("https://example.org/a\\b") == "https://example.org/a\\b", "a URL comes back as it is");
+#ifdef _WIN32
+    const std::string url = ToPageUrl("C:\\pages\\one.html");
+    Check(url == "file:///C:/pages/one.html", "'\\' separates folders: " + url);
+    const std::filesystem::path page = dir / "one.html";       // PathToUtf8 gives it with '\'
+    const std::string title = "Page One";
+#else
+    const std::string url = ToPageUrl("/pages/a\\b.html");
+    Check(url == "file:///pages/a%5Cb.html", "'\\' is a character of the name: " + url);
+    const std::filesystem::path page = dir / "back\\slash.html";
+    Write(page, "<!DOCTYPE html><title>Back Slash</title><p>a '\\' in its name");
+    const std::string title = "Back Slash";
+#endif
+    Recorder seen;
+    UltraWebTab tab("t4", seen.Host());
+    tab.Navigate(PathToUtf8(page));
+    Check(Pump([&] { return tab.Title() == title && !tab.IsLoading(); }), "and the file opens: " + tab.Address());
+}
+
 void TestApp() {
     std::printf("an app in a tab\n");
     if (!UltraCanvasWasm_IsAvailable()) {
@@ -149,6 +177,7 @@ int main() {
     Write(dir / "two.html", "<!DOCTYPE html><title>Page Two</title><p>second");
     Write(dir / "data.zip", std::string("PK\x03\x04zip", 7));
     TestPages(dir);
+    TestLocalPaths(dir);
     TestApp();
     std::filesystem::remove_all(dir);
     UltraNet_Shutdown();

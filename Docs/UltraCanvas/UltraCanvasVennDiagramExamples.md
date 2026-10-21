@@ -4,6 +4,35 @@
 **Last Modified:** 2026-07-13
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Circle Management](#circle-management)
+  - [Item Management](#item-management)
+  - [Layout Management](#layout-management)
+  - [Style Management](#style-management)
+  - [Event Callbacks](#event-callbacks)
+  - [Factory Function](#factory-function)
+- [Data Structures](#data-structures)
+  - [VennCircle](#venncircle)
+  - [VennRegion](#vennregion)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Two-Circle Venn (Cats vs Dogs)](#two-circle-venn-cats-vs-dogs)
+  - [Three-Circle Venn (Developer Skills)](#three-circle-venn-developer-skills)
+  - [Four-Circle Venn (SDLC)](#four-circle-venn-sdlc)
+  - [Set Hierarchy (Rectangular / Nested, LaTeX style)](#set-hierarchy-rectangular--nested-latex-style)
+  - [Toggling Shape at Runtime](#toggling-shape-at-runtime)
+  - [Switching Style at Runtime](#switching-style-at-runtime)
+  - [Hover Callback Wiring](#hover-callback-wiring)
+  - [Cloud Platform Comparison (Custom Item Distribution)](#cloud-platform-comparison-custom-item-distribution)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasVennDiagramElement` renders interactive Venn / Euler diagrams with two to five sets. Each set owns a collection of items, and items can additionally be assigned to specific intersections of sets. The element handles automatic layout for the common 2/3/4/5-set arrangements plus a **nested containment layout** (the LaTeX set-hierarchy style), draws sets either as **circles or rounded rectangles**, supports multiple visual styles (classic outlines, modern, minimal, filled), and exposes hover/click callbacks for both individual sets and computed regions.

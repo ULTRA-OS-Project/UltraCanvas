@@ -1,5 +1,28 @@
 # UltraCanvasCircularProgressChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Data Model](#data-model)
+- [Enumerations](#enumerations)
+- [Public API](#public-api)
+  - [Data Management](#data-management)
+  - [Sub-Style & Geometry](#sub-style--geometry)
+  - [Arcs & Tracks](#arcs--tracks)
+  - [Labels & Centre](#labels--centre)
+  - [Legend](#legend)
+  - [Formatting & Interaction](#formatting--interaction)
+- [Usage Examples](#usage-examples)
+  - [Circular infographic (concentric rings, numbered legend, centre disc)](#circular-infographic-concentric-rings-numbered-legend-centre-disc)
+  - [Stacked start labels (the "radial bar card" look)](#stacked-start-labels-the-radial-bar-card-look)
+  - [Single completion ring](#single-completion-ring)
+  - [Progress pie](#progress-pie)
+- [Factory Functions](#factory-functions)
+- [Notes & Conventions](#notes--conventions)
+
 ## Overview
 
 The `UltraCanvasCircularProgressChart` is the angle-encoded member of the UltraCanvas circular chart family. Each ring carries **one value**, drawn as an arc whose sweep is proportional to that value within the ring's own range — the "concentric progress rings" / "activity rings" chart. Sub-styles cover the single thick progress ring ("Completed 72 %") and the progress pie (a filled sector over a track disc). It complements `UltraCanvasRadialBarChart` (value → ray **length**) and `UltraCanvasPieChartElement` (slices as **shares of one total**): here, rings are independent percentages, not parts of a whole.

@@ -19,6 +19,7 @@
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditor.h"
+#include "UltraCanvasLanguageDetect.h"
 #include "UltraCanvasDataFolder.h"   // UltraCanvasDataFolder
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
@@ -1758,6 +1759,7 @@ namespace {
 
         auto doc = documents[docIndex];
         if (!tpl.language.empty()) {
+            doc->languageChosen = true;
             doc->textArea->SetHighlightSyntax(true);
             doc->textArea->SetProgrammingLanguage(tpl.language);
             doc->language = doc->textArea->GetCurrentProgrammingLanguage();
@@ -3053,6 +3055,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
         if (!language.empty()) {
             doc->language = language;
+            doc->languageChosen = true;
             if (language == "Markdown") {
                 doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
             } else if (language != "Plain Text") {
@@ -3907,11 +3910,28 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             UpdateMenuStates();
             return;
         }
-        auto doc = GetActiveDocument();
-        if (doc && doc->textArea) {
-            doc->textArea->PasteClipboard();
-        }
+        PasteIntoDocument(activeDocumentIndex);
         UpdateMenuStates();
+    }
+
+    void UltraCanvasTextEditor::PasteIntoDocument(int docIndex) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) return;
+        auto doc = documents[docIndex];
+        if (!doc->textArea) return;
+
+        // Only a tab that has never held anything: no file to name the
+        // language, nobody chose one, and nothing typed that would say it.
+        const bool guessLanguage = doc->kind == DocumentKind::Text && doc->isNewFile &&
+                                   doc->filePath.empty() && !doc->languageChosen &&
+                                   !doc->textArea->IsHexMode() && !doc->textArea->IsReadOnly() &&
+                                   doc->textArea->GetText().empty();
+        doc->textArea->PasteClipboard();
+        if (!guessLanguage) return;
+
+        const std::string lang = DetectLanguageFromContent(doc->textArea->GetText());
+        if (lang.empty() || lang == doc->language) return;
+        ApplyDocumentLanguage(docIndex, lang);
+        if (docIndex == activeDocumentIndex) UpdateLanguageDropdown();
     }
 
     void UltraCanvasTextEditor::OnEditSelectAll() {
@@ -4372,10 +4392,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
  void UltraCanvasTextEditor::OnLanguageChanged(int /*index*/, const DropdownItem& item) {
         auto doc = GetActiveDocument();
         if (!doc || !doc->textArea) return;
- 
-        std::string lang = item.value;
-        if (lang == doc->language) return;
- 
+
+        // A language picked by hand is never second-guessed by a paste.
+        doc->languageChosen = true;
+        if (item.value == doc->language) return;
+        ApplyDocumentLanguage(activeDocumentIndex, item.value);
+    }
+
+    void UltraCanvasTextEditor::ApplyDocumentLanguage(int docIndex, const std::string& lang) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) return;
+        auto doc = documents[docIndex];
+        if (!doc->textArea) return;
+
         if (lang == "Hex/Binary") {
             doc->textArea->SetEditingMode(TextAreaEditingMode::Hex);
         } else if (lang == "Markdown") {
@@ -4391,7 +4419,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         doc->language = lang;
         // Hex has no words, and only Markdown gets the markup skip hook, so the
         // spell wiring has to follow the new language.
-        ApplySpellCheckToDocument(activeDocumentIndex);
+        ApplySpellCheckToDocument(docIndex);
         UpdateStatusBar();
         UpdateMarkdownToolbarVisibility();
     }
@@ -4827,6 +4855,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 RefreshAutoDisplayName(currentIndex);
             }
             UpdateStatusBar();
+        };
+
+        // Ctrl+V and Shift+Insert paste inside the text area, past the Edit
+        // menu, so the area's own paste keys are taken here (the same
+        // modifiers it checks) and routed through PasteIntoDocument - which
+        // lets a paste into a new, empty tab pick the tab's language.
+        doc->textArea->onBeforeKeyDown = [this, docId](const UCEvent& event) -> bool {
+            const bool pasteKey =
+                    (event.virtualKey == UCKeys::V && event.ctrl && !event.shift && !event.alt) ||
+                    (event.virtualKey == UCKeys::Insert && event.shift && !event.ctrl && !event.alt);
+            if (!pasteKey) return false;
+            int currentIndex = FindDocumentIndexById(docId);
+            if (currentIndex < 0 || documents[currentIndex]->textArea->IsHexMode()) return false;
+            PasteIntoDocument(currentIndex);
+            UpdateMenuStates();
+            return true;
         };
 
         // Cursor position changed callback
@@ -5381,7 +5425,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->FindNext();
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5399,7 +5443,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->FindFirst();
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5419,7 +5463,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->IncrementalFind(text, cs);
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5442,7 +5486,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
-            doc->textArea->HighlightMatches(text);
+            doc->textArea->HighlightMatches(text, cs);
             doc->textArea->FindPrevious();
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
@@ -5460,7 +5504,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, false);
-            doc->textArea->HighlightMatches(find);
+            doc->textArea->HighlightMatches(find, cs);
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(find, cs, selPos);
@@ -5477,7 +5521,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, true);
-            doc->textArea->HighlightMatches(find);
+            doc->textArea->HighlightMatches(find, cs);
             StartAsyncMatchCount(find, cs, -1);
         };
 

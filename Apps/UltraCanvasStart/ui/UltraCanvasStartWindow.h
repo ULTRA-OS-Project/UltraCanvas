@@ -124,9 +124,12 @@ private:
     void StartInstall();
     void ChooseProjectFolder();
     void FindSdk();
-    // Downloads this version's SDK from its GitHub release into a folder the
-    // user picks, unpacks it there and fills in the SDK prefix.
-    void DownloadAndUnpackSdk();
+    // Opens the SDK download page in the browser.
+    void OpenSdkDownloadPage();
+    // Unpacks an SDK archive the user downloaded, beside it, and fills in
+    // the SDK prefix.
+    void UnpackSdk();
+    void StartUnpack(const std::string& archive);
     void CreateProject();
     // Compiles the created project on the worker thread (StartBuild), the
     // output in the Build step's console.
@@ -139,6 +142,7 @@ private:
     // ===== VIEW UPDATES =====
     void ReadChoicesFromPanes();
     void RefreshCheckRows();
+    void RefreshInstallBadge();        // the count above the rows
     void RefreshInstallPreview();      // from the plan; RefreshPlan calls it
     bool CanInstall() const;           // something missing, and a package manager here to install it
     void RefreshFrameworkStep();
@@ -189,6 +193,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> sdkPrefixInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> findButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> downloadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> unpackButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasBadge> frameworkBadge_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> frameworkView_;
 

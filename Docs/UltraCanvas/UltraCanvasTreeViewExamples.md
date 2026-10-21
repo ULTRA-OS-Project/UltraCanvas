@@ -1,6 +1,54 @@
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+- [Class Architecture](#class-architecture)
+  - [Main Classes](#main-classes)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [TreeNodeIcon Structure](#treenodeicon-structure)
+  - [TreeNodeData Structure](#treenodedata-structure)
+  - [Columnar Layout: `UltraCanvasColumnsTreeView`](#columnar-layout-ultracanvascolumnstreeview)
+  - [Sorting Modes](#sorting-modes)
+- [API Reference](#api-reference)
+  - [Constructor](#constructor)
+  - [Tree Structure Management](#tree-structure-management)
+  - [Selection Management](#selection-management)
+  - [Expansion Management](#expansion-management)
+  - [Filtering](#filtering)
+  - [Visual Properties](#visual-properties)
+  - [Check Flags (Checkable Nodes)](#check-flags-checkable-nodes)
+  - [Scroll-to-Top and Scroll-to-Selection Buttons](#scroll-to-top-and-scroll-to-selection-buttons)
+  - [Measuring the Tree](#measuring-the-tree)
+  - [Color Properties](#color-properties)
+  - [Event Callbacks](#event-callbacks)
+- [Usage Examples](#usage-examples)
+  - [Basic Tree Creation](#basic-tree-creation)
+  - [File Explorer Example](#file-explorer-example)
+  - [Event Handling](#event-handling)
+  - [Rows still loading](#rows-still-loading)
+  - [Using TreeViewBuilder](#using-treeviewbuilder)
+- [Keyboard Navigation](#keyboard-navigation)
+- [Mouse Interaction](#mouse-interaction)
+  - [Click Behaviors](#click-behaviors)
+  - [Expand/Collapse Button](#expandcollapse-button)
+  - [Check Flag](#check-flag)
+  - [Scrolling](#scrolling)
+- [Rendering Details](#rendering-details)
+  - [Visual Elements](#visual-elements)
+  - [Performance Optimizations](#performance-optimizations)
+- [TreeNode Class Methods](#treenode-class-methods)
+- [Default Values](#default-values)
+- [Platform Integration](#platform-integration)
+- [Best Practices](#best-practices)
+- [Known Limitations](#known-limitations)
+- [Version History](#version-history)
+- [See Also](#see-also)
 
 ## Overview
 
@@ -22,7 +70,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Connecting Lines**: Dotted or solid parent/child connectors, root level included
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
-- **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
+- **Scroll-to-Top / Scroll-to-Selection Buttons**: Floating "move to the top" and "go to the selected entry" affordances for long trees
 - **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
@@ -124,6 +172,7 @@ struct TreeNodeData {
     const TreeCellData* GetCell(const std::string& colId) const;
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
+    bool loading = false;                  // children being fetched: a bar slides along the row's foot
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -587,12 +636,14 @@ backupTree->onNodeCheckChanged = [backupTree](TreeNode*, TreeCheckState) {
 };
 ```
 
-### Scroll-to-Top Button
+### Scroll-to-Top and Scroll-to-Selection Buttons
 
-When a tree grows past its viewport, getting back to the root can take a lot of
-wheel turns. The tree therefore draws a small floating **"move to the top"**
-button over the bottom-right corner of its content area once the view has been
-scrolled down:
+When a tree grows past its viewport, getting back to the root - or back to the
+row you selected - can take a lot of wheel turns. The tree therefore draws two
+small floating buttons over the bottom-right corner of its content area: a
+**"move to the top"** button once the view has been scrolled down, and directly
+above it a **"go to the selected entry"** button (a dot with an arrow pointing
+at it) while the selected row is out of view.
 
 ```cpp
 void SetShowScrollToTopButton(bool show);
@@ -605,6 +656,14 @@ bool    IsScrollToTopButtonActive() const;   // on screen right now?
 Rect2Di GetScrollToTopButtonRect() const;   // element-local rect (empty when inactive)
 
 void ScrollToTop();                          // what the button does; callable directly
+
+void SetShowScrollToSelectionButton(bool show);
+bool GetShowScrollToSelectionButton() const;
+
+bool    IsScrollToSelectionButtonActive() const;   // on screen right now?
+Rect2Di GetScrollToSelectionButtonRect() const;   // element-local rect (empty when inactive)
+
+void ScrollToSelection();                    // what that button does; callable directly
 ```
 
 The other scrolling calls bring a node into view or move the view by pixels:
@@ -623,23 +682,35 @@ Behaviour:
   visible area, so a tree that overflows by a row or two never grows a button.
 - **Appears only once the user has scrolled down**: while the first row is on
   screen there is nothing to go back to, so the button stays hidden.
-- **Dodges the end of the list**: as the view approaches the bottom, the button
-  slides up so it never covers the last `TreeScrollToTopStyle::keepClearRows`
-  (3 by default) rows. Away from the bottom it rests in the corner.
+- **Always rests in the corner**, also at the end of the list.
 - **Never overlaps the vertical scrollbar** — it is placed to the left of it.
 - Clicking it jumps back to the first row, animated when the scrollbar has
   smooth scrolling enabled. The click is consumed by the button, so the row
   underneath is neither selected nor expanded.
 
-`UltraCanvasColumnsTreeView` inherits the button, and it is placed below the
-optional column header band.
+The scroll-to-selection button:
+
+- **Enabled by default.** `SetShowScrollToSelectionButton(false)` turns it off.
+- **Sits directly above the top button's corner slot** - in the same place
+  whether or not the top button is showing, so it never jumps under the
+  pointer.
+- **Appears only while the selected row is not fully on screen**: scrolled
+  away, or hidden under a collapsed parent. With no selection, or a selected
+  row hidden by a filter, it stays hidden.
+- Clicking it opens the collapsed parents of the first selected node and
+  brings its row to the middle of the view, animated when the scrollbar has
+  smooth scrolling enabled. The selection itself does not change, and the
+  click does not reach the row underneath.
+- It shares `TreeScrollToTopStyle` with the top button.
+
+`UltraCanvasColumnsTreeView` inherits both buttons, and they are placed below
+the optional column header band.
 
 ```cpp
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
-    int   margin          = 8;     // gap between the button and the content edges
-    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
-    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    int   margin          = 8;     // gap between a button and the content edges / the other button
+    int   minHiddenRows   = 3;     // top button: show only when MORE than this many rows are out of view
     float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
     Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);
     Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
@@ -648,20 +719,21 @@ struct TreeScrollToTopStyle {
 };
 ```
 
-Example — a larger, lighter button that keeps five rows clear:
+Example — larger, blue buttons that wait for five hidden rows:
 
 ```cpp
 auto tree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
 
 TreeScrollToTopStyle style;
 style.size            = 32;
-style.keepClearRows   = 5;
+style.minHiddenRows   = 5;
 style.background      = Color(0x20, 0x60, 0xC0, 0xC0);
 style.hoverBackground = Color(0x20, 0x60, 0xC0, 0xF0);
 tree->SetScrollToTopButtonStyle(style);
 
-// ...or switch the affordance off entirely:
+// ...or switch the affordances off entirely:
 // tree->SetShowScrollToTopButton(false);
+// tree->SetShowScrollToSelectionButton(false);
 ```
 
 ### Measuring the Tree
@@ -691,6 +763,7 @@ void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
+void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
@@ -703,6 +776,8 @@ inherited from `UltraCanvasUIElement`.
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
+`SetLoadingBarColor` sets the bar a loading row slides along its foot (default
+the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
 
 ### Event Callbacks
 
@@ -725,6 +800,10 @@ std::function<bool(TreeNode* target,
 // onFilesDragAccept accepted), or null - for a drag that carries no files and
 // ends without a Drop, such as the file dialog's Save icon.
 TreeNode* GetDropTargetNode() const;
+// The local folder a node stands for ("" for none), asked when a Save
+// dialog's file icon from another window or program is dropped on a node
+// onFilesDragAccept accepts (a Drop carrying UCEvent::dropFolderReply).
+std::function<std::string(TreeNode* node)> onDropFolderOfNode;
 // Right mouse button released over a node; the event carries the pointer
 // position (event.pointerWindow) for placing a context menu. A right press
 // never changes the selection.
@@ -820,6 +899,31 @@ treeView->onNodeExpanded = [](TreeNode* node) {
         LoadChildrenFromDisk(node);
     }
 };
+```
+
+### Rows still loading
+
+When children come from somewhere slow - a server, a long scan - the
+placeholder can stay hidden (`visible = false`: it still gives the row its
+expand button) and the row itself say it is waiting. `TreeNodeData::loading`
+makes the row slide a thin bar along its foot, from its icon to the right
+edge, in the tree's loading colour (`SetLoadingBarColor`, the accent blue by
+default) - the same sign the filer widget gives a folder being fetched. A
+40 ms timer keeps the bar moving while such a row is on screen and stops once
+none is drawn.
+
+```cpp
+TreeNodeData placeholder("remote/photos#placeholder", "...");
+placeholder.visible = false;               // the expand button, without a row
+treeView->AddNode("remote/photos", placeholder);
+
+treeView->onNodeExpanded = [treeView](TreeNode* node) {
+    node->data.loading = true;             // the bar slides until the answer is in
+    treeView->RequestRedraw();
+    StartFetch(node->data.nodeId);         // calls back on the UI thread
+};
+// ...when the children have arrived:
+//     add them, remove the placeholder, node->data.loading = false, RequestRedraw()
 
 // Handle right-click (open a context menu at the pointer)
 treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
@@ -845,7 +949,8 @@ auto treeView = TreeViewBuilder("MyTree", 10, 10, 300, 400)
 ```
 
 The builder also offers `SetShowRootLines()`, `SetShowCheckboxes()`,
-`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()` and the callback setters
+`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()`,
+`SetShowScrollToSelectionButton()` and the callback setters
 `OnNodeSelected()`, `OnNodeDoubleClicked()`, `OnNodeExpanded()`,
 `OnNodeCollapsed()`, `OnNodeRightClicked()` and `OnNodeCheckChanged()`.
 

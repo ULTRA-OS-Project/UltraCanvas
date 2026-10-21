@@ -15,9 +15,18 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.8.1 - a change turned away for "too many connections" - a server
+//                  that takes one per address, while this thread keeps its
+//                  own open - closes that one and is sent again
+// Version: 0.8.0 - one thread check: UltraNet_SetThreadFtpCancel is gone; every
+//                  call asks its options' isCancelled and the thread's abort
+//                  check (UltraNet_SetThreadAbortCheck), listings and DELE too
+// Version: 0.7.1 - an upload or download also ends when its thread's abort
+//                  check says so (UltraNet_SetThreadAbortCheck)
+// Version: 0.7.0 - a call can be called off (isCancelled, UltraNet_SetThreadFtpCancel)
 // Version: 0.6.0 - SFTP with a private key
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetFtp.h"
@@ -29,12 +38,15 @@
 
 #include <curl/curl.h>
 
+#include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 #include "../../include/UltraCanvasPathUtf8.h"
@@ -50,6 +62,16 @@ constexpr const char* kComponent = "UltraNet FTP 0.5.0";
 // The log sink of calls made on this thread without an onLog of their own
 // (UltraNet_SetThreadFtpLog).
 thread_local UltraNetFtpLogCallback t_threadLog;
+
+// The "call it off" question of the call running now (its options'
+// isCancelled) - set by ApplyCommonOptions, read by the progress callback,
+// which also asks the thread's abort check (UltraNet_SetThreadAbortCheck).
+// Per thread, because a call runs start to end on the thread that made it.
+thread_local std::function<bool()> t_callCancel;
+// Whether the call running now reports its bytes (ApplyProgressCallback): the
+// file transfers do, a listing or a DELE that only installed the callback to
+// be called off does not.
+thread_local bool t_callReports = false;
 
 // ===== Connections kept open between calls =====
 // libcurl keeps a finished transfer's connection in a pool for the next
@@ -118,6 +140,13 @@ public:
             share_ = nullptr;
         }
         if (share) curl_share_cleanup(share);
+    }
+
+    // Whether this thread holds a pool - and so perhaps a connection kept
+    // open by an earlier call.
+    bool Holding() {
+        std::lock_guard<std::mutex> lk(Kept().mutex);
+        return share_ != nullptr;
     }
 
 private:
@@ -212,6 +241,9 @@ Transcript MakeTranscript(const UltraNetFtpOptions& opt, const std::string& url)
     return Transcript(opt.onLog ? opt.onLog : t_threadLog, IsSftpUrl(url));
 }
 
+int ReportTransferProgress(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
+                           curl_off_t ultotal, curl_off_t ulnow);
+
 void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
     if (!opt.credentials.username.empty()) {
         curl_easy_setopt(h, CURLOPT_USERNAME, opt.credentials.username.c_str());
@@ -261,6 +293,16 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 #endif
     }
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    // Every call can be called off - by its options' isCancelled, or by the
+    // thread's abort check - and asks through the progress callback, which
+    // libcurl runs while bytes move and about once a second while they do
+    // not: a listing waiting on a silent server is called off as promptly as
+    // a transfer in full flow. Only the transfers report bytes through it.
+    t_callCancel = opt.isCancelled;
+    t_callReports = false;
+    curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
+    curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
+    curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
     // The connection the last call on this thread left open, if it fits.
     if (CURLSH* share = t_connections.Share())
         curl_easy_setopt(h, CURLOPT_SHARE, share);
@@ -279,6 +321,12 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
 // this takes.
 int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dlnow,
                            curl_off_t ultotal, curl_off_t ulnow) {
+    // Called off - by this call's own question, or by the thread's owner
+    // wanting the thread back (UltraNet_SetThreadAbortCheck): libcurl ends the
+    // call with CURLE_ABORTED_BY_CALLBACK, which the result reports as
+    // Cancelled.
+    if ((t_callCancel && t_callCancel()) || UltraNet_ThreadAbortRequested()) return 1;
+    if (!t_callReports) return 0;
     const UltraNetTransferCallbacks cb = UltraNet_GetTransferCallbacks();
     if (cb.onDownloadProgress && dlnow > 0) {
         cb.onDownloadProgress(static_cast<int64_t>(dlnow),
@@ -288,12 +336,13 @@ int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dl
         cb.onUploadProgress(static_cast<int64_t>(ulnow),
                             static_cast<int64_t>(ultotal));
     }
-    return 0;   // non-zero would abort the transfer
+    return 0;   // non-zero aborts the transfer
 }
 
 // Turns the progress callback on for one handle. Only the two file transfers
 // use it: a listing or a DELE moves too little for anyone to watch.
 void ApplyProgressCallback(CURL* h) {
+    t_callReports = true;
     curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
     curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
     curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
@@ -378,8 +427,10 @@ UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions
     }
     r.code    = MapFtpError(rc);
     r.success = false;
-    r.message = ultranet_internal::ftplog::FailureMessage(
-            detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
+    r.message = rc == CURLE_ABORTED_BY_CALLBACK
+            ? std::string("called off")   // isCancelled, or the thread's abort check
+            : ultranet_internal::ftplog::FailureMessage(
+                      detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
     r.diagnostics = diagnostics;
     if (log.LastReplyCode() > 0) r.diagnostics += "Last server reply: " + log.LastReply() + "\n";
     return r;
@@ -929,38 +980,84 @@ UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Ver
         return Finish(log, UltraNetResult::Error(UltraNetResultCode::InvalidUrl, error));
     }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
-    std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
-                                                          curl_easy_cleanup);
-    if (!h) {
-        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
-                                                 "curl_easy_init() failed"));
-    }
     curl_slist* cmds = nullptr;
     for (const std::string& c : plan.commands)
         cmds = curl_slist_append(cmds, c.c_str());
     std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
         guard(cmds, curl_slist_free_all);
 
-    curl_easy_setopt(h.get(), CURLOPT_URL, plan.parentUrl.c_str());
-    curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-    curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
-    ApplyCommonOptions(h.get(), opt);
-    // On FTP, a connection of its own, closed afterwards - never one an
-    // earlier call left open (ThreadConnections). libcurl sends quote
-    // commands BEFORE it changes into the URL's folder, so they run in
-    // whatever folder the connection is in, and they are written for the
-    // folder a login lands in (UltraNetFtpQuote.h). A kept connection is
-    // wherever the last listing left it: there "DELE photos/a.txt" looked for
-    // photos/photos/a.txt and failed with a 550 - or found a file of that name
-    // and deleted the wrong one. SFTP's quote commands carry the full path
-    // and may use any connection.
-    if (!IsSftpUrl(url)) {
-        curl_easy_setopt(h.get(), CURLOPT_FRESH_CONNECT, 1L);
-        curl_easy_setopt(h.get(), CURLOPT_FORBID_REUSE, 1L);
-    }
-
     CURLcode rc = CURLE_OK;
-    UltraNetResult r = Perform(h.get(), plan.parentUrl, opt, log, &rc);
+    auto attempt = [&]() {
+        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
+                                                              curl_easy_cleanup);
+        if (!h) {
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                         "curl_easy_init() failed");
+        }
+        curl_easy_setopt(h.get(), CURLOPT_URL, plan.parentUrl.c_str());
+        curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
+        curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
+        ApplyCommonOptions(h.get(), opt);
+        // On FTP, a connection of its own, closed afterwards - never one an
+        // earlier call left open (ThreadConnections). libcurl sends quote
+        // commands BEFORE it changes into the URL's folder, so they run in
+        // whatever folder the connection is in, and they are written for the
+        // folder a login lands in (UltraNetFtpQuote.h). A kept connection is
+        // wherever the last listing left it: there "DELE photos/a.txt" looked
+        // for photos/photos/a.txt and failed with a 550 - or found a file of
+        // that name and deleted the wrong one. SFTP's quote commands carry the
+        // full path and may use any connection.
+        if (!IsSftpUrl(url)) {
+            curl_easy_setopt(h.get(), CURLOPT_FRESH_CONNECT, 1L);
+            curl_easy_setopt(h.get(), CURLOPT_FORBID_REUSE, 1L);
+        }
+        return Perform(h.get(), plan.parentUrl, opt, log, &rc);
+    };
+
+    // Asked first: the attempt below makes this thread a pool if it had none.
+    const bool keptOpen = t_connections.Holding();
+    UltraNetResult r = attempt();
+    // A server that takes one connection per address or user (vsftpd's
+    // max_per_ip, ProFTPD's MaxClientsPerHost) turns that fresh connection
+    // away while this thread keeps its own open from an earlier call. The
+    // refusal comes at the greeting or the login, before any command of ours
+    // was sent - so the kept connection is closed, which frees the server's
+    // slot, and the commands go once more. The next call logs in afresh.
+    auto turnedAway = [&]() {
+        if (r.success) return false;
+        const std::string& lastVerb = log.LastCommand();
+        const bool oursSent = std::any_of(plan.commands.begin(), plan.commands.end(),
+                                          [&lastVerb](const std::string& c) {
+                                              return !lastVerb.empty() &&
+                                                     ultranet_internal::ftplog::Upper(
+                                                             c.substr(0, c.find(' '))) == lastVerb;
+                                          });
+        return !oursSent && ultranet_internal::ftplog::TooManyConnectionsReply(
+                                    log.LastReplyCode(), log.LastReply());
+    };
+    if (!IsSftpUrl(url) && keptOpen && turnedAway()) {
+        log.Step("The server takes one connection at a time: closing the one kept open "
+                 "and trying again");
+        t_connections.Close();
+        // The server goes on counting the closed connection until its session
+        // has ended, a moment after the QUIT (vsftpd's per-address count
+        // drops when the session's process is gone): asked again at once, and
+        // twice more a little later. A call off ends the waiting.
+        for (const int waitMs : {0, 300, 1000}) {
+            if (waitMs > 0) {
+                bool calledOff = false;
+                for (int waited = 0; waited < waitMs && !calledOff; waited += 50) {
+                    calledOff = UltraNet_ThreadAbortRequested() ||
+                                (opt.isCancelled && opt.isCancelled());
+                    if (!calledOff) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+                if (calledOff) break;
+                log.Step("Still turned away: trying again");
+            }
+            r = attempt();
+            if (!turnedAway()) break;
+        }
+    }
     return Finish(log, r, rc);
 }
 

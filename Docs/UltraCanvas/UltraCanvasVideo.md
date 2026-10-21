@@ -6,6 +6,21 @@ Cross-platform video **playback** and **recording** for UltraCanvas. Mirrors the
 three-layer design of UltraCanvas Audio: a frame resource, non-visual engines,
 and composite UI elements, all behind a pluggable platform backend.
 
+## Contents
+
+- [Status](#status)
+- [Architecture](#architecture)
+- [Public API surface](#public-api-surface)
+  - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
+  - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
+  - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
+  - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
+  - [UI elements](#ui-elements)
+  - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+- [Adding a container or codec](#adding-a-container-or-codec)
+- [Build](#build)
+- [Notes / follow-ups](#notes--follow-ups)
+
 ## Status
 
 API + UI implemented. The default build compiles a **null backend** so app code

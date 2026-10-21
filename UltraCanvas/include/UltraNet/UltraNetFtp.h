@@ -13,10 +13,18 @@
 //
 // Connections are kept open between calls on one thread
 // (UltraNet_FtpCloseIdleConnections), and a server that refused MLSD is
-// listed with LIST from then on.
+// listed with LIST from then on. A change (delete, rename, make or remove a
+// folder) runs on an FTP connection of its own; a server that turns that one
+// away for "too many connections" while the thread keeps another open has
+// the kept one closed and the change sent again.
+// Version: 0.8.1 - a change turned away for "too many connections" closes the
+//                  thread's kept connection and is sent again
+// Version: 0.8.0 - UltraNet_SetThreadFtpCancel is gone: the thread's one check
+//                  is UltraNet_SetThreadAbortCheck, asked by every FTP call
+// Version: 0.7.0 - isCancelled / UltraNet_SetThreadFtpCancel: a call can be called off
 // Version: 0.6.0 - SFTP with a private key: sshPrivateKeyFile, sshPublicKeyFile, sshKeyPassphrase
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -90,6 +98,15 @@ struct UltraNetFtpOptions {
     // The session log of this call. When empty, the calling thread's sink
     // (UltraNet_SetThreadFtpLog) gets it, if there is one.
     UltraNetFtpLogCallback onLog;
+    // Asked while the call runs - as bytes move, and about once a second
+    // while none do; once it answers true the call ends as
+    // UltraNetResultCode::Cancelled ("called off"). Runs on the calling
+    // thread inside libcurl, so it must answer at once (an atomic flag).
+    // The calling thread's abort check (UltraNet_SetThreadAbortCheck) is asked
+    // too, whether this is set or not - the way for a caller behind another
+    // layer (UltraFiler's drive worker calls UltraCloud, which builds these
+    // options itself) to call a call off.
+    std::function<bool()> isCancelled;
 
     static UltraNetFtpOptions Default() { return {}; }
 };

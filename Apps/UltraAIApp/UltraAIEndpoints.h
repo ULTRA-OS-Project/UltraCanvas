@@ -53,12 +53,26 @@ bool ParseCapability(const std::string& id, AICapability& out);
 
 // A single configured endpoint.
 struct Endpoint {
+    // A model the endpoint's server advertises, discovered via /v1/model/info.
+    struct DiscoveredModel {
+        std::string name;   // model_name — the string used as the request "model"
+        std::string task;   // model_info.task ("translation", ...); may be empty
+        std::string mode;   // model_info.mode ("chat", ...); may be empty
+        // BCP-47 code -> English name; only for models that advertise it
+        // (translation models). Kept as a vector to preserve server order.
+        std::vector<std::pair<std::string, std::string>> supportedLanguages;
+    };
+
     std::string id;            // stable slug; also keys the vault ref
     std::string name;          // friendly display name
     std::string providerId;    // "openai" | "anthropic" | "llama-cpp" | "mock" | ...
     std::string baseUrl;       // optional self-hosted override
     std::string defaultModel;  // model id / GGUF path / checkpoint
     std::set<AICapability> modes;
+    // Models discovered from the server (/v1/model/info); may be empty. Cached
+    // in endpoints.json so dialogs can offer them (and their translation
+    // languages) without re-fetching.
+    std::vector<DiscoveredModel> models;
 
     bool Supports(AICapability c) const { return modes.count(c) != 0; }
 
@@ -102,5 +116,19 @@ private:
 // provider id, base URL, default model and the vault ref for the key; the
 // network adapter resolves the key from UltraVault at call time.
 UltraAI::TextLLMConfig ToTextLLMConfig(const Endpoint& e);
+
+// Result of a /v1/model/info query against an endpoint's server.
+struct ModelInfoFetch {
+    bool ok = false;
+    std::string error;                          // human-readable failure reason
+    std::vector<Endpoint::DiscoveredModel> models;
+};
+
+// Blocking GET {baseUrl}/v1/model/info with the key as a Bearer token; parses
+// LiteLLM's {"data":[{model_name, model_info:{task,mode,supported_languages}}]}.
+// baseUrl must be non-empty (the path is proxy-specific). Safe to call off the
+// UI thread. Never throws; failures come back as ok=false with a readable error.
+ModelInfoFetch FetchModelInfo(const std::string& baseUrl,
+                              const std::string& apiKey, int timeoutMs = 15000);
 
 } // namespace UltraAIApp

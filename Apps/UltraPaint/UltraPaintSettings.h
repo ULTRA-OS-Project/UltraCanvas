@@ -4,12 +4,16 @@
 // config.ini - ~/.config/UltraCanvas/UltraPaint/config.ini on Linux). The
 // settings window (UltraPaintSettingsDialog) applies a change to the running
 // editor at once and saves it right away, so there is no OK / Cancel.
+// Version: 1.3.0 - the colour palettes under the picker (picker.palettes)
+// Version: 1.2.1 - the designs' names are the framework's (ColorPickerWheelStyleName)
+// Version: 1.2.0 - the colour picker's design and whether its channels are open
 // Version: 1.1.0 - Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasColorPicker.h"    // ColorPickerWheelStyle and its names
 #include "UltraCanvasPathUtf8.h"       // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasSettingsFolder.h"
 
@@ -60,6 +64,40 @@ public:
         paletteAdaptive = true;
     }
 
+    // ===== COLOUR PICKER =====
+    // The design chosen in the colour picker's list (circle, slider + square,
+    // rectangle, two sliders) and whether its channels - the HSV / HSL / RGB
+    // tabs and sliders - are open: the picker opens the way it was left. Not
+    // in the settings window; the picker itself changes them.
+    ColorPickerWheelStyle pickerDesign = ColorPickerWheelStyle::Ring;
+    bool pickerChannelsOpen = false;
+
+    // Only the picker's two keys go into the file; the others keep what the
+    // file has, which another editor window may have changed since this one
+    // read it.
+    bool SavePicker() const {
+        UltraPaintSettings onDisk;
+        onDisk.Load();
+        onDisk.pickerDesign = pickerDesign;
+        onDisk.pickerChannelsOpen = pickerChannelsOpen;
+        return onDisk.Save();
+    }
+
+    // ===== COLOUR PALETTES =====
+    // The palette rows under the colour picker, as
+    // UltraCanvasColorPaletteManager::SerializePalettes writes them; empty
+    // for the one default row. Changed by the rows' own buttons and saved as
+    // they change.
+    std::string palettes;
+
+    // Only the palettes go into the file, as SavePicker does.
+    bool SavePalettes() const {
+        UltraPaintSettings onDisk;
+        onDisk.Load();
+        onDisk.palettes = palettes;
+        return onDisk.Save();
+    }
+
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
     static std::filesystem::path ConfigFolder() {
@@ -99,6 +137,15 @@ public:
             if (it->second == "adaptive") paletteAdaptive = true;
             else if (it->second == "static") paletteAdaptive = false;
         }
+        it = kv.find("picker.design");
+        if (it != kv.end()) ColorPickerWheelStyleFromName(it->second, pickerDesign);
+        it = kv.find("picker.channels");
+        if (it != kv.end()) {
+            if (it->second == "open") pickerChannelsOpen = true;
+            else if (it->second == "folded") pickerChannelsOpen = false;
+        }
+        it = kv.find("picker.palettes");
+        if (it != kv.end()) palettes = it->second;
         return true;
     }
 
@@ -115,6 +162,9 @@ public:
         file << "display.magnifier.factor = " << magnifierFactor << "\n";
         file << "display.magnifier.size = " << magnifierSize << "\n";
         file << "palette.toolbar = " << (paletteAdaptive ? "adaptive" : "static") << "\n";
+        file << "picker.design = " << ColorPickerWheelStyleName(pickerDesign) << "\n";
+        file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
+        if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
         return file.good();
     }
 

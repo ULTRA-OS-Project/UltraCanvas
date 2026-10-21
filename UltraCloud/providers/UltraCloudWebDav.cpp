@@ -1,7 +1,9 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
+// Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
+//                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - Delete and Rename, so a WebDAV server is a drive and a publish target that can prune
 // Version: 0.3.0 - WebDavErrorMessage: the <s:message> of an error body
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudWebDav.h>
 
@@ -243,13 +245,19 @@ Result WebDavProvider::MakeDirectory(const Account& account, const Credentials& 
 
 Result WebDavProvider::Upload(const Account& account, const Credentials& credentials,
                               const std::string& localPath, const std::string& remotePath) {
-    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
-    if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(localPath), ec))
+        return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     UltraNetHttpRequest req;
     req.url = DavUrl(account, remotePath);
     req.method = UltraNetHttpMethod::Put;
     req.headers.Set("Content-Type", "application/octet-stream");
-    req.body.assign(std::istreambuf_iterator<char>(is), std::istreambuf_iterator<char>());
+    // One PUT of the whole file, read from it as it is sent rather than held
+    // in memory first; as long as the file is large, so no whole-transfer
+    // limit, only a stall limit.
+    req.bodyFilePath = localPath;
+    req.options.timeoutMs = -1;
+    req.options.stallTimeoutMs = 30000;
     UltraNetResponse resp;
     UltraNetResult net = Send(credentials, req, resp);
     return FromHttp(net, resp, "upload " + remotePath);
@@ -294,15 +302,8 @@ Result WebDavProvider::Download(const Account& account, const Credentials& crede
     UltraNetHttpRequest req;
     req.url = DavUrl(account, remotePath);
     req.method = UltraNetHttpMethod::Get;
-    UltraNetResponse resp;
-    UltraNetResult net = Send(credentials, req, resp);
-    Result r = FromHttp(net, resp, "download " + remotePath);
-    if (!r) return r;
-    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
-    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
-    os.write(reinterpret_cast<const char*>(resp.body.data()),
-             static_cast<std::streamsize>(resp.body.size()));
-    return os ? Result::Ok() : Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    // Written to disk as it arrives, not held in memory first.
+    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
 }
 
 Result WebDavProvider::CreateShareLink(const Account& account, const Credentials&,

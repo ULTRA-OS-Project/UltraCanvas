@@ -118,3 +118,26 @@ if(TARGET UltraAI_AdapterComfyUI)
     target_compile_features(ultraai_test_comfyui_adapter PRIVATE cxx_std_20)
     add_test(NAME ultraai.comfyui_adapter COMMAND ultraai_test_comfyui_adapter)
 endif()
+
+# The local runtime and the `local` provider, tested against a fake engine
+# (fake_engine.cpp) over real loopback HTTP. In-tree only, like the runtime.
+if(TARGET UltraAI_AdapterLocal AND TARGET VirtualFS)
+    add_executable(ultraai_fake_engine fake_engine.cpp)
+    target_include_directories(ultraai_fake_engine PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_fake_engine PRIVATE cxx_std_20)
+    if(WIN32)
+        target_link_libraries(ultraai_fake_engine PRIVATE ws2_32)
+    endif()
+
+    add_executable(ultraai_test_local_runtime test_local_runtime.cpp)
+    target_link_libraries(ultraai_test_local_runtime PRIVATE
+        UltraAI_Core UltraAI_AdapterLocal UltraAI_Runtime VirtualFS)
+    # The test reaches the runtime's internal parts (the pure fit and
+    # command-line functions) through the module's private header.
+    target_include_directories(ultraai_test_local_runtime PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/src")
+    target_compile_features(ultraai_test_local_runtime PRIVATE cxx_std_20)
+    add_test(NAME ultraai.local_runtime
+             COMMAND ultraai_test_local_runtime $<TARGET_FILE:ultraai_fake_engine>)
+endif()

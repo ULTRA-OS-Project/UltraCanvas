@@ -21,10 +21,16 @@
 // by whichever Vector plugin the application registered - see
 // UltraCanvasVectorPreview.h), and audio / video through the
 // framework's UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement.
-// UltraCanvas Document containers (*.ucd) are recognised too: until the UCD v2
-// engine lands, the viewer shows the container's embedded preview thumbnail
-// (readable without parsing the body — the format is designed for that) plus
-// the header details; files without a thumbnail get a header summary. The
+// UltraCanvas Document containers (*.ucd) are recognised too: a layered image
+// shows whole, its layers composited at full size; other content types show
+// the container's embedded preview thumbnail (readable without parsing the
+// body — the format is designed for that, UltraCanvasUCDContainer.h) plus the
+// header details; files without a thumbnail get a header summary. A
+// password-protected layered image or PDF shows an Unlock button that asks for
+// its password (IsLocked / Unlock / UnlockWithPassword); opened, the info bar
+// says "unlocked" beside its kind (IsUnlocked). The passwords are kept for the
+// folder until the desktop session locks or the window has been left alone
+// for a while (ForgetPasswords, SetForgetPasswordsAfterIdle). The
 // right view is chosen automatically from the file kind, and the toolbar
 // offers only the tools that kind takes (GetAvailableTools): colour
 // adjustments and Curves for bitmaps, rotate / mirror / save for anything on
@@ -74,8 +80,22 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.17.0 - SetSettingsAction: a host's settings, behind a gear at the right
+//                   end of the info bar
+// Version: 1.16.0 - Unlock's passwords are forgotten - and an unlocked file shown locked
+//                   again - when the desktop session locks or the window has had no
+//                   input for a while (SetForgetPasswordsAfterIdle); IsUnlocked, and
+//                   "unlocked" beside the kind in the info bar
+// Version: 1.15.0 - Unlock's passwords are kept for the folder being browsed: a file
+//                   unlocked there, or another with the same password, shows without
+//                   asking again (ForgetPasswords, SetRememberPasswords)
+// Version: 1.14.1 - noteView: the viewer's notes (a *.ucd summary, a locked PDF) are dark
+// Version: 1.14.0 - password-protected files: IsLocked / Unlock / UnlockWithPassword,
+//                   MediaViewerTools::unlock, MediaUnlockResult
+// Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
+//                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,11 +108,16 @@
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasSessionLock.h"   // ForgetPasswords when the session locks
 #include <string>
 #include <vector>
 #include <memory>
 #include <functional>
 #include <chrono>
+#include <map>
+#include <set>
+
+class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h - Unlock's passwords, zeroed when freed
 
 namespace UltraCanvas {
 
@@ -173,9 +198,10 @@ struct MediaAdjustments {
 };
 
 // ===== WHICH VIEW / EDIT TOOLS APPLY =====
-// The groups of the second toolbar row that mean something for the file on
+// The view / edit groups of the toolbar that mean something for the file on
 // show. The viewer offers only these, so a video, a PDF or a 3D model is not
-// given colour sliders it cannot apply. Details is always available.
+// given colour sliders it cannot apply. Details (in the info bar) is always
+// available.
 //   bitmap image          zoom, transform, colour, save
 //   SVG / vector drawing  zoom, transform, save (rasterized) - on the image
 //                         surface; a drawing in the vector view zooms only
@@ -188,6 +214,16 @@ struct MediaViewerTools {
     bool transform = false;   // rotate left / right, mirror horizontally / vertically
     bool colour    = false;   // adjustments panel and Curves (with its histogram)
     bool save      = false;   // Save as... (bakes the edits into a bitmap file)
+    bool unlock    = false;   // Unlock... (a password-protected file not unlocked yet)
+};
+
+// What UltraCanvasMediaViewer::UnlockWithPassword made of a password.
+enum class MediaUnlockResult {
+    Unlocked,        // the file is shown whole
+    WrongPassword,   // not its password (or none was typed): still locked
+    Failed,          // the password was right, or could not be checked, but
+                     // the file would not open (damaged, no libsodium ...)
+    NotLocked        // the shown file is not a locked one
 };
 
 // ===== CENTRAL DISPLAY SURFACE =====
@@ -507,7 +543,7 @@ public:
 
     // ===== TOP BARS (EMBEDDED MODE) =====
     // Show/hide everything above the display surface: the folder breadcrumb,
-    // both toolbar rows and the adjustments panel. Hosts that embed the viewer
+    // the toolbar and the adjustments panel. Hosts that embed the viewer
     // as a plain preview pane (e.g. the UltraFiler preview) turn them off and
     // provide their own navigation. Default: visible.
     void SetTopBarsVisible(bool visible);
@@ -520,13 +556,68 @@ public:
 
     // ===== TOOLS FOR THE SHOWN FILE =====
     // Which view / edit tools apply to what is on show (see MediaViewerTools),
-    // decided on every load. The second toolbar row shows only these groups,
+    // decided on every load. The toolbar shows only these groups,
     // and the adjustments panel folds away while colour does not apply (it
     // comes back with the next bitmap if its toggle is still on). A host with
     // its own controls can ask the same question. Colour adjustments made on
     // one photo still carry over to the next, but never reach a file that
     // does not take them: a drawing or a document preview shows unaltered.
     MediaViewerTools GetAvailableTools() const { return tools; }
+
+    // ===== PASSWORD-PROTECTED FILES =====
+    // A password-protected file the viewer can open with its password - a
+    // layered *.ucd image (UCD 2.2) or a PDF - first shows what it can
+    // without it: the *.ucd's thumbnail (nothing when it is private), a note
+    // for the PDF. An Unlock button comes up in the info bar and the
+    // toolbar (Enter does the same), and the Details say why. Nothing
+    // asks on its own: browsing a folder never pops up a password prompt.
+    // The passwords Unlock is given are kept for the folder being browsed
+    // (see ForgetPasswords), so going back to a file - or on to another file
+    // there with the same password - shows it without asking again.
+    bool IsLocked() const { return locked != MediaLock::NotLocked; }
+    // Asks for the password in a dialog over the viewer's window - again
+    // when it is not right - and shows the file whole once it is.
+    void Unlock();
+    // Tries `password` on the shown file without asking: what Unlock does
+    // with the answer. `error` says why when it is not Unlocked.
+    MediaUnlockResult UnlockWithPassword(const std::string& password, std::string& error);
+    // The passwords that unlocked files in the folder being browsed are
+    // tried, without a word, on each protected file shown there - the one
+    // that opened it first - before it is shown locked. They are held
+    // zeroed-on-free, at most kMaxRememberedPasswords of them, and only for
+    // that folder: opening another folder or a selection elsewhere forgets
+    // them, and so does ForgetPasswords. SetRememberPasswords(false) keeps
+    // none: every protected file asks each time it is shown.
+    static constexpr size_t kMaxRememberedPasswords = 8;
+    // Forgets the kept passwords, and shows a file showing unlocked locked
+    // again. The viewer does this itself when the desktop session locks
+    // (UltraCanvasSessionLock.h) and when its window has had no key or mouse
+    // input for GetForgetPasswordsAfterIdle(), so neither a password nor an
+    // opened document outlives the user stepping away.
+    void ForgetPasswords();
+    void SetRememberPasswords(bool remember);
+    bool GetRememberPasswords() const { return rememberPasswords; }
+    // How long the window may go without input before ForgetPasswords
+    // (default ten minutes; zero never - the session lock still forgets).
+    static constexpr std::chrono::seconds kDefaultForgetPasswordsAfterIdle{600};
+    void SetForgetPasswordsAfterIdle(std::chrono::seconds idle);
+    std::chrono::seconds GetForgetPasswordsAfterIdle() const { return forgetAfterIdle; }
+    // What the viewer's idle timer runs: ForgetPasswords when there is
+    // something to forget and the window has been idle that long. True when
+    // it forgot. A host that measures idleness its own way calls
+    // ForgetPasswords instead.
+    bool ForgetPasswordsIfIdle();
+    // The shown file is password-protected and showing whole: opened with
+    // its password, typed or kept. The info bar says "unlocked" beside its
+    // kind, and the Details say so.
+    bool IsUnlocked() const { return unlocked; }
+
+    // ===== HOST SETTINGS =====
+    // A gear at the right end of the info bar, beside Details, that runs
+    // `action` - the host's settings (UltraViewer's: how long before the
+    // passwords are forgotten). Hidden while no action is set; an empty one
+    // hides it again.
+    void SetSettingsAction(std::function<void()> action, const std::string& tooltip = "Settings");
 
     // ===== KEYBOARD =====
     // Give the widget the window keyboard focus, so the browsing keys work
@@ -598,6 +689,13 @@ private:
     // bitmap, none for anything else.
     MediaAdjustments SurfaceAdjustmentsFor(const std::string& path) const;
     void UpdateInfoBar();
+    // Unlock's question; `note` heads it when it is asked again.
+    void AskForPassword(const std::string& note);
+    // What a locked PDF shows: a note in the text view.
+    void ShowLockedPDFNote(const std::string& path);
+    // Shows `plain` - "Key: value" lines, as the Details panel takes them -
+    // in noteView, in place of the text view.
+    void ShowNote(const std::string& plain);
     void UpdateDetailedInfo();
     // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
     // "## " / "### " headings) converted to Markdown tables.
@@ -680,8 +778,7 @@ private:
     bool infoBarVisible = true;    // the info bar under it
 
     std::shared_ptr<UltraCanvasBreadcrumb>   breadcrumb;
-    std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row
-    std::shared_ptr<UltraCanvasToolbar>      toolbar2;  // view / edit row
+    std::shared_ptr<UltraCanvasToolbar>      toolbar;   // browse / slideshow / view / edit
     std::shared_ptr<UltraCanvasContainer>    adjustPanel;
     std::shared_ptr<UltraCanvasMediaSurface> surface;
     std::shared_ptr<UltraCanvasColorSwatchBar> backdropBar;   // under the picture
@@ -696,6 +793,12 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    sheetView;     // UltraCanvasSpreadsheet
     std::shared_ptr<UltraCanvasUIElement>    modelView;     // UltraCanvasSTLElement (3D)
     std::shared_ptr<UltraCanvasUIElement>    textView;      // UltraCanvasTextArea (read-only)
+    // The viewer's own note about a file it shows no picture of - a *.ucd's
+    // header summary, a locked PDF's - in the viewer's dark colours, laid
+    // out like the Details panel (UltraCanvasTextArea, Markdown). Shown in
+    // the text view's place (activeKind Text) by ShowNote; `noteShown` says so.
+    std::shared_ptr<UltraCanvasUIElement>    noteView;
+    bool noteShown = false;
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement
@@ -717,6 +820,38 @@ private:
     // Details text for the current UCD container (empty when the current file
     // is not a *.ucd). Feeds the Details panel instead of the image/text details.
     std::string ucdDetails;
+
+    // The shown file is password-protected and not unlocked: which kind,
+    // so Unlock knows how to open it (see IsLocked()).
+    enum class MediaLock { NotLocked, UCDImage, PDF };
+    MediaLock locked = MediaLock::NotLocked;
+    bool unlocked = false;            // ... or it is, and was opened with its password (IsUnlocked)
+    bool askingForPassword = false;   // Unlock's question is up
+    // Unlock's passwords for the folder being browsed (see ForgetPasswords).
+    bool rememberPasswords = true;
+    std::string passwordFolder;                                          // where they belong
+    std::vector<std::shared_ptr<UltraCryptSecureBuffer>> rememberedPasswords;   // newest first
+    std::map<std::string, std::shared_ptr<UltraCryptSecureBuffer>> passwordForFile;   // the one that opened it
+    std::set<std::string> noRememberedPasswordFits;   // tried with all of them; until another is kept
+    // Keeps `password` for the folder `path` is in, as the one that opens it.
+    void RememberPassword(const std::string& path, const std::string& password);
+    // The shown file is locked: the kept passwords, tried without asking.
+    void UnlockFromRememberedPasswords();
+    // Forgets the passwords when `folder` is not the one they belong to.
+    void KeepPasswordsOnlyFor(const std::string& folder);
+    // The passwords go; what they opened stays shown (ForgetPasswords relocks it).
+    void DropKeptPasswords();
+    // Watched for the user's absence - the session lock, the idle timer -
+    // exactly while a password is kept or a file is shown unlocked.
+    void UpdateAbsenceWatch();
+    std::chrono::seconds forgetAfterIdle = kDefaultForgetPasswordsAfterIdle;
+    std::chrono::steady_clock::time_point lastActivity = std::chrono::steady_clock::now();   // last key or mouse input
+    bool tryingKeptPasswords = false;   // UnlockWithPassword is called by UnlockFromRememberedPasswords
+    TimerId idleTimer = 0;
+    SessionLockListenerId sessionLockListener = 0;
+    std::shared_ptr<UltraCanvasButton> unlockButton;   // in the info bar
+    std::shared_ptr<UltraCanvasButton> settingsButton; // ... and the host's settings (SetSettingsAction)
+    std::function<void()> settingsAction;
 
     MediaAdjustments adjustments;
     // The tools the shown file takes (see GetAvailableTools()).
@@ -759,7 +894,7 @@ private:
     bool  transparencyPaletteEnabled = true;  // backdrop strip under the picture
 
     bool grabFocusOnAttach = true;   // claim the keyboard when attached to a window
-    bool keyFilterInstalled = false; // window key filter is live
+    bool keyFilterInstalled = false; // window key filter (and input-activity watch) is live
 };
 
 // ===== FACTORY =====

@@ -1,5 +1,38 @@
 # UltraCanvasERDiagram Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Header Include](#header-include)
+- [Features](#features)
+- [Data Structures](#data-structures)
+  - [Enumerations](#enumerations)
+  - [`ERDiagramAttribute`](#erdiagramattribute)
+  - [`ERDiagramEntity`](#erdiagramentity)
+  - [`ERDiagramLeg` and `ERDiagramRelationship`](#erdiagramleg-and-erdiagramrelationship)
+  - [`ERDiagramAnnotation`](#erdiagramannotation)
+  - [`ERDiagramRolePalette`](#erdiagramrolepalette)
+  - [`ERDiagramStyle`](#erdiagramstyle)
+- [Constructor and Factory](#constructor-and-factory)
+- [API Reference](#api-reference)
+  - [Entities](#entities)
+  - [Attributes](#attributes)
+  - [Relationships](#relationships)
+  - [Annotations](#annotations)
+  - [Notation](#notation)
+  - [Layout](#layout)
+  - [Styling and themes](#styling-and-themes)
+  - [Crow's-foot row layout](#crows-foot-row-layout)
+  - [Canvas chrome](#canvas-chrome)
+  - [Viewport](#viewport)
+  - [Selection and interaction](#selection-and-interaction)
+  - [Measurement](#measurement)
+  - [Serialization](#serialization)
+  - [Callbacks](#callbacks)
+- [Quick Start](#quick-start)
+- [Notes and limits](#notes-and-limits)
+
 ## Overview
 
 **UltraCanvasERDiagram** is an entity-relationship diagram component. It renders

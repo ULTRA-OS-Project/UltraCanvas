@@ -3,6 +3,8 @@
 // Version: 1.17.1 - the kept layout and width are one slot per entry, moved with the entries
 // Version: 1.17.0 - an entry's width is measured once and kept (CalculateItemWidth over MeasureItemWidth)
 // Version: 1.16.0 - the labels are shaped once and kept
+// Version: 1.15.1 - an item is measured in its own font, not the one the context was
+//                  left in (a menu bar's first label was ellipsized to "...")
 // Version: 1.15.0 - MenuStyle::FromTheme
 // Version: 1.14.0 - OpenMenuAnchored (below a widget, or above it when there is no
 //                  room below); menubar drop-downs flip above their item; symbolic
@@ -22,7 +24,7 @@
 //                  progress was computed and never drawn); activating an item
 //                  without an application no longer dereferences a null one
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -863,32 +865,41 @@ namespace UltraCanvas {
     int UltraCanvasMenu::MeasureItemWidth(const MenuItemData &item) const {
         int width = 0;
         auto ctx = GetRenderContext();
-        // Without a window there is no context to measure with (a menu drawn
-        // into an offscreen surface by a test): a rough width per character
-        // keeps the entries apart instead of a null dereference.
-        auto textWidth = [&](const std::string& text) -> int {
-            if (ctx) return ctx->GetTextLineWidth(text);
-            return static_cast<int>(text.size() * style.font.fontSize * 0.6);
-        };
         // Icon space
         if (!item.iconPath.empty() || item.iconImage) {
             width += style.iconSize + style.iconSpacing;
         }
 
-        // Text width
+        // The texts are measured in the item's font, as RenderItem draws
+        // them, whatever font the context was left in: GetItemBounds and
+        // GetItemX run before RenderItem sets it, and a menu bar's first item
+        // took the font of the text drawn or measured last - a colour
+        // picker's smaller one - and had its label ellipsized into that
+        // width ("File" drawn as "..."). Without a window there is no context
+        // to measure with (a menu drawn into an offscreen surface by a test):
+        // a rough width per character keeps the entries apart instead of a
+        // null dereference.
+        const FontStyle font = item.font.value_or(style.font);
+        auto textWidth = [&](const std::string& text) -> int {
+            if (ctx) return ctx->GetTextLineWidth(text);
+            return static_cast<int>(text.size() * font.fontSize * 0.6);
+        };
+        if (ctx) {
+            ctx->PushState();
+            ctx->SetFontStyle(font);
+        }
         if (!item.label.empty()) {
             width += textWidth(item.label);
         }
+        // A shortcut is only shown in a vertical menu.
+        if (orientation == MenuOrientation::Vertical && !item.shortcut.empty()) {
+            width += style.shortcutSpacing + textWidth(GetDisplayShortcut(item.shortcut));
+        }
+        if (ctx) ctx->PopState();
 
         // The following elements are only rendered in vertical menus
         // (dropdowns/popups/submenus), never in the horizontal menubar
         if (orientation == MenuOrientation::Vertical) {
-            // Shortcut width
-            if (!item.shortcut.empty()) {
-                std::string displayShortcut = GetDisplayShortcut(item.shortcut);
-                width += style.shortcutSpacing + textWidth(displayShortcut);
-            }
-
             // Submenu arrow
             if (item.HasSubmenu()) {
                 width += 20;  // Arrow space

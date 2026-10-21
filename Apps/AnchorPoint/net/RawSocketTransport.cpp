@@ -5,7 +5,7 @@
 //
 // Cross-platform (Linux + Windows). This is the "today" backend; it will be
 // superseded by an UltraNet-backed implementation that exposes the same
-// AnchorPoint::IConnection / IListener interface.
+// AnchorPointApp::IConnection / IListener interface.
 #include "Transport.h"
 
 #include <cerrno>    // errno
@@ -19,6 +19,7 @@
   using ssize_t = long long;
   #define AP_CLOSESOCK closesocket
   #define AP_BAD_SOCKET INVALID_SOCKET
+  #define AP_SHUT_BOTH SD_BOTH
   using ap_socket_t = SOCKET;
 #else
   #include <sys/socket.h>
@@ -29,10 +30,20 @@
   #include <unistd.h>
   #define AP_CLOSESOCK ::close
   #define AP_BAD_SOCKET (-1)
+  #define AP_SHUT_BOTH SHUT_RDWR
   using ap_socket_t = int;
 #endif
 
-namespace AnchorPoint {
+// A send to a peer that has gone raises SIGPIPE on POSIX, which ends the whole
+// program; a failed send is reported instead. Linux takes a per-call flag,
+// macOS a per-socket option (SetNoDelay); Windows has no SIGPIPE.
+#ifdef MSG_NOSIGNAL
+  #define AP_SEND_FLAGS MSG_NOSIGNAL
+#else
+  #define AP_SEND_FLAGS 0
+#endif
+
+namespace AnchorPointApp {
 
 namespace {
 
@@ -64,6 +75,9 @@ void SetNoDelay(ap_socket_t s) {
     int one = 1;
     ::setsockopt(s, IPPROTO_TCP, TCP_NODELAY,
                  reinterpret_cast<const char*>(&one), sizeof(one));
+#ifdef SO_NOSIGPIPE
+    ::setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+#endif
 }
 
 std::string FormatPeer(const sockaddr_storage& ss) {
@@ -91,7 +105,7 @@ public:
         const char* p = static_cast<const char*>(data);
         size_t sent = 0;
         while (sent < len) {
-            ssize_t n = ::send(fd_, p + sent, static_cast<int>(len - sent), 0);
+            ssize_t n = ::send(fd_, p + sent, static_cast<int>(len - sent), AP_SEND_FLAGS);
             if (n <= 0) return false;
             sent += static_cast<size_t>(n);
         }
@@ -114,6 +128,12 @@ public:
             AP_CLOSESOCK(fd_);
             fd_ = AP_BAD_SOCKET;
         }
+    }
+
+    // shutdown() rather than close(): the descriptor stays ours until the
+    // owning thread calls Close(), so it cannot be reused under a blocked call.
+    void Interrupt() override {
+        if (fd_ != AP_BAD_SOCKET) ::shutdown(fd_, AP_SHUT_BOTH);
     }
 
     std::string PeerAddress() const override { return peer_; }
@@ -231,4 +251,4 @@ std::unique_ptr<IListener> Listen(uint16_t port, std::string* err) {
     return std::make_unique<SocketListener>(fd, actualPort);
 }
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

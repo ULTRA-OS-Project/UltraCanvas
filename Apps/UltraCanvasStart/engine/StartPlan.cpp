@@ -1,4 +1,8 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.7 - an installed MSYS2 is updated before pacman installs
+// Version: 0.1.6 - Windows without MSYS2: winget sets it up before pacman installs
+// Version: 0.1.5 - a check switched off on the Tools step is not installed
+// Version: 0.1.4 - the SDK step names the download page and the Unpack button
 // Version: 0.1.3 - the steps, not the pages, in the plan's wording
 // Version: 0.1.2 - the plan and the report name the chosen assistant
 // Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
@@ -46,9 +50,8 @@ std::vector<std::string> PlatformNotes(const SystemProfile& profile, Platform ta
         case Platform::Windows:
             notes.push_back("The build runs inside MSYS2, in the **CLANG64** shell (**CLANGARM64** on an ARM machine), not in Visual Studio");
             if (local && profile.msysPrefix.empty()) {
-                notes.push_back("MSYS2 was not found: install it from https://www.msys2.org to `C:\\msys64`");
-                notes.push_back("Then open the CLANG64 shell and run `pacman -Syu`");
-                notes.push_back("Then start UltraCanvasStart again");
+                notes.push_back("MSYS2 was not found: the Tools step's Install sets it up with `winget install MSYS2.MSYS2`, "
+                                "or install it yourself from https://www.msys2.org to `C:\\msys64`");
             }
             notes.push_back("`build-win.cmd` at the repository root configures and builds");
             notes.push_back("`package-win.sh` makes the standalone zip");
@@ -86,7 +89,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         // Only what the checks say is missing, plus the ones that cannot be
         // checked (the manager skips installed ones anyway).
         for (const auto& check : checks) {
-            if (check.packageName.empty()) continue;
+            if (check.packageName.empty() || choices.Skips(check.dependencyId)) continue;
             const bool wanted = !check.checked || !check.present || !check.versionOk;
             if (wanted && std::find(packages.begin(), packages.end(), check.packageName) == packages.end()) {
                 packages.push_back(check.packageName);
@@ -99,9 +102,18 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
             for (auto& p : packages) p = Msys2PackageForArchitecture(p, arch);
         }
     }
+    // Windows without MSYS2: set it up first, then its pacman at the place
+    // winget puts it.
+    const bool setUpMsys2 = local && target == Platform::Windows && profile.msysPrefix.empty() && !packages.empty();
+    if (setUpMsys2) {
+        for (auto& step : Msys2SetupSteps(kMsys2DefaultRoot)) plan.steps.push_back(std::move(step));
+    } else if (local && target == Platform::Windows && !packages.empty()) {
+        for (auto& step : Msys2UpdateSteps(profile.msysPrefix)) plan.steps.push_back(std::move(step));
+    }
     if (!packages.empty()) {
         std::string program;
         if (local) program = profile.packageManagerPath;
+        if (setUpMsys2) program = std::string(kMsys2DefaultRoot) + "/usr/bin/pacman.exe";
         PlanStep install = InstallStep(manager, packages, program);
         if (manager == PackageManager::Msys2Pacman) {
             install.description += " (run in the MSYS2 CLANG64 shell)";
@@ -117,10 +129,9 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.kind = StepKind::Download;
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
-                               ": " + SdkReleaseAssetUrl(target, version, arch) +
-                               " - the Framework step's Download and unpack button fetches it; "
-                               "while that release is still building, the archive of the same name "
-                               "is a workflow artifact at " + SdkDownloadPage();
+                               ": download " + SdkArchiveName(target, version, arch) + " from " +
+                               SdkDownloadPage() + " (also on " + SdkReleasePage(version) +
+                               "), then the Framework step's Unpack button unpacks it";
         plan.steps.push_back(download);
     }
     if (choices.cloneFramework || !choices.useSdk) {
@@ -213,7 +224,10 @@ std::string RenderReport(const Plan& plan) {
                 std::string line = std::string("    [") + mark + "] " + c->title;
                 if (!c->version.empty()) line += "  " + c->version;
                 if (!c->present || !c->versionOk || !c->checked) line += "  (" + c->detail + ")";
-                if (!c->packageName.empty() && (!c->present || !c->versionOk)) line += "  -> " + c->packageName;
+                if (!c->packageName.empty() && (!c->present || !c->versionOk || !c->checked)) {
+                    line += plan.choices.Skips(c->dependencyId) ? "  (switched off, not installed)"
+                                                                : "  -> " + c->packageName;
+                }
                 out += line + "\n";
             }
         }

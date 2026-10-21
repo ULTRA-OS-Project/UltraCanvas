@@ -3,6 +3,36 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.9.5 - a drop's passwords are forgotten when the desktop session locks; the
+//                  drop's first file is read through LoadDocumentAsking, so a password
+//                  forgotten while its import dialog was up is asked for again
+// Version: 1.9.4 - every password given in a drop is tried on the files after it, the one
+//                  that last opened a file first, before asking (DropPasswords)
+// Version: 1.9.3 - a drop's files share a password: the one given for a file is tried first
+//                  on the next protected one, forgotten when the drop is done; Paste as New
+//                  Image says what it pasted, as Paste as New Layer does
+// Version: 1.9.2 - every file that is read asks for its password when it is protected: each
+//                  of a multi-file drop in turn, the next waiting for the answer
+//                  (ApplyImports), and a file pasted (LoadDocumentAsking)
+// Version: 1.9.1 - a password-protected PDF imports: its password is asked for (again when
+//                  it is wrong) before the import dialog, and rasterizes it
+// Version: 1.9.0 - password-protected *.ucd: File > Password Protection... sets, changes or
+//                  removes it; opening one asks for its password (again when it is wrong);
+//                  Save / Save As to anything but a *.ucd says it drops the protection
+// Version: 1.8.2 - the colour picker opens with the design and channels it was left with
+//                  (settings: picker.design, picker.channels)
+// Version: 1.8.1 - the colour picker offers its design list, folds its channels and is
+//                  as tall as its content (SetAutoHeight)
+// Version: 1.8.0 - Open / Save As offer FileLoader's layered images: *.ucd (UCD 2.1, layers
+//                  and text kept) beside *.ucraster, from the inventory, not a list of our own
+// Version: 1.7.1 - the Text tool's Font and Align lists closed with Escape give the keyboard
+//                  back to the text being typed (ReturnKeyboardToText)
+// Version: 1.7.0 - text typed on the canvas: an UltraCanvasRichTextEdit over the canvas
+//                  edits a text layer; Layer > Edit Text / Rasterize Layer; the layer list
+//                  marks text layers
+// Version: 1.6.0 - the right panel in UltraMail's look: Colour, the tool's options and
+//                  Layers are the framework's SectionCard group boxes on its page colour,
+//                  the colour picker is ColorPickerStyle::Light, the layer list reads as a list
 // Version: 1.5.0 - BringForward: restores and raises the window
 // Version: 1.4.0 - Open / Import / Save As / Export offer FileLoader's format lists (every
 //                  bitmap type this build reads / writes), not the editor's own
@@ -25,7 +55,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -42,6 +72,10 @@
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasUCDContainer.h"
+#include "UltraCrypt/UltraCryptCore.h"   // a drop's password, held zeroed-on-free
+#include "UltraCanvasRasterText.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
@@ -54,10 +88,12 @@
 #endif
 
 #include <algorithm>
+#include <cstring>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 
 // ULTRAPAINT_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraPaint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -84,9 +120,17 @@ namespace {
     constexpr int   kToolButton    = 36;   // a tool's button, square, 4 px around its 28 px icon
     constexpr int   kToolIcon      = 28;
     constexpr int   kRightWidth    = 300;
-    constexpr int   kRightInner    = 262;   // what is visible next to the scrollbar
+    constexpr int   kRightInner    = 268;   // what is visible next to the scrollbar, less its gap
     constexpr int   kStatusHeight  = 24;
     constexpr float kRowH          = 24.0f;
+
+    // The right panel is the framework's SectionCard look, as UltraMail's
+    // panes are: white cards on a light page, each a group box whose caption
+    // is a quiet bold grey over a hairline (GroupBoxVisualStyle::SectionCard),
+    // with the colour picker in its light style (ColorPickerStyle::Light).
+    // The layer list's rows take the framework's list-row colours
+    // (Colors::ListRowHover / ListRowSelected), as UltraMail's lists do.
+    constexpr float kPanelGap = 8.0f;    // between the cards, and around them
 
     // The bitmap formats this build reads, as FileLoader's format inventory
     // says (UltraCanvasFileLoader::GetSupportedLoadExtensions) - not a list
@@ -194,17 +238,49 @@ namespace {
     bool FocusIsTextEntry(UltraCanvasWindowBase* win) {
         if (!win) return false;
         UltraCanvasUIElement* f = win->GetFocusedElement();
-        return f && dynamic_cast<UltraCanvasTextInput*>(f) != nullptr;
+        return f && (dynamic_cast<UltraCanvasTextInput*>(f) != nullptr ||
+                     dynamic_cast<UltraCanvasRichTextEdit*>(f) != nullptr);
     }
 
+    // The frame of the Text tool's editor: as big as the canvas and over it,
+    // so the editor is cut off where the text's box runs past what the canvas
+    // shows instead of drawing over the panels beside it. A press on it -
+    // outside the editor - finishes the text; the pointer's moves and the
+    // wheel go on to the canvas below (same bounds, so the same coordinates).
+    class TextEditorHost : public UltraCanvasContainer {
+    public:
+        explicit TextEditorHost(const std::string& id) : UltraCanvasContainer(id) {}
+        std::function<void()> onPressOutside;
+        UltraCanvasUIElement* passTo = nullptr;
+        bool OnEvent(const UCEvent& event) override {
+            if (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) {
+                if (onPressOutside) onPressOutside();
+                return true;
+            }
+            if (passTo && (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseWheel))
+                return passTo->OnEvent(event);
+            return UltraCanvasContainer::OnEvent(event);
+        }
+    };
+
     // ui-reuse-exempt: helper that only sizes framework elements; nothing is painted here.
-    std::shared_ptr<UltraCanvasLabel> PanelTitle(const std::string& id, const std::string& text) {
-        auto l = CreateLabel(id, 0, 0, 0, 22, text);
-        l->SetFontSize(12);
-        l->SetFontWeight(FontWeight::Bold);
-        l->SetTextColor(Color(60, 60, 70, 255));
-        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        return l;
+    // One section of the right panel: a SectionCard captioned `title`, its
+    // content a column. As wide as what is visible beside the scrollbar, as
+    // tall as its content.
+    std::shared_ptr<UltraCanvasGroupBox> PanelCard(const std::string& id, const std::string& title) {
+        auto card = CreateGroupBox(id, 0, 0, kRightInner, 0, title);
+        card->SetFrameStyle(GroupBoxFrameStyle::Header);
+        card->SetVisualStyle(GroupBoxVisualStyle::SectionCard());
+        card->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        card->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+        return card;
+    }
+
+    // What a card leaves its content: its width, less its border and its
+    // padding on each side.
+    float CardInnerWidth(const UltraCanvasGroupBox& card) {
+        const GroupBoxVisualStyle& s = card.GetVisualStyle();
+        return kRightInner - 2.0f * (s.borderWidth + s.contentPadding);
     }
 }
 
@@ -282,16 +358,10 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
         if (colorPicker) colorPicker->SetBackgroundColor(p.ToColor());
     };
     toolContext.setStatus = [this](const std::string& s) { if (statusHint) statusHint->SetText(s); };
-    toolContext.requestText = [this](double x, double y) {
-        UltraPaintTextResult init;
-        init.font = toolOptions.textFont; init.size = toolOptions.textSize; init.bold = toolOptions.textBold;
-        auto dlg = std::make_shared<UltraPaintTextDialog>(init);
-        dlg->onAccept = [this, x, y](const UltraPaintTextResult& r) {
-            toolOptions.textFont = r.font; toolOptions.textSize = r.size; toolOptions.textBold = r.bold;
-            PlaceText(x, y, r);
-        };
-        ShowDialog(dlg);
-    };
+    toolContext.requestText = [this](double x, double y, double boxWidth) { BeginTextEdit(x, y, boxWidth); };
+    toolContext.textOptionChanged = [this](const std::string& option) { ApplyTextOption(option); };
+    toolContext.textControlDone = [this](UltraCanvasUIElement& control) { ReturnKeyboardToText(control); };
+    toolContext.askRasterize = [this](const std::string& action) { AskRasterize(action); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
 
     // ----- surface -> tool -----
@@ -311,9 +381,13 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     };
     surface->onToolDoubleClick = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, e); };
     surface->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
-    surface->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) { if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v); };
+    surface->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) {
+        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
+        DrawTextBoxes(ctx, v);
+    };
     surface->onViewChanged = [this]() {
         UpdateStatus();
+        PlaceTextEditor();   // the text being typed stays on its box
         // The glass magnifies the view's own zoom, so it follows a zoom change.
         if (magnifier && magnifier->IsVisible() && pointerInside)
             magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
@@ -323,6 +397,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     InstallShortcuts();
 
     window->onWindowClosing = [this]() -> bool {
+        CommitTextEdit();
         if (!document || !document->IsModified()) {
             if (auto dlg = settingsDialog.lock()) dlg->Close();
             return true;
@@ -335,11 +410,13 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     };
 
     // ----- first document -----
-    if (!paths.empty() && NeedsImportDialog(paths.front())) {
+    if (!paths.empty() && (NeedsImportDialog(paths.front()) ||
+                           UCRasterDocument::IsPasswordProtected(paths.front()))) {
         // Vector artwork needs a raster size, and a 3D model a view as well,
         // before either becomes an image; the dialog that asks waits for
         // Show() — this is also the path a file dropped on the application's
         // icon takes, since the shell starts us with it on the command line.
+        // So does a password-protected document's question for its password.
         pendingImport = paths.front();
         NewImage(lastNewImage);
     } else if (!paths.empty()) {
@@ -357,7 +434,10 @@ void UltraPaintWindow::Show() {
     if (!pendingImport.empty()) {
         const std::string path = pendingImport;
         pendingImport.clear();
-        ImportFile(path, false);
+        // Whatever it asks - the import dialog, a protected file's password
+        // - is asked once the editor has drawn, not over a window with
+        // nothing in it.
+        AfterNextDraw([this, path]() { ImportFile(path, false); });
     }
 }
 
@@ -454,6 +534,7 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
             M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
             M::ActionWithShortcut("Export with Options...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
+            M::Action("Password Protection...", MenuIconPath("password.svg"), [this]() { CmdPassword(); }),
             M::Separator(),
             M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
         })
@@ -479,11 +560,11 @@ void UltraPaintWindow::BuildMenuBar() {
             M::Action("Canvas Size...", MenuIconPath("canvas-size.svg"), [this]() { CmdCanvasSize(); }),
             M::ActionWithShortcut("Crop to Selection", "Ctrl+Shift+X", MenuIconPath("crop-selection.svg"), [this]() { CmdCropToSelection(); }),
             M::Separator(),
-            M::Action("Flip Horizontal", MenuIconPath("flip-h.svg"), [this]() { if (document) document->FlipHorizontal(); }),
-            M::Action("Flip Vertical", MenuIconPath("flip-v.svg"), [this]() { if (document) document->FlipVertical(); }),
-            M::Action("Rotate 90° Clockwise", MenuIconPath("rotate-cw.svg"), [this]() { if (document) { document->Rotate90(true); surface->ZoomToFit(); } }),
-            M::Action("Rotate 90° Counter-clockwise", MenuIconPath("rotate-ccw.svg"), [this]() { if (document) { document->Rotate90(false); surface->ZoomToFit(); } }),
-            M::Action("Rotate 180°", MenuIconPath("rotate-180.svg"), [this]() { if (document) document->Rotate180(); }),
+            M::Action("Flip Horizontal", MenuIconPath("flip-h.svg"), [this]() { CommitTextEdit(); if (document) document->FlipHorizontal(); }),
+            M::Action("Flip Vertical", MenuIconPath("flip-v.svg"), [this]() { CommitTextEdit(); if (document) document->FlipVertical(); }),
+            M::Action("Rotate 90° Clockwise", MenuIconPath("rotate-cw.svg"), [this]() { CommitTextEdit(); if (document) { document->Rotate90(true); surface->ZoomToFit(); } }),
+            M::Action("Rotate 90° Counter-clockwise", MenuIconPath("rotate-ccw.svg"), [this]() { CommitTextEdit(); if (document) { document->Rotate90(false); surface->ZoomToFit(); } }),
+            M::Action("Rotate 180°", MenuIconPath("rotate-180.svg"), [this]() { CommitTextEdit(); if (document) document->Rotate180(); }),
             M::Separator(),
             M::Action("Flatten Image", MenuIconPath("flatten.svg"), [this]() { CmdFlatten(); }),
         })
@@ -495,6 +576,9 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Merge Down", "Ctrl+Shift+M", MenuIconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); }),
             M::Action("Move Layer Up", MenuIconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
             M::Action("Move Layer Down", MenuIconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
+            M::Separator(),
+            M::Action("Edit Text", MenuIconPath("text.svg"), [this]() { CmdEditText(); }),
+            M::Action("Rasterize Layer", MenuIconPath("rasterize.svg"), [this]() { CmdRasterizeLayer(); }),
             M::Separator(),
             M::Action("Layer Properties...", MenuIconPath("layer-props.svg"), [this]() { CmdLayerProperties(); }),
         })
@@ -675,64 +759,90 @@ void UltraPaintWindow::BuildToolPalette() {
 
 void UltraPaintWindow::BuildRightPanel() {
     rightPanel = CreateScrollableContainer("up-right", 0, 0, kRightWidth, 0);
-    rightPanel->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // Up and down only: the cards are as wide as what the vertical scrollbar
+    // leaves, and a horizontal bar would only scroll the strip that one takes.
+    ContainerStyle rightStyle = rightPanel->GetContainerStyle();
+    rightStyle.autoShowHorizontalScrollbar = false;
+    rightPanel->SetContainerStyle(rightStyle);
+    rightPanel->layout.SetFlexColumn().SetFlexGap(kPanelGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    rightPanel->SetPadding(6);
-    rightPanel->SetBackgroundColor(Color(244, 244, 246, 255));
+    rightPanel->SetPadding(kPanelGap, 0, kPanelGap, kPanelGap);
+    rightPanel->SetBackgroundColor(Colors::SectionPage);
 
     // ----- colour -----
-    rightPanel->AddChild(PanelTitle("up-color-title", "Colour"));
-    colorPicker = CreateColorPicker("up-color", foreground.ToColor(), 0, 0, kRightInner, 300);
+    auto colourPanel = PanelCard("up-color-card", "Colour");
+    const float cardInner = CardInnerWidth(*colourPanel);
+    colorPicker = CreateColorPicker("up-color", foreground.ToColor(), 0, 0, cardInner, 300);
+    colorPicker->SetStyle(ColorPickerStyle::Light());
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(background.ToColor());
     colorPicker->SetShowAlpha(true);
-    // The hue ring is capped by whatever vertical space the controls leave it,
-    // so a picker sized by eye draws a wheel narrower than the panel. Ask for
-    // the height at which the ring fills the panel's width instead.
-    const float pickerH = colorPicker->PreferredHeightForWidth(kRightInner);
-    colorPicker->SetSize(kRightInner, pickerH);
-    // Not stretched: the panel's content box is wider than what is visible
-    // beside the scrollbar, and a stretched picker lays its hex field and
-    // channel values out into the part that is covered.
+    // The design list top right (circle, square, rectangle, two sliders), and
+    // the HSV / HSL / RGB channels under their disclosure row - both as the
+    // user left them (folded the first time).
+    colorPicker->SetWheelStyle(settings.pickerDesign);
+    colorPicker->SetShowWheelStyleSelector(true);
+    colorPicker->SetSlidersCollapsible(true, settings.pickerChannelsOpen);
+    colorPicker->onWheelStyleChanged = [this](ColorPickerWheelStyle) { RememberColourPicker(); };
+    colorPicker->onSlidersExpandedChanged = [this](bool) { RememberColourPicker(); };
+    // As tall as its content: the hue ring fills the card's width, and the
+    // card and the cards below move up and down as the channels fold or
+    // another design is chosen. The height is also the picker's flex basis.
+    colorPicker->SetAutoHeight(true);
+    // Not stretched: the picker lays its hex field and channel values out to
+    // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Start)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(pickerH));
-    colorPicker->onColorChanged = [this](const Color& c) { foreground = RasterPixel(c); };
+                           .SetAlignSelf(CSSLayout::AlignSelf::Start);
+    colorPicker->onColorChanged = [this](const Color& c) {
+        foreground = RasterPixel(c);
+        ApplyTextOption("colour");   // the text being typed, or the active text layer, takes it
+    };
     colorPicker->onColorChanging = [this](const Color& c) { foreground = RasterPixel(c); };
     colorPicker->onBackgroundChanged = [this](const Color& c) { background = RasterPixel(c); };
     colorPicker->onBackgroundChanging = [this](const Color& c) { background = RasterPixel(c); };
-    rightPanel->AddChild(colorPicker);
+    colourPanel->AddChild(colorPicker);
 
-    swatches = CreateColorSwatchBar("up-swatches", 0, 0, kRightInner, 44);
-    swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    swatches->onColorSelected = [this](const Color& c) {
+    // The palettes under the picker: rows of swatches, more added from the
+    // gallery behind the "+" at the end of the last row, and a right click
+    // sets one entry. Remembered between starts (picker.palettes).
+    palettes = CreateColorPaletteManager("up-palettes", 0, 0, cardInner);
+    palettes->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // Outlined as the picker above them outlines its fields, so a white
+    // swatch still shows its edge on the white card.
+    const ColorPickerStyle& pickerStyle = colorPicker->GetStyle();
+    ColorPaletteManagerStyle paletteStyle = palettes->GetManagerStyle();
+    paletteStyle.swatchBorder         = pickerStyle.fieldBorderColor;
+    paletteStyle.swatchHoverBorder    = pickerStyle.mutedTextColor;
+    paletteStyle.swatchSelectedBorder = pickerStyle.accentColor;
+    paletteStyle.accentColor          = pickerStyle.accentColor;
+    paletteStyle.editorPickerStyle    = pickerStyle;
+    palettes->SetManagerStyle(paletteStyle);
+    std::vector<NamedColorPalette> saved;
+    if (UltraCanvasColorPaletteManager::ParsePalettes(settings.palettes, saved)) palettes->SetPalettes(saved);
+    palettes->onColorSelected = [this](const Color& c) {
         foreground = RasterPixel(c);
         colorPicker->SetForegroundColor(c, false);
+        ApplyTextOption("colour");   // as the picker does
     };
-    // Right click on a swatch sets the background colour.
-    swatches->onColorAdjustSelected = [this](const Color& c) {
-        colorPicker->SetBackgroundColor(c, true);
-    };
-    rightPanel->AddChild(swatches);
+    palettes->onPalettesChanged = [this]() { RememberPalettes(); };
+    colourPanel->AddChild(palettes);
+    rightPanel->AddChild(colourPanel);
 
-    // ----- tool options -----
-    optionsTitle = PanelTitle("up-options-title", "Tool Options");
-    rightPanel->AddChild(optionsTitle);
-    optionsPanel = std::make_shared<UltraCanvasContainer>("up-options", 0, 0, kRightInner, 0);
-    optionsPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    // ----- tool options: captioned with the active tool's name -----
+    optionsPanel = PanelCard("up-options", "Tool Options");
     rightPanel->AddChild(optionsPanel);
 
     // ----- layers -----
-    rightPanel->AddChild(PanelTitle("up-layers-title", "Layers"));
-    layersPanel = std::make_shared<UltraCanvasContainer>("up-layers", 0, 0, kRightInner, 0);
-    layersPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    layersPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    layersPanel = PanelCard("up-layers", "Layers");
 
     auto buttons = std::make_shared<UltraCanvasToolbar>("up-layer-buttons", 0, 0, 0, 30);
     ToolbarAppearance app = buttons->GetAppearance();
     app.showIconLabels = false;
-    app.backgroundColor = Color(244, 244, 246, 255);
+    app.style = ToolbarStyle::Flat;
+    app.itemSpacing = 4.0f;
+    app.backgroundColor = layersPanel->GetVisualStyle().backgroundColor;
+    app.hoverBackgroundColor = Colors::ListRowHover;
+    app.activeBackgroundColor = Colors::ListRowSelected;
     buttons->SetAppearance(app);
     buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     buttons->AddButton("up-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer");
@@ -742,6 +852,20 @@ void UltraPaintWindow::BuildRightPanel() {
     buttons->AddButton("up-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
     buttons->AddButton("up-l-merge", "", IconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); })->SetTooltip("Merge down");
     buttons->AddButton("up-l-props", "", IconPath("layer-props.svg"), [this]() { CmdLayerProperties(); })->SetTooltip("Layer properties");
+    // Flat, as the main toolbar's, and just round their 24 px icons: the
+    // seven of them fit the card's width (in the toolbar's own size, the
+    // last one was cut off by the panel's edge).
+    for (auto& c : buttons->Children()) {
+        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
+            b->SetPadding(3);
+            b->SetElementSize(Size2Df(30, 30));
+            b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            ButtonStyle flat = b->GetStyle();
+            flat.cornerRadius = 6.0f;
+            flat.pressedColor = Colors::ListRowSelected;
+            b->SetStyle(flat);
+        }
+    }
     layersPanel->AddChild(buttons);
 
     auto opRow = std::make_shared<UltraCanvasContainer>("up-l-oprow", 0, 0, 0, kRowH);
@@ -803,7 +927,19 @@ void UltraPaintWindow::InstallShortcuts() {
     window->InstallEventFilter("up-shortcuts", [this](const UCEvent& e) -> bool {
         if (e.type != UCEventType::KeyDown) return false;
         if (window->GetActivePopupElement()) return false;
-        if (FocusIsTextEntry(window.get())) return false;
+        // Typing on the canvas: Escape, or Ctrl+Enter, finishes the text
+        // (Enter starts a new line in it).
+        if (IsEditingText() && (e.virtualKey == UCKeys::Escape ||
+                                (e.ctrl && (e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter)))) {
+            CommitTextEdit();
+            return true;
+        }
+        // The file commands still work while a text is typed (it is finished
+        // first); every other key is the text's.
+        const bool fileKey = e.ctrl && (e.virtualKey == UCKeys::S || e.virtualKey == UCKeys::O ||
+                                        e.virtualKey == UCKeys::N || e.virtualKey == UCKeys::E ||
+                                        e.virtualKey == UCKeys::Q);
+        if (FocusIsTextEntry(window.get()) && !(IsEditingText() && fileKey)) return false;
         const UCKeys k = e.virtualKey;
         if (e.ctrl) {
             switch (k) {
@@ -873,6 +1009,7 @@ void UltraPaintWindow::InstallShortcuts() {
 
 void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title) {
     (void)title;
+    CommitTextEdit();
     if (document && documentListener) document->RemoveListener(documentListener);
     document = std::move(doc);
     renamingLayer = -1;
@@ -880,8 +1017,15 @@ void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const 
     // the magnifying glass each add theirs in SetDocument): the panels and
     // the title follow the document without chaining behind anyone's slot.
     UCRasterDocument::Listener l;
+#ifdef HAS_LIBVIPS
+    // An open adjustment follows the image: a pasted layer, an undo, another
+    // image altogether.
+    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); SchedulePreviewRefresh(); };
+    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); SchedulePreviewRefresh(); };
+#else
     l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
     l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); };
+#endif
     documentListener = document->AddListener(std::move(l));
     surface->SetDocument(document);
     if (magnifier) magnifier->SetDocument(document);
@@ -890,6 +1034,9 @@ void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const 
     UpdateUndoButtons();
     UpdateTitle();
     UpdateStatus();
+#ifdef HAS_LIBVIPS
+    SchedulePreviewRefresh();
+#endif
 }
 
 void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
@@ -909,11 +1056,58 @@ void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
 void UltraPaintWindow::OpenFile(const std::string& path) {
     // Vector artwork carries no pixels and a model carries neither pixels
     // nor a view, so neither can just be opened: the import dialog asks first.
-    if (NeedsImportDialog(path)) {
+    // A password-protected document asks for its password there too.
+    if (NeedsImportDialog(path) || UCRasterDocument::IsPasswordProtected(path)) {
         ImportFile(path, false);
         return;
     }
     LoadIntoWindow(path);
+}
+
+void UltraPaintWindow::AskForFilePassword(const std::string& path,
+                                          const std::function<PasswordTry(const std::string& password,
+                                                                          std::string& error)>& attempt,
+                                          const std::function<void()>& notOpened,
+                                          const std::string& note) {
+    const std::string prompt = (note.empty() ? std::string() : note + "\n") +
+                               "Password for " + FileNameOf(path) + ":";
+    std::weak_ptr<bool> alive = lifeToken;
+    UltraCanvasDialogManager::ShowInputDialog(prompt, "Open " + FileNameOf(path), std::string(), InputType::Password,
+        [this, alive, path, attempt, notOpened](DialogResult r, const std::string& password) {
+            if (alive.expired()) return;
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (r != DialogResult::OK) {
+                // Cancelled: whatever waits on the answer goes on without
+                // the file, once this dialog has closed.
+                if (notOpened) {
+                    if (app) app->PostToUIThread([alive, notOpened]() { if (!alive.expired()) notOpened(); });
+                    else notOpened();
+                }
+                return;
+            }
+            // Asked again on the next turn of the loop, once the dialog that
+            // answered has closed.
+            auto askAgain = [this, alive, path, attempt, notOpened, app](const std::string& why) {
+                if (!app) return;
+                app->PostToUIThread([this, alive, path, attempt, notOpened, why]() {
+                    if (!alive.expired()) AskForFilePassword(path, attempt, notOpened, why);
+                });
+            };
+            if (password.empty()) { askAgain("Type the password."); return; }
+            std::string error;
+            switch (attempt(password, error)) {
+                case PasswordTry::Opened:
+                    return;
+                case PasswordTry::Wrong:
+                    askAgain("That password is not right.");
+                    return;
+                case PasswordTry::Failed:
+                    UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error), "Open",
+                        [alive, notOpened](DialogResult) { if (!alive.expired() && notOpened) notOpened(); },
+                        window.get());
+                    return;
+            }
+        }, window.get());
 }
 
 bool UltraPaintWindow::LoadIntoWindow(const std::string& path) {
@@ -998,12 +1192,27 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
         forTheRest.width = 0;
         forTheRest.height = 0;
         forTheRest.page = 0;
-        for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
+        AfterNextDraw([this, alsoFiles, forTheRest]() {
+            ApplyImports(alsoFiles, forTheRest, std::make_shared<DropPasswords>());
+        });
     });
 }
 
 void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
-                                  const std::vector<std::string>& alsoFiles) {
+                                  const std::vector<std::string>& alsoFiles,
+                                  std::shared_ptr<UCRasterDocument> preloaded,
+                                  const std::string& password) {
+    if (!preloaded && UCRasterDocument::IsPasswordProtected(path)) {
+        // Its password first; it comes back here opened.
+        AskForFilePassword(path, [this, path, fromDrop, alsoFiles](const std::string& given, std::string& error) {
+            auto doc = std::make_shared<UCRasterDocument>();
+            if (!doc->LoadUCD(path, error, given))
+                return error == UCD::kWrongPassword ? PasswordTry::Wrong : PasswordTry::Failed;
+            ImportFile(path, fromDrop, alsoFiles, doc, given);
+            return PasswordTry::Opened;
+        });
+        return;
+    }
     if (IsModelPath(path)) {
         ImportModel(path, fromDrop, alsoFiles);
         return;
@@ -1022,9 +1231,29 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
     // artwork reports its natural size without rendering, and a bitmap is
     // decoded here so the dialog can say how big it is (and so merging it
     // does not decode it a second time).
-    std::shared_ptr<UCRasterDocument> preloaded;
-    if (IsVectorPath(path)) {
-        const VectorSourceInfo info = InspectVectorFile(path);
+    if (preloaded) {
+        request.naturalWidth = preloaded->GetWidth();
+        request.naturalHeight = preloaded->GetHeight();
+        if (!fromDrop) {
+            SetDocument(preloaded, FileNameOf(path));
+            if (statusHint) statusHint->SetText("Opened " + FileNameOf(path) + " (password-protected)");
+            return;
+        }
+    } else if (IsVectorPath(path)) {
+        const VectorSourceInfo info = InspectVectorFile(path, password);
+        if (!info.ok && info.passwordRequired && password.empty()) {
+            // A password-protected PDF: its password first - it is what
+            // measures the page as well as what draws it - and back here
+            // with it.
+            AskForFilePassword(path, [this, path, fromDrop, alsoFiles](const std::string& given, std::string& error) {
+                const VectorSourceInfo withIt = InspectVectorFile(path, given);
+                if (withIt.passwordWrong) return PasswordTry::Wrong;
+                if (!withIt.ok) { error = withIt.error; return PasswordTry::Failed; }
+                ImportFile(path, fromDrop, alsoFiles, nullptr, given);
+                return PasswordTry::Opened;
+            });
+            return;
+        }
         if (!info.ok) {
             UltraCanvasDialogManager::ShowError("Could not read " + path + "\n" + ShortError(info.error),
                                                 "Open", nullptr, window.get());
@@ -1053,10 +1282,13 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         }
     }
 
+    // The password given for this file, held for the drop (the rest try it
+    // first) in a secure buffer rather than in the dialog's callback.
+    auto remembered = std::make_shared<DropPasswords>();
+    if (!password.empty()) remembered->Remember(password);
     auto dialog = std::make_shared<UltraPaintImportDialog>(request);
-    dialog->onAccept = [this, path, alsoFiles, preloaded](const UltraPaintImportResult& result) {
-        if (result.action == UltraPaintImportResult::Action::Cancel) return;
-        ApplyImport(path, result, preloaded);
+    dialog->onAccept = [this, path, alsoFiles, preloaded, remembered](const UltraPaintImportResult& result) {
+        if (result.action == UltraPaintImportResult::Action::Cancel) { remembered->Forget(); return; }
         // The rest of a multi-file drop take the same action, but the size the
         // dialog settled on belongs to the file it was shown for: the others
         // come in at their own natural size.
@@ -1064,7 +1296,25 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         forTheRest.width = 0;
         forTheRest.height = 0;
         forTheRest.page = 0;
-        for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
+        // Once this dialog has closed and the first file is on show: the
+        // rest may ask for passwords.
+        auto rest = [this, alsoFiles, forTheRest, remembered]() {
+            AfterNextDraw([this, alsoFiles, forTheRest, remembered]() { ApplyImports(alsoFiles, forTheRest, remembered); });
+        };
+        if (preloaded) {
+            ApplyImport(path, result, preloaded);
+            rest();
+            return;
+        }
+        // Read now (a PDF is rasterized at the size chosen) with the password
+        // given for it - or, when the session locked while this dialog was up
+        // and it was forgotten, with its password asked for again.
+        LoadDocumentAsking(path, result,
+            [this, path, result, rest](std::shared_ptr<UCRasterDocument> incoming) {
+                ApplyLoaded(path, result, incoming);
+                rest();
+            },
+            rest, remembered);
     };
     // A drop answers a gesture made on this window, so the question belongs
     // over it rather than wherever the window manager would drop it.
@@ -1076,8 +1326,89 @@ void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImpo
     if (result.action == UltraPaintImportResult::Action::Cancel) return;
 
     auto incoming = preloaded ? preloaded : LoadDocument(path, result);
-    if (!incoming) return;
+    if (incoming) ApplyLoaded(path, result, incoming);
+}
 
+UltraPaintWindow::DropPasswords::~DropPasswords() {
+    Forget();
+}
+
+void UltraPaintWindow::DropPasswords::Forget() {
+    values.clear();
+    if (lockListener) {
+        RemoveSessionLockListener(lockListener);
+        lockListener = 0;
+    }
+}
+
+void UltraPaintWindow::DropPasswords::Remember(const std::string& password) {
+    if (password.empty()) return;
+    // Listened for only while a password is held; removed by Forget, which
+    // the destructor runs, so `this` never outlives it.
+    if (!lockListener) {
+        lockListener = AddSessionLockListener([this](bool locked) { if (locked) Forget(); });
+    }
+    values.erase(std::remove_if(values.begin(), values.end(),
+                                [&password](const std::shared_ptr<UltraCryptSecureBuffer>& held) {
+                                    return held && held->GetSize() == password.size() &&
+                                           std::memcmp(held->Data(), password.data(), password.size()) == 0;
+                                }),
+                 values.end());
+    values.insert(values.begin(), std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size()));
+    if (values.size() > kMax) values.resize(kMax);
+}
+
+std::vector<std::string> UltraPaintWindow::DropPasswords::All() const {
+    std::vector<std::string> out;
+    for (const auto& held : values) {
+        if (held && !held->IsEmpty())
+            out.emplace_back(reinterpret_cast<const char*>(held->Data()), held->GetSize());
+    }
+    return out;
+}
+
+std::string UltraPaintWindow::DropPasswords::Newest() const {
+    const std::vector<std::string> all = All();
+    return all.empty() ? std::string() : all.front();
+}
+
+void UltraPaintWindow::ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result,
+                                   std::shared_ptr<DropPasswords> remembered) {
+    if (files.empty() || result.action == UltraPaintImportResult::Action::Cancel) {
+        // The drop is done: its password is not kept past it.
+        if (remembered) remembered->Forget();
+        return;
+    }
+    const std::string path = files.front();
+    files.erase(files.begin());
+    // One at a time: a protected file's question has to be answered before
+    // the next file is read, or the questions would pile up on each other;
+    // and the next one comes once this one is on show.
+    auto next = [this, files, result, remembered]() {
+        if (files.empty()) { if (remembered) remembered->Forget(); return; }
+        AfterNextDraw([this, files, result, remembered]() { ApplyImports(files, result, remembered); });
+    };
+    LoadDocumentAsking(path, result,
+        [this, path, result, next](std::shared_ptr<UCRasterDocument> incoming) {
+            ApplyLoaded(path, result, incoming);
+            next();
+        },
+        next, remembered);
+}
+
+void UltraPaintWindow::AfterNextDraw(std::function<void()> task) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { task(); return; }
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([app, alive, task]() {
+        if (alive.expired()) return;
+        app->PostToUIThread([alive, task]() { if (!alive.expired()) task(); });
+    });
+}
+
+void UltraPaintWindow::ApplyLoaded(const std::string& path, const UltraPaintImportResult& result,
+                                   const std::shared_ptr<UCRasterDocument>& incoming) {
+    if (!incoming) return;
     switch (result.action) {
         case UltraPaintImportResult::Action::Merge:
             MergeDocument(incoming, path, result.scaleToFit);
@@ -1132,6 +1463,7 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
         options.width = std::max(0, result.width);
         options.height = std::max(0, result.height);
         options.page = std::max(0, result.page);
+        options.password = result.password;
         std::string error;
         auto layer = RasterizeVectorFile(path, options, error);
         if (!layer) {
@@ -1160,6 +1492,82 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
         return nullptr;
     }
     return doc;
+}
+
+void UltraPaintWindow::LoadDocumentAsking(const std::string& path, const UltraPaintImportResult& result,
+                                          const std::function<void(std::shared_ptr<UCRasterDocument>)>& loaded,
+                                          const std::function<void()>& notLoaded,
+                                          std::shared_ptr<DropPasswords> remembered) {
+    const bool protectedUCD = UCRasterDocument::IsPasswordProtected(path);
+    const bool protectedPDF = !protectedUCD && result.password.empty() && IsVectorPath(path) &&
+                              InspectVectorFile(path).passwordRequired;
+    if (!protectedUCD && !protectedPDF) {
+        if (auto doc = LoadDocument(path, result)) { if (loaded) loaded(doc); }
+        else if (notLoaded) notLoaded();
+        return;
+    }
+    // The passwords given for files before this one in the same drop, tried
+    // first and without a word - the one that last opened a file first:
+    // files dropped together often share one, or a few.
+    std::string note;
+    if (remembered && !remembered->Empty()) {
+        const std::vector<std::string> before = remembered->All();
+        for (const std::string& candidate : before) {
+            if (protectedUCD) {
+                auto doc = std::make_shared<UCRasterDocument>();
+                std::string ignored;
+                if (doc->LoadUCD(path, ignored, candidate)) {
+                    remembered->Remember(candidate);   // the next file tries it first
+                    if (loaded) loaded(doc);
+                    return;
+                }
+            } else if (InspectVectorFile(path, candidate).ok) {
+                remembered->Remember(candidate);
+                UltraPaintImportResult withPassword = result;
+                withPassword.password = candidate;
+                if (auto doc = LoadDocument(path, withPassword)) { if (loaded) loaded(doc); }
+                else if (notLoaded) notLoaded();
+                return;
+            }
+        }
+        note = before.size() == 1 ? "The password given before does not open this one."
+                                  : "None of the " + std::to_string(before.size()) +
+                                    " passwords given before opens this one.";
+    }
+    // Its password first. The answer is tried in the question's own
+    // callback; the document comes back on the next turn of the loop, once
+    // the question has closed - so whatever `loaded` asks next (the next
+    // file's password, a confirmation) is not asked over it.
+    std::weak_ptr<bool> alive = lifeToken;
+    AskForFilePassword(path,
+        [this, alive, path, result, protectedUCD, loaded, notLoaded, remembered](const std::string& given,
+                                                                                  std::string& error) {
+            std::shared_ptr<UCRasterDocument> opened;
+            if (protectedUCD) {
+                opened = std::make_shared<UCRasterDocument>();
+                if (!opened->LoadUCD(path, error, given))
+                    return error == UCD::kWrongPassword ? PasswordTry::Wrong : PasswordTry::Failed;
+            } else {
+                const VectorSourceInfo info = InspectVectorFile(path, given);
+                if (info.passwordWrong) return PasswordTry::Wrong;
+                if (!info.ok) { error = info.error; return PasswordTry::Failed; }
+            }
+            // The next protected file of the drop tries this one first.
+            if (remembered) remembered->Remember(given);
+            UltraPaintImportResult withPassword = result;
+            withPassword.password = given;
+            auto finish = [this, alive, path, withPassword, opened, loaded, notLoaded]() {
+                if (alive.expired()) return;
+                // A PDF is rasterized with it now (LoadDocument says why if not).
+                auto doc = opened ? opened : LoadDocument(path, withPassword);
+                if (doc) { if (loaded) loaded(doc); }
+                else if (notLoaded) notLoaded();
+            };
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(finish);
+            else finish();
+            return PasswordTry::Opened;
+        },
+        notLoaded, note);
 }
 
 void UltraPaintWindow::MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
@@ -1217,9 +1625,10 @@ bool UltraPaintWindow::SaveToPath(const std::string& path, const FileSaveImageSi
     }
     UpdateTitle();
     if (statusHint) {
+        const bool protectedFile = document->HasUCDPassword() && UCRasterDocument::IsUCDFile(path);
         statusHint->SetText(resized ? "Saved " + FileNameOf(path) + " at " + std::to_string(size.width) +
                                               " x " + std::to_string(size.height) + " px"
-                                    : "Saved " + FileNameOf(path));
+                                    : "Saved " + FileNameOf(path) + (protectedFile ? " (password-protected)" : ""));
     }
     return true;
 }
@@ -1270,6 +1679,7 @@ PaintTool* UltraPaintWindow::ActiveTool() const {
 }
 
 void UltraPaintWindow::SelectTool(PaintToolId id) {
+    if (id != PaintToolId::Text) CommitTextEdit();
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     PaintTool* t = ActiveTool();
@@ -1331,6 +1741,27 @@ void UltraPaintWindow::BuildMagnifier() {
     magnifierFrame->AddChild(magnifier);
     body->AddChild(magnifierFrame);
     ApplySettings();
+}
+
+void UltraPaintWindow::RememberColourPicker() {
+    settings.pickerDesign = colorPicker->GetWheelStyle();
+    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
+    // The other editors' copies too: whichever saves its settings next (its
+    // settings window) writes the picker as it was left last, not as it was
+    // when that editor opened. Their pickers stay as they are.
+    for (const auto& editor : OpenWindows()) {
+        editor->settings.pickerDesign = settings.pickerDesign;
+        editor->settings.pickerChannelsOpen = settings.pickerChannelsOpen;
+    }
+    settings.SavePicker();
+}
+
+void UltraPaintWindow::RememberPalettes() {
+    settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+    // As the picker: the other editors' copies too, so whichever saves its
+    // settings next does not write back the rows it opened with.
+    for (const auto& editor : OpenWindows()) editor->settings.palettes = settings.palettes;
+    settings.SavePalettes();
 }
 
 void UltraPaintWindow::ApplySettings() {
@@ -1418,17 +1849,16 @@ void UltraPaintWindow::RebuildToolOptions() {
     optionsPanel->ClearChildren();
     PaintTool* t = ActiveTool();
     if (!t) return;
-    optionsTitle->SetText(t->name);
+    optionsPanel->SetTitle(t->name);
     t->BuildOptions(toolContext, *optionsPanel, [this]() {
         if (auto* a = ActiveTool()) {
             surface->SetCursorRadius(a->CursorRadius(toolContext));
             surface->SetCursorSquare(a->CursorSquare(toolContext));
         }
     });
-    // size the panel to its rows
-    float h = 0;
-    for (const auto& c : optionsPanel->GetChildren()) h += c->GetHeight() + 3;
-    optionsPanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
+    // Zoom and Pan have nothing to set: say so rather than show an empty card.
+    if (optionsPanel->GetChildren().empty())
+        PaintOptionWidgets::AddCaption(*optionsPanel, "up-options-none", "No options for this tool");
     rightPanel->RequestRedraw();
 }
 
@@ -1513,9 +1943,26 @@ void UltraPaintWindow::RebuildLayerPanel() {
             auto btn = std::make_shared<UltraCanvasButton>("up-lsel-" + std::to_string(i), 0, 0, 0, 24, label);
             btn->SetCanToggled(true);
             btn->SetPressed(i == active);
-            btn->SetTooltip("Double-click to rename");
+            if (layer->IsTextLayer()) {
+                // A text layer says so: it is still words, editable with the
+                // Text tool, until it is merged or rasterized.
+                btn->SetIcon(MenuIconPath("text.svg"));
+                btn->SetIconSize(16, 16);
+                btn->SetTooltip("Text layer - click its text with the Text tool to edit it. Double-click to rename");
+            } else {
+                btn->SetTooltip("Double-click to rename");
+            }
+            // A row of a list, as UltraMail's: no box, the name from the
+            // left, a soft grey under the pointer and the active layer on
+            // the light accent tint.
             ButtonStyle st = btn->GetStyle();
-            st.fontSize = 11.0f;
+            st.fontSize          = 11.0f;
+            st.textAlign         = TextAlignment::Left;
+            st.normalColor       = Colors::Transparent;
+            st.hoverColor        = Colors::ListRowHover;
+            st.pressedColor      = Colors::ListRowSelected;
+            st.borderWidth       = 0.0f;
+            st.cornerRadius      = 5.0f;
             btn->SetStyle(st);
             btn->onToggle = [this, i](bool) {
                 document->SetActiveLayerIndex(i);
@@ -1536,42 +1983,367 @@ void UltraPaintWindow::RebuildLayerPanel() {
         renameField->SetFocus(true);
         renameField->SelectAll();
     }
-    layerRows->SetBounds(Rect2Df(0, 0, kRightInner, static_cast<float>(n) * 28.0f));
     if (auto layer = document->GetActiveLayer()) {
         layerOpacity->SetValue(layer->opacity * 100.0f);
         const auto& modes = AllRasterBlendModes();
         const auto it = std::find(modes.begin(), modes.end(), layer->blendMode);
         layerBlend->SetSelectedIndex(it == modes.end() ? 0 : static_cast<int>(it - modes.begin()), false);
     }
-    layersPanel->SetBounds(Rect2Df(0, 0, kRightInner, 30 + kRowH + 6 + static_cast<float>(n) * 28.0f + 8));
     rightPanel->RequestRedraw();
 }
 
-void UltraPaintWindow::PlaceText(double x, double y, const UltraPaintTextResult& r) {
-#ifdef HAS_LIBVIPS
-    if (!document || r.text.empty()) return;
-    auto layer = document->GetActiveLayer();
-    if (!layer || layer->locked) return;
-    try {
-        const std::string font = r.font + (r.bold ? " Bold " : " ") + std::to_string(std::max(4, r.size));
-        PixelFX::PFXImage mask = PixelFX::Generate::Text(r.text, font, 0, 0, 72);
-        mask = PixelFX::Conversion::CastUchar(mask);
-        if (mask.Bands() > 1) mask = PixelFX::Colour::ExtractBand(mask, 0);
-        std::vector<uint8_t> bytes = PixelFX::Conversion::ToMemory(mask);
-        const int mw = mask.Width(), mh = mask.Height();
-        if (mw <= 0 || mh <= 0 || bytes.size() < static_cast<size_t>(mw) * mh) return;
-        auto before = layer->Clone();
-        const Rect2Di changed = RasterPaint::StampMask(*layer, &document->GetSelection(), bytes.data(), mw, mh,
-                                                       static_cast<int>(std::lround(x)), static_cast<int>(std::lround(y)),
-                                                       foreground);
-        document->RecordEdit("Text", document->GetActiveLayerIndex(), changed, *before);
-    } catch (const std::exception& e) {
-        UltraCanvasDialogManager::ShowError(std::string("Could not render the text: ") + e.what(), "Text", nullptr, window.get());
+// ===========================================================================
+// THE TEXT TOOL: TYPING ON THE CANVAS
+// ===========================================================================
+
+namespace {
+    // The editor takes sizes in points at 96 dpi; the tool's are pixels.
+    constexpr float kTextPointsPerPixel = 72.0f / 96.0f;
+
+    RichTextAlign AlignOption(int option) {
+        return option == 1 ? RichTextAlign::Center : option == 2 ? RichTextAlign::Right : RichTextAlign::Left;
     }
-#else
-    (void)x; (void)y; (void)r;
-    UltraCanvasDialogManager::ShowError("The text tool needs a build with libvips.", "Text", nullptr, window.get());
-#endif
+
+    std::string HexColour(const RasterPixel& p) {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "#%02X%02X%02X", p.r, p.g, p.b);
+        return buf;
+    }
+
+    // A new text's words: one empty paragraph, aligned as the options say.
+    std::shared_ptr<UCRichDocument> NewTextDocument(int align) {
+        auto words = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        paragraph.align = AlignOption(align);
+        words->blocks.push_back(paragraph);
+        return words;
+    }
+
+    int LayerIndexOf(const UCRasterDocument& doc, const std::shared_ptr<UCRasterLayer>& layer) {
+        const auto& layers = doc.GetLayers();
+        const auto it = std::find(layers.begin(), layers.end(), layer);
+        return it == layers.end() ? -1 : static_cast<int>(it - layers.begin());
+    }
+}
+
+int UltraPaintWindow::TextLayerAt(double x, double y) const {
+    if (!document) return -1;
+    for (int i = document->GetLayerCount() - 1; i >= 0; --i) {
+        auto l = document->GetLayer(i);
+        if (!l || !l->visible || !l->text) continue;
+        const Rect2Dd box = l->text->GetBox();
+        // At least a line tall, so a short text is easy to hit.
+        const double h = std::max(box.height, static_cast<double>(l->text->fontSizePx));
+        if (x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + h) return i;
+    }
+    return -1;
+}
+
+void UltraPaintWindow::BeginTextEdit(double x, double y, double boxWidth) {
+    if (!document || !surface) return;
+    CommitTextEdit();
+    OpenTextSession(boxWidth > 0.0 ? -1 : TextLayerAt(x, y), x, y, boxWidth);
+}
+
+void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, double boxWidth) {
+    if (!document || !surface) return;
+    auto session = std::make_unique<TextEditSession>();
+    std::shared_ptr<UCRichDocument> words;
+    auto layer = layerIndex >= 0 ? document->GetLayer(layerIndex) : nullptr;
+    if (layer && layer->text && layer->text->document) {
+        if (layer->locked) {
+            if (statusHint) statusHint->SetText("The text layer is locked");
+            return;
+        }
+        document->SetActiveLayerIndex(layerIndex);
+        session->layer = layer;
+        session->content = *layer->text;
+        words = std::make_shared<UCRichDocument>(*layer->text->document);
+        // The panel shows the text's own font and size.
+        toolOptions.textFont = layer->text->fontFamily;
+        toolOptions.textSize = std::max(1, static_cast<int>(std::lround(layer->text->fontSizePx)));
+        if (activeTool == PaintToolId::Text) RebuildToolOptions();
+    } else {
+        RasterTextContent& c = session->content;
+        c.x = std::round(x);
+        c.y = std::round(y);
+        c.fontFamily = toolOptions.textFont;
+        c.fontSizePx = static_cast<float>(std::max(1, toolOptions.textSize));
+        c.colour = foreground;
+        // Dragged, the lines wrap at the box; clicked, at the image's right
+        // edge - but never in less room than a few words.
+        c.width = boxWidth > 0.0 ? std::round(boxWidth)
+                                 : std::max<double>(document->GetWidth() - c.x, c.fontSizePx * 8.0);
+        c.width = std::max(c.width, 8.0);
+        words = NewTextDocument(toolOptions.textAlign);
+    }
+
+    if (!textEditorHost) {
+        auto host = std::make_shared<TextEditorHost>("up-text-host");
+        host->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!host->layoutItem.position) host->layoutItem.position = CSSLayout::Position();
+        host->SetZIndex(OverlayZOrder::Overlays);
+        host->SetBackgroundColor(Colors::Transparent);
+        host->SetMouseCursor(UCMouseCursor::Arrow);
+        host->passTo = surface.get();
+        host->onPressOutside = [this]() { CommitTextEdit(); };
+        host->SetVisible(false);
+        textEditor = std::make_shared<UltraCanvasRichTextEdit>("up-text-editor", 0, 0, 10, 10);
+        textEditor->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!textEditor->layoutItem.position) textEditor->layoutItem.position = CSSLayout::Position();
+        // The box grows with what is typed.
+        textEditor->onDocumentChanged = [this]() { PlaceTextEditor(); };
+        // Ctrl+wheel over the text zooms the canvas, which the editor follows.
+        textEditor->onZoomChanged = [this](float zoom) {
+            if (surface && std::fabs(surface->GetZoom() - zoom) > 1e-4) surface->SetZoom(zoom);
+        };
+        host->AddChild(textEditor);
+        body->AddChild(host);
+        textEditorHost = host;
+    }
+
+    textSession = std::move(session);
+    PrepareTextLayerEditor(*textEditor, textSession->content, surface->GetZoom());
+    textEditor->SetDocument(words);
+    textEditor->GetEditor().SetCaret(textEditor->GetEditor().DocumentEnd());
+    if (!textSession->layer) {
+        // A new text is typed the way the options say.
+        RichCharFormatDelta armed;
+        armed.setBold = true;      armed.bold = toolOptions.textBold;
+        armed.setItalic = true;    armed.italic = toolOptions.textItalic;
+        armed.setUnderline = true; armed.underline = toolOptions.textUnderline;
+        textEditor->ApplyCharFormat(armed);
+    }
+    // The layer's own pixels would show under the words being typed.
+    document->SetInPlaceEditLayer(textSession->layer);
+    textEditorHost->SetVisible(true);
+    PlaceTextEditor();
+    textEditor->SetFocus(true);
+    if (statusHint) {
+        statusHint->SetText(std::string(textSession->layer ? "Editing the text" : "Typing a new text") +
+                            ": Escape, Ctrl+Enter or a click outside finishes; Ctrl+Z takes back typing");
+    }
+    surface->Refresh();
+}
+
+void UltraPaintWindow::PlaceTextEditor() {
+    if (!textSession || !textEditor || !textEditorHost || !surface) return;
+    // The host lies on the canvas; the editor on the box, in the canvas's
+    // view coordinates (the host's are the same).
+    const Rect2Df s = surface->GetBounds();
+    textEditorHost->layoutItem.position->left = CSSLayout::Dimension::Px(s.x);
+    textEditorHost->layoutItem.position->top = CSSLayout::Dimension::Px(s.y);
+    textEditorHost->size.width = CSSLayout::Dimension::Px(s.width);
+    textEditorHost->size.height = CSSLayout::Dimension::Px(s.height);
+    const double zoom = surface->GetZoom();
+    if (std::fabs(textEditor->GetZoom() - zoom) > 1e-6) textEditor->SetZoom(static_cast<float>(zoom));
+    const RasterTextContent& c = textSession->content;
+    const Point2Dd at = surface->ImageToView(c.x, c.y);
+    // At least a line tall while there is nothing in it, never so short it
+    // scrolls: GetContentHeight is in canvas pixels, the editor in view ones.
+    const double lines = std::max<double>(textEditor->GetContentHeight(), c.fontSizePx * 1.5);
+    textEditor->layoutItem.position->left = CSSLayout::Dimension::Px(static_cast<float>(at.x));
+    textEditor->layoutItem.position->top = CSSLayout::Dimension::Px(static_cast<float>(at.y));
+    textEditor->size.width = CSSLayout::Dimension::Px(static_cast<float>(c.width * zoom));
+    textEditor->size.height = CSSLayout::Dimension::Px(static_cast<float>(std::ceil(lines * zoom) + 2.0));
+    textEditorHost->InvalidateLayout();
+    body->InvalidateLayout();
+    body->RequestRedraw();
+    surface->Refresh();
+}
+
+void UltraPaintWindow::CommitTextEdit() {
+    if (!textSession) return;
+    // Null from here on, so a commit that re-enters (a focus change, the
+    // document's notifications) finds nothing to commit twice.
+    std::unique_ptr<TextEditSession> session = std::move(textSession);
+    std::shared_ptr<UCRichDocument> words = textEditor ? textEditor->GetDocument() : nullptr;
+    if (textEditorHost) textEditorHost->SetVisible(false);
+    if (window && textEditor && window->GetFocusedElement() == textEditor.get()) surface->SetFocus(true);
+    if (!document) return;
+    document->SetInPlaceEditLayer(nullptr);
+    surface->Refresh();
+    body->RequestRedraw();
+    if (!words) return;
+
+    const int index = session->layer ? LayerIndexOf(*document, session->layer) : -1;
+    if (IsTextLayerDocumentEmpty(*words)) {
+        // Nothing typed: no layer. An edited text emptied goes with its layer.
+        if (index >= 0 && document->GetLayerCount() > 1) {
+            document->RemoveLayer(index);
+            if (statusHint) statusHint->SetText("The text was emptied, so its layer was removed");
+        } else if (statusHint) {
+            statusHint->SetText("Nothing was typed");
+        }
+        return;
+    }
+    if (index >= 0 && session->layer->text && session->layer->text->document &&
+        session->layer->text->document->ToHTML() == words->ToHTML()) {
+        if (statusHint) statusHint->SetText("The text is unchanged");
+        return;   // looked at, not changed: no undo step
+    }
+    RasterTextContent content = session->content;
+    // A copy: the editor goes on editing its own, the layer keeps this one.
+    content.document = std::make_shared<UCRichDocument>(*words);
+    std::string error;
+    std::shared_ptr<UCRasterLayer> rendered;
+    if (index >= 0) {
+        rendered = RenderTextLayerLike(*session->layer, content, error);
+        if (rendered) document->ReplaceLayer(index, rendered, "Edit Text");
+    } else {
+        rendered = RenderTextLayer(content, document->GetWidth(), document->GetHeight(), error);
+        if (rendered) document->AddLayer(rendered, -1, "Text");
+    }
+    if (!rendered) {
+        UltraCanvasDialogManager::ShowError("Could not draw the text: " + error, "Text", nullptr, window.get());
+    } else if (statusHint) {
+        statusHint->SetText(std::string(index >= 0 ? "Changed" : "Added") + " the text layer \"" + rendered->name +
+                            "\" - it stays editable until it is merged or rasterized");
+    }
+}
+
+void UltraPaintWindow::ReturnKeyboardToText(UltraCanvasUIElement& control) {
+    if (!textSession || !textEditor) return;
+    std::weak_ptr<UltraCanvasUIElement> watched = control.weak_from_this();
+    auto handBack = [this, watched]() {
+        auto still = watched.lock();
+        if (!still || !textSession || !textEditor || !window) return;
+        if (window->GetFocusedElement() == still.get()) textEditor->SetFocus(true);
+    };
+    // The list reports its closing from inside the event that closed it, and
+    // a Tab moves the focus on after that.
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { handBack(); return; }
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([alive, handBack]() {
+        if (!alive.expired()) handBack();
+    });
+}
+
+void UltraPaintWindow::ApplyTextOption(const std::string& option) {
+    if (!document) return;
+    RichCharFormatDelta delta;
+    bool align = false;
+    if (option == "font")      { delta.setFontFamily = true; delta.fontFamily = toolOptions.textFont; }
+    else if (option == "size") { delta.setFontSize = true; delta.fontSizePt = static_cast<float>(std::max(1, toolOptions.textSize)) * kTextPointsPerPixel; }
+    else if (option == "bold") { delta.setBold = true; delta.bold = toolOptions.textBold; }
+    else if (option == "italic") { delta.setItalic = true; delta.italic = toolOptions.textItalic; }
+    else if (option == "underline") { delta.setUnderline = true; delta.underline = toolOptions.textUnderline; }
+    else if (option == "colour") { delta.setColor = true; delta.color = HexColour(foreground); }
+    else if (option == "align") align = true;
+    else return;
+
+    if (textSession && textEditor) {
+        // While typing: the selection, or what is typed next - and the
+        // keyboard back in the text.
+        if (align) textEditor->SetAlignment(AlignOption(toolOptions.textAlign));
+        else textEditor->ApplyCharFormat(delta);
+        textEditor->SetFocus(true);
+        PlaceTextEditor();
+        return;
+    }
+    // Otherwise the whole of the active text layer, while the Text tool is
+    // the one in use (a colour picked to paint with leaves texts alone).
+    if (activeTool != PaintToolId::Text) return;
+    const int index = document->GetActiveLayerIndex();
+    auto layer = document->GetLayer(index);
+    if (!layer || !layer->text || !layer->text->document || layer->locked) return;
+    RasterTextContent content = *layer->text;
+    auto words = std::make_shared<UCRichDocument>(*layer->text->document);
+    UCRichDocumentEditor editor;
+    editor.SetDocument(words);
+    editor.SelectAll();
+    if (align) editor.SetAlignment(AlignOption(toolOptions.textAlign));
+    else editor.ApplyCharFormat(delta);
+    // The default the runs without their own fall back on follows too.
+    if (option == "font") content.fontFamily = toolOptions.textFont;
+    if (option == "size") content.fontSizePx = static_cast<float>(std::max(1, toolOptions.textSize));
+    if (option == "colour") content.colour = foreground;
+    content.document = words;
+    std::string error;
+    auto rendered = RenderTextLayerLike(*layer, content, error);
+    static const std::map<std::string, std::string> labels = {
+        { "font", "Text Font" }, { "size", "Text Size" }, { "bold", "Text Bold" }, { "italic", "Text Italic" },
+        { "underline", "Text Underline" }, { "colour", "Text Colour" }, { "align", "Text Alignment" } };
+    if (rendered) document->ReplaceLayer(index, rendered, labels.at(option));
+    else if (statusHint) statusHint->SetText("Could not draw the text: " + error);
+}
+
+void UltraPaintWindow::AskRasterize(const std::string& action) {
+    if (!document) return;
+    auto layer = document->GetActiveLayer();
+    if (!layer || !layer->IsTextLayer()) return;
+    const std::string question =
+        "\"" + layer->name + "\" is a text layer. Rasterize it, so that " +
+        (action.empty() ? std::string("it can be painted on") : action + " can work on it") +
+        "?\n\nThe text can then no longer be edited (Undo makes it text again).";
+    std::weak_ptr<UCRasterLayer> weak = layer;
+    UltraCanvasDialogManager::ShowConfirmation(question, "Rasterize Layer", [this, weak](bool yes) {
+        auto l = weak.lock();
+        if (!yes || !l || !document) return;
+        const int index = LayerIndexOf(*document, l);
+        if (index >= 0 && document->RasterizeLayer(index) && statusHint)
+            statusHint->SetText("\"" + l->name + "\" is a bitmap layer now");
+    }, window.get());
+}
+
+bool UltraPaintWindow::StopsAtTextLayer(const std::string& action) {
+    CommitTextEdit();
+    if (!document) return false;
+    auto layer = document->GetActiveLayer();
+    if (!layer || !layer->IsTextLayer()) return false;
+    AskRasterize(action);
+    return true;
+}
+
+void UltraPaintWindow::DrawTextBoxes(IRenderContext* ctx, const PaintViewTransform& v) {
+    if (!document || !ctx) return;
+    auto frame = [&](const Rect2Dd& box, const Color& colour) {
+        const Point2Dd a = v.ImageToView(box.x, box.y);
+        const Point2Dd b = v.ImageToView(box.x + box.width, box.y + box.height);
+        const Rect2Dd r(std::floor(a.x) - 0.5, std::floor(a.y) - 0.5,
+                        std::ceil(b.x) - std::floor(a.x) + 1.0, std::ceil(b.y) - std::floor(a.y) + 1.0);
+        ctx->SetStrokeWidth(1.0);
+        ctx->SetLineDash(UCDashPattern());
+        ctx->SetStrokePaint(Color(255, 255, 255, 160));
+        ctx->DrawRectangle(r);
+        ctx->SetLineDash(UCDashPattern({4.0, 4.0}));
+        ctx->SetStrokePaint(colour);
+        ctx->DrawRectangle(r);
+        ctx->SetLineDash(UCDashPattern());
+    };
+    if (textSession && textEditor) {
+        const RasterTextContent& c = textSession->content;
+        const double h = std::max<double>(textEditor->GetContentHeight(), c.fontSizePx * 1.5);
+        frame(Rect2Dd(c.x, c.y, c.width, h), Color(30, 110, 230, 230));
+        return;
+    }
+    // With the Text tool, where the texts are: a click in one edits it.
+    if (activeTool != PaintToolId::Text) return;
+    for (const auto& l : document->GetLayers()) {
+        if (!l || !l->visible || !l->text) continue;
+        frame(l->text->GetBox(), Color(90, 90, 100, 150));
+    }
+}
+
+void UltraPaintWindow::CmdEditText() {
+    CommitTextEdit();
+    if (!document) return;
+    const int index = document->GetActiveLayerIndex();
+    auto layer = document->GetLayer(index);
+    if (!layer || !layer->text) {
+        if (statusHint) statusHint->SetText("The active layer is not a text layer");
+        return;
+    }
+    SelectTool(PaintToolId::Text);
+    OpenTextSession(index, layer->text->x, layer->text->y, 0.0);
+}
+
+void UltraPaintWindow::CmdRasterizeLayer() {
+    CommitTextEdit();
+    if (!document) return;
+    if (!document->RasterizeLayer(document->GetActiveLayerIndex()) && statusHint)
+        statusHint->SetText("The active layer is not a text layer");
 }
 
 // ===========================================================================
@@ -1579,6 +2351,7 @@ void UltraPaintWindow::PlaceText(double x, double y, const UltraPaintTextResult&
 // ===========================================================================
 
 void UltraPaintWindow::CmdNew() {
+    CommitTextEdit();
     auto dlg = std::make_shared<UltraPaintNewImageDialog>(lastNewImage);
     dlg->onAccept = [this](const UltraPaintNewImageResult& r) {
         auto go = [this, r]() { NewImage(r); };
@@ -1596,11 +2369,14 @@ void UltraPaintWindow::CmdNewWindow() {
 }
 
 // Everything this build will take in the Open / Import dialogs: the bitmap
-// formats, the editor's own projects, and whatever vector artwork it can
-// rasterize (which depends on libvips and on the registered plugins).
+// formats, the layered images (UltraCanvas documents, UltraPaint projects),
+// and whatever vector artwork it can rasterize (which depends on libvips and
+// on the registered plugins) - all from FileLoader's inventory.
 std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
     std::vector<std::string> exts = ReadableImageExtensions();
-    exts.push_back("ucraster");
+    for (const auto& l : UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::LayeredImage)) {
+        if (std::find(exts.begin(), exts.end(), l) == exts.end()) exts.push_back(l);
+    }
     for (const auto& v : GetVectorRasterExtensions()) {
         if (std::find(exts.begin(), exts.end(), v) == exts.end()) exts.push_back(v);
     }
@@ -1611,11 +2387,13 @@ std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
 }
 
 void UltraPaintWindow::CmdOpen() {
+    CommitTextEdit();
     FileDialogOptions opts;
     opts.SetTitle("Open image")
-        .AddFilter("Images, drawings and UltraPaint projects", OpenableExtensions())
-        .AddFilter("UltraPaint projects", std::vector<std::string>{ "ucraster" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+        .AddFilter("Images, drawings and layered images", OpenableExtensions());
+    UltraCanvasFileLoader::AddLoadTypes(opts, "Layered images (layers and text kept)",
+                                        { MediaFormatCategory::LayeredImage });
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
@@ -1626,9 +2404,10 @@ void UltraPaintWindow::CmdOpen() {
 }
 
 void UltraPaintWindow::CmdImport() {
+    CommitTextEdit();
     FileDialogOptions opts;
     opts.SetTitle("Import image")
-        .AddFilter("Images, drawings and UltraPaint projects", OpenableExtensions())
+        .AddFilter("Images, drawings and layered images", OpenableExtensions())
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
@@ -1639,29 +2418,46 @@ void UltraPaintWindow::CmdImport() {
     });
 }
 
+std::string UltraPaintWindow::SaveLossQuestion(const std::string& path, bool layers) const {
+    if (!document) return std::string();
+    std::vector<std::string> lost;
+    // A layered document saved to a flat format loses its layers.
+    if (layers && document->GetLayerCount() > 1 && !UCRasterDocument::IsProjectFile(path))
+        lost.push_back("flattens the layers in the file (the open image keeps them)");
+    // Only an UltraCanvas document carries a password.
+    if (document->HasUCDPassword() && !UCRasterDocument::IsUCDFile(path))
+        lost.push_back("drops the password protection (only a .ucd keeps it)");
+    if (lost.empty()) return std::string();
+    std::string q = "Saving to " + FileNameOf(path) + " " + lost.front();
+    if (lost.size() > 1) q += ", and " + lost.back();
+    return q + ". Continue?";
+}
+
 void UltraPaintWindow::CmdSave() {
+    CommitTextEdit();
     if (!document) return;
     if (document->GetFilePath().empty()) { CmdSaveAs(); return; }
-    // A layered document saved to a flat format loses its layers: say so once.
-    if (document->GetLayerCount() > 1 && !UCRasterDocument::IsProjectFile(document->GetFilePath())) {
-        ConfirmDiscard("Saving to " + FileNameOf(document->GetFilePath()) + " flattens the layers in the file (the open image keeps them). Continue?",
-                       [this]() { SaveToPath(document->GetFilePath()); });
+    // What the file would lose, said once.
+    const std::string question = SaveLossQuestion(document->GetFilePath(), true);
+    if (!question.empty()) {
+        ConfirmDiscard(question, [this]() { SaveToPath(document->GetFilePath()); });
         return;
     }
     SaveToPath(document->GetFilePath());
 }
 
 void UltraPaintWindow::CmdSaveAs() {
+    CommitTextEdit();
     if (!document) return;
     FileDialogOptions opts;
     std::string def = document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath());
-    opts.SetTitle("Save image as");
-    // FileLoader's types - every bitmap type this build writes - and the
-    // editor's own project, which keeps the layers.
+    // The name first: the type it ends in is the one the dialog starts on.
+    opts.SetTitle("Save image as").SetDefaultFileName(def);
+    // FileLoader's types: every bitmap type this build writes, and the
+    // layered images, which keep the layers and the text as text.
     UltraCanvasFileLoader::AddImageSaveTypes(opts);
-    opts.AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
-        .SetDefaultFileName(def)
+    UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::LayeredImage);
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         // The picture's size, so the Settings of a bitmap type offer to write
         // it at another size.
         .SetImageSize(document->GetWidth(), document->GetHeight())
@@ -1670,11 +2466,19 @@ void UltraPaintWindow::CmdSaveAs() {
                                                        const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
+        // The type was picked here, so its layers go without a word; a
+        // password going is not something a file type says.
+        const std::string question = SaveLossQuestion(path, false);
+        if (!question.empty()) {
+            ConfirmDiscard(question, [this, path, size]() { SaveToPath(path, size); });
+            return;
+        }
         SaveToPath(path, size);
     });
 }
 
 void UltraPaintWindow::CmdExport() {
+    CommitTextEdit();
 #ifdef HAS_LIBVIPS
     if (!document) return;
     FileDialogOptions opts;
@@ -1712,7 +2516,33 @@ void UltraPaintWindow::CmdExport() {
 #endif
 }
 
+void UltraPaintWindow::CmdPassword() {
+    CommitTextEdit();
+    if (!document) return;
+    auto dlg = std::make_shared<UltraPaintPasswordDialog>(document->HasUCDPassword(),
+                                                          document->GetUCDHidesPreview(),
+                                                          UCD::EncryptionAvailable());
+    std::weak_ptr<bool> alive = lifeToken;
+    dlg->onAccept = [this, alive](const UltraPaintPasswordResult& r) {
+        if (alive.expired() || !document) return;
+        const bool had = document->HasUCDPassword();
+        document->SetUCDPassword(r.remove ? std::string() : r.password, r.hidePreview);
+        // The file changes with the next save, so the image has unsaved changes.
+        document->SetModified(true);
+        UpdateTitle();
+        if (!statusHint) return;
+        const bool asUCD = UCRasterDocument::IsUCDFile(document->GetFilePath());
+        if (r.remove) statusHint->SetText(asUCD ? "Password protection removed - Save writes the file without it"
+                                                : "Password protection removed");
+        else statusHint->SetText(std::string(had ? "Password changed" : "Password set") +
+                                 (asUCD ? " - Save writes the file protected"
+                                        : " - it protects the image saved as an UltraCanvas document (.ucd)"));
+    };
+    ShowDialog(dlg);
+}
+
 void UltraPaintWindow::CmdQuit() {
+    CommitTextEdit();
     // Quit ends the whole application, so every window's unsaved work is at
     // stake — not only this one's.
     int unsaved = 0;
@@ -1730,10 +2560,11 @@ void UltraPaintWindow::CmdQuit() {
 // EDIT COMMANDS
 // ===========================================================================
 
-void UltraPaintWindow::CmdUndo() { if (document) { document->Undo(); UpdateUndoButtons(); } }
-void UltraPaintWindow::CmdRedo() { if (document) { document->Redo(); UpdateUndoButtons(); } }
+void UltraPaintWindow::CmdUndo() { CommitTextEdit(); if (document) { document->Undo(); UpdateUndoButtons(); } }
+void UltraPaintWindow::CmdRedo() { CommitTextEdit(); if (document) { document->Redo(); UpdateUndoButtons(); } }
 
 void UltraPaintWindow::CmdCopy(bool merged) {
+    CommitTextEdit();
     if (!document) return;
     Point2Di origin;
     auto layer = merged ? document->CopySelectionMerged(origin) : document->CopySelection(origin);
@@ -1753,16 +2584,19 @@ void UltraPaintWindow::CmdCopy(bool merged) {
 }
 
 void UltraPaintWindow::CmdCut() {
+    if (StopsAtTextLayer("Cut")) return;
     if (!document) return;
     CmdCopy(false);
     document->DeleteSelection();
 }
 
 void UltraPaintWindow::CmdDelete() {
+    if (StopsAtTextLayer("Delete")) return;
     if (document) document->DeleteSelection();
 }
 
 void UltraPaintWindow::CmdFill(bool fg) {
+    if (StopsAtTextLayer("Fill")) return;
     if (document) document->FillSelection(fg ? foreground : background);
 }
 
@@ -1824,17 +2658,21 @@ UltraPaintWindow::PasteSource UltraPaintWindow::ReadPasteSource() {
 }
 
 void UltraPaintWindow::CmdPaste() {
+    CommitTextEdit();
     if (!document) return;
     PasteSource source = ReadPasteSource();
     std::string layerName = "Pasted";
     if (!source.file.empty()) {
         // A copied file comes in whole, flattened, at its natural size -
         // drawings and models included, rendered the way a drop renders the
-        // extra files it carries.
-        auto incoming = LoadDocument(source.file, UltraPaintImportResult{});
-        if (!incoming) return;   // LoadDocument said why
-        source.image = incoming->Flatten();
-        layerName = FileNameOf(source.file);
+        // extra files it carries; a password-protected one once its password
+        // has been given.
+        const std::string file = source.file;
+        LoadDocumentAsking(file, UltraPaintImportResult{}, [this, file](std::shared_ptr<UCRasterDocument> incoming) {
+            if (!document) return;
+            PasteAsLayer(incoming->Flatten(), FileNameOf(file), false, FileNameOf(file) + ", ");
+        });
+        return;   // LoadDocumentAsking says why when it cannot
     }
     auto img = source.image;
     if (!img || !img->IsValid()) {
@@ -1866,6 +2704,7 @@ void UltraPaintWindow::PasteAsLayer(std::shared_ptr<UCRasterLayer> img, const st
 }
 
 void UltraPaintWindow::CmdPasteLastImage() {
+    CommitTextEdit();
     if (!document) return;
     std::string when;
     auto img = LastCopiedImage(when);
@@ -1931,41 +2770,56 @@ std::shared_ptr<UCRasterLayer> UltraPaintWindow::LastCopiedImage(std::string& wh
 }
 
 void UltraPaintWindow::CmdPasteAsNew() {
+    CommitTextEdit();
     PasteSource source = ReadPasteSource();
-    std::shared_ptr<UCRasterDocument> fromFile;
     if (!source.file.empty()) {
         // The file's own layers come along, but not its path: this is a new,
         // unsaved image, so Save asks where to put it instead of writing
-        // over the file that was copied.
-        fromFile = LoadDocument(source.file, UltraPaintImportResult{});
-        if (!fromFile) return;   // LoadDocument said why
-        fromFile->SetFilePath("");
-        fromFile->ClearHistory();
-        fromFile->SetModified(true);
+        // over the file that was copied. A password-protected one asks for
+        // its password first, and the new image keeps it, as the file opened
+        // would: saved as a .ucd it is protected the same way.
+        const std::string file = source.file;
+        LoadDocumentAsking(file, UltraPaintImportResult{}, [this, file](std::shared_ptr<UCRasterDocument> fromFile) {
+            fromFile->SetFilePath("");
+            fromFile->ClearHistory();
+            fromFile->SetModified(true);
+            auto go = [this, fromFile, file]() {
+                SetDocument(fromFile, "Untitled");
+                if (statusHint) {
+                    statusHint->SetText("Pasted " + FileNameOf(file) + " as a new image, " +
+                                        std::to_string(fromFile->GetWidth()) + " x " +
+                                        std::to_string(fromFile->GetHeight()) + " pixels");
+                }
+            };
+            if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
+            else go();
+        });
+        return;   // LoadDocumentAsking says why when it cannot
     }
     auto img = source.image;
-    if (fromFile) {
-        auto go = [this, fromFile]() { SetDocument(fromFile, "Untitled"); };
-        if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
-        else go();
-        return;
-    }
     if (!img || !img->IsValid()) {
-        OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) { PasteAsNewImage(std::move(last)); });
+        OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) {
+            PasteAsNewImage(std::move(last), "the last copied image");
+        });
         return;
     }
     PasteAsNewImage(img);
 }
 
-void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img) {
+void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, const std::string& what) {
     if (!img || !img->IsValid()) return;
-    auto go = [this, img]() {
+    auto go = [this, img, what]() {
         auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
         doc->GetLayer(0)->CopyFrom(*img, 0, 0);
         doc->InvalidateComposite();
         doc->ClearHistory();
         doc->SetModified(true);
         SetDocument(doc, "Untitled");
+        if (statusHint) {
+            statusHint->SetText("Pasted " + (what.empty() ? std::string() : what + " ") + "as a new image, " +
+                                std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) +
+                                " pixels");
+        }
     };
     if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
     else go();
@@ -1976,6 +2830,7 @@ void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img) {
 // ===========================================================================
 
 void UltraPaintWindow::CmdScaleImage() {
+    CommitTextEdit();
     if (!document) return;
     auto dlg = std::make_shared<UltraPaintResizeDialog>(document->GetWidth(), document->GetHeight(), false);
     dlg->onAccept = [this](const UltraPaintResizeResult& r) { document->ScaleImage(r.width, r.height); surface->ZoomToFit(); };
@@ -1983,6 +2838,7 @@ void UltraPaintWindow::CmdScaleImage() {
 }
 
 void UltraPaintWindow::CmdCanvasSize() {
+    CommitTextEdit();
     if (!document) return;
     auto dlg = std::make_shared<UltraPaintResizeDialog>(document->GetWidth(), document->GetHeight(), true);
     dlg->onAccept = [this](const UltraPaintResizeResult& r) {
@@ -1996,6 +2852,7 @@ void UltraPaintWindow::CmdCanvasSize() {
 }
 
 void UltraPaintWindow::CmdCropToSelection() {
+    CommitTextEdit();
     if (!document) return;
     // The Crop tool's dragged rectangle looks exactly like a selected area -
     // the rest of the image is dimmed around it - so this is the command the
@@ -2011,27 +2868,30 @@ void UltraPaintWindow::CmdCropToSelection() {
     surface->ZoomToFit();
 }
 
-void UltraPaintWindow::CmdFlatten() { if (document) document->FlattenImage(); }
+void UltraPaintWindow::CmdFlatten() { CommitTextEdit(); if (document) document->FlattenImage(); }
 
 // ===========================================================================
 // LAYER COMMANDS
 // ===========================================================================
 
-void UltraPaintWindow::CmdLayerAdd() { if (document) document->AddLayer(); }
-void UltraPaintWindow::CmdLayerDuplicate() { if (document) document->DuplicateLayer(document->GetActiveLayerIndex()); }
+void UltraPaintWindow::CmdLayerAdd() { CommitTextEdit(); if (document) document->AddLayer(); }
+void UltraPaintWindow::CmdLayerDuplicate() { CommitTextEdit(); if (document) document->DuplicateLayer(document->GetActiveLayerIndex()); }
 void UltraPaintWindow::CmdLayerDelete() {
+    CommitTextEdit();
     if (!document) return;
     if (document->GetLayerCount() <= 1) { if (statusHint) statusHint->SetText("The last layer cannot be deleted"); return; }
     document->RemoveLayer(document->GetActiveLayerIndex());
 }
-void UltraPaintWindow::CmdLayerMergeDown() { if (document) document->MergeLayerDown(document->GetActiveLayerIndex()); }
+void UltraPaintWindow::CmdLayerMergeDown() { CommitTextEdit(); if (document) document->MergeLayerDown(document->GetActiveLayerIndex()); }
 void UltraPaintWindow::CmdLayerMove(int delta) {
+    CommitTextEdit();
     if (!document) return;
     const int i = document->GetActiveLayerIndex();
     document->MoveLayer(i, i + delta);
 }
 
 void UltraPaintWindow::CmdLayerProperties() {
+    CommitTextEdit();
     if (!document) return;
     auto layer = document->GetActiveLayer();
     if (!layer) return;
@@ -2056,11 +2916,12 @@ void UltraPaintWindow::CmdLayerProperties() {
 // SELECT COMMANDS
 // ===========================================================================
 
-void UltraPaintWindow::CmdSelectAll() { if (document) { document->GetSelection().SelectAll(); document->CommitSelectionChange("Select All"); } }
-void UltraPaintWindow::CmdSelectNone() { if (document) { document->GetSelection().SelectNone(); document->CommitSelectionChange("Deselect"); } }
-void UltraPaintWindow::CmdSelectInvert() { if (document) { document->GetSelection().Invert(); document->CommitSelectionChange("Invert Selection"); } }
+void UltraPaintWindow::CmdSelectAll() { CommitTextEdit(); if (document) { document->GetSelection().SelectAll(); document->CommitSelectionChange("Select All"); } }
+void UltraPaintWindow::CmdSelectNone() { CommitTextEdit(); if (document) { document->GetSelection().SelectNone(); document->CommitSelectionChange("Deselect"); } }
+void UltraPaintWindow::CmdSelectInvert() { CommitTextEdit(); if (document) { document->GetSelection().Invert(); document->CommitSelectionChange("Invert Selection"); } }
 
 void UltraPaintWindow::CmdSelectFromAlpha() {
+    CommitTextEdit();
     if (!document) return;
     auto layer = document->GetActiveLayer();
     if (!layer) return;
@@ -2074,6 +2935,7 @@ void UltraPaintWindow::CmdSelectFromAlpha() {
 }
 
 void UltraPaintWindow::CmdSelectModify(int kind) {
+    CommitTextEdit();
     if (!document) return;
     if (!document->GetSelection().IsActive()) { if (statusHint) statusHint->SetText("Nothing is selected"); return; }
     const char* titles[] = { "Feather Selection", "Grow Selection", "Shrink Selection" };
@@ -2094,21 +2956,87 @@ void UltraPaintWindow::CmdSelectModify(int kind) {
 // ===========================================================================
 
 #ifdef HAS_LIBVIPS
+namespace {
+    // FNV-1a over the pixels, a word at a time: tells whether a layer still
+    // holds what the preview left in it without keeping a second copy.
+    uint64_t PixelHash(const UCRasterLayer& layer) {
+        uint64_t h = 1469598103934665603ULL;
+        const uint8_t* p = layer.Data();
+        const size_t n = layer.DataSize();
+        size_t i = 0;
+        for (; i + 8 <= n; i += 8) {
+            uint64_t w;
+            std::memcpy(&w, p + i, 8);
+            h = (h ^ w) * 1099511628211ULL;
+        }
+        for (; i < n; ++i) h = (h ^ p[i]) * 1099511628211ULL;
+        return h;
+    }
+}
+
 void UltraPaintWindow::BeginPreview() {
     if (!document) return;
-    auto layer = document->GetActiveLayer();
-    if (!layer) return;
-    previewOriginal = layer->Clone();
-    previewLayerIndex = document->GetActiveLayerIndex();
     previewActive = true;
+    previewOp = nullptr;
+    SyncPreviewTarget();
+}
+
+std::shared_ptr<UCRasterLayer> UltraPaintWindow::SyncPreviewTarget() {
+    auto shownOn = previewLayer.lock();
+    const bool sameDocument = document && previewDocument.lock() == document;
+    // Painted on, undone, redone by something other than the preview: what
+    // the layer holds now is the user's, and the preview starts from it.
+    const bool changedElsewhere = shownOn && PixelHash(*shownOn) != previewShownHash;
+    auto active = document ? document->GetActiveLayer() : nullptr;
+    if (shownOn && shownOn == active && sameDocument && !changedElsewhere) return active;
+
+    // The target moved - a pasted layer on top, another image: the layer
+    // left behind gets its own pixels back, unless it left with its document.
+    if (shownOn && sameDocument && !changedElsewhere && previewOriginal && LayerIndexOf(*document, shownOn) >= 0) {
+        shownOn->CopyFrom(*previewOriginal, 0, 0);
+        document->NotifyChanged(shownOn->GetRect());
+    }
+    previewOriginal.reset();
+    previewLayer.reset();
+    previewDocument = document;
+    if (!active || active->locked || active->IsTextLayer()) {
+        if (statusHint && active) {
+            statusHint->SetText(active->locked ? "The active layer is locked" : "The active layer is a text layer");
+        }
+        return nullptr;
+    }
+    previewOriginal = active->Clone();
+    previewLayer = active;
+    previewShownHash = PixelHash(*active);
+    if (previewSourceChanged) previewSourceChanged(*active);
+    return active;
+}
+
+void UltraPaintWindow::SchedulePreviewRefresh() {
+    if (!previewActive || previewRefreshPending) return;
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    previewRefreshPending = true;
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([this, alive]() {
+        if (alive.expired()) return;
+        previewRefreshPending = false;
+        if (!previewActive || !document) return;
+        auto shownOn = previewLayer.lock();
+        if (shownOn && shownOn == document->GetActiveLayer() && previewDocument.lock() == document &&
+            PixelHash(*shownOn) == previewShownHash) return;   // nothing under the preview changed
+        ShowPreview(previewOp);
+    });
 }
 
 void UltraPaintWindow::ShowPreview(const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op) {
     if (!previewActive || !document) return;
-    auto layer = document->GetLayer(previewLayerIndex);
+    previewOp = op;
+    auto layer = SyncPreviewTarget();
     if (!layer || !previewOriginal) return;
     if (!op) {   // preview off: show the original
         layer->CopyFrom(*previewOriginal, 0, 0);
+        previewShownHash = PixelHash(*layer);
         document->NotifyChanged(layer->GetRect());
         return;
     }
@@ -2130,35 +3058,44 @@ void UltraPaintWindow::ShowPreview(const std::function<PixelFX::PFXImage(const P
                 for (int c = 0; c < 4; ++c) dp[c] = static_cast<uint8_t>(dp[c] + ((sp[c] - dp[c]) * cov + 127) / 255);
             }
         }
-        document->NotifyChanged(layer->GetRect());
     } catch (const std::exception& e) {
+        layer->CopyFrom(*previewOriginal, 0, 0);
         if (statusHint) statusHint->SetText(std::string("Filter failed: ") + e.what());
     }
+    previewShownHash = PixelHash(*layer);
+    document->NotifyChanged(layer->GetRect());
 }
 
 void UltraPaintWindow::EndPreview(bool commit, const std::string& label,
                                   const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op) {
-    if (!previewActive || !document) return;
+    if (!previewActive) return;
+    // Whatever the image became while the dialog was open is what it applies to.
+    auto layer = document ? SyncPreviewTarget() : nullptr;
     previewActive = false;
-    auto layer = document->GetLayer(previewLayerIndex);
     if (layer && previewOriginal) {
         // put the original back silently, then apply through the document so
         // the change is one undo entry
         layer->CopyFrom(*previewOriginal, 0, 0);
         document->InvalidateComposite();
         if (commit && op) {
-            if (!document->ApplyFilterToLayer(label, previewLayerIndex, op) && statusHint)
+            if (!document->ApplyFilterToLayer(label, LayerIndexOf(*document, layer), op) && statusHint)
                 statusHint->SetText(label + " could not be applied");
         } else {
             document->NotifyChanged(layer->GetRect());
         }
+    } else if (commit && op && statusHint) {
+        statusHint->SetText(label + " could not be applied");
     }
     previewOriginal.reset();
-    previewLayerIndex = -1;
+    previewLayer.reset();
+    previewDocument.reset();
+    previewOp = nullptr;
+    previewSourceChanged = nullptr;
 }
 #endif
 
 void UltraPaintWindow::CmdFilter(const PaintFilter& filter) {
+    if (StopsAtTextLayer(filter.name)) return;
 #ifdef HAS_LIBVIPS
     if (!document || !filter.apply) return;
     auto layer = document->GetActiveLayer();
@@ -2192,31 +3129,36 @@ void UltraPaintWindow::CmdFilter(const PaintFilter& filter) {
 }
 
 void UltraPaintWindow::CmdCurves() {
+    if (StopsAtTextLayer("Curves")) return;
 #ifdef HAS_LIBVIPS
     if (!document) return;
     auto layer = document->GetActiveLayer();
-    if (!layer || layer->locked) return;
+    if (!layer || layer->locked) { if (statusHint) statusHint->SetText("The active layer is locked"); return; }
     if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
-    BeginPreview();
     auto dlg = std::make_shared<UltraCanvasCurvesDialog>(ToneCurveSet());
-    // histogram backdrop from the layer
-    {
+    // histogram backdrop from the layer - again whenever the layer the
+    // curves work on changes while the dialog is open
+    std::weak_ptr<UltraCanvasCurvesDialog> weakDlg = dlg;
+    previewSourceChanged = [weakDlg](const UCRasterLayer& source) {
+        auto curves = weakDlg.lock();
+        if (!curves) return;
         std::vector<uint32_t> bins[4];
         for (auto& b : bins) b.assign(256, 0);
-        for (int y = 0; y < layer->GetHeight(); ++y) {
-            const uint8_t* row = layer->Row(y);
-            for (int x = 0; x < layer->GetWidth(); ++x) {
+        for (int y = 0; y < source.GetHeight(); ++y) {
+            const uint8_t* row = source.Row(y);
+            for (int x = 0; x < source.GetWidth(); ++x) {
                 const uint8_t* p = row + static_cast<size_t>(x) * 4;
                 if (!p[3]) continue;
                 ++bins[1][p[0]]; ++bins[2][p[1]]; ++bins[3][p[2]];
                 ++bins[0][(p[0] + p[1] + p[2]) / 3];
             }
         }
-        dlg->SetHistogram(ToneCurveChannel::RGB, bins[0]);
-        dlg->SetHistogram(ToneCurveChannel::Red, bins[1]);
-        dlg->SetHistogram(ToneCurveChannel::Green, bins[2]);
-        dlg->SetHistogram(ToneCurveChannel::Blue, bins[3]);
-    }
+        curves->SetHistogram(ToneCurveChannel::RGB, bins[0]);
+        curves->SetHistogram(ToneCurveChannel::Red, bins[1]);
+        curves->SetHistogram(ToneCurveChannel::Green, bins[2]);
+        curves->SetHistogram(ToneCurveChannel::Blue, bins[3]);
+    };
+    BeginPreview();
     auto opFor = [](const ToneCurveSet& set) {
         return [set](const PixelFX::PFXImage& img) -> PixelFX::PFXImage {
             if (set.IsIdentity()) return img;
@@ -2236,6 +3178,7 @@ void UltraPaintWindow::CmdCurves() {
 }
 
 void UltraPaintWindow::CmdColourToAlpha() {
+    if (StopsAtTextLayer("Colour to Alpha")) return;
 #ifdef HAS_LIBVIPS
     if (!document) return;
     auto layer = document->GetActiveLayer();

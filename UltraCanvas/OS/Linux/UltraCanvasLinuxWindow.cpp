@@ -1,14 +1,16 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.4.0 - WindowType::Desktop covers config.desktopArea when given
 // Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
 //                  sticky, out of taskbars, input hint off
 // Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "UltraCanvasLinuxWindow.h"
+#include "UltraCanvasFileDragIcon.h"   // kDragMimeType of a save drag
 #include "UltraCanvasImage.h"
 #include "../libspecific/Cairo/RenderContextCairo.h"
 #include <iostream>
@@ -122,13 +124,16 @@ namespace UltraCanvas {
         }
 
         // The desktop window is the screen: whatever size was asked for, it
-        // covers the whole of it, from the top-left corner.
+        // covers the whole of it, from the top-left corner - or the area
+        // asked for (config.desktopArea), one monitor of it.
         if (config_.type == WindowType::Desktop) {
             RefreshDeviceScale();
-            config_.x = 0;
-            config_.y = 0;
-            config_.width  = std::max(1, PhysicalToLogical(DisplayWidth(display, screen)));
-            config_.height = std::max(1, PhysicalToLogical(DisplayHeight(display, screen)));
+            const bool area = config_.desktopArea.width > 0 && config_.desktopArea.height > 0;
+            config_.x = area ? config_.desktopArea.x : 0;
+            config_.y = area ? config_.desktopArea.y : 0;
+            config_.width  = std::max(1, PhysicalToLogical(area ? config_.desktopArea.width : DisplayWidth(display, screen)));
+            config_.height = std::max(1, PhysicalToLogical(area ? config_.desktopArea.height
+                                                                : DisplayHeight(display, screen)));
             config_.resizable = false;
         }
 
@@ -327,6 +332,12 @@ namespace UltraCanvas {
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
 
+        // A Save dialog's file icon dropped here: the element under the
+        // pointer names the folder, before the source is answered.
+        dragDropHandler.onSaveDrop = [this](const std::string& name, int x, int y) {
+            return DeliverSaveDrop(name, PhysicalToLogical(Point2Di{ x, y }));
+        };
+
         dragDropHandler.onDragEnter = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragEnter;
@@ -335,6 +346,11 @@ namespace UltraCanvas {
             // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
+            if (dragDropHandler.IsSaveDrag()) {
+                // A Save dialog's file icon: no files, its name.
+                event.dragMimeType = UltraCanvasFileDragIcon::kDragMimeType;
+                event.dragData = dragDropHandler.GetSaveDragName();
+            }
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
 
@@ -357,6 +373,11 @@ namespace UltraCanvas {
             // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
+            if (dragDropHandler.IsSaveDrag()) {
+                // A Save dialog's file icon: no files, its name.
+                event.dragMimeType = UltraCanvasFileDragIcon::kDragMimeType;
+                event.dragData = dragDropHandler.GetSaveDragName();
+            }
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };        
         XSync(display, False);
@@ -1156,6 +1177,12 @@ namespace UltraCanvas {
             const std::vector<std::string>& filePaths,
             std::function<void(bool accepted, bool moved)> onFinished) {
         return dragDropHandler.BeginSourceDrag(filePaths, std::move(onFinished));
+    }
+
+    bool UltraCanvasLinuxWindow::StartNativeSaveDrag(
+            const std::string& fileName,
+            std::function<void(const std::string& folder)> onFolder) {
+        return dragDropHandler.BeginSaveDrag(fileName, std::move(onFolder));
     }
 
 // ===== ACCESSORS =====

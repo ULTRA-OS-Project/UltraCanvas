@@ -11,6 +11,20 @@ the API that was chosen.
 **Version**: 1.4.0 - the version history is in the header's head
 **Author**: UltraCanvas Framework
 
+## Contents
+
+- [1. Selection philosophies surveyed](#1-selection-philosophies-surveyed)
+  - [Key usability findings baked into this widget](#key-usability-findings-baked-into-this-widget)
+- [2. The two widgets](#2-the-two-widgets)
+- [3. `UCDate`](#3-ucdate)
+- [4. `UltraCanvasDatePicker` (dropdown + text entry)](#4-ultracanvasdatepicker-dropdown--text-entry)
+- [5. `UltraCanvasCalendarView` (inline)](#5-ultracanvascalendarview-inline)
+- [6. Date range picking & blocked dates](#6-date-range-picking--blocked-dates)
+  - [Blocking dates from selection](#blocking-dates-from-selection)
+- [6b. Multi-month blocks & scroll navigation](#6b-multi-month-blocks--scroll-navigation)
+- [7. Keyboard reference (day grid)](#7-keyboard-reference-day-grid)
+- [8. Demo](#8-demo)
+
 ## 1. Selection philosophies surveyed
 
 Picking a date sounds trivial but the "right" UI depends heavily on **what kind

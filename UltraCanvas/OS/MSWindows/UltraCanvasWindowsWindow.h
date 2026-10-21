@@ -98,6 +98,11 @@ namespace UltraCanvas {
         // the drop or Escape; `onFinished` reports what the target did.
         bool StartNativeFileDrag(const std::vector<std::string>& filePaths,
                                  std::function<void(bool accepted, bool moved)> onFinished = nullptr) override;
+        // The Save dialog's file icon out of the window: runs the OLE drag
+        // until the drop or Escape, then hands onFolder the folder the target
+        // named (UltraCanvasWindowsSaveDataObject).
+        bool StartNativeSaveDrag(const std::string& fileName,
+                                 std::function<void(const std::string& folder)> onFolder) override;
 
         // ===== WINDOWS-SPECIFIC METHODS =====
         HWND GetHWND() const { return hwnd; }

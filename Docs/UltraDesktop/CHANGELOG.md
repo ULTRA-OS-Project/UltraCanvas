@@ -1,3 +1,42 @@
+#### 2026-10-15 *0.4.1*
+- **No console window flashes up when UltraDesktop starts on Windows.**
+  `UltraDesktop.exe` is a GUI program now, so starting it beside Explorer at
+  sign-in, from the Start menu or from UOS-Settings shows the desktop alone.
+  Beside it, `UltraDesktop.com` is its console companion, which a prompt runs
+  for the bare name: `UltraDesktop --windows` starts the `.exe`, waits for it
+  and returns its exit code, as before (framework changelog:
+  `windows-console-companions`).
+
+#### 2026-10-15 *0.4.0*
+- **UltraDesktop can run instead of Explorer, not only beside it.** On
+  Windows, *UltraDesktop instead of Explorer* (UOS-Settings → Desktop → At
+  sign-in, the settings button's right-click menu, or
+  `--use-instead-of-explorer`) makes it the whole desktop from the next
+  sign-in, started with the new `--shell` (framework changelog:
+  `desktopshell-instead-of-explorer`). As the shell it
+  - shows the programs' tray icons on the info panel, above its services, in
+    their own colours: a click goes to the program, a right click opens its
+    menu, two clicks are a double click, and their balloons become
+    notifications (or a yellow marker and a tooltip where the build has no
+    notification toasts);
+  - offers *Sign out*, *Restart* and *Shut down* on the settings button's
+    right-click menu, each asked first;
+  - opens the Applications window on a tap of the Win key, where the Start
+    menu would open;
+  - covers the other monitors with its wallpaper instead of leaving them
+    black, following monitors plugged in or taken away, and puts back a
+    wallpaper closed with Alt+F4 within a few seconds.
+- **The Applications window lists the Microsoft Store apps** (Calculator,
+  Photos, Settings …) beside the Start menu's programs, with their tile
+  icons, and starts them as the Start menu does.
+- The sign-in starts UltraCanvasShellGuard, which starts UltraDesktop and
+  starts Explorer for the session when UltraDesktop crashes three times in a
+  minute or cannot start - so a broken update never leaves an empty screen.
+- The settings button's menu offers what applies: beside Explorer, instead of
+  it, keeping Explorer beside it again, and the way back.
+  *Switch back to the Windows desktop* as the shell closes UltraDesktop and
+  Explorer starts in its place at once.
+
 #### 2026-10-14 *0.3.2*
 - **The settings file lives in Application Support on macOS.** `desktop.json`
   was kept in `~/.config/ultraos` there, as on Linux, while every other

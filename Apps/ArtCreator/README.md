@@ -24,18 +24,43 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 ```
 ┌ menu bar ─────────────────────────────────────────────────────────────┐
 ├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror | quality ┤
+├ transform bar: reference point | X Y | W H | W% H% | lock | rotation shear ┤
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Icon (icon mode)   │
 │ pal- │ ┌──────────────────────────────────────┐    │ Colour (fill/line) │
-│ ette │ │                                       │    │ swatches           │
-│      │ │ pasteboard, page, grid, guides,       │    │ Fill (gradient     │
-│      │ │ the drawing, selection handles        │    │   ramp)            │
-│      │ │                                       │    │ Tool Options       │
+│ ette │ │                                       │    │   + palettes       │
+│      │ │ pasteboard, page, grid, guides,       │    │ Tool Options       │
+│      │ │ the drawing, selection handles        │    │ Gradient (Fill)    │
+│      │ │                                       │    │ Line (line tools)  │
 │      │ └──────────────────────────────────────┘    │ Layers             │
 ├──────┴────────────────────────────────────────────┴────────────────────┤
 │ status: pointer | zoom | selection | hint                              │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+Each section of the right panel is a card - the framework's SectionCard
+group box on the section page, as UltraPaint's - with a small caption.
+The cards that belong to a tool show only while it is active: *Tool
+Options* (captioned with the tool's name, and left out for a tool without
+options), *Gradient* (the fill's ramp) with the Fill tool, and *Line* with
+Pen, Freehand and Straight Line, or with the Selector or Shape Editor while
+a line (a straight line, polyline or open path) is selected.
+
+The colour picker has a list of designs in its corner - colour circle,
+slider and square, colour rectangle, or colour and brightness sliders - and
+folds its channels (the HSV / HSL / RGB tabs and sliders) away under
+*Channels*. It is as tall as what it shows, so the panels below move up and
+down with it, and it opens with the design and the channels it was left
+with: `picker.design` and `picker.channels` in
+`~/.config/UltraCanvas/ArtCreator/config.ini` (the platform's settings folder
+elsewhere).
+
+Under the picker are the colour palettes, one row of swatches each, as in
+UltraPaint. A click on a swatch sets the fill; a right click opens a small
+picker that changes that one entry (*Revert* puts it back). The **+** at the
+end of the last row opens a gallery of colour schemes, and a scheme's own
+**+** adds it as another row; with several rows each one ends in a **−** that
+takes it away. The rows are kept in the same file (`picker.palettes`).
 
 ## Tools
 
@@ -75,7 +100,7 @@ The wheel zooms about the pointer, shift + wheel pans, `+` / `-`, Ctrl+0
 fits the page, Ctrl+1 is 100 %. Drag a guide out of a ruler; alt-drag a
 guide to move it; drop it back on a ruler to delete it.
 
-The **Line** panel on the right holds the line gallery: the width, an
+The **Line** card on the right (shown with the line tools) holds the line gallery: the width, an
 arrowhead for each end (triangle, open arrow, circle, square, diamond,
 bar, and Xara's eight stock arrowheads drawn with Xara's own shapes and
 sizes) and their size, a width profile (taper to either end, both, bulge)
@@ -99,6 +124,16 @@ the selection and to every line drawn afterwards.
   Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others
   show through), Remove ClipView, Blend or Mould, Convert to Editable
   Shapes, Snap to Pixels (Ctrl+Shift+P, in icon mode).
+- **Transform bar** (under the toolbar): the selection's X / Y, W / H,
+  scale in percent, rotation and shear, typed or stepped. The 3 x 3
+  *reference point* picker on its left says which point of the selection
+  the position is that of and stays put while it is resized, rotated or
+  sheared; the lock button keeps the aspect ratio, for the fields and for
+  the selector's handles alike (shift frees a corner handle). The
+  percentage fields have no arrows; every field steps by 1. One object shows its own
+  angles; several show 0 and turn or shear by what is typed. Lengths are in
+  the page's unit, or icon pixels in icon mode. A held arrow key or a turn
+  of the wheel is one undo step.
 - **Object**: No Fill, No Line, line widths in points (hairline to 8 pt)
   and in pixels (1 to 4 px: the icon's pixels in icon mode, 96 DPI pixels
   otherwise).

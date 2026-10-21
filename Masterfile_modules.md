@@ -539,7 +539,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -653,8 +653,43 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
-  `.doc` importer and the `.xls` reader.
+  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
+  storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
+  the password-protected Office files.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
+  password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
+  AES-CBC, SHA-512/256 and Office 2010's SHA-1; Office 2007's standard
+  encryption, AES-ECB with no integrity check), decrypted back into their ZIP
+  package with UltraCrypt, and written: `EncryptOfficePackage` /
+  `EncryptOfficePackageToFile` (AES-256, SHA-512, the DataSpaces storage, in a
+  compound file `UCCompoundFileWriter` builds).
+  In `core/UltraCanvasOfficeEncryption.cpp`; the integrity HMAC is checked
+  before anything is decrypted. `DecryptOfficePackage` / `DecryptOfficePackageFile`
+  (`OfficeDecryptStatus`: Decrypted, NotEncrypted, PasswordRequired,
+  WrongPassword, Tampered, Unsupported, Damaged, NoCryptoBackend),
+  `CheckOfficePassword` (the verifier only), `IsEncryptedOfficePackage`. Used by
+  `UltraCanvasSpreadsheet::LoadXLSX` / `LoadXLS` / `LoadFromFile`,
+  `UCWordDocumentIO::Load` / `LoadDocx` (each with an optional password) and
+  `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
+  by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
+  `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
+  `RequestNewDocumentPassword` to ask for a new one.
+  See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
+  decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
+  `PptxPresentation` → `PptxSlide` (title, hidden, notes) → `PptxShape`
+  (title / subtitle / body / text / table / picture, EMU place) →
+  `PptxParagraph` (level, bullet, numbered) → `PptxRun`. `ReadPptxPresentation`
+  (path, optional password - protected decks decrypt through
+  UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
+  `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
+  outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
+  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -744,6 +779,33 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+  Emoji come from a bundled font the emoji setting picks
+  (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
+  `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
+  folder, edited in UOS-Settings > Appearance > Emoji): Noto Color Emoji or
+  Noto Emoji in `media/emoji/`. `ApplyEmojiSettings()`, run by every
+  fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
+  rule that makes Pango's `emoji` runs use it.
+  See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
+  A click on an application's notification that reaches it outside the bus
+  - on Windows a toast clicked in the Action Center after the broker host
+  quit, or with the application closed, which Windows then starts - comes to
+  `RegisterNotificationActivator(appId, handler)`
+  (`UltraCanvasNotificationActivation.h`: the program as the COM activator of
+  its AppUserModelID, a CLSID derived from the ID by
+  `NotificationActivatorClassId`) as a `NotificationActivation` (the action,
+  the notification's id and its `launch` string). `RemoveNotificationRegistrations()`
+  and the installer's uninstaller remove every identity listed under
+  `HKCU\Software\UltraCanvas\Notifications` (`ListNotificationRegistrations()`
+  lists them; UOS-Settings > Notifications > Registrations, its
+  `--remove-notification-registrations` and the ZIP's
+  `uc-remove-registrations.cmd` remove them where there is no uninstaller);
+  `scripts/check_notification_activators.py` (CI) reports an application that
+  posts a notification without registering an activator; the argument format is shared,
+  header-only (`FormatNotificationArguments` / `ParseNotificationArguments`).
+  No-ops elsewhere. See `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`.
+
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
   covers, a size control and an information line. Built on
@@ -802,8 +864,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
-  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`, both behind the internal
-  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
+  `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
+  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  Windows also the standalone **UltraCanvasShellGuard** program
+  (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
+  instead of Explorer. Public surface:
   - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
     resolved through the icon themes, desktop, pid, active, minimized,
     skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
@@ -811,7 +877,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
-  - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
+  - `GetScreenSize`, `ListScreens` (`DesktopScreenInfo` per monitor, the
+    primary first: `EnumDisplayMonitors` / RandR; a `WindowType::Desktop`
+    window goes on one through `WindowConfig::desktopArea`),
+    `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
     (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
@@ -821,14 +890,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
     icons resolved; the Start menu's program shortcuts on Windows, launched
-    by opening the shortcut), `MatchApplication` (a window's entry, by
+    by opening the shortcut, and the Microsoft Store applications by
+    `appUserModelId`, started through `IApplicationActivationManager`), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
-  - `CanReplaceSystemDesktop` / `IsSystemDesktopReplaced` /
-    `ReplaceSystemDesktop` / `RestoreSystemDesktop` - a program (UltraDesktop)
-    in place of the system's desktop at sign-in, and the way back (Windows:
-    the user's Run key and Explorer's taskbar on auto-hide, its previous
-    state restored; elsewhere the session decides and the calls say so).
+  - `CanReplaceSystemDesktop` / `GetSystemDesktopReplacement` /
+    `IsSystemDesktopReplaced` / `ReplaceSystemDesktop` / `RestoreSystemDesktop`
+    / `IsSystemDesktopRunning` - a program (UltraDesktop) in place of the
+    system's desktop at sign-in, `DesktopReplacement::Beside` or `Instead`,
+    and the way back (Windows: beside, the user's Run key and Explorer's
+    taskbar on auto-hide, its previous state restored; instead, the account's
+    Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
+    crashing desktop and starts Explorer for the session when it cannot run;
+    elsewhere the session decides and the calls say so).
+  - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
+    (Windows `ExitWindowsEx`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -839,7 +915,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `Stop()` (joins) / `IsRunning`: a key combination that reaches this
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
-    elsewhere and when another program holds it).
+    elsewhere and when another program holds it). `"Super"` alone is a tap
+    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+  - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
+    `Click(id, TrayClick)`: the notification area for a desktop that is the
+    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
+    taskbar runs, and on X11).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -888,7 +970,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   bar with the mouse wheel, with a chevron over the edge the items continue
   past that scrolls a page when clicked (`SetScrollHints`).
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
-  the screen-sized window at the bottom of the stack a desktop draws into.
+  the screen-sized window at the bottom of the stack a desktop draws into;
+  `WindowConfig::desktopArea` puts one on another monitor.
 
 - **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
   tools sharing one slot of a palette or toolbar: the slot shows one of them,
@@ -927,6 +1010,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   condition in the **top-level** `CMakeLists.txt`; without it the core file
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
+- **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
+  desktop session locks and when it unlocks, so a program forgets what should
+  not outlive the user stepping away (a kept password, a decrypted document on
+  screen). Listener list in `core/UltraCanvasSessionLock.cpp`; per-platform
+  backends under `OS/<Platform>/` (Linux/BSD: logind `Lock` / `Unlock` and
+  `LockedHint` on the system bus plus the screensaver's `ActiveChanged` on the
+  session bus, through GDBus on the application's loop; Windows: WTS session
+  notifications on a message-only window; macOS: the
+  `com.apple.screenIsLocked` / `screenIsUnlocked` distributed notifications).
+  Public surface: `AddSessionLockListener(onChange)` /
+  `RemoveSessionLockListener(id)` (the platform is watched only while one is
+  registered; calls on the UI thread, once per change),
+  `IsWatchingSessionLock`, `NotifySessionLockChanged` (what backends, hosts
+  with a lock of their own and tests call). Wired up by
+  `ULTRACANVAS_HAS_NATIVE_SESSION_LOCK` in the **top-level** `CMakeLists.txt`;
+  without it nothing is reported. Used by `UltraCanvasMediaViewer` to forget
+  Unlock's passwords, and by UltraPaint for the passwords of a drop. See
+  `Docs/UltraCanvas/UltraCanvasSessionLock.md`.
 
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
@@ -1127,7 +1229,11 @@ engine; these classes hold the pixels being edited and hand them to it.
   ApplyFilterToLayer/PreviewFilter` (selection-aware PixelFX ops),
   `CopySelection/CopySelectionMerged/DeleteSelection/FillSelection`,
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
-  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
+  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
+  `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips; password
+  protection with `SetUCDPassword` / `LoadUCD(path, error, password)` /
+  `IsPasswordProtected`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1138,6 +1244,16 @@ engine; these classes hold the pixels being edited and hand them to it.
   FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
   with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
+- **UCD container** (`UltraCanvasUCDContainer.{h,cpp}`, namespace `UCD`) — the
+  UltraCanvas Document v2 container (`Docs/UltraCanvas/UCD-FileFormat-v2.md`):
+  `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
+  `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
+  `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
+  little-endian `ByteWriter` / `ByteReader`; password protection (UCD 2.2):
+  `Writer::SetPassword`, `Reader::NeedsPassword/Unlock` (Argon2id key,
+  XChaCha20-Poly1305 per section, through UltraCrypt; fails closed without
+  libsodium, `EncryptionAvailable()`). Doc:
+  `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
@@ -1262,7 +1378,16 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys.
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+(`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
+`ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
+`InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
+`AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
+`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
+engine and a model on demand and supervises the engine as a loopback
+process shared between applications; the `local` provider
+(`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
+chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -1377,7 +1502,23 @@ future.
   plus the prefixes modules add) > INI file > baked-in default, then the
   alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
   are profiles of it, so a Google client registered once serves Gmail and
-  Google Drive
+  Google Drive; `UltraNet_OAuth2SignInServiceUrl`,
+  `UltraNet_OAuth2SetSignInService`, `UltraNet_OAuth2SetBuiltInSignInService`,
+  `UltraNet_OAuth2SignInServiceEnvName` — the sign-in service's address
+  through the same tiers (Set > `<PREFIX>OAUTH_SERVICE_URL` > the INI file's
+  `[service] url` > the `ULTRANET_OAUTH_SERVICE_URL` build option), which a
+  provider without a client of its own signs in through
+- `UltraNet_OAuth2ServiceUrl`, `UltraNet_OAuth2ServiceBegin`,
+  `UltraNet_OAuth2ServiceWaitForCode`, `UltraNet_OAuth2ServiceExchangeCode`,
+  `UltraNet_OAuth2ServiceRefresh`, `UltraNet_OAuth2ServiceProviders`,
+  `UltraNet_OAuth2AuthorizeViaService`, `UltraNet_OAuth2ServiceParseSession`,
+  `UltraNet_OAuth2ServiceParseStatus` — the client of an OAuth2 *sign-in
+  service* (`UltraNetOAuth2Service.h`; `Server/OAuthCallback` is the
+  service): the service holds the client registrations and is the https
+  address the providers redirect to, the application sends only the PKCE
+  challenge and collects the code, and the exchange and the refresh go
+  through the service, which adds the secret. UltraMail signs in through
+  `https://oauth-callback.ultraos.eu` this way
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -1452,9 +1593,16 @@ extended or replaced without changing callers.
 - `UltraDb_Query`, `UltraDb_Exec`, `UltraDb_QueryAsync`
 - `UltraDb_Prepare`, `UltraDb_ExecPrepared`, `UltraDb_Finalize`
 - `UltraDb_Begin`, `UltraDb_ExecInTx`, `UltraDb_Commit`, `UltraDb_Rollback`
-- `UltraDb_OpenCursor`, `UltraDb_FetchRow`, `UltraDb_CloseCursor`
-- `UltraDb_Migrate`, `UltraDb_CancelQuery`
+- `UltraDb_OpenCursor`, `UltraDb_FetchRows`, `UltraDb_CloseCursor` (page at
+  a time; server-side cursors on PostgreSQL)
+- `UltraDb_ExecBatch` (every statement of a script with its own result)
+- `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
+- `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
+  `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
+  indexes, triggers), `UltraDb_QuoteIdentifier`, `UltraDb_QuoteQualifiedName`
+  (the one way a name goes into SQL text), `UltraDbResultSet::ColumnInfo`
+  (declared type and source table / column per result column)
 
 **Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
 - Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server
@@ -1474,9 +1622,10 @@ migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
 `Tests/UltraDatabase`); the PostgreSQL driver
 (`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
 found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
-networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
-queries, pooling, streaming cursors and at-rest encryption. Details in
+UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
+plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
+DuckDB), async queries, pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
@@ -1565,8 +1714,9 @@ UltraCrypt elements must comply with the same rules as UltraNet and
 UltraDatabase:
 - Clear structure; call names understandable by their names
 - New algorithms use the same function and type naming patterns
-- **AEAD only** — no raw block-cipher or unauthenticated-mode surface is
-  exposed, so a caller cannot accidentally ship unauthenticated ciphertext
+- **AEAD for everything UltraCanvas defines** — no raw block-cipher surface;
+  the one unauthenticated mode, AES-CBC, is interop-only, for formats defined
+  elsewhere that require it
 - Nonces are generated by the module by default; reuse must be opted into
 - The CSPRNG never falls back to a PRNG — entropy failure is an error
 - Secrets travel in `UltraCryptSecureBuffer` (move-only, zeroized on
@@ -1586,6 +1736,9 @@ backing library is never visible in a public header.
 - `UltraCrypt_AeadSeal`, `UltraCrypt_AeadOpen`, `UltraCrypt_GetKeySize`,
   `UltraCrypt_GetNonceSize`, `UltraCrypt_GetTagSize`,
   `UltraCrypt_IsAeadAvailable`
+- `UltraCrypt_AesCbcEncrypt`, `UltraCrypt_AesCbcDecrypt`,
+  `UltraCrypt_GetAesBlockSize` (AES-128/192/256-CBC, interop only;
+  constant-time portable software, independent of libsodium)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
@@ -1976,7 +2129,7 @@ the shared chat / mail mirrors with category guessing from the application's
 identity, the presenters that put an application's `system.notification` on
 screen through the platform's own notification service and report its click
 back (`freedesktop-presenter`: `Notify` to the desktop's server;
-`windows-presenter`: notification-area balloons, shown as toasts;
+`windows-presenter`: toasts under the posting application's own AppUserModelID, balloons before Windows 10 1903;
 `macos-presenter`: Notification Center from an application bundle, osascript
 outside one), the toast
 host that draws the notifications nothing else draws - where UltraMessage
@@ -2163,7 +2316,7 @@ Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
 libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
 FFmpeg header or type appears in a public header. FFmpeg is optional at build
 time: without it the same API links from a stub whose calls return
-`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
+`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 9.x.
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
@@ -2190,7 +2343,8 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
-  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay` (an image
+  or video overlay's own colour and detail `effects`),
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
@@ -2299,10 +2453,13 @@ reaches a caller, so the engine can be replaced (WAMR is the measured
 fallback). UI-free and thread-agnostic; an instance belongs to the thread
 that created it.
 
-**Implementation status:** Phase 1 started. On by default on Linux
-(`ULTRACANVAS_ENABLE_WASM_HOST`); elsewhere, and wherever no prebuilt wasmtime
-exists (the MSYS2 CLANG64 `gnullvm` builds), the library builds without an
-engine and every call says so.
+**Implementation status:** Phase 1 started. On by default on Linux and on
+Windows (`ULTRACANVAS_ENABLE_WASM_HOST`). The MSYS2 CLANG64 / CLANGARM64
+builds (the `gnullvm` ABI), for which wasmtime publishes no library, compile
+its C API from the source release with Cargo (the native
+`mingw-w64-clang-*-rust`; `ULTRACANVAS_WASMTIME_FROM_SOURCE=ON` forces that
+path anywhere). Off, or without a library and a Rust toolchain, the library
+builds without an engine and every call says so.
 
 - Types: `UltraCanvasWasmInstance`, `WasmImport`, `WasmHostFunction`,
   `WasmCaller` (guest memory, `Trap`), `WasmValue`, `WasmValueType`,

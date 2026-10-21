@@ -1,5 +1,6 @@
 # Tests/FilerTests.cmake
 # FilerFolderPreviewTest, FilerTextPreviewTest, FilerNameEncodingTest,
+# FilerRetireTest,
 # FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest and
 # FilerPaneDragTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
@@ -95,6 +96,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerNameEncodingTest")
 else()
     message(STATUS "  FilerNameEncodingTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILER RETIRE TEST =====
+# A closed tab's folder display (RequestBackgroundStop / BackgroundStopped):
+# its workers are told to stop and seen gone without being joined, so
+# UltraFiler destroys the display only once that costs no wait - a worker busy
+# with a slow file no longer freezes the window as the tab closes.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerRetireTest...")
+    add_executable(FilerRetireTest
+        ${_FT_DIR}/FilerRetireTest.cpp
+    )
+    target_include_directories(FilerRetireTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(FilerRetireTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerRetireTest PRIVATE UltraCanvas)
+    set_target_properties(FilerRetireTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerRetireTest COMMAND FilerRetireTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerRetireTest")
+else()
+    message(STATUS "  FilerRetireTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== FILER HOST ICONS TEST =====

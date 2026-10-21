@@ -57,9 +57,10 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  # A merge commit that brings in a pending changelog entry does not carry its
-  # version yet: changelog-fold.yml assigns it in the commit that follows, and
-  # line 1 of CHANGELOG.md here is still the PREVIOUS release. Building the
+  # A merge commit that brings in a pending changelog entry - the framework's
+  # or any app's - does not carry its version yet: changelog-fold.yml assigns
+  # it in the commit that follows, and line 1 of that product's CHANGELOG.md
+  # here is still the PREVIOUS release. Building the
   # release from this commit would package new code under an already-published
   # number, so the release build waits for the fold commit - which carries the
   # right one - and this gate skips the commit before it.
@@ -88,8 +89,13 @@ jobs:
       - id: check
         shell: bash
         run: |
-          count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
-                       ! -name 'README.md' 2>/dev/null | wc -l)
+          # Every product's pending entries, not only the framework's: the
+          # artifacts carry every app stamped with its own changelog's line 1,
+          # so an app entry left unfolded here would ship that app under its
+          # previous number. The fold commit (framework number unchanged when
+          # only apps were folded) is the one release build for this merge.
+          count=$(find Docs -path '*/changelog.d/*.md' ! -name 'README.md' \
+                       2>/dev/null | wc -l)
           # A release dispatch is gated like a push. It names the fold commit,
           # so nothing is pending there - unless the fold had to rebase onto
           # a merge that landed meanwhile: then that merge's entry is still
@@ -267,6 +273,11 @@ jobs:
           key: msys2-pkgs-${{ matrix.msystem }}-
           restore-keys: msys2-pkgs-${{ matrix.msystem }}-
 
+      # -ffmpeg is VideoFX's engine: without it VideoFX builds from its stub,
+      # and the package's UltraVideo starts but opens, plays and exports
+      # nothing. MSYS2 builds FFmpeg with --enable-gpl --enable-version3
+      # (libx264, libx265), so what the Windows package ships linking it is
+      # GPL-3.0-or-later - see FFmpeg in THIRD_PARTY_LICENSES.md.
       - name: Update MSYS2 and install the build dependencies (Windows)
         if: runner.os == 'Windows'
         id: msys2-deps
@@ -311,6 +322,7 @@ jobs:
             ${{ matrix.msys_prefix }}-opusfile
             ${{ matrix.msys_prefix }}-libopusenc
             ${{ matrix.msys_prefix }}-lame
+            ${{ matrix.msys_prefix }}-ffmpeg
             ${{ matrix.msys_prefix }}-librevenge
             ${{ matrix.msys_prefix }}-libcdr
             ${{ matrix.msys_prefix }}-lcms2
@@ -531,6 +543,11 @@ jobs:
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
           scripts/ci-apt.sh install libzbar-dev
+          # Spell checking: Linux has no native backend, so without Hunspell the
+          # library builds with spell checking off (zero dictionaries) and
+          # SpellCheckerTest exercises none of the Hunspell path. The en_US
+          # dictionary is what the test and the text widgets load by default.
+          scripts/ci-apt.sh install libhunspell-dev hunspell-en-us
           # IODeviceManager's optional backends are compiled only when configure
           # finds their library; without these CI never builds them and a
           # compile error in one goes unseen. libudev: the hot-plug watcher
@@ -538,6 +555,12 @@ jobs:
           # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
           # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
           scripts/ci-apt.sh install libudev-dev libcups2-dev libsane-dev
+          # UltraNet's optional protocol plug-ins are compiled only when configure
+          # finds their library too; without these the MQTT, AMQP, CoAP, SNMP and
+          # SSH plug-ins were never built on Linux and a change to them went
+          # unseen (the cloud session hook installs the same five). The check
+          # after configure fails the row if one of them was left out.
+          scripts/ci-apt.sh install libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
           # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest -
           # over ipp://, and over ipps:// with the self-signed certificate it makes,
           # which exercises trusting a device on first use (UltraCanvasIODeviceTlsTrust) -
@@ -552,6 +575,18 @@ jobs:
           # stated where they are met. "Run unit tests" forbids its skip too,
           # as "Run the device TLS test" does on macOS and Windows.
           scripts/ci-apt.sh install python3 openssl
+          # A virtual X display for DesktopShellTest's X11 half (see "Run
+          # DesktopShellTest on a virtual display" below).
+          scripts/ci-apt.sh install xvfb xauth
+          # A comma-decimal locale for the tests that hold file formats to
+          # dot-decimal numbers (HTMLReaderTest, HTMLRichImportTest,
+          # ModelLocaleDecimalTest, MindMapIOTest, Model3DSTest, ModelMS3DTest,
+          # DiagramJsonLocaleTest): they run under de_DE.UTF-8 and skip
+          # without it, so it is generated here rather than hoped for from the
+          # runner image. The check after it fails the step if it did not take.
+          scripts/ci-apt.sh install locales
+          sudo locale-gen de_DE.UTF-8
+          locale -a | grep -qix -e 'de_DE.utf8' -e 'de_DE.UTF-8'
           # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
           # CI should compile it. 22.04 ships freerdp2; newer runners
           # will pick freerdp3-dev automatically once available.
@@ -811,8 +846,10 @@ jobs:
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAAI_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRADBADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
@@ -820,6 +857,8 @@ jobs:
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
+            -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
+            -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
@@ -843,8 +882,10 @@ jobs:
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAAI_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRADBADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
@@ -903,6 +944,36 @@ jobs:
             exit 1
           fi
           echo "UltraDatabase verified: SQLite + PostgreSQL"
+
+      # Spell checking also degrades quietly: no Hunspell and every text widget
+      # still builds, with no dictionaries and no red underlines. That passed
+      # CI unnoticed until 2026-10-15, so configure has to say it found it.
+      - name: Verify spell checking built with Hunspell (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -qE "Hunspell: [0-9]" configure.log; then
+            echo "::error::Hunspell was not found during configure (libhunspell-dev missing?) - spell checking would be off"
+            exit 1
+          fi
+          echo "Spell checking verified: $(grep -oE 'Hunspell: [0-9][^ ]*' configure.log | head -1)"
+
+      # The five UltraNet plug-ins above degrade the same way: CMake leaves one
+      # out without a word when its library is missing, so configure has to
+      # say it enabled each of them.
+      - name: Verify the MQTT, AMQP, CoAP, SNMP and SSH plug-ins are built (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          for plugin in MQTT AMQP CoAP SNMP SSH; do
+            if ! grep -q "UltraNet $plugin plug-in - ENABLED" configure.log; then
+              echo "::error::The UltraNet $plugin plug-in was not enabled during configure (its library missing?)"
+              exit 1
+            fi
+          done
+          echo "UltraNet plug-ins verified: MQTT, AMQP, CoAP, SNMP, SSH enabled"
 
       # libcurl selection is asserted per platform so a silent regression is caught:
       #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
@@ -1221,6 +1292,24 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
 
+      # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
+      # ships - and through the Windows file names, cache folder and fonts;
+      # then UltraVideo's document on it, whose .ultravideo file must hold
+      # '/' between a path's parts where Windows joins them with '\'.
+      # As on Linux (below), the stub would pass VideoFXTest on its
+      # filter-text checks alone (and UltraVideoDocumentTest skips itself),
+      # so first prove the engine was configured.
+      - name: Verify the VideoFX engine and run its tests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -eu
+          if ! grep -q "VideoFX: FFmpeg .* found - engine enabled" configure.log; then
+            echo "::error::VideoFX was configured without FFmpeg - is the MSYS2 -ffmpeg package installed?"
+            exit 1
+          fi
+          cd build
+          ctest --output-on-failure --no-tests=error -R "^(VideoFXTest|UltraVideoDocumentTest)$"
+
       # UltraCloud's module suite - the account store on UltraDatabase, the
       # secret stores on UltraVault, every provider against an injected fake
       # (WebDAV's DELETE and MOVE, FTP's options, the SFTP key path through
@@ -1274,12 +1363,35 @@ jobs:
       # conversion was missed. The host-icons test asks the real shell for
       # its icons, the shortcut test reads .lnk files on the system they
       # come from, and the history test keeps UltraFiler's recently-used lists
-      # under %APPDATA%. ULTRACANVAS_BUILD_FILER_TESTS builds the five without
-      # the Linux-only BUILD_TESTS; Linux runs them in the full pass.
+      # under %APPDATA%, and the retire test stops a display's workers the way
+      # UltraFiler does for a closed tab. ULTRACANVAS_BUILD_FILER_TESTS builds
+      # them without the Linux-only BUILD_TESTS; Linux runs them in the full
+      # pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest)$"
+
+      # The bundled emoji fonts on Windows, where emoji drew as boxes of hex
+      # digits: the emoji setting's file under %APPDATA%, the generic font
+      # aliases, and "👤 Someone" laid out with the bundled fonts alone, its
+      # emoji from the font the setting picks. ULTRACANVAS_BUILD_EMOJI_TESTS
+      # builds it without BUILD_TESTS; Linux runs it in the full pass.
+      - name: Run emoji tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^EmojiSettingsTest$"
+
+      # The UltraMessage suite on Windows, which ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS
+      # builds there but nothing ran: the channel through Windows' named
+      # pipes, and the Windows adapters against the runner's desktop - the
+      # windows-presenter starts in toast mode (Windows 10 1903 and later, in
+      # this C++/WinRT build) or balloon mode, and the notification listener
+      # reports its state. Linux runs it in the full pass.
+      - name: Run UltraMessage tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraMessage$"
 
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)
@@ -1288,11 +1400,17 @@ jobs:
       # it and checks the work area makes room, minimizes and closes it, and
       # lists a Start menu it builds under a temp APPDATA and ProgramData.
       # ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS builds it without the Linux-only
-      # BUILD_TESTS; Linux runs it in the full pass.
+      # BUILD_TESTS; Linux runs it in the full pass. ConsoleCompanionTest
+      # beside it: the console companion (<App>.com) the command-line apps
+      # are typed through, redirected and on a console of its own - typed
+      # input read, output on the screen, Ctrl+C reaching the program.
       - name: Run DesktopShellTest (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^DesktopShellTest$"
+        run: |
+          set -e
+          ctest --output-on-failure --no-tests=error -R "^DesktopShellTest$"
+          ctest --output-on-failure --no-tests=error -R "^ConsoleCompanionTest$"
 
       # EmailCleaner's and UltraMail's engine suites on Windows. Both were
       # built here (see the note above "Run UltraNet tests") but only Linux
@@ -1387,6 +1505,23 @@ jobs:
           ULTRAFIBU_TEST_PG_REQUIRED: 1
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
+      # "Run unit tests" runs DesktopShellTest with no display, where the X11
+      # backend has nothing to talk to - so the monitor's and a global
+      # shortcut's Stop() went untested, and hung for good on any display
+      # until 2026-10-15 (a blocking wake pipe). On a virtual display the test
+      # drives the backend for real: the monitor sees a root property change,
+      # the virtual desktops and RandR's monitors are read, and every Stop()
+      # has to return within seconds. ULTRACANVAS_TEST_DISPLAY_REQUIRED turns
+      # "no display" into a failure, so a broken Xvfb cannot pass as a skip.
+      - name: Run DesktopShellTest on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1600x900x24 +extension RANDR"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^DesktopShellTest$"
+
       # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
       # already covers "it ran". What it cannot cover is the test not existing
       # at all, which is what happens when libpq is missing at configure time.
@@ -1423,12 +1558,12 @@ jobs:
           fi
           echo "VideoFX engine built and VideoFXTest ran"
 
-      # AnchorPoint is its own CMake project and not part of the build above,
-      # so nothing here built it: its standalone link broke (UltraCrypt had
-      # started calling the shared Base32 codec) and nobody saw. Build the core
-      # and CLI the way its README says, and run the protocol tests - they
-      # replay hostile file names against the receiver. Needs only libsodium,
-      # which is installed above.
+      # AnchorPoint is also its own CMake project. The build above includes it
+      # (BUILD_ANCHORPOINT), which builds the window against the framework; this step builds the core and CLI *without* the framework,
+      # the way its README says - that standalone link once broke (UltraCrypt
+      # had started calling the shared Base32 codec) and nobody saw - and runs
+      # the protocol tests: hostile file names against the receiver, and
+      # stopping a transfer. Needs only libsodium, which is installed above.
       - name: AnchorPoint core, CLI and protocol tests (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -1447,9 +1582,159 @@ jobs:
         if: runner.os == 'Linux'
         run: BUILDDIR="$PWD/build" SKIP_BUILD=1 ./package-linux.sh
 
+      # NSIS for the installer: preinstalled on the Windows Server 2022 and
+      # Windows-on-Arm runner images, not on 2025's, and MSYS2 packages it
+      # for CLANG64 but not for CLANGARM64 - so the runner's own copy, else
+      # one this workflow cached, else Chocolatey's. Copied into Program Files
+      # either way, which is where scripts/build-windows-installer.sh looks.
+      #
+      # The cache is there because Chocolatey is a server this job otherwise
+      # needs on every run: on 2026-10-20 its feed answered 504 and turned a
+      # Windows job red whose build and tests had all passed. NSIS runs from
+      # wherever its folder is (makensis finds Stubs, Plugins and Include
+      # next to itself), so the folder is all there is to keep. The key is
+      # fixed: the copy stays the one first installed until the key is
+      # bumped. A run on main saves it where every pull request can read it.
+      - name: Restore NSIS (Windows)
+        id: nsis-cache
+        if: runner.os == 'Windows'
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}\nsis-cache
+          key: nsis-${{ runner.os }}-${{ runner.arch }}-1
+
+      - name: NSIS for the installer (Windows)
+        id: nsis
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = "${env:ProgramFiles(x86)}\NSIS"
+          $cached = Join-Path $env:RUNNER_TEMP 'nsis-cache'
+          $candidates = @("$target\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe")
+          $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $found -and (Test-Path (Join-Path $cached 'makensis.exe'))) {
+            Write-Host "NSIS from the workflow's cache"
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            Copy-Item -Path (Join-Path $cached '*') -Destination $target -Recurse -Force
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $found) {
+            # Three tries a minute apart: a 504 from the feed is usually over
+            # by the next attempt, and one try made the outage this job's.
+            for ($attempt = 1; $attempt -le 3 -and -not $found; $attempt++) {
+              choco install nsis --no-progress -y
+              $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+              if (-not $found -and $attempt -lt 3) {
+                Write-Host "Chocolatey could not install NSIS (exit $LASTEXITCODE), attempt $attempt of 3; trying again in 60 s"
+                Start-Sleep -Seconds 60
+              }
+            }
+            if (-not $found) { throw "Chocolatey could not install NSIS (exit $LASTEXITCODE) in 3 attempts" }
+            # Fresh from Chocolatey: keep its folder for the runs after this one.
+            # Cleared first: copied onto an existing folder, Copy-Item would
+            # nest the NSIS folder inside it instead of filling it.
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $cached
+            Copy-Item -Path (Split-Path $found) -Destination $cached -Recurse -Force
+            "fresh=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+          & $found /VERSION
+          Write-Host ""
+          Write-Host "makensis: $found"
+
+      - name: Save NSIS (Windows)
+        if: runner.os == 'Windows' && steps.nsis.outputs.fresh == 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}\nsis-cache
+          key: ${{ steps.nsis-cache.outputs.cache-primary-key }}
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        run: ./package-win.sh --no-sign
+        run: ./package-win.sh --no-sign --installer
+
+      # The installer, run as a user would - silently, into a folder of its
+      # own - and taken out again: everything it installs is where it
+      # belongs, the shell guard has no Start-menu entry, UltraDesktop is
+      # registered for Run boxes, the command-line apps come with their
+      # console companions, and the uninstaller removes exactly what it put
+      # there. /D= and _?= must be last and unquoted, hence a path
+      # without spaces.
+      - name: Install and uninstall the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem -Filter 'UltraCanvas-Setup-Windows-*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'package-win.sh --installer built no installer' }
+          "Installer: $($setup.Name), $([math]::Round($setup.Length / 1MB, 1)) MB"
+          $dir = Join-Path $env:RUNNER_TEMP 'UltraCanvasInstallTest'
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The installer exited with $($p.ExitCode)" }
+          foreach ($file in 'UltraDesktop.exe', 'UOS-Settings.exe', 'UltraCanvasShellGuard.exe', 'Uninstall.exe') {
+            if (-not (Test-Path (Join-Path $dir $file))) { throw "$file was not installed" }
+          }
+          $installed = (Get-ChildItem $dir -Recurse -File).Count
+          "Installed: $installed files"
+          # Test binaries never ship (package-win.sh leaves them out).
+          $tests = @(Get-ChildItem $dir -File | Where-Object { $_.Name -match '(Tests?\.(exe|com)|^ConsoleCompanionProbe\.)' })
+          if ($tests.Count -gt 0) { throw "Test binaries were installed: $(($tests | ForEach-Object Name) -join ', ')" }
+          # The apps whose command line prints are GUI programs with a console
+          # companion (cmake/UltraCanvasWindowsGuiApp.cmake): <App>.exe starts
+          # without a console window, <App>.com is what a prompt runs for the
+          # bare name, and it waits and hands back the exit code.
+          function Get-Subsystem([string]$path) {
+            $bytes = [IO.File]::ReadAllBytes($path)
+            [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 60) + 92)
+          }
+          $companions = @()
+          foreach ($app in 'UltraDesktop', 'UltraCleaner', 'UltraNetMonitor', 'UltraWeb', 'UltraClaude',
+                           'UltraCanvasStart', 'DeviceExplorer', 'SmartHomeCenter', 'ultrafibu', 'ultrapress') {
+            $exe = Join-Path $dir "$app.exe"
+            if (-not (Test-Path $exe)) { continue }
+            $com = Join-Path $dir "$app.com"
+            if (-not (Test-Path $com)) { throw "$app.exe was installed without its console companion $app.com" }
+            if ((Get-Subsystem $exe) -ne 2) { throw "$app.exe is not a GUI program" }
+            if ((Get-Subsystem $com) -ne 3) { throw "$app.com is not a console program" }
+            $companions += $app
+          }
+          if ($companions -notcontains 'UltraDesktop') { throw 'UltraDesktop has no console companion' }
+          "Console companions: $($companions -join ', ')"
+          $version = cmd /c "cd /d $dir && UltraDesktop --version"
+          if ($LASTEXITCODE -ne 0 -or -not ($version -match '^UltraDesktop ')) {
+            throw "UltraDesktop --version from a prompt: exit $LASTEXITCODE, '$version'"
+          }
+          "UltraDesktop --version from a prompt: $($version -join ' / ')"
+          $appPath = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe').'(default)'
+          if ($appPath -ne (Join-Path $dir 'UltraDesktop.exe')) { throw "App Paths names '$appPath'" }
+          $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'UltraCanvas'
+          $links = @(Get-ChildItem $menu -Filter '*.lnk' | ForEach-Object Name)
+          "Start menu: $($links -join ', ')"
+          if ($links -notcontains 'UltraDesktop.lnk') { throw 'UltraDesktop has no Start-menu entry' }
+          if ($links -contains 'UltraCanvasShellGuard.lnk') { throw 'The shell guard got a Start-menu entry' }
+          if (-not (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraCanvas' -ErrorAction SilentlyContinue)) {
+            throw 'No Apps & features entry'
+          }
+          # _?= runs the uninstaller in place and waits for it; it cannot
+          # delete itself then, everything else must go.
+          $p = Start-Process -FilePath (Join-Path $dir 'Uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The uninstaller exited with $($p.ExitCode)" }
+          $left = @(Get-ChildItem $dir -Recurse -File | Where-Object Name -ne 'Uninstall.exe')
+          if ($left.Count -gt 0) { throw "Left behind: $(($left | Select-Object -First 10 | ForEach-Object FullName) -join ', ')" }
+          # The folder can outlive the uninstaller for a moment: the shell
+          # may still hold it while it drops the removed shortcuts (a pull
+          # request that changes no packaging failed here while main at the
+          # same base passed). Allow it ten seconds before calling it left
+          # behind, and name what is still in it when it really is.
+          $deadline = (Get-Date).AddSeconds(10)
+          while ((Test-Path $menu) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $menu) {
+            $inside = @(Get-ChildItem $menu -Force | ForEach-Object Name)
+            throw "The Start-menu folder was left behind, holding: $(if ($inside) { $inside -join ', ' } else { 'nothing' })"
+          }
+          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe' -ErrorAction SilentlyContinue) {
+            throw 'The App Paths entry was left behind'
+          }
+          "Uninstalled: nothing of the $installed files left"
 
       # UltraCanvasStart on its own: the setup application has to reach a
       # computer that has nothing yet, so it ships as one small archive beside
@@ -1520,6 +1805,28 @@ jobs:
           [ -n "$py" ] || { echo "no Python: plug-in sizes skipped"; exit 0; }
           "$py" scripts/report_plugin_sizes.py build \
             --title "Format plug-in sizes (${{ runner.os }} ${{ matrix.arch_label }})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The same dist/ as an MSIX package (package-win-msix.sh, see
+      # Docs/UltraCanvas/UltraCanvasWindowsMSIX.md). Every run builds the test
+      # package: unsigned, and Windows 11 installs it from an elevated
+      # PowerShell with Add-AppxPackage -AllowUnsigned, so a pull request can
+      # be tried as a packaged app. A release build also builds the Store
+      # package once the repository holds Partner Center's identity in its
+      # Actions variables (MSIX_IDENTITY_NAME, MSIX_PUBLISHER,
+      # MSIX_PUBLISHER_DISPLAY_NAME - not secrets, Partner Center shows them
+      # on the app's Product identity page). That one is uploaded to Partner
+      # Center unsigned and the Store signs it, so no certificate is needed.
+      - name: Package MSIX (Windows)
+        if: runner.os == 'Windows'
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          ./package-win-msix.sh --mode test
+          if [ "$RELEASE_BUILD" = "true" ] && [ -n "$MSIX_PUBLISHER" ]; then
+            ./package-win-msix.sh --mode store
+          fi
 
       # Release builds only, so a pull request never decodes the signing
       # certificate onto a runner it does not need it on.
@@ -1602,6 +1909,28 @@ jobs:
           name: UCDemo-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
             dist/
+          retention-days: 7
+
+      # The installer is LZMA-compressed already: stored as it is.
+      - name: Upload the installer (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvas-Setup-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
+          path: UltraCanvas-Setup-Windows-*.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      # An .msix is a zip already, hence compression-level 0.
+      - name: Upload MSIX (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvas-Windows-MSIX-${{ env.VERSION }}-${{ matrix.arch_label }}
+          path: dist-msix/*.msix
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
       # The disk image only, not the dist-macos/ folders: upload-artifact
@@ -1785,10 +2114,12 @@ jobs:
         timeout-minutes: 20
         run: |
           scripts/ci-apt.sh update
+          # libvips-dev: the Android arm requires libvips like every other
+          # (the real one comes from the vcpkg sysroot; android-build.yml).
           scripts/ci-apt.sh install cmake pkg-config \
             libcairo2-dev libpango1.0-dev libfontconfig-dev libglib2.0-dev \
             libtinyxml2-dev libfreetype-dev libfmt-dev libssl-dev \
-            libcurl4-openssl-dev libc-ares-dev
+            libcurl4-openssl-dev libc-ares-dev libvips-dev
 
       - name: Syntax-check OS/Android against the NDK
         run: scripts/android-syntax-check.sh "$ANDROID_NDK_LATEST_HOME"
@@ -1801,8 +2132,9 @@ jobs:
       - name: Configure-only test of the Android CMake arms
         # -DANDROID=1 stands in for the toolchain file (host compilers, host
         # pkg-config deps): validates platform detection, the glue-source
-        # wiring, forced-off GL/plugins, and the UltraNet Android arm with
-        # c-ares present. A full toolchain configure needs the dep sysroot.
+        # wiring, forced-off GL/plugins, libvips required, and the UltraNet
+        # Android arm with c-ares present. The full NDK build against the
+        # vcpkg sysroot is android-build.yml.
         run: |
           cmake -B build-android-cfgtest \
             -DANDROID=1 \

@@ -9,13 +9,14 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
-// Version: 1.0.1
-// Last Modified: 2026-10-09
+// Version: 1.2.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetXls.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasSpreadsheetExcelFormula.h"   // Excel's Sheet!A1 <-> 'Sheet'.A1
 
 #include "tinyxml2.h"
@@ -151,10 +152,26 @@ class XlsxLoader {
 public:
     explicit XlsxLoader(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
-    bool Load(const std::string& filePath, std::string& error) {
-        if (!zip_.Open(filePath)) {
-            error = "The file is not a valid Excel workbook (.xlsx): " + filePath;
-            return false;
+    bool Load(const std::string& filePath, const std::string& password, std::string& error) {
+        // A password-protected workbook is a compound file holding the
+        // package encrypted (UltraCanvasOfficeEncryption.h), not a ZIP.
+        std::vector<uint8_t> package;
+        switch (DecryptOfficePackageFile(filePath, password, package, error)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                if (!zip_.Open(filePath)) {
+                    error = "The file is not a valid Excel workbook (.xlsx): " + filePath;
+                    return false;
+                }
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!zip_.OpenFromMemory(std::move(package))) {
+                    error = "The decrypted workbook is not a valid Excel workbook (.xlsx): " + filePath;
+                    return false;
+                }
+                break;
+            default:
+                error += ": " + filePath;
+                return false;
         }
         std::string workbookXml;
         if (!zip_.ReadEntry("xl/workbook.xml", workbookXml)) {
@@ -568,7 +585,7 @@ class XlsxSaver {
 public:
     explicit XlsxSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
-    bool Save(const std::string& filePath, std::string& error) {
+    bool Save(const std::string& filePath, const std::string& password, std::string& error) {
         // Sheets are generated first so the style/string tables are complete
         // before styles.xml and sharedStrings.xml are written.
         std::vector<std::string> sheetXmls;
@@ -581,7 +598,11 @@ public:
             return false;
         }
 
-        if (!zip_.Open(filePath)) {
+        // With a password the package is built in memory and encrypted into
+        // the file (UltraCanvasOfficeEncryption.h); nothing unencrypted is
+        // written to disk.
+        const bool encrypt = !password.empty();
+        if (encrypt ? !zip_.OpenInMemory() : !zip_.Open(filePath)) {
             error = "Cannot create file: " + filePath;
             return false;
         }
@@ -600,7 +621,7 @@ public:
             error = "Failed to write workbook package: " + zip_.GetLastError();
             return false;
         }
-        return true;
+        return !encrypt || EncryptOfficePackageToFile(zip_.TakeBytes(), password, filePath, error);
     }
 
 private:
@@ -1068,22 +1089,24 @@ private:
 
 // ===== SPREADSHEET ENTRY POINTS =====
 
-bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath, const std::string& password) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     XlsxLoader loader(this);
-    if (!loader.Load(filePath, lastError_)) {
+    if (!loader.Load(filePath, password, lastError_)) {
         return false;
     }
+    ClearUndoHistory();   // the loaded document starts a fresh history
     Recalculate();
     RequestAutoFitForUnsizedColumns();
     Invalidate();
     return true;
 }
 
-bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath, const std::string& password) {
     lastError_.clear();
     XlsxSaver saver(this);
-    return saver.Save(filePath, lastError_);
+    return saver.Save(filePath, password, lastError_);
 }
 
 } // namespace UltraCanvas

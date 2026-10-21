@@ -3,6 +3,38 @@
 **Version:** 2.2.1
 **Author:** UltraCanvas Framework
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Features](#features)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [Constructor](#constructor)
+  - [Node Management](#node-management)
+  - [Connection Management](#connection-management)
+  - [Styling & Theme](#styling--theme)
+  - [Interaction](#interaction)
+  - [Edit Modes](#edit-modes)
+  - [Callbacks](#callbacks)
+  - [Factory Functions](#factory-functions)
+  - [Palette Class](#palette-class)
+- [Data Structures](#data-structures)
+  - [FlowChartNode](#flowchartnode)
+  - [FlowChartConnection](#flowchartconnection)
+  - [Enumerations](#enumerations)
+- [Usage Examples](#usage-examples)
+  - [Pre-built Order Processing Chart](#pre-built-order-processing-chart)
+  - [Toolbar — Switching Edit Mode and Zoom](#toolbar-—-switching-edit-mode-and-zoom)
+  - [Grid + Snap-to-Grid Checkboxes](#grid--snap-to-grid-checkboxes)
+  - [Shape Palette — Click to Place](#shape-palette-—-click-to-place)
+  - [Live Editing of the Selected Node](#live-editing-of-the-selected-node)
+  - [Live Editing of the Selected Connection](#live-editing-of-the-selected-connection)
+  - [Adding a Sticky Note at Runtime](#adding-a-sticky-note-at-runtime)
+  - [Delete Selected and Clear All](#delete-selected-and-clear-all)
+- [Edit Mode Cheat-Sheet](#edit-mode-cheat-sheet)
+- [See Also](#see-also)
+
 ## Overview
 
 `UltraCanvasFlowChart` is an interactive flow chart / node-diagram editor. It manages a collection of named, shaped `FlowChartNode` instances and `FlowChartConnection` arrows between them, supports multiple edit modes (`Select`, `CreateNode`, `CreateConnection`, `Pan`), grid + snap-to-grid, zoom and pan, themes, and a rich set of mouse/keyboard interactions. Orthogonal connections use obstacle-aware A* routing over the chart's grid. The framework also ships a companion palette element, `UltraCanvasFlowChartPalette`, that lets users pick shapes and click-place them on the diagram.

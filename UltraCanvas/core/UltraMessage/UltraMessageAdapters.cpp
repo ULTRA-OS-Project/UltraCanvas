@@ -9,6 +9,7 @@
 
 #include "UltraMessageAdapter.h"
 #include "UltraMessageInternal.h"
+#include "UltraCanvasNotificationActivation.h"   // the toast arguments' format, shared with the applications
 
 #include <algorithm>
 #include <cctype>
@@ -234,6 +235,7 @@ bool ReadPresentedContent(const UltraMsgMessage& notification, int presenterProc
     if (from.processId > 0 && from.processId != presenterProcessId && out.appName != out.title)
         out.subtitle = out.appName;
     out.iconFile = IconFilePath(n.icon);
+    out.launch = n.launch;
     out.urgency = (n.urgency == "low" || n.urgency == "critical") ? n.urgency : "normal";
     for (const auto& action : n.actions) {
         if (action.id.empty()) continue;
@@ -382,6 +384,81 @@ std::vector<std::string> AppleScriptNotificationCommand(const PresentedContent& 
     if (!title.empty()) script += " with title (item 2 of argv)";
     if (!subtitle.empty()) script += " subtitle (item 3 of argv)";
     return {"/usr/bin/osascript", "-e", "on run argv", "-e", script, "-e", "end run", text, title, subtitle};
+}
+
+std::string WindowsToastAppUserModelId(const std::string& appId) {
+    std::string id;
+    for (unsigned char c : appId) {
+        if (std::isalnum(c) || c == '.' || c == '-' || c == '_') id += static_cast<char>(c);
+        if (id.size() == 128) break;
+    }
+    // Nothing but separators names no application.
+    if (id.find_first_not_of(".-_") == std::string::npos) return std::string();
+    return id;
+}
+
+namespace {
+
+std::string XmlEscape(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        switch (c) {
+            case '&':  out += "&amp;"; break;
+            case '<':  out += "&lt;"; break;
+            case '>':  out += "&gt;"; break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&apos;"; break;
+            default:   out += c; break;
+        }
+    }
+    return out;
+}
+
+// The arguments of one of the toast's activations.
+std::string ToastArguments(const PresentedContent& content, const std::string& actionId) {
+    UltraCanvas::NotificationActivation activation;
+    activation.notificationId = content.notificationId;
+    activation.actionId = actionId;
+    activation.launch = content.launch;
+    return UltraCanvas::FormatNotificationArguments(activation);
+}
+
+} // namespace
+
+std::string WindowsToastXml(const PresentedContent& content) {
+    // A click on the toast itself always has arguments: the application's
+    // activator, reached after the broker host quit, needs the id and launch
+    // even when the notification declares no default action.
+    std::string xml =
+        "<toast launch=\"" + XmlEscape(ToastArguments(content, content.hasDefaultAction ? "default" : "")) + "\">";
+    xml += "<visual><binding template=\"ToastGeneric\">";
+    xml += "<text>" + XmlEscape(content.title) + "</text>";
+    if (!content.body.empty()) xml += "<text>" + XmlEscape(content.body) + "</text>";
+    // A local file is named by its path: desktop applications may.
+    if (!content.iconFile.empty())
+        xml += "<image placement=\"appLogoOverride\" src=\"" + XmlEscape(content.iconFile) + "\"/>";
+    xml += "</binding></visual>";
+    if (!content.buttons.empty()) {
+        xml += "<actions>";
+        for (const auto& button : content.buttons)
+            xml += "<action content=\"" + XmlEscape(button.label) + "\" arguments=\"" +
+                   XmlEscape(ToastArguments(content, button.id)) + "\"/>";
+        xml += "</actions>";
+    }
+    if (content.urgency == "low") xml += "<audio silent=\"true\"/>";
+    xml += "</toast>";
+    return xml;
+}
+
+PresenterResponse WindowsToastResponse(const std::string& arguments, std::string& actionId) {
+    const UltraCanvas::NotificationActivation activation = UltraCanvas::ParseNotificationArguments(arguments);
+    if (activation.actionId.empty() || activation.actionId == "default") {
+        actionId.clear();
+        return PresenterResponse::Activated;
+    }
+    actionId = activation.actionId;
+    return PresenterResponse::Action;
 }
 
 std::string PublishMirror(IAdapterHost& host, const std::string& adapterName,

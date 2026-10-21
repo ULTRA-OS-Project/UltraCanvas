@@ -1,5 +1,43 @@
 # UltraCanvasWaterfallChart Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+  - [File Structure](#file-structure)
+  - [Class Hierarchy](#class-hierarchy)
+- [Data Structures](#data-structures)
+  - [WaterfallChartDataPoint](#waterfallchartdatapoint)
+  - [WaterfallChartDataVector](#waterfallchartdatavector)
+- [Enumerations](#enumerations)
+- [Configuration Methods](#configuration-methods)
+  - [Color Customization](#color-customization)
+  - [Visual Configuration](#visual-configuration)
+  - [Data Management](#data-management)
+- [Usage Examples](#usage-examples)
+  - [Basic Waterfall Chart](#basic-waterfall-chart)
+  - [Cash Flow with Subtotals](#cash-flow-with-subtotals)
+  - [Loading Steps](#loading-steps)
+  - [Factory Functions](#factory-functions)
+- [Rendering Pipeline](#rendering-pipeline)
+  - [Main Render Method](#main-render-method)
+  - [Rendering Cache](#rendering-cache)
+- [Interactive Features](#interactive-features)
+  - [Tooltips](#tooltips)
+  - [Mouse Interaction](#mouse-interaction)
+- [Value Formatting](#value-formatting)
+- [Default Styling](#default-styling)
+  - [Color Palette](#color-palette)
+  - [Default Settings](#default-settings)
+- [Performance Considerations](#performance-considerations)
+- [Integration with UltraCanvas Framework](#integration-with-ultracanvas-framework)
+- [Best Practices](#best-practices)
+- [Limitations](#limitations)
+- [Version History](#version-history)
+- [Dependencies](#dependencies)
+- [See Also](#see-also)
+
 ## Overview
 
 The **UltraCanvasWaterfallChart** is a sophisticated data visualization component within the UltraCanvas framework that displays cumulative data flow through a series of positive and negative changes. It's particularly effective for showing how an initial value is affected by a series of intermediate values, leading to a final result.

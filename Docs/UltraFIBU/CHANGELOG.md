@@ -1,48 +1,10 @@
-#### 2026-10-20 *0.24.9*
-- **The date field of the start window says *TT.MM.JJJJ* again.** The
-  framework's date picker kept its own "Select a date" whatever the
-  window set; fixed in the picker.
-- **The engine tests run on macOS and Windows too**, in the CI step the
-  start window test joined: the SQLite store, the invoice PDF, the DATEV
-  and CAMT files on each platform's own paths.
-
-#### 2026-10-20 *0.24.8*
-- **The start window's form is laid out by the page.** Firma, the start of
-  the fiscal year, the chart of accounts, the note, the reason the button
-  is greyed and the button itself are rows the framework's start page
-  places (`AddField`, `AddNote`, `AddButton`); the window has no
-  coordinates of its own left. The rows are a little taller than before.
-- **The start window test runs on macOS and Windows too**, in a CI step
-  of its own.
-
-#### 2026-10-20 *0.24.7*
-- **The bookkeepings opened last live in the program's settings file.**
-  `<settings folder>/UltraFIBU/settings.json`, the framework's
-  `UltraCanvasAppSettings`, under `zuletzt` - the place for the next
-  preference too - instead of a plain `zuletzt` file; what the start
-  window offers is unchanged.
-- **The start window has a headless test: `UltraFIBUStartTests`.**
-  `StartFenster::SeiteBauen` builds the page without a window, and the
-  test reads it back: the hint, *Zuletzt geöffnet* as buttons, a gone file
-  said and dropped, an existing one handed over, the setup form refusing
-  until the company and a first of a month are in, the page's height.
-  Built where the UI library is, with no display.
-
-#### 2026-10-20 *0.24.6*
-- **The start window is the framework's start page.** Title, the reason
-  this window, *Zuletzt geöffnet*, the open button, the setup form and the
-  status line are laid out by `UltraCanvasStartPage`, the page UltraPress's
-  start window is built on too; what UltraFIBU says and asks is unchanged.
-
-#### 2026-10-20 *0.24.5*
-- **The bookkeepings opened last, in the start window.** The window
-  remembers the files it opened (`<settings folder>/UltraFIBU/zuletzt`,
-  eight at most, the last first, through the framework's
-  `UltraCanvasRecentList.h`) and the start window offers the five newest
-  as buttons under *Zuletzt geöffnet*, the whole path in a tooltip; a file
-  that is gone, or holds no bookkeeping any more, is said so and dropped
-  from the list. The Windows installer now gives UltraFIBU a Start-menu
-  entry, which starts it this way.
+#### 2026-10-15 *0.24.5*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `ultrafibu.exe` is a GUI program now. Beside it,
+  `ultrafibu.com` is its console companion, which a prompt runs for the bare
+  name: `ultrafibu info buch.db` starts the `.exe`, waits for it and returns
+  its exit code, as before. Typed as `ultrafibu.exe`, the prompt no longer
+  waits (framework changelog: `windows-console-companions`).
 
 #### 2026-10-12 *0.24.4*
 - **One UltraFIBU at a time.** Starting the UltraFIBU window while it is

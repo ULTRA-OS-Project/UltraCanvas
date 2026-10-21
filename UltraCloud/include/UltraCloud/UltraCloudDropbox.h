@@ -5,8 +5,9 @@
 // (upload_session/start → append_v2 → finish), files/download,
 // files/create_folder_v2, sharing/create_shared_link_with_settings (password
 // and expiry on paid plans). Signs in with OAuth2 + PKCE, offline access.
+// Version: 0.4.0 - ContentFromFile: uploads sent from the file as they go
 // Version: 0.3.0
-// Last Modified: 2026-09-04
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -56,10 +57,13 @@ private:
     // POST an RPC-style call (JSON in, JSON out) to api.dropboxapi.com/2/<endpoint>.
     Result Rpc(const Credentials& credentials, const std::string& endpoint,
                const std::string& jsonBody, UltraNetResponse& response, const std::string& what);
-    // POST bytes to content.dropboxapi.com/2/<endpoint> with a Dropbox-API-Arg.
-    Result Content(const Credentials& credentials, const std::string& endpoint,
-                   const std::string& apiArg, std::vector<uint8_t> body,
-                   UltraNetResponse& response, const std::string& what);
+    // POST to content.dropboxapi.com/2/<endpoint> with a Dropbox-API-Arg,
+    // the body a range of a local file read as it is sent
+    // (UltraNetHttpRequest::bodyFilePath) rather than held in memory.
+    Result ContentFromFile(const Credentials& credentials, const std::string& endpoint,
+                           const std::string& apiArg, const std::string& localPath,
+                           int64_t offset, int64_t length, UltraNetResponse& response,
+                           const std::string& what);
 
     int64_t simpleUploadLimit_ = kDefaultSimpleUploadLimit;
     int64_t chunkSize_         = kDefaultChunkSize;

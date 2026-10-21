@@ -8,8 +8,9 @@
 // shell (UltraCanvasWindowsDesktopShell.cpp, which does the same for the
 // running programs and the Start menu). Not a public header — application
 // code uses UltraCanvasNativeFileIcons.h.
+// Version: 1.2.0 - PixmapFromBitmap
 // Version: 1.1.0 - WriteSurfacePng
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,6 +29,12 @@ namespace UltraCanvas {
         // Null when the icon cannot be read. Does NOT take ownership of the
         // HICON — the caller still destroys it.
         std::shared_ptr<UCPixmap> PixmapFromIcon(HICON icon);
+
+        // A 32-bit HBITMAP - what the shell's image factory hands out, its
+        // alpha premultiplied - as a premultiplied ARGB32 pixmap; a bitmap
+        // without alpha is opaque. Null when it cannot be read. Does NOT
+        // take ownership: the caller still deletes the bitmap.
+        std::shared_ptr<UCPixmap> PixmapFromBitmap(HBITMAP bitmap);
 
         // Icon number `index` of an icon-carrying file (.exe / .dll / .ico —
         // a shell icon location as GetIconLocation reports it, so a negative

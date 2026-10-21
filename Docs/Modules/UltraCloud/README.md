@@ -93,20 +93,34 @@ which is how the tests drive every provider through fake servers.
 ### OAuth2 sign-in
 
 The hosted providers sign in through the system browser: `CloudService::
-SignInAccount` asks the provider for its OAuth2 config, UltraNet runs the
-PKCE authorization-code flow against a loopback redirect
-(`UltraNet_OAuth2AuthorizeInteractive`), the tokens land in the secret
-store, and the provider's account-info call fills the user name. An expired
+SignInAccount` asks the provider to sign in, the tokens land in the secret
+store, and the provider's account-info call fills the user name. By default
+the sign-in goes through the **OAuth2 sign-in service** UltraNet's registry
+names (`UltraNet_OAuth2SignInServiceUrl`, built in as ULTRA OS's
+`https://oauth-callback.ultraos.eu`; `Server/OAuthCallback` is the
+service): it holds the OAuth client registrations, so the application ships
+no client id or secret, and it is the https address the providers redirect
+to. The provider sends only the PKCE challenge and its scopes, collects the
+authorization code from the service and exchanges it - and later refreshes
+the token - through the service (`UltraNet_OAuth2AuthorizeViaService`,
+`UltraNet_OAuth2ServiceRefresh`). Google Drive signs in as the service's
+`google`, OneDrive as its `microsoft`, Dropbox as its `dropbox`
+(`OAuthProviderBase::SignInServiceProviderId`). A provider that has an
+**OAuth app registration of its own** (below) bypasses the service: UltraNet
+runs the PKCE authorization-code flow against a loopback redirect
+(`UltraNet_OAuth2AuthorizeInteractive`) and refreshes directly. An expired
 access token is renewed from the refresh token inside `CloudService::Resolve`
 before any call uses it, and the renewal is stored. A token the service
 rejects (HTTP 401) although it had not expired here - revoked early, a clock
 that is off, or one that ran out while a request waited on a service
 limiting requests - is renewed the same way and the call made once more.
 
-Each provider needs an **OAuth app registration** — a client id (and, for
-confidential clients, a secret) the ULTRA OS project or the app vendor
-registers with Dropbox, Microsoft and Google. It is configuration, never a
-literal in the code:
+An installation that would rather not go through the service - a private
+registration, a build without a service (`-DULTRANET_OAUTH_SERVICE_URL=""`),
+`ULTRACLOUD_OAUTH_SERVICE_URL=off` - gives a provider an **OAuth app
+registration** of its own — a client id (and, for confidential clients, a
+secret) registered with Dropbox, Microsoft or Google. It is configuration,
+never a literal in the code:
 
 ```cpp
 UltraCloud::OAuthApp app;
@@ -117,8 +131,14 @@ UltraCloud::SetOAuthApp("dropbox", app);
 
 or, without code, the environment: `ULTRACLOUD_DROPBOX_CLIENT_ID`,
 `ULTRACLOUD_ONEDRIVE_CLIENT_ID`, `ULTRACLOUD_GOOGLEDRIVE_CLIENT_ID` (plus
-`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). Until one is set the
-add-account dialog says so and the provider's `SignIn` returns `Unsupported`.
+`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). `UsesSignInService(id)`
+says whether a provider goes through the service, `CanSignIn(id)` whether it
+can be signed in to at all; when neither a service nor a registration is
+there the add-account dialog says so and the provider's `SignIn` returns
+`Unsupported`. The service's address is the registry's one setting
+(`ULTRACLOUD_OAUTH_SERVICE_URL` or `ULTRANET_OAUTH_SERVICE_URL` in the
+environment, an INI file's `[service] url`, the built-in default), shared
+with UltraMail.
 
 The registration lives in **UltraNet's OAuth2 app registry**
 (`<UltraNet/UltraNetOAuth2Apps.h>`), one per process and shared with
@@ -277,6 +297,78 @@ within a fraction of a second, the sign-in ends as `ResultCode::Cancelled`,
 and `CloudService::AddAccount` / `SignInAccount` store no account. The
 dialog's *Cancel* and close box set it, and so does `watch.cancelled`.
 
+## Uploads to a server that writes them as they arrive
+
+An FTP, FTPS or SFTP server writes an upload into the file as it comes in
+(`ProviderCapabilities::partialUploadsRemain`), and the protocol has no way
+to take one back: sent straight to its name, an upload that replaces a file
+destroys the old one with its first byte, and one stopped part way leaves
+the part looking like the file. `CloudService::Upload` and `UploadAndShare`
+therefore, for every application (`UltraCloudUploads.h`):
+
+- write the upload to a hidden part name beside the file
+  (`UploadPartName`: `.report.pdf.part`) and rename it into place once the
+  last byte is in (`PutUploadInPlace`). A server that will not rename onto
+  an existing file - OpenSSH's SFTP, some Windows servers - has the old one
+  set aside (`.report.pdf.replaced`) for that moment and put back if the
+  rename fails.
+- go straight to the name for an anonymous FTP login, a name too long to
+  mark, a server that refuses the part name at STOR, and an account whose
+  server refused to rename an upload - remembered in the account store for
+  30 days (`AccountStore::UploadsDirect`).
+- keep a `PendingUpload` in the account store while anything the upload
+  wrote could be left behind: from before the first byte at a part name,
+  from the moment the server created the file at its own name (the FTP
+  provider watches the reply to STOR; on SFTP, which says nothing, a name
+  that was free before the upload counts). A process that ends during the
+  upload leaves the record too.
+
+Every later call on that account - in the same run or the next - first
+removes what those records point to, where it is still the upload's
+(`IsLeftByPendingUpload`: any part; at the file's own name, one shorter than
+the whole file), and says each step in the thread's log:
+
+```text
+An upload of "big.bin" did not finish: removing what it left (/up/.big.bin.part)
+Not in the listing - the server may leave out names that start with a dot: removing it by name
+Removed /up/.big.bin.part
+```
+
+A part the server will not remove stays recorded for the next run; one whose
+server did not answer - or whose step the thread called off, quitting - is
+asked again straight after a later call gets through
+(`kPendingCleanupTriesPerRun` times a run), and a listing then leaves out
+what was removed. An application has nothing to do for any of this; one that
+asks before it quits can say that what an upload sent is removed later
+(`partialUploadsRemain` on the account's provider).
+
+### An upload complete before its rename
+
+The connection can go - or the application quit - between the last byte and
+the rename. The whole file is then under the part name, and it is put in
+place rather than removed: the upload notes its record as complete
+(`PendingUpload::completedAt`; its error says *it is given that name the
+next time this account reaches the server*), and a part the folder lists at
+the file's full size counts as complete too - a process that ended in
+between (`IsCompletePart`). The next call that reaches the server gives it
+its name (`PlaceCompletePart`):
+
+| At the name | What happens |
+|---|---|
+| nothing (an old file set aside or not) | the part takes the name; a set-aside old file is removed |
+| a file, the upload finished within the hour (`kCompleteUploadReplacesSeconds`) | it replaces the file, as the upload was doing (`PutUploadInPlace`) |
+| a file, the upload older - or a folder | kept beside it as *name (2).ext* (`UploadKeptName`): what has the name may have been written since |
+| the server refuses the rename | the part is removed, as before |
+
+```text
+An upload of "big.bin" was complete when the server stopped answering, before it had its name: giving it that name (/up/.big.bin.part)
+"big.bin" is in place
+```
+
+A step that is called off or not answered is never taken for a refusal: the
+account does not go over to uploading straight to its names, and the record
+waits for the server to answer.
+
 ## Quick examples
 
 ```cpp
@@ -346,26 +438,34 @@ selected file. When no account exists yet it offers the add-account dialog,
 whose "Add account" button becomes "Sign in in browser" for the OAuth
 providers.
 
+Both dialogs do their work on threads of their own - the picker's listings,
+uploads and links, the add-account dialog's sign-in - and any of it can still
+be running after the dialog, or the window that opened it, has closed. Give
+them a `std::shared_ptr<CloudService>` made with the shared_ptr constructor
+and each thread holds the service, and through it the stores, until it ends;
+the `CloudService&` forms leave keeping the service alive to the caller.
+
 ## Public surface
 
 | Header | Contents |
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry, and the SFTP private key's path), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
-| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
+| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
-| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
-| `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
+| `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault; the uploads' records: `AddPendingUpload`, `RemovePendingUpload`, `ListPendingUploads`, `SetUploadsDirect`, `UploadsDirect`), `MakeAccountId` |
+| `UltraCloudUploads.h` | Uploads to a server that writes them as they arrive: `UploadPartName`, `UploadNameOfPart`, `UploadSetAsideName`, `IsAnonymousFtpLogin`, `InPlaceOps` / `InPlace` / `PutUploadInPlace`, `PendingUpload`, `IsLeftByPendingUpload`, `kPendingUploadMaxAgeSeconds`, `kPendingCleanupTriesPerRun`; a complete upload whose rename was cut off: `IsCompletePart`, `CompletePartReplaces`, `kCompleteUploadReplacesSeconds`, `UploadKeptName`, `AtName` / `CompletePart` / `PlaceCompletePart` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
-| `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
+| `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory); `TransfersInProgress` - the uploads and downloads under way, for a host that asks before it quits |
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing
@@ -385,7 +485,12 @@ answers with canned bodies, and the OAuth flow through `OAuthHooks`. The
 large-upload paths are exercised with small thresholds
 (`SetUploadLimits(simpleLimit, chunkSize)` on the three hosted providers),
 so a 25-byte file walks the same start / append / finish, upload-session or
-resumable code as a multi-gigabyte one. Chunks are read from disk as they are
+resumable code as a multi-gigabyte one. The FTP uploads' part names, their
+records, the cleanup and the placing of a complete upload whose rename was
+cut off run against a fake FTP server that can refuse renames, deletes or
+dot names, hide dot names from a listing, break an upload part way, stop
+answering once an upload is in, call a rename off or not answer at all
+(`test_uploads.cpp`). Chunks are read from disk as they are
 sent; a large upload never holds more than one chunk in memory.
 
 ## Roadmap

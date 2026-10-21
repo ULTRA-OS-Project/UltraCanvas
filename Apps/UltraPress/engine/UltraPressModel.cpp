@@ -1,10 +1,11 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
-// Version: 0.8.0 - IsSiteAddress
+// Version: 0.8.3 - IsSiteAddress
+// Version: 0.8.2 - SitePathText
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
 // Version: 0.5.0 - "hosting" in site.json
 // Version: 0.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressModel.h"
 
@@ -463,6 +464,13 @@ std::vector<const Page*> SortedPages(const Site& site, PageOrder order,
         return false;
     });
     return pages;
+}
+
+std::string SitePathText(std::string path) {
+#ifdef _WIN32
+    std::replace(path.begin(), path.end(), '\\', '/');
+#endif
+    return path;
 }
 
 std::string MakeSlug(const std::string& title) {

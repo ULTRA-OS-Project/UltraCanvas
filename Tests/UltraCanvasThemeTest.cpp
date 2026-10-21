@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.6.0 - the contrast the presets keep
 // Version: 1.5.0 - the modal dialog style
 // Version: 1.4.0 - the label variants
 // Version: 1.3.0 - the button variants
@@ -23,6 +24,9 @@
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
+
+#include <algorithm>
+#include <cmath>
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTooltipTypes.h"
@@ -33,6 +37,20 @@
 using namespace UltraCanvas;
 
 static int testCount = 0, failCount = 0;
+static bool Near(double a, double b, double eps) { return std::fabs(a - b) <= eps; }
+// WCAG 2 relative luminance and contrast ratio
+static double Luminance(const Color& c) {
+    auto channel = [](int v) {
+        const double s = v / 255.0;
+        return s <= 0.03928 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+}
+static double Contrast(const Color& a, const Color& b) {
+    const double la = Luminance(a), lb = Luminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
 #define CHECK(cond, name) do { ++testCount; if (cond) std::printf("  PASS  %s\n", name); else { ++failCount; std::printf("  FAIL  %s (line %d)\n", name, __LINE__); } } while (0)
 
 static bool Same(const Color& a, const Color& b) { return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; }
@@ -46,6 +64,26 @@ int main() {
           "Light is the framework's default colours");
     CHECK(dark.roles.panel.r < 60 && dark.roles.ink.r > 200, "Dark is dark");
     CHECK(Same(UltraCanvasTheme::Current().roles.ground, light.roles.ground) && !UltraCanvasTheme::Current().dark, "Light until an app sets another");
+    CHECK(Near(Contrast(Colors::White, Colors::Black), 21.0, 0.01) && Near(Contrast(Color(118, 118, 118), Colors::White), 4.54, 0.01),
+          "the contrast measure: black on white 21:1, #767676 on white 4.54:1");
+    for (const UltraCanvasTheme* t : {&light, &dark}) {   // the readability the presets promise (UltraCanvasTheme.md)
+        const ThemeRoles& r = t->roles;
+        const std::string n = t->name + ": ";
+        const Color all[] = {r.ground, r.panel, r.well, r.raised, r.hover, r.pressed};
+        bool inkOk = true, focusOk = true;
+        for (const Color& s : all) { inkOk = inkOk && Contrast(r.ink, s) >= 4.5; focusOk = focusOk && Contrast(r.focus, s) >= 3.0; }
+        CHECK(inkOk, (n + "ink reads 4.5:1 on every surface").c_str());
+        CHECK(focusOk, (n + "the focus ring shows 3:1 on every surface").c_str());
+        CHECK(Contrast(r.inkMuted, r.ground) >= 4.5 && Contrast(r.inkMuted, r.panel) >= 4.5 && Contrast(r.inkMuted, r.well) >= 4.5 &&
+              Contrast(r.inkMuted, r.raised) >= 4.5 && Contrast(r.inkMuted, r.hover) >= 4.5,
+              (n + "muted ink reads 4.5:1 down to hover").c_str());
+        CHECK(Contrast(r.inkFaint, r.panel) >= 4.5 && Contrast(r.inkFaint, r.well) >= 4.5 && Contrast(r.inkFaint, r.raised) >= 4.5,
+              (n + "faint ink reads 4.5:1 on panel, well and raised").c_str());
+        CHECK(Contrast(r.lineStrong, r.panel) >= 3.0 && Contrast(r.lineStrong, r.raised) >= 3.0,
+              (n + "a control border shows 3:1 on panel and raised").c_str());
+        CHECK(Contrast(r.danger, r.panel) >= 4.5 && Contrast(r.onAccent, r.accent) >= 4.49,
+              (n + "danger reads on the panel, text on the accent reads").c_str());
+    }
 
     UltraCanvasTheme own = dark;
     own.name = "Own";

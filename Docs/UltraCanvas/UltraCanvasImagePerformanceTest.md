@@ -16,6 +16,36 @@ UltraCanvasWindowBase* win; IRenderContext* ctx;
 std::shared_ptr<UltraCanvasImageElement> imageElement;
 -->
 
+## Contents
+
+- [Overview](#overview)
+- [Header Includes](#header-includes)
+- [Class Reference](#class-reference)
+  - [UCImage (loading and saving the source image)](#ucimage-loading-and-saving-the-source-image)
+  - [UCImageSave::ImageExportOptions](#ucimagesaveimageexportoptions)
+  - [UltraCanvasImageElement (used for thumbnails)](#ultracanvasimageelement-used-for-thumbnails)
+  - [Codec table (file-local)](#codec-table-file-local)
+  - [CodecResult (per-codec output row)](#codecresult-per-codec-output-row)
+  - [Helpers (file-local)](#helpers-file-local)
+  - [CodecComparisonChartElement (the grouped bar chart, file-local)](#codeccomparisonchartelement-the-grouped-bar-chart-file-local)
+  - [PanelState (shared by every lambda of the page)](#panelstate-shared-by-every-lambda-of-the-page)
+- [Events / Callbacks](#events--callbacks)
+- [Test Modes (Pipeline Phases)](#test-modes-pipeline-phases)
+  - [Full Pipeline (encode + write + read + decode)](#full-pipeline-encode--write--read--decode)
+  - [Decompress + Draw](#decompress--draw)
+  - [Draw Only](#draw-only)
+- [Usage Examples](#usage-examples)
+  - [Driving the benchmark from a "Choose Image" handler](#driving-the-benchmark-from-a-choose-image-handler)
+  - [Encoding one codec and timing the round-trip](#encoding-one-codec-and-timing-the-round-trip)
+  - [Encoding with the bundled QOI path](#encoding-with-the-bundled-qoi-path)
+  - [Encoding with the bundled BMP path](#encoding-with-the-bundled-bmp-path)
+  - [Hooking thumbnail clicks to the 1:1 viewer](#hooking-thumbnail-clicks-to-the-11-viewer)
+  - [Live status updates per codec](#live-status-updates-per-codec)
+- [Why "Force Eager Decode" Matters](#why-force-eager-decode-matters)
+- [Best Practices](#best-practices)
+- [Codec Support Matrix](#codec-support-matrix)
+- [See Also](#see-also)
+
 ## Overview
 
 The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:

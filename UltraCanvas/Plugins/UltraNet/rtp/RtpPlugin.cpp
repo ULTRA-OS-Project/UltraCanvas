@@ -23,12 +23,16 @@
 //   CSRC list (0..15 × 4 bytes)                   CC × 4
 //   optional extension                            variable
 //   payload                                       rest
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 // NB: NOT using UltraNet_ParseUrl here — libcurl's URL parser rejects
 // non-standard schemes by default (rtp:// / sip:// / coap:// etc. all
@@ -193,122 +197,130 @@ public:
         return {"rtp"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions.clear();
+        ultranet_plugin::GuardedVoid([&]() {
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            g_sessions.clear();
+        });
     }
 
     UltraNetHandle OpenStream(const std::string& url,
                               const UltraNetStreamOptions& options) override {
-        // Minimal rtp:// URL parse — rtp://[host][:port] with no path/query.
-        constexpr const char* kPrefix = "rtp://";
-        constexpr std::size_t kPrefixLen = 6;
-        if (url.rfind(kPrefix, 0) != 0) return UltraNetInvalidHandle;
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            // Minimal rtp:// URL parse — rtp://[host][:port] with no path/query.
+            constexpr const char* kPrefix = "rtp://";
+            constexpr std::size_t kPrefixLen = 6;
+            if (url.rfind(kPrefix, 0) != 0) return UltraNetInvalidHandle;
 
-        std::string authority = url.substr(kPrefixLen);
-        // Strip any accidental trailing path — we don't use it.
-        const std::size_t slash = authority.find('/');
-        if (slash != std::string::npos) authority.resize(slash);
+            std::string authority = url.substr(kPrefixLen);
+            // Strip any accidental trailing path — we don't use it.
+            const std::size_t slash = authority.find('/');
+            if (slash != std::string::npos) authority.resize(slash);
 
-        std::string host;
-        int port = 5004;   // default: VoIP audio convention
-        const std::size_t colon = authority.rfind(':');
-        if (colon != std::string::npos) {
-            host = authority.substr(0, colon);
-            const std::string portStr = authority.substr(colon + 1);
-            if (!portStr.empty()) {
-                port = std::atoi(portStr.c_str());
-                if (port <= 0 || port > 65535) return UltraNetInvalidHandle;
+            std::string host;
+            int port = 5004;   // default: VoIP audio convention
+            const std::size_t colon = authority.rfind(':');
+            if (colon != std::string::npos) {
+                host = authority.substr(0, colon);
+                const std::string portStr = authority.substr(colon + 1);
+                if (!portStr.empty()) {
+                    port = std::atoi(portStr.c_str());
+                    if (port <= 0 || port > 65535) return UltraNetInvalidHandle;
+                }
+            } else {
+                host = authority;
             }
-        } else {
-            host = authority;
-        }
 
-        auto s = std::make_shared<Session>();
-        s->port = port;
-        s->fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (s->fd == kInvalidFd) return UltraNetInvalidHandle;
+            auto s = std::make_shared<Session>();
+            s->port = port;
+            s->fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            if (s->fd == kInvalidFd) return UltraNetInvalidHandle;
 
-        // Allow port reuse — multiple readers on the same RTP port is a
-        // legitimate use case (e.g. multicast receivers).
-        int one = 1;
-        ::setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR,
-                     reinterpret_cast<const char*>(&one), sizeof one);
+            // Allow port reuse — multiple readers on the same RTP port is a
+            // legitimate use case (e.g. multicast receivers).
+            int one = 1;
+            ::setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR,
+                         reinterpret_cast<const char*>(&one), sizeof one);
 
-        sockaddr_in bind4{};
-        bind4.sin_family = AF_INET;
-        bind4.sin_port   = htons(static_cast<uint16_t>(port));
-        // Bind interface: URL host if it's an IPv4 address literal, else
-        // INADDR_ANY. Hostname resolution isn't useful here — receivers
-        // bind, they don't connect.
-        if (host.empty() ||
-            ::inet_pton(AF_INET, host.c_str(), &bind4.sin_addr) != 1) {
-            bind4.sin_addr.s_addr = htonl(INADDR_ANY);
-        }
-        if (::bind(s->fd, reinterpret_cast<sockaddr*>(&bind4), sizeof bind4) != 0) {
-            return UltraNetInvalidHandle;
-        }
-        if (options.connectTimeoutMs > 0) {
-            ApplyRecvTimeout(s->fd, options.connectTimeoutMs);
-        }
+            sockaddr_in bind4{};
+            bind4.sin_family = AF_INET;
+            bind4.sin_port   = htons(static_cast<uint16_t>(port));
+            // Bind interface: URL host if it's an IPv4 address literal, else
+            // INADDR_ANY. Hostname resolution isn't useful here — receivers
+            // bind, they don't connect.
+            if (host.empty() ||
+                ::inet_pton(AF_INET, host.c_str(), &bind4.sin_addr) != 1) {
+                bind4.sin_addr.s_addr = htonl(INADDR_ANY);
+            }
+            if (::bind(s->fd, reinterpret_cast<sockaddr*>(&bind4), sizeof bind4) != 0) {
+                return UltraNetInvalidHandle;
+            }
+            if (options.connectTimeoutMs > 0) {
+                ApplyRecvTimeout(s->fd, options.connectTimeoutMs);
+            }
 
-        const UltraNetHandle h =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        s->handle = h;
-        {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions[h] = s;
-        }
-        return h;
+            const UltraNetHandle h =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            s->handle = h;
+            {
+                std::lock_guard<std::mutex> lk(g_sessionsMutex);
+                g_sessions[h] = s;
+            }
+            return h;
+        });
     }
 
     UltraNetResult ReadFrame(UltraNetHandle handle,
                              std::vector<uint8_t>& outFrame) override {
-        outFrame.clear();
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(
-            UltraNetResultCode::InvalidHandle, "no such RTP session");
+        return ultranet_plugin::Guarded("ReadFrame", [&]() -> UltraNetResult {
+            outFrame.clear();
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(
+                UltraNetResultCode::InvalidHandle, "no such RTP session");
 
-        // Datagram cap of 64 KB is the theoretical UDP max; typical RTP
-        // payloads are 200-1500 bytes so this is generous.
-        std::vector<uint8_t> buf(65536);
-        sockaddr_storage src{};
-        socklen_t srcLen = sizeof src;
-#if defined(_WIN32) || defined(_WIN64)
-        int n = ::recvfrom(s->fd, reinterpret_cast<char*>(buf.data()),
-                           static_cast<int>(buf.size()), 0,
-                           reinterpret_cast<sockaddr*>(&src), &srcLen);
-#else
-        ssize_t n = ::recvfrom(s->fd, buf.data(), buf.size(), 0,
+            // Datagram cap of 64 KB is the theoretical UDP max; typical RTP
+            // payloads are 200-1500 bytes so this is generous.
+            std::vector<uint8_t> buf(65536);
+            sockaddr_storage src{};
+            socklen_t srcLen = sizeof src;
+    #if defined(_WIN32) || defined(_WIN64)
+            int n = ::recvfrom(s->fd, reinterpret_cast<char*>(buf.data()),
+                               static_cast<int>(buf.size()), 0,
                                reinterpret_cast<sockaddr*>(&src), &srcLen);
-#endif
-        if (n < 0) {
-            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
-                                         "recvfrom failed (timeout?)");
-        }
-        if (n < 12) {
-            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
-                                         "packet too small to be RTP");
-        }
+    #else
+            ssize_t n = ::recvfrom(s->fd, buf.data(), buf.size(), 0,
+                                   reinterpret_cast<sockaddr*>(&src), &srcLen);
+    #endif
+            if (n < 0) {
+                return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
+                                             "recvfrom failed (timeout?)");
+            }
+            if (n < 12) {
+                return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
+                                             "packet too small to be RTP");
+            }
 
-        RtpHeader hdr;
-        const int payloadOffset = ParseRtpHeader(buf.data(),
-                                                  static_cast<std::size_t>(n),
-                                                  hdr);
-        if (payloadOffset < 0) {
-            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
-                                         "malformed RTP packet");
-        }
-        s->lastSequence.store(hdr.sequence,     std::memory_order_relaxed);
-        s->lastTimestamp.store(hdr.timestamp,   std::memory_order_relaxed);
-        s->lastSsrc.store(hdr.ssrc,             std::memory_order_relaxed);
-        s->lastPayloadType.store(hdr.payloadType, std::memory_order_relaxed);
+            RtpHeader hdr;
+            const int payloadOffset = ParseRtpHeader(buf.data(),
+                                                      static_cast<std::size_t>(n),
+                                                      hdr);
+            if (payloadOffset < 0) {
+                return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
+                                             "malformed RTP packet");
+            }
+            s->lastSequence.store(hdr.sequence,     std::memory_order_relaxed);
+            s->lastTimestamp.store(hdr.timestamp,   std::memory_order_relaxed);
+            s->lastSsrc.store(hdr.ssrc,             std::memory_order_relaxed);
+            s->lastPayloadType.store(hdr.payloadType, std::memory_order_relaxed);
 
-        outFrame.assign(buf.begin() + payloadOffset,
-                        buf.begin() + static_cast<std::ptrdiff_t>(n));
-        return UltraNetResult::Ok();
+            outFrame.assign(buf.begin() + payloadOffset,
+                            buf.begin() + static_cast<std::ptrdiff_t>(n));
+            return UltraNetResult::Ok();
+        });
     }
 };
 

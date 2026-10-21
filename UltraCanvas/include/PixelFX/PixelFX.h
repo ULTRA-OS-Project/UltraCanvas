@@ -1,7 +1,10 @@
 // PixelFX/include/PixelFX.h
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
+// Version: 1.5.0 - LoadPdf takes the password of a protected PDF
+// Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
+//                  FileLoader's lists
 // Version: 1.3.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -218,7 +221,10 @@ namespace PixelFX {
         PFXImage LoadTiff(const std::string& filename);
         PFXImage LoadGif(const std::string& filename);
         PFXImage LoadHeif(const std::string& filename);
-        PFXImage LoadPdf(const std::string& filename, int page = 0, double dpi = 72.0);
+        // `password` opens a password-protected PDF; without the right one
+        // libvips refuses it ("Document is encrypted").
+        PFXImage LoadPdf(const std::string& filename, int page = 0, double dpi = 72.0,
+                         const std::string& password = std::string());
         PFXImage LoadSvg(const std::string& filename, double dpi = 72.0, double scale = 1.0);
         PFXImage LoadRaw(const std::string& filename, int width, int height, int bands);
 
@@ -244,8 +250,14 @@ namespace PixelFX {
         bool SaveFits(const PFXImage& image, const std::string& filename);
 
         // ===== UTILITY =====
+        // The file types Load reads and Save writes in this build, lowercase,
+        // undotted, aliases included - FileLoader's: every picture type it
+        // reads, and the drawings and documents among its types that libvips
+        // opens (SVG, PDF); every picture type it writes. HEIC is in them only
+        // where libheif decodes or encodes it.
         std::vector<std::string> GetSupportedLoadFormats();
         std::vector<std::string> GetSupportedSaveFormats();
+        // A type in GetSupportedLoadFormats ("png", ".PNG").
         bool IsFormatSupported(const std::string& format);
         std::string DetectFormat(const std::string& filename);
 

@@ -7,8 +7,10 @@ UI-framework vendors such as bit BlazorUI, and comparing it with the other
 mechanisms currently in use across the industry.
 
 Status: Phase 0 is implemented (`AGENTS.md`, `CLAUDE.md`, generated
-`llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py` with CI sync
-check, `context7.json`). Phases 1 and 2 remain proposals.
+`llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py`, `context7.json`).
+CI regenerates the two files on `main` after every docs change lands
+(`.github/workflows/llms-regenerate.yml`); pull requests never carry them, and
+`llms-txt.yml` refuses one that does. Phases 1 and 2 remain proposals.
 
 ---
 
@@ -113,6 +115,8 @@ alternatives — the survey shows mature projects ship every layer.
    description) and **`llms-full.txt`** (concatenation of
    `Masterfile_modules.md` + `Docs/UltraCanvas/*.md` + module READMEs) via
    a small script wired into CI, committed or published as a release asset.
+   *(Done: CI runs `scripts/generate_llms_txt.py` on `main` after each docs
+   change and commits the result; pull requests leave the two files alone.)*
 3. **Submit the repo to Context7** (free) so the large installed base of
    Context7 users resolves `ultracanvas` to real docs immediately.
 

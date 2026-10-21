@@ -118,9 +118,6 @@ endif()
 # in the window title; UCAPP_ICON_PATH is the window and taskbar icon - the
 # 256 px render of media/appicon/UltraPress.svg, embedded in the Windows
 # executable as well, where Explorer and the taskbar read it off the binary.
-# Deliberately not a WIN32_EXECUTABLE, like ultrafibu: a GUI-subsystem
-# program cannot print into the prompt it was started from, and the
-# commands are half of this one.
 target_compile_definitions(ultrapress PRIVATE
     ULTRAPRESS_VERSION="${ULTRAPRESS_VERSION}"
     UCAPP_ICON_PATH="media/appicon/UltraPress.png")
@@ -128,6 +125,12 @@ set_target_properties(ultrapress PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 ultracanvas_embed_windows_manifest(ultrapress)
 ultracanvas_embed_app_icon(ultrapress "${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.png")
+# The commands are half of this program, like ultrafibu's: on Windows
+# ultrapress.exe is a GUI program and ultrapress.com its console companion,
+# which a prompt runs for the bare name and waits for
+# (cmake/UltraCanvasWindowsGuiApp.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
+ultracanvas_windows_console_companion(ultrapress)
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     install(TARGETS ultrapress RUNTIME DESTINATION bin)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraPress.desktop DESTINATION share/applications)

@@ -27,6 +27,85 @@ A second factory overload sets the folder immediately:
 auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 600);
 ```
 
+## Contents
+
+- [View types](#view-types)
+- [Scroll position across a resize](#scroll-position-across-a-resize)
+- [Empty display](#empty-display)
+- [Sorting](#sorting)
+- [Resizable columns](#resizable-columns)
+- [Long names](#long-names)
+- [File extensions](#file-extensions)
+- [File icons](#file-icons)
+- [Name tooltips](#name-tooltips)
+- [Context menu](#context-menu)
+- [Programs inside archives](#programs-inside-archives)
+- [Selective previews](#selective-previews)
+  - [Per-format switches (the list of files)](#per-format-switches-the-list-of-files)
+  - [Embedded preview bitmaps](#embedded-preview-bitmaps)
+  - [E-book covers](#e-book-covers)
+  - [File types the FileLoader knows](#file-types-the-fileloader-knows)
+  - [Native application icons](#native-application-icons)
+  - [Thumbnail memory](#thumbnail-memory)
+  - [Thumbnails between runs](#thumbnails-between-runs)
+- [Shortcuts](#shortcuts)
+  - [Windows shortcuts (.lnk)](#windows-shortcuts-lnk)
+  - [Desktop entries (.desktop)](#desktop-entries-desktop)
+  - [macOS shortcuts and application bundles](#macos-shortcuts-and-application-bundles)
+  - [What the host sees](#what-the-host-sees)
+- [Selection info bar](#selection-info-bar)
+- [Files in use](#files-in-use)
+- [Remote folders](#remote-folders)
+  - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
+  - [Changing a remote folder](#changing-a-remote-folder)
+- [Folder listing prefetch](#folder-listing-prefetch)
+- [Retiring a display](#retiring-a-display)
+- [Hidden entries](#hidden-entries)
+- [Hidden-items notice](#hidden-items-notice)
+- [Hiding Details columns](#hiding-details-columns)
+- [Entry filter](#entry-filter)
+- [Ignored names](#ignored-names)
+- [Curated home folder](#curated-home-folder)
+- [Entry names](#entry-names)
+  - [Names in every script, and names that are not UTF-8](#names-in-every-script-and-names-that-are-not-utf-8)
+- [File type colours](#file-type-colours)
+  - [Programs are not libraries](#programs-are-not-libraries)
+  - [Caption ink](#caption-ink)
+  - [What the extension cannot say](#what-the-extension-cannot-say)
+- [Folder icons](#folder-icons)
+- [Favorite mark](#favorite-mark)
+- [Folder previews](#folder-previews)
+- [Selection access](#selection-access)
+- [Hover icon menu](#hover-icon-menu)
+  - [The hover follows the cursor, not the content](#the-hover-follows-the-cursor-not-the-content)
+- [File operations](#file-operations)
+  - [Delete: to the Trash, or permanently](#delete-to-the-trash-or-permanently)
+  - [Progress window (copy / move / delete)](#progress-window-copy--move--delete)
+  - [Activating files — running applications](#activating-files-—-running-applications)
+  - [Launch feedback — the busy pointer](#launch-feedback-—-the-busy-pointer)
+  - [Delete problems (locked / failing entries)](#delete-problems-locked--failing-entries)
+  - [Selection after a delete](#selection-after-a-delete)
+- [Watching the shown folder](#watching-the-shown-folder)
+- [Compressing and extracting](#compressing-and-extracting)
+- [Clipboard interop with other programs](#clipboard-interop-with-other-programs)
+  - [The operation dialog](#the-operation-dialog)
+  - [Name conflicts](#name-conflicts)
+  - [The summary at the end](#the-summary-at-the-end)
+- [Drag & drop](#drag--drop)
+  - [Drops from elsewhere](#drops-from-elsewhere)
+  - [Drag overlay](#drag-overlay)
+- [Keyboard](#keyboard)
+- [Directory scanning](#directory-scanning)
+- [Folder modifications](#folder-modifications)
+  - [Finished copies and moves](#finished-copies-and-moves)
+- [File list (search results)](#file-list-search-results)
+  - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
+- [Name filter (filter-as-you-type)](#name-filter-filter-as-you-type)
+- [File type filter (load / save dialogs)](#file-type-filter-load--save-dialogs)
+- [Callbacks](#callbacks)
+- [Styling](#styling)
+- [Demo](#demo)
+
 ## View types
 
 `SetViewType(FilerViewType)` selects how the folder is presented:
@@ -567,7 +646,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -1155,16 +1234,30 @@ filer->remoteListingStatus = [drives](const std::string& path) {
 };
 ```
 
-It is asked after `remoteListing` answered with an empty listing, and again
-on every tick while the notice is up. A non-empty answer — "Connecting to
-Backup NAS (ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup
-NAS - 2 requests ahead" — puts a turning progress ring, **Loading folder**
-and that line in place of "Folder is empty!", and the words follow the fetch
-as the host's answer changes. An empty answer means the folder really is
-empty. Left unset, a folder being fetched shows as empty until the host's
-`Refresh()`, as before. The ring runs on a 50 ms application timer that stops
-as soon as the listing arrives, the folder changes or the widget is
-destroyed.
+It is asked after every `remoteListing` — an empty one, or one the host
+answered from its cache while it asks the server again — and again on every
+tick while it answers. A non-empty answer — "Connecting to Backup NAS
+(ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup NAS - 2
+requests ahead" — marks the folder as loading without covering it: a thin
+blue bar (`FilerStyle::loadingBarColor`, the accent blue) slides along the
+foot of the file area, just above the info bar, over whatever entries there
+are or an empty area; an empty folder's info bar says **Loading folder...**
+rather than "0 items", and "Folder is empty!" is not shown. The words are the
+host's to show — on its status line rather than over the files:
+
+```cpp
+filer->onListingPendingChanged = [statusLine](const std::string& status) {
+    statusLine->SetText(status);   // "" once the listing is in
+};
+// or read it when the status line is rebuilt: filer->GetListingPendingStatus()
+```
+
+`onListingPendingChanged` fires when the fetch starts, each time the host's
+answer changes, and with `""` once the listing is in. An empty answer means
+the listing is the folder as it is. Left unset, a folder being fetched shows
+as empty until the host's `Refresh()`, as before. The bar runs on a 40 ms
+application timer that repaints only its own strip, and stops as soon as the
+listing arrives, the folder changes or the widget is destroyed.
 ### Changing a remote folder
 
 Four more hooks let the host carry out the changes that act on the drive
@@ -1253,6 +1346,12 @@ filer->remoteDownload = [drives](const std::string& folderPath,
 - **`listingIsRealDirectory` stays false** for a remote listing, which turns
   off the features that read the local filesystem per entry: the folder
   previews and the in-use (lock) column.
+- **Nothing on a remote path is read in the background.** Thumbnails, text and
+  folder previews, media probes, folder statistics and the folder prefetch
+  skip every path `isRemotePath` claims: no decoder can open
+  `ultracloud://...`, and a video grab would wait out its timeout before
+  giving up. A thumbnail the host supplies as a local file
+  (`FilerEntry::thumbnailPath`) is still shown.
 
 UltraFiler's remote drives are built on these two hooks; see
 `Apps/UltraFiler/UltraFilerRemoteDrives.h`.
@@ -1282,6 +1381,31 @@ spinning disks.
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
+
+## Retiring a display
+
+The destructor waits for every background worker the widget started -
+thumbnails, previews, media probes, folder statistics, prefetch, the folder
+watch, a running file operation or archive job. One busy with a slow file
+holds whichever thread destroys the widget for as long. A host that drops a
+display while its UI runs - UltraFiler closing a tab - retires it instead:
+
+```cpp
+// The tab closes: tell the workers to stop, keep the widget.
+filer->RequestBackgroundStop();   // never blocks
+retired.push_back(filer);
+
+// Later, from a timer: destroy what has nothing left to wait for.
+std::erase_if(retired, [](const auto& f) { return f->BackgroundStopped(); });
+```
+
+- **`RequestBackgroundStop()`** is the destructor's teardown without its
+  waits: the timers are stopped, every worker queue is cleared and its worker
+  told to end, and a file operation or archive job still running is stopped
+  as its own Cancel would stop it, with nothing reported back.
+- **`BackgroundStopped()`** is true once every worker thread the widget
+  started has returned; the destructor's joins are then instant.
+- A retired widget is not shown or used again.
 
 ## Hidden entries
 
@@ -2430,6 +2554,12 @@ A drop on a folder of a **remote** drive goes through `remoteUpload` with that
 folder, and a drive's entries dropped on a local folder through
 `remoteDownload`, exactly as a drop on the folder the view shows does.
 
+A Save dialog's file icon dragged in from another window or program brings no
+file: its `Drop` carries `UCEvent::dropFolderReply`, and the view answers
+with the folder under the pointer (or the folder it shows) - the file is then
+saved there ([The file icon](UltraCanvasFileDialog.md#the-file-icon)). A
+remote drive's folder is no answer: there is no local disk to write to.
+
 ### Drag overlay
 
 The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
@@ -2587,6 +2717,38 @@ filer->onFolderModified = [this](const std::string& folder) {
 };
 ```
 
+### Finished copies and moves
+
+`onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
+has ended - walked to its end or cancelled from the progress window - after its
+windows are closed and the folders refreshed. `FilerTransferResult` counts the
+entries the user chose (a folder is one item however much it holds): `items`,
+`files`, `folders`, `skipped`, `firstName` when one entry went, `destination`,
+`moved` and `cancelled`, plus `message`, the same as one sentence for a status
+line - `"report.pdf" moved to "alt"`, `3 files copied to "alt"`,
+`Copy cancelled - 2 of 5 items copied to "alt"`. A cut pasted back into its own
+folder reports nothing. Skipped entries still get the summary window as well.
+
+The progress window over a copy or move opens once the operation has run for
+`SetProgressWindowDelay()` milliseconds (2000 by default); one that finishes
+sooner shows only the busy pointer, so the status line is where it is
+confirmed.
+
+```cpp
+filer->onTransferFinished = [this](const FilerTransferResult& r) {
+    statusBar->ShowFor(r.message, std::chrono::seconds(6));
+};
+```
+
+A delete reports the same way through `onDeleteFinished(result)`, with a
+`FilerDeleteResult`: `items`, `files`, `folders`, `skipped`, `firstName`,
+`toTrash`, `trashName` (`TrashDisplayName()`), `cancelled` and `message` -
+`"report.pdf" moved to the Trash`, `3 files deleted`,
+`3 of 5 items moved to the Recycle Bin (2 left)`,
+`Delete cancelled - 2 of 5 items deleted`. Entries removed inside an archive
+and by the administrator helper count with the rest; a delete on a remote
+drive is the host's (`remoteDelete`) and is not reported here.
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -2741,7 +2903,10 @@ reports what the system hides, not what the host asked for.
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
+| `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
+| `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |

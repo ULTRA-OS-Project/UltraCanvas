@@ -680,6 +680,7 @@ namespace UltraCanvas {
     class UltraCanvasFilerWidget;   // UltraCanvasFilerWidget.h includes this header
     class UltraCanvasSegmentedControl;
     class UltraCanvasFileDragIcon;
+    class UltraCanvasBreadcrumb;
     struct FilerEntry;
     class UltraCanvasDialogManager {
         friend class UltraCanvasModalDialog;
@@ -828,16 +829,35 @@ namespace UltraCanvas {
     // drop it on a folder of the listing or the tree and that folder is where
     // the file goes - and a Settings button for that type's save settings at
     // the end of the type row.
+    //
+    // It is laid out like the platforms' current dialogs (the Windows 11
+    // print dialog): a plain panel, each field's name written above it, the
+    // folder tree and the listing in rounded frames, and the Open / Save /
+    // Select Folder and Cancel buttons at the right of a footer band of their
+    // own. Its colours come from the theme (UltraCanvasTheme::Current(), or
+    // the one ApplyTheme gives).
     class UltraCanvasFileDialog : public UltraCanvasModalDialog {
     private:
         FileDialogConfig fileConfig;
+        // The rounded frames around the folder tree and the listing, and the
+        // names written above the fields: coloured by ApplyFileDialogLook.
+        std::vector<std::shared_ptr<UltraCanvasContainer>> paneFrames;
+        std::vector<std::shared_ptr<UltraCanvasLabel>> fieldLabels;
+        std::shared_ptr<UltraCanvasLabel> fileIconCaption;
+        // Save, with the picture's size given: under the type, the pixels it
+        // is written at and its proportions for a bitmap type ("1920 x 1080
+        // pixels (16:9)"), the proportions alone for a vector type ("(16:9)").
+        std::shared_ptr<UltraCanvasLabel> pictureSizeLabel;
         std::vector<std::string> selectedFiles;
         std::string currentDirectory;
 
         bool showHiddenFiles = false;
 
         // ===== ELEMENTS =====
-        std::shared_ptr<UltraCanvasTextInput> pathInput;
+        // The folder shown, as UltraFiler shows it: a breadcrumb whose
+        // segments open their folder and whose drop-downs list the folders
+        // inside. A path is typed in the name field.
+        std::shared_ptr<UltraCanvasBreadcrumb> pathBreadcrumb;
         std::shared_ptr<UltraCanvasButton> upButton;
         std::shared_ptr<UltraCanvasTreeView> folderTree;
         // The listing of the current folder: the framework's file display.
@@ -945,11 +965,17 @@ namespace UltraCanvas {
         // Escape while the Save icon is being dragged ends the drag, not the
         // dialog.
         bool OnEvent(const UCEvent& event) override;
+        // The dialog's own look over the base dialog's: the footer band, the
+        // frames, the field names and the accented Open / Save button.
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
     protected:
         // The name field takes the focus (the listing for a folder picker),
         // so typing a name works at once.
         void FocusInitialElement() override;
+        // Colours the panel, the footer band and its divider, the frames, the
+        // field names, the fields and the buttons from `theme`.
+        void ApplyFileDialogLook(const UltraCanvasTheme& theme);
 
         // ===== CONSTRUCTION =====
         void BuildFileInterface();
@@ -978,6 +1004,14 @@ namespace UltraCanvas {
         // The icon was dropped on `target` at `windowPoint`: a folder of the
         // listing or the tree under it becomes the current folder.
         void OnFileIconDropped(UltraCanvasUIElement* target, const Point2Di& windowPoint);
+        // The folder the icon was dropped on - here, or in another window or
+        // program - becomes the one the file is saved in.
+        void SaveIntoDroppedFolder(const std::string& folder);
+        // Points the breadcrumb at currentDirectory.
+        void ShowPathInBreadcrumb();
+        // Puts the size and proportions of what is saved, in the type chosen,
+        // under the type (pictureSizeLabel).
+        void UpdatePictureSizeLabel();
         // The Settings button: the save settings of the type being saved,
         // and the picture's size for this save when the caller gave it.
         void ShowSaveTypeSettings();

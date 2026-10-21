@@ -1,10 +1,12 @@
 // Apps/UltraPress/engine/UltraPressDeploy.cpp
 // See UltraPressDeploy.h.
+// Version: 0.8.2 - relative paths through SitePathText
 // Version: 0.5.1 - prune
 // Version: 0.5.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressDeploy.h"
+#include "UltraPressModel.h"      // SitePathText
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
@@ -100,11 +102,11 @@ bool WriteManifest(const fs::path& file, const std::string& hostKey, const Finge
     return UltraCanvas::JSON::SerializeToFile(UltraCanvas::PathToUtf8(file), json, pretty);
 }
 
-// The relative path with '/' between the parts, whatever the platform uses.
+// The relative path with '/' between the parts, whatever the platform uses
+// (SitePathText: a '\' in a name stays one off Windows, so the file opened
+// for the upload is the file listed).
 std::string RelativeOf(const fs::path& root, const fs::path& file) {
-    std::string relative = UltraCanvas::PathToUtf8(file.lexically_relative(root));
-    std::replace(relative.begin(), relative.end(), '\\', '/');
-    return relative;
+    return SitePathText(UltraCanvas::PathToUtf8(file.lexically_relative(root)));
 }
 
 } // namespace

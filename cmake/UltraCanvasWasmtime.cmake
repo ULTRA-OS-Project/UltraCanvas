@@ -9,15 +9,21 @@
 #      directory (include/, lib/). For offline builds and CI caches.
 #   2. The release archive for this platform, downloaded by FetchContent and
 #      checked against the SHA-256 below.
-# No Rust toolchain is needed for either. The MSYS2 CLANG64 / CLANGARM64
-# builds (the *-windows-gnullvm ABI) have no prebuilt library: there the
-# c-api crate would have to be built with Corrosion, as the Vectorizer
-# plugin builds its crate - not done yet, so WasmHost builds without an
-# engine there (Docs/UltraWeb/UltraWebProposal.md §4.1, §14).
+#   3. Where no release archive fits - the MSYS2 CLANG64 / CLANGARM64 builds,
+#      whose *-windows-gnullvm ABI wasmtime publishes no library for - the
+#      C API is built from wasmtime's source release (its Rust dependencies
+#      vendored in it, so Cargo builds offline) with the native Rust
+#      toolchain the Vectorizer plugin uses too (MSYS2's
+#      mingw-w64-clang-*-rust). ULTRACANVAS_WASMTIME_FROM_SOURCE=ON takes
+#      this path on any platform (for testing it off Windows).
+# No Rust toolchain is needed for 1 and 2. Without one for 3, WasmHost
+# builds without an engine and says so.
 #
+# Version: 1.2.0 - the C API built from the source release where no prebuilt
+#                  library fits (MSYS2 CLANG64 / CLANGARM64)
 # Version: 1.1.0 - the system zstd ahead of the archive's own on Linux
 # Version: 1.0.0
-# Last Modified: 2026-10-07
+# Last Modified: 2026-10-15
 # Author: UltraCanvas Framework / ULTRA OS
 
 set(ULTRACANVAS_WASMTIME_VERSION "49.0.2")
@@ -25,6 +31,9 @@ set(ULTRACANVAS_WASMTIME_FOUND FALSE)
 # Linked ahead of UltraCanvas::wasmtime by its users (see the Linux branch).
 set(ULTRACANVAS_WASMTIME_PRELINK "")
 set(ULTRACANVAS_WASMTIME_DIR "" CACHE PATH "An unpacked wasmtime C API (include/, lib/); empty downloads the release")
+option(ULTRACANVAS_WASMTIME_FROM_SOURCE "Build wasmtime's C API from its source release with Cargo, even where a prebuilt one exists" OFF)
+# The source release (v49.0.2), with its crates vendored.
+set(_uc_wt_src_sha256 "8dbfaa56c576471e954e96e24e57acaab2457f68a194a97386ecc2c56f1faba2")
 
 # The release asset for this platform, and its SHA-256 (v49.0.2).
 set(_uc_wt_asset "")
@@ -61,6 +70,10 @@ elseif(MINGW AND _uc_wt_cpu STREQUAL "x86_64" AND CMAKE_CXX_COMPILER_ID STREQUAL
     # The GNU ABI (gcc + libgcc), not MSYS2's CLANG64 gnullvm.
     set(_uc_wt_asset "x86_64-mingw-c-api.zip")
     set(_uc_wt_sha256 "113603c5627adc5ea89d80554434662198aa205d248ba7837c609604ee87ff1c")
+endif()
+
+if(ULTRACANVAS_WASMTIME_FROM_SOURCE AND NOT ULTRACANVAS_WASMTIME_DIR)
+    set(_uc_wt_asset "")
 endif()
 
 set(_uc_wt_root "")
@@ -121,5 +134,99 @@ if(_uc_wt_root)
         set(ULTRACANVAS_WASMTIME_FOUND TRUE)
     else()
         message(WARNING "wasmtime C API not usable at ${_uc_wt_root} (need include/wasmtime.h and lib/)")
+    endif()
+endif()
+
+# ---- 3. built from the source release ---------------------------------------
+if(NOT ULTRACANVAS_WASMTIME_FOUND AND NOT ULTRACANVAS_WASMTIME_DIR
+   AND (ULTRACANVAS_WASMTIME_FROM_SOURCE OR (MINGW AND NOT _uc_wt_asset)))
+    # A native Rust toolchain: next to the C compiler (MSYS2's
+    # mingw-w64-clang-*-rust), else rustup's. MSYS2's /usr/bin POSIX rust
+    # cannot build for Windows (see the Vectorizer plugin).
+    get_filename_component(_uc_wt_cc_bin "${CMAKE_C_COMPILER}" DIRECTORY)
+    unset(_UC_WT_CARGO CACHE)
+    unset(_UC_WT_RUSTC CACHE)
+    find_program(_UC_WT_CARGO cargo HINTS "${_uc_wt_cc_bin}" "$ENV{USERPROFILE}/.cargo/bin" "$ENV{HOME}/.cargo/bin")
+    find_program(_UC_WT_RUSTC rustc HINTS "${_uc_wt_cc_bin}" "$ENV{USERPROFILE}/.cargo/bin" "$ENV{HOME}/.cargo/bin")
+    set(_uc_wt_target "")
+    if(_UC_WT_CARGO AND _UC_WT_RUSTC)
+        execute_process(COMMAND "${_UC_WT_RUSTC}" -vV OUTPUT_VARIABLE _uc_wt_rustc_vv RESULT_VARIABLE _uc_wt_rc)
+        if(_uc_wt_rc EQUAL 0 AND _uc_wt_rustc_vv MATCHES "host: ([^ \n]+)")
+            set(_uc_wt_target "${CMAKE_MATCH_1}")
+        endif()
+    endif()
+    if(WIN32 AND _uc_wt_target AND NOT _uc_wt_target MATCHES "windows")
+        set(_uc_wt_target "")       # a POSIX rust: it would build for Cygwin
+    endif()
+    if(NOT _uc_wt_target)
+        message(WARNING "WasmHost: no wasmtime library for this platform, and no native Rust toolchain "
+                        "to build one (install mingw-w64-clang-x86_64-rust, or -aarch64 on ARM), "
+                        "so UltraWeb will not run apps")
+    else()
+        include(FetchContent)
+        FetchContent_Declare(ultracanvas_wasmtime_src
+            URL "https://github.com/bytecodealliance/wasmtime/releases/download/v${ULTRACANVAS_WASMTIME_VERSION}/wasmtime-v${ULTRACANVAS_WASMTIME_VERSION}-src.tar.gz"
+            URL_HASH SHA256=${_uc_wt_src_sha256}
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        # The archive has no top-level CMakeLists.txt, so this only
+        # downloads and unpacks (its crates/c-api CMake project is not used).
+        FetchContent_MakeAvailable(ultracanvas_wasmtime_src)
+        set(_uc_wt_capi "${ultracanvas_wasmtime_src_SOURCE_DIR}/crates/c-api")
+        set(_uc_wt_cargo_dir "${CMAKE_BINARY_DIR}/wasmtime-cargo")
+        if(_uc_wt_target MATCHES "windows-msvc")
+            set(_uc_wt_lib "${_uc_wt_cargo_dir}/${_uc_wt_target}/release/wasmtime.lib")
+        else()
+            set(_uc_wt_lib "${_uc_wt_cargo_dir}/${_uc_wt_target}/release/libwasmtime.a")
+        endif()
+
+        # What WasmHost uses, and no more: the compiler, WebAssembly text,
+        # WASI preview 1, threads for compiling in parallel, and the GC the
+        # exceptions proposal needs. (The release libraries carry every
+        # feature; wasi-http among them would bring a TLS stack to build.)
+        set(_uc_wt_features cranelift wat wasi parallel-compilation gc gc-drc)
+        set(_uc_wt_feature_args "")
+        foreach(_f IN LISTS _uc_wt_features)
+            list(APPEND _uc_wt_feature_args "--features=${_f}")
+            string(TOUPPER "WASMTIME_FEATURE_${_f}" _fvar)
+            string(REPLACE "-" "_" _fvar "${_fvar}")
+            set(${_fvar} ON)
+        endforeach()
+        # wasmtime/conf.h says which features the library has.
+        configure_file("${_uc_wt_capi}/include/wasmtime/conf.h.in"
+                       "${CMAKE_BINARY_DIR}/wasmtime-include/wasmtime/conf.h")
+
+        add_custom_command(
+            OUTPUT "${_uc_wt_lib}"
+            COMMAND ${CMAKE_COMMAND} -E env
+                    CARGO_PROFILE_RELEASE_PANIC=abort
+                    "CARGO_TARGET_DIR=${_uc_wt_cargo_dir}"
+                    "${_UC_WT_CARGO}" build --release --offline --locked
+                    --target ${_uc_wt_target} --package wasmtime-c-api
+                    --no-default-features ${_uc_wt_feature_args}
+            WORKING_DIRECTORY "${_uc_wt_capi}"
+            COMMENT "Building wasmtime ${ULTRACANVAS_WASMTIME_VERSION}'s C API with Cargo (${_uc_wt_target}; a few minutes)"
+            USES_TERMINAL
+            VERBATIM)
+        add_custom_target(ultracanvas_wasmtime_cargo DEPENDS "${_uc_wt_lib}")
+
+        add_library(ultracanvas_wasmtime INTERFACE)
+        add_dependencies(ultracanvas_wasmtime ultracanvas_wasmtime_cargo)
+        target_include_directories(ultracanvas_wasmtime INTERFACE
+            "${_uc_wt_capi}/include" "${CMAKE_BINARY_DIR}/wasmtime-include")
+        target_compile_definitions(ultracanvas_wasmtime INTERFACE "WASM_API_EXTERN=" "WASI_API_EXTERN=")
+        find_package(Threads REQUIRED)
+        if(WIN32)
+            target_link_libraries(ultracanvas_wasmtime INTERFACE "${_uc_wt_lib}"
+                ws2_32 advapi32 userenv ntdll shell32 ole32 bcrypt synchronization)
+        elseif(APPLE)
+            target_link_libraries(ultracanvas_wasmtime INTERFACE "${_uc_wt_lib}"
+                Threads::Threads "-framework CoreFoundation")
+        else()
+            target_link_libraries(ultracanvas_wasmtime INTERFACE "${_uc_wt_lib}"
+                Threads::Threads ${CMAKE_DL_LIBS} m)
+        endif()
+        add_library(UltraCanvas::wasmtime ALIAS ultracanvas_wasmtime)
+        set(ULTRACANVAS_WASMTIME_FOUND TRUE)
+        message(STATUS "  WasmHost: wasmtime's C API built from source with ${_UC_WT_CARGO} (${_uc_wt_target})")
     endif()
 endif()

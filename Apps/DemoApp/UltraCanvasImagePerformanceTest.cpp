@@ -1422,7 +1422,7 @@ namespace UltraCanvas {
 
         state->chooseBtn = std::make_shared<UltraCanvasButton>(
                 "PerfChooseBtn", 0, 0, 160, 30);
-        state->chooseBtn->SetText("Choose Image...");
+        state->chooseBtn->SetText("Choose Image");
 
         // [x] Include BMP — opt-in for the BMP codec, which would otherwise
         // dominate the size axis. Toggling between runs re-runs automatically

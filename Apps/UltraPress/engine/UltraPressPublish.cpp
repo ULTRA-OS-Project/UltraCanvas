@@ -1,8 +1,9 @@
 // Apps/UltraPress/engine/UltraPressPublish.cpp
 // Static publishing and the starter site.
+// Version: 0.8.2 - the output's paths through SitePathText
 // Version: 0.5.1 - the output mirrors the site: stale files removed
 // Version: 0.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressPublish.h"
 
@@ -111,8 +112,7 @@ PublishResult PublishStatic(const Site& site, const std::string& siteDirectory,
         for (const fs::directory_entry& entry : fs::recursive_directory_iterator(outDir, ec)) {
             if (!entry.is_regular_file(ec)) continue;
             const fs::path relativePath = entry.path().lexically_relative(outDir);
-            std::string relative = UltraCanvas::PathToUtf8(relativePath);
-            std::replace(relative.begin(), relative.end(), '\\', '/');
+            const std::string relative = SitePathText(UltraCanvas::PathToUtf8(relativePath));
             if (relative == ".ultrapress-deploy.json" || written.count(relative)) continue;
             if (relative.rfind("media/", 0) == 0) {
                 if (hasMedia && fs::exists(media / relativePath.lexically_relative("media"), ec)) continue;

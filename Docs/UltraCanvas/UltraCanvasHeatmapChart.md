@@ -9,6 +9,20 @@ density grids, or audio **spectrograms** produced by an STFT in front of it.
 - Source: `Plugins/Charts/UltraCanvasHeatmapChart.cpp`
 - Base class: `UltraCanvasChartElementBase`
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Data model](#data-model)
+- [Value range and scaling](#value-range-and-scaling)
+- [Colour maps](#colour-maps)
+  - [Discrete colour levels](#discrete-colour-levels)
+  - [Diverging colour mapping](#diverging-colour-mapping)
+- [Cell shape and spacing](#cell-shape-and-spacing)
+- [Triangular masking](#triangular-masking)
+- [Orientation and render strategy](#orientation-and-render-strategy)
+- [Labels, titles, colour bar](#labels-titles-colour-bar)
+- [Using it for spectrograms](#using-it-for-spectrograms)
+
 ## Quick start
 
 ```cpp

@@ -19,7 +19,8 @@
 // UltraCanvasFilerWidget - one per tab) and
 // the detail pane (shown only while a single previewable file OR a folder is
 // selected — a folder only once the double-click interval has passed, so a
-// double-click that opens it never flashes its preview; Esc closes it): a
+// double-click that opens it never flashes its preview; a selection gathered
+// with Ctrl leaves it as it is; Esc closes it): a
 // selected media file shows in the
 // UltraCanvasMediaViewer, a selected folder shows its content through a second
 // small-thumbnail UltraCanvasFilerWidget — the two share the one pane. Plus a
@@ -80,10 +81,17 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.29.0 - AllowCloseDuringTransfers: closing during an upload or a
+//                  download asks first; an upload onto a name that is taken
+//                  asks Keep both / Replace / Skip (PlanRemoteUploads)
+// Version: 1.29.0 - the split view's right-hand display is retired when the split
+//                  view goes off, and made again when it comes back
+// Version: 1.28.0 - a closed tab's folder display is destroyed once its workers
+//                  have stopped (RetireDisplay), not while the tab closes
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -136,6 +144,9 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+// One drop's name conflicts on a drive, asked about in turn (UltraFilerWindow.cpp).
+struct RemoteUploadConflicts;
 
 class UltraFilerWindow {
 public:
@@ -445,6 +456,14 @@ private:
     // Opens the connection log window, or brings it to the front with the
     // log as it is now.
     void OpenConnectionLog();
+    // The window's onWindowClosing. Closing it ends UltraFiler - and with it
+    // the uploads and downloads still running or waiting on a remote drive,
+    // which UltraFilerRemoteDrives::Stop() calls off. So a close that would
+    // end the application while there are any (PendingTransfers) asks first
+    // - "An upload is still running — quit anyway?" - and holds the window
+    // open until "Quit anyway" is chosen. True lets the close go ahead.
+    bool AllowCloseDuringTransfers();
+    void AskQuitDuringTransfers(const std::vector<RemoteTransfer>& transfers);
     // Hands the open log window the log as it is now; called a moment after
     // a change, so a burst of steps is one refresh.
     void ScheduleConnectionLogRefresh();
@@ -790,9 +809,31 @@ private:
     // reason for what was left out comes back in `firstRefusal`. Used by a
     // drop on a remote row of the tree and by a drop onto a remote folder in
     // a display (the widget's remoteUpload hook).
+    //
+    // A file whose name is already taken in the folder is not replaced
+    // without a word: it is asked about the way a paste is (PlanRemoteUploads).
+    // The folder is listed afresh first - a file of that name may have
+    // appeared since it was last opened - and the files wait for the answer
+    // (uploadsAwaitingListing); they count as queued meanwhile.
     int UploadToRemoteFolder(const std::string& folder,
                              const std::vector<std::string>& files,
                              std::string& firstRefusal);
+    // The uploads of `files` into `folder` once `there`, its listing, is
+    // known. A file whose name is taken there is settled by Settings >
+    // Handling's standing answer (settings.conflictPolicy) - or, when that is
+    // Ask, asked about: Keep both (uploaded beside it as "name (2)"), Replace,
+    // Skip or Stop, with "Apply to all" for the rest. The others are queued
+    // at once. Returns how many were queued or are being asked about.
+    int PlanRemoteUploads(const std::string& folder, const std::vector<std::string>& files,
+                          const std::vector<FilerEntry>& there, std::string& firstRefusal);
+    // Asks about the next taken name of `run`, queueing what each answer says.
+    void AskRemoteUploadConflict(const std::shared_ptr<RemoteUploadConflicts>& run);
+    // Queues (local file, name on the drive - empty for its own) pairs and
+    // puts on the status bar how many are on their way where, and why any
+    // were left out.
+    int QueueRemoteUploads(const std::string& folder,
+                           const std::vector<std::pair<std::string, std::string>>& items,
+                           std::string& firstRefusal);
     // The mirror of it: queues the download of the remote `files` into the
     // local folder `folder`, one request per file, and puts what happened on
     // the status bar. Returns the number queued, with the first reason for
@@ -861,6 +902,10 @@ private:
     // the selected file is kept scrolled into view when the pane narrows the
     // folder display.
     void UpdatePreviewPane();
+    // True while the selection change being handled came from a click, a
+    // marquee drag or Ctrl+A with Ctrl held - a multiple selection being
+    // gathered, which leaves the detail pane as it is.
+    static bool SelectionChangedWithCtrl();
     // Opens `path` in the media viewer for the preview pane and remembers the
     // file as it was when opened (size and modification time, stamped before
     // the viewer reads it) for ReloadChangedPreview. `asCopy`: a remote file's
@@ -886,6 +931,12 @@ private:
     void ReloadChangedPreview();
     void ArmPreviewReloadTimer(unsigned int delayMs);
     void CancelPreviewReloadTimer();
+    // Puts a finished copy / move / delete on the status line for
+    // kTransferNoteMs (onTransferFinished / onDeleteFinished of every
+    // folder display).
+    void WireTransferNotice(UltraCanvasFilerWidget* target);
+    void ShowTransferNote(const std::string& message);
+    void ClearTransferNote();
     // Whether a file on a remote drive is previewed: pictures, vector
     // drawings and 3D models only, because showing one means downloading
     // it first. A video or a document there is opened, not previewed.
@@ -1079,9 +1130,33 @@ private:
     // The log window while it is open; it owns itself (deleteOnClose).
     std::weak_ptr<UltraFilerConnectionLogWindow> connectionLogWindow;
     TimerId connectionLogRefreshTimer = InvalidTimerId;
+    // The drive's folder the user expanded in the tree while its subfolders
+    // are being fetched: its wait is said on the status bar (TreeFetchStatus),
+    // kept current by the timer until the row stops loading.
+    std::string treeFetchPath;
+    TimerId treeFetchTimer = InvalidTimerId;
+    void WatchTreeFetch(const std::string& path);
+    void StopTreeFetchTimer();
+    // What that fetch waits for, as the status bar says it; empty when there
+    // is none, or when it is the folder the display shows (whose own wait is
+    // said already).
+    std::string TreeFetchStatus() const;
     // How many failed connections the log window has shown: the button
     // counts the ones beyond this.
     std::size_t connectionLogSeenErrors = 0;
+    // The answer to AllowCloseDuringTransfers' question: "Quit anyway" lets
+    // the close it repeats go through. While the question is open, a second
+    // close does not ask it again.
+    bool quitConfirmed = false;
+    bool quitQuestionOpen = false;
+    // Uploads waiting for their folder's listing, so that the names taken
+    // there are known before anything is replaced (UploadToRemoteFolder).
+    // Taken up again by onListingArrived for that folder.
+    struct UploadsAwaitingListing {
+        std::string folder;
+        std::vector<std::string> files;
+    };
+    std::vector<UploadsAwaitingListing> uploadsAwaitingListing;
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;
@@ -1094,6 +1169,13 @@ private:
     // or the download failed). Shown on the status line after the drop note
     // and cleared as soon as the selection moves.
     std::string remotePreviewNote;
+    // What the last copy, move or delete did - "3 files copied to \"alt\"",
+    // "\"report.pdf\" moved to the Trash" - said on
+    // the status line for kTransferNoteMs after it ends, so a drop or a paste
+    // whose window never came up still gets its confirmation.
+    std::string transferNote;
+    TimerId transferNoteTimer = InvalidTimerId;
+    static constexpr unsigned kTransferNoteMs = 6000;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;
@@ -1107,11 +1189,29 @@ private:
 
     // ===== STATE =====
     std::vector<std::unique_ptr<FilerTabState>> tabStates;  // mirrors tab order
+    // Closed tabs whose folder display is still stopping its workers. A
+    // display is destroyed on the UI thread, and its destructor waits for
+    // every worker - one busy with a slow file (a video grab, a folder walk
+    // on a sleeping disk) would freeze the window as the tab closes. So a
+    // closed tab's display is told to stop (RequestBackgroundStop), kept
+    // here, and destroyed by ReapRetiredDisplays once its workers are gone.
+    std::vector<std::unique_ptr<FilerTabState>> retiredDisplays;
+    TimerId retiredReapTimer = InvalidTimerId;
+    void RetireDisplay(std::unique_ptr<FilerTabState> state);
+    void ReapRetiredDisplays();
     int tabCounter = 0;                    // unique widget ids for new tabs
     // The split view's right-hand display: a folder display like a tab's,
     // with its own Back / Forward history, that is in no tab. Created with
-    // the window; shown only while the split view is on.
+    // the window, and again each time the split view comes back on: turning
+    // it off retires the display like a closed tab (RetireDisplay), so its
+    // workers do not run on behind a hidden pane and the window never waits
+    // for them. Null while the split view is off after that.
     std::unique_ptr<FilerTabState> secondPane;
+    // Its Back / Forward history while it is retired, given to the next one,
+    // which opens on the folder it showed (settings.splitSecondFolder).
+    std::vector<std::string> splitHistory;
+    size_t splitHistoryIndex = 0;
+    void CreateSecondPane();
     bool splitViewShown = false;           // two displays side by side
     SplitSide activeSplitSide = SplitSide::Left;   // the pane the toolbars act on
     bool treeDockShown = false;            // the tree is docked in a pane

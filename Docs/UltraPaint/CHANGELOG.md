@@ -1,3 +1,171 @@
+#### 2026-10-21 *0.2.28*
+- **An open adjustment follows the image it works on.** An adjustment or
+  filter dialog (Levels, Curves, Colour to Alpha, Blur and the rest) took a
+  copy of the layer when it opened and put that copy back on every change in
+  the dialog: an image pasted while it was open - as a new layer or as a new
+  image - was replaced by the picture from before as soon as a slider moved,
+  and *OK* applied the adjustment to the old pixels. The preview now works on
+  the active layer as it is: a paste moves it to the pasted layer (the layer
+  it leaves gets its own pixels back), *Paste as New Image* or opening an
+  image moves it to the new picture, and a stroke or an undo on the layer is
+  kept and adjusted rather than undone. It refreshes on its own as soon as
+  the image changes, Curves redraws its histogram for the new pixels, and on
+  a locked or text layer the preview waits and says why.
+- **Curves says why on a locked layer.** *Adjust > Curves...* on a locked
+  layer did nothing at all; it now says the active layer is locked, as every
+  other adjustment does.
+#### 2026-10-20 *0.2.27*
+- **Password-protected images.** *File > Password Protection...* gives the
+  image a password; saved as an UltraCanvas layered image (`.ucd`) it is then
+  encrypted - an Argon2id key, every section sealed with XChaCha20-Poly1305 -
+  and opens only with that password, which cannot be recovered. *Hide the
+  preview too* leaves the thumbnail out as well. The dialog also changes the
+  password or removes the protection. Opening a protected `.ucd` - from Open,
+  a drop or the command line - asks for its password, again after a wrong
+  one, and *Save* keeps it protected; *Save* or *Save As* to another format
+  says first that the file goes without the protection (framework
+  changelog, pending entry `ucd-password-protection`).
+- **A password-protected PDF imports.** Opening or dropping one only ever
+  failed: the PDF reader UltraPaint draws pages with had no way to be given
+  a password. It now asks for the password first - again when it is not
+  right - then for the raster size as for any drawing, and renders the page
+  with it (framework changelog, pending entry `vector-raster-pdf-password`).
+- **Every protected file is asked for, not only the first.** Of several
+  files dropped together, only the first could ask for a password; a
+  protected one among the rest was left out with a message. Each now asks in
+  turn - the next waiting for the answer, once the one before is on the
+  canvas - and Cancel leaves out just that file. A protected file copied in a
+  file manager and pasted (*Paste as New Layer*, *Paste as New Image*) asks
+  for its password too, where it used to stop at "needs its password"; a
+  `.ucd` pasted as a new image keeps its protection, as when it is opened.
+- **A password is typed once for a drop, not once per file.** Files dropped
+  together often share a password, or a few: every password given in the
+  drop (up to eight) is tried on the next protected file - the one that last
+  opened a file first - which then comes in without a question, so a drop
+  that alternates between two passwords asks for each once. Only a file none
+  of them opens asks, saying so. They are held zeroed-on-free and forgotten
+  when the drop has been read - or as soon as the screen locks, so a drop
+  left half-answered while you step away asks again for what comes after
+  (framework changelog, pending entry `session-lock`).
+- **Paste as New Image says what it pasted.** It left the previous status
+  message showing; it now reads *Pasted photo.png as a new image, 800 x 600
+  pixels* (or *Pasted as a new image* for a copied picture), as Paste as New
+  Layer does.
+
+#### 2026-10-19 *0.2.26*
+- **Colour palettes under the picker.** The row of swatches in the Colour
+  card is a palette manager now (the framework's
+  `UltraCanvasColorPaletteManager`). A small **+** at the end of the row
+  opens a gallery of colour schemes - basics, moods, design systems, retro
+  machines and indexed palettes up to a whole 256-colour GIF palette - and
+  each scheme's own **+** adds it as another row under the picker. With
+  several rows every row ends in a **−** that takes it away, and the **+**
+  moves to the last row. Large palettes wrap into a block of small swatches.
+- **A right click on a palette swatch edits it.** A small colour picker with
+  only the foreground colour opens next to the swatch and sets that entry
+  of the palette as it is dragged; *Revert* puts it back. (A right click on
+  a swatch used to set the background colour; the picker's own background
+  swatch still does that.)
+- The rows - with their edited colours - are kept in the settings file
+  (`picker.palettes`), so the palettes are there the next time.
+
+#### 2026-10-16 *0.2.25*
+- **The colour panel takes less room, and stays as it was left.** The
+  picker in the Colour card folds its channels away: the HSV / HSL / RGB
+  tabs and the channel sliders sit under a *Channels* row that opens them,
+  so the panel starts with the hue ring, the swatches and the hex field, and
+  the active tool's options card moves up into view. A list top right
+  switches the picker between the colour circle, the slider and square, the
+  colour rectangle and the two sliders (hue and brightness); the picker is
+  as tall as what it shows, so the card and the cards below move up and down
+  with it. UltraPaint opens the picker with the design and the channels it
+  was left with: the settings file keeps them as `picker.design` and
+  `picker.channels` (framework changelog: `colour-picker-toolbox`).
+
+#### 2026-10-16 *0.2.24*
+- **Layered images in the UCD format.** *Save As* offers *UltraCanvas layered
+  image (.ucd)* beside the *UltraPaint project*: an UltraCanvas Document
+  (UCD 2.1) that keeps every layer - its pixels, name, visibility, lock,
+  opacity and blend mode - and a text layer's words as text, so it opens as
+  text again, with a thumbnail of the picture straight after its header that
+  UltraFiler and UltraViewer show without opening the layers. Open takes it
+  too, and a `.ucd` dropped on UltraPaint's icon opens (MIME type
+  `image/x-ultracanvas-bitmap`, told from other UltraCanvas documents by its
+  signature). The two layered formats now come from the framework's format
+  inventory (*Layered images*) instead of a list of UltraPaint's own
+  (framework changelog, pending entry `ucd-layered-images`).
+- **Escape in the Text tool's lists leaves you typing.** Opening the *Font*
+  or *Align* list while typing a text and closing it with Escape - or with
+  the entry it already had - left the keyboard on the list's button, so what
+  was typed next went nowhere until the text was clicked again. The keys now
+  go back to the text, as they do after picking a font; Tab or a click
+  elsewhere still moves them where they were sent.
+- **The text being typed stays on its box when the document changes before
+  the window has redrawn.** A change to the document (a layer added, the
+  canvas resized) between a window resize and the next redraw moved the view
+  without telling the window, so the editor could sit off its text until the
+  next redraw (framework changelog, pending entry
+  `paint-surface-reports-document-moves`).
+
+#### 2026-10-15 *0.2.23*
+- **Text is typed on the image, and stays text.** The Text tool no longer
+  asks for its words in a window and stamps them into the active layer: a
+  click on the canvas starts a text there (a drag, a box its lines wrap in)
+  and the words appear as they are typed - in their font, size and colour,
+  at the view's zoom, where they will be. The editor is the framework's
+  WYSIWYG element laid over the canvas, and the same element draws the text
+  into its layer, so what is typed is exactly what the layer gets, at any
+  zoom. Escape, Ctrl+Enter or a click outside finishes it.
+  - **Rich text:** bold, italic, underline, size, font and colour apply to the
+    selection or to what is typed next, so one text can mix them; alignment
+    (left, centre, right) per paragraph; Ctrl+B / I / U while typing.
+  - **Every installed font** is offered, not Sans / Serif / Monospace: the
+    *Font* list holds every scalable family on the system (with the bundled
+    ones), and typing the start of a name in the open list jumps to it,
+    spaces and all (*"liberation s"* for Liberation Serif).
+  - **A text layer** ("T" in the Layers panel) keeps the words until it is
+    merged: click it with the Text tool, or *Layer > Edit Text*, to change
+    them; with the Text tool active the options and the colour change a
+    whole text layer; the Move tool moves it as text. *Merge Down*,
+    *Flatten*, scaling, flipping and rotating make it pixels; painting,
+    filling or filtering it asks first whether to rasterize it (*Layer >
+    Rasterize Layer*), and Undo makes it text again.
+  - **Projects keep it:** a `.ucraster` stores a text layer's words as an
+    OpenDocument text beside its PNG, so it opens as text again (a missing
+    font on another machine changes nothing until the text is edited).
+  Framework: text layers, `RenderTextLayer`, `GetInstalledFontFamilies`,
+  dropdown type-ahead (framework changelog, pending entry `text-layers`).
+- **The canvas re-centres when the window is resized.** Growing the window
+  left the image where it was, off to one side of the new space, until the
+  next change to the document snapped it to the middle. It is now centred
+  again as the window changes size, at the same zoom; an image larger than
+  the view keeps the spot that was in the middle of it, and text being typed
+  stays on its box (framework changelog, pending entry
+  `paint-surface-follows-resize`).
+
+#### 2026-10-15 *0.2.22*
+- **The right-hand panel in UltraMail's look.** Colour, the active tool's
+  options and Layers were bold headings over loose controls on a grey strip,
+  with the colour picker a dark block with a red accent in the middle of it.
+  Each is now a white card - a group box with a quiet grey caption over a
+  hairline, rounded corners and a hairline border - on a light page, the same
+  colours and metrics UltraMail's folder, message list and message cards use.
+  The picker takes the card's white, hairline fields and the accent blue; the
+  layer list reads as a list (no box around each name, a soft grey under the
+  pointer and the active layer on the light blue); the seven layer buttons are
+  flat, like the main toolbar's, and fit the panel - the last one, *Layer
+  properties*, was cut off at its edge, and the panel grew a horizontal
+  scrollbar for it; the tool card is captioned with the tool's name, and Zoom
+  and Pan, which have nothing to set, say so instead of showing an empty card;
+  and the hints under a tool's options (*"[ and ] change the size"*) are quiet
+  grey rather than one more bold line. The cards, the layer rows' tints and
+  the picker's style are the framework's (`GroupBoxVisualStyle::SectionCard()`,
+  `Colors::ListRowHover` / `ListRowSelected`, `ColorPickerStyle::Light()`;
+  framework changelog:
+  `section-card-and-light-picker`), shared with UltraMail and UltraFiler
+  rather than copied, and the picker in *Adjust > Colour to Alpha* takes the
+  same light style, so the two pickers read as one control.
+
 #### 2026-10-14 *0.2.21*
 - **One UltraPaint at a time.** Opening a file while UltraPaint is already
   running opens it in the running copy (in a new window) instead of starting a

@@ -1,7 +1,8 @@
 // core/UltraCanvasUtils.h
 // Utils
+// Version: 1.0.1 - NormalizePath: a '\' at the end is a separator only on Windows
 // Version: 1.0.0
-// Last Modified: 2025-09-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -674,7 +675,8 @@ namespace UltraCanvas {
     ProcessOutput RunProcessCaptured(
             const std::vector<std::string>& argv,
             const std::vector<unsigned char>& input,
-            const std::vector<std::pair<std::string, std::string>>& extraEnvironment) {
+            const std::vector<std::pair<std::string, std::string>>& extraEnvironment,
+            const ProcessOutputCallback& onOutput) {
 
         ProcessOutput result;
         if (argv.empty() || argv[0].empty()) {
@@ -805,17 +807,28 @@ namespace UltraCanvas {
         // and both sides would wait for the other forever.
         std::vector<unsigned char> capturedOut;
         std::string capturedErr;
+        // The two readers take turns at onOutput: its contract is one call at a time.
+        std::mutex callbackMutex;
+        auto report = [&](const char* data, size_t size, bool fromError) {
+            if (!onOutput) return;
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            onOutput(data, size, fromError);
+        };
         std::thread outReader([&]() {
             char buffer[64 * 1024];
             DWORD got = 0;
-            while (ReadFile(outRead, buffer, sizeof(buffer), &got, nullptr) && got > 0)
+            while (ReadFile(outRead, buffer, sizeof(buffer), &got, nullptr) && got > 0) {
                 capturedOut.insert(capturedOut.end(), buffer, buffer + got);
+                report(buffer, got, false);
+            }
         });
         std::thread errReader([&]() {
             char buffer[8 * 1024];
             DWORD got = 0;
-            while (ReadFile(errRead, buffer, sizeof(buffer), &got, nullptr) && got > 0)
+            while (ReadFile(errRead, buffer, sizeof(buffer), &got, nullptr) && got > 0) {
                 capturedErr.append(buffer, got);
+                report(buffer, got, true);
+            }
         });
 
         size_t written = 0;
@@ -954,6 +967,7 @@ namespace UltraCanvas {
                 if (got > 0) {
                     result.standardOutput.insert(result.standardOutput.end(),
                                                  buffer, buffer + got);
+                    if (onOutput) onOutput(buffer, static_cast<size_t>(got), false);
                 } else if (got == 0 || (errno != EINTR && errno != EAGAIN)) {
                     CloseIfOpen(outPipe[0]);
                 }
@@ -963,6 +977,7 @@ namespace UltraCanvas {
                 const ssize_t got = ::read(errPipe[0], buffer, sizeof(buffer));
                 if (got > 0) {
                     result.standardError.append(buffer, static_cast<size_t>(got));
+                    if (onOutput) onOutput(buffer, static_cast<size_t>(got), true);
                 } else if (got == 0 || (errno != EINTR && errno != EAGAIN)) {
                     CloseIfOpen(errPipe[0]);
                 }
@@ -1007,8 +1022,14 @@ namespace UltraCanvas {
         std::string result = realpath(in.c_str(), real) ? std::string(real) : in;
 #endif
         // A folder given with a separator at its end keeps exactly one, so a
-        // file name appends to it as it is.
+        // file name appends to it as it is. '\' is a separator only on
+        // Windows: elsewhere it is a character of a name, and "a\" is a file
+        // whose name ends in it, not a folder ("a\/" would reach nothing).
+#if defined(_WIN32) || defined(_WIN64)
         const bool endsInSeparator = !in.empty() && (in.back() == '/' || in.back() == '\\');
+#else
+        const bool endsInSeparator = !in.empty() && in.back() == '/';
+#endif
         if (endsInSeparator && (result.empty() || result.back() != kSeparator)) {
             result.push_back(kSeparator);
         }

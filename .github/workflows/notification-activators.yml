@@ -1,0 +1,45 @@
+name: Notification activators
+
+# Blocks an application that puts a notification on screen without taking its
+# clicks once the broker host is gone. On Windows the notification is a toast
+# under the application's own AppUserModelID; after the program hosting the
+# broker quits, a click on it in the Action Center goes to the application's
+# COM activator - which exists only when the application called
+# UltraCanvas::RegisterNotificationActivator (UltraCanvasNotificationActivation.h).
+# Without it the click does nothing, as it did for every toast until UltraMail
+# 0.10.65. An application with a reason not to register (Silent sample traffic)
+# says so with `// notification-activator-exempt: <why>`.
+
+# Trigger policy matches build.yml / callback-cycles.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Apps/**'
+      - 'scripts/check_notification_activators.py'
+      - '.github/workflows/notification-activators.yml'
+  pull_request:
+    # `branches` filters the BASE branch: a pull request based on another
+    # pull request's claude/** branch runs it too.
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'Apps/**'
+      - 'scripts/check_notification_activators.py'
+      - '.github/workflows/notification-activators.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check that every application posting notifications registers its activator
+        run: python3 scripts/check_notification_activators.py --strict

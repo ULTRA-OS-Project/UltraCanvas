@@ -1,6 +1,7 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
 // The history is in the header (include/UltraCanvasTreeView.h).
+// Version: 1.7.0 - a loading row (TreeNodeData::loading) slides a thin bar along its foot
 // Version: 1.6.0 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)
 // Version: 1.5.0 - keys read UCKeys and work once the tree is focused; focus ring
 // Version: 1.3.0 - GetRequiredWidth, the width the widest row on show needs
@@ -646,6 +647,36 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTreeView::ScrollToSelection() {
+        TreeNode *node = GetFirstSelectedNode();
+        if (!node || !rootNode || rowHeight <= 0) return;
+
+        // A row under a collapsed parent has no place on screen yet: open the
+        // chain of parents above it, outermost first.
+        std::vector<TreeNode *> collapsed;
+        for (TreeNode *p = node->parent; p; p = p->parent) {
+            if (p == rootNode.get() && !rootVisible) break;   // a hidden root shows its children anyway
+            if (!p->IsExpanded()) collapsed.push_back(p);
+        }
+        for (auto it = collapsed.rbegin(); it != collapsed.rend(); ++it) ExpandNode(*it);
+
+        int nodeY = FindShownNodeY(node);
+        if (nodeY < 0) return;   // filtered out or hidden: nothing to scroll to
+
+        // Centre the row in the visible area below the header band.
+        int viewHeight = GetHeight() - GetHeaderHeight();
+        int target = std::clamp(nodeY - (viewHeight - rowHeight) / 2, 0, std::max(0, maxScrollY));
+        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
+            // Animated like ScrollToTop(); onScrollChange writes scrollOffsetY back.
+            verticalScrollbar->SmoothScrollTo(target);
+        } else {
+            scrollAnim.Cancel();
+            scrollOffsetY = target;
+            ClampScrollOffset();
+        }
+        RequestRedraw();
+    }
+
     // ===== MEASURING =====
 
     int UltraCanvasTreeView::GetRequiredWidth(IRenderContext *ctx) {
@@ -694,6 +725,13 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTreeView::SetShowScrollToSelectionButton(bool show) {
+        if (showScrollToSelectionButton == show) return;
+        showScrollToSelectionButton = show;
+        if (!show) scrollToSelectionHovered = false;
+        RequestRedraw();
+    }
+
     bool UltraCanvasTreeView::IsScrollToTopButtonActive() const {
         if (!showScrollToTopButton || !rootNode || rowHeight <= 0) return false;
         if (maxScrollY <= 0) return false;
@@ -709,36 +747,90 @@ namespace UltraCanvas {
         return hiddenRows > scrollToTopStyle.minHiddenRows;
     }
 
-    Rect2Di UltraCanvasTreeView::GetScrollToTopButtonRect() const {
-        if (!IsScrollToTopButtonActive()) return Rect2Di(0, 0, 0, 0);
+    bool UltraCanvasTreeView::IsScrollToSelectionButtonActive() const {
+        if (!showScrollToSelectionButton || !rootNode || rowHeight <= 0) return false;
+        const TreeNode *node = GetFirstSelectedNode();
+        if (!node || !node->IsShown()) return false;
 
+        // The row must be reachable: every parent on show (a collapsed one is
+        // fine - ScrollToSelection() opens it).
+        for (const TreeNode *p = node->parent; p; p = p->parent) {
+            if (p == rootNode.get() && !rootVisible) break;
+            if (!p->IsShown()) return false;
+        }
+        if (node == rootNode.get() && !rootVisible) return false;
+
+        int nodeY = FindShownNodeY(node);
+        if (nodeY < 0) return true;   // under a collapsed parent
+
+        // Hidden as soon as the whole row is inside the visible area.
+        int viewHeight = static_cast<int>(GetHeight()) - GetHeaderHeight();
+        bool fullyVisible = nodeY >= scrollOffsetY && nodeY + rowHeight <= scrollOffsetY + viewHeight;
+        if (fullyVisible) return false;
+        return GetFloatingButtonSlotRect(1).width > 0;
+    }
+
+    Rect2Di UltraCanvasTreeView::GetFloatingButtonSlotRect(int slot) const {
         Rect2Di contentRect = GetLocalContentRect();
         const int size = std::max(8, scrollToTopStyle.size);
         const int margin = std::max(0, scrollToTopStyle.margin);
-        const int headerHeight = GetHeaderHeight();
 
         // Keep clear of the vertical scrollbar so the two never overlap.
         int x = contentRect.Right() - GetVerticalScrollbarWidth() - margin - size;
         x = std::max(contentRect.x, x);
 
-        // Resting place: bottom-right corner of the content area.
-        int bottom = contentRect.Bottom() - margin;
-
-        // As the view approaches the end of the list, slide the button up so the
-        // final keepClearRows rows stay fully readable. totalHeight is recovered
-        // from the scroll geometry (maxScrollY == totalHeight - viewHeight).
-        int keepClearRows = std::max(0, scrollToTopStyle.keepClearRows);
-        if (keepClearRows > 0) {
-            int viewHeight = static_cast<int>(GetHeight()) - headerHeight;
-            int totalHeight = maxScrollY + viewHeight;
-            int tailTop = contentRect.y + headerHeight + totalHeight
-                          - keepClearRows * rowHeight - scrollOffsetY;
-            bottom = std::min(bottom, tailTop);
+        // Slot 0 rests in the bottom-right corner; each further slot stacks
+        // one button (plus a margin) higher. A slot that would reach into the
+        // header band does not fit, and comes back empty.
+        int top = contentRect.Bottom() - margin - size - slot * (size + margin);
+        if (top < contentRect.y + GetHeaderHeight() + margin) {
+            if (slot > 0) return Rect2Di(0, 0, 0, 0);
+            top = contentRect.y + GetHeaderHeight() + margin;
         }
-
-        // Never let the dodge push the button off the top of the content area.
-        int top = std::max(contentRect.y + headerHeight + margin, bottom - size);
         return Rect2Di(x, top, size, size);
+    }
+
+    Rect2Di UltraCanvasTreeView::GetScrollToTopButtonRect() const {
+        if (!IsScrollToTopButtonActive()) return Rect2Di(0, 0, 0, 0);
+        return GetFloatingButtonSlotRect(0);
+    }
+
+    Rect2Di UltraCanvasTreeView::GetScrollToSelectionButtonRect() const {
+        if (!IsScrollToSelectionButtonActive()) return Rect2Di(0, 0, 0, 0);
+        return GetFloatingButtonSlotRect(1);
+    }
+
+    int UltraCanvasTreeView::FindShownNodeY(const TreeNode *node) const {
+        if (!rootNode || !node) return -1;
+
+        int currentY = 0;
+        std::function<bool(const TreeNode *)> walk = [&](const TreeNode *current) -> bool {
+            if (current == node) return true;
+            currentY += rowHeight;
+            if (current->IsExpanded()) {
+                for (auto &child: current->children) {
+                    if (child->IsShown() && walk(child.get())) return true;
+                }
+            }
+            return false;
+        };
+
+        if (rootVisible) {
+            if (rootNode->IsShown() && walk(rootNode.get())) return currentY;
+        } else {
+            for (auto &child: rootNode->children) {
+                if (child->IsShown() && walk(child.get())) return currentY;
+            }
+        }
+        return -1;
+    }
+
+    void UltraCanvasTreeView::RenderFloatingButtonFrame(IRenderContext *ctx, const Rect2Di &r, bool hovered) {
+        const TreeScrollToTopStyle &s = scrollToTopStyle;
+        float radius = std::min(s.cornerRadius, r.width * 0.5f);
+        ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
+                                 hovered ? s.hoverBackground : s.background,
+                                 1.0f, s.borderColor, radius);
     }
 
     void UltraCanvasTreeView::RenderScrollToTopButton(IRenderContext *ctx) {
@@ -746,10 +838,7 @@ namespace UltraCanvas {
         if (r.width <= 0 || r.height <= 0) return;
 
         const TreeScrollToTopStyle &s = scrollToTopStyle;
-        float radius = std::min(s.cornerRadius, r.width * 0.5f);
-        ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
-                                 scrollToTopHovered ? s.hoverBackground : s.background,
-                                 1.0f, s.borderColor, radius);
+        RenderFloatingButtonFrame(ctx, r, scrollToTopHovered);
 
         // Glyph: a short bar ("the top") with an arrow pointing up at it.
         double cx = r.x + r.width * 0.5;
@@ -773,6 +862,35 @@ namespace UltraCanvas {
                                  s.arrowColor);
     }
 
+    void UltraCanvasTreeView::RenderScrollToSelectionButton(IRenderContext *ctx) {
+        Rect2Di r = GetScrollToSelectionButtonRect();
+        if (r.width <= 0 || r.height <= 0) return;
+
+        const TreeScrollToTopStyle &s = scrollToTopStyle;
+        RenderFloatingButtonFrame(ctx, r, scrollToSelectionHovered);
+
+        // Glyph: a dot ("the selected entry") on the left with an arrow coming
+        // from the right and pointing at it.
+        double cy = r.y + r.height * 0.5;
+        double dotRadius = std::max(1.5, r.width * 0.10);
+        ctx->DrawFilledCircle(Point2Dd(r.x + r.width * 0.26, cy), static_cast<float>(dotRadius), s.arrowColor);
+
+        double headTip = r.x + r.width * 0.42;
+        double headBase = r.x + r.width * 0.60;
+        double halfHeight = r.height * 0.20;
+        ctx->PushState();
+        ctx->SetFillPaint(s.arrowColor);
+        ctx->FillLinePath({Point2Dd(headTip, cy),
+                           Point2Dd(headBase, cy - halfHeight),
+                           Point2Dd(headBase, cy + halfHeight)});
+        ctx->PopState();
+
+        double stemHeight = std::max(2.0, r.height * 0.11);
+        ctx->DrawFilledRectangle(Rect2Dd(headBase - 1, cy - stemHeight * 0.5,
+                                         r.x + r.width * 0.80 - headBase + 1, stemHeight),
+                                 s.arrowColor);
+    }
+
     bool UltraCanvasTreeView::HandleScrollToTopButtonEvent(const UCEvent &event) {
         bool isPointerEvent = event.type == UCEventType::MouseMove ||
                               event.type == UCEventType::MouseDown ||
@@ -781,37 +899,37 @@ namespace UltraCanvas {
                               event.type == UCEventType::MouseLeave;
         if (!isPointerEvent) return false;
 
-        if (!IsScrollToTopButtonActive() || event.type == UCEventType::MouseLeave) {
-            if (scrollToTopHovered) {
-                scrollToTopHovered = false;
-                RequestRedraw();
+        bool leaving = event.type == UCEventType::MouseLeave;
+        Rect2Di topRect = leaving ? Rect2Di(0, 0, 0, 0) : GetScrollToTopButtonRect();
+        Rect2Di selRect = leaving ? Rect2Di(0, 0, 0, 0) : GetScrollToSelectionButtonRect();
+        bool overTop = topRect.width > 0 && topRect.Contains(event.pointer);
+        bool overSel = selRect.width > 0 && selRect.Contains(event.pointer);
+
+        if (overTop != scrollToTopHovered || overSel != scrollToSelectionHovered) {
+            bool wasOverButton = scrollToTopHovered || scrollToSelectionHovered;
+            bool overButton = overTop || overSel;
+            scrollToTopHovered = overTop;
+            scrollToSelectionHovered = overSel;
+            // The row under a button must not keep its hover highlight while
+            // the pointer is really over the button.
+            if (overButton && hoveredNode) {
+                hoveredNode->hovered = false;
+                hoveredNode = nullptr;
             }
-            return false;
-        }
-
-        bool inside = GetScrollToTopButtonRect().Contains(event.pointer);
-
-        if (event.type == UCEventType::MouseMove) {
-            if (inside != scrollToTopHovered) {
-                scrollToTopHovered = inside;
-                // The row under the button must not keep its hover highlight
-                // while the pointer is really over the button.
-                if (inside && hoveredNode) {
-                    hoveredNode->hovered = false;
-                    hoveredNode = nullptr;
-                }
-                SetMouseCursor(inside ? UCMouseCursor::Hand : UCMouseCursor::Default);
-                RequestRedraw();
+            if (!leaving && overButton != wasOverButton) {
+                SetMouseCursor(overButton ? UCMouseCursor::Hand : UCMouseCursor::Default);
             }
-            return inside;
+            RequestRedraw();
         }
+        if (event.type == UCEventType::MouseMove || leaving) return overTop || overSel;
 
-        if (!inside) return false;
+        if (!overTop && !overSel) return false;
 
-        // Swallow every button event over the glyph so the row underneath is
+        // Swallow every button event over a glyph so the row underneath is
         // neither selected nor toggled; MouseDown does the actual scrolling.
         if (event.type == UCEventType::MouseDown) {
-            ScrollToTop();
+            if (overSel) ScrollToSelection();
+            else ScrollToTop();
         }
         return true;
     }
@@ -830,8 +948,8 @@ namespace UltraCanvas {
             }
         }
 
-        // The floating scroll-to-top button sits on top of the rows, so it gets
-        // first refusal on pointer events inside its rect.
+        // The floating scroll buttons sit on top of the rows, so they get first
+        // refusal on pointer events inside their rects.
         if (HandleScrollToTopButtonEvent(event)) {
             return true;
         }
@@ -888,6 +1006,15 @@ namespace UltraCanvas {
         // (e.g. adding a pinned node), which would dangle dropTargetNode.
         dropTargetNode = nullptr;
         RequestRedraw();
+        // A Save dialog's file icon asks which folder it landed on.
+        if (event.dropFolderReply) {
+            if (!target || !onDropFolderOfNode) return false;
+            if (onFilesDragAccept && !onFilesDragAccept(target)) return false;
+            const std::string folder = onDropFolderOfNode(target);
+            if (folder.empty()) return false;
+            event.dropFolderReply(folder);
+            return true;
+        }
         if (event.droppedFiles.empty() || !onFilesDroppedOnNode || !target)
             return false;
         return onFilesDroppedOnNode(target, event.droppedFiles);
@@ -923,6 +1050,7 @@ namespace UltraCanvas {
                                   contentRect.y + headerHeight,
                                   contentRect.width  - sbWidth,
                                   contentRect.height - headerHeight));
+            loadingDrawn = false;
             // Rows start below the (optional) fixed header band and scroll beneath it.
             int currentY = contentRect.y + headerHeight - scrollOffsetY;
             // One flag per drawn level, the top level included (pipes[0]) - see the
@@ -936,6 +1064,8 @@ namespace UltraCanvas {
                 RenderChildNodes(ctx, rootNode.get(), currentY, -1, contentRect, pipes);
             }
             ctx->PopState();
+            // A loading row on screen keeps the bars sliding; none stops them.
+            UpdateLoadingTicks();
         }
 
         // Draw the fixed header band last so rows scrolled up are covered by it.
@@ -952,7 +1082,9 @@ namespace UltraCanvas {
             ctx->PopState();
         }
 
-        // Floating "move to the top" button, drawn over everything else.
+        // Floating "go to selection" / "move to the top" buttons, drawn over
+        // everything else.
+        RenderScrollToSelectionButton(ctx);
         RenderScrollToTopButton(ctx);
     }
 
@@ -1265,12 +1397,69 @@ namespace UltraCanvas {
 
             // Draw the row's label/content (Classic single text run; subclasses draw columns).
             RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
+
+            // Its children being fetched: the bar along the foot of the row,
+            // from the icon to the right edge.
+            if (node->data.loading) {
+                DrawLoadingBar(ctx, slotEnd, nodeY, contentRect.x + nodeWidth - 4 - slotEnd);
+                loadingDrawn = true;
+            }
         }
 
         // Render children if expanded
         if (node->IsExpanded()) {
             RenderChildNodes(ctx, node, currentY, level, contentRect, pipes);
         }
+    }
+
+    // ===== LOADING ROWS =====
+
+    UltraCanvasTreeView::~UltraCanvasTreeView() {
+        // The timer's callback captures `this`.
+        if (loadingTimer != InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(loadingTimer);
+            loadingTimer = InvalidTimerId;
+        }
+    }
+
+    void UltraCanvasTreeView::DrawLoadingBar(IRenderContext *ctx, int x, int nodeY, int width) {
+        if (width <= 0) return;
+        // The folder display's bar in small: a faint track, and a segment a
+        // quarter of its width sliding across once every 1.2 s - a fetch has
+        // no total to fill towards, and the movement says it is still going.
+        const int height = 2;
+        const Rect2Di bar(x, nodeY + rowHeight - height - 1, width, height);
+        Color track = loadingBarColor;
+        track.a = 50;
+        if (loadingTimer == InvalidTimerId)
+            loadingSince = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - loadingSince).count();
+        const double phase = std::fmod(elapsed, 1.2) / 1.2;
+        const double segment = std::max(16.0, width / 4.0);
+        const double segX = bar.x - segment + phase * (bar.width + segment);
+        ctx->PushState();
+        ctx->ClipRect(bar);
+        ctx->SetFillPaint(track);
+        ctx->FillRectangle(Rect2Dd(bar));
+        ctx->SetFillPaint(loadingBarColor);
+        ctx->FillRectangle(Rect2Dd(segX, bar.y, segment, bar.height));
+        ctx->PopState();
+    }
+
+    void UltraCanvasTreeView::UpdateLoadingTicks() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        if (!loadingDrawn) {
+            if (loadingTimer != InvalidTimerId) {
+                app->StopTimer(loadingTimer);
+                loadingTimer = InvalidTimerId;
+            }
+            return;
+        }
+        if (loadingTimer != InvalidTimerId) return;
+        // 40 ms: a smooth slide; the frame it asks for decides whether to go on.
+        loadingTimer = app->StartTimer(40, true, [this](TimerId) { RequestRedraw(); });
     }
 
     // ===== CHECK FLAGS =====

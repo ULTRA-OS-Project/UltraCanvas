@@ -127,6 +127,7 @@ void UltraAIServiceDialog::CreateServiceDialog() {
     resultArea_->SetReadOnly(true);
     resultArea_->SetWordWrap(true);
     resultArea_->SetText("");
+    resultArea_->SetBorders(1.0f, Color(200, 200, 200, 255));
     AddDialogElement(resultArea_);
 
     // ===== Footer: Close button =====
@@ -171,6 +172,7 @@ std::shared_ptr<UltraCanvasTextArea> UltraAIServiceDialog::MakeTextArea(
     auto ta = std::make_shared<UltraCanvasTextArea>(id, x, y, w, h);
     ta->SetWordWrap(true);
     ta->SetPlaceholder(placeholder);
+    ta->SetBorders(1.0f, Color(200, 200, 200, 255));
     return ta;
 }
 

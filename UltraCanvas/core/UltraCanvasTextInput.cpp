@@ -1,6 +1,7 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
 // Version: 1.12.0 - the text and the placeholder are shaped once and kept
+// Version: 1.11.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 1.11.0 - SetClearButtonText: a clear button with a word on it;
 //                  SetInputType(Search) shows the clear button
 // Version: 1.10.0 - TextInputStyle::FromTheme
@@ -585,6 +586,9 @@ namespace UltraCanvas {
 
             case UCEventType::FocusLost:
                 return HandleFocusLost(event);
+
+            default:
+                break;
         }
         return false;
     }

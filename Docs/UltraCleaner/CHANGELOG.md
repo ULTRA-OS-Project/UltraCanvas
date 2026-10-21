@@ -1,3 +1,35 @@
+#### 2026-10-17 *0.66*
+- **Windows registry cleaning.** A new *Windows registry* tab (and
+  `--registry`, `--registry --fix --yes`, `--registry-restore <file>`) finds
+  entries that point at programs, files and folders that are gone: leftover
+  uninstall entries, startup commands, App Paths, shared-DLL counters,
+  Explorer's MUI cache, help-file and installer-folder records, and per-user
+  COM classes. An entry counts only when its target is provably missing from
+  a fixed disk, outside the Windows folder; removable drives, shares, bare
+  program names, Windows Installer products and system components are never
+  judged. Every ticked entry is re-checked, written to a `.reg` backup under
+  `%LOCALAPPDATA%\UltraCleaner\RegistryBackups`, and only then removed; no
+  backup, no removal. `test_registry.cpp` runs every check, the guard, the
+  backup and the cleaner against an in-memory registry.
+
+#### 2026-10-16 *0.65*
+- **On Linux and macOS a `\` in a name is no longer read as a folder
+  separator.** The path guard compared paths after turning every `\` into
+  `/`, so `/home/user/.cache\x` - a file in the home folder - counted as
+  inside `~/.cache`, and a folder a wildcard rule matched was scanned under
+  the wrong name; a trailing `\` was stripped as if it were a separator.
+  `\` separates a path's parts on Windows only, and only there is it turned
+  into `/` or stripped (`IsSeparator` and `ToForwardSlashes` in
+  `UltraCleanerPaths.cpp`). `test_paths.cpp` checks both sides.
+
+#### 2026-10-15 *0.64*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraCleaner.exe` is a GUI program now. Beside it,
+  `UltraCleaner.com` is its console companion, which a prompt runs for the
+  bare name: `UltraCleaner --scan` starts the `.exe`, waits for it and
+  returns its exit code, as before. Typed as `UltraCleaner.exe`, the prompt
+  no longer waits (framework changelog: `windows-console-companions`).
+
 #### 2026-10-14 *0.63*
 - **Wildcard rules find caches under a folder named outside the Windows code
   page.** A rule root with a `*` in it - the browser-profile and container

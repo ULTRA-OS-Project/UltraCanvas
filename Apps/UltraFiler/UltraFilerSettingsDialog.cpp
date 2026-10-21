@@ -21,7 +21,8 @@
 // first), Handling > Opening files (what a double-click on a file does when
 // the system has a program registered for it - start that program, the way
 // Explorer and the Finder do, or show the file in UltraFiler's preview),
-// Handling > Tabs (what the "+" of the folder tab strip opens - the
+// Handling > Protected files (how long UltraFiler may go without input before
+// the preview forgets the passwords its Unlock was given), Handling > Tabs (what the "+" of the folder tab strip opens - the
 // current folder again or the Home folder), Extras > Open prompt (the command
 // line program UltraFiler opens, picked with the file dialog and stored with
 // "Save app"), Extras > History & Favorites (how many entries each of the
@@ -39,8 +40,11 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.17.0 - Handling > Protected files: the minutes without input before the
+//                   preview forgets Unlock's passwords (0: never)
+// Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
 // Version: 1.16.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -121,6 +125,7 @@ namespace {
     constexpr const char* kPageFileOperations = "handling/file-operations";
     constexpr const char* kPageTabs = "handling/tabs";
     constexpr const char* kPageOpeningFiles = "handling/opening-files";
+    constexpr const char* kPageProtectedFiles = "handling/protected-files";
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
@@ -256,6 +261,11 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       openAppRadio;
         std::shared_ptr<UltraCanvasRadio>       openPreviewRadio;
         UltraCanvasRadioGroup                   openActivationGroup;
+
+        // Handling > Protected files: minutes without input before the
+        // preview forgets Unlock's passwords.
+        std::shared_ptr<UltraCanvasSlider> forgetPasswordsSlider;
+        std::shared_ptr<UltraCanvasLabel>  forgetPasswordsValue;
 
         // Extras > Open prompt
         std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
@@ -514,21 +524,6 @@ namespace {
         return box;
     }
 
-    // A colour picker restyled for the dialog's light surface.
-    ColorPickerStyle LightPickerStyle() {
-        ColorPickerStyle s;
-        s.backgroundColor = Color(249, 249, 251, 255);
-        s.panelColor      = Color(240, 240, 244, 255);
-        s.borderColor     = Color(210, 210, 216, 255);
-        s.textColor       = kTextColor;
-        s.mutedTextColor  = Color(120, 120, 126, 255);
-        s.fieldColor      = Color(255, 255, 255, 255);
-        s.fieldBorderColor = Color(190, 190, 196, 255);
-        s.accentColor     = Color(60, 140, 220, 255);
-        s.markerOutline   = Color(90, 90, 96, 255);
-        return s;
-    }
-
     // ===== COLOUR BOX + PICKER POPUP =====
 
     // The box showing a configured colour. It is a button filled with that
@@ -612,11 +607,15 @@ namespace {
 
         popup->window->layout.SetFlexColumn()
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        popup->window->SetBackgroundColor(Color(249, 249, 251, 255));
+        const Color popupSurface(249, 249, 251, 255);
+        popup->window->SetBackgroundColor(popupSurface);
 
         popup->picker = CreateColorPicker("ufl-set-popup-picker", initial,
                                           0, 0, 280, 380);
-        popup->picker->SetStyle(LightPickerStyle());
+        // The framework's light picker, on the popup's surface.
+        ColorPickerStyle pickerStyle = ColorPickerStyle::Light();
+        pickerStyle.backgroundColor = popupSurface;
+        popup->picker->SetStyle(pickerStyle);
         popup->picker->SetUIScale(0.85f);
         popup->picker->SetShowAlpha(false);   // tree rows are painted opaque
         popup->picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -1879,6 +1878,62 @@ namespace {
         return parts.page;
     }
 
+    // ===== HANDLING > PROTECTED FILES =====
+
+    // "10 min" beside the slider, "Never" at its zero.
+    void UpdateForgetPasswordsLabel(DialogState* d) {
+        if (!d->settings || !d->forgetPasswordsValue) return;
+        const int minutes = d->settings->forgetPasswordsAfterMinutes;
+        d->forgetPasswordsValue->SetText(minutes == 0 ? std::string("Never")
+                                                      : std::to_string(minutes) + " min");
+        d->forgetPasswordsValue->RequestRedraw();
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildProtectedFilesPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-protected", "Protected files",
+                "How long UltraFiler may be left alone before the preview "
+                "forgets the passwords its Unlock was given:");
+
+        d->forgetPasswordsValue = MakeSliderValueLabel("ufl-set-protected-value", 60);
+        d->forgetPasswordsSlider = MakeIntSlider("ufl-set-protected-minutes",
+                0, UltraFilerSettings::kMaxForgetPasswordsMinutes,
+                d->settings->forgetPasswordsAfterMinutes, [d](int minutes) {
+            if (!d->settings || d->settings->forgetPasswordsAfterMinutes == minutes) return;
+            d->settings->forgetPasswordsAfterMinutes = minutes;
+            UpdateForgetPasswordsLabel(d);
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(MakeSliderRow("ufl-set-protected-row",
+                "Forget passwords after:", d->forgetPasswordsSlider,
+                d->forgetPasswordsValue, 0, 150));
+
+        AddNote(parts, "ufl-set-protected-note1",
+                "A password-protected PDF or UltraCanvas image in the preview "
+                "is opened with Unlock, and its password is kept while the "
+                "folder is browsed, so going back to it - or on to another file "
+                "there with the same password - asks nothing.");
+        AddNote(parts, "ufl-set-protected-note2",
+                "Once UltraFiler has had no key press, click or mouse movement "
+                "for this long, the passwords are forgotten and a file shown "
+                "unlocked goes back behind Unlock. Locking the screen does the "
+                "same at once, whatever is set here; Never leaves only that.");
+
+        d->resets[kPageProtectedFiles] = PageReset{"Restore default", 120, [d]() {
+            if (!d->settings) return;
+            if (d->forgetPasswordsSlider)
+                d->forgetPasswordsSlider->SetValue(static_cast<float>(
+                        UltraFilerSettings::kDefaultForgetPasswordsMinutes));
+            // The slider reports only a value it moved to.
+            d->settings->forgetPasswordsAfterMinutes =
+                    UltraFilerSettings::kDefaultForgetPasswordsMinutes;
+            UpdateForgetPasswordsLabel(d);
+            ApplyAndSave(d);
+        }};
+
+        UpdateForgetPasswordsLabel(d);
+        return parts.page;
+    }
+
     // ===== HANDLING > TABS =====
     std::shared_ptr<UltraCanvasContainer> BuildTabsPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-tabs", "Tabs",
@@ -2434,7 +2489,8 @@ namespace {
                 "get a thumbnail or a preview.");
         AddNote(parts, "ufl-set-start-note2",
                 "Handling - what an action does: dropping dragged files onto "
-                "a folder, and what the \"+\" of the tab strip opens.");
+                "a folder, opening a file, how long the passwords of protected "
+                "files are kept, and what the \"+\" of the tab strip opens.");
         AddNote(parts, "ufl-set-start-note3",
                 "Extras - the command line program \"Open prompt\" starts, "
                 "clearing the recently-used lists, the pinned entries and the "
@@ -2585,6 +2641,7 @@ namespace {
         AddTreeNode(d, kPageHandling, kPageDragDrop, "Drag & Drop");
         AddTreeNode(d, kPageHandling, kPageFileOperations, "File operations");
         AddTreeNode(d, kPageHandling, kPageOpeningFiles, "Opening files");
+        AddTreeNode(d, kPageHandling, kPageProtectedFiles, "Protected files");
         AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, "Open prompt");
@@ -2623,6 +2680,7 @@ namespace {
         AddPage(d, kPageDragDrop, BuildDragDropPage(d));
         AddPage(d, kPageFileOperations, BuildFileOperationsPage(d));
         AddPage(d, kPageOpeningFiles, BuildOpeningFilesPage(d));
+        AddPage(d, kPageProtectedFiles, BuildProtectedFilesPage(d));
         AddPage(d, kPageTabs, BuildTabsPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));

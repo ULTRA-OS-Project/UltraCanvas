@@ -1,4 +1,9 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.5 - MSYS2 is updated first
+// Version: 0.2.4 - InstallPreview: MSYS2 set up by winget first, every command listed
+// Version: 0.2.3 - InstallPreview counts only the missing ones switched on
+// Version: 0.2.2 - the SDK comes from the download page, not a direct link
+// Version: 0.2.1 - AiGuide for no AI assistant: the local IDE or compiler
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.2 - the guide names the steps, not the pages
 // Version: 0.1.1 - AiGuide per assistant
@@ -25,14 +30,14 @@ std::string Code(const std::string& text) {
     return "`" + text + "`";
 }
 
-// The SDK step every platform shares: the archive by its real name, linked
-// to the release that carries it, and the way the application fetches it.
+// The SDK step every platform shares: the archive by its real name, the
+// download page that carries it, and the way the application unpacks it.
 std::string SdkLine(Platform platform, const std::string& version, const std::string& architecture,
                     const std::string& remark) {
     const std::string archive = SdkArchiveName(platform, version, architecture);
-    return "unpack the prebuilt SDK " + Link(archive, SdkReleaseAssetUrl(platform, version, architecture)) +
+    return "download the prebuilt SDK " + Code(archive) + " from " + Link("the download page", SdkDownloadPage()) +
            (remark.empty() ? "" : " (" + remark + ")") +
-           " - the Framework step's *Download and unpack...* fetches it - or";
+           " and let the Framework step's *Unpack...* unpack it - or";
 }
 
 } // namespace
@@ -108,21 +113,57 @@ std::string InstallPreview(const Plan& plan) {
     }
     const size_t missing = plan.MissingCount();
     if (missing == 0) return "Everything the chosen features need is installed: Install has nothing to do.";
-    const std::string count = std::to_string(missing) + " missing";
-    const PlanStep* install = nullptr;
+    const size_t skipped = plan.SkippedCount();
+    // Every command Install runs, in order; the MSYS2 set-up ones first.
+    std::vector<const PlanStep*> runs;
+    bool setsUp = false;
     for (const auto& step : plan.steps) {
-        if (step.kind == StepKind::Install && !step.argv.empty()) { install = &step; break; }
+        if (step.kind != StepKind::Install || step.argv.empty()) continue;
+        runs.push_back(&step);
+        setsUp |= step.setsUpPackageManager;
     }
-    if (!install || plan.profile.packageManagerPath.empty()) {
+    if (skipped == missing && runs.empty()) {
+        return "All " + std::to_string(missing) + " missing are switched off: Install has nothing to do. "
+               "Switch one on to install it.";
+    }
+    const std::string count =
+        skipped == 0      ? std::to_string(missing) + " missing"
+      : skipped < missing ? std::to_string(missing - skipped) + " switched on (of " + std::to_string(missing) + " missing)"
+                          : std::string("ones that cannot be checked");
+    if (runs.empty() || (plan.profile.packageManagerPath.empty() && !setsUp)) {
         return "No package manager was found, so Install cannot run here: install the " + count +
                " yourself and press Check again. Next goes on anyway.";
     }
+    std::string commands;
+    bool elevation = false;
+    for (const PlanStep* step : runs) {
+        commands += "\n" + DisplayCommand(step->argv, step->needsElevation);
+        elevation |= step->needsElevation;
+    }
+    if (setsUp) {
+        return "MSYS2 is not installed: Install sets it up with winget (Windows may ask for administrator "
+               "rights), updates it, installs the " + count + " with its pacman, then checks again:" + commands;
+    }
+    if (plan.profile.packageManager == PackageManager::Msys2Pacman) {
+        return "Install updates MSYS2, installs the " + count + " with its pacman, then checks again:" + commands;
+    }
     return "Install runs " + PackageManagerName(plan.profile.packageManager) + " for the " + count + ", then checks again" +
-           (install->needsElevation ? "; it asks for administrator rights" : "") + ":\n" +
-           DisplayCommand(install->argv, install->needsElevation);
+           (elevation ? "; it asks for administrator rights" : "") + ":" + commands;
 }
 
 std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) {
+    if (assistant == Assistant::NoAssistant) {
+        return "### No AI assistant\n\n"
+               "You write the code yourself, in a local IDE or an editor and the compiler. "
+               "The project gets no assistant instruction file and there is no first prompt; "
+               "everything else - the packages, the framework, the project and its build - is the same.\n\n"
+               "### Working without an assistant\n\n"
+               "- Open the project folder in an IDE that reads CMake presets (CLion, Visual Studio, "
+               "VS Code with CMake Tools, Qt Creator), or build from a terminal with " +
+               Code("cmake --preset default") + " and " + Code("cmake --build --preset default") + ".\n"
+               "- The element catalogue is " + Link("Docs/UltraCanvas", std::string(kRepository) + "/tree/main/Docs/UltraCanvas") +
+               ": read an element's page before using it.\n";
+    }
     const std::string name = AssistantName(assistant);
     std::string out = "### " + (assistant == Assistant::Other ? std::string("Another assistant") : name) + "\n\n";
     if (assistant == Assistant::Other) {

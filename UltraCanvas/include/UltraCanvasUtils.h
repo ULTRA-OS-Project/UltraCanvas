@@ -1,7 +1,9 @@
 // include/UltraCanvasUtils.h
 // Utils
+// Version: 1.2.0 - RunProcessCaptured takes an onOutput callback: the output as it comes
+// Version: 1.1.1 - NormalizePath: '\' is a separator only on Windows (comment)
 // Version: 1.1.0
-// Last Modified: 2026-07-21
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -38,7 +40,8 @@ namespace UltraCanvas {
     std::string GetExecutableDir();
     // The path in the platform's form: on Windows with '\' for '/', elsewhere
     // resolved by realpath (a path that does not exist stays as given). A path
-    // that ends in a separator ends in exactly one, so a name appends to it.
+    // that ends in a separator ends in exactly one, so a name appends to it;
+    // '\' is a separator only on Windows - elsewhere it is part of a name.
     std::string NormalizePath(const std::string& in);
 
     // Is the file/folder hidden by the conventions of the platform it lives
@@ -125,15 +128,27 @@ namespace UltraCanvas {
     // `extraEnvironment` adds or replaces variables for the child only; the
     // rest of the environment is inherited.
     //
+    // `onOutput`, when given, receives the output as it arrives - each chunk
+    // as read from the pipe, `fromStandardError` saying which one - while it
+    // is still collected into the result as before. A chunk is not a line
+    // (split it yourself) and may end inside a UTF-8 sequence. The calls come
+    // from the thread that called RunProcessCaptured or, on Windows, from its
+    // reader threads, never two at once; a slow callback slows the child down,
+    // so hand the data to another thread rather than doing UI work in it.
+    //
     // Input and output are pumped together rather than in sequence, because a
     // filter that writes as it reads will otherwise fill its output pipe and
     // block while we are still blocked writing its input - a deadlock that
     // appears only once the data is bigger than a pipe buffer, which is to
     // say never during development and always on a real page.
+    using ProcessOutputCallback =
+            std::function<void(const char* data, size_t size, bool fromStandardError)>;
+
     ProcessOutput RunProcessCaptured(
             const std::vector<std::string>& argv,
             const std::vector<unsigned char>& input,
-            const std::vector<std::pair<std::string, std::string>>& extraEnvironment = {});
+            const std::vector<std::pair<std::string, std::string>>& extraEnvironment = {},
+            const ProcessOutputCallback& onOutput = {});
 
     template <typename Func, typename... Args>
     void measureExecutionTime(const std::string& logPrefix, Func&& func, Args&&... args) {

@@ -1,9 +1,11 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
+// Version: 1.10.0 - LoadFromPath records why it failed (GetLastOpenError) and does not
+//                   retry a password refusal as a stream
 // Version: 1.9.1 - a press of a button other than left or right leaves the
 //                  focus where it is and goes on to the elements around
 // Version: 1.9.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -105,6 +107,7 @@ void UltraCanvasPDFView::SetDocument(std::unique_ptr<IPDFDocument> doc) {
 bool UltraCanvasPDFView::LoadFromPath(const std::string& path,
                                       const std::string& password) {
     auto d = PDFEngineFactory::Create(PDFEngineKind::Auto);
+    lastOpenError_ = PDFOpenError::Failed;
     if (!d) {
         if (onError) onError("No PDF engine available");
         return false;
@@ -120,13 +123,26 @@ bool UltraCanvasPDFView::LoadFromPath(const std::string& path,
                           static_cast<uintmax_t>(fileSize) <= maxInMemoryBytes_;
 
     bool opened = inMemory && d->OpenInMemory(path, password);
+    PDFOpenError why = (inMemory && !opened) ? d->GetLastOpenError() : PDFOpenError::Failed;
     // Streaming is the fallback: the read may have failed on a file the engine
-    // can still open (no memory for the buffer, a racing writer).
-    if (!opened) opened = d->Open(path, password);
+    // can still open (no memory for the buffer, a racing writer). A password
+    // refusal is not that - a stream would be refused the same way.
+    const bool passwordRefused = why == PDFOpenError::NeedsPassword ||
+                                 why == PDFOpenError::WrongPassword;
+    if (!opened && !passwordRefused) {
+        opened = d->Open(path, password);
+        if (!opened) why = d->GetLastOpenError();
+    }
     if (!opened) {
-        if (onError) onError("Failed to open PDF: " + path);
+        lastOpenError_ = why == PDFOpenError::NoError ? PDFOpenError::Failed : why;
+        if (onError) {
+            onError(lastOpenError_ == PDFOpenError::NeedsPassword ? "The PDF is password-protected: " + path
+                  : lastOpenError_ == PDFOpenError::WrongPassword ? "The password is not right for " + path
+                                                                  : "Failed to open PDF: " + path);
+        }
         return false;
     }
+    lastOpenError_ = PDFOpenError::NoError;
     SetDocument(std::move(d));
     return true;
 }

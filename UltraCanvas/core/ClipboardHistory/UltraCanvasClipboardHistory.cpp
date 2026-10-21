@@ -16,6 +16,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasFileError.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasLanguageDetect.h"     // DetectLanguageFromContent
 #include "UltraCanvasDataFolder.h"       // UltraCanvasLocalDataFolderRoot
 #include "UltraCanvasSettingsFolder.h"   // UltraCanvasDesktopSettingsFolder
 #include "UltraCanvasPathUtf8.h"
@@ -153,6 +154,14 @@ bool LooksLikeCode(const std::string& text) {
         }
     }
     return lines > 0 && marked * 2 >= lines;
+}
+
+// Code by its shape, or text the language detector can name - Python with no
+// semicolons or braces, a SQL query, a YAML file. Markdown is prose.
+bool IsCode(const std::string& text) {
+    if (LooksLikeCode(text)) return true;
+    const std::string language = DetectLanguageFromContent(text);
+    return !language.empty() && language != "Markdown";
 }
 
 int CountLines(const std::string& text) {
@@ -434,7 +443,7 @@ bool Describe(const ClipboardSnapshot& snapshot, Description& out) {
     if (html && !html->data.empty()) out.kind = ClipboardEntryKind::RichText;
     else if (IsUrl(trimmed)) out.kind = ClipboardEntryKind::Link;
     else if (IsColour(trimmed)) out.kind = ClipboardEntryKind::Colour;
-    else if (LooksLikeCode(text)) out.kind = ClipboardEntryKind::Code;
+    else if (IsCode(text)) out.kind = ClipboardEntryKind::Code;
     else out.kind = ClipboardEntryKind::Text;
     out.title = out.kind == ClipboardEntryKind::Link || out.kind == ClipboardEntryKind::Colour
             ? Utf8Prefix(trimmed, 400) : FirstLine(text);

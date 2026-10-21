@@ -1,6 +1,6 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.8.4 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.8 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the

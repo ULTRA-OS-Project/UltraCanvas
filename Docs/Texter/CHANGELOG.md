@@ -1,3 +1,29 @@
+#### 2026-10-20 *1.69*
+- **Pasted text picks its own language.** Paste into a new, empty tab and
+  UltraTexter recognises what the text is - C++, C, Python, Markdown, JSON,
+  HTML, XML, SQL, Shell, JavaScript, TypeScript, Java, C#, Go, Rust, YAML,
+  CSS and more - and switches the tab's highlighting (Markdown opens in the
+  Markdown editor) and the status-bar language to match, as opening a file
+  does. A `#!` line names its interpreter; otherwise the lines that can only
+  be one language decide, and code shown inside a Markdown ``` fence counts
+  for Markdown. When the text does not say clearly (prose, a word or two)
+  the tab stays plain text. Only a tab that has never held text is guessed
+  for, and a language picked from the status bar is never overridden.
+  Works for Ctrl+V, Shift+Insert, *Edit > Paste*, the toolbar and the
+  right-click menu. Framework: `DetectLanguageFromContent` in
+  `UltraCanvasLanguageDetect.h` (framework changelog:
+  `detect-language-from-content`).
+
+#### 2026-10-18 *1.68*
+- **Search shows every match.** While the search bar is open, all matches in
+  the visible part of the document are highlighted, not only the one that is
+  selected; the selected match keeps the selection colour so it still stands
+  out. Matches above or below the view show as ticks on the scrollbar, so you
+  can see where the rest are. The highlights move with the
+  text as you edit (in files over 256 KB, once you pause typing). The hex view
+  marks matches in the same colour. Framework: `HighlightMatches` in
+  `UltraCanvasTextArea` (framework changelog: `textarea-search-highlights`).
+
 #### 2026-10-14 *1.67*
 - **One UltraTexter at a time.** Opening a file while UltraTexter is already
   running opens it in the running copy - in a new tab of the window used

@@ -1,7 +1,9 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.4.0 - SetSegmentTextColor: a segment's own text colour while unselected
+// Version: 1.3.1 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.3.0
-// Last Modified: 2026-06-02
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
@@ -268,6 +270,9 @@ namespace UltraCanvas {
             bgColor = style.normalColor;
             textColor = style.normalTextColor;
         }
+        const bool ownText = segment.enabled && segment.textColor.a > 0;
+        if (ownText && !isSelected) textColor = segment.textColor;
+        const Color normalText = ownText ? segment.textColor : style.normalTextColor;
 
         // Apply animation if transitioning
         if (style.enableAnimation && selectionAnimationProgress < 1.0f) {
@@ -284,8 +289,8 @@ namespace UltraCanvas {
                         static_cast<uint8_t>(fromColor.a * (1 - t) + toColor.a * t)
                 );
 
-                Color fromTextColor = (index == animationFromIndex) ? style.selectedTextColor : style.normalTextColor;
-                Color toTextColor = (index == animationToIndex) ? style.selectedTextColor : style.normalTextColor;
+                Color fromTextColor = (index == animationFromIndex) ? style.selectedTextColor : normalText;
+                Color toTextColor = (index == animationToIndex) ? style.selectedTextColor : normalText;
 
                 textColor = Color(
                         static_cast<uint8_t>(fromTextColor.r * (1 - t) + toTextColor.r * t),
@@ -571,6 +576,9 @@ namespace UltraCanvas {
                     }
                 }
                 break;
+
+            default:
+                break;
         }
 
         return false;
@@ -707,6 +715,13 @@ namespace UltraCanvas {
             segments[index].iconPath = iconPath;
             layoutDirty = true;
             InvalidateLayout();
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasSegmentedControl::SetSegmentTextColor(int index, const Color& color) {
+        if (index >= 0 && index < static_cast<int>(segments.size())) {
+            segments[index].textColor = color;
             RequestRedraw();
         }
     }

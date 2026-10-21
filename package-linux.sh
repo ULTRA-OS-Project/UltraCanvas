@@ -61,7 +61,12 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress)
+      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress
+      SmartHomeCenter UltraDBAdmin)
+
+# AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
+# the same transfers from a terminal. Both output to bin/.
+APPS+=(AnchorPoint anchorpoint-cli)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
@@ -105,15 +110,13 @@ log "=== UltraCanvas portable Linux packager (v$VERSION, $ARCH) ==="
 
 if [ "$SKIP_BUILD" != "1" ]; then
     log "Configuring + building (shared) into $BUILDDIR ..."
-    # Bake the UltraMail OAuth client into the release when the credentials are
-    # in the environment (CI secrets); harmless/empty otherwise. See
-    # Docs/UltraMail/AccountSetup.md section 3.
+    # UltraMail signs in through the ULTRA OS OAuth sign-in service
+    # (Server/OAuthCallback; the address is Apps/UltraMail/CMakeLists.txt's
+    # ULTRAMAIL_OAUTH_SERVICE_URL default), so no client credentials are
+    # baked into a release. See Docs/UltraMail/AccountSetup.md section 3.
     cmake -S "$PROJECTDIR" -B "$BUILDDIR" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DULTRACANVAS_BUILD_SHARED=ON \
-        -DULTRAMAIL_GOOGLE_CLIENT_ID="${ULTRAMAIL_GOOGLE_CLIENT_ID:-}" \
-        -DULTRAMAIL_GOOGLE_CLIENT_SECRET="${ULTRAMAIL_GOOGLE_CLIENT_SECRET:-}" \
-        -DULTRAMAIL_MICROSOFT_CLIENT_ID="${ULTRAMAIL_MICROSOFT_CLIENT_ID:-}"
+        -DULTRACANVAS_BUILD_SHARED=ON
     cmake --build "$BUILDDIR" -j"$(nproc)"
 else
     log "SKIP_BUILD=1 -> packaging existing build in $BUILDDIR"

@@ -2,6 +2,39 @@
 
 <!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> document; -->
 
+## Contents
+
+- [Overview](#overview)
+- [Class Hierarchy](#class-hierarchy)
+- [Build-Time Guard: `ULTRACANVAS_HAS_CDR_PLUGIN`](#build-time-guard-ultracanvas_has_cdr_plugin)
+- [Enumerations & Structs](#enumerations--structs)
+  - [CDRFitMode](#cdrfitmode)
+  - [CDRGradientType](#cdrgradienttype)
+  - [CDRGradient](#cdrgradient)
+  - [CDRPage / CDRDocument](#cdrpage--cdrdocument)
+  - [CDRParagraphStyle / CDRCharacterStyle / CDRStyleState](#cdrparagraphstyle--cdrcharacterstyle--cdrstylestate)
+- [UltraCanvasCDRRenderer](#ultracanvascdrrenderer)
+- [UltraCanvasCDRElement](#ultracanvascdrelement)
+  - [Constructor](#constructor)
+  - [Loading](#loading)
+  - [Page Navigation](#page-navigation)
+  - [Zoom / Pan / Fit](#zoom--pan--fit)
+  - [Callbacks](#callbacks)
+  - [Rendering Override](#rendering-override)
+- [UltraCanvasCDRPlugin](#ultracanvascdrplugin)
+  - [Export ("Save As")](#export-save-as)
+  - [Plugin Registration](#plugin-registration)
+- [Convenience Factories](#convenience-factories)
+- [Usage Examples](#usage-examples)
+  - [Example 1: Loading and Displaying a CDR File](#example-1-loading-and-displaying-a-cdr-file)
+  - [Example 2: Click-to-Fullscreen Handler](#example-2-click-to-fullscreen-handler)
+  - [Example 3: Hover Highlight + Click-to-Open](#example-3-hover-highlight--click-to-open)
+  - [Example 4: Inline Multi-Page Navigation](#example-4-inline-multi-page-navigation)
+- [Supported Features (Plugin Summary)](#supported-features-plugin-summary)
+- [Integration Checklist](#integration-checklist)
+- [Writing CDR files (`UltraCanvasCDRConverter.h`)](#writing-cdr-files-ultracanvascdrconverterh)
+- [See Also](#see-also)
+
 ## Overview
 
 The `UltraCanvasCDRElement` is a UI element that loads and renders **CorelDRAW vector graphics** (`.cdr`, `.cmx`, `.ccx`, `.cdt`) inside an UltraCanvas window. It is part of the `UltraCanvasCDRPlugin`, which uses **libcdr** + **librevenge** to parse CDR documents into an intermediate `CDRDocument` of pages, draw commands, gradients, styles, and embedded images, then plays those commands back through the standard `IRenderContext`. Supported features include multi-page documents, vector paths, text with character / paragraph styles, gradients (linear / radial / conical), groups & layers, and configurable fit modes plus interactive zoom & pan.

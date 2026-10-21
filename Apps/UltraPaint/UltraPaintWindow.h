@@ -8,6 +8,29 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.8.5 - DropPasswords forgets its passwords when the desktop session locks
+//                  (UltraCanvasSessionLock); a drop's first file then asks again
+// Version: 1.8.4 - DropPasswords: every password given in a drop (up to eight, newest
+//                  first) is tried on each protected file after it, not only the last
+// Version: 1.8.3 - DropPassword: the password given for one file of a drop is tried first
+//                  on the next protected file of it, and forgotten when the drop is done;
+//                  PasteAsNewImage says what it pasted
+// Version: 1.8.2 - LoadDocumentAsking: a protected file asks for its password wherever a
+//                  file is read - each of a multi-file drop in turn (ApplyImports), a
+//                  pasted one; AskForFilePassword's notOpened
+// Version: 1.8.1 - AskForFilePassword: one password question for a protected *.ucd and a
+//                  protected PDF; ImportFile takes the PDF's password on to the rasterizer
+// Version: 1.8.0 - password-protected *.ucd: CmdPassword (File > Password Protection...),
+//                  OpenProtectedFile asks for a file's password, SaveLossQuestion
+// Version: 1.7.0 - the palette rows under the picker (UltraCanvasColorPaletteManager):
+//                  palettes added from a gallery, an entry set with a right click;
+//                  RememberPalettes keeps them between starts
+// Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
+// Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
+//                  the keyboard back to the text being typed
+// Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
+//                  canvas at its zoom edits a text layer; Layer > Edit Text / Rasterize Layer
+// Version: 1.5.0 - the right panel's sections are group boxes (optionsPanel, layersPanel)
 // Version: 1.4.0 - BringForward: restores and raises the window (a file handed over by a
 //                  second start opens in a window of its own and comes to the front)
 // Version: 1.3.0 - toolSlots: the palette's tools in groups, one slot each, with a fold-out bar
@@ -17,7 +40,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,12 +51,15 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColorPicker.h"
-#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasColorPaletteManager.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
+#include "UltraCanvasSessionLock.h"        // a drop's passwords go when the session locks
 
 #include "UltraPaintTools.h"
 #include "UltraPaintFilters.h"
@@ -41,6 +67,7 @@
 #include "UltraPaintSettings.h"
 #include "UltraPaintSettingsDialog.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -83,6 +110,11 @@ private:
     void BuildToolbar();
     void BuildToolPalette();
     void BuildRightPanel();
+    // The colour picker's design and open / folded channels, into the
+    // settings file: the next editor opens it the way it was left.
+    void RememberColourPicker();
+    // The palette rows under the picker into the settings file.
+    void RememberPalettes();
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
@@ -108,8 +140,27 @@ private:
     // or merge it into the open image — and carries the answer out.
     // `fromDrop` decides which of those the dialog offers; `alsoFiles` are the
     // rest of a multi-file drop, which follow the same answer.
+    // `preloaded`: the file already read (a password-protected *.ucd, opened
+    // once its password was given), so it is not read again. `password`: the
+    // one given for it - a PDF is rasterized with it, and the rest of a drop
+    // try it first (DropPasswords).
     void ImportFile(const std::string& path, bool fromDrop,
-                    const std::vector<std::string>& alsoFiles = {});
+                    const std::vector<std::string>& alsoFiles = {},
+                    std::shared_ptr<UCRasterDocument> preloaded = nullptr,
+                    const std::string& password = std::string());
+    // What a password does when it is tried on a file: opens it, is not its
+    // password, or is right but the file would not open (`error` says why).
+    enum class PasswordTry { Opened, Wrong, Failed };
+    // A password-protected file - a *.ucd to open, a PDF to import: asks for
+    // its password and tries it with `attempt`, asking again (`note` says
+    // why) while it is not right. Cancel opens nothing; a failure is shown.
+    // `notOpened` runs when the question ends without opening the file
+    // (Cancel, or once the failure's message is closed).
+    void AskForFilePassword(const std::string& path,
+                            const std::function<PasswordTry(const std::string& password,
+                                                            std::string& error)>& attempt,
+                            const std::function<void()>& notOpened = nullptr,
+                            const std::string& note = std::string());
     // A 3D model takes the framework's model-view dialog instead: it has no
     // view either, and one has to be chosen before there are any pixels.
     void ImportModel(const std::string& path, bool fromDrop,
@@ -119,10 +170,61 @@ private:
     // file is not read a second time; null means read it now.
     void ApplyImport(const std::string& path, const UltraPaintImportResult& result,
                      std::shared_ptr<UCRasterDocument> preloaded = nullptr);
+    // The passwords given for the files of a drop, tried - the one that
+    // last opened a file first - on each protected file after them: files
+    // dropped together often share a password, or a few, so each is typed
+    // once, not once per file. Held in UltraCryptSecureBuffers (zeroed when
+    // freed), at most kMax distinct ones, and only while the drop is being
+    // read: ApplyImports lets go of them when the drop is done, and so does
+    // the desktop session locking - a drop left half-answered while the user
+    // steps away asks again for what comes after.
+    struct DropPasswords {
+        static constexpr size_t kMax = 8;
+        std::vector<std::shared_ptr<UltraCryptSecureBuffer>> values;   // newest first
+        DropPasswords() = default;
+        ~DropPasswords();
+        DropPasswords(const DropPasswords&) = delete;
+        DropPasswords& operator=(const DropPasswords&) = delete;
+        // To the front - a password already held moves there; the oldest
+        // goes past kMax. While any is held, a session lock forgets them.
+        void Remember(const std::string& password);
+        std::vector<std::string> All() const;   // newest first
+        std::string Newest() const;
+        bool Empty() const { return values.empty(); }
+        void Forget();
+    private:
+        SessionLockListenerId lockListener = 0;
+    };
+    // The rest of a multi-file drop: each read and given the same answer, one
+    // after the other - a password-protected one tries the passwords
+    // `remembered` holds first, else asks for its password, and the next waits for the answer; one
+    // cancelled or unreadable is left out and the next goes on.
+    void ApplyImports(std::vector<std::string> files, const UltraPaintImportResult& result,
+                      std::shared_ptr<DropPasswords> remembered = nullptr);
+    // Runs `task` once the editor has drawn again (a task posted from a
+    // posted task runs after the loop's render), so what it asks is not
+    // asked over a dialog that has just closed or a canvas that has not
+    // caught up - the desktop's own dialogs hold the loop while they ask.
+    void AfterNextDraw(std::function<void()> task);
+    // What the answer does with a document that has been read.
+    void ApplyLoaded(const std::string& path, const UltraPaintImportResult& result,
+                     const std::shared_ptr<UCRasterDocument>& incoming);
     // Reads a file into a document, rasterizing vector artwork at `result`'s
     // size and page. Null with the reason already shown when it cannot be read.
     std::shared_ptr<UCRasterDocument> LoadDocument(const std::string& path,
                                                    const UltraPaintImportResult& result);
+    // LoadDocument for a file that may be password-protected (a *.ucd, a
+    // PDF): asks for its password first, again while it is wrong. `loaded`
+    // gets the document; `notLoaded` runs instead when there is none
+    // (cancelled, or unreadable - the reason already shown). Either runs at
+    // once for a file that needs no password, and on a later turn of the
+    // loop - once the question has closed - for one that did.
+    // `remembered`, when given: its passwords are tried before asking, and
+    // the one that is then given joins them.
+    void LoadDocumentAsking(const std::string& path, const UltraPaintImportResult& result,
+                            const std::function<void(std::shared_ptr<UCRasterDocument>)>& loaded,
+                            const std::function<void()>& notLoaded = nullptr,
+                            std::shared_ptr<DropPasswords> remembered = nullptr);
     // Merges a document's flattened pixels into the open image as a new layer.
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
@@ -137,6 +239,10 @@ private:
     // which is what made the Adjust menu look as though it did nothing.
     void ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog);
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
+    // What saving the open image to `path` would lose - its layers (a flat
+    // format, when `layers` is asked), its password (anything but a *.ucd) -
+    // as the question to confirm first; empty when nothing is lost.
+    std::string SaveLossQuestion(const std::string& path, bool layers) const;
     void UpdateTitle();
     void UpdateStatus();
     void UpdateUndoButtons();
@@ -150,6 +256,7 @@ private:
     void CmdSave();
     void CmdSaveAs();
     void CmdExport();
+    void CmdPassword();
     void CmdUndo();
     void CmdRedo();
     void CmdCut();
@@ -197,7 +304,53 @@ private:
     void StartLayerRename(int index);
     void FinishLayerRename(bool keep, const std::string& name);
     PaintTool* ActiveTool() const;
-    void PlaceText(double x, double y, const UltraPaintTextResult& r);
+
+    // ----- the Text tool: typing on the canvas -----
+    // A text is typed into an UltraCanvasRichTextEdit lying over the canvas
+    // at the canvas's zoom, in the text's box; it lays the words out as the
+    // text layer will hold them (UltraCanvasRasterText.h), so what is typed is
+    // what the layer gets. The layer being edited is left out of the canvas
+    // meanwhile (UCRasterDocument::SetInPlaceEditLayer), and the edit goes
+    // into the document - a new text layer, or the edited one drawn again -
+    // as one undo step when it is committed.
+    struct TextEditSession {
+        std::shared_ptr<UCRasterLayer> layer;      // the text layer being edited; null for a new text
+        RasterTextContent content;                 // its box and default font (the edit's words are the editor's)
+    };
+    // Starts typing at (x, y): into the text layer whose box is there, or a
+    // new text there. `boxWidth` > 0 when a box was dragged out.
+    void BeginTextEdit(double x, double y, double boxWidth);
+    // The editor opened on layer `layerIndex` (a text layer), or on a new
+    // text at (x, y) when it is -1.
+    void OpenTextSession(int layerIndex, double x, double y, double boxWidth);
+    // Puts what was typed into the document and closes the editor. A new text
+    // left empty adds nothing; an edited text emptied is removed.
+    void CommitTextEdit();
+    bool IsEditingText() const { return textSession != nullptr; }
+    // Keeps the editor on the box as the view zooms and pans, and as tall as
+    // what is typed.
+    void PlaceTextEditor();
+    // A Text tool option changed: applied to the editor's selection (or what
+    // is typed next), else to the whole active text layer.
+    void ApplyTextOption(const std::string& option);
+    // A Text option's control let go of the keyboard without a change (a
+    // list closed with Escape): after the event that closed it, the keys go
+    // back to the text being typed - if the control still has them; Tab or a
+    // click elsewhere put them where they were meant to go.
+    void ReturnKeyboardToText(UltraCanvasUIElement& control);
+    // The topmost visible text layer whose box holds (x, y), or -1.
+    int TextLayerAt(double x, double y) const;
+    // Before painting on a text layer: asks whether to rasterize it.
+    void AskRasterize(const std::string& action);
+    // For a command that changes the active layer's pixels (a filter, Fill,
+    // Delete): finishes a text being typed and, when the active layer is a
+    // text layer, asks to rasterize it and returns true - the command stops.
+    bool StopsAtTextLayer(const std::string& action);
+    // Draws the box of the text being typed (and, with the Text tool, every
+    // text layer's) over the canvas.
+    void DrawTextBoxes(IRenderContext* ctx, const PaintViewTransform& view);
+    void CmdEditText();
+    void CmdRasterizeLayer();
 
     // ----- the mouse pointer magnification glass -----
     // A loupe over a corner of the canvas (a UltraCanvasPaintSurface in loupe
@@ -224,6 +377,16 @@ private:
     void ShowPreview(const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op);
     void EndPreview(bool commit, const std::string& label,
                     const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op);
+    // The layer an open adjustment works on, brought up to date first: the
+    // dialog stays open while the image changes under it - a paste adds a
+    // layer, Paste as New Image swaps the document, a stroke or an undo
+    // repaints the layer - and the preview follows what is there now rather
+    // than putting back the pixels it saw when it opened. Null when the
+    // active layer cannot take it (locked, a text layer, none).
+    std::shared_ptr<UCRasterLayer> SyncPreviewTarget();
+    // Shows the open adjustment again on the image as it is now, once the
+    // current event has been handled.
+    void SchedulePreviewRefresh();
 #endif
 
     // ----- members -----
@@ -235,10 +398,12 @@ private:
     std::shared_ptr<UltraCanvasPaintSurface>   surface;
     std::shared_ptr<UltraCanvasContainer>      rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>    colorPicker;
-    std::shared_ptr<UltraCanvasColorSwatchBar> swatches;
-    std::shared_ptr<UltraCanvasContainer>      optionsPanel;
-    std::shared_ptr<UltraCanvasLabel>          optionsTitle;
-    std::shared_ptr<UltraCanvasContainer>      layersPanel;
+    std::shared_ptr<UltraCanvasColorPaletteManager> palettes;   // the palette rows under the picker
+    // Two of the right panel's cards (BuildRightPanel; the Colour card holds
+    // the picker and swatches): the active tool's options, captioned with the
+    // tool's name, and Layers.
+    std::shared_ptr<UltraCanvasGroupBox>       optionsPanel;
+    std::shared_ptr<UltraCanvasGroupBox>       layersPanel;
     std::shared_ptr<UltraCanvasContainer>      layerRows;
     std::shared_ptr<UltraCanvasSlider>         layerOpacity;
     std::shared_ptr<UltraCanvasDropdown>       layerBlend;
@@ -248,6 +413,9 @@ private:
     // The palette's slots, one per tool group (UltraPaintWindow.cpp:
     // PaletteGroups), top to bottom.
     std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
+    std::shared_ptr<UltraCanvasContainer>      textEditorHost;   // over the canvas while a text is typed
+    std::shared_ptr<UltraCanvasRichTextEdit>   textEditor;       // in it, on the text's box
+    std::unique_ptr<TextEditSession>           textSession;
     std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
     std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it
     int magnifierCorner = 1;                                      // where it sits now
@@ -284,7 +452,9 @@ private:
     // here and still fits, centred otherwise.
     void PasteAsLayer(std::shared_ptr<UCRasterLayer> image, const std::string& layerName, bool fromHere,
                       const std::string& what);
-    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image);
+    // `image` as a new image; `what` names it in the status line ("the last
+    // copied image").
+    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image, const std::string& what = std::string());
     // The clipboard history's newest image (UltraCanvasClipboardHistory, the
     // one UltraDesktop keeps) and when it was copied ("5 min ago"); null when
     // there is no history or no image in it.
@@ -293,9 +463,18 @@ private:
     void OfferLastCopiedImage(const std::function<void(std::shared_ptr<UCRasterLayer>)>& use);
 
     // filter preview state
-    std::shared_ptr<UCRasterLayer> previewOriginal;
-    int previewLayerIndex = -1;
+    std::shared_ptr<UCRasterLayer> previewOriginal;    // the target's pixels without the preview
+    std::weak_ptr<UCRasterDocument> previewDocument;   // where the target lives
+    std::weak_ptr<UCRasterLayer> previewLayer;         // the layer the preview is shown on
+    uint64_t previewShownHash = 0;                     // its pixels as the preview left them
+#ifdef HAS_LIBVIPS
+    std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)> previewOp;   // shown now; null: the original
+#endif
+    // The dialog's own view of the target - Curves' histogram - redrawn when
+    // the target changes.
+    std::function<void(const UCRasterLayer&)> previewSourceChanged;
     bool previewActive = false;
+    bool previewRefreshPending = false;
     std::weak_ptr<UltraCanvasWindow> activeDialog;
 
     UltraPaintNewImageResult lastNewImage;

@@ -16,9 +16,17 @@
 ;   - Finish page: "Use UltraDesktop as my Windows desktop" (off unless
 ;     ticked) runs UltraDesktop --use-as-desktop - the switch UOS-Settings
 ;     and the desktop's own menu turn off again.
+;   - "UltraDesktop" works in Run boxes (App Paths): Task Manager's "Run new
+;     task" is the way back for a desktop that stopped responding
+;     (UltraDesktop --restore-desktop).
 ;   - Uninstall: the Windows desktop first (UltraDesktop --restore-desktop:
-;     no start at sign-in, the taskbar as it was), then exactly the files
-;     the installer put there - never anything else in the folder.
+;     no start at sign-in, beside Explorer or instead of it, the taskbar as
+;     it was - and the account's shell setting cleared here as well, should
+;     UltraDesktop no longer run), then exactly the files the installer put
+;     there - never anything else in the folder - and the notification
+;     identities the applications registered for the account (their toasts'
+;     AppUserModelIDs and activators, listed under
+;     HKCU\Software\UltraCanvas\Notifications).
 ;
 ; Defines (all given by the build script):
 ;   UC_VERSION    the framework version, "0.9.258"
@@ -29,8 +37,12 @@
 ;   UC_REMOVE     the generated list of what to remove (Delete / RMDir lines)
 ;   UC_LICENSE    the licence text shown before installing
 ;   UC_ICON       optional: the installer's icon (.ico)
+; Version: 0.3.0 - the uninstaller removes the notification identities (the
+;                  AppUserModelId and activator CLSID keys the list names)
+; Version: 0.2.0 - instead of Explorer: the shell setting cleared on uninstall,
+;                  the guard waited for; App Paths for UltraDesktop
 ; Version: 0.1.0
-; Last Modified: 2026-10-12
+; Last Modified: 2026-10-14
 ; Author: UltraCanvas Framework / ULTRA OS
 
 Unicode true
@@ -43,11 +55,19 @@ ManifestDPIAware true
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
+!include "StrFunc.nsh"
+${UnStrStr}
 
 !define PRODUCT "UltraCanvas"
 !define PUBLISHER "ULTRA OS Development GmbH"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraCanvas"
 !define SETUP_KEY "Software\UltraCanvas\Setup"
+!define APP_PATHS_KEY "Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe"
+; One value per notification identity: the AppUserModelID, its activator's
+; CLSID as the data (UltraCanvasNotificationActivation.h).
+!define NOTIFY_KEY "Software\UltraCanvas\Notifications"
+!define WINLOGON_KEY "Software\Microsoft\Windows NT\CurrentVersion\Winlogon"
+!define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
 Name "${PRODUCT}"
 OutFile "${UC_OUTFILE}"
@@ -114,6 +134,11 @@ Section "${PRODUCT}"
   IntFmt $0 "0x%08X" $0
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "EstimatedSize" "$0"
   WriteRegStr HKCU "${SETUP_KEY}" "InstallDir" "$INSTDIR"
+
+  ; "UltraDesktop" in a Run box - Task Manager's "Run new task" among them.
+  IfFileExists "$INSTDIR\UltraDesktop.exe" 0 +3
+    WriteRegStr HKCU "${APP_PATHS_KEY}" "" "$INSTDIR\UltraDesktop.exe"
+    WriteRegStr HKCU "${APP_PATHS_KEY}" "Path" "$INSTDIR"
 SectionEnd
 
 ; The finish page's choice: switched over, and the desktop started now.
@@ -132,6 +157,28 @@ Section "Uninstall"
     ExecWait '"$INSTDIR\UltraDesktop.exe" --restore-desktop'
     Sleep 1500
 
+  ; The same, should UltraDesktop no longer run: a shell setting naming the
+  ; guard about to be deleted would leave the next sign-in without any
+  ; desktop, and a start beside Explorer would point at nothing.
+  ReadRegStr $0 HKCU "${WINLOGON_KEY}" "Shell"
+  ${UnStrStr} $1 $0 "UltraCanvasShellGuard.exe"
+  StrCmp $1 "" +2
+    DeleteRegValue HKCU "${WINLOGON_KEY}" "Shell"
+  DeleteRegValue HKCU "${RUN_KEY}" "UltraCanvas Desktop"
+
+  ; As the session's shell, the guard starts Explorer once UltraDesktop has
+  ; closed, and holds its own file until then: up to 20 s for it to finish.
+  StrCpy $2 0
+  guard_wait:
+    ClearErrors
+    Delete "$INSTDIR\UltraCanvasShellGuard.exe"
+    IfErrors 0 guard_gone
+    IntOp $2 $2 + 1
+    IntCmp $2 40 guard_gone
+    Sleep 500
+    Goto guard_wait
+  guard_gone:
+
   RMDir /r "$SMPROGRAMS\${PRODUCT}"
 
   ; What the installer put there, file by file; a folder only goes when it
@@ -140,6 +187,26 @@ Section "Uninstall"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
 
+  ; The notification identities: each application's toast registration
+  ; (Software\Classes\AppUserModelId\<id>) and its activator's class
+  ; (Software\Classes\CLSID\<clsid>), then the list naming them. Read
+  ; whole first: the values are counted by index.
+  StrCpy $3 0
+  notify_loop:
+    ClearErrors
+    EnumRegValue $4 HKCU "${NOTIFY_KEY}" $3
+    IfErrors notify_done
+    StrCmp $4 "" notify_done
+    ReadRegStr $5 HKCU "${NOTIFY_KEY}" $4
+    DeleteRegKey HKCU "Software\Classes\AppUserModelId\$4"
+    StrCmp $5 "" +2
+      DeleteRegKey HKCU "Software\Classes\CLSID\$5"
+    IntOp $3 $3 + 1
+    Goto notify_loop
+  notify_done:
+  DeleteRegKey HKCU "${NOTIFY_KEY}"
+
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   DeleteRegKey HKCU "${SETUP_KEY}"
+  DeleteRegKey HKCU "${APP_PATHS_KEY}"
 SectionEnd

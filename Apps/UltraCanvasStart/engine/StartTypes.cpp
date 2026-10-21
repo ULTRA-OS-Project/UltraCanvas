@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartTypes.cpp
+// Version: 0.1.2 - Choices::Skips / SetSkipped, Plan::SkippedCount
 // Version: 0.1.1 - AssistantName, AssistantInstructionFile, AssistantFromName
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -58,6 +59,7 @@ std::string AssistantName(Assistant assistant) {
         case Assistant::Codex:      return "Codex";
         case Assistant::Copilot:    return "Copilot";
         case Assistant::Gemini:     return "Gemini";
+        case Assistant::NoAssistant:       return "no AI assistant";
         default:                    return "another assistant";
     }
 }
@@ -71,6 +73,7 @@ std::string AssistantInstructionFile(Assistant assistant) {
 }
 
 bool AssistantFromName(const std::string& name, Assistant& out) {
+    if (name == "none")    { out = Assistant::NoAssistant;       return true; }
     if (name == "claude")  { out = Assistant::ClaudeCode; return true; }
     if (name == "codex")   { out = Assistant::Codex;      return true; }
     if (name == "copilot") { out = Assistant::Copilot;    return true; }
@@ -143,6 +146,24 @@ void Choices::Set(DependencyGroup group, bool on) {
     auto found = std::find(groups.begin(), groups.end(), group);
     if (on && found == groups.end()) groups.push_back(group);
     if (!on && found != groups.end()) groups.erase(found);
+}
+
+bool Choices::Skips(const std::string& dependencyId) const {
+    return std::find(skipped.begin(), skipped.end(), dependencyId) != skipped.end();
+}
+
+void Choices::SetSkipped(const std::string& dependencyId, bool skip) {
+    auto found = std::find(skipped.begin(), skipped.end(), dependencyId);
+    if (skip && found == skipped.end()) skipped.push_back(dependencyId);
+    if (!skip && found != skipped.end()) skipped.erase(found);
+}
+
+size_t Plan::SkippedCount() const {
+    size_t count = 0;
+    for (const auto& check : checks) {
+        if (check.checked && (!check.present || !check.versionOk) && choices.Skips(check.dependencyId)) ++count;
+    }
+    return count;
 }
 
 size_t Plan::MissingCount() const {

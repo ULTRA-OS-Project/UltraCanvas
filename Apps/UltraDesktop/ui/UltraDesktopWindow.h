@@ -26,6 +26,15 @@
 // every notification that nothing else draws - on ULTRA OS UltraMessage
 // itself is the notification server, so every application's notifications
 // (and UltraMail's new mail) would otherwise reach the message feed only.
+//
+// As the session's shell on Windows (--shell: instead of Explorer) it also
+// hosts the notification area - the programs' tray icons sit on the info
+// panel, above its services, and their balloons become toasts - its
+// settings button offers sign out, restart and shut down, which Explorer's
+// Start menu would otherwise, and a tap of the Win key opens the
+// Applications window.
+// Version: 0.4.0 - Windows: instead of Explorer - the tray icons, sign out,
+//                  restart and shut down, the Win key, every screen
 // Version: 0.3.0 - Windows: in place of the Windows desktop and back
 // Version: 0.2.0 - the notification toasts
 // Version: 0.1.0
@@ -86,9 +95,13 @@ public:
     // closes when the switch is turned off elsewhere - UOS-Settings, the
     // uninstaller, --restore-desktop - so the Windows desktop is back at once.
     void SetSessionDesktop(bool session) { sessionDesktop_ = session; }
-    // The settings button's menu: switch over, or back. Back closes the
-    // desktop; Explorer's taskbar returns as it was.
-    void UseAsSystemDesktop();
+    // Started as the session's shell (--shell): Explorer does not run, so
+    // the desktop hosts the tray icons and ends the session itself.
+    void SetShellSession(bool shell) { shellSession_ = shell; }
+    // The settings button's menu: switch over - beside Explorer now, or
+    // instead of it from the next sign-in - or back. Back closes the desktop;
+    // Explorer's taskbar returns as it was, or Explorer itself starts.
+    void UseAsSystemDesktop(UltraCanvas::DesktopReplacement how = UltraCanvas::DesktopReplacement::Beside);
     void SwitchBackToSystemDesktop();
 
     // ===== WHAT THE BARS DO (also reachable from the windows this opens) =====
@@ -161,6 +174,24 @@ private:
     void ShowSettingsButtonMenu(int windowX, int windowY);
     // Once a second: a session desktop whose switch was turned off closes.
     void CheckDesktopSwitch();
+    // Sign out, restart, shut down - asked first.
+    void ConfirmEndSession(UltraCanvas::SessionEnd how);
+
+    // ===== EVERY SCREEN =====
+    // The desktop window covers the primary monitor (Windows) or the whole
+    // screen (X11). While no Explorer desktop runs, a monitor outside it gets
+    // a desktop window of its own with the wallpaper, so no screen stays
+    // black; followed as monitors come and go, and a window closed (Alt+F4)
+    // opens again at the next check.
+    void CoverOtherScreens();
+    // The window for otherScreens_[index]; `report` says a failure once.
+    void OpenScreenWindow(size_t index, bool report);
+
+    // ===== THE NOTIFICATION AREA (the shell session) =====
+    void StartTray();
+    // The tray icons on the info panel follow the host's list.
+    void RefreshTray();
+    void ShowTrayBalloon(const UltraCanvas::DesktopTrayIcon& icon);
 
     // ===== CLIPBOARD HISTORY =====
     void StartClipboardHistory();
@@ -182,6 +213,7 @@ private:
     std::filesystem::file_time_type settingsFileTime_{};
     std::chrono::steady_clock::time_point nextSettingsCheck_{};
     bool sessionDesktop_ = false;
+    bool shellSession_ = false;
     std::chrono::steady_clock::time_point nextSwitchCheck_{};
     std::string iconsDir_;
 
@@ -225,6 +257,24 @@ private:
 
     UltraCanvas::UltraCanvasDesktopShellMonitor shellMonitor_;
     std::atomic<bool> windowsDirty_{true};
+
+    // The tray: the host's thread raises the flag, the UI timer applies it.
+    // Item id -> the icon file and tooltip it shows; icon id -> the last
+    // balloon shown.
+    UltraCanvas::UltraCanvasTrayHost trayHost_;
+    std::atomic<bool> trayDirty_{false};
+    // As the shell: a tap of the Win key opens the Applications window, as
+    // it would open Explorer's Start menu.
+    UltraCanvas::UltraCanvasGlobalShortcut appsShortcut_;
+
+    // The other screens' windows, each with its wallpaper.
+    std::vector<UltraCanvas::DesktopScreenInfo> otherScreens_;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> screenWindows_;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasImageElement>> screenWallpapers_;
+    std::chrono::steady_clock::time_point nextScreenCheck_{};
+    std::map<std::string, std::string> trayIcons_;
+    std::map<std::string, std::string> trayTooltips_;
+    std::map<std::string, uint64_t> trayBalloons_;
     UltraCanvas::TimerId uiTimer_ = 0;
     int ticksSinceNotices_ = 0;
     int screenshotBadgeTicks_ = 0;

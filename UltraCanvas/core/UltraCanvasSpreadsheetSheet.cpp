@@ -926,7 +926,225 @@ bool SplitTrailingNumber(const std::string& text, std::string& prefix, long long
 
 } // namespace
 
-void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination) {
+bool FormulaAcceptsReferenceAt(const std::string& text, size_t start, size_t end) {
+    if (text.empty() || text[0] != '=') return false;
+    if (start < 1 || start > end || end > text.size()) return false;
+
+    // Not inside a "text literal".
+    size_t quotes = 0;
+    for (size_t i = 0; i < start; ++i) {
+        if (text[i] == '"') ++quotes;
+    }
+    if (quotes % 2 != 0) return false;
+
+    // Before it: the '=', an opening parenthesis, a separator or an operator.
+    size_t before = start;
+    while (before > 0 && text[before - 1] == ' ') --before;
+    if (before == 0) return false;
+    static const std::string kOpeners = "=(,;+-*/^&<>:";
+    if (kOpeners.find(text[before - 1]) == std::string::npos) return false;
+
+    // After it: nothing that would run on into the address ("=(|B2)").
+    if (end < text.size()) {
+        const unsigned char next = static_cast<unsigned char>(text[end]);
+        if (std::isalnum(next) || next == '$' || next == '_' || next == '.' ||
+            next == '!' || next == '(' || next == '"') {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string CheckSheetName(const std::string& name) {
+    if (name.empty()) return "A sheet name cannot be empty.";
+    // Characters, not bytes: count UTF-8 lead bytes.
+    size_t length = 0;
+    for (unsigned char c : name) {
+        if ((c & 0xC0) != 0x80) ++length;
+    }
+    if (length > 31) return "A sheet name can be at most 31 characters long.";
+    if (name.find_first_of("[]:*?/\\") != std::string::npos) {
+        return "A sheet name cannot contain any of [ ] : * ? / \\";
+    }
+    if (name.front() == '\'' || name.back() == '\'') {
+        return "A sheet name cannot start or end with an apostrophe.";
+    }
+    return "";
+}
+
+namespace {
+
+bool SameNameIgnoringCase(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsSheetNameChar(char c) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    return std::isalnum(u) || c == '_' || u >= 0x80;
+}
+
+// How a formula writes the sheet `name`: bare when it is a plain word,
+// otherwise in apostrophes with any apostrophe in it doubled.
+std::string FormulaSheetName(const std::string& name) {
+    bool plain = !name.empty() && !std::isdigit(static_cast<unsigned char>(name[0]));
+    for (char c : name) plain = plain && IsSheetNameChar(c);
+    if (plain) return name;
+    std::string quoted = "'";
+    for (char c : name) {
+        quoted += c;
+        if (c == '\'') quoted += '\'';
+    }
+    return quoted + "\'";
+}
+
+} // namespace
+
+namespace {
+
+// Reads a sheet qualifier at formula[i] - 'Quoted name' or a bare name -
+// followed by '.' or '!'. On success `name` is the sheet's name and `sep` the
+// index of the separator. A bare name counts only before a cell address, so
+// "2016.5" is a number, not sheet 2016.
+bool ReadSheetQualifier(const std::string& formula, size_t i, std::string& name, size_t& sep) {
+    name.clear();
+    if (i >= formula.size()) return false;
+    size_t j = i;
+    if (formula[i] == '\'') {
+        ++j;
+        bool closed = false;
+        while (j < formula.size()) {
+            if (formula[j] == '\'') {
+                if (j + 1 < formula.size() && formula[j + 1] == '\'') { name += '\''; j += 2; continue; }
+                closed = true;
+                ++j;
+                break;
+            }
+            name += formula[j++];
+        }
+        if (!closed) return false;
+    } else {
+        if (!IsSheetNameChar(formula[i]) || (i > 0 && IsSheetNameChar(formula[i - 1]))) return false;
+        while (j < formula.size() && IsSheetNameChar(formula[j])) ++j;
+        name = formula.substr(i, j - i);
+        const bool addressFollows = j + 1 < formula.size() &&
+            (formula[j + 1] == '$' || std::isalpha(static_cast<unsigned char>(formula[j + 1])));
+        if (!addressFollows) return false;
+    }
+    if (j >= formula.size() || (formula[j] != '.' && formula[j] != '!')) return false;
+    sep = j;
+    return true;
+}
+
+// The end of the cell address (or A1:B3 range) that starts at formula[i];
+// the far end of a range may repeat the sheet (Sales.A1:Sales.B3).
+size_t ReferenceEnd(const std::string& formula, size_t i) {
+    auto addressEnd = [&](size_t k) {
+        while (k < formula.size() && (formula[k] == '$' || std::isalnum(static_cast<unsigned char>(formula[k])))) ++k;
+        return k;
+    };
+    size_t end = addressEnd(i);
+    if (end < formula.size() && formula[end] == ':') {
+        size_t k = end + 1;
+        std::string name;
+        size_t sep = 0;
+        if (ReadSheetQualifier(formula, k, name, sep)) k = sep + 1;
+        const size_t far = addressEnd(k);
+        if (far > k) end = far;
+    }
+    return end;
+}
+
+// Shared by RenameSheetInFormula and RemoveSheetFromFormula: walks the
+// formula outside "text", and for every reference qualified with sheet
+// `sheetName` writes rewrite(qualifierStart, separator, out) and continues
+// at the index it returns.
+template <typename Rewrite>
+std::string RewriteSheetReferences(const std::string& formula, const std::string& sheetName, Rewrite rewrite) {
+    std::string out;
+    out.reserve(formula.size());
+    size_t i = 0;
+    while (i < formula.size()) {
+        const char c = formula[i];
+        if (c == '"') {   // a text literal is copied as it is
+            size_t close = formula.find('"', i + 1);
+            close = close == std::string::npos ? formula.size() : close + 1;
+            out.append(formula, i, close - i);
+            i = close;
+            continue;
+        }
+        std::string name;
+        size_t sep = 0;
+        if (ReadSheetQualifier(formula, i, name, sep)) {
+            if (SameNameIgnoringCase(name, sheetName)) {
+                i = rewrite(i, sep, out);
+            } else {
+                out.append(formula, i, sep - i);
+                i = sep;
+            }
+            continue;
+        }
+        if (c == '\'' || IsSheetNameChar(c)) {   // a name or word that is no reference
+            size_t j = i + 1;
+            if (c == '\'') {
+                while (j < formula.size() && formula[j] != '\'') ++j;
+                if (j < formula.size()) ++j;
+            } else {
+                while (j < formula.size() && IsSheetNameChar(formula[j])) ++j;
+            }
+            out.append(formula, i, j - i);
+            i = j;
+            continue;
+        }
+        out += c;
+        ++i;
+    }
+    return out;
+}
+
+} // namespace
+
+std::string RenameSheetInFormula(const std::string& formula, const std::string& oldName,
+                                 const std::string& newName) {
+    if (oldName.empty() || newName.empty()) return formula;
+    const std::string replacement = FormulaSheetName(newName);
+    return RewriteSheetReferences(formula, oldName, [&](size_t, size_t sep, std::string& out) {
+        out += replacement;
+        return sep;   // the separator and the address follow as they were
+    });
+}
+
+std::string RemoveSheetFromFormula(const std::string& formula, const std::string& sheetName) {
+    if (sheetName.empty()) return formula;
+    return RewriteSheetReferences(formula, sheetName, [&](size_t, size_t sep, std::string& out) {
+        out += "#REF!";
+        return ReferenceEnd(formula, sep + 1);
+    });
+}
+
+int SpreadsheetSheet::GetAutoFillDownEnd(const CellRange& source) const {
+    auto filled = [&](int row, int col) {
+        if (col < 0 || col >= SpreadsheetLimits::MaxColumns || row >= SpreadsheetLimits::MaxRows) return false;
+        const SpreadsheetCell* cell = GetCellIfExists(row, col);
+        return cell && !cell->IsEmpty();
+    };
+    const int below = source.end.row + 1;
+    for (int col : { source.start.col - 1, source.end.col + 1 }) {
+        if (!filled(below, col)) continue;
+        int last = below;
+        while (filled(last + 1, col)) ++last;
+        return last;
+    }
+    return -1;
+}
+
+void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination,
+                                AutoFillMode mode) {
     const int srcRows = source.RowCount();
     const int srcCols = source.ColCount();
     if (srcRows <= 0 || srcCols <= 0) return;
@@ -945,7 +1163,7 @@ void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destin
         };
 
         // A line of two or more plain numbers continues as a linear series.
-        bool series = length >= 2;
+        bool series = length >= 2 && mode == AutoFillMode::Series;
         for (int k = 0; k < length && series; ++k) {
             const SpreadsheetCell* cell = sourceAt(k);
             series = cell && !cell->HasFormula() && cell->IsNumeric();
@@ -960,7 +1178,7 @@ void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destin
         std::string textPrefix;
         long long textNumber = 0;
         bool counting = false;
-        if (length == 1) {
+        if (length == 1 && mode == AutoFillMode::Series) {
             const SpreadsheetCell* cell = sourceAt(0);
             counting = cell && !cell->HasFormula() && cell->GetValueType() == CellValueType::Text &&
                        SplitTrailingNumber(cell->GetText(), textPrefix, textNumber);
@@ -1175,6 +1393,12 @@ int SpreadsheetSheet::ReplaceAll(const std::string& searchText,
 // ============================================================================
 // CLONE
 // ============================================================================
+
+std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::CloneKeepingId() const {
+    auto copy = Clone();
+    copy->id_ = id_;
+    return copy;
+}
 
 std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::Clone(const std::string& newName) const {
     auto clone = std::make_unique<SpreadsheetSheet>(

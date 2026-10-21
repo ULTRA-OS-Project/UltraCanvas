@@ -1,6 +1,17 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS closes every window after that long
+// Version: 1.13.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS closes every window after that long
+// Version: 1.12.0 - GenerateFontAliasConfig: the generic family aliases alone, for a
+//                  config the generated fonts.conf did not make (Windows' inline one)
+// Version: 1.11.1 - the generated fonts.conf aliases "emoji" (Pango's family for an emoji
+//                  run) to the platform's colour emoji fonts, so an emoji no longer
+//                  goes to whichever font fontconfig happens to rank first
+// Version: 1.11.0 - ClosingEndsApplication
+// Version: 1.10.2 - ToFontconfigPath turns '\' into '/' only on Windows: elsewhere it is
+//                   part of a folder's name
+// Version: 1.10.1 - two -Wswitch / -Wtautological warnings in DispatchEvent fixed (the
+//                   key-state bound is checked on the key code as an int, against
+//                   KeyStateCount, as IsKeyPressed now does too)
 // Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
 // Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
@@ -16,10 +27,11 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <atomic>
 #include <iostream>
@@ -34,6 +46,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasEmojiSettings.h"
 
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
@@ -310,9 +323,14 @@ namespace UltraCanvas {
 
         // fontconfig understands forward slashes on every platform; keeping
         // backslashes out of the generated XML avoids any escaping question.
+        // Only on Windows, where '\' separates folders: elsewhere it is a
+        // character of a folder's name, and turned into '/' it would point
+        // fontconfig somewhere else.
         std::string ToFontconfigPath(const std::string& in) {
             std::string out = in;
+#if defined(_WIN32) || defined(_WIN64)
             std::replace(out.begin(), out.end(), '\\', '/');
+#endif
             while (out.size() > 1 && out.back() == '/') out.pop_back();
             return out;
         }
@@ -367,6 +385,55 @@ namespace UltraCanvas {
 #endif
         }
 
+        // The generic family aliases of the platform - without a system
+        // config nothing maps "sans-serif"/"monospace" (what Pango asks for
+        // by default) onto a real family, and every request falls back to the
+        // first font fontconfig happens to list - as <alias> elements.
+        void AppendFontAliases(std::ostringstream& conf) {
+#if defined(_WIN32) || defined(_WIN64)
+            const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
+            const char* const kSerif[] = { "Times New Roman", "Georgia" };
+            const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
+            const char* const kEmoji[] = { "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" };
+#elif defined(__ANDROID__)
+            const char* const kSans[] = { "Roboto", "Noto Sans", "Droid Sans" };
+            const char* const kSerif[] = { "Noto Serif", "Droid Serif" };
+            const char* const kMono[] = { "Droid Sans Mono", "Roboto Mono", "Cutive Mono" };
+            const char* const kEmoji[] = { "Noto Color Emoji" };
+#else
+            const char* const kSans[] = { "Ubuntu", "DejaVu Sans", "Liberation Sans", "Noto Sans" };
+            const char* const kSerif[] = { "DejaVu Serif", "Liberation Serif", "Noto Serif" };
+            const char* const kMono[] = { "Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono" };
+            const char* const kEmoji[] = { "Noto Color Emoji", "Twemoji", "JoyPixels", "Symbola" };
+#endif
+            struct GenericAlias {
+                const char* generic;
+                const char* const* preferred;
+                size_t preferredCount;
+            };
+            const GenericAlias aliases[] = {
+                { "sans-serif", kSans,  sizeof(kSans) / sizeof(kSans[0]) },
+                { "sans",       kSans,  sizeof(kSans) / sizeof(kSans[0]) },
+                { "serif",      kSerif, sizeof(kSerif) / sizeof(kSerif[0]) },
+                { "monospace",  kMono,  sizeof(kMono) / sizeof(kMono[0]) },
+                // Pango asks for the family "emoji" for a run of emoji. With
+                // no alias for it every font matches it equally badly, and the
+                // emoji went to whichever font covering it fontconfig ranked
+                // first (Unifont before Noto Color Emoji on Linux).
+                { "emoji",      kEmoji, sizeof(kEmoji) / sizeof(kEmoji[0]) },
+            };
+            for (const GenericAlias& alias : aliases) {
+                conf << "  <alias>\n"
+                     << "    <family>" << alias.generic << "</family>\n"
+                     << "    <prefer>\n";
+                for (size_t i = 0; i < alias.preferredCount; ++i) {
+                    conf << "      <family>" << alias.preferred[i] << "</family>\n";
+                }
+                conf << "    </prefer>\n"
+                     << "  </alias>\n";
+            }
+        }
+
         // Deliberately free of rendering rules (antialias/hinting/lcdfilter):
         // this config only replaces a *missing* one, so it must not change how
         // text looks compared to a system that has its own fonts.conf.
@@ -399,9 +466,6 @@ namespace UltraCanvas {
                         "  <dir>WINDOWSUSERFONTDIR</dir>\n";
             }
             conf << "  <cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>\n";
-            const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
-            const char* const kSerif[] = { "Times New Roman", "Georgia" };
-            const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
 #elif defined(__ANDROID__)
             // System fonts live in fixed directories (no /etc/fonts at all,
             // so this generated config is always the active one on Android).
@@ -409,9 +473,6 @@ namespace UltraCanvas {
                     "  <dir>/product/fonts</dir>\n"
                     "  <cachedir prefix=\"xdg\">fontconfig</cachedir>\n"
                     "  <cachedir>~/.fontconfig</cachedir>\n";
-            const char* const kSans[] = { "Roboto", "Noto Sans", "Droid Sans" };
-            const char* const kSerif[] = { "Noto Serif", "Droid Serif" };
-            const char* const kMono[] = { "Droid Sans Mono", "Roboto Mono", "Cutive Mono" };
 #else
             conf << "  <dir>/usr/share/fonts</dir>\n"
                     "  <dir>/usr/local/share/fonts</dir>\n"
@@ -420,40 +481,22 @@ namespace UltraCanvas {
                     "  <cachedir prefix=\"xdg\">fontconfig</cachedir>\n"
                     "  <cachedir>~/.fontconfig</cachedir>\n"
                     "  <include ignore_missing=\"yes\">/etc/fonts/conf.d</include>\n";
-            const char* const kSans[] = { "Ubuntu", "DejaVu Sans", "Liberation Sans", "Noto Sans" };
-            const char* const kSerif[] = { "DejaVu Serif", "Liberation Serif", "Noto Serif" };
-            const char* const kMono[] = { "Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono" };
 #endif
-            // Generic family aliases - without a system config nothing maps
-            // "sans-serif"/"monospace" (what Pango asks for by default) onto a
-            // real family, and every request falls back to the first font
-            // fontconfig happens to list.
-            struct GenericAlias {
-                const char* generic;
-                const char* const* preferred;
-                size_t preferredCount;
-            };
-            const GenericAlias aliases[] = {
-                { "sans-serif", kSans,  sizeof(kSans) / sizeof(kSans[0]) },
-                { "sans",       kSans,  sizeof(kSans) / sizeof(kSans[0]) },
-                { "serif",      kSerif, sizeof(kSerif) / sizeof(kSerif[0]) },
-                { "monospace",  kMono,  sizeof(kMono) / sizeof(kMono[0]) },
-            };
-            for (const GenericAlias& alias : aliases) {
-                conf << "  <alias>\n"
-                     << "    <family>" << alias.generic << "</family>\n"
-                     << "    <prefer>\n";
-                for (size_t i = 0; i < alias.preferredCount; ++i) {
-                    conf << "      <family>" << alias.preferred[i] << "</family>\n";
-                }
-                conf << "    </prefer>\n"
-                     << "  </alias>\n";
-            }
-
+            AppendFontAliases(conf);
             conf << "</fontconfig>\n";
             return conf.str();
         }
     } // namespace
+
+    std::string GenerateFontAliasConfig() {
+        std::ostringstream conf;
+        conf << "<?xml version=\"1.0\"?>\n"
+                "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
+                "<fontconfig>\n";
+        AppendFontAliases(conf);
+        conf << "</fontconfig>\n";
+        return conf.str();
+    }
 #endif // !__APPLE__
 
 #if !defined(__APPLE__)
@@ -503,6 +546,9 @@ namespace UltraCanvas {
             }
             FcConfigSetCurrent(config);
             FcConfigDestroy(config);   // the current-config reference keeps it
+            // The emoji font and its rule belong to the set in use: the new
+            // one gets them too.
+            ApplyEmojiSettings();
 #if defined(ULTRACANVAS_HAS_PANGOFT2)
             PangoFontMap* fontMap = pango_cairo_font_map_get_default();
             if (fontMap && PANGO_IS_FC_FONT_MAP(fontMap)) {
@@ -742,6 +788,47 @@ namespace UltraCanvas {
         // pango_cairo_font_map_get_default() build one. Contexts that already
         // exist keep the map they hold until their surface is recreated.
         pango_cairo_font_map_set_default(nullptr);
+    }
+
+    std::vector<std::string> GetInstalledFontFamilies() {
+        std::vector<std::string> names;
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (!fontMap) return names;
+        PangoFontFamily** families = nullptr;
+        int familyCount = 0;
+        pango_font_map_list_families(fontMap, &families, &familyCount);
+        for (int i = 0; i < familyCount; ++i) {
+            const char* name = pango_font_family_get_name(families[i]);
+            if (!name || !*name) continue;
+            // A face made of bitmaps lists the sizes it has; a scalable one
+            // lists none.
+            PangoFontFace** faces = nullptr;
+            int faceCount = 0;
+            pango_font_family_list_faces(families[i], &faces, &faceCount);
+            bool scalable = faceCount == 0;
+            for (int f = 0; f < faceCount && !scalable; ++f) {
+                int* sizes = nullptr;
+                int sizeCount = 0;
+                pango_font_face_list_sizes(faces[f], &sizes, &sizeCount);
+                if (!sizes) scalable = true;
+                g_free(sizes);
+            }
+            g_free(faces);
+            if (scalable) names.emplace_back(name);
+        }
+        g_free(families);
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+            return s;
+        };
+        std::sort(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            const std::string la = lower(a), lb = lower(b);
+            return la != lb ? la < lb : a < b;
+        });
+        names.erase(std::unique(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
+            return lower(a) == lower(b);
+        }), names.end());
+        return names;
     }
 
     bool UltraCanvasApplicationBase::RegisterFontFile(const std::string& fontFilePath) {
@@ -1155,10 +1242,12 @@ namespace UltraCanvas {
         for (auto* chain : PressChains()) {
             std::replace(chain->begin(), chain->end(), elem, static_cast<UltraCanvasUIElement*>(nullptr));
         }
-        auto win = elem->GetWindow();
-        if (win && win->_focusedElement == elem) {
-            win->_focusedElement = nullptr;
-        }
+        // Forget the element as any window's focus, not only the window it
+        // names now: an element whose window pointer was already cleared or
+        // moved could otherwise stay a window's focused element after it was
+        // freed, and the next focus change walked its freed parent chain
+        // (the Demo crashed in IsDescendantOf when leaving the Album page).
+        UltraCanvasWindowBase::ForgetFocusedElement(elem);
     }
 
     // ===== MODAL WINDOW MANAGEMENT =====
@@ -1265,6 +1354,25 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasApplicationBase::ClosingEndsApplication(UltraCanvasWindowBase* window) {
+        for (const auto& other : windows) {
+            if (!other || other.get() == window) continue;
+            const WindowState state = other->GetState();
+            if (state == WindowState::Closing || state == WindowState::Closed) continue;
+            // Up the parent chain, comparing pointers first: a parent that is
+            // no longer registered is gone, and is not read.
+            bool goesWithIt = false;
+            UltraCanvasWindowBase* p = other->GetConfig().parentWindow;
+            while (p) {
+                if (p == window) { goesWithIt = true; break; }
+                if (!IsWindowRegistered(p)) break;
+                p = p->GetConfig().parentWindow;
+            }
+            if (!goesWithIt) return false;
+        }
+        return true;
+    }
+
     void UltraCanvasApplicationBase::UnregisterWindow(UltraCanvasWindowBase* window) {
         std::erase_if(windows, 
             [window](const std::shared_ptr<UltraCanvasWindowBase>& w) {
@@ -1307,7 +1415,7 @@ namespace UltraCanvas {
 
     std::vector<UCKeys> UltraCanvasApplicationBase::GetPressedKeys() const {
         std::vector<UCKeys> pressed;
-        for (int key = 0; key < 256; ++key) {
+        for (int key = 0; key < KeyStateCount; ++key) {
             if (keyStates[key]) {
                 pressed.push_back(static_cast<UCKeys>(key));
             }
@@ -1440,8 +1548,12 @@ namespace UltraCanvas {
             ctrlHeld = event.ctrl;
             altHeld = event.alt;
             metaHeld = event.meta;
-            if (event.virtualKey >= 0 && event.virtualKey < 256) {
-                keyStates[event.virtualKey] = (event.type == UCEventType::KeyDown);
+            // As an int: the platforms make a UCKeys out of any key code
+            // (static_cast<UCKeys>(vk)), so the value is not bounded by the
+            // enum's own range, which is what the compiler reasons from.
+            const int key = static_cast<int>(event.virtualKey);
+            if (key >= 0 && key < KeyStateCount) {
+                keyStates[key] = (event.type == UCEventType::KeyDown);
             }
         }
 
@@ -1523,6 +1635,9 @@ namespace UltraCanvas {
                     focusedWindow.reset();
                 }
                 return;
+            default:
+                // Everything else goes on to the window below.
+                break;
         }
         // Dispatch other events to focused element
         if (targetWindow) {

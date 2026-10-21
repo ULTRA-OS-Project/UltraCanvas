@@ -75,6 +75,12 @@ Each entry (`ClipboardHistoryEntry`) is described when it is recorded:
 | `sizeBytes`, `width`, `height`, `fileCount`, `cut`, `lineCount` | for the meta line |
 | `thumbnailPath` | images: a PNG at most 96 px on its longer side |
 
+A text is `Code` when most of its lines end in `;` `{` `}` or carry an
+operator prose does not use, or when
+[`DetectLanguageFromContent`](UltraCanvasTextAreaExamples.md#picking-a-language-for-text-with-no-file-name)
+names its language (a SQL query, a Python block, YAML); Markdown it names
+stays `Text`.
+
 The same content copied again is not a second entry: it moves to the top
 (`ClipboardRecordResult::MovedToTop`).
 

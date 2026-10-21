@@ -14,6 +14,22 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 
 ---
 
+## Contents
+
+- [Why it exists](#why-it-exists)
+- [Protocols at a glance](#protocols-at-a-glance)
+  - [Core (Tier 1, in module)](#core-tier-1-in-module)
+  - [Plugin-supplied (Tier 2/3)](#plugin-supplied-tier-23)
+- [Architecture](#architecture)
+- [Quick examples](#quick-examples)
+- [Module layout](#module-layout)
+- [Debugging a mail connection](#debugging-a-mail-connection)
+- [The FTP session log](#the-ftp-session-log)
+- [Integration with sibling modules](#integration-with-sibling-modules)
+- [Conventions](#conventions)
+- [Status](#status)
+- [Reference](#reference)
+
 ## Why it exists
 
 Networking is exactly the kind of concern an OS owns once: TLS
@@ -60,7 +76,8 @@ planned (see the status table below).
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
-| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build; text in any charset iconv knows (ISO-2022-JP - also raw in headers -, Shift_JIS, GB18030, KOI8-R, windows-125x, ...) converted to UTF-8, UTF-8 and Latin-1 without iconv; unlabelled 8-bit header text read in the body's charset or the best-scoring guess | `UltraNet/UltraNetMime.h` |
@@ -75,10 +92,13 @@ planned (see the status table below).
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
 `UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
-table** (`UltraNetPluginHost`, ABI 2) handed to its `UltraNet_PluginInit`:
+table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
-`UltraNet_MimeBuild`, `UltraNet_HttpGet` / `HttpRequest`, ... Plug-in sources
+`UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
+format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+`UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
+plug-in's push), ... Plug-in sources
 call those functions as usual;
 `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`, compiled into every
 plug-in, defines them inside the DSO and forwards each call to the table. So a
@@ -186,6 +206,20 @@ UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetRespons
 });
 UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
 UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
+
+// An upload streamed from a file: the body is read as it is sent, never held
+// in memory whole. bodyFileOffset / bodyFileLength send one range of the
+// file - an upload session's chunk. A file that cannot be opened, or a range
+// past its end, fails before anything is sent. The async path streams it
+// the same way, from the multi worker.
+UltraNetHttpRequest up;
+up.url = "https://dav.example.com/files/movie.mp4";
+up.method = UltraNetHttpMethod::Put;
+up.bodyFilePath = "/home/me/movie.mp4";
+up.options.timeoutMs = -1;            // as long as the file is large
+up.options.stallTimeoutMs = 30000;
+UltraNetResponse upResp;
+UltraNet_HttpRequest(up, upResp);
 ```
 
 ```cpp
@@ -247,6 +281,27 @@ if (r) {
 }
 ```
 
+```cpp
+#include <UltraNet/UltraNetOAuth2Service.h>
+
+// The same sign-in through a sign-in service: the service holds the client
+// id and secret and is the https address the provider redirects to, so the
+// application carries only the service's address. Blocking - a worker thread.
+UltraNetOAuth2ServiceConfig svc;
+svc.serviceUrl = UltraNet_OAuth2SignInServiceUrl();   // the registry's: built in, or configured
+svc.providerId = "google";                        // "microsoft", "yahoo"
+svc.loginHint  = "erika@gmail.com";               // preselects the account
+svc.clientName = "UltraMail";                     // for the service's log
+
+UltraNetOAuth2Token token;
+auto r = UltraNet_OAuth2AuthorizeViaService(
+    svc, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token,
+    300000, [&] { return dialogClosed.load(); });
+// Later: UltraNet_OAuth2ServiceRefresh(svc, token.refreshToken, token).
+// The steps are exposed too (ServiceBegin, ServiceWaitForCode,
+// ServiceExchangeCode) and so are the answer parsers, for tests.
+```
+
 ---
 
 ## Module layout
@@ -264,6 +319,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetCookies.h
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
+│   ├── UltraNetOAuth2Service.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
@@ -366,6 +422,20 @@ sink for its thread instead: `UltraNet_SetThreadFtpLog(fn)` returns the
 previous sink to put back afterwards, and only calls without an `onLog` of
 their own go to it.
 
+A call can be called off. `UltraNetFtpOptions::isCancelled` is asked while
+the call runs - as bytes move, and about once a second while none do, so a
+stalled transfer is called off as promptly as a busy one; once it answers
+true the call ends as `UltraNetResultCode::Cancelled` with the message
+*called off*, and a listing is not tried again in another format. It runs on
+the calling thread inside libcurl and must answer at once (an atomic flag).
+Beside it every FTP call - listings and `DELE` as well as transfers - asks its
+thread's abort check, `UltraNet_SetThreadAbortCheck(fn)` (`UltraNetCore.h`,
+which returns the previous one), the same check the synchronous HTTP requests
+ask: a caller behind a layer that builds the options, and a thread that wants
+every call it makes stopped at once, set that one check. UltraFiler's drive
+worker uses it to stop a preview download the user is no longer waiting for,
+on an FTP drive or a cloud drive, and every transfer when the window closes.
+
 What a failure says, whether or not anyone reads the log:
 
 - `message` is libcurl's specific reason (its error buffer, not just the error
@@ -404,7 +474,15 @@ remove a folder - is the exception on FTP: it always logs in on a connection
 of its own and closes it, because libcurl sends those commands before it
 changes folder, and they name the entry from the folder a login lands in; on
 a kept connection that a listing left in a subfolder they would name another
-file.
+file. A server that takes one connection per address or user (vsftpd's
+`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
+away - *421 There are too many connections from your internet address.*,
+or a 530 saying the maximum number of clients is reached - while the
+thread's kept one is open. Turned away so before any of its commands was
+sent, the change closes the kept connection and is sent again: at once, and
+after 0.3 s and 1 s more if the server is still counting the closed one
+(the waits end early when the call is called off). The log says *The server
+takes one connection at a time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.
@@ -452,6 +530,13 @@ architecture.
   first use for scanners and printers is built on these.
 * **Threading:** async callbacks run on the libcurl multi worker
   thread — callers must marshal to their own loop and not block.
+* **Calling a transfer off:** a thread that runs synchronous HTTP requests
+  or FTP uploads and downloads sets `UltraNet_SetThreadAbortCheck(fn)`; the
+  transfers it makes ask `fn` as they run (libcurl's progress callback, so
+  about once a second even while the server is silent) and end as
+  `UltraNetResultCode::Cancelled` once it says true. UltraFiler's drive
+  worker uses it so that quitting does not wait for a large upload to
+  finish. Asynchronous requests are cancelled with `UltraNet_CancelRequest`.
 * **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
   `ResolveHost()` etc. at module level — always go through the
   `UltraNet_*` API. (Full reserved-pattern list lives in the master

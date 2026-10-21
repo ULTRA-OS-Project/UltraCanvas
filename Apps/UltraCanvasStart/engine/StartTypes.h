@@ -3,6 +3,9 @@
 // machine has, what the programmer chose, what the checks found and the plan
 // the two together produce. Plain data, no UI, shared by the GUI, the CLI
 // modes and the test suite.
+// Version: 0.1.4 - PlanStep::setsUpPackageManager / mayFail (MSYS2 set up by winget)
+// Version: 0.1.3 - Choices::skipped: the Tools step's switches leave a package out
+// Version: 0.1.2 - Assistant::NoAssistant ("None"): a local IDE or compiler, no AI
 // Version: 0.1.1 - Assistant: which AI the programmer works with
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -115,8 +118,11 @@ struct CheckResult {
 // any of them: Claude Code reads CLAUDE.md, Codex and Copilot read the
 // vendor-neutral AGENTS.md, Gemini CLI reads GEMINI.md, and anything else
 // (Cursor, Windsurf, a chat) takes AGENTS.md as pasted instructions and
-// llms-full.txt as the corpus (Docs/GettingStarted.md, step 3).
+// llms-full.txt as the corpus (Docs/GettingStarted.md, step 3). None is
+// the programmer without one, in a local IDE or with the compiler alone:
+// no instruction file, no first prompt (Choices::useAi is false).
 enum class Assistant {
+    NoAssistant,  // "None" in the picker: a local IDE or the compiler (X11 defines None)
     ClaudeCode,
     Codex,        // OpenAI Codex CLI
     Copilot,      // GitHub Copilot CLI / coding agent
@@ -128,7 +134,7 @@ std::string AssistantName(Assistant assistant);
 // The file the assistant reads from a project root: CLAUDE.md, AGENTS.md
 // or GEMINI.md.
 std::string AssistantInstructionFile(Assistant assistant);
-// "claude", "codex", "copilot", "gemini" or "other" (--assistant); false
+// "none", "claude", "codex", "copilot", "gemini" or "other" (--assistant); false
 // for anything else.
 bool AssistantFromName(const std::string& name, Assistant& out);
 
@@ -146,9 +152,14 @@ struct Choices {
     bool cloudOnly = false;          // ...and has no compiler locally (GettingStarted-Cloud.md)
     std::string projectFolder;       // UTF-8; where the application lives
     std::string appName = "MyApp";
+    // Dependency ids the programmer switched off on the Tools step: missing,
+    // but left out of the install (they install it another way, or not at all).
+    std::vector<std::string> skipped;
 
     bool Has(DependencyGroup group) const;
     void Set(DependencyGroup group, bool on);
+    bool Skips(const std::string& dependencyId) const;
+    void SetSkipped(const std::string& dependencyId, bool skip);
 };
 
 // ===== THE PLAN =====
@@ -167,6 +178,8 @@ struct PlanStep {
     std::string description;          // what it does and why, for the report
     std::vector<std::string> argv;    // the command, as a list; empty for Manual
     bool needsElevation = false;      // sudo / pkexec / an administrator shell
+    bool setsUpPackageManager = false; // installs or prepares the package manager itself (MSYS2)
+    bool mayFail = false;             // a failure does not stop the install (MSYS2's core update)
     bool done = false;
 };
 
@@ -178,6 +191,8 @@ struct Plan {
     std::vector<std::string> notes;   // things worth knowing that are not steps
 
     size_t MissingCount() const;
+    // Of those, the ones switched off (Choices::skipped): not installed.
+    size_t SkippedCount() const;
 };
 
 // ===== VERSIONS =====

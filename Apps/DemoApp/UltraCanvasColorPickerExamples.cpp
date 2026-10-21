@@ -1,11 +1,15 @@
 // Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
 // Demonstration of the comprehensive colour picker widget.
+// Version: 1.5.0 - the colour + intensity sliders sit in a toolbox column with a
+//                  palette: design selector, collapsible channels, auto height
+// Version: 1.4.0 - the full picker shows the design selector
 // Version: 1.3.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasColorPicker.h"
+#include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 
@@ -31,7 +35,7 @@ namespace UltraCanvas {
 
         // --- Full picker: wheel + swatches + hex + tabs + channel sliders ---
         auto fullLabel = CreateLabel("FullPickerLabel", col1X, row1Y - 25, 300, 20);
-        fullLabel->SetText("Full picker (wheel, hex, HSV/HSL/RGB)");
+        fullLabel->SetText("Full picker • design selector (top right)");
         fullLabel->SetFontSize(12);
         container->AddChild(fullLabel);
 
@@ -39,6 +43,10 @@ namespace UltraCanvas {
         auto picker = CreateColorPicker("FullColorPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                         col1X, row1Y, pickerW, pickerH);
         picker->SetBackgroundColor(Color(255, 0, 0, 255));
+        // The design selector in the top-right corner switches between the
+        // colour circle, the colour slider + square and the colour rectangle.
+        // Over a rectangular design it hides while a drag picks a colour.
+        picker->SetShowWheelStyleSelector(true);
         // No onScreenColorPick callback: clicking the eyedropper button arms the
         // built-in mode — the pointer becomes an eyedropper and the next click
         // samples the pixel under it (Select/left mouse -> foreground colour,
@@ -141,18 +149,37 @@ namespace UltraCanvas {
         field->SetWheelStyle(ColorPickerWheelStyle::HueLightnessField);
         container->AddChild(field);
 
-        // --- 5: colour slider + intensity (white -> black) slider ---
+        // --- 5: colour slider + intensity (white -> black) slider, in a
+        //     toolbox column as a drawing program would have it: the HSV /
+        //     HSL / RGB channels behind the disclosure arrow, the design
+        //     selector top right, and the picker's height following what it
+        //     shows - opening the channels or choosing a design moves the
+        //     palette under it, so the column takes only the room it uses ---
         auto slidersLabel = CreateLabel("HLSlidersVariantLabel", col2X, hlRowY - 25, 290, 20);
-        slidersLabel->SetText("Colour slider + intensity slider");
+        slidersLabel->SetText("Sliders in a toolbox • channels fold away");
         slidersLabel->SetFontSize(12);
         container->AddChild(slidersLabel);
 
+        auto toolbox = CreateContainer("HLSlidersToolbox", col2X, hlRowY, pickerW, 560);
+        toolbox->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        container->AddChild(toolbox);
+
         auto twoSliders = CreateColorPicker("HueLightnessSlidersPicker", Color(0xFF, 0x80, 0x00, 0xFF),
-                                            col2X, hlRowY, pickerW, pickerH);
+                                            0, 0, pickerW, pickerH);
         twoSliders->SetWheelStyle(ColorPickerWheelStyle::HueLightnessSliders);
         twoSliders->SetSliderStyle(ColorPickerSliderStyle::Thick);
-        twoSliders->SetElementSize(Size2Df(pickerW, twoSliders->PreferredHeightForWidth(pickerW)));
-        container->AddChild(twoSliders);
+        twoSliders->SetSlidersCollapsible(true, false);    // channels folded away
+        twoSliders->SetShowWheelStyleSelector(true);
+        twoSliders->SetAutoHeight(true);                    // height follows the content
+        twoSliders->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        toolbox->AddChild(twoSliders);
+
+        auto palette = CreateColorSwatchBar("HLSlidersPalette", 0, 0, pickerW, 44);
+        palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Raw pointer: the palette is the picker's sibling, both owned by the toolbox.
+        UltraCanvasColorPicker* slidersPicker = twoSliders.get();
+        palette->onColorSelected = [slidersPicker](const Color& c) { slidersPicker->SetColor(c); };
+        toolbox->AddChild(palette);
 
         // --- 6: the full picker scaled to 60% ---
         auto scaledLabel = CreateLabel("ScaledPickerLabel", col3X, hlRowY - 25, 300, 20);
@@ -166,7 +193,9 @@ namespace UltraCanvas {
         scaled->SetUIScale(0.6f);
         container->AddChild(scaled);
 
-        container->SetElementSize(Size2Df(1000, hlRowY + pickerH + 20.0f));
+        // The toolbox column is the tallest thing in the row: it holds the
+        // largest design (the circle) with its channels open, and the palette.
+        container->SetElementSize(Size2Df(1000, hlRowY + 560.0f + 20.0f));
         return container;
     }
 

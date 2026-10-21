@@ -1,5 +1,37 @@
 # UltraCanvasLabel Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Constructors](#constructors)
+- [LabelStyle](#labelstyle)
+  - [Predefined styles](#predefined-styles)
+  - [The theme and the label's variant](#the-theme-and-the-labels-variant)
+- [Methods](#methods)
+  - [Text](#text)
+  - [Style and font](#style-and-font)
+  - [From UltraCanvasUIElement](#from-ultracanvasuielement)
+  - [Text links](#text-links)
+  - [Inline Images](#inline-images)
+  - [Inline boxes](#inline-boxes)
+  - [Selectable text](#selectable-text)
+- [Event Callbacks](#event-callbacks)
+  - [Example Event Handling](#example-event-handling)
+- [Factory Functions](#factory-functions)
+- [Builder](#builder)
+- [Usage Examples](#usage-examples)
+  - [Basic label](#basic-label)
+  - [Header](#header)
+  - [Status indicators](#status-indicators)
+  - [Text that wraps](#text-that-wraps)
+  - [Rounded Corner Labels](#rounded-corner-labels)
+  - [A label that follows its text](#a-label-that-follows-its-text)
+  - [Label with a shadow](#label-with-a-shadow)
+- [Rendering](#rendering)
+  - [Where the text layout comes from](#where-the-text-layout-comes-from)
+- [Notes](#notes)
+
 ## Overview
 
 **UltraCanvasLabel** shows text: a caption beside a control, a heading, a

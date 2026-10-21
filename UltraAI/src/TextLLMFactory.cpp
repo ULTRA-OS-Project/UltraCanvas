@@ -25,6 +25,9 @@
 #ifdef ULTRAAI_HAS_QWEN_ADAPTER
 #include "UltraAIQwen.h"
 #endif
+#ifdef ULTRAAI_HAS_LOCAL_ADAPTER
+#include "UltraAILocal.h"
+#endif
 
 #include <map>
 #include <mutex>
@@ -78,6 +81,14 @@ struct Registry {
             providers["qwen"] =
                 [](const TextLLMConfig& cfg, Error* err) {
                     return CreateQwenTextLLM(cfg, err);
+                };
+        }
+#endif
+#ifdef ULTRAAI_HAS_LOCAL_ADAPTER
+        if (providers.find("local") == providers.end()) {
+            providers["local"] =
+                [](const TextLLMConfig& cfg, Error* err) {
+                    return CreateLocalTextLLM(cfg, err);
                 };
         }
 #endif

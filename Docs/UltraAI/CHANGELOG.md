@@ -1,3 +1,36 @@
+#### 2026-10-20 *0.1.16*
+- **Models run on this computer with nothing to install.** The new local
+  runtime (`UltraAILocalRuntime.h`, `UltraAI/runtime/`) downloads an inference
+  engine (llama.cpp's `llama-server`, from a gallery of prebuilt bundles per
+  platform and accelerator, verified by SHA-256) and a model (from a curated
+  catalogue, or a GGUF the user has, or a Hugging Face file) on demand,
+  starts the engine on a loopback port with a per-installation key, shares
+  it between every UltraCanvas application through a record under a lock
+  file, and stops it when idle. The new `local` provider serves chat and
+  embeddings through it and ranks first in the local-first routing, so an
+  empty provider id reaches a model on this machine whenever one is
+  installed or can be. The hardware inventory decides the bundle (Metal on
+  macOS, Vulkan beside a GPU on Linux and Windows, CPU otherwise) and marks
+  each model *recommended*, *runs on CPU* or *too large*. Under the default
+  *Ask* policy a first call answers with `ModelNotFound` / `needs-install`
+  for the application to ask the user; `allow_download` or the *Automatic*
+  policy lets it install and answer. Doc: `Docs/Modules/UltraAI/LocalRuntime.md`;
+  design: `Docs/Research/UltraAILocalRuntimeDesignProposal.md` (phase 1 of
+  its plan; the dashboard page, the framework dialog, speech and images
+  follow). Tested against a fake engine over real loopback HTTP
+  (`UltraAI/tests/test_local_runtime.cpp`), and the module's whole suite now
+  runs in CI (`ULTRACANVAS_BUILD_ULTRAAI_TESTS`).
+
+#### 2026-10-16 *0.1.15*
+- **The dashboard draws its own icons.** The ten service buttons and the
+  Settings button were labelled with emoji, which show as empty boxes where
+  the system font has no emoji glyphs. Each service is now a tile with a
+  128 x 128 icon over its name (and a tooltip saying what it does); Settings
+  carries a gear. The set lives in `media/icons/ultraai/`: one SVG per icon
+  (rounded gradient tile, white glyph), the 128 px PNG rendered from it that
+  the app loads, and `generate_icons.py`, which writes the SVGs. The window
+  grows to 1000 x 468 to fit the tiles.
+
 #### 2026-10-13 *0.1.14*
 - **The endpoint settings are found in a profile named in any script.**
   `endpoints.json`'s folder was built by hand from `HOME` and

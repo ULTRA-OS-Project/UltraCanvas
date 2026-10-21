@@ -1,5 +1,46 @@
 # UltraCanvasGauge Documentation
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Header Include](#header-include)
+- [Class Reference](#class-reference)
+  - [Factory Function](#factory-function)
+  - [Gauge Modes](#gauge-modes)
+  - [Supporting Enumerations](#supporting-enumerations)
+  - [Data Structures](#data-structures)
+  - [Mode & Value](#mode--value)
+  - [Title & Unit](#title--unit)
+  - [Visual Style](#visual-style)
+  - [Colours](#colours)
+  - [Round-Gauge (CircularRing) Styling](#round-gauge-circularring-styling)
+  - [Ranges, Thresholds & Pointers](#ranges-thresholds--pointers)
+  - [Sub-Dial](#sub-dial)
+  - [Display Options](#display-options)
+  - [Digital Display & Clock](#digital-display--clock)
+  - [Stopwatch Controls](#stopwatch-controls)
+  - [Callbacks](#callbacks)
+- [Examples](#examples)
+  - [1. Analog Speedometer](#1-analog-speedometer)
+  - [2. Semicircular Gauge with Coloured Ranges](#2-semicircular-gauge-with-coloured-ranges)
+  - [3. Compass with a Sub-Dial](#3-compass-with-a-sub-dial)
+  - [4. Analog Clock (live)](#4-analog-clock-live)
+  - [5. Stopwatch with Start/Stop/Reset](#5-stopwatch-with-startstopreset)
+  - [6. Linear Progress Bar](#6-linear-progress-bar)
+  - [7. Vertical LED VU Meter](#7-vertical-led-vu-meter)
+  - [8. Multi-Pointer Bar](#8-multi-pointer-bar)
+  - [9. Linear Scale with Thresholds (Radio Tuner)](#9-linear-scale-with-thresholds-radio-tuner)
+  - [10. Round Gauge (CircularRing)](#10-round-gauge-circularring)
+  - [11. Battery](#11-battery)
+  - [12. Thermometer](#12-thermometer)
+  - [13. Cylinder](#13-cylinder)
+  - [14. Digital LED Panel](#14-digital-led-panel)
+  - [15. Digital Clock](#15-digital-clock)
+  - [16. Driving a Gauge from a Slider](#16-driving-a-gauge-from-a-slider)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 **UltraCanvasGaugeDiagramElement** is a single, mode-driven element that renders a wide family of gauges, meters and dials from one API. A gauge is created once with a factory function and then switched between modes — analog speedometers and compasses, progress and LED bars, circular activity rings, batteries, thermometers, cylinders, analog/digital clocks and stopwatches — by calling `SetMode()` and a handful of configuration setters.
@@ -151,6 +192,11 @@ void   SetMaxValue(double v);
 double GetMaxValue() const;
 ```
 
+The value is shown clamped to the range, and the gauge keeps the value it
+was given: the order of the calls does not matter. `SetValue(150)` followed by
+`SetMaxValue(200)` shows 150, and a range narrowed under the value takes the
+shown value with it (and widened again, gives it back).
+
 ### Title & Unit
 
 ```cpp
@@ -163,7 +209,7 @@ void SetUnit(const std::string& u);    // e.g. "km/h", "%", "C"
 ```cpp
 void SetNeedleStyle(GaugeNeedleStyle s);     // Classic, Thin, Arrow, Triangle, NoNeedle
 void SetTickPosition(GaugeTickPosition p);   // NoTicks, Inside, Outside, Both
-void SetOrientation(GaugeOrientation o);     // Horizontal / Vertical (linear modes)
+void SetOrientation(GaugeOrientation o);     // Horizontal / Vertical (linear modes; LinearScale is horizontal only)
 void SetBatteryStyle(GaugeBatteryStyle s);   // BarPointer / LedPointer (Battery mode)
 void SetArcAngles(double startDeg, double endDeg);  // custom sweep for analog dials
 ```
@@ -396,6 +442,33 @@ chunk was in flight. No value text is drawn in this state — there is no value,
 and the caller's own label is where "3.2 MB sent" belongs.
 
 LinearBar only; other modes ignore the flag.
+
+#### Any size: a card, a row, a status line
+
+Every linear mode fits the box it is given and draws nothing outside it. In
+order of preference it lays out as:
+
+1. **The full card** - title, bar (28 px; LED 44, vertical bars 36-50), the
+   value line, and the mode's own marks around the bar (MultiPointer's
+   pointer labels, WithArrow's arrow and value, Segmented's line to the exact
+   value, the tuner's station labels).
+2. **A tight card** - the same, with the title and the value hugging the
+   edges.
+3. **Either card without the marks** - a pointer's label matters less than
+   the title and the value.
+4. **The bar alone**, across the element: the progress bar of a status line
+   or a list row, where the caller's own label carries the words.
+
+Room for the marks is measured, not reserved: MultiPointer and WithArrow no
+longer keep 80 / 60 px empty on the right. Pointer labels are kept inside the
+element, and one that would cover another is left out. `LinearSegmented`
+runs vertically too.
+
+```cpp
+auto rowBar = CreateGaugeDiagramElement("rowBar", 0, 0, 300, 8);
+rowBar->SetMode(GaugeMode::LinearBar);   // 8 px: the bar alone
+rowBar->SetValue(40.0);
+```
 
 #### It fits the box it is given
 

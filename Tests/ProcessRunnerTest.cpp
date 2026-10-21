@@ -16,11 +16,13 @@
 //
 // POSIX-only: the checks run real programs (/bin/true, /bin/cat), and the
 // point is to exercise the pipe behaviour rather than to mock it.
+// Version: 1.1.0 - onOutput: the output arrives while the child still runs
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasUtils.h"
 
+#include <chrono>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -129,6 +131,28 @@ void TestTheEnvironmentAddition() {
           "while the environment it already had survives");
 }
 
+void TestTheOutputAsItComes() {
+    std::cout << "\n-- The output as it comes (onOutput) --\n";
+
+    using Clock = std::chrono::steady_clock;
+    const auto start = Clock::now();
+    double firstAt = -1.0;
+    std::string streamedOut, streamedErr;
+    const ProcessOutput result = RunProcessCaptured(
+        {"/bin/sh", "-c", "printf first; printf oops >&2; sleep 1; printf second"}, {}, {},
+        [&](const char* data, size_t size, bool fromError) {
+            if (firstAt < 0) firstAt = std::chrono::duration<double>(Clock::now() - start).count();
+            (fromError ? streamedErr : streamedOut).append(data, size);
+        });
+    const double endedAt = std::chrono::duration<double>(Clock::now() - start).count();
+    const std::string out(result.standardOutput.begin(), result.standardOutput.end());
+
+    Check(result.Succeeded(), "the child runs");
+    Check(firstAt >= 0 && firstAt < endedAt - 0.5, "the first chunk arrives before the child ends");
+    Check(streamedOut == out && out == "firstsecond", "the chunks add up to what is collected");
+    Check(streamedErr == result.standardError && streamedErr == "oops", "standard error is marked as such");
+}
+
 }  // namespace
 
 int main() {
@@ -141,6 +165,7 @@ int main() {
     TestAProgramThatIsNotThere();
     TestArgumentsAreNotShellSyntax();
     TestTheEnvironmentAddition();
+    TestTheOutputAsItComes();
 
     std::cout << "\n";
     if (g_failures == 0) {

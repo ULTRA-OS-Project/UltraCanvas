@@ -9,6 +9,14 @@ signal into a 2D time × frequency magnitude matrix and renders it as a heatmap
 - Element: `include/Plugins/Charts/UltraCanvasSpectrogram.h` / `Plugins/Charts/UltraCanvasSpectrogram.cpp`
 - FFT backend: vendored [KissFFT](https://github.com/mborgerding/kissfft) (BSD-3-Clause) under `libspecific/FFT/`
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Defaults](#defaults)
+- [STFT parameters](#stft-parameters)
+- [Using the STFT engine directly](#using-the-stft-engine-directly)
+- [Notes](#notes)
+
 ## Quick start
 
 ```cpp

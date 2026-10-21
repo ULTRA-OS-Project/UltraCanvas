@@ -377,9 +377,14 @@ UltraCanvas/{include,core}/WasmHost/   the WebAssembly runner (Masterfile_module
 - **WasmHost** wraps wasmtime 49.0.2 (its prebuilt C API, downloaded and
   hash-checked by `cmake/UltraCanvasWasmtime.cmake`, or
   `-DULTRACANVAS_WASMTIME_DIR=<unpacked c-api>` offline). On by default on
-  Linux; on macOS and Windows it is opt-in
-  (`-DULTRACANVAS_ENABLE_WASM_HOST=ON`) and not yet built in CI, and without an
-  engine UltraWeb starts and says it cannot run apps. The binary is about
+  Linux and on Windows (MSYS2 CLANG64 / CLANGARM64). wasmtime publishes no
+  library for that Windows ABI (`gnullvm`), so there the build compiles
+  its C API from wasmtime's source release with Cargo: that needs the
+  native Rust toolchain (`pacman -S mingw-w64-clang-x86_64-rust`, or
+  `-aarch64`) and takes a few minutes the first time. On macOS it is
+  opt-in (`-DULTRACANVAS_ENABLE_WASM_HOST=ON`) and not yet built in CI.
+  Without an engine UltraWeb starts and says it cannot run apps, and how
+  to get one. The binary is about
   38 MB, most of it the statically linked engine.
 - A guest runs on the UI thread. A failure after start is reported on a
   later turn, never from inside the element callback that ran the guest, and

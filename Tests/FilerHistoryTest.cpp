@@ -19,8 +19,9 @@
 // through the code page names a different file: every path here goes through
 // PathToUtf8 / PathFromUtf8, and the config folder is redirected through the
 // wide environment API that GetEnvUtf8 reads.
+// Version: 1.2.0 - Handling > Protected files: the minutes before passwords are forgotten
 // Version: 1.1.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 // The config directory is read from the environment, so it is pointed at a
@@ -286,6 +287,38 @@ void TestSettingRoundTrip() {
     }
 }
 
+// Handling > Protected files: the minutes without input before the preview
+// forgets Unlock's passwords - the viewer's ten by default, zero kept as
+// "never", past the slider's end held at it.
+void TestProtectedFilesSetting() {
+    std::printf("\n-- protected files --\n");
+    {
+        UltraFilerSettings settings;
+        CheckEq(static_cast<size_t>(settings.forgetPasswordsAfterMinutes),
+                static_cast<size_t>(UltraFilerSettings::kDefaultForgetPasswordsMinutes),
+                "a fresh installation forgets after the default");
+        settings.forgetPasswordsAfterMinutes = 0;
+        Check(settings.Save(), "never is saved");
+    }
+    {
+        UltraFilerSettings settings;
+        settings.Load();
+        CheckEq(static_cast<size_t>(settings.forgetPasswordsAfterMinutes), 0u,
+                "never comes back as never, not as the default");
+    }
+    {
+        std::ofstream file(PathFromUtf8(UltraFilerSettings::GetConfigPath()), std::ios::app);
+        file << "preview.passwords.forget.minutes = 5000\n";
+    }
+    {
+        UltraFilerSettings settings;
+        settings.Load();
+        CheckEq(static_cast<size_t>(settings.forgetPasswordsAfterMinutes),
+                static_cast<size_t>(UltraFilerSettings::kMaxForgetPasswordsMinutes),
+                "a value past the slider is held at its end");
+    }
+}
+
 // ===== WHAT HAS LEFT THE DISK =====
 // Paths() is what the History view is filled from: an entry whose file is gone
 // is forgotten rather than shown as a dead tile.
@@ -384,6 +417,7 @@ int main() {
     TestLoadTrimsAndRewrites();
     TestLimitClamped();
     TestSettingRoundTrip();
+    TestProtectedFilesSetting();
     TestMissingPathsDropOut();
     TestNonAsciiNameStays();
 

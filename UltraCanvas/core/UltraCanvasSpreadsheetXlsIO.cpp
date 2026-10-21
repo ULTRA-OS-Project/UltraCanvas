@@ -10,13 +10,14 @@
 // LoadXLSX, delimited text to LoadCSV, and the HTML tables and Excel 2003 XML
 // that applications export under the name are read the way Excel reads them.
 // There is no .xls writer: save as .xlsx or .ods.
-// Version: 1.0.0
-// Last Modified: 2026-10-09
+// Version: 1.1.0
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetFormula.h"
 #include "UltraCanvasSpreadsheetXls.h"
+#include "UltraCanvasOfficeEncryption.h"
 
 #include <cmath>
 #include <functional>
@@ -390,7 +391,8 @@ private:
 
 } // namespace
 
-bool UltraCanvasSpreadsheet::LoadXLS(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::LoadXLS(const std::string& filePath, const std::string& password) {
+    UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     switch (DetectXlsFileKind(filePath)) {
         case XlsFileKind::Missing:
@@ -398,22 +400,27 @@ bool UltraCanvasSpreadsheet::LoadXLS(const std::string& filePath) {
             return false;
         case XlsFileKind::OpenXml:
             // An .xlsx under the old name - Excel opens it, and so do we.
-            return LoadXLSX(filePath);
+            return LoadXLSX(filePath, password);
         case XlsFileKind::Text:
             // Delimited text: the CSV reader detects the encoding and separator.
             return LoadCSV(filePath);
         case XlsFileKind::Unknown:
             lastError_ = "The file is not an Excel workbook (.xls): " + filePath;
             return false;
+        case XlsFileKind::Biff:
+            // A password-protected .xlsx is a compound file too; Excel opens
+            // one under the old name.
+            if (IsEncryptedOfficePackage(filePath)) return LoadXLSX(filePath, password);
+            break;
         case XlsFileKind::Html:
         case XlsFileKind::XmlSpreadsheet:
-        case XlsFileKind::Biff:
             break;
     }
     XlsWorkbook workbook;
     if (!ReadXlsWorkbook(filePath, workbook, lastError_)) return false;
     XlsWorkbookLoader loader(this, workbook);
     loader.Load();
+    ClearUndoHistory();   // the loaded document starts a fresh history
     Recalculate();
     RequestAutoFitForUnsizedColumns();
     Invalidate();

@@ -17,12 +17,28 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
  toolbar:   new open save | undo redo | zoom- zoom+ fit 100% | new layer export
  ┌────┬──────────────────────────────────────┬──────────────────┐
  │tool│                                      │ Colour           │
- │pal-│         paint surface                │  picker, swatches│
+ │pal-│         paint surface                │  picker, palettes│
  │ette│   (zoom, pan, grid, marching ants)   │ Tool Options     │
  │    │                                      │ Layers           │
  └────┴──────────────────────────────────────┴──────────────────┘
  status: pointer x,y | zoom | size, layers | hint
 ```
+
+The colour picker has a list of designs in its corner - colour circle,
+slider and square, colour rectangle, or colour and brightness sliders - and
+folds its channels (the HSV / HSL / RGB tabs and sliders) away under
+*Channels*. It is as tall as what it shows, so the panels below move up and
+down with it, and it opens with the design and the channels it was left with
+(`picker.design` and `picker.channels` in the settings file).
+
+Under the picker are the colour palettes, one row of swatches each. A click
+on a swatch picks its colour; a right click opens a small picker that changes
+that one entry (*Revert* puts it back). The **+** at the end of the last row
+opens a gallery of colour schemes - basics, moods, design systems, retro
+machines and indexed palettes up to 256 colours for a GIF - and a scheme's
+own **+** adds it as another row. With several rows each one ends in a **−**
+that takes it away. The rows, edited colours included, are kept in the
+settings file (`picker.palettes`).
 
 ## Tools
 
@@ -72,7 +88,7 @@ in `UltraPaintWindow.cpp`; the fold-out is the framework's
 | Polyline | Y | Click to add corners; double-click or Enter ends it, a click on the first corner closes it (filled in the background colour with *Fill a closed shape*). Backspace takes the last corner back, Escape cancels, Shift constrains each segment to 45° |
 | Arrow | V | Drag from the tail to the tip: a filled head at the tip, or at both ends. *Head size* in pixels, never less than three times the line width |
 | Curve | J | Drag a straight line, then drag or click twice to bend it - the first bend pulls the whole curve, the second its far half. Enter keeps it as it is, Escape cancels |
-| Text | T | Click, type, choose font / size / bold |
+| Text | T | Type on the image: a click starts a text, a drag a box its lines wrap in, a click on a text edits it. Every installed font; size, bold, italic, underline, alignment; the foreground colour. Kept as a **text layer** until merged - see below |
 | Zoom | Z | Click in, Alt/right-click out |
 | Pan | H | Space+drag works with every tool |
 
@@ -102,13 +118,42 @@ For an opaque colour the two are the same. *Opacity* applies to both: at
 0.5, Replace takes the area half way to the colour. The colour's alpha is
 the *A* slider of the colour panel (the last two digits of *Hex*). A
 transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
-`.ucraster`); a JPEG has none.
+`.ucd`, `.ucraster`); a JPEG has none.
+
+### Text layers
+
+The Text tool types **on the canvas**: the words appear where they will be,
+in their font, size and colour, at the zoom of the view - the editor is the
+framework's WYSIWYG element (`UltraCanvasRichTextEdit`) laid over the image,
+and the text layer is drawn by that same element, so what is typed is
+exactly what the layer gets.
+
+| Do | How |
+|---|---|
+| Start a text | Click: the lines wrap at the image's right edge. Drag: a box, and the lines wrap at its width |
+| Format it | The tool options: *Font* (every font installed on the system - type the first letters in the open list to jump to one), *Size* in pixels, *Bold*, *Italic*, *Underline*, *Align* (left, centre, right); the colour is the foreground colour. With text selected they change the selection, otherwise what is typed next - so one text can mix fonts, sizes and colours. Ctrl+B / Ctrl+I / Ctrl+U work while typing |
+| Finish it | Escape, Ctrl+Enter, a click outside the text, another tool or any command. The text becomes a text layer, one undo step ("Text"); nothing typed adds nothing |
+| Edit it later | With the Text tool, click in its box (the Text tool shows every text's box dashed), or *Layer > Edit Text*. Emptying it removes the layer |
+| Change it whole | With the Text tool and a text layer active (not typing), the options and the foreground colour apply to all of it |
+| Move it | The Move tool moves a text layer as text (without a selection): it is drawn again where it lands |
+
+A text layer is marked with a "T" in the Layers panel and **stays editable
+until it is merged** - *Merge Down* and *Flatten* make it pixels, as do
+*Image > Scale / Flip / Rotate*; a canvas resize or a crop moves it along
+and keeps it text. Painting on it with a brush, a fill or a shape, or running
+a filter, an adjustment, *Fill* or *Delete* on it, asks first whether to
+**rasterize** it (*Layer > Rasterize Layer* does that directly); Undo makes it
+text again. The two layered formats keep text layers as text - a `.ucd`
+UltraCanvas layered image as a text frame, a `.ucraster` project as an
+OpenDocument text beside the layer's PNG - while every flat format (PNG,
+JPEG, ...) holds the text as the pixels it shows.
 
 ## Menus
 
 - **File:** New (presets, background), New Window, Open, Import Image
   (merge into this image or open a new window), Save, Save As, Export with
-  Options (the framework's format dialog), Quit.
+  Options (the framework's format dialog), Password Protection (see *Files*),
+  Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
   as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
   Foreground / Background, Settings. When Paste finds no picture on the
@@ -126,8 +171,9 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),
   Flip, Rotate, Flatten.
-- **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down,
-  Properties (name, opacity, blend mode, visibility, lock). In the Layers
+- **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down, Edit Text
+  (the active text layer, on the canvas), Rasterize Layer (a text layer
+  becomes pixels), Properties (name, opacity, blend mode, visibility, lock). In the Layers
   panel a click selects a layer and a double-click on its name renames it in
   place (Enter or a click elsewhere keeps the name, Escape the old one; undo
   takes a rename back).
@@ -185,8 +231,37 @@ Opens and saves the formats the framework's FileLoader lists for this build
 PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL, TGA, QOI, ICO, camera RAW,
 … - whatever libvips and the framework's plugins read and write here), not
 a list of its own. *Save* / *Save As* write the flattened image in the
-format of the extension; *Export with Options* adds the per-format knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
-and one PNG per layer.
+format of the extension; *Export with Options* adds the per-format knobs.
+Layered work is kept in one of the two **layered images** FileLoader lists:
+
+- **`.ucd`, an UltraCanvas layered image** - the UCD 2.2 container
+  (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): every layer's pixels, name,
+  visibility, lock, opacity and blend mode, a text layer's words as a text
+  frame, and a thumbnail a file manager shows without opening the layers
+  (UltraViewer shows the layers themselves, at full size); it can be
+  password-protected (below);
+- **`.ucraster`, an UltraPaint project** - a ZIP with `document.json` and one
+  PNG per layer, and for a text layer its words as an OpenDocument text
+  (`layers/<n>.odt`).
+
+Both open with their layers, and their text layers as text again.
+
+**Password protection.** *File > Password Protection...* gives the image a
+password (typed twice): saved as a `.ucd`, the file is then encrypted with
+it - UCD 2.2, an Argon2id key and XChaCha20-Poly1305 for every section - and
+nothing in it opens without the password, which cannot be recovered. *Hide
+the preview too* leaves the thumbnail out as well, so a file manager shows
+nothing of the picture. The same dialog changes the password or removes the
+protection; either takes effect at the next save. Opening a protected `.ucd`
+(Open, a drop, the command line) asks for its password, and again if it is
+not right; once open, *Save* keeps it protected. So does every other way a
+file comes in: each protected file of a multi-file drop in turn, and a
+protected file copied in a file manager and pasted - *Paste as New Layer*
+or *Paste as New Image*, which keeps its password like the file opened. *Save* or *Save As* to any
+other format says first that the file goes without the protection - only a
+`.ucd` carries a password. Needs the framework built with libsodium
+(UltraCrypt); without it the dialog says so and nothing is written
+unprotected that was meant to be protected.
 
 ### Dropping a file on the canvas
 
@@ -222,6 +297,20 @@ graphics plugins the application registers: **DXF**, **DWG**, **EMF** and
 `GetVectorRasterExtensions()` is what the running build can actually
 rasterize, and it is what the Open dialog's filter lists.
 
+A **password-protected PDF** asks for its password first - the page cannot
+even be measured without it - and again, saying so, while it is not right;
+then the raster-size question comes as for any drawing, and the page is
+rendered with the password. Cancel imports nothing. Of several files dropped
+together, each protected one asks for its password in turn, once the one
+before it is on the canvas; Cancel leaves just that file out and the rest
+come in. Files dropped together often share a password, or a few, so every
+password given in the drop (up to eight) is tried on the next protected file
+- the one that last opened a file first - and a file one of them opens comes
+in without a question; only when none fits is the password asked for, saying
+so. They are held in buffers that are zeroed when freed, and only until the
+drop has been read - or until the screen locks, after which the files still
+to come ask for their passwords again.
+
 ### 3D models
 
 A model has neither pixels nor a size — and, unlike a drawing, no view either,
@@ -251,7 +340,7 @@ the desktop offer the drop at all is the shortcut in
 UltraPaint reads and whose `Exec=UltraPaint %F` is expanded with the dropped
 paths.
 
-`make install` puts it, the `.ucraster` MIME type and the application icon
+`make install` puts it, the `.ucraster` and `.ucd` MIME types and the application icon
 where the desktop looks:
 
 ```bash
@@ -270,6 +359,7 @@ binary.
 UltraPaint                 # blank canvas
 UltraPaint photo.jpg       # open an image
 UltraPaint work.ucraster   # open a layered project
+UltraPaint work.ucd        # open an UltraCanvas layered image
 UltraPaint logo.svg        # asks for the raster size, then opens it
 UltraPaint part.stl        # asks for the view and the size, then opens it
 UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
@@ -302,4 +392,4 @@ and brushes build without it.
 | `UltraPaintTools.{h,cpp}` | The tools and their option panels |
 | `UltraPaintFilters.{h,cpp}` | The PixelFX filter catalogue and the parameter dialog |
 | `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha, Import (drop / vector raster size) |
-| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the `.ucraster` MIME type |
+| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the MIME types of `.ucraster` and `.ucd` (an UltraCanvas document; a layered image recognised by its `UCBitmap` signature) |

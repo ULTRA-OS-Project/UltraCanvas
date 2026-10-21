@@ -1,8 +1,9 @@
 // Apps/UltraPress/engine/UltraPressMedia.cpp
 // See UltraPressMedia.h.
+// Version: 0.8.2 - site paths through SitePathText: '\' kept in a name off Windows
 // Version: 0.7.1 - dimensions, prune, clean names
 // Version: 0.6.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressMedia.h"
 
@@ -37,9 +38,7 @@ bool IsAbsoluteUrl(const std::string& path) {
 }
 
 std::string RelativeUnder(const fs::path& root, const fs::path& file) {
-    std::string relative = UltraCanvas::PathToUtf8(file.lexically_relative(root));
-    std::replace(relative.begin(), relative.end(), '\\', '/');
-    return relative;
+    return SitePathText(UltraCanvas::PathToUtf8(file.lexically_relative(root)));
 }
 
 void CollectBlock(const Block& block, const std::string& page, const std::string& at, const BlockRegistry& registry,
@@ -256,8 +255,7 @@ bool ImportMedia(const std::string& siteDirectory, const std::string& sourcePath
     if (!canonicalSource.empty() && !canonicalMedia.empty()) {
         const std::string inside = UltraCanvas::PathToUtf8(canonicalSource.lexically_relative(canonicalMedia));
         if (!inside.empty() && inside.rfind("..", 0) != 0 && inside != ".") {
-            mediaPath = "media/" + inside;
-            std::replace(mediaPath.begin(), mediaPath.end(), '\\', '/');
+            mediaPath = SitePathText("media/" + inside);
             return true;
         }
     }

@@ -7,12 +7,13 @@
 // is loaded as a real site. The deploy sends a published folder through a
 // recording uploader and, where UltraCloud is built, through the hosts onto
 // the in-memory provider.
+// Version: 0.8.2 - a '\' in a file name off Windows: deployed, listed and named as itself
 // Version: 0.7.2 - the shadow's picture sizes
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
 // Version: 0.6.0 - the media library
 // Version: 0.5.0 - the deploy and the hosts
 // Version: 0.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
 #include "UltraPressDeploy.h"
@@ -941,6 +942,40 @@ static void TestTextInBlocks() {
           "a path past the end, or malformed, resolves to nothing");
 }
 
+// '\' separates a path's parts on Windows only. Anywhere else it is a
+// character of a name, and a file "a\b.html" is listed, uploaded and named
+// as itself - not as "b.html" in a folder "a", which does not exist (the
+// upload then failed) or is another file.
+static void TestBackslashInNames() {
+    std::printf("A '\\' in a file name\n");
+#ifdef _WIN32
+    Check(SitePathText("media\\a.png") == "media/a.png", "on Windows it separates the parts");
+#else
+    Check(SitePathText("media/a\\b.png") == "media/a\\b.png", "elsewhere it stays in the name");
+
+    const fs::path out = MakeOutput("backslash-deploy");
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "a\\b.html"), "<html>one file</html>");
+    Recorder recorder;
+    DeployOptions options;
+    options.remoteRoot = "/www";
+    const DeployResult sent = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), "ftp-x:/www", options);
+    for (const std::string& error : sent.errors) std::printf("  error: %s\n", error.c_str());
+    Check(sent.ok && Has(sent.uploaded, "a\\b.html") && Has(recorder.uploads, "/www/a\\b.html"),
+          "the deploy uploads it under its own name: " + sent.Summary());
+
+    const fs::path dir = TempDir("backslash-media");
+    std::error_code ec;
+    fs::create_directories(dir / "media", ec);
+    WriteTextFile(UltraCanvas::PathToUtf8(dir / "media" / "x\\y.png"), "not really a png");
+    const std::vector<MediaFile> files = ListMedia(UltraCanvas::PathToUtf8(dir));
+    Check(files.size() == 1 && files[0].path == "media/x\\y.png", "the library lists it as itself");
+    std::string path, error;
+    Check(ImportMedia(UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(dir / "media" / "x\\y.png"), path, error) &&
+              path == "media/x\\y.png",
+          "naming it again gives its own name: " + path + " " + error);
+#endif
+}
+
 int main() {
     TestStarterRoundTrip();
     TestValidation();
@@ -953,6 +988,7 @@ int main() {
     TestMedia();
     TestTextInBlocks();
     TestShadowImageSizes();
+    TestBackslashInNames();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

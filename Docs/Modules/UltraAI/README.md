@@ -51,12 +51,16 @@ tests run without any network or external model.
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
+| `local` | `ITextLLM`, `IEmbeddings` | local — an engine the runtime downloads, starts and supervises; nothing to install | `ULTRAAI_LOCAL_RUNTIME` (ON; in-tree only) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
 | *text-LLM translator* | `ITranslator` through any `ITextLLM` above, under that provider's id (`anthropic`, `openai`, `qwen`, `llama-cpp`, …) | wherever the LLM runs | always built (`UltraAITextLLMTranslator.h`) |
 
 `Docs/Modules/UltraAI/Adapters.md` documents each adapter's configuration,
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
 user installs; UltraAI talks to them over HTTP and links none of their code.
+The `local` provider needs no such program: the local runtime
+(`Docs/Modules/UltraAI/LocalRuntime.md`) fetches llama.cpp's server and a
+model from a gallery and a catalogue on demand and runs them itself.
 
 ---
 
@@ -104,6 +108,7 @@ UltraAI/
 │   ├── UltraAIMusicGen.h
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
+├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -111,6 +116,7 @@ UltraAI/
 │   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
 │   ├── minimax/                   # MiniMax / Hailuo video, image and speech
 │   ├── elevenlabs/                # ElevenLabs speech (direct or via a hosted relay)
+│   ├── local/                     # The `local` provider on the runtime (ITextLLM + IEmbeddings)
 │   ├── qwen/                      # Qwen on a local OpenAI-compatible server
 │   ├── comfyui/                   # Local ComfyUI image + video generation
 │   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
@@ -189,6 +195,7 @@ cmake -S UltraAI -B build \
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
+| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server` the runtime downloads from a hash-verified gallery, starts on loopback with a key, shares across applications and stops when idle; curated model catalogue, user GGUFs, Hugging Face files; hardware fit) | Complete (v0.1 — chat and embeddings; no dashboard page or framework dialog yet) |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
@@ -204,6 +211,12 @@ cmake -S UltraAI -B build \
   threading model, adapter checklist.
 * [`Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
+* [`../Docs/Modules/UltraAI/LocalRuntime.md`](LocalRuntime.md) —
+  the local runtime as built: the gallery and catalogue formats, storage,
+  settings, the engine's command line, the `local` provider, testing.
+* [`../Docs/Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md) —
+  the design it follows: why separate processes, why a gallery of our own,
+  the phases still to come (UI, speech, images, the supervisor process).
 
 ---
 

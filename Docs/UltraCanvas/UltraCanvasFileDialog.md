@@ -4,7 +4,10 @@
 open / save / select-folder dialog. It is built from elements, the same on
 every platform:
 
-- a path field with an **Up** button and six view buttons (Details, List and
+- the folder shown as a breadcrumb, as in UltraFiler (a leading **Computer**
+  whose drop-down lists the drives, then one segment per folder: a click
+  opens it, its drop-down lists the folders inside; the whole path on
+  hover), with an **Up** button and six view buttons (Details, List and
   four icon sizes);
 - a folder tree (Home, the user's places and every mounted drive, loaded as
   each node is expanded) beside the listing of the current folder, which is an
@@ -12,13 +15,23 @@ every platform:
   but without the Filer's hover icon menu (Copy / Cut / Rename / Delete over
   the file under the pointer): a picker chooses files rather than managing
   them. `hoverIconMenu` below brings it back;
-- the file-name field, and below it the file-type filter: a dropdown, or a row
-  of toggle buttons (see [Filter toggles](#filter-toggles)). Typing a name
-  narrows the listing to the entries that have it in their name. In a Save
-  dialog a big **logo of the type being saved** sits left of the two rows,
+- the **File name** field and beside it the **File type** dropdown, each
+  with its name written above it - or, with toggles (see
+  [Filter toggles](#filter-toggles)), the name over a **Show** row. Typing a
+  name narrows the listing to the entries that have it in their name. In a
+  Save dialog a big **logo of the type being saved** sits left of the fields,
   "Drag to Folder" under it - drag it onto a folder to save there
-  ([The file icon](#the-file-icon)) - and a **Settings** button ends the type
-  row, for how that type is written ([Save settings](#save-settings)).
+  ([The file icon](#the-file-icon)) - and a **Settings** button follows the
+  type, for how that type is written ([Save settings](#save-settings));
+- the **Open** / **Save** / **Select Folder** button (the dialog's OK, in the
+  theme's accent) and **Cancel**, at the right of a footer band.
+
+It is laid out like the platforms' current dialogs (the Windows 11 print
+dialog): a plain panel, the folder tree and the listing in rounded frames, and
+the buttons on a band of their own under a hairline. The colours are the
+theme's (`UltraCanvasTheme::Current()` when the dialog is made, or the one
+`ApplyTheme` gives it): the panel, the `ground` band, `line` frames and
+divider, and the fields and buttons in the theme's own styles.
 
 ## Opening one
 
@@ -128,10 +141,10 @@ between folders.
   dialog open on that name. A caller that asks itself, or appends to the
   file, turns this off with `confirmOverwrite = false`
   (`FileDialogOptions::SetConfirmOverwrite(false)`).
-- **Select folder** lists folders only. OK answers the folder highlighted in
+- **Select folder** lists folders only. Select Folder (OK) answers the folder highlighted in
   the listing, else the folder being shown.
-- Return in the path field goes to the folder typed there. A file path opens
-  its folder and puts the name into the name field.
+- A path is typed in the name field: a folder typed there (absolute, or
+  relative to the folder shown) is opened on Return.
 
 Keyboard handling (Tab order, Enter, Escape, mnemonics) is the same as every
 modal dialog: see [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md).
@@ -217,8 +230,19 @@ tree (a place or a drive). Released there, the dialog opens that folder; the
 name stays as it was, so OK (or Return) then saves into it. A release over
 anything else, over a file, or onto a folder inside an archive the listing is
 browsing changes nothing, and Escape ends the drag without closing the
-dialog. The drag stays inside the dialog: there is no file yet to hand to
-another window.
+dialog.
+
+Dragged **out of the dialog**, the icon carries on as a native drag
+(`UltraCanvasWindowBase::StartNativeSaveDrag`): dropped on a folder of
+UltraFiler - a folder of its listing, the empty space of the listing (the
+folder it shows), or a folder row of its tree - that window names the folder
+and the dialog opens it, exactly as a drop on its own listing does: the
+breadcrumb, the listing and the tree all follow, and Save then writes there.
+On Windows the drag carries a private clipboard format that the target
+answers through `IDataObject::SetData`; on X11 it speaks XDS
+(`XdndDirectSave0`), so a file manager that does too names its folder the
+same way. A drop on anything that names no folder changes nothing. macOS has
+no native drag source yet: there the badge stops at the dialog's border.
 
 The icon is an element of its own, `UltraCanvasFileDragIcon`
 (`UltraCanvasFileDragIcon.h`), for any other save box that wants one. It
@@ -252,13 +276,29 @@ icon->onDropped = [listing = listing.get(), tree = tree.get()](UltraCanvasUIElem
 row->AddChild(icon);
 ```
 
-A press that is released without moving is a click (`onClick`).
+A press that is released without moving is a click (`onClick`). A drag
+taken out of the window and dropped on a folder another window or program
+names goes to `onDroppedOnFolder`, with that folder:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasFileDragIcon> icon; void SaveInto(const std::string& folder); -->
+```cpp
+icon->onDroppedOnFolder = [](const std::string& folder) { SaveInto(folder); };
+```
+
+The window it is dropped on answers through the element under the pointer:
+`UltraCanvasWindowBase::DeliverSaveDrop` hands that element a `Drop` with
+`dragMimeType` = `kDragMimeType`, the name in `dragData` and
+`UCEvent::dropFolderReply` set, at once rather than through the event queue,
+and the element calls `dropFolderReply(folder)` while it runs. A file display
+answers by itself (the folder under the pointer, never a remote drive's); a
+tree answers through `onDropFolderOfNode` for a row `onFilesDragAccept`
+accepts.
 
 ## Save settings
 
 How a file is written is often a choice: JPEG's quality, PNG's compression,
 whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
-Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
+Save dialog's type row (after "File type") shows the settings of the type being saved - a checkbox, a slider
 or a list per setting - and stores them on OK. The dialog is the controls
 alone: its title names the format ("PNG settings"), each setting's tooltip
 says what it does, the controls make one column with a slider's value beside
@@ -347,6 +387,16 @@ there for every pixel format, so BMP, ICO and QOI - which have no settings of
 their own - get a Settings dialog with the size alone. Defaults puts the
 picture's size back with the rest.
 
+With the size given, a line under the type says what is written. For a
+**bitmap type** that is the pixels and the proportions,
+`640 × 480 pixels (4:3)`, at the size chosen in the Settings once one is
+chosen. For a **vector type** it is the proportions alone, `(4:3)`. The
+proportions are the smallest whole numbers (16:9, 3:2). When those would be
+long (1366 × 768 is 683:384) they are written as a decimal instead,
+`(1.78:1)`. The types are told apart by the loader's inventory
+(`UltraCanvasFileLoader::CanSaveImage`, `GetVectorSaveExtensions`). A type
+that is neither, such as a text file, shows no line.
+
 The size is **not** a setting of the format: it belongs to this picture, so
 it is not stored and the next Save starts on the next picture's own size. It
 comes back with the save instead:
@@ -414,7 +464,7 @@ media viewer offers an SVG this way and draws it again at the size chosen.
 For an Open dialog whose filters are *kinds* of file rather than one format
 each, a dropdown of long extension lists is hard to read. With
 `filterToggles` set (`FileDialogOptions::SetFilterToggles(true)` through the
-loader), the "Files of type" dropdown becomes a **Show:** row of toggle
+loader), the "File type" dropdown becomes a **Show** row of toggle
 buttons, one per filter, labelled with the filter's description:
 
 ```cpp

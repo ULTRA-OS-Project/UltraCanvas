@@ -1,16 +1,18 @@
 // OS/Android/UltraCanvasAndroidApplication.cpp
 // Android platform implementation for UltraCanvas Framework.
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
 // OS headers through their platform alias chain (same pattern as Linux).
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasEmojiSettings.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasAndroidWindow.h"
 #include "UltraCanvasAndroidJni.h"
+#include "UltraCanvasAndroidPermissions.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasDebug.h"
@@ -380,6 +382,8 @@ namespace UltraCanvas {
     void UltraCanvasAndroidApplication::HandleAppCmd(int32_t cmd) {
         switch (cmd) {
             case APP_CMD_INIT_WINDOW: {
+                // The display may have turned while there was no surface.
+                AndroidPermissions::DisplayRotationDegrees();
                 auto* win = GetPrimaryWindow();
                 if (win && androidApp->window) {
                     win->HandleNativeSurfaceCreated(androidApp->window);
@@ -397,6 +401,10 @@ namespace UltraCanvas {
             }
             case APP_CMD_WINDOW_RESIZED:
             case APP_CMD_CONFIG_CHANGED: {
+                // A rotation: re-read it for the camera preview. (A 180-degree
+                // flip raises neither command; UltraCanvasActivity's display
+                // listener reports those.)
+                AndroidPermissions::DisplayRotationDegrees();
                 auto* win = GetPrimaryWindow();
                 if (win) win->HandleNativeSurfaceResized();
                 break;
@@ -1075,6 +1083,8 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
             }
         }
+        // The emoji font the emoji setting picks, and its rule.
+        ApplyEmojiSettings();
         FcConfigBuildFonts(cfg);
 
         PangoFontMap* fcFm = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);

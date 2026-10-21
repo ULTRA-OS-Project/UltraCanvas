@@ -1,7 +1,15 @@
 # UltraCanvas Document File Format v2.0 (UCD v2)
 
 Status: **Draft specification** — reference for the v2 implementation of
-`UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`.
+`UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
+layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
+frames that stay text) and pins down what 2.0 left open — the `INDX` layout
+(§4.2.1) and the deflate and gzip stream formats (§2.3). Revision **2.2**
+defines password protection byte for byte: the `SECU` record and the layout
+of an encrypted section (§4.3.1, §4.3.2). The container itself
+(`UltraCanvasUCDContainer.h`, password protection included) and layered images
+(`UCRasterDocument`, `*.ucd`) are implemented; SuperVault and the other content
+types are still to come.
 
 UCD v2 is a multipurpose container for documents, forms, vector graphics and
 window/UI descriptions, with room for bitmap graphics and video in the future.
@@ -12,7 +20,8 @@ One container format serves all content types:
 - saveable/fillable forms
 - vector graphics (XAR-like feature set)
 - website-like pages with CSS-style layout and text styles
-- future: bitmap graphics, video
+- layered bitmap images whose text stays editable text (§4.7)
+- future: video
 
 Design goals:
 
@@ -76,7 +85,7 @@ ASCII, at most 8 characters, padded with `0x00` to exactly 8 bytes.
 | `UCForm` | `55 43 46 6F 72 6D 00 00` | Saveable / fillable form |
 | `UCVector` | `55 43 56 65 63 74 6F 72` | Vector graphics (XAR-like) |
 | `UCWindow` | `55 43 57 69 6E 64 6F 77` | Window/UI description (IDE templates) |
-| `UCBitmap` | `55 43 42 69 74 6D 61 70` | Bitmap graphics (future) |
+| `UCBitmap` | `55 43 42 69 74 6D 61 70` | Bitmap graphics: one image, or a layered image (§4.7) |
 | `UCVideo` | `55 43 56 69 64 65 6F 00` | Video (future) |
 | `UCAudio` | `55 43 41 75 64 69 6F 00` | Audio (future) |
 | `UC3D` | `55 43 33 44 00 00 00 00` | 3D scenes/models (future) |
@@ -98,9 +107,9 @@ Detection rules:
 | Offset | Size | Field | Values / meaning |
 |---|---|---|---|
 | 12 | 1 | Version major | `2` for this specification |
-| 13 | 1 | Version minor | `0` |
+| 13 | 1 | Version minor | `2` for this revision (`1`: before §4.3.1–4.3.2 were defined; `0`: before layered images — all read the same way) |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
-| 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). |
+| 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). *Deflate* is a zlib stream (RFC 1950: two header bytes, the deflate data, an Adler-32 checksum) — what HTTP calls the `deflate` coding; *gzip* is a gzip member (RFC 1952). Both carry a checksum, so a damaged section is detected rather than decoded into wrong pixels. |
 | 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
 | 17 | 1 | Flags | See 2.4 |
 | 18 | 2 | Reserved | Must be `0x0000`; readers must ignore |
@@ -178,7 +187,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 
 | ID | Content | Notes |
 |---|---|---|
-| `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) | Optional but recommended as the **first** section; enables random access without scanning. |
+| `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) — layout in 4.2.1 | Optional but recommended as the **first** section; enables random access without scanning. Stored uncompressed and unencrypted. |
 | `META` | Document metadata: title, author, dates, custom properties, file UUID (random, set at creation), default locale (see 4.6) | May be left unencrypted in an `ENCRYPTED` file unless `PRIVATE` is set. |
 | `STYL` | Stylesheet: named styles for fonts, padding, margins, colors — CSS-like, referencing the `UltraCanvas::CSSLayout` property set | Shared styles referenced by ID from pages/components. |
 | `WNDW` | Window definitions (`UCWindowData`) | IDE templates / window content. |
@@ -186,13 +195,14 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `FORM` | Form field definitions, validation rules, saved field values | |
 | `VECT` | Vector graphics document (serialized `VectorStorage::VectorDocument`: layers, paths, gradients, masks, filters, text-on-path …) | XAR-like feature set. Payload starts with the sub-format preamble (4.5). |
 | `MEDI` | One embedded media resource (image/audio/video/font), MIME-typed | One section per resource; already-compressed media should set compression `0` (none). |
-| `BMAP` | One native bitmap image | Payload starts with the sub-format preamble (4.5). |
+| `BMAP` | One native bitmap image | Payload starts with the sub-format preamble (4.5). A layered image holds one per layer (4.7). |
+| `LAYR` | The layer stack of a layered image: canvas size, then each layer's name, visibility, lock, opacity, blend mode and placement, and which `BMAP` (and `VECT` text frame) holds its content | At most one per file. Added in 2.1 — see 4.7. |
 | `VIDS` | One native video stream | Payload starts with the sub-format preamble (4.5). |
 | `AUDS` | One native audio stream | Payload starts with the sub-format preamble (4.5). |
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
-| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. | Never encrypted (it is the input to decryption). |
+| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. Layout in 4.3.1. | Never encrypted or compressed (it is the input to decryption); required when key source = `1`. |
 | `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when key source = `2`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
@@ -201,13 +211,42 @@ Rules:
 - Unknown section types must be skipped using the payload length — this is
   the forward-compatibility mechanism.
 - Multiple sections of the same type are allowed where it makes sense
-  (`PAGE`, `MEDI`, `VECT`, `WNDW`, `LOCL`).
+  (`PAGE`, `MEDI`, `VECT`, `WNDW`, `LOCL`, and `BMAP` in a layered image).
+  Sections of one type are numbered from `0` in file order; that number is
+  how one section names another (a `LAYR` layer names its `BMAP` and
+  `VECT`).
 - Each `WNDW` section contains exactly **one** window definition; the window
   ID lives inside the payload and must be unique file-wide. Windows
   reference each other (e.g. a main window opening a child) by window ID.
 - The content-type descriptor in the signature declares the primary sections
   a file is expected to contain (e.g. `UCVector` → at least one `VECT`), but
   mixed documents are valid.
+
+#### 4.2.1 `INDX` layout
+
+The index lists every *other* section of the file, in file order. It is
+stored with compression `0` and never encrypted, so a reader can use it
+straight from the bytes it read.
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 3 | Reserved | `0x000000` |
+| 4 | 4 | Entry count | uint32 |
+| 8 | 20 × n | Entries | see below |
+
+Each entry:
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 4 | Type ID | The section's FourCC |
+| 4 | 8 | Offset | uint64, absolute file offset of the section's 12-byte header |
+| 12 | 4 | Stored length | uint32, the payload length in the section header |
+| 16 | 4 | Uncompressed length | uint32, the payload's length once decompressed (and decrypted) — what a reader allocates |
+
+The sections themselves remain the truth: a reader that finds an index
+disagreeing with them (an offset that is not a section header of that type)
+ignores the index and scans.
 
 ### 4.3 Compression and encryption pipeline
 
@@ -221,6 +260,54 @@ Per section, in this order:
    `SECU` parameters, or supplied by SuperVault (4.4). Each encrypted section
    carries its own random 192-bit nonce; the section header is passed as
    associated data, so editing it invalidates the tag.
+
+#### 4.3.1 `SECU` layout (key source `1`, password)
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 1 | KDF | `1` = Argon2id — the only code point |
+| 2 | 1 | AEAD | `1` = XChaCha20-Poly1305 — the only code point |
+| 3 | 1 | Reserved | `0x00` |
+| 4 | 4 | Passes | uint32, Argon2id time cost |
+| 8 | 4 | Memory | uint32, Argon2id memory cost in KiB |
+| 12 | 4 | Parallelism | uint32, Argon2id lanes; `1` |
+| 16 | 16 | Salt | random per save |
+| 32 | 4 | Permissions | uint32, bit 0 print, bit 1 copy, bit 2 edit, bit 3 form-fill (`1` = allowed); advisory — anyone with the password has the content |
+| 36 | 24 | Check nonce | random |
+| 60 | 16 | Check tag | the XChaCha20-Poly1305 tag of an **empty** message under the document key, this nonce, and as associated data the ASCII bytes `UCD-SECU` followed by bytes 0–35 of this record |
+
+The **document key** is 32 bytes of Argon2id over the password's UTF-8 bytes
+with this salt and these costs. The check tag lets a reader tell a wrong
+password ("the password is not right") from a damaged section ("the file is
+damaged") before it decrypts anything, and binds the stored costs, so they
+cannot be lowered without the password.
+
+A reader refuses a record whose costs no honest writer would choose — more
+than 64 passes or more than 4 GiB of memory — before deriving anything, so a
+hostile file cannot make it allocate without bound.
+
+#### 4.3.2 An encrypted section
+
+An encrypted section has bit 0 of its section flags set, and its payload as
+stored is:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 24 | Nonce, random per section and per save |
+| 24 | n | Ciphertext: XChaCha20-Poly1305 of the payload *after* compression — the compression byte names what the decrypted bytes are |
+| 24 + n | 16 | Tag |
+
+The associated data is the section's 12-byte header exactly as stored (type,
+the stored length — `40 + n` — compression byte, flags, reserved), so a
+header edited to name another type, length or compression fails the tag.
+
+Writer rules for key source `1`: the header's `ENCRYPTED` flag is set; the
+`SECU` section comes before every encrypted one; every section is encrypted
+except `INDX`, `SECU`, `SVLT` and, at the writer's choice, `META`. The `INDX`
+still lists every section's type and lengths, as the section headers do — the
+sizes of a protected document are not secret, its content is. `PRIVATE` (§2.4)
+leaves the thumbnail out as well.
 
 **One cipher, one KDF — deliberately.** UCD is our own format, so it offers no
 algorithm menu: every writer emits XChaCha20-Poly1305 with Argon2id, and every
@@ -302,7 +389,7 @@ time both the app and the service recompute/compare it, which detects:
 
 - The variable-size key material (up to 1 MiB) is supported as specified;
   note that beyond 32 random bytes the *cryptographic* strength of the
-  derived AES-256 key no longer increases — the large blob's value is
+  derived 256-bit XChaCha20-Poly1305 key no longer increases — the large blob's value is
   operational (the service can rotate/partition it, embed policy, or pad it
   so blob size reveals nothing), not brute-force resistance.
 - `PRIVATE` flag semantics apply as usual; SuperVault files may still carry a
@@ -346,7 +433,8 @@ unavailable rather than failing the whole file.
 |---|---|---|
 | `VECT` | `UCVS` | Native serialized `VectorStorage::VectorDocument` (default) |
 | `VECT` | `SVG ` | Embedded SVG document (pass-through, UTF-8 text) |
-| `BMAP` | `UCRW` | Native raw pixels: uint16 width, uint16 height, uint8 pixel format (`0` = RGBA8, `1` = RGB8, `2` = GRAY8, `3` = RGBA16), 3 reserved bytes, then rows top-down, unpadded |
+| `VECT` | `UCTF` | Text frame: rich text set in a box — a layered image's text layer (layout in 4.7.3). Added in 2.1 |
+| `BMAP` | `UCRW` | Native raw pixels: uint16 width, uint16 height, uint8 pixel format (`0` = RGBA8, `1` = RGB8, `2` = GRAY8, `3` = RGBA16), 3 reserved bytes, then rows top-down, unpadded. Alpha is straight (not premultiplied); RGBA16 samples are little-endian |
 | `BMAP` | `PNG ` / `JPEG` / `HEIC` / `WEBP` / `AVIF` | Embedded image file (pass-through) |
 | `VIDS` | `WEBM` / `MP4 ` | Embedded container file (pass-through) |
 | `VIDS` | `AV1 ` / `H264` / `H265` / `VP9 ` | Elementary stream (timing/index data to be defined with the UCVideo payload spec) |
@@ -366,7 +454,7 @@ Rules:
   loaders used for standalone files), so sub-format support automatically
   tracks plugin support.
 - Already-compressed sub-formats (everything except `UCRW`, `PCM `, `UCVS`,
-  `SVG `, `GLTF`, `OBJ `, `STL `) should be stored with section
+  `UCTF`, `SVG `, `GLTF`, `OBJ `, `STL `) should be stored with section
   compression = none.
 - Every future content-section definition (e.g. the full `UCVideo` payload
   spec) must keep this preamble as its first 8 bytes; new FourCCs are added
@@ -439,6 +527,115 @@ single file, atomic, translations can never desynchronize from the layout.
 Overlays exist for the language-pack workflow (adding or fixing a
 translation without re-shipping the document).
 
+### 4.7 Layered images (added in 2.1)
+
+A **layered image** is what a bitmap editor saves to keep its work: a stack
+of layers, each with its own pixels, name, visibility, opacity and blend
+mode, some of them **text** — words in a box, still editable — until the
+user merges them into pixels. In UCD it is:
+
+- the descriptor `UCBitmap`;
+- one `LAYR` section, the stack (4.7.1);
+- one `BMAP` per layer: its pixels (for a text layer, the pixels the text
+  was drawn into — what it shows);
+- one `VECT` with sub-format `UCTF` per text layer: its words (4.7.3);
+- a thumbnail of the composite (recommended: PNG, 256 px on the longest
+  edge, so a filer previews the picture without decoding a layer).
+
+A file is readable at three depths, and each is correct: a filer shows the
+thumbnail; a viewer that knows `BMAP` but not text composites the layers'
+pixels and shows exactly the picture; an editor that also reads `UCTF` gets
+its text layers back as text. A `UCBitmap` file **without** `LAYR` is one
+image: its first `BMAP`.
+
+#### 4.7.1 `LAYR` layout
+
+Binary (body encoding `0`), compressed like any section. Multi-byte values
+little-endian; `float32` is IEEE 754 binary32.
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 3 | Reserved | `0x000000` |
+| 4 | 4 | Canvas width | uint32, pixels, ≥ 1 |
+| 8 | 4 | Canvas height | uint32, pixels, ≥ 1 |
+| 12 | 4 | Active layer | int32, the layer an editor selects on opening; `-1` = none |
+| 16 | 4 | Layer count | uint32, ≥ 1 |
+| 20 | … | Layer records | one per layer, **bottom first** (the first record is drawn first) |
+
+Each layer record starts with its own length, so a later revision can append
+fields that older readers skip:
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 4 | Record length | uint32, bytes of the record **after** this field |
+| 4 | 1 | Flags | bit 0 = visible, bit 1 = locked (editors refuse to paint on it); bits 2–7 reserved |
+| 5 | 1 | Blend mode | see 4.7.2 |
+| 6 | 2 | Reserved | `0x0000` |
+| 8 | 4 | Opacity | float32, `0.0`–`1.0` |
+| 12 | 4 | X | int32, where the bitmap's left edge lies on the canvas |
+| 16 | 4 | Y | int32, where the bitmap's top edge lies on the canvas |
+| 20 | 4 | Bitmap | uint32, the layer's `BMAP` (its number among the file's `BMAP` sections, 4.2); `0xFFFFFFFF` = none (a transparent layer) |
+| 24 | 4 | Text | uint32, the layer's `UCTF` text frame (its number among the file's `VECT` sections); `0xFFFFFFFF` = a bitmap layer |
+| 28 | 2 | Name length | uint16, bytes |
+| 30 | n | Name | UTF-8 |
+
+The bitmap may be smaller than the canvas and may lie partly outside it;
+what falls outside is not part of the image. Pixels the bitmap does not cover
+are transparent.
+
+#### 4.7.2 Compositing
+
+Layers are composited bottom first over a transparent canvas. A layer
+contributes nothing when it is not visible; otherwise each pixel's alpha is
+scaled by the opacity and the colour is blended with what lies below by the
+blend mode, using the separable formulas of the W3C *Compositing and
+Blending* specification, then composited source-over.
+
+| Code | Mode | Code | Mode |
+|---|---|---|---|
+| `0` | Normal | `6` | Difference |
+| `1` | Multiply | `7` | Addition (linear dodge; sum clipped to white) |
+| `2` | Screen | `8` | Subtract (dest − source, clipped to black) |
+| `3` | Overlay | `9` | Soft light |
+| `4` | Darken | `10` | Hard light |
+| `5` | Lighten | | |
+
+A reader meeting a code it does not know composites that layer as Normal.
+
+#### 4.7.3 `UCTF` text frame layout
+
+The words of a text layer: rich text — runs with their own fonts, sizes,
+colours, weights, slants and underlines; paragraphs with their alignment and
+spacing — laid out in a box the width of which the lines wrap at. After the
+8-byte preamble (`'UCTF'`, version `1`):
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 8 | 8 | X | float64, the box's left edge, canvas pixels |
+| 16 | 8 | Y | float64, the box's top edge |
+| 24 | 8 | Width | float64, the width the lines wrap at |
+| 32 | 8 | Height | float64, the height the text took when it was last laid out |
+| 40 | 4 | Colour | R, G, B, A bytes (straight alpha): the colour of a run that states none |
+| 44 | 4 | Font size | float32, pixels: the size of a run that states none |
+| 48 | 2 | Font family length | uint16 |
+| 50 | n | Font family | UTF-8: the font of a run that states none |
+| … | 4 | Text encoding | FourCC of what follows: `'ODT '` = an OpenDocument Text package (ODF 1.2, `application/vnd.oasis.opendocument.text`) |
+| … | 4 | Text length | uint32 |
+| … | n | Text | the rich text in that encoding |
+
+Rules:
+
+- The layer's `BMAP` holds what the text **shows**; the frame holds what it
+  **is**. A reader displays the bitmap and keeps it until the text is edited,
+  so a font missing on the reading machine changes nothing on screen until
+  then. An editor that changes the text draws it again into the bitmap before
+  saving.
+- Writers state paragraph spacing explicitly in the rich text, so that the
+  text lays out the same when read back.
+- A reader that cannot decode the text encoding keeps the layer as the
+  bitmap layer it shows.
+
 ## 5. Binary vs. text body encoding
 
 Header byte 14 selects the encoding of *all* structured section payloads:
@@ -479,3 +676,26 @@ both modes — only the payload bytes differ.
 
 File extension stays `.ucd`. v1 files are distinguished by their old 4-byte
 signature; loaders should keep the v1 read path during a transition period.
+
+### 7.1 Changes in 2.1
+
+| Aspect | 2.0 | 2.1 |
+|---|---|---|
+| Version minor | `0` | `1` |
+| Bitmap graphics | descriptor reserved for the future; one `BMAP` | layered images: `LAYR` stack, one `BMAP` per layer (4.7) |
+| Text in images | none | `VECT` sub-format `UCTF`, a text frame that stays editable (4.7.3) |
+| `INDX` | contents named, layout open | layout defined (4.2.1) |
+| Compression codes | "deflate", "gzip" | zlib stream (RFC 1950), gzip member (RFC 1952) |
+
+A 2.0 reader opens a 2.1 layered image as the 2.0 rules allow: it skips the
+unknown `LAYR` and shows the first `BMAP`, or the thumbnail.
+
+### 7.2 Changes in 2.2
+
+| Aspect | 2.1 | 2.2 |
+|---|---|---|
+| Version minor | `1` | `2` |
+| `SECU` | contents named, layout open | layout defined (4.3.1), with a check tag that tells a wrong password from a damaged file |
+| Encrypted sections | "carries its own nonce" | nonce, ciphertext, tag; the stored header is the associated data (4.3.2) |
+
+Files without a password are written exactly as in 2.1.

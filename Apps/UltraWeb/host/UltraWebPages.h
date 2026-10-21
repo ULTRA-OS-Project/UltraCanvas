@@ -7,9 +7,10 @@
 //
 // Also the address-bar decision: which addresses are WebAssembly apps and
 // which are pages.
+// Version: 0.8.3 - ToPageUrl: '\' is a separator only on Windows
 // Version: 0.4.0 - AcceptExtensions (file uploads)
 // Version: 0.3.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -36,7 +37,9 @@ bool IsAppAddress(const std::string& address);
 std::vector<std::string> AcceptExtensions(const std::string& accept);
 
 // A local path as a file:// URL (absolute, '/' separators, the bytes a URL
-// may not carry percent-encoded). A URL comes back as it is.
+// may not carry percent-encoded). A '\' becomes a '/' only on Windows, where
+// it separates folders; elsewhere it is part of a name and is encoded (%5C).
+// A URL comes back as it is.
 std::string ToPageUrl(const std::string& address);
 
 } // namespace UltraWeb

@@ -14,8 +14,23 @@
 // layer as a PixelFX image and returns the processed one; the document
 // writes it back only where the selection covers, so every PixelFX
 // operation is selection-aware without knowing about selections.
+//
+// Text layers (UCRasterLayer::text) stay text through everything that keeps
+// their pixels as the text draws them - layer attributes, moving them in the
+// stack, duplicating, a canvas resize or crop (the box moves along) - and
+// become bitmaps at the first change that does not: a pixel edit on one
+// (whose undo makes it text again), Merge Down, Flatten, scaling, flipping
+// and rotating. Rendering the text is not the document's job: a host renders
+// a text layer with RenderTextLayer (UltraCanvasRasterText.h) and puts it in
+// with AddLayer or ReplaceLayer.
+// Version: 1.4.0 - password-protected *.ucd: SetUCDPassword, LoadUCD with a password,
+//                  IsPasswordProtected
+// Version: 1.3.0 - layered UltraCanvas documents (*.ucd, UCD 2.1 UCBitmap): SaveUCD / LoadUCD,
+//                  text layers kept as text frames
+// Version: 1.2.0 - text layers: RasterizeLayer, public ReplaceLayer,
+//                  SetInPlaceEditLayer; .ucraster keeps the text
 // Version: 1.1.0 - AddListener / RemoveListener: several observers of one document
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +44,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h
 
 namespace UltraCanvas {
 
@@ -45,6 +62,9 @@ struct RasterUndoEntry {
     Rect2Di rect;
     std::vector<uint8_t> before;
     std::vector<uint8_t> after;
+    // The text a pixel edit took off a text layer (null for a bitmap layer):
+    // undo puts it back with the pixels, redo takes it off again.
+    std::shared_ptr<const RasterTextContent> textBefore;
     // structural edit
     int width = 0, height = 0;
     int activeLayer = 0;
@@ -82,7 +102,9 @@ public:
     // Each of these records a structural undo entry and marks the document
     // modified. They return the index of the affected layer (-1 when refused).
     int  AddLayer(const std::string& name = "", const RasterPixel& fill = RasterPixel(0, 0, 0, 0));
-    int  AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex = -1);   // -1: above the active layer
+    // -1: above the active layer. `label` names the undo entry ("Text" for a
+    // text layer a Text tool adds, say).
+    int  AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex = -1, const std::string& label = "Add Layer");
     int  DuplicateLayer(int index);
     bool RemoveLayer(int index);
     bool MoveLayer(int fromIndex, int toIndex);
@@ -95,6 +117,23 @@ public:
     void SetLayerBlendMode(int index, RasterBlendMode mode);
     void SetLayerName(int index, const std::string& name);
     void SetLayerLocked(int index, bool locked);
+    // Swap in a replacement for the layer at `index` - a text layer rendered
+    // again after its text was edited, say - as one undo entry named `label`.
+    // The replacement must be canvas-sized; false when it is not (or there
+    // is no such layer).
+    bool ReplaceLayer(int index, std::shared_ptr<UCRasterLayer> replacement, const std::string& label);
+    // A text layer becomes a bitmap layer with the same pixels, undoably
+    // ("Rasterize Layer"). False for a layer that is not a text layer.
+    bool RasterizeLayer(int index);
+
+    // ===== EDITING A LAYER IN PLACE =====
+    // A layer the host is drawing itself while it edits it - an on-canvas
+    // text editor shows the text being typed, so the layer's older pixels
+    // must not show under it. Left out of GetCompositePixmap() until this is
+    // called with null (or with another layer); Flatten(), saving and every
+    // edit still see it. Not undoable and not saved: it is a view state.
+    void SetInPlaceEditLayer(const std::shared_ptr<UCRasterLayer>& layer);
+    std::shared_ptr<UCRasterLayer> GetInPlaceEditLayer() const { return inPlaceEditLayer.lock(); }
 
     // ===== SELECTION =====
     UCRasterSelection&       GetSelection()       { return selection; }
@@ -121,7 +160,10 @@ public:
     // Bracket a pixel change of `rect` on `layerIndex` (clipped to the
     // canvas). Nested calls are not supported; a second BeginEdit before
     // EndEdit ends the first one. EndEdit takes the "after" snapshot,
-    // pushes the undo entry and notifies views for the rectangle.
+    // pushes the undo entry and notifies views for the rectangle. On a text
+    // layer the edit takes the text off (the pixels will no longer be what
+    // it draws); an edit that changes nothing, or is cancelled, puts it back,
+    // and so does undoing the edit. RecordEdit does the same.
     void BeginEdit(const std::string& label, int layerIndex, const Rect2Di& rect);
     bool IsEditing() const { return editing; }
     void EndEdit();
@@ -208,9 +250,46 @@ public:
     bool SaveToFile(const std::string& path, std::string& error,
                     const UCImageSave::ImageExportOptions* options = nullptr);
     // Layered project file (*.ucraster): a ZIP holding document.json and one
-    // PNG per layer. Keeps layers, names, opacity, blend modes.
+    // PNG per layer. Keeps layers, names, opacity, blend modes - and a text
+    // layer's text (its box and default font in document.json, the rich
+    // text itself as layers/<n>.odt beside its PNG, an OpenDocument text any
+    // word processor opens), so it opens as text again. The PNG is what it shows on opening, so a font missing on
+    // another machine changes nothing until the text is edited.
     bool SaveProject(const std::string& path, std::string& error);
     bool LoadProject(const std::string& path, std::string& error);
+    // Layered UltraCanvas document (*.ucd): the UCD 2.1 layered image
+    // (Docs/UltraCanvas/UCD-FileFormat-v2.md, section 4.7) - descriptor
+    // UCBitmap, a LAYR layer stack, each layer's pixels as a raw RGBA BMAP,
+    // each text layer's words as a UCTF text frame (its box, default font and
+    // the rich text as an OpenDocument text), and a PNG thumbnail of the
+    // composite for filers. Keeps everything a project keeps; needs no
+    // libvips. LoadUCD also opens a UCBitmap file without a layer stack, as
+    // one layer.
+    bool SaveUCD(const std::string& path, std::string& error);
+    // `password` opens a password-protected one (IsPasswordProtected); without
+    // it, or with a wrong one, the load fails and says which - the document
+    // stays as it was.
+    bool LoadUCD(const std::string& path, std::string& error, const std::string& password = std::string());
+    static bool IsUCDFile(const std::string& path);
+    // A *.ucd whose header says it is password-protected (key source 1).
+    static bool IsPasswordProtected(const std::string& path);
+
+    // ----- password protection (*.ucd) -----
+    // The password this document is saved with as a *.ucd: every section
+    // encrypted with XChaCha20-Poly1305 under an Argon2id key (UCD spec 4.3).
+    // Held in memory only - in a secure buffer, zeroed when dropped - for as
+    // long as the document has it. LoadUCD sets it from the password a
+    // protected file was opened with, so saving again keeps the protection;
+    // opening any other file drops it. `hidePreview` also leaves the thumbnail
+    // out (a PRIVATE document). An empty password removes the protection.
+    // Other formats ignore it: the host warns before saving a protected image
+    // in one. Saving fails - rather than writing it unprotected - in a build
+    // without libsodium (UCD::EncryptionAvailable()).
+    void SetUCDPassword(const std::string& password, bool hidePreview = false);
+    bool HasUCDPassword() const { return ucdPassword != nullptr; }
+    bool GetUCDHidesPreview() const { return ucdHidePreview; }
+    // A layered file - *.ucraster or *.ucd: SaveToFile / LoadFromFile keep
+    // its layers, text layers included, rather than flatten them.
     static bool IsProjectFile(const std::string& path);
 
     const std::string& GetFilePath() const { return filePath; }
@@ -261,8 +340,6 @@ private:
     static std::vector<uint8_t> SnapshotRect(const UCRasterLayer& layer, const Rect2Di& r);
     static void RestoreRect(UCRasterLayer& layer, const Rect2Di& r, const std::vector<uint8_t>& data);
     std::vector<std::shared_ptr<UCRasterLayer>> CloneLayers() const;
-    // Swap in a replacement layer object (attribute edits), undoably.
-    void ReplaceLayer(int index, std::shared_ptr<UCRasterLayer> replacement, const std::string& label);
 
     int width = 0;
     int height = 0;
@@ -291,8 +368,12 @@ private:
     std::shared_ptr<UCPixmap> composite;
     std::vector<Rect2Di> compositeDirty;
     bool compositeAllDirty = true;
+    std::weak_ptr<UCRasterLayer> inPlaceEditLayer;
 
     std::string filePath;
+    // The *.ucd password (SetUCDPassword); shared, so a copied document keeps it.
+    std::shared_ptr<UltraCryptSecureBuffer> ucdPassword;
+    bool ucdHidePreview = false;
     bool modified = false;
 };
 
