@@ -295,6 +295,17 @@ void DevicePage::LoadHistory() {
         points.emplace_back(static_cast<double>(points.size()), y, 0.0,
                             ClockText(static_cast<int64_t>(r.Timestamp / 1000)).substr(0, 5), 0.0);
     }
+    // A floor under the axis, so a steady room reads as steady rather than
+    // as its sensor's last digit swinging across the whole chart.
+    double span = 1.0;   // events: 0 and 1
+    switch (kind) {
+        case SmartHomeSensorType::Temperature: span = 2.0; break;     // °C
+        case SmartHomeSensorType::Humidity: span = 10.0; break;       // %
+        case SmartHomeSensorType::Power: span = 20.0; break;          // W
+        case SmartHomeSensorType::Light: span = 50.0; break;          // lx
+        default: break;
+    }
+    chart->SetMinimumValueSpan(span);
     chartData->LoadFromArray(points);
     chart->SetDataSource(chartData);
     if (points.empty()) {
