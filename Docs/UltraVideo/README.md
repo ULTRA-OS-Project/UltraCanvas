@@ -46,7 +46,8 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. The *Effects* tab holds the presets for the clips on the main
+playhead, or drag one onto the title lane at a time (the lane shows the
+insertion marker with the style's name; `Esc` lets go). The *Effects* tab holds the presets for the clips on the main
 track and the overlay lane (an overlay clip's effects change its own
 picture only) - a click puts one on the selected clip, or drag one onto a
 clip (the clip under the pointer shows a dashed ring and the status line

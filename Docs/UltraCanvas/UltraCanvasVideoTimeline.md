@@ -36,7 +36,7 @@ child elements of its own)
 **Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Last Modified:** 2026-10-14
 **Author:** UltraCanvas Framework
 
@@ -173,6 +173,8 @@ std::string trackId;
 std::string clipId = timeline->ClipAt(400.0f, 120.0f, &trackId);
 timeline->SetDropTargetClip(clipId);         // a dashed focus ring: where a drop the app carries lands
 timeline->SetDropTargetClip("");             // ... cleared
+double at = timeline->SetDropMarker("T1", 2.8, "Lower third");   // the insertion marker and readout of a carried drop, snapped
+timeline->ClearDropMarker();
 ```
 
 ### Providers

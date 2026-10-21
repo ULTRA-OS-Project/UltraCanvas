@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.10.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
 // Version: 0.9.0 - presets on overlay clips, by click or drop; a slider's drag one undo step
 // Version: 0.8.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.7.0 - the panels, controls, buttons, labels and dialogs follow the theme; the draft at the project's shape, its settings from the document
@@ -151,32 +152,26 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
 
     window->InstallEventFilter("ultravideo-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown, UCEventType::Drop});
-    // A file dragged out of the bin follows the pointer to the timeline
-    window->InstallEventFilter("ultravideo-bindrag", [this](const UCEvent& event) {
-        if (binDrag_.empty()) return false;
-        if (event.type == UCEventType::MouseMove) { DragToTimeline(event, false); return true; }
-        if (event.type == UCEventType::MouseUp) {
-            DragToTimeline(event, true);
-            binDrag_.clear();
-            return true;
-        }
-        return false;
-    }, {UCEventType::MouseMove, UCEventType::MouseUp});
-    // An effect preset dragged from its button: the press arms it (the
-    // button's onPress, below), moving away from the press starts it
-    window->InstallEventFilter("ultravideo-effectdrag", [this](const UCEvent& event) {
-        if (event.type == UCEventType::MouseDown) { effectPressAt_ = event.pointerWindow; pointerDown_ = true; return false; }
+    // A drag the window carries from the bin to the timeline: a file, an
+    // effect preset or a title style. A button's press arms its drag (the
+    // buttons' onPress below); moving away from the press starts it
+    window->InstallEventFilter("ultravideo-drag", [this](const UCEvent& event) {
+        if (event.type == UCEventType::MouseDown) { armedAt_ = event.pointerWindow; pointerDown_ = true; return false; }
         if (event.type == UCEventType::MouseUp) pointerDown_ = false;
-        if (!effectDrag_.empty()) {
-            DragEffect(event, event.type == UCEventType::MouseUp);
+        if (dragKind_ != DragKind::Nothing) {
+            CarryDrag(event, event.type == UCEventType::MouseUp);
             return true;
         }
-        if (effectPress_.empty()) return false;
-        if (event.type == UCEventType::MouseUp) { effectPress_.clear(); return false; }   // a click: the button applies it
-        const int dx = event.pointerWindow.x - effectPressAt_.x, dy = event.pointerWindow.y - effectPressAt_.y;
+        if (armedKind_ == DragKind::Nothing) return false;
+        if (event.type == UCEventType::MouseUp) { armedKind_ = DragKind::Nothing; armedKey_.clear(); return false; }   // a click: the button acts
+        const int dx = event.pointerWindow.x - armedAt_.x, dy = event.pointerWindow.y - armedAt_.y;
         if (dx * dx + dy * dy < 36) return false;
-        BeginEffectDrag(effectPress_);
-        DragEffect(event, false);
+        const DragKind kind = armedKind_;
+        const std::string key = armedKey_;
+        armedKind_ = DragKind::Nothing;
+        armedKey_.clear();
+        StartDrag(kind, key);
+        CarryDrag(event, false);
         return true;
     }, {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
     window->onWindowClosing = [this]() {
@@ -403,7 +398,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     titlesPage->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     titlesPage->SetPadding(static_cast<float>(Tokens::Space3));
     titlesNote_ = CreateLabel("uv.bin.titles", 0, 0, 240, 40,
-                              "A title goes on the title lane at the playhead; drag it, trim it, and set its text in the inspector.");
+                              "A click puts a title on the title lane at the playhead, or drag one there at a time; trim it and set its text in the inspector.");
     titlesNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
     FollowTheme(titlesNote_, LabelVariant::Muted);
     titlesNote_->layoutItem.SetFlexShrink(0);
@@ -416,6 +411,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
         const std::string key = st.key;
         button->SetOnClick([this, key]() { AddTitle(key, document_.view.playhead); });
+        button->onPress = [this, key]() { ArmDrag(DragKind::Title, key); };   // a move away drags it onto the title lane
         titleButtons_.push_back(button);
         titlesPage->AddChild(button);
         auto hint = CreateLabel(std::string("uv.bin.titleHint.") + st.key, 0, 0, 240, 18, st.hint);
@@ -452,7 +448,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
             button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
             const std::string key = e.key;
             button->SetOnClick([this, key]() { ApplyEffect(key); });
-            button->onPress = [this, key]() { effectPress_ = pointerDown_ ? key : ""; };   // armed by the mouse; a move away starts the drag
+            button->onPress = [this, key]() { ArmDrag(DragKind::Effect, key); };   // a move away starts the drag
             effectButtons_.push_back(button);
             effectsPage->AddChild(button);
         }
@@ -1062,77 +1058,132 @@ void UltraVideoWindow::OpenFiles(const std::vector<std::string>& paths) {
 void UltraVideoWindow::BeginBinDrag(const std::string& path) {
     const MediaItem* m = document_.FindMedia(path);
     if (!m || !m->error.empty()) return;
-    binDrag_ = path;
-    Message(m->kind == MediaKind::Audio ? "Drop it on the music lane to make it the music, or on Voice & sound (A2) at a time."
-                                        : "Drop it on the main track at a time, or on the overlay lane to put it over the picture.");
+    StartDrag(DragKind::File, path);
 }
 
-// The element's drop path takes files from the window system; a bin tile
-// is carried to it the same way, as synthetic drag events with the file
-void UltraVideoWindow::DragToTimeline(const UCEvent& source, bool drop) {
-    if (!timeline_ || binDrag_.empty()) return;
+void UltraVideoWindow::ArmDrag(DragKind kind, const std::string& key) {
+    if (!pointerDown_) return;   // a keyboard press clicks, it never drags
+    armedKind_ = kind;
+    armedKey_ = key;
+}
+
+// The drag begins: the button it came from lets go (its MouseUp goes to the
+// drag now), and the status line says where the thing can land
+void UltraVideoWindow::StartDrag(DragKind kind, std::string key) {   // by value: a caller may pass a member cleared here
+    CancelDrag();
+    const std::string prefix = kind == DragKind::Effect ? "uv.bin.effect." : kind == DragKind::Title ? "uv.bin.title." : "";
+    if (!prefix.empty()) {
+        for (const auto& b : kind == DragKind::Effect ? effectButtons_ : titleButtons_)
+            if (b->GetIdentifier() == prefix + key) { b->SetPressed(false); b->SetHovered(false); }
+    }
+    dragKind_ = kind;
+    dragKey_ = key;
+    dragHover_.clear();
+    if (kind == DragKind::File) {
+        const MediaItem* m = document_.FindMedia(key);
+        Message(m && m->kind == MediaKind::Audio ? "Drop it on the music lane to make it the music, or on Voice & sound (A2) at a time."
+                                                 : "Drop it on the main track at a time, or on the overlay lane to put it over the picture.");
+    } else if (kind == DragKind::Effect) {
+        const EffectPreset* preset = FindEffectPreset(key);
+        Message("Drop " + std::string(preset ? preset->label : key.c_str()) + " on a clip on the main track or the overlay lane. Esc lets go.");
+    } else {
+        Message("Drop " + TitleLabel(key) + " on the title lane at a time. Esc lets go.");
+    }
+}
+
+// Every pointer move of the drag and its drop. A file goes to the element's
+// own drop path as synthetic drag events; an effect's target is the clip
+// under the pointer, ringed; a title's is the title lane at the time under
+// the pointer, the element's marker showing where it would land
+void UltraVideoWindow::CarryDrag(const UCEvent& source, bool drop) {
+    if (dragKind_ == DragKind::Nothing || !timeline_) return;
     const Point2Df inWindow(static_cast<float>(source.pointerWindow.x), static_cast<float>(source.pointerWindow.y));
-    UCEvent e = source;
-    e.targetElement = timeline_.get();
-    e.droppedFiles = {binDrag_};
-    const Point2Df local = timeline_->MapToLocal(inWindow);
-    e.pointer = Point2Di(static_cast<int>(local.x), static_cast<int>(local.y));
-    if (!timeline_->IsVisible() || !timeline_->ContainsInWindow(inWindow)) {
-        e.type = UCEventType::DragLeave;
+    const bool over = timeline_->IsVisible() && timeline_->ContainsInWindow(inWindow);
+    const Point2Df local = over ? timeline_->MapToLocal(inWindow) : Point2Df();
+    const DragKind kind = dragKind_;
+    const std::string key = dragKey_;
+
+    if (kind == DragKind::File) {
+        UCEvent e = source;
+        e.targetElement = timeline_.get();
+        e.droppedFiles = {key};
+        e.pointer = Point2Di(static_cast<int>(local.x), static_cast<int>(local.y));
+        e.type = !over ? UCEventType::DragLeave : drop ? UCEventType::Drop : UCEventType::DragOver;
         timeline_->OnEvent(e);
-        if (drop) Message("Dropped outside the timeline: nothing added.");
+        if (drop) {
+            dragKind_ = DragKind::Nothing;
+            dragKey_.clear();
+            if (!over) Message("Dropped outside the timeline: nothing added.");
+        }
         return;
     }
-    e.type = drop ? UCEventType::Drop : UCEventType::DragOver;
-    timeline_->OnEvent(e);
-}
 
-void UltraVideoWindow::BeginEffectDrag(std::string key) {   // by value: the caller passes effectPress_, cleared here
-    const EffectPreset* preset = FindEffectPreset(key);
-    effectPress_.clear();
-    if (!preset) return;
-    for (const auto& b : effectButtons_)   // the button lets go: its MouseUp goes to the drag
-        if (b->GetIdentifier() == std::string("uv.bin.effect.") + key) { b->SetPressed(false); b->SetHovered(false); }
-    effectDrag_ = key;
-    effectHover_.clear();
-    Message(std::string("Drop ") + preset->label + " on a clip on the main track or the overlay lane. Esc lets go.");
-}
-
-// The clip under the pointer is the target while it is on the main track or
-// the overlay lane; the timeline rings it, the status line names it, the drop applies the preset
-void UltraVideoWindow::DragEffect(const UCEvent& source, bool drop) {
-    if (effectDrag_.empty()) return;
-    const EffectPreset* preset = FindEffectPreset(effectDrag_);
-    const std::string label = preset ? preset->label : effectDrag_;
-    const Point2Df inWindow(static_cast<float>(source.pointerWindow.x), static_cast<float>(source.pointerWindow.y));
     std::string clipId, trackId;
-    if (timeline_ && timeline_->IsVisible() && timeline_->ContainsInWindow(inWindow)) {
-        const Point2Df local = timeline_->MapToLocal(inWindow);
-        clipId = timeline_->ClipAt(local.x, local.y, &trackId);
-    }
-    const EffectTarget target = EffectTargetOf(clipId);
-    const bool takes = target.segment >= 0 || target.overlay >= 0;
-    const std::string hover = takes ? "clip:" + clipId : clipId.empty() ? "" : "other";
-    if (!drop) {
-        if (hover == effectHover_) return;
-        effectHover_ = hover;
-        if (timeline_) timeline_->SetDropTargetClip(takes ? clipId : "");
-        if (takes) Message("Drop to put " + label + " on " + EffectClipName(target) + ".");
-        else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds.");
-        else Message("Drop " + label + " on a clip on the main track or the overlay lane. Esc lets go.");
+    if (over) clipId = timeline_->ClipAt(local.x, local.y, &trackId);
+
+    if (kind == DragKind::Effect) {
+        const EffectPreset* preset = FindEffectPreset(key);
+        const std::string label = preset ? preset->label : key;
+        const EffectTarget target = EffectTargetOf(clipId);
+        const bool takes = target.segment >= 0 || target.overlay >= 0;
+        if (!drop) {
+            const std::string hover = takes ? "clip:" + clipId : clipId.empty() ? "" : "other";
+            if (hover == dragHover_) return;
+            dragHover_ = hover;
+            timeline_->SetDropTargetClip(takes ? clipId : "");
+            if (takes) Message("Drop to put " + label + " on " + EffectClipName(target) + ".");
+            else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds.");
+            else Message("Drop " + label + " on a clip on the main track or the overlay lane. Esc lets go.");
+            return;
+        }
+        CancelDrag();
+        if (takes) ApplyEffectTo(key, clipId);
+        else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds: nothing applied.");
+        else Message("Dropped outside a clip: nothing applied.");
         return;
     }
-    const std::string key = effectDrag_;
-    CancelEffectDrag();
-    if (takes) ApplyEffectTo(key, clipId);
-    else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds: nothing applied.");
-    else Message("Dropped outside a clip: nothing applied.");
+
+    // a title style
+    const std::string label = TitleLabel(key);
+    const bool onLane = over && trackId == kTitleTrackId;
+    const double at = onLane ? timeline_->SetDropMarker(kTitleTrackId, timeline_->XToSeconds(local.x), label) : -1.0;
+    if (!onLane) timeline_->ClearDropMarker();
+    if (!drop) {
+        const std::string hover = onLane ? "lane" : trackId;
+        if (hover == dragHover_) return;
+        dragHover_ = hover;
+        if (onLane) Message("Drop to put " + label + " on the title lane where the marker is.");
+        else if (!trackId.empty()) Message("Titles go on the title lane (T1).");
+        else Message("Drop " + label + " on the title lane at a time. Esc lets go.");
+        return;
+    }
+    CancelDrag();
+    if (at >= 0.0) AddTitle(key, at);
+    else if (!trackId.empty()) Message("Titles go on the title lane (T1): nothing added.");
+    else Message("Dropped outside the timeline: nothing added.");
 }
 
-void UltraVideoWindow::CancelEffectDrag() {
-    effectDrag_.clear();
-    effectHover_.clear();
-    if (timeline_) timeline_->SetDropTargetClip("");
+void UltraVideoWindow::CancelDrag() {
+    if (dragKind_ == DragKind::Nothing) return;
+    if (timeline_) {
+        if (dragKind_ == DragKind::File) {
+            UCEvent leave;
+            leave.type = UCEventType::DragLeave;
+            timeline_->OnEvent(leave);
+        } else if (dragKind_ == DragKind::Effect) {
+            timeline_->SetDropTargetClip("");
+        } else {
+            timeline_->ClearDropMarker();
+        }
+    }
+    dragKind_ = DragKind::Nothing;
+    dragKey_.clear();
+    dragHover_.clear();
+}
+
+std::string UltraVideoWindow::TitleLabel(const std::string& styleKey) const {
+    for (const TitleStyle& st : TitleStyles()) if (st.key == styleKey) return st.label;
+    return styleKey;
 }
 
 void UltraVideoWindow::AddMediaToTimeline(const std::string& path, double at) {
@@ -1538,7 +1589,7 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
         if (timeline_) timeline_->SetSelection({id});
         RefreshInspector();
         inspector_.ShowClipTab();
-        Message("A title at the playhead: set its text in the inspector.");
+        Message("A title on the title lane: set its text in the inspector.");
     }
 }
 
@@ -2033,16 +2084,8 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
     if (TextHasFocus()) return false;
     switch (event.virtualKey) {
         case UCKeys::Escape:
-            if (!binDrag_.empty()) {   // a drag from the bin let go
-                binDrag_.clear();
-                UCEvent leave;
-                leave.type = UCEventType::DragLeave;
-                if (timeline_) timeline_->OnEvent(leave);
-                Message("Drag cancelled.");
-                return true;
-            }
-            if (!effectDrag_.empty()) {
-                CancelEffectDrag();
+            if (dragKind_ != DragKind::Nothing) {   // a drag from the bin let go
+                CancelDrag();
                 Message("Drag cancelled.");
                 return true;
             }
