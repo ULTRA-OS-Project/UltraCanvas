@@ -2458,3 +2458,74 @@ a crash or a hang of the host; after a trap or an interruption an instance
 refuses further calls; host functions are registered through the unchecked
 host-function API (measured at 7 ns per empty call against 82 ns for the
 checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+
+---
+
+### **18. UltraIM**
+
+The instant-messaging framework: one UI-free API through which an
+application signs in to messengers, lists conversations, sends and receives
+messages and places calls, whatever the network. Every network is a provider
+plug-in — ChatCube Direct (the ULTRA OS native peer-to-peer messenger) first,
+then Matrix, Telegram, XMPP and other services with an open API. The first
+consumer is the ChatCube application (`Apps/ChatCube/`). Plan:
+`Docs/Research/ChatCubeDirectPlan.md`.
+
+UltraIM elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- No UltraCanvas UI dependency: no element, window, list model or render
+  context in the module or its plug-ins
+- Networking only through UltraNet and UltraRTC; no socket, no libcurl call
+- Synchronous rejections (not connected, capability missing, bad argument)
+  return `UltraIMResult`; network outcomes arrive as `UltraIMEvent`s
+- Every event and every result callback is delivered through the dispatcher
+  the application installs (`UltraIM_SetEventDispatcher`); without one they
+  run on the calling thread
+- Providers are loadable modules exporting `UltraIM_PluginInit` and checked
+  against `ULTRAIM_PLUGIN_HOST_ABI_VERSION`
+- Credentials and private keys at rest go through UltraVault
+
+**Proposed Functions (Phase 1):**
+- `UltraIM_Initialize`, `UltraIM_Shutdown`
+- `UltraIM_RegisterProvider`, `UltraIM_UnregisterProvider`,
+  `UltraIM_RefreshProviders`, `UltraIM_ListProviders`
+- `UltraIM_SetEventDispatcher`, `UltraIM_Subscribe`, `UltraIM_Unsubscribe`
+- `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
+- `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
+- `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
+  `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`, `UltraIM_DeleteMessage`,
+  `UltraIM_EditMessage`, `UltraIM_MarkRead`, `UltraIM_SetTyping`
+- `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
+  `UltraIM_EndCall`
+
+**Implementation status:** planned — see the plan's phase table.
+
+---
+
+### **19. UltraRTC**
+
+Real-time communication: WebRTC peer connections, data channels, and audio
+and video calls behind one UltraCanvas-owned API, `UltraRtc_*` free
+functions with opaque `UltraRtcHandle`s and `UltraRtcResult` from every
+blocking call. Design: `Docs/Research/UltraRTCDesignProposal.md`.
+
+**A wrapped engine.** libdatachannel (with libjuice, usrsctp, libsrtp),
+vendored under `UltraCanvas/third_party/libdatachannel/`, linked privately: no
+engine type reaches a caller. SDP passes through untouched; DTLS is
+mandatory. Built when OpenSSL is found; otherwise every call answers
+`Unsupported`.
+
+**Proposed Functions (Phase 1 — peers and data channels):**
+- `UltraRtc_Initialize`, `UltraRtc_Shutdown`, `UltraRtc_GetCapabilities`,
+  `UltraRtc_SetEventDispatcher`
+- `UltraRtc_CreatePeer`, `UltraRtc_ClosePeer`, `UltraRtc_SetPeerEventCallback`
+- `UltraRtc_CreateOffer`, `UltraRtc_CreateAnswer`,
+  `UltraRtc_SetLocalDescription`, `UltraRtc_SetRemoteDescription`,
+  `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
+- `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelSend`,
+  `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
+
+**Planned (Phase 2–3):** audio and video tracks, device tracks, playback,
+`UltraCanvasVideoTile` / `UltraCanvasCallView` elements.
+
+**Implementation status:** planned.
