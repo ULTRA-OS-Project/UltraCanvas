@@ -1,3 +1,14 @@
+#### 2026-10-21 *0.10.64*
+- **A JMAP account is checked the moment its server reports new mail.**
+  UltraMail keeps a watch open on every JMAP account (the server's event
+  source, through the UltraNet JMAP plug-in's new push - framework
+  changelog: `jmap-push`) and checks the account at once when the server
+  announces a change to its mail or folders, instead of waiting for the
+  interval chosen in *Settings > Mail*, which stays as the safety net. The
+  watch opens once the vault is usable, is reopened a minute after the
+  server or the network ended it, follows a changed server, and ends with
+  the account; `trace.log` says when one opens, ends and fires.
+
 #### 2026-10-21 *0.10.63*
 - **A JMAP account is found by itself, and sends, marks, moves and deletes
   through JMAP.** Adding an account at a domain the provider table does not

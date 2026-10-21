@@ -150,6 +150,8 @@ constexpr unsigned int kStartupSyncDelayMs = 400;
 // the shortest interval offered is 20 seconds, so a tick of a few seconds
 // keeps every choice on time without a timer per account.
 constexpr unsigned int kSyncTickMs = 5000;
+// A push watch that ended, or could not be opened, is tried again after this.
+constexpr int64_t kPushRetrySec = 60;
 // After a wake from sleep, the check waits this long: Wi-Fi usually needs a few
 // seconds to reconnect, and a check before that would only report "offline".
 constexpr unsigned int kWakeSyncDelayMs = 5000;
@@ -178,6 +180,10 @@ std::string UltraMailApp::SlugFromEmail(const std::string& email) {
 
 UltraMailApp::~UltraMailApp() {
     feed_.SetOnNotificationAction(nullptr);   // a late click finds no app
+    pushAlive_->store(false);                 // a late push callback finds no app
+    if (IMailboxProtocolPlugin* jmap = JmapPlugin())
+        for (const auto& [accountId, watch] : pushWatches_) jmap->StopWatching(watch.handle);
+    pushWatches_.clear();
     vault_.Lock();   // wipe the derived key and decrypted secrets
 }
 
@@ -2425,6 +2431,8 @@ void UltraMailApp::SyncAllInBackground() {
 }
 
 void UltraMailApp::RunSyncs(bool force) {
+    // The JMAP accounts' watches, on every tick: cheap when they are open.
+    MaintainPushWatches();
     // Which accounts: the due ones, or all of them for a forced reload.
     std::vector<ScheduledAccount> targets;
     if (force) {
@@ -2439,6 +2447,122 @@ void UltraMailApp::RunSyncs(bool force) {
         targets = scheduler_.DueAccounts(static_cast<int64_t>(std::time(nullptr)));
     }
     SyncAccounts(targets, /*userInitiated=*/force);
+}
+
+void UltraMailApp::MaintainPushWatches() {
+    if (!vault_.IsUnlocked()) return;   // a watch signs in like a sync does
+    IMailboxProtocolPlugin* jmap = JmapPlugin();
+    const int64_t now = NowMonotonicSec();
+    std::set<std::string> wanted;
+    for (const auto& a : accounts_) {
+        if (!jmap) break;
+        const DiscoveryResult d = SettingsFor(a);
+        if (!d.found || d.imap.protocol != MailProtocol::Jmap) continue;
+        if (vault_.MethodFor(a.accountId) == SignInMethod::None) continue;
+        const std::string url = AutoDiscovery::IncomingServerUrl(d.imap);
+        if (url.empty()) continue;
+        wanted.insert(a.accountId);
+        auto have = pushWatches_.find(a.accountId);
+        if (have != pushWatches_.end()) {
+            if (have->second.serverUrl == url) continue;   // open, and still right
+            StopPushWatch(a.accountId);                    // another server now
+        }
+        if (pushStarting_.count(a.accountId)) continue;
+        auto retry = pushRetryAt_.find(a.accountId);
+        if (retry != pushRetryAt_.end() && retry->second > now) continue;
+        StartPushWatch(a, d, url, *jmap);
+    }
+    // Watches of accounts that are gone, or no longer JMAP, end.
+    std::vector<std::string> gone;
+    for (const auto& [accountId, watch] : pushWatches_)
+        if (!wanted.count(accountId)) gone.push_back(accountId);
+    for (const auto& accountId : gone) StopPushWatch(accountId);
+}
+
+void UltraMailApp::StartPushWatch(const Account& account, const DiscoveryResult& settings,
+                                  const std::string& serverUrl, IMailboxProtocolPlugin& mailbox) {
+    const std::string accountId = account.accountId;
+    pushStarting_.insert(accountId);
+    UltraNetMailOptions opts;
+    ApplyConnection(settings.imap, opts);
+    const std::string username =
+        settings.imap.username.empty() ? account.email : settings.imap.username;
+    opts.credentials.username = username;
+    const std::string provider = OAuthProviderFor(settings);
+    auto alive = pushAlive_;
+    IMailboxProtocolPlugin* plugin = &mailbox;   // the registry keeps it loaded
+    // The credentials (an OAuth2 refresh, perhaps) and the session fetch the
+    // watch starts with talk to the network: off the UI thread.
+    std::thread([this, alive, accountId, username, provider, opts, serverUrl, plugin]() mutable {
+        UltraNetResult r = ResolveCredentials(accountId, username, provider, opts.credentials);
+        UltraNetHandle handle = UltraNetInvalidHandle;
+        if (r) {
+            r = plugin->WatchMailbox(serverUrl, opts,
+                [this, alive, accountId](const UltraNetMailChange&) {
+                    if (!alive->load()) return;
+                    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+                    if (!app) return;
+                    app->PostToUIThread([this, alive, accountId]() {
+                        if (!alive->load()) return;
+                        Trace::Line("JMAP push: " + accountId + " changed on the server - checking it");
+                        SyncAccountFromPush(accountId);
+                    });
+                },
+                [this, alive, accountId, serverUrl](const UltraNetResult& why) {
+                    if (!alive->load()) return;
+                    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+                    if (!app) return;
+                    app->PostToUIThread([this, alive, accountId, serverUrl, why]() {
+                        if (!alive->load()) return;
+                        auto it = pushWatches_.find(accountId);
+                        if (it != pushWatches_.end() && it->second.serverUrl == serverUrl)
+                            pushWatches_.erase(it);
+                        // Ended by StopPushWatch: the next tick decides; by the
+                        // server or the network: a minute's pause first.
+                        pushRetryAt_[accountId] = NowMonotonicSec()
+                            + (why.code == UltraNetResultCode::Cancelled ? 0 : kPushRetrySec);
+                        Trace::Line("JMAP push for " + accountId + " ended: "
+                                    + (why.message.empty() ? std::string("the stream closed")
+                                                           : why.message));
+                    });
+                },
+                handle);
+        }
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, accountId, serverUrl, handle, r]() {
+            if (!alive->load()) return;
+            pushStarting_.erase(accountId);
+            // A stream that ended before this ran is not one to keep.
+            if (r && UltraNet_IsRequestActive(handle)) {
+                pushWatches_[accountId] = PushWatch{handle, serverUrl};
+                Trace::Line("JMAP push for " + accountId + ": watching " + serverUrl);
+                return;
+            }
+            pushRetryAt_[accountId] = NowMonotonicSec() + kPushRetrySec;
+            if (!r) Trace::Line("JMAP push for " + accountId + " not started: " + r.message);
+        });
+    }).detach();
+}
+
+void UltraMailApp::StopPushWatch(const std::string& accountId) {
+    auto it = pushWatches_.find(accountId);
+    if (it == pushWatches_.end()) return;
+    const UltraNetHandle handle = it->second.handle;
+    pushWatches_.erase(it);
+    if (IMailboxProtocolPlugin* jmap = JmapPlugin()) jmap->StopWatching(handle);
+}
+
+void UltraMailApp::SyncAccountFromPush(const std::string& accountId) {
+    for (const auto& a : accounts_) {
+        if (a.accountId != accountId) continue;
+        DiscoveryResult d = SettingsFor(a);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
+        SyncAccounts({sa}, /*userInitiated=*/false);
+        return;
+    }
 }
 
 void UltraMailApp::ScheduleOfflineRetry() {

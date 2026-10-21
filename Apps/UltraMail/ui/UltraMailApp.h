@@ -76,6 +76,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include <atomic>
 #include "UltraCanvasLabel.h"
 
 #include <chrono>
@@ -691,6 +692,30 @@ private:
     // True once the periodic sync timer runs, so StartBackgroundSync() can be
     // called again (after an account is added) without starting a second one.
     bool        syncTimerStarted_ = false;
+
+    // ---- Push (a JMAP account's event source) ---------------------------
+    // One watch per JMAP account (IMailboxProtocolPlugin::WatchMailbox): the
+    // server reports a change and the account is checked at once, next to
+    // the regular interval, which stays as the safety net. Kept on the sync
+    // tick (MaintainPushWatches): opened once the vault is usable, reopened a
+    // minute after one ended, ended for an account that is gone or no
+    // longer JMAP. All on the UI thread; the plug-in's callbacks post here.
+    struct PushWatch {
+        UltraNetHandle handle = UltraNetInvalidHandle;
+        std::string    serverUrl;
+    };
+    std::map<std::string, PushWatch>  pushWatches_;
+    std::set<std::string>             pushStarting_;   // a worker is opening one
+    std::map<std::string, int64_t>    pushRetryAt_;    // steady seconds; not before
+    // False once the app is going: a callback that arrives later does nothing.
+    std::shared_ptr<std::atomic<bool>> pushAlive_ = std::make_shared<std::atomic<bool>>(true);
+    void MaintainPushWatches();
+    void StartPushWatch(const Account& account, const DiscoveryResult& settings,
+                        const std::string& serverUrl, IMailboxProtocolPlugin& mailbox);
+    void StopPushWatch(const std::string& accountId);
+    // A change the server announced: the account is checked now, quietly
+    // (a failure goes the way of a timer check, never an alert of its own).
+    void SyncAccountFromPush(const std::string& accountId);
     // Notices a wake from sleep from a short periodic timer (started with the
     // sync timer), so mail is checked right after the computer wakes.
     WakeDetector wake_;

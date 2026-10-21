@@ -1,16 +1,19 @@
 # JMAP Support in UltraNet — Investigation & Design
 
-**Status:** Phases 1 (read path) and 2 (the write path: `StoreFlags`,
-`MoveMessage`, `AppendMessage`, `ExpungeMessage`, `FetchAllFlags` and
-`SendMail` through `EmailSubmission`) implemented — see
-`Plugins/UltraNet/jmap/`; phase 3 (push) remains as designed below. UltraMail
+**Status:** All three phases implemented — the read path, the write path
+(`StoreFlags`, `MoveMessage`, `AppendMessage`, `ExpungeMessage`,
+`FetchAllFlags` and `SendMail` through `EmailSubmission`) and push
+(`WatchMailbox` over the session's event source) — see
+`Plugins/UltraNet/jmap/`. UltraMail
 consumes it since 0.10.62: an account's incoming server is set to JMAP on its
 settings page (`Docs/UltraMail/AccountSetup.md`, section 5), and syncs, the
 login check, the message actions and the outbox copies then use this plug-in
 in place of the IMAP one; since 0.10.63 UltraMail also finds a JMAP server by
 itself (SRV `_jmap._tcp` and the `/.well-known/jmap` probe, between the
 provider table and the autoconfig lookup) and sends through it when the
-account names no SMTP server.
+account names no SMTP server; since 0.10.64 it keeps a watch open on every
+JMAP account and checks the account the moment the server reports a change,
+next to the regular interval.
 **Scope:** Add JMAP (JSON Meta Application Protocol, RFC 8620 core + RFC 8621 mail)
 as an UltraNet protocol plug-in, consumable by UltraMail alongside IMAP/SMTP.
 
@@ -150,13 +153,18 @@ uid. Proposal, phased:
    (`Email/changes`) can be used first-class — that unlocks JMAP's cheap
    incremental sync instead of uid-window polling.
 
-### 4.3 Push (phase 3)
+### 4.3 Push (phase 3) — implemented
 
-Subscribe `UltraNet_SseStreamAsync` to the session's `eventSourceUrl`;
-`StateChange` events carry per-account `Email`/`Mailbox` state strings. Surface
-as an optional callback on the plug-in (or a future
-`IMailboxPushProtocolPlugin` mix-in) that UltraMail's `SyncScheduler` uses to
-trigger immediate `SyncMessages` instead of its poll interval.
+`IMailboxProtocolPlugin::WatchMailbox` (appended to the interface, with a
+"not implemented" default) opens a watch: the JMAP plug-in subscribes
+`UltraNet_SseStreamAsync` to the session's `eventSourceUrl` for
+`Email,Mailbox` with a five-minute ping, records the account's states from
+the first `StateChange` event and reports a change for every later one whose
+`Email` or `Mailbox` state differs; `onEnd` reports the stream's end and
+`StopWatching` ends it. UltraMail (`MaintainPushWatches`, on its sync tick)
+keeps one watch per JMAP account whose vault entry is usable, checks the
+account at once on a change, and reopens a watch that ended after a minute;
+the interval check stays as the safety net.
 
 ### 4.4 Discovery (phase 3)
 

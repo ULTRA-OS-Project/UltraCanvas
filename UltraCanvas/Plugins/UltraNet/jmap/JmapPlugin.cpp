@@ -1,4 +1,6 @@
 // UltraCanvas/Plugins/UltraNet/jmap/JmapPlugin.cpp
+// Version: 0.3.0 (Phase 3 — push: WatchMailbox / StopWatching over the
+//                 session's event source)
 // Version: 0.2.0 (Phase 2 — the write path: StoreFlags, MoveMessage,
 //                 AppendMessage, ExpungeMessage, FetchAllFlags and SendMail
 //                 through EmailSubmission)
@@ -8,8 +10,10 @@
 // legacy bulk FetchMessages, keyword and mailbox changes, blob upload with
 // Email/import, destroy, and sending through EmailSubmission — over the
 // UltraNet_Http* core API (no libcurl code of its own; connection pooling,
-// TLS policy, proxies and timeouts come from the core). Push via the
-// session's eventSourceUrl (UltraNetSse) arrives in phase 3.
+// TLS policy, proxies and timeouts come from the core) - and push: a watch
+// (WatchMailbox) holds the session's event source open (UltraNet_SseStreamAsync)
+// and reports a change whenever a StateChange event carries an Email or
+// Mailbox state the watch has not seen.
 //
 // Flags: $seen / $answered / $flagged / $draft are keywords. JMAP has no
 // \Deleted: setting it moves the message to the Trash mailbox (or destroys
@@ -40,12 +44,14 @@
 #include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraNet/UltraNetSse.h>
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
 #include "JmapCore.h"
 
 #include <algorithm>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -58,6 +64,7 @@ namespace {
 
 using namespace ultranet_jmap;
 
+constexpr int kPingSeconds     = 300;    // the event source's keep-alive
 constexpr int kQueryPageSize   = 500;    // Email/query ids per page
 constexpr int kQueryMaxIds     = 100000; // safety cap on ids walked per folder
 constexpr int kEmailGetChunk   = 250;    // ids per Email/get call
@@ -144,13 +151,88 @@ UltraNetResult MapHttpFailure(const UltraNetResult& r, const UltraNetResponse& r
 class JmapPlugin : public IMailboxProtocolPlugin {
 public:
     std::string GetName() const override    { return "UltraNet-JMAP"; }
-    std::string GetVersion() const override { return "0.2.0"; }
+    std::string GetVersion() const override { return "0.3.0"; }
     std::vector<std::string> GetSupportedSchemes() const override { return {"jmap"}; }
     UltraNetResult Initialize(const UltraNetConfig&) override { return UltraNetResult::Ok(); }
     void Shutdown() override {
+        // The watches first: each onEnd (Cancelled) runs on the worker and
+        // must not find the plug-in half gone.
+        std::vector<UltraNetHandle> open;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (const auto& [handle, watch] : watches_) open.push_back(handle);
+        }
+        for (UltraNetHandle handle : open) StopWatching(handle);
         std::lock_guard<std::mutex> lock(mutex_);
         sessions_.clear();
         uidMaps_.clear();
+        watches_.clear();
+    }
+
+    // ---- push ---------------------------------------------------------------
+
+    UltraNetResult WatchMailbox(const std::string& serverUrl, const UltraNetMailOptions& options,
+                                std::function<void(const UltraNetMailChange&)> onChange,
+                                std::function<void(const UltraNetResult&)> onEnd,
+                                UltraNetHandle& outWatch) override {
+        outWatch = UltraNetInvalidHandle;
+        JmapSession session;
+        std::string user, pass;
+        UltraNetResult r = GetSession(serverUrl, options, session, user, pass);
+        if (!r) return r;
+        if (session.eventSourceUrl.empty())
+            return UltraNetResult::Error(UltraNetResultCode::Unsupported,
+                                         "the JMAP server offers no event source (push)");
+
+        auto watch = std::make_shared<Watch>();
+        watch->accountId = session.accountId;
+        watch->onChange  = std::move(onChange);
+        watch->onEnd     = std::move(onEnd);
+
+        UltraNetHttpRequest req;
+        req.url     = BuildEventSourceUrl(ResolveAgainst(session.apiUrl, session.eventSourceUrl),
+                                          kPingSeconds);
+        req.method  = UltraNetHttpMethod::Get;
+        req.options = MakeHttpOptions(options, user, pass);
+        // The stream stays open as long as the server keeps it: no
+        // whole-transfer limit, and a stall limit of two missed pings.
+        req.options.timeoutMs      = -1;
+        req.options.stallTimeoutMs = 2 * kPingSeconds * 1000;
+
+        const UltraNetHandle handle = UltraNet_SseStreamAsync(
+            req,
+            [watch](const UltraNetSseEvent& e) { watch->OnEvent(e); },
+            [this, watch](const UltraNetResult& result) {
+                // Off the table before the caller hears, so a StopWatching
+                // from inside onEnd finds nothing to cancel.
+                watch->ended.store(true);
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    for (auto it = watches_.begin(); it != watches_.end(); ++it)
+                        if (it->second == watch) { watches_.erase(it); break; }
+                }
+                if (watch->onEnd) watch->onEnd(result);
+            });
+        if (handle == UltraNetInvalidHandle)
+            return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                         "the event source stream could not be opened");
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            // The stream may have ended before the handle was known: then
+            // there is nothing to keep.
+            if (!watch->ended.load()) watches_[handle] = watch;
+        }
+        outWatch = handle;
+        return UltraNetResult::Ok();
+    }
+
+    void StopWatching(UltraNetHandle watch) override {
+        bool known = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            known = watches_.count(watch) != 0;
+        }
+        if (known) UltraNet_CancelRequest(watch);   // onComplete erases it and ends the watch
     }
 
     // ---- IMailProtocolPlugin ----------------------------------------------
@@ -206,7 +288,7 @@ public:
                                          "the account has no mailbox to hold the message");
 
         std::string blobId;
-        r = UploadBlob(session, options, user, pass, BuildRawMessage(message), blobId);
+        r = UploadBlob(session, options, user, pass, UltraNet_MimeBuildMailMessage(message), blobId);
         if (!r) return r;
 
         r = ApiPost(session, options, user, pass,
@@ -605,6 +687,38 @@ public:
     }
 
 private:
+    // One open event-source stream.
+    struct Watch {
+        std::string accountId;
+        std::function<void(const UltraNetMailChange&)> onChange;
+        std::function<void(const UltraNetResult&)> onEnd;
+        std::atomic<bool> ended{false};
+        std::mutex m;
+        std::map<std::string, std::string> states;   // type -> last state seen
+        bool primed = false;
+
+        // A "state" event: the first one only records where the account
+        // stands (the caller's own sync covers what came before the watch);
+        // from then on a state the watch has not seen is a change.
+        void OnEvent(const UltraNetSseEvent& e) {
+            if (!e.event.empty() && e.event != "state") return;   // ping, comment
+            std::map<std::string, std::string> now;
+            if (!ParseStateChange(e.data, accountId, now)) return;
+            std::vector<std::string> changed;
+            {
+                std::lock_guard<std::mutex> lock(m);
+                changed = primed ? ChangedTypes(states, now) : std::vector<std::string>{};
+                for (const auto& [type, state] : now) states[type] = state;
+                primed = true;
+            }
+            if (changed.empty() || !onChange) return;
+            UltraNetMailChange change;
+            change.mailboxesChanged =
+                std::find(changed.begin(), changed.end(), "Mailbox") != changed.end();
+            onChange(change);
+        }
+    };
+
     // The id of the message `uid` names in `folder`, (re)walking the folder
     // when the map does not know it yet (a fresh process, or a message that
     // arrived since).
@@ -685,50 +799,6 @@ private:
         return UltraNetResult::Ok();
     }
 
-    // The raw RFC 5322 message of what the caller hands SendMail - the same
-    // builder the SMTP plug-in uses, so both wire formats are one.
-    static std::string BuildRawMessage(const UltraNetMailMessage& m) {
-        UltraNetMimeBuildInput in;
-        in.from    = m.from;
-        in.to      = m.to;
-        in.cc      = m.cc;
-        in.bcc     = m.bcc;
-        in.subject = m.subject;
-        in.body    = m.body;
-        in.extraHeaders = m.headers;
-        if (!m.contentType.empty()) {
-            const std::size_t semi = m.contentType.find(';');
-            in.bodyMediaType = m.contentType.substr(0, semi);
-            while (!in.bodyMediaType.empty() && in.bodyMediaType.back() == ' ')
-                in.bodyMediaType.pop_back();
-            const std::size_t cs = m.contentType.find("charset=");
-            if (cs != std::string::npos) {
-                std::string charset = m.contentType.substr(cs + 8);
-                const std::size_t end = charset.find(';');
-                if (end != std::string::npos) charset = charset.substr(0, end);
-                if (!charset.empty() && charset.front() == '"') charset.erase(0, 1);
-                if (!charset.empty() && charset.back() == '"') charset.pop_back();
-                in.bodyCharset = charset;
-            }
-        }
-        in.alternativeText = m.alternativeText;
-        for (const auto& part : m.inlineParts) {
-            UltraNetMimeBuildAttachment a;
-            a.filename = part.filename;
-            if (!part.mediaType.empty()) a.mediaType = part.mediaType;
-            a.data      = part.data;
-            a.isInline  = true;
-            a.contentId = part.contentId;
-            in.attachments.push_back(std::move(a));
-        }
-        for (const auto& [name, bytes] : m.attachments) {
-            UltraNetMimeBuildAttachment a;
-            a.filename = name;
-            a.data     = bytes;
-            in.attachments.push_back(std::move(a));
-        }
-        return UltraNet_MimeBuild(in);
-    }
 
     // A SetError type of EmailSubmission/set as a result code (RFC 8621 §7.5).
     static UltraNetResultCode MapSubmissionError(const std::string& err) {
@@ -886,6 +956,7 @@ private:
     std::mutex mutex_;
     std::map<std::string, JmapSession> sessions_;  // (sessionUrl|user) → session
     std::map<std::string, UidMap>      uidMaps_;   // (accountId|folder) → uid map
+    std::map<UltraNetHandle, std::shared_ptr<Watch>> watches_;   // open event-source streams
 };
 
 } // namespace

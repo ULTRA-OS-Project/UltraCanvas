@@ -475,6 +475,15 @@ its username and no SMTP server: it sends through JMAP. The provider table
 comes first, so Gmail, Outlook and the other known providers are never
 probed.
 
+**New mail arrives at once.** A JMAP account is watched: UltraMail holds
+the server's event source open and checks the account the moment the
+server reports a change to its mail or folders, so new mail shows without
+waiting for the interval in *Settings > Mail > Connection* - which still
+runs, as the safety net for a change the stream missed. The watch opens
+once the account's sign-in is usable, is reopened a minute after the
+server or the network ended it, and `trace.log` in the data folder says
+when it opened, ended and fired.
+
 **Authentication method.** Under the server rows, *Sign-in (IMAP)* and
 *Sign-in (SMTP)* choose how each server is signed in to — the same choice
 Thunderbird calls the authentication method:

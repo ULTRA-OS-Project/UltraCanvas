@@ -2,8 +2,9 @@
 // Unit tests for the JMAP plug-in's pure wire layer in JmapCore.h (session
 // parsing, URI-template expansion, request building, method-response
 // navigation, mailbox/envelope mapping, keyword↔flag conversion, the
-// uid↔Email-id map and the write path: keyword and mailbox patches, destroy,
-// upload + Email/import, identities and the EmailSubmission request), plus a
+// uid↔Email-id map, the write path: keyword and mailbox patches, destroy,
+// upload + Email/import, identities and the EmailSubmission request, and
+// push: the event-source URL and StateChange events), plus a
 // check that the built DSO exposes the IMailboxProtocolPlugin interface and
 // rejects malformed server URLs. The pure tests need no server; the
 // interface test loads the plug-in DSO.
@@ -447,6 +448,39 @@ TEST(jmap_mailbox_by_role_and_membership) {
     CHECK(!EmailInMailbox(json::object(), "MB1"));
 }
 
+// ---- push (phase 3) -------------------------------------------------------
+
+TEST(jmap_event_source_url_and_state_changes) {
+    const std::string url = BuildEventSourceUrl(
+        "https://jmap.example.com/eventsource/?types={types}&closeafter={closeafter}&ping={ping}",
+        300);
+    REQUIRE_EQ(url, std::string("https://jmap.example.com/eventsource/"
+                                "?types=Email%2CMailbox&closeafter=no&ping=300"));
+    REQUIRE(BuildEventSourceUrl("https://x/es?ping={ping}", -5).find("ping=0") != std::string::npos);
+
+    std::map<std::string, std::string> states;
+    REQUIRE(ParseStateChange(R"({"@type":"StateChange","changed":{"A1":{"Email":"e1","Mailbox":"m1"},
+                                 "A2":{"Email":"zzz"}}})", "A1", states));
+    REQUIRE_EQ(states.size(), (std::size_t)2);
+    REQUIRE_EQ(states["Email"], std::string("e1"));
+    REQUIRE_EQ(states["Mailbox"], std::string("m1"));
+    // Another account, a ping, garbage: not a change of this account.
+    CHECK(!ParseStateChange(R"({"changed":{"A2":{"Email":"zzz"}}})", "A1", states));
+    CHECK(!ParseStateChange(R"({"ping":1})", "A1", states));
+    CHECK(!ParseStateChange("not json", "A1", states));
+
+    // What to fetch again: a state that is new or differs.
+    std::map<std::string, std::string> known = {{"Email", "e1"}, {"Mailbox", "m1"}};
+    CHECK(ChangedTypes(known, {{"Email", "e1"}, {"Mailbox", "m1"}}).empty());
+    std::vector<std::string> changed = ChangedTypes(known, {{"Email", "e2"}, {"Mailbox", "m1"}});
+    REQUIRE_EQ(changed.size(), (std::size_t)1);
+    REQUIRE_EQ(changed[0], std::string("Email"));
+    changed = ChangedTypes(known, {{"Email", "e2"}, {"Mailbox", "m2"}, {"Thread", "t1"}});
+    REQUIRE_EQ(changed.size(), (std::size_t)3);
+    // A type the event leaves out has not changed.
+    CHECK(ChangedTypes(known, {{"Mailbox", "m1"}}).empty());
+}
+
 // ---- plug-in interface test (loads the DSO if available) -------------------
 
 namespace {
@@ -492,4 +526,13 @@ TEST(jmap_plugin_exposes_mailbox_interface) {
     auto s = mailbox->SendMail(msg, opt);
     CHECK(!bool(s));
     REQUIRE_EQ(s.code, UltraNetResultCode::InvalidUrl);
+    // So does a watch: a bad URL never opens a stream.
+    UltraNetHandle watch = 42;
+    auto w2 = mailbox->WatchMailbox("imap://not-jmap/", opt,
+                                    [](const UltraNetMailChange&) {},
+                                    [](const UltraNetResult&) {}, watch);
+    CHECK(!bool(w2));
+    REQUIRE_EQ(w2.code, UltraNetResultCode::InvalidUrl);
+    REQUIRE_EQ(watch, UltraNetInvalidHandle);
+    mailbox->StopWatching(UltraNetInvalidHandle);   // an unknown handle is ignored
 }

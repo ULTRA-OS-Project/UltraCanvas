@@ -1,4 +1,6 @@
 // UltraCanvas/Plugins/UltraNet/jmap/JmapCore.h
+// Version: 0.3.0 - push: the event-source URL and the StateChange events
+//                  (phase 3)
 // Version: 0.2.0 - the write path: Email/set keyword and mailbox patches,
 //                  destroy, blob upload + Email/import, Identity/get and
 //                  EmailSubmission/set (phase 2)
@@ -441,6 +443,54 @@ inline std::string BuildSendRequest(const std::string& accountId,
     }
     return BuildRequest({{"Email/import", importArgs}, {"EmailSubmission/set", setArgs}},
                         {kCapSubmission});
+}
+
+// ============================================================================
+// Push (RFC 8620 §7.3): the event source streams StateChange events.
+// ============================================================================
+
+// The types a mail client watches: new or changed mail, and the folder list.
+inline constexpr const char* kWatchedTypes = "Email,Mailbox";
+
+// The URL to open the event source at: the session's eventSourceUrl template
+// with the watched types, no closeafter and a ping every `pingSeconds` (a
+// keep-alive the server sends when nothing changes; 0 = none).
+inline std::string BuildEventSourceUrl(const std::string& eventSourceUrlResolved,
+                                       int pingSeconds) {
+    return ExpandUrlTemplate(eventSourceUrlResolved,
+                             {{"types", kWatchedTypes},
+                              {"closeafter", "no"},
+                              {"ping", std::to_string(pingSeconds < 0 ? 0 : pingSeconds)}});
+}
+
+// A "state" event's data: {"@type": "StateChange", "changed": {"<accountId>":
+// {"Email": "<state>", "Mailbox": "<state>", …}}}. Fills `outStates` with
+// the states of `accountId` (type -> state); false for anything else, or
+// when the event names no state of that account.
+inline bool ParseStateChange(const std::string& data, const std::string& accountId,
+                             std::map<std::string, std::string>& outStates) {
+    outStates.clear();
+    json j = json::parse(data, nullptr, /*allow_exceptions=*/false);
+    if (j.is_discarded() || !j.is_object() || !j.contains("changed") ||
+        !j["changed"].is_object())
+        return false;
+    const json& changed = j["changed"];
+    if (!changed.contains(accountId) || !changed[accountId].is_object()) return false;
+    for (auto it = changed[accountId].begin(); it != changed[accountId].end(); ++it)
+        if (it.value().is_string()) outStates[it.key()] = it.value().get<std::string>();
+    return !outStates.empty();
+}
+
+// The types whose state `now` reports as new or other than `known` had
+// them: what to fetch again. A type `now` leaves out has not changed.
+inline std::vector<std::string> ChangedTypes(const std::map<std::string, std::string>& known,
+                                             const std::map<std::string, std::string>& now) {
+    std::vector<std::string> out;
+    for (const auto& [type, state] : now) {
+        auto it = known.find(type);
+        if (it == known.end() || it->second != state) out.push_back(type);
+    }
+    return out;
 }
 
 // ============================================================================

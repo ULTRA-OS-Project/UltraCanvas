@@ -5,11 +5,56 @@
 #include "test_framework.h"
 
 #include <UltraNet/UltraNetMime.h>
+#include <UltraNet/UltraNetPlugins.h>   // UltraNetMailMessage
 
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
+
+// ---- the mail plug-ins' one wire format -----------------------------------
+
+TEST(mime_build_mail_message_is_the_plugins_wire_format) {
+    // What SendMail is handed (UltraNetMailMessage) becomes one RFC 5322
+    // message, the same for the SMTP and the JMAP plug-in.
+    UltraNetMailMessage m;
+    m.from = "Erika <erika@example.com>";
+    m.to = {"bob@example.org"};
+    m.cc = {"carol@example.org"};
+    m.bcc = {"hidden@example.org"};
+    m.subject = "Hello";
+    m.body = "<p>Hi</p>";
+    m.contentType = "text/html; charset=\"utf-8\"";
+    m.alternativeText = "Hi";
+    m.headers["Message-ID"] = "<fixed@example.com>";
+    m.headers["In-Reply-To"] = "<earlier@example.org>";
+    m.attachments.emplace_back("n.txt", std::vector<uint8_t>{'h', 'i'});
+
+    const std::string raw = UltraNet_MimeBuildMailMessage(m);
+    REQUIRE(raw.find("From: Erika <erika@example.com>") != std::string::npos);
+    REQUIRE(raw.find("To: bob@example.org") != std::string::npos);
+    REQUIRE(raw.find("Cc: carol@example.org") != std::string::npos);
+    REQUIRE(raw.find("hidden@example.org") == std::string::npos);   // Bcc never written
+    REQUIRE(raw.find("Subject: Hello") != std::string::npos);
+    REQUIRE(raw.find("Message-ID: <fixed@example.com>") != std::string::npos);
+    REQUIRE(raw.find("In-Reply-To: <earlier@example.org>") != std::string::npos);
+    REQUIRE(raw.find("multipart/mixed") != std::string::npos);        // the attachment
+    REQUIRE(raw.find("multipart/alternative") != std::string::npos);  // the text alternative
+    REQUIRE(raw.find("text/html; charset=utf-8") != std::string::npos);
+    REQUIRE(raw.find("n.txt") != std::string::npos);
+
+    // The parser reads it back as the message it was.
+    UltraNetMimeMessage parsed;
+    REQUIRE(UltraNet_MimeParse(raw, parsed));
+    REQUIRE_EQ(parsed.subject, std::string("Hello"));
+
+    // A plain message is flat.
+    UltraNetMailMessage plain;
+    plain.from = "a@x.org"; plain.to = {"b@x.org"}; plain.subject = "s"; plain.body = "text";
+    const std::string flat = UltraNet_MimeBuildMailMessage(plain);
+    REQUIRE(flat.find("multipart/") == std::string::npos);
+    REQUIRE(flat.find("text/plain; charset=utf-8") != std::string::npos);
+}
 
 // ---- transfer encodings ----------------------------------------------------
 
