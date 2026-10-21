@@ -515,10 +515,13 @@ evidence; a description of what it "should" look like is not.
 - **A new or changed public API gets its doc in the same change**:
   `Docs/UltraCanvas/UltraCanvas<Name>.md` for a component, a row on the
   catalogue page for a new element, the module README for a module.
-- **After any docs edit**: `python3 scripts/generate_doc_toc.py`. Leave
-  `llms.txt` and `llms-full.txt` alone - `main` regenerates them after the
-  merge (they are what the next assistant session reads), and CI refuses a
-  pull request that changes them.
+- **After any docs edit**: `python3 scripts/generate_doc_toc.py`, and after
+  editing a module README, `python3 scripts/generate_llms_txt.py` to refresh
+  its mirror under `Docs/Modules/` (commit the mirror). Leave `llms.txt` and
+  `llms-full.txt` alone - the script rewrites them too, so put them back with
+  `git checkout origin/main -- llms.txt llms-full.txt`: `main` regenerates
+  them after the merge (they are what the next assistant session reads), and
+  CI refuses a pull request that changes them.
 - A new third-party dependency is recorded in `Docs/Dependencies.md`,
   `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`, or it does not go
   in.
