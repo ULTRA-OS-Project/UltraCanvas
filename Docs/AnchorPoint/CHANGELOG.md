@@ -24,8 +24,9 @@
   appeared beside the previous transfer's full bar, and choosing a file left
   the old prompt standing. Those messages now empty the bar, and choosing a
   file resets the status to *Ready.*
-- `anchorpoint_tests` covers stopping on either side, a stop that wakes a
-  blocked read, and sending to a closed socket.
+- The protocol tests (now `AnchorPointTests`, named like every other suite
+  so the Windows package leaves them out) cover stopping on either side, a
+  stop that wakes a blocked read, and sending to a closed socket.
 - **A Browse… button for the save folder.** It used to be typed in, starting
   from `.` - the folder AnchorPoint happened to be started in. *Browse…* opens
   a folder dialog there.

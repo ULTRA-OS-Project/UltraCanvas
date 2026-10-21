@@ -7,7 +7,9 @@
 #   anchorpoint-cli   headless CLI (always built). Not `anchorpoint`: on the
 #                     case-insensitive file systems of macOS and Windows that
 #                     is the same file as the window's `AnchorPoint`.
-#   anchorpoint_tests protocol tests, run by ctest (-DANCHORPOINT_BUILD_TESTS=OFF to skip)
+#   AnchorPointTests  protocol tests, run by ctest (-DANCHORPOINT_BUILD_TESTS=OFF to skip).
+#                     Named <App>Tests like every suite: the Windows package
+#                     leaves *Tests.exe out, and a test binary in it fails CI.
 #   AnchorPoint       UltraCanvas GUI (built when the framework is available;
 #                     toggle with -DANCHORPOINT_BUILD_GUI=ON/OFF)
 cmake_minimum_required(VERSION 3.16)
@@ -116,9 +118,9 @@ install(TARGETS anchorpoint-cli RUNTIME DESTINATION bin)
 # ===========================================================================
 if(ANCHORPOINT_BUILD_TESTS)
     enable_testing()
-    add_executable(anchorpoint_tests tests/ProtocolTests.cpp)
-    target_link_libraries(anchorpoint_tests PRIVATE anchorpoint_core)
-    add_test(NAME AnchorPointProtocol COMMAND anchorpoint_tests)
+    add_executable(AnchorPointTests tests/ProtocolTests.cpp)
+    target_link_libraries(AnchorPointTests PRIVATE anchorpoint_core)
+    add_test(NAME AnchorPointProtocol COMMAND AnchorPointTests)
 endif()
 
 # ===========================================================================
