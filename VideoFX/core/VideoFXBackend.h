@@ -7,6 +7,7 @@
 // (codecpar->coded_side_data, 6.1), the supported-config query (7.1) and a
 // buffer source that refuses frames once its filters are done (9.0) are
 // wrapped here so the pipeline code does not care which one it runs on.
+// Version: 0.15.2 - kSwsSlack: the slack a scaler's destination buffer carries
 // Version: 0.15.1 - FindEncoderByName: no experimental encoder
 // Version: 0.14.1 - FeedBufferSource: FFmpeg 9's closed buffer source
 // Version: 0.14.0 - HostPictureExtensions
@@ -77,6 +78,15 @@ using FramePtr        = std::unique_ptr<AVFrame, FrameDeleter>;
 using PacketPtr       = std::unique_ptr<AVPacket, PacketDeleter>;
 using FilterGraphPtr  = std::unique_ptr<AVFilterGraph, FilterGraphDeleter>;
 using SwsPtr          = std::unique_ptr<SwsContext, SwsDeleter>;
+
+// libswscale's vectorised paths write a few words past the last pixel of
+// the rows they fill, as they may into FFmpeg's own frame buffers, which
+// carry padding. A plain pixel vector handed to sws_scale as the
+// destination is allocated this much longer and trimmed back afterwards;
+// without it a 200 x 600 frame scaled to RGBA overran its buffer by 16
+// bytes and corrupted the heap (valgrind: "Invalid write of size 8 ... 0
+// bytes after a block of size 480,000").
+constexpr size_t kSwsSlack = 64;
 using AudioFifoPtr    = std::unique_ptr<AVAudioFifo, AudioFifoDeleter>;
 using BufferRefPtr    = std::unique_ptr<AVBufferRef, BufferRefDeleter>;
 

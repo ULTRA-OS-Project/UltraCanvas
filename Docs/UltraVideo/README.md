@@ -182,7 +182,7 @@ the engine's beats; a dropdown names the clips' own sound so the music
 dips under it the right way. **3 Style**: the transition between pictures
 and its length, *Keep faces in shot* while the camera pans over photos
 and when a clip of another shape fills the frame (the engine finds them
-in a frame from the clip's middle and crops around them),
+in three frames of the clip and crops around them),
 photos and clips of another shape whole on a blurred background (clips:
 whole, with bars), filling the frame, or whole with bars, *Captions from
 the file names*, a fade in and out. *Make video* asks the engine for the
