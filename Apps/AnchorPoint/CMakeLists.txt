@@ -31,6 +31,12 @@ endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+# The Windows manifest every UltraCanvas program carries: the UTF-8 code page
+# (so file names in any script reach the program intact, `argv` included) and
+# long paths. A no-op elsewhere. Included here too for a standalone build,
+# where the root CMakeLists.txt that includes it is not read.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWinManifest.cmake")
+
 option(ANCHORPOINT_BUILD_GUI "Build the UltraCanvas GUI (needs the framework toolchain)" ON)
 option(ANCHORPOINT_BUILD_TESTS "Build the protocol tests" ON)
 
@@ -101,6 +107,7 @@ endif()
 add_executable(anchorpoint-cli cli/main.cpp)
 target_link_libraries(anchorpoint-cli PRIVATE anchorpoint_core)
 set_target_properties(anchorpoint-cli PROPERTIES OUTPUT_NAME "anchorpoint-cli")
+ultracanvas_embed_windows_manifest(anchorpoint-cli)
 install(TARGETS anchorpoint-cli RUNTIME DESTINATION bin)
 
 # ===========================================================================
@@ -213,6 +220,7 @@ if(ANCHORPOINT_BUILD_GUI)
         # stays a console program.
         include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
         ultracanvas_windows_gui_app(AnchorPoint)
+        ultracanvas_embed_windows_manifest(AnchorPoint)
         install(TARGETS AnchorPoint RUNTIME DESTINATION bin)
         message(STATUS "AnchorPoint ${PROJECT_VERSION}: building core + CLI + GUI (${ANCHORPOINT_PLATFORM}).")
     endif()

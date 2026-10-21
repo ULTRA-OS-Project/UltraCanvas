@@ -46,6 +46,14 @@
   on Linux.
 - The README no longer says the window's build is blocked by unfinished
   UltraNet sources; it builds.
+- **Windows: file names in any script reach AnchorPoint intact.** The window
+  and `anchorpoint-cli` carry the Windows manifest every UltraCanvas program
+  has (`ultracanvas_embed_windows_manifest`): the UTF-8 code page, so a Thai,
+  CJK or emoji folder or file name - typed, picked, or given to the CLI on
+  its command line - is not mangled through the ANSI code page, and long
+  paths.
+- **AnchorPoint is in the portable Linux bundle** (`package-linux.sh`): the
+  window and `anchorpoint-cli`, each with its launcher.
 
 #### 2026-10-14 *0.2.4*
 - **One AnchorPoint at a time.** Starting AnchorPoint while it is already
