@@ -1,8 +1,9 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-15 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)
-//                (2026-10-13: keys read UCKeys and work once the tree is focused; focus ring)
-//                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
+// The history is in the header (include/UltraCanvasTreeView.h).
+// Version: 1.6.0 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)
+// Version: 1.5.0 - keys read UCKeys and work once the tree is focused; focus ring
+// Version: 1.3.0 - GetRequiredWidth, the width the widest row on show needs
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtilsUtf8.h"

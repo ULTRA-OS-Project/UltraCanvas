@@ -1,5 +1,6 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.17.1 - the kept layout and width are one slot per entry, moved with the entries
 // Version: 1.17.0 - an entry's width is measured once and kept (CalculateItemWidth over MeasureItemWidth)
 // Version: 1.16.0 - the labels are shaped once and kept
 // Version: 1.15.0 - MenuStyle::FromTheme
@@ -748,7 +749,6 @@ namespace UltraCanvas {
 
             // Shaped once and kept while the label, the font, the room and
             // the shortening stay: the menu is repainted on every hover.
-            if (index >= static_cast<int>(labelLayouts.size())) labelLayouts.resize(static_cast<size_t>(index) + 1);
             TextLayoutKey key;
             key.text = item.label;
             key.font = item.font.value_or(style.font);
@@ -756,7 +756,7 @@ namespace UltraCanvas {
             key.ellipsize = item.ellipsize;
             key.width = labelMaxWidth;
             ctx->SetTextPaint(textColor);
-            if (ITextLayout* labelLayout = labelLayouts[static_cast<size_t>(index)].Get(ctx, key))
+            if (ITextLayout* labelLayout = CacheFor(index).label.Get(ctx, key))
                 ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
         }
 
@@ -848,15 +848,14 @@ namespace UltraCanvas {
         const bool ours = !items.empty() && &item >= items.data() && &item < items.data() + items.size();
         const size_t slot = ours ? static_cast<size_t>(&item - items.data()) : 0;
         if (ours) {
-            if (slot >= itemWidths.size()) itemWidths.resize(slot + 1);
-            ItemWidth& kept = itemWidths[slot];
+            const ItemWidth& kept = CacheFor(static_cast<int>(slot)).width;
             measured.width = kept.width;
             if (kept == measured && kept.width >= 0) return kept.width;
         }
         const int width = MeasureItemWidth(item);
         if (ours) {
             measured.width = width;
-            itemWidths[slot] = measured;
+            CacheFor(static_cast<int>(slot)).width = measured;
         }
         return width;
     }
@@ -972,11 +971,10 @@ namespace UltraCanvas {
         int textY = ctx->TextTopCentredOnCaps(bounds, headerFont);
 
         ctx->SetTextPaint(style.headerTextColor);
-        if (index >= static_cast<int>(labelLayouts.size())) labelLayouts.resize(static_cast<size_t>(index) + 1);
         TextLayoutKey key;
         key.text = item.label;
         key.font = headerFont;
-        if (ITextLayout* layout = labelLayouts[static_cast<size_t>(index)].Get(ctx, key))
+        if (ITextLayout* layout = CacheFor(index).label.Get(ctx, key))
             ctx->DrawTextLayout(*layout, Point2Di(textX, textY));
     }
 
@@ -1671,9 +1669,12 @@ namespace UltraCanvas {
         InvalidateLayout();
     }
 
+    // The kept layouts and widths move with the entries, so an insertion or
+    // a removal rebuilds nothing for the entries that only shifted.
     void UltraCanvasMenu::InsertItem(int index, const MenuItemData &item) {
         if (index >= 0 && index <= static_cast<int>(items.size())) {
             items.insert(items.begin() + index, item);
+            if (index < static_cast<int>(entryCaches.size())) entryCaches.emplace(entryCaches.begin() + index);
             InvalidateLayout();
         }
     }
@@ -1681,6 +1682,7 @@ namespace UltraCanvas {
     void UltraCanvasMenu::RemoveItem(int index) {
         if (index >= 0 && index < static_cast<int>(items.size())) {
             items.erase(items.begin() + index);
+            if (index < static_cast<int>(entryCaches.size())) entryCaches.erase(entryCaches.begin() + index);
             InvalidateLayout();
         }
     }
@@ -1694,6 +1696,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::Clear() {
         items.clear();
+        entryCaches.clear();
         CloseAllSubmenus();
         InvalidateLayout();
     }

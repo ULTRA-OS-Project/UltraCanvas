@@ -1,7 +1,13 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
-// Version: 1.1.0 - the button's text and the rows' are shaped once and kept (UltraCanvasTextLayoutCache)
-// Version: 1.0.0 - the releases before 2026-10 are in Docs/UltraCanvas/CHANGELOG.md
+// Version: 1.1.0 - 2026-10-21 - the button's text and the rows' are shaped once and kept
+//                  (UltraCanvasTextLayoutCache)
+// Version: 1.0.3 - 2026-10-14 - DropdownStyle::FromTheme, ApplyTheme: the dropdown follows the theme
+// Version: 1.0.2 - 2026-10-08 - describes itself to screen readers (the ComboBox role, its value)
+// Version: 1.0.1 - 2026-10-06 - the context-menu cursor over the button, on Windows too
+// Version: 1.0.0 - the dropdown: items with icons and values, single or multiple selection,
+//                  the list in a popup (the numbers from 1.0.1 on were given afterwards,
+//                  from the framework changelog)
 // Uses ListView popup for rendering dropdown items
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once

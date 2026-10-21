@@ -1,7 +1,9 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// The history is in the header (include/UltraCanvasDropdown.h).
 // Version: 1.1.0 - the button's text and the rows' are shaped once and kept
+// Version: 1.0.3 - DropdownStyle::FromTheme, ApplyTheme
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"

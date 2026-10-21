@@ -1,5 +1,6 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.18.1 - the kept layout and width are one slot per entry, moved with the entries
 // Version: 1.18.0 - an entry's width is measured once and kept with what it was measured from
 // Version: 1.17.0 - the labels are shaped once and kept (UltraCanvasTextLayoutCache)
 // Version: 1.16.0 - MenuStyle::FromTheme, ApplyTheme
@@ -310,12 +311,13 @@ namespace UltraCanvas {
 
         // Menu items
         std::vector<MenuItemData> items;
-        // One kept layout per item's label (UltraCanvasTextLayoutCache), by
-        // the item's index: a menu is repainted on every hover.
-        std::vector<UltraCanvasTextLayoutCache> labelLayouts;
-        // Each entry's measured width, kept with what it was measured from:
-        // the layout passes ask for every width on every change, and the
-        // measure shapes the label each time it is taken.
+        // What is kept per entry between draws and layout passes, one slot
+        // per item and in step with `items` (AddItem, InsertItem, RemoveItem
+        // and Clear move the slots as they move the items): the label's
+        // layout (UltraCanvasTextLayoutCache - a menu is repainted on every
+        // hover) and the measured width with what it was measured from (a
+        // layout pass asks for every width, and the measure shapes the
+        // label each time it is taken).
         struct ItemWidth {
             std::string label, shortcut;
             FontStyle font;
@@ -324,7 +326,16 @@ namespace UltraCanvas {
             int width = -1;
             bool operator==(const ItemWidth&) const = default;
         };
-        mutable std::vector<ItemWidth> itemWidths;
+        struct EntryCache {
+            UltraCanvasTextLayoutCache label;
+            ItemWidth width;
+        };
+        mutable std::vector<EntryCache> entryCaches;
+        // The slot for `index`, made if `items` grew past the caches.
+        EntryCache& CacheFor(int index) const {
+            if (index >= static_cast<int>(entryCaches.size())) entryCaches.resize(static_cast<size_t>(index) + 1);
+            return entryCaches[static_cast<size_t>(index)];
+        }
 
         // Navigation state
         int activeIndex = -1;
@@ -500,7 +511,7 @@ namespace UltraCanvas {
 
         Rect2Di GetItemBounds(int index) const;
 
-        int CalculateItemWidth(const MenuItemData& item) const;   // kept per entry (itemWidths)
+        int CalculateItemWidth(const MenuItemData& item) const;   // kept per entry (entryCaches)
         int MeasureItemWidth(const MenuItemData& item) const;     // the measure itself
 
         // The columns in front of the labels of a vertical menu: one for the

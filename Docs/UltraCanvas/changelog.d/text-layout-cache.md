@@ -24,4 +24,13 @@
   spacings) and measures again only when one changed; every layout pass
   asked for every width before, and each ask shaped the label. A menu
   drawn without a window (a test's offscreen surface) estimates its widths
-  instead of dereferencing a context it does not have.
+  instead of dereferencing a context it does not have. The kept layout and
+  the kept width are one slot per entry, moved with the entries by
+  `InsertItem` and `RemoveItem`, so the entries that only shifted rebuild
+  nothing.
+- **The render context doc explains the context's own text cache**: what
+  its key holds (the text, the size, the font, the text style, the
+  resolution) and leaves out (the device scale, the font options), and how
+  an element's own layout differs from it.
+- **The dropdown, the tree view and the timer headers carry a version
+  history**, reconstructed from the framework changelog.
