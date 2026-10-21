@@ -73,6 +73,18 @@
   being worked off). `--platform win32|x11|objc` narrows a run,
   `--self-test` covers all three, and `--generate-names` takes the platform
   whose list to rebuild.
+- **`MacTypes.h` is covered too.** Every Foundation import reaches
+  CoreServices' `MacTypes.h`, which puts `Rect`, `Point`, `Boolean`, `Byte`,
+  `Size`, `Handle`, `Ptr`, `Fixed`, `Style`, `OSErr`, `UInt8`, `Str255` and
+  a hundred more typedefs at global scope, the Style constants `normal`,
+  `bold`, `italic`, `underline`, ... as global enumerators, and `kInvalidID`
+  as a macro. `scripts/mactypes_global_names.txt` is generated from the
+  header itself (`--platform objc --generate-names <SDK>/usr/include/MacTypes.h`;
+  the file is byte-identical in the 10.15 and 11.3 SDKs), and the
+  Objective-C file-scope rule reads it. `Length`, `Debugger68k` and the
+  macro form of `StrLength` are left out: a C++ translation unit never sees
+  them. The tree is clean; the Objective-C rules now skip the Windows, Linux,
+  BSD, WASM and Android glue, which no `.mm` file reaches.
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

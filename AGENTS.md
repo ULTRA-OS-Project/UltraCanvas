@@ -237,6 +237,12 @@ before adding cross-module code.
   parameter list those six are free (`struct S { int id; }` is fine), so
   the rule is: no enumerator or member named `YES` / `NO` / `nil` / `Nil`,
   and nothing at file scope named like the types - put it in a namespace.
+  Foundation also brings `<MacTypes.h>`, which puts `Rect`, `Point`,
+  `Boolean`, `Byte`, `Size`, `Handle`, `Ptr`, `Fixed`, `Style`, `OSErr`,
+  `UInt8`, `Str255` and a hundred more typedefs, and the Style constants
+  `normal`, `bold`, `italic`, ..., at global scope, and `kInvalidID` as a
+  macro: the same file-scope rule covers them, from the list
+  `scripts/mactypes_global_names.txt` generated from that header.
   `scripts/check_platform_names.py` enforces this in CI (`platform-names.yml`,
   the same check again); its Objective-C entries in
   `scripts/platform_names_baseline.txt` are none and stay so. A site that is

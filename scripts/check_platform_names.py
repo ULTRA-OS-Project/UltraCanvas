@@ -28,7 +28,13 @@ the one that includes it first.
           that a FILE-SCOPE declaration of the same name redefines. Inside a
           namespace, a class, an enum or a parameter list those six are free
           (clang accepts `struct S { int id; }` and `void f(int id)`), and the
-          framework lives in namespaces.
+          framework lives in namespaces. Foundation also brings
+          <MacTypes.h>, which puts Rect, Point, Boolean, Byte, Size, Handle,
+          Ptr, Fixed, Style, OSErr, UInt8, Str255 and a hundred more
+          typedefs at global scope, the Style constants normal, bold,
+          italic, underline, ... as global enumerators, and kInvalidID as a
+          macro; scripts/mactypes_global_names.txt is generated from that
+          header.
 
 What is reported, by kind (in code, never in comments or string literals):
 
@@ -57,7 +63,8 @@ What is reported, by kind (in code, never in comments or string literals):
                            YES, NO, nil or Nil, in any scope
   objc-global              a file-scope declaration (variable, function,
                            struct/class/enum, typedef, using) named id, Class,
-                           SEL, IMP, BOOL or Protocol
+                           SEL, IMP, BOOL or Protocol, or like a MacTypes.h
+                           typedef or constant (Rect, Boolean, bold, noErr)
   objc-undef               `#undef` of one of those names
 
 A site that is correct as it stands says so where it is and is skipped:
@@ -79,6 +86,7 @@ Usage:
     python3 scripts/check_platform_names.py --update-baseline
     python3 scripts/check_platform_names.py --platform win32 --generate-names <mingw-w64 include dir>
     python3 scripts/check_platform_names.py --platform x11 --generate-names /usr/include/X11
+    python3 scripts/check_platform_names.py --platform objc --generate-names <SDK>/usr/include/MacTypes.h
 
 Exits 0 when clean. Without --strict, findings are reported and the exit code
 stays 0.
@@ -474,11 +482,68 @@ X11_SELF_TEST_EXPECT = {("x11-undef", "Success", 3), ("x11-undef", "None", 5),
 
 OBJC_MACRO_NAMES = {"YES", "NO", "nil", "Nil"}
 OBJC_GLOBAL_NAMES = {"id", "Class", "SEL", "IMP", "BOOL", "Protocol"}
-OBJC_ALL_NAMES = OBJC_MACRO_NAMES | OBJC_GLOBAL_NAMES
+# What <MacTypes.h> adds, as `macro Name` / `global Name` lines.
+OBJC_NAMES_FILE = SCRIPTS / "mactypes_global_names.txt"
+OBJC_NAMES_HEADER = """\
+# Names <MacTypes.h> (CoreServices, reached by every Foundation import) puts at
+# global scope, so a .mm file sees them in whatever C++ header it includes.
+# `global Name` is a typedef, a struct, a Str255-style array type, an inline
+# function or an anonymous-enum constant (Rect, Point, Boolean, Byte, Size,
+# Handle, Ptr, Fixed, Style, OSErr, UInt8, noErr, bold, italic, ...): a
+# FILE-SCOPE declaration of ours with that name redefines it - inside a
+# namespace, a class or an enum class it is free. `macro Name` is an
+# object-like macro (kInvalidID) that rewrites the name in every scope.
+# Read by scripts/check_platform_names.py (objc), together with the
+# Objective-C runtime's own id / Class / SEL / IMP / BOOL / Protocol and
+# YES / NO / nil / Nil. Generated from the macOS SDK's usr/include/MacTypes.h
+# (byte-identical in the 10.15 and 11.3 SDKs; `Length`, `Debugger68k` and
+# `StrLength` as a macro are left out because a C++ translation unit never
+# sees them). Regenerate with:
+#     python3 scripts/check_platform_names.py --platform objc --generate-names <SDK>/usr/include/MacTypes.h
+"""
 OBJC_EXEMPT_RE = re.compile(r"//.*\bobjc-name-ok\b")
+# Only the macOS glue is Objective-C++; the other platform folders never meet
+# <objc/objc.h> or <MacTypes.h> (and the Windows one #undefs Rect on purpose).
+OBJC_SKIP_DIRS = [Path("UltraCanvas/OS") / d for d in ("MSWindows", "Linux", "BSD", "WASM", "Android")]
 # A type, typedef or alias introduced at file scope.
 OBJC_TYPE_DECL_RE = re.compile(r"(?:^|[^\w:])(?:struct|class|union|enum(?:\s+class|\s+struct)?|typedef\s+[^;{]*?|using)\s+"
                                r"(?P<name>[A-Za-z_]\w*)\s*(?P<after>\{|;|:|=)")
+
+
+def objc_generate_names(header: Path) -> list[str]:
+    """`macro` / `global` lines from MacTypes.h (a file, or a directory holding it)."""
+    if header.is_dir():
+        header = header / "MacTypes.h"
+    code = strip_comments_and_strings(header.read_text(encoding="utf-8", errors="replace"))
+    # Object-like macros, outside the #if blocks a C++ translation unit never
+    # enters (OLDROUTINENAMES, TARGET_CPU_68K); NULL and nil are the runtime's.
+    macros: set[str] = set()
+    off = 0
+    for line in code.splitlines():
+        s = line.strip()
+        if re.match(r"#\s*if\b.*\b(OLDROUTINENAMES|TARGET_CPU_68K)\b", s):
+            off += 1
+        elif off and re.match(r"#\s*(if|ifdef|ifndef)\b", s):
+            off += 1
+        elif off and re.match(r"#\s*endif\b", s):
+            off -= 1
+        elif not off:
+            m = re.match(r"#\s*define\s+([A-Za-z_]\w*)\s+\S", s)
+            if m and m.group(1) not in ("NULL", "nil") and not m.group(1).startswith(("ALLOW_", "__")):
+                macros.add(m.group(1))
+    names: set[str] = set()
+    for m in re.finditer(r"^typedef\b[^;{]*?\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*;", code, re.M):
+        names.add(m.group(1))
+    for m in re.finditer(r"^\}\s*([A-Za-z_][\w ,*]*);", code, re.M):             # `} Point, *PointPtr;`
+        names.update(n.strip(" *") for n in m.group(1).split(","))
+    for m in re.finditer(r"^(?:struct|union)\s+([A-Za-z_]\w*)\s*\{", code, re.M):
+        names.add(m.group(1))
+    for m in re.finditer(r"^(?:static\s+)?inline\s+[\w\s*]+?\b([A-Za-z_]\w*)\s*\(", code, re.M):
+        names.add(m.group(1))
+    for m in re.finditer(r"^enum\s*\{(.*?)\};", code, re.M | re.S):                   # anonymous enum constants
+        names.update(re.findall(r"(?:^|[{,\s])([A-Za-z_]\w*)\s*=", m.group(1)))
+    names.discard("")
+    return [f"macro {n}" for n in sorted(macros)] + [f"global {n}" for n in sorted(names)]
 
 
 def at_file_scope(code: str, pos: int) -> bool:
@@ -490,33 +555,36 @@ def at_file_scope(code: str, pos: int) -> bool:
 
 
 def objc_check_text(text: str, names: set[str], path: Path) -> list[Finding]:
+    macro_names = OBJC_MACRO_NAMES | {n.split()[1] for n in names if n.startswith("macro ")}
+    global_names = OBJC_GLOBAL_NAMES | {n.split()[1] for n in names if n.startswith("global ")}
+    all_names = macro_names | global_names
     findings: list[Finding] = []
     exempt = {i + 1 for i, line in enumerate(text.splitlines()) if OBJC_EXEMPT_RE.search(line)}
     for m in UNDEF_RE.finditer(text):
-        if m.group(1) in OBJC_ALL_NAMES:
+        if m.group(1) in all_names:
             findings.append(Finding(path, line_of(text, m.start()), "objc-undef", m.group(1)))
     code = strip_comments_and_strings(text)
     spans = enum_bodies(code)
     for a, b in spans:
         for e in ENUMERATOR_RE.finditer(code, a, b):
-            if e.group(1) in OBJC_MACRO_NAMES and line_of(code, e.start(1)) not in exempt:
+            if e.group(1) in macro_names and line_of(code, e.start(1)) not in exempt:
                 findings.append(Finding(path, line_of(code, e.start(1)), "objc-macro", e.group(1)))
     for m in DECL_RE.finditer(code):
         name = m.group("name")
-        if name not in OBJC_ALL_NAMES or any(a <= m.start("name") < b for a, b in spans):
+        if name not in all_names or any(a <= m.start("name") < b for a, b in spans):
             continue
         if declared_type_word(m) is None:
             continue
         line = line_of(code, m.start("name"))
         if line in exempt:
             continue
-        if name in OBJC_MACRO_NAMES:
+        if name in macro_names:
             findings.append(Finding(path, line, "objc-macro", name))
         elif at_file_scope(code, m.start("name")):
             findings.append(Finding(path, line, "objc-global", name))
     for m in OBJC_TYPE_DECL_RE.finditer(code):
         name = m.group("name")
-        if name not in OBJC_GLOBAL_NAMES:
+        if name not in global_names:
             continue
         line = line_of(code, m.start("name"))
         if line not in exempt and at_file_scope(code, m.start("name")):
@@ -546,10 +614,16 @@ namespace N {
 }
 void f(int id) { int Class = id; (void)Class; }
 int g(const char* id, int Class = 0);
+struct Rect { int x, y; };          // MacTypes.h typedef, file scope
+int bold = 1;                       // MacTypes.h Style constant
+enum class Weight { bold, italic }; // enum class scope: fine
+namespace N { struct Point {}; }    // fine
+int kInvalidID = 0;                 // MacTypes.h macro: any scope
 """
 OBJC_SELF_TEST_EXPECT = {("objc-undef", "nil", 2), ("objc-macro", "YES", 3), ("objc-macro", "NO", 3),
                          ("objc-macro", "Nil", 5), ("objc-global", "id", 9), ("objc-global", "BOOL", 10),
-                         ("objc-global", "Class", 11), ("objc-global", "SEL", 12), ("objc-macro", "nil", 17)}
+                         ("objc-global", "Class", 11), ("objc-global", "SEL", 12), ("objc-macro", "nil", 17),
+                         ("objc-global", "Rect", 21), ("objc-global", "bold", 22), ("objc-macro", "kInvalidID", 25)}
 
 
 # ---------------------------------------------------------------------------
@@ -596,8 +670,9 @@ PLATFORMS = {
     "x11": Platform("x11", X11_ROOTS, X11_SKIP_DIRS, X11_SUFFIXES, x11_check_text,
                     X11_SELF_TEST, X11_SELF_TEST_EXPECT, X11_NAMES_FILE, X11_NAMES_HEADER,
                     x11_generate_names, X11_SKIP_PARTS_EXTRA),
-    "objc": Platform("objc", X11_ROOTS, X11_SKIP_DIRS, X11_SUFFIXES, objc_check_text,
-                     OBJC_SELF_TEST, OBJC_SELF_TEST_EXPECT, extra_skip_parts=X11_SKIP_PARTS_EXTRA),
+    "objc": Platform("objc", X11_ROOTS, OBJC_SKIP_DIRS, X11_SUFFIXES, objc_check_text,
+                     OBJC_SELF_TEST, OBJC_SELF_TEST_EXPECT, OBJC_NAMES_FILE, OBJC_NAMES_HEADER,
+                     objc_generate_names, X11_SKIP_PARTS_EXTRA),
 }
 
 
@@ -616,7 +691,7 @@ def main() -> int:
                         help="rewrite the baseline from the current tree and exit")
     parser.add_argument("--generate-names", type=Path, metavar="INCLUDE_DIR",
                         help="rewrite the chosen platform's name list from its headers (win32: a "
-                             "MinGW-w64 include dir; x11: an X11 include dir)")
+                             "MinGW-w64 include dir; x11: an X11 include dir; objc: MacTypes.h)")
     parser.add_argument("--self-test", action="store_true",
                         help="run every platform's rules against built-in examples and exit")
     parser.add_argument("paths", nargs="*",
@@ -626,7 +701,7 @@ def main() -> int:
 
     if args.generate_names:
         if len(platforms) != 1 or platforms[0].generate is None:
-            print("check_platform_names: --generate-names needs exactly one of --platform win32 / x11.")
+            print("check_platform_names: --generate-names needs exactly one --platform.")
             return 2
         p = platforms[0]
         names = p.generate(args.generate_names)

@@ -15,8 +15,10 @@ name: Platform macro names
 #          IMP / BOOL / Protocol are global typedefs that a file-scope
 #          declaration of the same name redefines.
 #
-# See AGENTS.md. The Win32 names come from scripts/win32_aw_macros.txt and the
-# X11 names from scripts/x11_macro_names.txt, both generated from the headers.
+# See AGENTS.md. The Win32 names come from scripts/win32_aw_macros.txt, the
+# X11 names from scripts/x11_macro_names.txt and the MacTypes.h names (Rect,
+# Point, Boolean, bold, ...) from scripts/mactypes_global_names.txt, all
+# generated from the headers.
 # Sites that predate the checks are listed in
 # scripts/platform_names_baseline.txt (Win32 names still being worked off; the
 # X11 and Objective-C sets are empty); only additions fail. A site that is
@@ -43,6 +45,7 @@ on:
       - 'scripts/check_platform_names.py'
       - 'scripts/win32_aw_macros.txt'
       - 'scripts/x11_macro_names.txt'
+      - 'scripts/mactypes_global_names.txt'
       - 'scripts/platform_names_baseline.txt'
       - '.github/workflows/platform-names.yml'
   pull_request:
