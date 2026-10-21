@@ -2351,19 +2351,77 @@ void UltraCanvasNodeDiagram::RenderArrowHead(IRenderContext* ctx, double tipX, d
 // NODES
 // =============================================================================
 
+bool UltraCanvasNodeDiagram::IsShowingIconsOnly() const {
+    return detailZoom > 0.0 && viewport.GetZoomLevel() < detailZoom;
+}
+
 void UltraCanvasNodeDiagram::RenderNodes(IRenderContext* ctx) {
+    const bool iconsOnly = IsShowingIconsOnly();
     // Render in z-order (back to front)
     for (const auto& nodeId : nodeOrder) {
         auto it = nodes.find(nodeId);
         if (it == nodes.end()) continue;
         const NodeDiagramNode& node = it->second;
-        
+
+        if (iconsOnly && !node.iconPath.empty()) {
+            const bool named = node.isSelected || node.id == hoveredNodeId;
+            if (!named) RenderNodeIconOnly(ctx, node, false);
+            continue;
+        }
         RenderNodeShape(ctx, node);
         RenderNodeLabel(ctx, node);
         if (!node.handles.empty()) {
             RenderNodeHandles(ctx, node);
         }
     }
+    // The hovered or selected node's name, drawn last so no icon covers it.
+    if (iconsOnly) {
+        for (const auto& nodeId : nodeOrder) {
+            auto it = nodes.find(nodeId);
+            if (it == nodes.end() || it->second.iconPath.empty()) continue;
+            if (it->second.isSelected || it->second.id == hoveredNodeId) RenderNodeIconOnly(ctx, it->second, true);
+        }
+    }
+}
+
+void UltraCanvasNodeDiagram::RenderNodeIconOnly(IRenderContext* ctx, const NodeDiagramNode& node, bool withLabel) {
+    const double cx = node.x + node.width / 2.0;
+    const double cy = node.y + node.height / 2.0;
+    const double r = node.height / 2.0;
+    const Color disc = node.iconBackground.a > 0 ? node.iconBackground : node.fillColor;
+
+    if (node.shadow) {
+        ctx->SetFillPaint(Color(0, 0, 0, 30));
+        ctx->FillCircle({cx, cy + 2.0}, r + 1.0);
+    }
+    ctx->SetFillPaint(disc);
+    ctx->FillCircle({cx, cy}, r);
+    // A ring in the node's border colour where it has a heavy border (a hub),
+    // the selection colour when selected.
+    if (node.isSelected || node.borderWidth > 1.0) {
+        ctx->SetStrokePaint(node.isSelected ? style.selectionColor : node.borderColor);
+        ctx->SetStrokeWidth(node.isSelected ? style.selectionWidth : node.borderWidth);
+        ctx->DrawCircle({cx, cy}, r + 2.0);
+    }
+    if (auto img = UCImage::Get(node.iconPath); img && img->IsValid()) {
+        const double inset = r * 0.45;
+        ctx->DrawImage(*img, Rect2Dd(cx - r + inset, cy - r + inset, 2 * (r - inset), 2 * (r - inset)),
+                       ImageFitMode::Contain);
+    }
+    if (!withLabel || node.label.empty()) return;
+
+    // The name in a pill under the disc, at a size that reads at this zoom.
+    const double zoom = std::max(0.05, viewport.GetZoomLevel());
+    const double fontSize = (node.fontSize > 0 ? node.fontSize : style.baseFontSize) * 1.15 / zoom;
+    ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+    ctx->SetFontSize(fontSize);
+    const Size2Di dim = ctx->GetTextLineDimensions(node.label);
+    const double padX = 6.0 / zoom, padY = 3.0 / zoom;
+    const Rect2Dd pill(cx - dim.width / 2.0 - padX, cy + r + 4.0 / zoom, dim.width + 2 * padX, dim.height + 2 * padY);
+    ctx->SetFillPaint(Color(33, 33, 33, 230));
+    ctx->FillRoundedRectangle(pill, pill.height / 2.0);
+    ctx->SetTextPaint(Color(255, 255, 255, 255));
+    ctx->DrawText(node.label, {pill.x + padX, pill.y + padY});
 }
 
 void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiagramNode& node) {
