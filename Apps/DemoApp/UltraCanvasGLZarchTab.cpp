@@ -407,7 +407,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
 
         glBindVertexArray(0);
         glEnable(GL_DEPTH_TEST);
+#ifndef __ANDROID__
+        // OpenGL ES always takes the size from gl_PointSize.
         glEnable(GL_PROGRAM_POINT_SIZE);
+#endif
         glRes->ready = true;
     });
 

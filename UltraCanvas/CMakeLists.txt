@@ -2287,6 +2287,38 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
         # From the NDK sysroot; GLESv3's lib also exports the ES2 entry points.
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC EGL GLESv3)
     endif()
+    # An app is a shared library that links this static core, and a static
+    # archive gives the link only the objects something already references.
+    # Nothing in the app references the entry points that are called from
+    # outside it: ANativeActivity_onCreate (NativeActivity looks it up by name
+    # and it starts android_main) and the Java_* functions UltraCanvasActivity's
+    # native methods resolve to. UltraCanvasAndroidTextInput.cpp holds nothing
+    # else, so without these every keystroke from the IME would throw
+    # UnsatisfiedLinkError. -u makes the linker take each one, and the app
+    # library exports them. The names are read from the sources here, so a new
+    # native method needs nothing added.
+    set(_uc_android_entry_points ANativeActivity_onCreate)
+    file(GLOB _uc_android_jni_srcs ${CMAKE_CURRENT_SOURCE_DIR}/OS/Android/*.cpp)
+    foreach(_uc_src IN LISTS _uc_android_jni_srcs)
+        file(STRINGS "${_uc_src}" _uc_jni_lines REGEX "Java_org_ultraos_[A-Za-z0-9_]+\\(")
+        foreach(_uc_line IN LISTS _uc_jni_lines)
+            string(REGEX MATCH "Java_org_ultraos_[A-Za-z0-9_]+" _uc_sym "${_uc_line}")
+            list(APPEND _uc_android_entry_points ${_uc_sym})
+        endforeach()
+    endforeach()
+    list(REMOVE_DUPLICATES _uc_android_entry_points)
+    foreach(_uc_sym IN LISTS _uc_android_entry_points)
+        target_link_options(${ULTRACANVAS_LIB_NAME} INTERFACE "LINKER:-u,${_uc_sym}")
+    endforeach()
+    list(LENGTH _uc_android_entry_points _uc_count)
+    message(STATUS "  Android entry points forced into the app library: ${_uc_count}")
+    unset(_uc_android_entry_points)
+    unset(_uc_android_jni_srcs)
+    unset(_uc_jni_lines)
+    unset(_uc_line)
+    unset(_uc_src)
+    unset(_uc_sym)
+    unset(_uc_count)
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
@@ -2574,7 +2606,7 @@ if(ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
             ${AVFOUNDATION_FRAMEWORK} ${COREMEDIA_FRAMEWORK} ${COREVIDEO_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
-        # All from the NDK sysroot (minSdk 26 has every one of them):
+        # All from the NDK sysroot (minSdk 28 has every one of them):
         # mediandk = MediaCodec/Extractor/Muxer + AImageReader, camera2ndk =
         # Camera2, aaudio = the audio device for playback and recording.
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC mediandk camera2ndk aaudio)

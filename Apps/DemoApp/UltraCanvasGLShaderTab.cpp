@@ -68,10 +68,13 @@ struct ShaderEffect {
 
 // Flat-colour 2D program for the openFrameworks "Circles" effect (lines + disks
 // in a world space that maps to clip via uScale; one solid colour per draw).
+// gl_PointSize is for OpenGL ES, where a point's size comes only from the
+// shader; desktop GL ignores it here (GL_PROGRAM_POINT_SIZE is off) and uses
+// glPointSize.
 const char* kCircles2DVS = R"(#version 330 core
 layout(location=0) in vec2 aPos;
 uniform vec2 uScale;
-void main(){ gl_Position = vec4(aPos*uScale, 0.0, 1.0); }
+void main(){ gl_Position = vec4(aPos*uScale, 0.0, 1.0); gl_PointSize = 1.0; }
 )";
 const char* kCircles2DFS = R"(#version 330 core
 out vec4 FragColor;
@@ -744,7 +747,9 @@ inline void RenderCaterpillar(ShaderGLResources& g, int W, int H, float t){
                  pts.data(), GL_DYNAMIC_DRAW);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glPointSize(1.0f);
+#ifndef __ANDROID__
+    glPointSize(1.0f);   // OpenGL ES has none: kCircles2DVS sets gl_PointSize
+#endif
     glDrawArrays(GL_POINTS, 0, (GLsizei)(pts.size()/2));
     glDisable(GL_BLEND);
 

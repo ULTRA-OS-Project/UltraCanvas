@@ -1,3 +1,12 @@
+#### 2026-10-21 *1.88.0*
+- **Ctrl-selecting several files leaves the preview pane as it is.** The
+  pane shows a single file or folder, so the second file picked with
+  Ctrl+click folded it away - widening the folder display and moving every
+  file under the pointer - and deselecting back to one file opened it
+  again. A selection changed with Ctrl held (Ctrl+click, a Ctrl marquee,
+  Ctrl+A) now leaves the pane showing what it showed; the next selection
+  made without Ctrl brings it up to date.
+
 #### 2026-10-20 *1.87.0*
 - **The preview pane shows PDFs in the PDF view, and unlocks protected
   files.** A PDF in the preview pane had been a picture of its first page; it
