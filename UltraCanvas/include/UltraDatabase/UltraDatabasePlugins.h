@@ -3,12 +3,13 @@
 // engine family. The built-in SQLite driver implements these same interfaces;
 // PostgreSQL / MySQL / ... arrive as additional drivers (Stage 2+ ships them
 // as loadable DSOs) without changing the core or any caller.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraDatabaseCore.h"
 #include "UltraDatabaseValue.h"
+#include "UltraDatabaseSchema.h"
 
 #include <memory>
 #include <string>
@@ -62,6 +63,45 @@ public:
     // serialises writers wants no clause at all - and because SQLite rejects
     // "FOR UPDATE" outright.
     virtual std::string RowLockSuffix() const { return std::string(); }
+
+    // A name quoted for this engine's SQL text. The default is the SQL
+    // standard - double quotes, a quote inside doubled - which SQLite and
+    // PostgreSQL take; MySQL overrides it with backticks. The core has
+    // already refused an empty name and a NUL byte before this is called.
+    virtual std::string QuoteIdentifier(const std::string& name) const {
+        std::string out;
+        out.reserve(name.size() + 2);
+        out.push_back('"');
+        for (char c : name) {
+            if (c == '"') out.push_back('"');
+            out.push_back(c);
+        }
+        out.push_back('"');
+        return out;
+    }
+
+    // Introspection, behind UltraDb_ListSchemas / ListObjects / DescribeTable
+    // (UltraDatabaseSchema.h). A driver that cannot answer keeps these
+    // defaults and the caller is told Unsupported.
+    virtual UltraDbResult ListSchemas(std::vector<std::string>& out) {
+        out.clear();
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this driver cannot list schemas", DriverName());
+    }
+    virtual UltraDbResult ListObjects(const std::string& schema,
+                                      std::vector<UltraDbObjectSummary>& out) {
+        (void)schema;
+        out.clear();
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this driver cannot list objects", DriverName());
+    }
+    virtual UltraDbResult DescribeTable(const std::string& schema, const std::string& table,
+                                        UltraDbTableSchema& out) {
+        (void)schema; (void)table;
+        out = UltraDbTableSchema{};
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this driver cannot describe tables", DriverName());
+    }
 };
 
 // A driver: a factory that opens connections for one or more driver ids.

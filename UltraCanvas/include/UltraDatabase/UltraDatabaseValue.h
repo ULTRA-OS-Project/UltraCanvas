@@ -2,7 +2,7 @@
 // The engine-independent value / row / result-set model. UltraDbValue is a
 // small tagged variant; parameters are always bound (never interpolated into
 // SQL), and query results come back as an UltraDbResultSet of UltraDbRows.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -57,6 +57,8 @@ public:
     uint32_t             AsU32()    const { return static_cast<uint32_t>(AsInt64()); }
     int                  AsInt()    const { return static_cast<int>(AsInt64()); }
     double               AsDouble() const;
+    // A Double is written dot-decimal whatever the locale, as the shortest
+    // text that reads back exactly ("3.14", "2", "1e-09"; "NaN", "Infinity").
     std::string          AsString() const;
     std::vector<uint8_t> AsBlob()   const;
 
@@ -97,6 +99,20 @@ private:
     static const UltraDbValue kNull;
 };
 
+// What a driver knows about one result column beyond its name. Every field
+// is "" when the engine does not say: a computed column has no source table,
+// and SQLite reports the source only where the library was built with
+// SQLITE_ENABLE_COLUMN_METADATA (checked at configure time). With
+// sourceTable and sourceColumn set, a grid knows which table row a cell
+// belongs to - which is what makes a result editable rather than a picture.
+struct UltraDbColumnInfo {
+    std::string name;
+    std::string declaredType;   // "INTEGER", "varchar(80)", "numeric(12,2)"; "" for an expression
+    std::string sourceSchema;
+    std::string sourceTable;
+    std::string sourceColumn;
+};
+
 // The full set of rows returned by a query. Range-for iterable.
 class UltraDbResultSet {
 public:
@@ -112,7 +128,12 @@ public:
 
     size_t Size()  const { return rows_.size(); }
     bool   Empty() const { return rows_.empty(); }
-    void   Clear() { rows_.clear(); }
+    void   Clear() { rows_.clear(); columnInfo_.clear(); }
+
+    // One entry per column, in column order, where the driver provides it;
+    // empty otherwise (Columns() always has the names).
+    void SetColumnInfo(std::vector<UltraDbColumnInfo> info) { columnInfo_ = std::move(info); }
+    const std::vector<UltraDbColumnInfo>& ColumnInfo() const { return columnInfo_; }
 
     const UltraDbRow& Row(size_t i) const { return rows_.at(i); }
 
@@ -123,4 +144,5 @@ private:
     std::shared_ptr<const std::vector<std::string>> columns_ =
         std::make_shared<const std::vector<std::string>>();
     std::vector<UltraDbRow> rows_;
+    std::vector<UltraDbColumnInfo> columnInfo_;
 };

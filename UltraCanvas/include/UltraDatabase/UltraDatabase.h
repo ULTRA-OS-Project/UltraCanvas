@@ -2,7 +2,8 @@
 // Umbrella include for the UltraDatabase module — the unified data-access
 // layer for ULTRA OS. Pull this in to get the whole Stage 1 surface:
 // named connections, parameterized queries, prepared statements,
-// transactions and versioned migrations, backed by the bundled SQLite
+// transactions, versioned migrations and schema introspection, backed by
+// the bundled SQLite
 // driver (with PostgreSQL / MySQL / ... as pluggable drivers).
 //
 // doc-check: example
@@ -17,7 +18,7 @@
 //   UltraDb_Query("app", "SELECT name FROM t WHERE id = ?", { 1 }, rs);
 //
 // See Docs/Modules/UltraDatabase/README.md for the full concept.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -27,4 +28,5 @@
 #include "UltraDatabaseQuery.h"
 #include "UltraDatabaseTransaction.h"
 #include "UltraDatabaseMigrate.h"
+#include "UltraDatabaseSchema.h"
 #include "UltraDatabasePlugins.h"

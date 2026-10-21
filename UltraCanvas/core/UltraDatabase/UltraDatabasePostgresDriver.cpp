@@ -12,7 +12,9 @@
 //     dollar-quoted bodies and comments, so a `?` inside text stays a `?`.
 //  2. **Types.** libpq hands back text and a column OID. The common OIDs are
 //     mapped to real types so an INTEGER column reads back as an integer
-//     rather than as the string "42" that happens to coerce.
+//     rather than as the string "42" that happens to coerce. `numeric` stays
+//     text: it is exact, and a double is not (12345678901234.5678 does not
+//     survive the trip).
 //  3. **TLS is on by default and verified.** `UltraDbTls::VerifyFull` maps to
 //     libpq's `verify-full`, which checks the certificate *and* the hostname.
 //     A shared accounting database reached over anything but a local socket is
@@ -26,7 +28,7 @@
 // the driver is simply not registered and an attempt to open a "postgresql"
 // connection reports that the driver is missing, which is a true answer rather
 // than a link error.
-// Version: 0.1.1
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDatabase/UltraDatabaseCore.h"
@@ -39,9 +41,12 @@
 
 #include <libpq-fe.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -67,7 +72,7 @@ constexpr unsigned int kOidInt2    = 21;
 constexpr unsigned int kOidInt4    = 23;
 constexpr unsigned int kOidFloat4  = 700;
 constexpr unsigned int kOidFloat8  = 701;
-constexpr unsigned int kOidNumeric = 1700;
+// numeric (1700) is deliberately not mapped: it arrives as its exact text.
 
 UltraDbResultCode MapPqError(const PGresult* res) {
     const char* state = res ? PQresultErrorField(res, PG_DIAG_SQLSTATE) : nullptr;
@@ -149,6 +154,16 @@ struct GebundeneParameter {
                     formate.push_back(0);
                     break;
                 }
+                case UltraDbType::Double:
+                    // Dot-decimal and round-tripping. AsString goes through
+                    // std::to_string, which writes "3,140000" on a
+                    // comma-decimal desktop - refused by the server - and
+                    // keeps six decimals, so 1e-9 was sent as zero.
+                    speicher.emplace_back(ultradb_internal::FormatDoubleClassic(v.AsDouble()));
+                    werte.push_back(speicher.back().c_str());
+                    laengen.push_back(0);
+                    formate.push_back(0);
+                    break;
                 default:
                     speicher.emplace_back(v.AsString());
                     werte.push_back(speicher.back().c_str());
@@ -187,11 +202,16 @@ UltraDbValue WertAusFeld(PGresult* res, int zeile, int spalte) {
         case kOidInt8:
             return UltraDbValue(static_cast<int64_t>(std::strtoll(text, nullptr, 10)));
         case kOidFloat4:
-        case kOidFloat8:
-        case kOidNumeric:
+        case kOidFloat8: {
             // PostgreSQL always renders these with a dot, whatever the
-            // client's locale; strtod under the C locale reads them back.
-            return UltraDbValue(std::strtod(text, nullptr));
+            // client's locale - so they are read with a dot too. strtod was
+            // used here and follows LC_NUMERIC, which a GUI program on a
+            // comma-decimal desktop has set: "3.14" came back as 3.
+            double wert = 0.0;
+            ultradb_internal::ParseDoubleClassic(
+                std::string(text, static_cast<size_t>(PQgetlength(res, zeile, spalte))), wert);
+            return UltraDbValue(wert);
+        }
         case kOidBytea: {
             std::vector<uint8_t> bytes;
             const size_t laenge = static_cast<size_t>(PQgetlength(res, zeile, spalte));
@@ -278,6 +298,20 @@ public:
     // write back the same successor. FOR UPDATE makes the second one wait.
     std::string RowLockSuffix() const override { return " FOR UPDATE"; }
 
+    // Introspection is plain SQL through ExecuteDirect, so it takes the
+    // connection mutex statement by statement; see UltraDatabasePostgresSchema.cpp.
+    UltraDbResult ListSchemas(std::vector<std::string>& out) override {
+        return ultradb_internal::PostgresListSchemas(*this, out);
+    }
+    UltraDbResult ListObjects(const std::string& schema,
+                              std::vector<UltraDbObjectSummary>& out) override {
+        return ultradb_internal::PostgresListObjects(*this, schema, out);
+    }
+    UltraDbResult DescribeTable(const std::string& schema, const std::string& table,
+                                UltraDbTableSchema& out) override {
+        return ultradb_internal::PostgresDescribeTable(*this, schema, table, out);
+    }
+
     std::unique_ptr<IUltraDbStatement> Prepare(const std::string& sql,
                                                UltraDbResult& error) override {
         std::lock_guard<std::mutex> lk(mutex_);
@@ -312,11 +346,15 @@ public:
                 PQclear(res);
                 return r;
             }
-            UltraDbResult r = ErgebnisEinlesen(res, out);
+            // A batch can hold DDL anywhere, and PQexec reports only the
+            // last statement's tag; the text is the only place to look.
+            if (AendertSchema(sql)) KatalogVergessen();
+            UltraDbResult r = Abschliessen(res, out);
             PQclear(res);
             return r;
         }
 
+        if (AendertSchema(sql)) KatalogVergessen();
         const std::string uebersetzt = ultradb_internal::PostgresPlatzhalter(sql);
         GebundeneParameter gebunden(params);
         PGresult* res = PQexecParams(conn_, uebersetzt.c_str(), gebunden.Anzahl(),
@@ -328,7 +366,7 @@ public:
             PQclear(res);
             return r;
         }
-        UltraDbResult r = ErgebnisEinlesen(res, out);
+        UltraDbResult r = Abschliessen(res, out);
         PQclear(res);
         return r;
     }
@@ -347,7 +385,7 @@ public:
             PQclear(res);
             return r;
         }
-        UltraDbResult r = ErgebnisEinlesen(res, out);
+        UltraDbResult r = Abschliessen(res, out);
         PQclear(res);
         return r;
     }
@@ -360,9 +398,186 @@ public:
     }
 
 private:
+    // ===== RESULT COLUMN METADATA =====
+    //
+    // libpq gives each result column its type OID and modifier, and - for a
+    // column read straight from a table - the table's OID and the column's
+    // number. Names for those take a catalog query, so they are cached per
+    // connection: the first query on a table pays one round trip, every later
+    // one nothing. DDL on this connection empties the cache (a rename keeps
+    // the OID and would otherwise report the old name); DDL from another
+    // session can leave a stale name until the connection is reopened.
+
+    struct TabellenName {
+        std::string schema;
+        std::string tabelle;
+        std::map<int, std::string> spalten;   // attnum -> name
+    };
+
+    // Read the rows, then describe the columns. Called with mutex_ held.
+    UltraDbResult Abschliessen(PGresult* res, UltraDbResultSet& out) {
+        UltraDbResult r = ErgebnisEinlesen(res, out);
+        const char* tag = PQcmdStatus(res);
+        if (tag != nullptr && AendertSchema(tag)) KatalogVergessen();
+        if (r && PQresultStatus(res) == PGRES_TUPLES_OK) SpaltenBeschreiben(res, out);
+        return r;
+    }
+
+    // CREATE, ALTER or DROP as a whole word anywhere in the text. Whole words,
+    // because `created_at` is a column in half the schemas this runs against
+    // and must not empty the cache on every query; a keyword inside a string
+    // literal costs a reload, nothing worse.
+    static bool AendertSchema(const std::string& text) {
+        std::string wort;
+        auto pruefen = [&wort]() {
+            const bool treffer = wort == "CREATE" || wort == "ALTER" || wort == "DROP";
+            wort.clear();
+            return treffer;
+        };
+        for (char c : text) {
+            const unsigned char u = static_cast<unsigned char>(c);
+            if (std::isalnum(u) || c == '_') {
+                wort.push_back(static_cast<char>(std::toupper(u)));
+            } else if (pruefen()) {
+                return true;
+            }
+        }
+        return pruefen();
+    }
+
+    void KatalogVergessen() {
+        typNamen_.clear();
+        tabellen_.clear();
+    }
+
+    void SpaltenBeschreiben(PGresult* res, UltraDbResultSet& out) {
+        const int spalten = PQnfields(res);
+        std::vector<std::pair<unsigned int, int>> fehlendeTypen;
+        std::vector<unsigned int> fehlendeTabellen;
+        for (int s = 0; s < spalten; ++s) {
+            const std::pair<unsigned int, int> typ{PQftype(res, s), PQfmod(res, s)};
+            if (!typNamen_.count(typ) &&
+                std::find(fehlendeTypen.begin(), fehlendeTypen.end(), typ) == fehlendeTypen.end())
+                fehlendeTypen.push_back(typ);
+            const unsigned int tabelle = PQftable(res, s);
+            if (tabelle != InvalidOid && !tabellen_.count(tabelle) &&
+                std::find(fehlendeTabellen.begin(), fehlendeTabellen.end(), tabelle) ==
+                    fehlendeTabellen.end())
+                fehlendeTabellen.push_back(tabelle);
+        }
+        if (!fehlendeTypen.empty() || !fehlendeTabellen.empty())
+            KatalogNachladen(fehlendeTypen, fehlendeTabellen);
+
+        std::vector<UltraDbColumnInfo> info;
+        info.reserve(static_cast<size_t>(spalten));
+        for (int s = 0; s < spalten; ++s) {
+            UltraDbColumnInfo ci;
+            ci.name = out.Columns()[static_cast<size_t>(s)];
+            auto typ = typNamen_.find({PQftype(res, s), PQfmod(res, s)});
+            if (typ != typNamen_.end()) ci.declaredType = typ->second;
+            auto tabelle = tabellen_.find(PQftable(res, s));
+            if (tabelle != tabellen_.end()) {
+                auto spalte = tabelle->second.spalten.find(PQftablecol(res, s));
+                if (spalte != tabelle->second.spalten.end()) {
+                    ci.sourceSchema = tabelle->second.schema;
+                    ci.sourceTable  = tabelle->second.tabelle;
+                    ci.sourceColumn = spalte->second;
+                }
+            }
+            info.push_back(std::move(ci));
+        }
+        out.SetColumnInfo(std::move(info));
+    }
+
+    // One query for the type names, one for the tables. Inside the caller's
+    // transaction they run under a savepoint, so that a failure here - it
+    // should never happen, but a cancel or an out-of-memory can - costs the
+    // metadata and not the caller's transaction, which PostgreSQL would
+    // otherwise abort. In a failed transaction nothing is asked at all.
+    void KatalogNachladen(const std::vector<std::pair<unsigned int, int>>& typen,
+                          const std::vector<unsigned int>& tabellen) {
+        const PGTransactionStatusType zustand = PQtransactionStatus(conn_);
+        if (zustand != PQTRANS_IDLE && zustand != PQTRANS_INTRANS) return;
+        const bool sicherungspunkt = zustand == PQTRANS_INTRANS;
+        if (sicherungspunkt && !Befehl("SAVEPOINT ultradb_spalteninfo")) return;
+
+        bool fehler = false;
+        if (!typen.empty()) {
+            std::string oids = "{", mods = "{";
+            for (size_t i = 0; i < typen.size(); ++i) {
+                if (i) { oids += ','; mods += ','; }
+                oids += std::to_string(typen[i].first);
+                mods += std::to_string(typen[i].second);
+            }
+            oids += '}'; mods += '}';
+            const char* werte[2] = { oids.c_str(), mods.c_str() };
+            PGresult* res = PQexecParams(conn_,
+                "SELECT u.o::bigint, u.m, pg_catalog.format_type(u.o, u.m)"
+                " FROM unnest($1::oid[], $2::int4[]) AS u(o, m)",
+                2, nullptr, werte, nullptr, nullptr, 0);
+            if (res != nullptr && PQresultStatus(res) == PGRES_TUPLES_OK) {
+                for (int z = 0; z < PQntuples(res); ++z)
+                    typNamen_[{static_cast<unsigned int>(std::strtoul(PQgetvalue(res, z, 0), nullptr, 10)),
+                               static_cast<int>(std::strtol(PQgetvalue(res, z, 1), nullptr, 10))}] =
+                        PQgetvalue(res, z, 2);
+                for (const auto& typ : typen) typNamen_.emplace(typ, std::string());
+            } else {
+                fehler = true;
+            }
+            if (res != nullptr) PQclear(res);
+        }
+        if (!tabellen.empty() && !fehler) {
+            std::string oids = "{";
+            for (size_t i = 0; i < tabellen.size(); ++i) {
+                if (i) oids += ',';
+                oids += std::to_string(tabellen[i]);
+            }
+            oids += '}';
+            const char* werte[1] = { oids.c_str() };
+            PGresult* res = PQexecParams(conn_,
+                "SELECT c.oid::bigint, n.nspname, c.relname, a.attnum, a.attname"
+                " FROM pg_catalog.pg_class c"
+                " JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
+                " JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid"
+                "  AND a.attnum > 0 AND NOT a.attisdropped"
+                " WHERE c.oid = ANY($1::oid[])",
+                1, nullptr, werte, nullptr, nullptr, 0);
+            if (res != nullptr && PQresultStatus(res) == PGRES_TUPLES_OK) {
+                for (int z = 0; z < PQntuples(res); ++z) {
+                    TabellenName& t = tabellen_[static_cast<unsigned int>(
+                        std::strtoul(PQgetvalue(res, z, 0), nullptr, 10))];
+                    t.schema  = PQgetvalue(res, z, 1);
+                    t.tabelle = PQgetvalue(res, z, 2);
+                    t.spalten[static_cast<int>(std::strtol(PQgetvalue(res, z, 3), nullptr, 10))] =
+                        PQgetvalue(res, z, 4);
+                }
+                // A table that has gone is remembered as unknown, so it is
+                // not asked about again on every query.
+                for (unsigned int oid : tabellen) tabellen_.emplace(oid, TabellenName{});
+            } else {
+                fehler = true;
+            }
+            if (res != nullptr) PQclear(res);
+        }
+
+        if (sicherungspunkt) {
+            if (fehler) Befehl("ROLLBACK TO SAVEPOINT ultradb_spalteninfo");
+            Befehl("RELEASE SAVEPOINT ultradb_spalteninfo");
+        }
+    }
+
+    bool Befehl(const char* sql) {
+        PGresult* res = PQexec(conn_, sql);
+        const bool ok = res != nullptr && PQresultStatus(res) == PGRES_COMMAND_OK;
+        if (res != nullptr) PQclear(res);
+        return ok;
+    }
+
     PGconn*    conn_ = nullptr;
     std::mutex mutex_;
     long long  zaehler_ = 0;
+    std::map<std::pair<unsigned int, int>, std::string> typNamen_;
+    std::map<unsigned int, TabellenName> tabellen_;
 };
 
 PostgresStatement::~PostgresStatement() {

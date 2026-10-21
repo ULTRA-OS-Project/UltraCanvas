@@ -1508,22 +1508,68 @@ jobs:
       # NSIS for the installer: preinstalled on the Windows Server 2022 and
       # Windows-on-Arm runner images, not on 2025's, and MSYS2 packages it
       # for CLANG64 but not for CLANGARM64 - so the runner's own copy, else
-      # Chocolatey's. scripts/build-windows-installer.sh finds it there.
+      # one this workflow cached, else Chocolatey's. Copied into Program Files
+      # either way, which is where scripts/build-windows-installer.sh looks.
+      #
+      # The cache is there because Chocolatey is a server this job otherwise
+      # needs on every run: on 2026-10-20 its feed answered 504 and turned a
+      # Windows job red whose build and tests had all passed. NSIS runs from
+      # wherever its folder is (makensis finds Stubs, Plugins and Include
+      # next to itself), so the folder is all there is to keep. The key is
+      # fixed: the copy stays the one first installed until the key is
+      # bumped. A run on main saves it where every pull request can read it.
+      - name: Restore NSIS (Windows)
+        id: nsis-cache
+        if: runner.os == 'Windows'
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}\nsis-cache
+          key: nsis-${{ runner.os }}-${{ runner.arch }}-1
+
       - name: NSIS for the installer (Windows)
+        id: nsis
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $candidates = @("${env:ProgramFiles(x86)}\NSIS\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe")
+          $target = "${env:ProgramFiles(x86)}\NSIS"
+          $cached = Join-Path $env:RUNNER_TEMP 'nsis-cache'
+          $candidates = @("$target\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe")
           $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $found) {
-            choco install nsis --no-progress -y
-            if ($LASTEXITCODE -ne 0) { throw "Chocolatey could not install NSIS (exit $LASTEXITCODE)" }
+          if (-not $found -and (Test-Path (Join-Path $cached 'makensis.exe'))) {
+            Write-Host "NSIS from the workflow's cache"
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            Copy-Item -Path (Join-Path $cached '*') -Destination $target -Recurse -Force
             $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           }
-          if (-not $found) { throw "makensis.exe is not where NSIS installs it" }
+          if (-not $found) {
+            # Three tries a minute apart: a 504 from the feed is usually over
+            # by the next attempt, and one try made the outage this job's.
+            for ($attempt = 1; $attempt -le 3 -and -not $found; $attempt++) {
+              choco install nsis --no-progress -y
+              $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+              if (-not $found -and $attempt -lt 3) {
+                Write-Host "Chocolatey could not install NSIS (exit $LASTEXITCODE), attempt $attempt of 3; trying again in 60 s"
+                Start-Sleep -Seconds 60
+              }
+            }
+            if (-not $found) { throw "Chocolatey could not install NSIS (exit $LASTEXITCODE) in 3 attempts" }
+            # Fresh from Chocolatey: keep its folder for the runs after this one.
+            # Cleared first: copied onto an existing folder, Copy-Item would
+            # nest the NSIS folder inside it instead of filling it.
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $cached
+            Copy-Item -Path (Split-Path $found) -Destination $cached -Recurse -Force
+            "fresh=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
           & $found /VERSION
           Write-Host ""
           Write-Host "makensis: $found"
+
+      - name: Save NSIS (Windows)
+        if: runner.os == 'Windows' && steps.nsis.outputs.fresh == 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}\nsis-cache
+          key: ${{ steps.nsis-cache.outputs.cache-primary-key }}
 
       - name: Package (Windows)
         if: runner.os == 'Windows'

@@ -2,7 +2,7 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
 
@@ -10,6 +10,7 @@
 #include "UltraDatabase/UltraDatabaseQuery.h"
 #include "UltraDatabase/UltraDatabaseTransaction.h"
 #include "UltraDatabase/UltraDatabaseMigrate.h"
+#include "UltraDatabase/UltraDatabaseSchema.h"
 
 #include <algorithm>
 #include <atomic>
@@ -140,7 +141,7 @@ IUltraDbDriverPlugin* UltraDatabase_GetDriver(const std::string& driverId) {
 // Core (public, declared in UltraDatabaseCore.h)
 // ============================================================================
 
-std::string UltraDatabase_GetVersion() { return "0.1.0"; }
+std::string UltraDatabase_GetVersion() { return "0.2.0"; }
 
 std::vector<std::string> UltraDatabase_GetSupportedDrivers() {
     EnsureBuiltins();
@@ -176,6 +177,14 @@ UltraDbResult UltraDb_RegisterConnection(const UltraDbConnectionConfig& config) 
 
 bool UltraDb_HasConnection(const std::string& name) {
     return FindEntry(name) != nullptr;
+}
+
+std::vector<std::string> UltraDb_ListConnections() {
+    std::lock_guard<std::mutex> lk(RegistryMutex());
+    std::vector<std::string> names;
+    names.reserve(Registry().size());
+    for (const auto& kv : Registry()) names.push_back(kv.first);   // std::map: already sorted
+    return names;
 }
 
 UltraDbResult UltraDb_CloseConnection(const std::string& name) {
@@ -464,5 +473,86 @@ UltraDbResult UltraDb_Migrate(const std::string& connection,
 
         current = step.version;
     }
+    return UltraDbResult::Ok();
+}
+
+// ============================================================================
+// Schema introspection and name quoting (public, declared in
+// UltraDatabaseSchema.h)
+// ============================================================================
+
+UltraDbResult UltraDb_ListSchemas(const std::string& connection,
+                                  std::vector<std::string>& out) {
+    out.clear();
+    UltraDbResult err;
+    IUltraDbConnection* conn = Resolve(connection, err);
+    if (!conn) return err;
+    return conn->ListSchemas(out);
+}
+
+UltraDbResult UltraDb_ListObjects(const std::string& connection, const std::string& schema,
+                                  std::vector<UltraDbObjectSummary>& out) {
+    out.clear();
+    UltraDbResult err;
+    IUltraDbConnection* conn = Resolve(connection, err);
+    if (!conn) return err;
+    return conn->ListObjects(schema, out);
+}
+
+UltraDbResult UltraDb_DescribeTable(const std::string& connection, const std::string& schema,
+                                    const std::string& table, UltraDbTableSchema& out) {
+    out = UltraDbTableSchema{};
+    if (table.empty())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "table name must not be empty");
+    UltraDbResult err;
+    IUltraDbConnection* conn = Resolve(connection, err);
+    if (!conn) return err;
+    return conn->DescribeTable(schema, table, out);
+}
+
+namespace {
+
+// The checks every engine shares, made once here so no driver can forget
+// them: an empty name quotes to "" - a syntax error at best - and a NUL byte
+// ends the statement early in every C client library.
+UltraDbResult CheckIdentifier(const std::string& name) {
+    if (name.empty())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "an identifier must not be empty");
+    if (name.find('\0') != std::string::npos)
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "an identifier must not contain a NUL byte");
+    return UltraDbResult::Ok();
+}
+
+} // namespace
+
+UltraDbResult UltraDb_QuoteIdentifier(const std::string& connection, const std::string& name,
+                                      std::string& out) {
+    out.clear();
+    UltraDbResult valid = CheckIdentifier(name);
+    if (!valid) return valid;
+    UltraDbResult err;
+    IUltraDbConnection* conn = Resolve(connection, err);
+    if (!conn) return err;
+    out = conn->QuoteIdentifier(name);
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult UltraDb_QuoteQualifiedName(const std::string& connection, const std::string& schema,
+                                         const std::string& name, std::string& out) {
+    out.clear();
+    UltraDbResult valid = CheckIdentifier(name);
+    if (!valid) return valid;
+    if (!schema.empty()) {
+        valid = CheckIdentifier(schema);
+        if (!valid) return valid;
+    }
+    UltraDbResult err;
+    IUltraDbConnection* conn = Resolve(connection, err);
+    if (!conn) return err;
+    out = schema.empty() ? conn->QuoteIdentifier(name)
+                         : conn->QuoteIdentifier(schema) + "." + conn->QuoteIdentifier(name);
     return UltraDbResult::Ok();
 }

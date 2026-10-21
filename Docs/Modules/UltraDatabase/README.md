@@ -11,12 +11,14 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, and the PostgreSQL driver from Stage 2.**
+> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, and
+> schema introspection.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 14 tests). The **PostgreSQL** driver
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 43 tests, the PostgreSQL ones
+> against a live server where one is configured). The **PostgreSQL** driver
 > (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
 > found at configure time; it takes `?` placeholders, verifies TLS by default
 > and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
@@ -221,6 +223,52 @@ versioned list of migration steps inside a transaction and records the
 applied version in a `ultradb_schema_version` table, so an app brings
 its own schema up to date on launch regardless of engine.
 
+### Introspection, names and column metadata
+
+`UltraDatabaseSchema.h` asks the engine what a database holds — the first
+step of the UltraDBAdmin plan (`Docs/Research/UltraDBAdminDesignProposal.md`,
+stage 0) and what anything that reads a schema it did not write needs. One
+engine-neutral model, filled by each driver from its own catalog: SQLite's
+`sqlite_master` and table-valued pragmas, PostgreSQL's `pg_catalog`.
+
+```cpp
+std::vector<std::string> schemas;               // SQLite: "main", "temp", ATTACHed
+UltraDb_ListSchemas("crm", schemas);            // PostgreSQL: namespaces, minus pg_*
+
+std::vector<UltraDbObjectSummary> objects;      // tables, views, materialized views,
+UltraDb_ListObjects("crm", "public", objects);  // foreign tables, sequences
+
+UltraDbTableSchema t;                           // columns (type, null, default, identity,
+UltraDb_DescribeTable("crm", "public", "orders", t);  // generated, collation, comment),
+                                                // primary key, foreign keys with actions,
+                                                // indexes, triggers, view text, size
+
+// A NAME cannot be bound, so it is quoted - by the engine's rules, through
+// the one function that does it. Never splice a name in any other way.
+std::string table;
+if (UltraDb_QuoteQualifiedName("crm", t.schema, t.name, table))
+    UltraDb_Query("crm", "SELECT * FROM " + table + " WHERE id > ? LIMIT ?", { lastId, 50 }, rs);
+
+// What each result column is and where it came from.
+for (const UltraDbColumnInfo& c : rs.ColumnInfo())
+    ;  // c.declaredType ("numeric(12,2)"), c.sourceSchema / sourceTable / sourceColumn
+```
+
+`UltraDb_ListConnections()` lists the registered connection names. A driver
+that cannot introspect answers `Unsupported`. On PostgreSQL the column
+metadata costs one catalog query per table the first time and nothing after
+(cached per connection, emptied by DDL on that connection; inside a
+transaction the lookup runs under a savepoint, so it cannot abort the
+caller's work). SQLite reports a column's source table where the library
+has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
+
+**Numbers.** PostgreSQL `numeric` comes back as `Text`, exactly as stored
+(`AsDouble` still converts it for a caller that wants a double); `float8`
+and `float4` as `Double`. Numbers cross the driver dot-decimal in both
+directions whatever the process's locale, and `AsString()` of a `Double` is
+dot-decimal too: the shortest text that reads back exactly (`3.14`, not
+`3,140000`).
+
 ---
 
 ## Threading
@@ -336,7 +384,8 @@ headless data module usable from any ULTRA OS process.
 | Connection registry (lazy open) | Implemented |
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
-| Test suite (14 tests) | Passing |
+| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
+| Test suite (43 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver | Planned (Stage 2) |
