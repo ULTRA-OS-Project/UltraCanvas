@@ -26,13 +26,16 @@ add_executable(UltraDBAdmin
     engine/DbAdminConnections.cpp
     engine/DbAdminEditBuffer.cpp
     engine/DbAdminFormat.cpp
+    engine/DbAdminImport.cpp
     engine/DbAdminJobQueue.cpp
     engine/DbAdminPaths.cpp
     engine/DbAdminSqlRunner.cpp
+    engine/DbAdminSqlScript.cpp
     engine/DbAdminSqliteTable.cpp
     engine/DbAdminStructureEdit.cpp
     engine/DbAdminTablePager.cpp
     ui/DbAdminConnectionDialog.cpp
+    ui/DbAdminImportDialog.cpp
     ui/DbAdminModels.cpp
     ui/DbAdminRowDialog.cpp
     ui/DbAdminStructureDialog.cpp

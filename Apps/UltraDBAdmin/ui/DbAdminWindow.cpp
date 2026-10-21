@@ -5,10 +5,15 @@
 
 #include "DbAdminConnectionDialog.h"
 #include "DbAdminFormat.h"
+#include "DbAdminImportDialog.h"
+#include "DbAdminSqlScript.h"
 #include "DbAdminRowDialog.h"
 #include "DbAdminStructureDialog.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasCSVImportDialog.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasModalDialog.h"
 
 #include <algorithm>
@@ -244,7 +249,7 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     };
     // Staged changes are not lost to a closed window without a word.
     window_->onWindowClosing = [this]() -> bool {
-        if (committing_ || applying_) {
+        if (committing_ || applying_ || importing_) {
             SetStatus("Changes are being written: close the window once that has finished.");
             return false;
         }
@@ -346,6 +351,11 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
 
     browseNote_ = MakeBarStatus("dbaBrowseNote");
     bar->AddChild(browseNote_);
+
+    importButton_ = MakeToolbarButton("dbaImport", "Import…",
+                                      "Put the rows of a CSV file or a workbook into this table, all or none");
+    importButton_->SetOnClick([this]() { ImportIntoTable(); });
+    bar->AddChild(importButton_);
 
     reloadButton_ = MakeToolbarButton("dbaReload", "Reload", "Read this page and the row count again");
     reloadButton_->SetOnClick([this]() {
@@ -512,6 +522,11 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
     stopButton_ = MakeToolbarButton("dbaStop", "Stop", "Cancel the running statement");
     stopButton_->SetOnClick([this]() { StopSql(); });
     bar->AddChild(stopButton_);
+
+    importSqlButton_ = MakeToolbarButton("dbaImportSql", "Import SQL…",
+                                         "Run a SQL file (.sql, or .sql.gz) on the connection picked in the tree");
+    importSqlButton_->SetOnClick([this]() { ImportSql(); });
+    bar->AddChild(importSqlButton_);
 
     historyDropdown_ = CreateDropdown("dbaHistory", 0, 0, 260, kControlHeight);
     historyDropdown_->layoutItem.SetFlexShrink(0);
@@ -1091,6 +1106,10 @@ void DbAdminWindow::UpdateBrowseBar() {
                                      : pageRows_ == kPageSize;
     nextButton_->SetDisabled(!open || pageLoading_ || !more);
     reloadButton_->SetDisabled(!open);
+    importButton_->SetDisabled(!ImportBlockReason().empty());
+    importButton_->SetTooltip(ImportBlockReason().empty()
+                                  ? std::string("Put the rows of a CSV file or a workbook into this table, all or none")
+                                  : ImportBlockReason());
 }
 
 // ===== EDITING =====
@@ -1330,6 +1349,7 @@ void DbAdminWindow::UpdateEditBar() {
     pendingLabel_->SetTooltip(text);
     pendingLabel_->SetTextColor(any ? kProductionColor : kStatusColor);
     UpdateStructureBar();          // a commit holds structure edits too
+    UpdateBrowseBar();             // and an import
 }
 
 // ===== STRUCTURE EDITING =====
@@ -1637,6 +1657,212 @@ void DbAdminWindow::UpdateStructureBar() {
     structurePending_->SetTextColor(any ? kProductionColor : kStatusColor);
 }
 
+// ===== IMPORT =====
+
+std::string DbAdminWindow::ImportBlockReason() const {
+    if (!pager_) return "Open a table to import rows into it.";
+    if (pager_->Table().kind != UltraDbObjectKind::Table)
+        return std::string("Rows are imported into a table, not a ") + KindWord(pager_->Table().kind) + ".";
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (spec && spec->readOnly) return "The connection is read only.";
+    if (importing_) return "Importing…";
+    if (committing_) return "Committing…";
+    if (applying_) return "Changing the table's structure…";
+    return std::string();
+}
+
+void DbAdminWindow::ImportIntoTable() {
+    const std::string blocked = ImportBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    // The types are the framework's: every spreadsheet format this build reads.
+    FileDialogOptions options;
+    options.SetTitle("Import rows into " + objectLabel_).SetParentWindow(window_.get());
+    UltraCanvasFileLoader::AddLoadTypes(options, "Spreadsheets and CSV", {MediaFormatCategory::Spreadsheet});
+    options.AddFilter("All files", std::vector<std::string>{"*"});
+    const uint64_t generation = objectGen_;
+    UltraCanvasFileLoader::OpenFileDialog(options, [this, generation](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty() || generation != objectGen_) return;
+        ReadImportFile(path);
+    });
+}
+
+void DbAdminWindow::ReadImportFile(const std::string& path) {
+    const uint64_t generation = objectGen_;
+    const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+    std::string extension = PathToUtf8(PathFromUtf8(path).extension());
+    for (auto& c : extension)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    if (extension == ".ods" || extension == ".xlsx" || extension == ".xls") {
+        // A workbook: the framework's spreadsheet reader, on this thread.
+        std::vector<ImportGrid> grids;
+        std::string error;
+        if (!GridsFromWorkbook(path, grids, error)) { SetStatus(name + " cannot be imported: " + error, true); return; }
+        ShowImportMapping(generation, std::move(grids));
+        return;
+    }
+    // Delimited text: the framework's Text Import dialog sets how it is read.
+    ShowCSVImportDialog(
+        path,
+        [this, generation, path, name](const CSVImportOptions& options) {
+            SetStatus("Reading " + name + "…");
+            Background([this, generation, path, name, options]() -> std::function<void()> {
+                const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
+                std::vector<ImportGrid> grids;
+                std::string error = file.success ? std::string() : file.error;
+                if (file.success) {
+                    const std::string text =
+                        CSVDecodeToUtf8(std::string(file.bytes.begin(), file.bytes.end()), options.encoding);
+                    grids.push_back(GridFromCsv(text, options, name));
+                }
+                return [this, generation, grids, error, name]() mutable {
+                    if (!error.empty()) { SetStatus(name + " cannot be read: " + error, true); return; }
+                    SetStatus(std::string());
+                    ShowImportMapping(generation, std::move(grids));
+                };
+            });
+        },
+        window_.get());
+}
+
+void DbAdminWindow::ShowImportMapping(uint64_t generation, std::vector<ImportGrid> grids) {
+    if (generation != objectGen_ || !pager_) return;
+    if (grids.empty() || grids.front().rows.empty()) { SetStatus("The file holds no rows."); return; }
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    ShowRowImportDialog(window_.get(), pager_->Table(), std::move(grids), spec && spec->production,
+                        [this, generation](const ImportGrid& grid, const ImportMapping& mapping) -> std::string {
+                            if (generation != objectGen_) return "Another table was opened meanwhile.";
+                            const std::string blocked = ImportBlockReason();
+                            if (!blocked.empty()) return blocked;
+                            RunImport(grid, mapping);
+                            return std::string();
+                        });
+}
+
+void DbAdminWindow::RunImport(const ImportGrid& grid, const ImportMapping& mapping) {
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (!spec || !pager_ || importing_) return;
+    auto run = [this, grid, mapping]() {
+        const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+        if (!spec || !pager_ || importing_) return;
+        importing_ = true;
+        UpdateBrowseBar();
+        UpdateEditBar();
+        const size_t rows = DataRows(grid, mapping);
+        SetStatus("Importing " + Grouped(static_cast<int64_t>(rows)) + " rows into " + objectLabel_ + "…");
+        const std::string connection = RegisteredName(*spec);
+        const UltraDbTableSchema table = pager_->Table();
+        const uint64_t generation = objectGen_;
+        // One job, so no page load of the window lands inside the transaction.
+        Background([this, connection, table, grid, mapping, generation]() -> std::function<void()> {
+            size_t imported = 0, failedRow = 0;
+            const UltraDbResult result = ImportRows(connection, table, grid, mapping, imported, failedRow);
+            const std::string file = grid.name;
+            return [this, generation, result, imported, failedRow, file]() {
+                FinishImport(generation, result, imported, failedRow, file);
+            };
+        });
+    };
+    if (!spec->production) { run(); return; }
+    UltraCanvasDialogManager::ShowConfirmation(
+        "**" + spec->name + " is a production connection.**\n\nImport " +
+            Grouped(static_cast<int64_t>(DataRows(grid, mapping))) + " rows into " + objectLabel_ + "?",
+        "Import rows", [run](bool confirmed) { if (confirmed) run(); }, window_.get());
+}
+
+void DbAdminWindow::FinishImport(uint64_t generation, const UltraDbResult& result, size_t imported,
+                                 size_t failedRow, const std::string& file) {
+    importing_ = false;
+    if (!result) {
+        SetStatus("Nothing was imported: " + (failedRow > 0 ? "row " + std::to_string(failedRow) + " of " + file + " - "
+                                                            : std::string()) +
+                      OneLine(result.message),
+                  true);
+    } else {
+        SetStatus(Grouped(static_cast<int64_t>(imported)) + (imported == 1 ? " row" : " rows") + " imported into " +
+                  objectLabel_ + " from " + file + ".");
+    }
+    UpdateEditBar();
+    if (result && generation == objectGen_) {
+        LoadPage(pageIndex_);
+        CountRows();
+    }
+}
+
+void DbAdminWindow::ImportSql() {
+    const ConnectionSpec* spec = SelectedConnection();
+    if (!spec) {
+        sqlInfo_->SetText("Pick a connection (or anything in it) in the tree first.");
+        sqlInfo_->SetTextColor(kErrorColor);
+        return;
+    }
+    if (RunnerFor(*spec)->IsRunning()) {
+        sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
+        sqlInfo_->SetTextColor(kErrorColor);
+        return;
+    }
+    // A SQL script is no media format, so FileLoader's inventory has no type
+    // for it: the dialog names it; FileLoader reads it (and unpacks a .gz).
+    FileDialogOptions options;
+    options.SetTitle("Import SQL into " + spec->name).SetParentWindow(window_.get());
+    options.AddFilter("SQL scripts (.sql, .sql.gz)", std::vector<std::string>{"sql", "gz"});
+    options.AddFilter("All files", std::vector<std::string>{"*"});
+    const std::string id = spec->id;
+    UltraCanvasFileLoader::OpenFileDialog(options, [this, id](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+        sqlInfo_->SetText("Reading " + name + "…");
+        sqlInfo_->SetTextColor(kStatusColor);
+        Background([this, id, path, name]() -> std::function<void()> {
+            const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
+            std::string script, error = file.success ? std::string() : file.error;
+            if (file.success) ScriptFromBytes(file.bytes, script, error);
+            ScriptSummary summary;
+            if (error.empty()) summary = SummarizeScript(script);
+            std::string size = HumanSize(static_cast<int64_t>(file.bytes.size()));
+            if (!file.decompressedFrom.empty()) size += ", unpacked from " + file.decompressedFrom;
+            return [this, id, name, script, error, summary, size]() {
+                const ConnectionSpec* spec = store_.Find(id);
+                if (!spec) return;
+                if (!error.empty()) {
+                    sqlInfo_->SetText(name + " cannot be imported: " + error);
+                    sqlInfo_->SetTextColor(kErrorColor);
+                    return;
+                }
+                UpdateSqlBar();
+                SqlImportInfo info{name, size, summary, spec->name, spec->production};
+                ShowSqlImportDialog(window_.get(), info, [this, id, name, script](bool oneTransaction) {
+                    const ConnectionSpec* spec = store_.Find(id);
+                    if (!spec) return;
+                    RunOptions options;
+                    options.oneTransaction = oneTransaction;
+                    options.remember = false;          // a file is not put back in the editor
+                    options.label = name;
+                    std::weak_ptr<char> alive = alive_;
+                    const bool started = RunnerFor(*spec)->Start(
+                        script,
+                        [this, alive, id](const RunOutcome& outcome) {
+                            auto* app = UltraCanvasApplicationBase::GetCurrent();
+                            if (!app || alive.expired()) return;
+                            app->PostToUIThread([this, alive, id, outcome]() {
+                                if (!alive.expired()) ApplyOutcome(id, outcome);
+                            });
+                        },
+                        options);
+                    if (!started) {
+                        sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
+                        sqlInfo_->SetTextColor(kErrorColor);
+                        return;
+                    }
+                    sqlConnectionId_ = id;
+                    tabs_->SetActiveTab(kSqlTab);
+                    UpdateSqlBar();
+                    sqlInfo_->SetText("Importing " + name + " into " + spec->name + "…");
+                });
+            };
+        });
+    });
+}
+
 // ===== SQL =====
 
 SqlRunner* DbAdminWindow::RunnerFor(const ConnectionSpec& spec) {
@@ -1698,7 +1924,22 @@ void DbAdminWindow::ApplyOutcome(const std::string& connectionId, const RunOutco
     std::string info;
     bool bad = false;
     const size_t n = outcome.statements.size();
-    if (outcome.cancelled) {
+    if (!outcome.label.empty()) {
+        // An imported file: say what of it stayed.
+        const std::string stayed = outcome.rolledBack ? "nothing of it stayed" : "what ran before stays";
+        if (outcome.cancelled) {
+            info = outcome.label + ": stopped - " + stayed + ".";
+            bad = true;
+        } else if (!outcome.result.success) {
+            info = outcome.label + ": statement " + std::to_string(n) + " failed - " + stayed + ": " +
+                   OneLine(outcome.result.message);
+            bad = true;
+        } else {
+            info = outcome.label + ": " + std::to_string(n) + (n == 1 ? " statement" : " statements") + " on " +
+                   where + (outcome.transaction ? ", as one transaction," : "") + " in " + Seconds(outcome.seconds) +
+                   ". Refresh shows new tables.";
+        }
+    } else if (outcome.cancelled) {
         info = "Stopped after " + Seconds(outcome.seconds) + ".";
         bad = true;
     } else if (!outcome.result.success) {
@@ -1730,6 +1971,7 @@ void DbAdminWindow::UpdateSqlBar() {
     const bool busy = running != runners_.end() && running->second->IsRunning();
     runButton_->SetDisabled(busy || !spec);
     stopButton_->SetDisabled(!busy);
+    importSqlButton_->SetDisabled(busy || !spec);
     const bool selectedAny = spec != nullptr;
     editButton_->SetDisabled(!selectedAny);
     removeButton_->SetDisabled(!selectedAny);

@@ -15,6 +15,10 @@
 //               SQLite with the table rebuilt where SQLite's ALTER cannot;
 //   SQL       - a script editor with Run (Ctrl+Enter) and Stop, what each
 //               statement did, and the rows of the one selected.
+// And imports: Browse's Import... puts the rows of a CSV file or a workbook
+// into the table shown, mapped column by column, all or none; the SQL tab's
+// Import SQL... runs a SQL file on the console's session, as one transaction
+// unless the file manages its own.
 // Nothing is painted by hand: UltraCanvasTreeView, UltraCanvasListView over
 // the models in DbAdminModels, UltraCanvasTextArea.
 //
@@ -31,6 +35,7 @@
 
 #include "DbAdminConnections.h"
 #include "DbAdminEditBuffer.h"
+#include "DbAdminImport.h"
 #include "DbAdminJobQueue.h"
 #include "DbAdminModels.h"
 #include "DbAdminSqlRunner.h"
@@ -173,6 +178,17 @@ private:
     // ("row change", "structure change").
     void ConfirmRevert(size_t count, const std::string& kind, std::function<void()> drop);
 
+    // ===== IMPORT =====
+    // Why rows cannot be imported into what Browse shows, or "".
+    std::string ImportBlockReason() const;
+    void ImportIntoTable();                 // pick a file, read it, map it, import
+    void ReadImportFile(const std::string& path);
+    void ShowImportMapping(uint64_t generation, std::vector<ImportGrid> grids);
+    void RunImport(const ImportGrid& grid, const ImportMapping& mapping);
+    void FinishImport(uint64_t generation, const UltraDbResult& result, size_t imported, size_t failedRow,
+                      const std::string& file);
+    void ImportSql();                       // pick a SQL file, read it, ask, run it on the console
+
     // ===== SQL =====
     SqlRunner* RunnerFor(const ConnectionSpec& spec);
     void RunSql();
@@ -203,6 +219,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> prevButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> nextButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> reloadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> importButton_;
+    bool importing_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> browseInfo_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> browseNote_;
     std::shared_ptr<ResultSetModel> browseModel_;
@@ -261,6 +279,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> sqlEditor_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> runButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> stopButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> importSqlButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> historyDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> sqlInfo_;
     std::shared_ptr<StatementModel> statementModel_;

@@ -524,7 +524,11 @@ added and dropped and the table renamed, staged, previewed as DDL and
 applied in one transaction - `ALTER TABLE` on PostgreSQL, and on SQLite its
 own `ALTER TABLE` plus the documented 12-step rebuild, working from the
 table's own `CREATE TABLE` so nothing introspection cannot see (CHECK, table
-options) is lost. Import is still to come.
+options) is lost. **Import followed** (UltraDBAdmin 0.4): rows from CSV files
+and workbooks through FileLoader's spreadsheet formats and the framework's
+Text Import dialog, mapped onto a table and inserted all or none; SQL files
+(`.sql`, `.sql.gz`) summarised and run on the console as one transaction.
+Stage 2 is complete apart from editing in the grid cell itself and blobs.
 
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for
