@@ -15,3 +15,8 @@
   since the packaging landed are all affected. `android-package-apk.sh` now
   reads the library's `NEEDED` entries, ships what the NDK provides, leaves
   API 28 system libraries to the device, and stops on anything else.
+- **Android: `Run()` now runs.** The Android backend's `InitializeNative`
+  never set `initialized`, which every other backend sets there, so `Run()`
+  stopped at "Cannot run - application not initialized" and the app showed
+  nothing. The emulator's second run found it: the demo loaded, initialised
+  all its pages, and quit before its first frame.
