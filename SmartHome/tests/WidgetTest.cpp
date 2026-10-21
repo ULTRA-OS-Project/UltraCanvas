@@ -24,7 +24,9 @@
 #include "UltraCanvasWindow.h"
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <cstdlib>
+#include <thread>
 #include <string>
 #include <variant>
 
@@ -35,7 +37,7 @@ static UCEvent Ev(UCEventType t, int x, int y) {
     UCEvent e; e.type = t; e.pointer = Point2Di(x, y); return e;
 }
 
-// ----- the device controls, through a window -----
+// ----- the widgets, through a window -----
 // The controls are containers of framework elements, so they are driven the
 // way a user drives them: a press and release at window coordinates, through
 // the application's own dispatch, on the element a host can reach by its
@@ -85,19 +87,19 @@ std::shared_ptr<T> Place(std::shared_ptr<T> control) {
 
 bool Fail(const char* what) { std::printf("FAIL: %s\n", what); return true; }
 
-int DeviceControlsThroughWindow() {
+int ControlsThroughWindow() {
     // ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step) makes
     // a missing display a failure, so a broken Xvfb cannot pass as a skip.
     const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
     const bool displayRequired = required && std::string(required) == "1";
     if (!std::getenv("DISPLAY")) {
         if (displayRequired) { std::puts("FAIL: a display was required, and there is none"); return 1; }
-        std::puts("skip device controls: no DISPLAY (run under xvfb-run -a)");
+        std::puts("skip windowed checks: no DISPLAY (run under xvfb-run -a)");
         return 0;
     }
     static UltraCanvasApplication app;
     if (!app.Initialize("SmartHomeWidgetTest")) {
-        std::puts(displayRequired ? "FAIL: the application would not initialise" : "skip device controls: no application");
+        std::puts(displayRequired ? "FAIL: the application would not initialise" : "skip windowed checks: no application");
         return displayRequired ? 1 : 0;
     }
     WindowConfig cfg;
@@ -106,7 +108,7 @@ int DeviceControlsThroughWindow() {
     cfg.height = 400;
     gWindow = CreateWindow(cfg);
     if (!gWindow) {
-        std::puts(displayRequired ? "FAIL: no window" : "skip device controls: no window");
+        std::puts(displayRequired ? "FAIL: no window" : "skip windowed checks: no window");
         return displayRequired ? 1 : 0;
     }
     gApp = &app;
@@ -253,6 +255,116 @@ int DeviceControlsThroughWindow() {
         std::puts("ok  sensor: accepts readings, does not consume clicks");
     }
 
+    // ----- the dialog, the wizard and the editors -----
+    {
+        auto dialog = Place(std::make_shared<SmartHomeDeviceDialog>("dialog", 10, 10, 300, 380));
+        int closes = 0;
+        dialog->SetOnClose([&]{ ++closes; });
+        dialog->Show("light-1");
+        Frame();
+        Click(dialog->GetCloseButton());
+        if (dialog->IsVisible() || closes != 1) return Fail("dialog close button");
+        std::puts("ok  dialog: the close button hides and reports");
+    }
+
+    {
+        // Simulated pairing: a device joins a few (simulated) seconds after
+        // pairing starts, so the wizard's search ends in "Added".
+        auto& api = SmartHomeAPI::Instance();
+        api.EnableProtocol(SmartHomeProtocolType::Simulated);
+        auto wizard = Place(std::make_shared<SmartHomePairingWizard>("wizard", 10, 10, 300, 260));
+        SmartHomeDeviceInfo added;
+        wizard->SetOnComplete([&](const SmartHomeDeviceInfo& d){ added = d; });
+        wizard->SetSupportedProtocols({SmartHomeProtocolType::Zigbee, SmartHomeProtocolType::Simulated});
+        wizard->Start();
+        Frame();
+        Click(wizard->GetProtocolButton(0));   // Zigbee: not in this build
+        if (wizard->GetErrorMessage().find("Zigbee") == std::string::npos || !wizard->GetBackButton()->IsVisible()) {
+            return Fail("wizard failure names the protocol");
+        }
+        Click(wizard->GetBackButton());
+        if (!wizard->GetProtocolButton(1)->IsVisible()) return Fail("wizard Back");
+        std::puts("ok  wizard: a protocol without a backend fails by name, Back returns");
+
+        Click(wizard->GetProtocolButton(1));   // Simulated
+        if (!wizard->IsSearching()) return Fail("wizard did not start searching");
+        for (int i = 0; i < 100 && wizard->IsSearching(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            wizard->Poll();
+        }
+        if (added.DeviceId.empty() || !wizard->GetDoneButton()->IsVisible()) {
+            std::printf("FAIL: pairing found nothing (%s)\n", wizard->GetErrorMessage().c_str()); return 1;
+        }
+        std::printf("ok  wizard: searching ends when a device joins (%s)\n", added.Name.c_str());
+        api.DisableProtocol(SmartHomeProtocolType::Simulated);
+    }
+
+    {
+        auto editor = Place(std::make_shared<SmartHomeSceneEditor>("sceneEd", 10, 10, 300, 380));
+        editor->NewScene();
+        editor->SetSceneName("Window scene");
+        editor->AddAction("light-1", "off", {});
+        int saved = 0;
+        editor->SetOnSave([&](const SmartHomeScene&){ ++saved; });
+        Frame();
+        Click(editor->GetSaveButton());
+        if (saved != 1 || editor->GetScene().SceneId.empty()) return Fail("scene save");
+        std::puts("ok  scene editor: Save assigns an id and reports");
+    }
+
+    // The automation's trigger round-trips through JSON.
+    {
+        auto editor = Place(std::make_shared<SmartHomeAutomationEditor>("autoEd", 10, 10, 300, 380));
+        editor->NewAutomation();
+        editor->SetName("Porch light at dusk");
+
+        AutomationTrigger t;
+        t.Type = AutomationTriggerType::DeviceState;
+        t.DeviceId = "sensor-1";
+        t.Attribute = "motion";
+        // A quote and a backslash: pasting strings together would produce
+        // invalid JSON here, which is why this goes through the JSON writer.
+        t.Value = "say \"hi\" \\ now";
+        editor->AddTrigger(t);
+        editor->AddAction([]{ SmartHomeCommand c; c.DeviceId = "light-1"; c.Command = "on"; return c; }());
+
+        int saved = 0;
+        editor->SetOnSave([&](const SmartHomeAutomation&){ ++saved; });
+        Frame();
+        Click(editor->GetSaveButton());
+        if (saved != 1) return Fail("automation save");
+
+        const std::string id = editor->GetAutomation().AutomationId;
+        if (id.empty()) return Fail("automation got no id");
+        if (editor->GetAutomation().TriggerType != "device") return Fail("trigger type not flattened");
+        std::puts("ok  automation editor: save flattens the trigger");
+
+        // Read it back and confirm the awkward value survived.
+        auto reopened = Place(std::make_shared<SmartHomeAutomationEditor>("autoEd2", 10, 10, 300, 380));
+        reopened->EditAutomation(id);
+        if (reopened->GetAutomation().Name != "Porch light at dusk") return Fail("automation did not round-trip");
+        // Saving the reopened copy re-serialises from the parsed trigger. If the
+        // quote and backslash survived parse and write, the config is identical;
+        // if either step mangled them, this diverges.
+        const std::string configBefore = editor->GetAutomation().TriggerConfig;
+        Frame();
+        Click(reopened->GetSaveButton());
+        if (reopened->GetAutomation().TriggerConfig != configBefore) {
+            std::printf("FAIL: trigger config did not survive the round trip\n  was: %s\n  now: %s\n",
+                        configBefore.c_str(), reopened->GetAutomation().TriggerConfig.c_str());
+            return 1;
+        }
+        if (configBefore.find("hi") == std::string::npos) return Fail("the trigger value never reached the config");
+        std::puts("ok  automation editor: a quoted value survives parse and re-serialise");
+
+        // Enabled is its own control, apart from saving.
+        const bool before = reopened->GetAutomation().Enabled;
+        Click(reopened->GetEnabledSwitch());
+        if (reopened->GetAutomation().Enabled == before) return Fail("enable toggle");
+        if (SmartHomeAPI::Instance().GetAutomation(id).Enabled == before) return Fail("enable toggle not stored");
+        std::puts("ok  automation editor: the switch enables and disables it");
+    }
+
     gWindow->ClearChildren();
     return 0;
 }
@@ -349,10 +461,10 @@ int main() {
     if (!panel.GetFilter().SearchText.empty()) { std::puts("FAIL: ClearFilters"); return 1; }
     std::puts("ok  search and clear filters");
 
-    // ----- per-device controls, through a real window -----
-    if (DeviceControlsThroughWindow() != 0) return 1;
+    // ----- the controls, the dialog, the wizard and the editors, through a real window -----
+    if (ControlsThroughWindow() != 0) return 1;
 
-    // ----- dialog and wizard -----
+    // ----- dialog and wizard, without a window -----
     {
         SmartHomeDeviceDialog dialog("dialog", 0, 0, 340, 420);
         // A dialog starts closed, and Show/Hide drive the base class's
@@ -372,16 +484,11 @@ int main() {
         }
         std::puts("ok  dialog: one source of truth for visibility");
 
-        dialog.OnEvent(Ev(UCEventType::MouseDown, 340 - 16 - 10, 16 + 10));  // the ×
-        if (dialog.IsVisible() || closes != 1) { std::puts("FAIL: dialog close"); return 1; }
-        std::puts("ok  dialog: close button hides and reports");
-
-        dialog.Show("light-1");
         UCEvent esc = Ev(UCEventType::KeyDown, 0, 0);
         esc.virtualKey = UCKeys::Escape;
         dialog.OnEvent(esc);
-        if (dialog.IsVisible()) { std::puts("FAIL: Escape did not close"); return 1; }
-        std::puts("ok  dialog: Escape closes");
+        if (dialog.IsVisible() || closes != 1) { std::puts("FAIL: Escape did not close"); return 1; }
+        std::puts("ok  dialog: Escape closes and reports");
 
         // A hidden dialog must not consume clicks meant for what is behind it.
         if (dialog.OnEvent(Ev(UCEventType::MouseDown, 20, 20))) {
@@ -397,22 +504,17 @@ int main() {
         wizard.SetSupportedProtocols({SmartHomeProtocolType::Zigbee,
                                       SmartHomeProtocolType::Thread});
         wizard.Start();
-
-        // Picking a protocol with no backend behind it must fail visibly, and
-        // the message has to name the protocol - "pairing failed" with five
-        // backends installed tells nobody which one to look at.
-        wizard.OnEvent(Ev(UCEventType::MouseDown, 170, 16 + 30 + 5));   // first entry
-        wizard.OnEvent(Ev(UCEventType::MouseDown, 16 + 40, 300 - 16 - 13));  // "Back"
-        std::puts("ok  wizard: protocol selection, failure path and back");
-
+        if (!wizard.GetProtocolButton(0) || !wizard.GetProtocolButton(1) || wizard.GetProtocolButton(2)) {
+            std::puts("FAIL: wizard has a button per protocol"); return 1;
+        }
         UCEvent esc = Ev(UCEventType::KeyDown, 0, 0);
         esc.virtualKey = UCKeys::Escape;
         wizard.OnEvent(esc);
         if (cancels != 1) { std::puts("FAIL: wizard Escape should cancel"); return 1; }
-        std::puts("ok  wizard: Escape cancels");
+        std::puts("ok  wizard: a button per protocol, Escape cancels");
     }
 
-    // ----- scene editor -----
+    // ----- scene editor, without a window -----
     {
         SmartHomeSceneEditor editor("sceneEd", 0, 0, 340, 420);
         editor.NewScene();
@@ -420,6 +522,7 @@ int main() {
         editor.AddAction("light-1", "off", {});
         editor.AddAction("blind-1", "close", {});
         if (editor.GetScene().Actions.size() != 2) { std::puts("FAIL: scene actions"); return 1; }
+        if (editor.GetActionsList()->GetModel()->GetRowCount() != 2) { std::puts("FAIL: scene action rows"); return 1; }
 
         editor.RemoveAction(0);
         if (editor.GetScene().Actions.size() != 1 ||
@@ -431,73 +534,8 @@ int main() {
         if (editor.GetScene().Actions.size() != 1) {
             std::puts("FAIL: an out-of-range index erased an action"); return 1;
         }
+        if (editor.GetScene().Name != "Movie Night") { std::puts("FAIL: scene name"); return 1; }
         std::puts("ok  scene editor: add, remove, and ignore a stale index");
-
-        int saved = 0;
-        editor.SetOnSave([&](const SmartHomeScene&){ ++saved; });
-        editor.OnEvent(Ev(UCEventType::MouseDown, 289, 390));   // "Save"
-        if (saved != 1 || editor.GetScene().SceneId.empty()) {
-            std::puts("FAIL: scene save"); return 1;
-        }
-        std::puts("ok  scene editor: save assigns an id and reports");
-    }
-
-    // ----- automation editor: the trigger round-trips through JSON -----
-    {
-        SmartHomeAutomationEditor editor("autoEd", 0, 0, 340, 420);
-        editor.NewAutomation();
-        editor.SetName("Porch light at dusk");
-
-        AutomationTrigger t;
-        t.Type = AutomationTriggerType::DeviceState;
-        t.DeviceId = "sensor-1";
-        t.Attribute = "motion";
-        // A quote and a backslash: pasting strings together would produce
-        // invalid JSON here, which is why this goes through the JSON writer.
-        t.Value = "say \"hi\" \\ now";
-        editor.AddTrigger(t);
-        editor.AddAction([]{ SmartHomeCommand c; c.DeviceId = "light-1"; c.Command = "on"; return c; }());
-
-        int saved = 0;
-        editor.SetOnSave([&](const SmartHomeAutomation&){ ++saved; });
-        editor.OnEvent(Ev(UCEventType::MouseDown, 289, 390));   // "Save"
-        if (saved != 1) { std::puts("FAIL: automation save"); return 1; }
-
-        const std::string id = editor.GetAutomation().AutomationId;
-        if (id.empty()) { std::puts("FAIL: automation got no id"); return 1; }
-        if (editor.GetAutomation().TriggerType != "device") {
-            std::puts("FAIL: trigger type not flattened"); return 1;
-        }
-        std::puts("ok  automation editor: save flattens the trigger");
-
-        // Read it back and confirm the awkward value survived.
-        SmartHomeAutomationEditor reopened("autoEd2", 0, 0, 340, 420);
-        reopened.EditAutomation(id);
-        if (reopened.GetAutomation().Name != "Porch light at dusk") {
-            std::puts("FAIL: automation did not round-trip"); return 1;
-        }
-        // Saving the reopened copy re-serialises from the parsed trigger. If the
-        // quote and backslash survived parse and write, the config is identical;
-        // if either step mangled them, this diverges.
-        const std::string configBefore = editor.GetAutomation().TriggerConfig;
-        reopened.OnEvent(Ev(UCEventType::MouseDown, 289, 390));
-        if (reopened.GetAutomation().TriggerConfig != configBefore) {
-            std::printf("FAIL: trigger config did not survive the round trip\n  was: %s\n  now: %s\n",
-                        configBefore.c_str(), reopened.GetAutomation().TriggerConfig.c_str());
-            return 1;
-        }
-        if (configBefore.find("hi") == std::string::npos) {
-            std::puts("FAIL: the trigger value never reached the config"); return 1;
-        }
-        std::puts("ok  automation editor: a quoted value survives parse and re-serialise");
-
-        // Toggling enabled is a separate control from saving.
-        const bool before = editor.GetAutomation().Enabled;
-        editor.OnEvent(Ev(UCEventType::MouseDown, 40, 390));    // "Enabled"
-        if (editor.GetAutomation().Enabled == before) {
-            std::puts("FAIL: enable toggle"); return 1;
-        }
-        std::puts("ok  automation editor: enable toggles");
     }
 
     // ----- topology, energy, scheduler, groups -----

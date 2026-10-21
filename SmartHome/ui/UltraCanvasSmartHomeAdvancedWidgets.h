@@ -10,6 +10,13 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasSmartHome.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasSwitch.h"
+#include "UltraCanvasTextInput.h"
 #include <memory>
 #include <functional>
 #include <vector>
@@ -18,97 +25,89 @@
 namespace UltraCanvas {
 namespace SmartHome {
 
+namespace Kit { class RowsModel; }
+
 // ============================================================================
 // SCENE EDITOR
 // ============================================================================
 
 /**
  * @brief Scene editor widget
- * 
- * Allows creating and editing scenes with multiple device actions.
+ *
+ * A name, the scene's actions in a list (remove the selected one), a device
+ * dropdown and "Add" to add one, Save and Cancel. Save creates the scene or
+ * updates it through SmartHomeAPI and reports through onSave.
  */
-class SmartHomeSceneEditor : public UltraCanvasUIElement {
+class SmartHomeSceneEditor : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeSceneEditor(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeSceneEditor(const std::string& identifier, float w, float h)
         : SmartHomeSceneEditor(identifier, -1, -1, w, h) {}
     explicit SmartHomeSceneEditor(const std::string& identifier)
         : SmartHomeSceneEditor(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeSceneEditor();
-    
+
     /**
      * @brief Create new scene
      */
     void NewScene();
-    
+
     /**
      * @brief Edit existing scene
      * @param sceneId Scene ID
      */
     void EditScene(const std::string& sceneId);
-    
+
     /**
-     * @brief Get edited scene
-     * @return Scene data
+     * @brief Get edited scene (with the name as typed)
      */
-    SmartHomeScene GetScene() const { return scene; }
-    
-    /**
-     * @brief Set scene name
-     * @param name Scene name
-     */
+    SmartHomeScene GetScene() const;
+
     void SetSceneName(const std::string& name);
-    
+
     /**
      * @brief Add device action to scene
-     * @param deviceId Device ID
-     * @param action Action name
-     * @param params Action parameters
      */
     void AddAction(const std::string& deviceId, const std::string& action,
                    const std::map<std::string, std::string>& params);
-    
+
     /**
-     * @brief Remove action from scene
-     * @param index Action index
+     * @brief Remove action from scene; an index past the end does nothing
      */
     void RemoveAction(size_t index);
-    
-    /**
-     * @brief Set scene icon
-     * @param icon Icon name
-     */
+
     void SetIcon(const std::string& icon);
-    
+
     void SetOnSave(std::function<void(const SmartHomeScene&)> callback) { onSave = callback; }
     void SetOnCancel(std::function<void()> callback) { onCancel = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasTextInput* GetNameInput() const { return nameInput.get(); }
+    UltraCanvasListView* GetActionsList() const { return actionsList.get(); }
+    UltraCanvasDropdown* GetDeviceChoice() const { return deviceChoice.get(); }
+    UltraCanvasButton* GetAddButton() const { return addButton.get(); }
+    UltraCanvasButton* GetRemoveButton() const { return removeButton.get(); }
+    UltraCanvasButton* GetSaveButton() const { return saveButton.get(); }
+    UltraCanvasButton* GetCancelButton() const { return cancelButton.get(); }
 
 private:
-    void RenderHeader(IRenderContext* context);
-    void RenderNameInput(IRenderContext* context);
-    void RenderActionsList(IRenderContext* context);
-    void RenderDeviceSelector(IRenderContext* context);
-    void RenderActionButtons(IRenderContext* context);
-    
-    void ShowDeviceSelector();
-    void AddDeviceToScene(const std::string& deviceId);
+    void Refresh();          // the scene into the elements
+    void FillDevices();
+    void AddChosenDevice();
     void SaveScene();
-    
+
     SmartHomeScene scene;
     std::vector<SmartHomeDeviceInfo> availableDevices;
-    
-    bool showingDeviceSelector = false;
-    int selectedActionIndex = -1;
-    std::string editingName;
-    bool editingNameActive = false;
-    
-    float scrollOffset = 0;
-    
+
+    std::shared_ptr<UltraCanvasLabel> title;
+    std::shared_ptr<UltraCanvasTextInput> nameInput;
+    std::shared_ptr<Kit::RowsModel> actionsModel;
+    std::shared_ptr<UltraCanvasListView> actionsList;
+    std::shared_ptr<UltraCanvasDropdown> deviceChoice;
+    std::shared_ptr<UltraCanvasButton> addButton;
+    std::shared_ptr<UltraCanvasButton> removeButton;
+    std::shared_ptr<UltraCanvasButton> saveButton;
+    std::shared_ptr<UltraCanvasButton> cancelButton;
+
     std::function<void(const SmartHomeScene&)> onSave;
     std::function<void()> onCancel;
 };
@@ -168,88 +167,66 @@ struct AutomationCondition {
 
 /**
  * @brief Automation editor widget
- * 
- * Visual editor for creating automation rules with triggers, 
- * conditions, and actions.
+ *
+ * A name, what starts the automation (WHEN), what must hold (AND IF), what
+ * it does (THEN) - each a list - a switch for whether it is enabled, Save
+ * and Cancel. The trigger is kept as SmartHomeAutomation's type and JSON
+ * config, written with the JSON writer so any value survives.
  */
-class SmartHomeAutomationEditor : public UltraCanvasUIElement {
+class SmartHomeAutomationEditor : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeAutomationEditor(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeAutomationEditor(const std::string& identifier, float w, float h)
         : SmartHomeAutomationEditor(identifier, -1, -1, w, h) {}
     explicit SmartHomeAutomationEditor(const std::string& identifier)
         : SmartHomeAutomationEditor(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeAutomationEditor();
-    
-    /**
-     * @brief Create new automation
-     */
+
     void NewAutomation();
-    
-    /**
-     * @brief Edit existing automation
-     * @param automationId Automation ID
-     */
     void EditAutomation(const std::string& automationId);
-    
+
     /**
-     * @brief Get edited automation
-     * @return Automation data
+     * @brief Get edited automation (with the name as typed)
      */
-    SmartHomeAutomation GetAutomation() const { return automation; }
-    
-    /**
-     * @brief Set automation name
-     * @param name Name
-     */
+    SmartHomeAutomation GetAutomation() const;
+
     void SetName(const std::string& name);
-    
-    /**
-     * @brief Add trigger
-     * @param trigger Trigger definition
-     */
     void AddTrigger(const AutomationTrigger& trigger);
-    
-    /**
-     * @brief Add condition
-     * @param condition Condition definition
-     */
     void AddCondition(const AutomationCondition& condition);
-    
-    /**
-     * @brief Add action
-     * @param action Scene action
-     */
     void AddAction(const SmartHomeCommand& action);
-    
+
     void SetOnSave(std::function<void(const SmartHomeAutomation&)> callback) { onSave = callback; }
     void SetOnCancel(std::function<void()> callback) { onCancel = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasTextInput* GetNameInput() const { return nameInput.get(); }
+    UltraCanvasSwitch* GetEnabledSwitch() const { return enabledSwitch.get(); }
+    UltraCanvasListView* GetTriggerList() const { return triggerList.get(); }
+    UltraCanvasListView* GetConditionList() const { return conditionList.get(); }
+    UltraCanvasListView* GetActionList() const { return actionList.get(); }
+    UltraCanvasButton* GetSaveButton() const { return saveButton.get(); }
+    UltraCanvasButton* GetCancelButton() const { return cancelButton.get(); }
 
 private:
-    void RenderHeader(IRenderContext* context);
-    void RenderTriggerSection(IRenderContext* context);
-    void RenderConditionSection(IRenderContext* context);
-    void RenderActionSection(IRenderContext* context);
-    void RenderButtons(IRenderContext* context);
-    
-    void RenderTriggerEditor(IRenderContext* context);
-    void RenderConditionEditor(IRenderContext* context);
-    void RenderActionEditor(IRenderContext* context);
-    
+    void Refresh();
+    void Save();
+
     SmartHomeAutomation automation;
     std::vector<AutomationTrigger> triggers;
     std::vector<AutomationCondition> conditions;
-    
-    int editingSection = 0;  // 0=none, 1=trigger, 2=condition, 3=action
-    int editingIndex = -1;
-    
-    float scrollOffset = 0;
-    
+    bool syncing = false;
+
+    std::shared_ptr<UltraCanvasLabel> title;
+    std::shared_ptr<UltraCanvasTextInput> nameInput;
+    std::shared_ptr<Kit::RowsModel> triggerModel;
+    std::shared_ptr<UltraCanvasListView> triggerList;
+    std::shared_ptr<Kit::RowsModel> conditionModel;
+    std::shared_ptr<UltraCanvasListView> conditionList;
+    std::shared_ptr<Kit::RowsModel> actionModel;
+    std::shared_ptr<UltraCanvasListView> actionList;
+    std::shared_ptr<UltraCanvasSwitch> enabledSwitch;
+    std::shared_ptr<UltraCanvasButton> saveButton;
+    std::shared_ptr<UltraCanvasButton> cancelButton;
+
     std::function<void(const SmartHomeAutomation&)> onSave;
     std::function<void()> onCancel;
 };

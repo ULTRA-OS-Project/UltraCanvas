@@ -21,6 +21,8 @@
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasSwitch.h"
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <functional>
 
@@ -404,138 +406,175 @@ private:
 };
 
 /**
- * @brief Generic device detail dialog
- * 
- * Modal dialog showing detailed device information and controls.
+ * @brief Device detail dialog
+ *
+ * A sheet with the device's name and a close button, what it is (category,
+ * protocol, state, maker, model, firmware), the control that fits it - a
+ * light control for a light, a lock control for a lock - and Rename /
+ * Remove. Starts hidden; Show() fills it for a device.
  */
-class SmartHomeDeviceDialog : public UltraCanvasUIElement {
+class SmartHomeDeviceDialog : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeDeviceDialog(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeDeviceDialog(const std::string& identifier, float w, float h)
         : SmartHomeDeviceDialog(identifier, -1, -1, w, h) {}
     explicit SmartHomeDeviceDialog(const std::string& identifier)
         : SmartHomeDeviceDialog(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeDeviceDialog();
-    
-    /**
-     * @brief Show dialog for device
-     * @param deviceId Device ID
-     */
+
     void Show(const std::string& deviceId);
-    
-    /**
-     * @brief Hide dialog
-     */
     void Hide();
-    
+
     // Visibility is the base class's, deliberately. UltraCanvasUIElement::
     // IsVisible() is NOT virtual, so declaring one here would only hide it:
     // the dialog would think it was hidden while the framework's dispatch and
-    // focus handling — which call the base — carried on as if it were not.
+    // focus handling - which call the base - carried on as if it were not.
     // Show() and Hide() drive SetVisible(), so there is one answer.
-    
+
     void SetOnClose(std::function<void()> callback) { onClose = callback; }
     void SetOnRename(std::function<void(const std::string&)> callback) { onRename = callback; }
     void SetOnRemove(std::function<void()> callback) { onRemove = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+    // Escape closes it; a press on the sheet does not fall through to what
+    // is behind.
     bool OnEvent(const UCEvent& event) override;
 
+    UltraCanvasButton* GetCloseButton() const { return closeButton.get(); }
+    UltraCanvasButton* GetRenameButton() const { return renameButton.get(); }
+    UltraCanvasButton* GetRemoveButton() const { return removeButton.get(); }
+    // The light, thermostat, lock, blind or sensor control; null for a
+    // device that has none (a switch, a plug).
+    UltraCanvasUIElement* GetControlWidget() const { return controlWidget.get(); }
+
 private:
-    void RenderHeader(IRenderContext* context);
-    void RenderDeviceInfo(IRenderContext* context);
-    void RenderControls(IRenderContext* context);
-    void RenderActions(IRenderContext* context);
-    
     void LoadDeviceInfo();
     std::shared_ptr<UltraCanvasUIElement> CreateControlWidget();
-    
+
     std::string deviceId;
     SmartHomeDeviceInfo deviceInfo;
-    
+
+    std::shared_ptr<UltraCanvasLabel> title;
+    std::shared_ptr<UltraCanvasButton> closeButton;
+    std::shared_ptr<UltraCanvasContainer> facts;
+    std::shared_ptr<UltraCanvasContainer> controlHolder;
     std::shared_ptr<UltraCanvasUIElement> controlWidget;
-    
+    std::shared_ptr<UltraCanvasButton> renameButton;
+    std::shared_ptr<UltraCanvasButton> removeButton;
+
     std::function<void()> onClose;
     std::function<void(const std::string&)> onRename;
     std::function<void()> onRemove;
 };
 
 /**
- * @brief Pairing wizard widget
- * 
- * Step-by-step wizard for pairing new devices.
+ * @brief Pairing wizard
+ *
+ * Choose the radio (a button per protocol), then it searches - a progress
+ * bar, what to do, Cancel - until a new device joins the home ("Added ...",
+ * Done) or the time runs out (what went wrong, Back). It watches for the
+ * new device itself, on a timer, so it leaves SmartHomeAPI's callbacks to
+ * the host.
  */
-class SmartHomePairingWizard : public UltraCanvasUIElement {
+class SmartHomePairingWizard : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomePairingWizard(const std::string& identifier, float x, float y, float w, float h);
     SmartHomePairingWizard(const std::string& identifier, float w, float h)
         : SmartHomePairingWizard(identifier, -1, -1, w, h) {}
     explicit SmartHomePairingWizard(const std::string& identifier)
         : SmartHomePairingWizard(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomePairingWizard();
-    
+
     /**
-     * @brief Start wizard
+     * @brief Start wizard (at the protocol choice)
      */
     void Start();
-    
+
     /**
-     * @brief Cancel wizard
+     * @brief Cancel wizard: stops pairing, reports through onCancel
      */
     void Cancel();
-    
+
     /**
-     * @brief Set supported protocols
-     * @param protocols List of available protocols
+     * @brief Set supported protocols (default: what the module has)
      */
     void SetSupportedProtocols(const std::vector<SmartHomeProtocolType>& protocols);
-    
+
+    /**
+     * @brief Seconds a search runs before it gives up (default 60)
+     */
+    void SetSearchTimeout(int seconds) { searchTimeout = std::max(5, seconds); }
+
+    /**
+     * @brief Look at the search once: a new device, the time, the progress.
+     * The wizard's own timer calls it twice a second while it searches; a
+     * host without an event loop (a test) calls it itself.
+     */
+    void Poll();
+
     void SetOnComplete(std::function<void(const SmartHomeDeviceInfo&)> callback) {
         onComplete = callback;
     }
     void SetOnCancel(std::function<void()> callback) { onCancel = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+    // Escape cancels.
     bool OnEvent(const UCEvent& event) override;
+
+    // A button per protocol on the first step, in SetSupportedProtocols order.
+    UltraCanvasButton* GetProtocolButton(size_t index) const {
+        return index < protocolButtons.size() ? protocolButtons[index].get() : nullptr;
+    }
+    UltraCanvasButton* GetCancelButton() const { return cancelButton.get(); }
+    UltraCanvasButton* GetBackButton() const { return backButton.get(); }
+    UltraCanvasButton* GetDoneButton() const { return doneButton.get(); }
+    bool IsSearching() const { return currentStep == WizardStep::Searching; }
+    const std::string& GetErrorMessage() const { return errorMessage; }
 
 private:
     enum class WizardStep {
         SelectProtocol,
         Searching,
-        DeviceFound,
-        Configuring,
         Complete,
         Error
     };
-    
-    void RenderProtocolSelection(IRenderContext* context);
-    void RenderSearching(IRenderContext* context);
-    void RenderDeviceFound(IRenderContext* context);
-    void RenderConfiguring(IRenderContext* context);
-    void RenderComplete(IRenderContext* context);
-    void RenderError(IRenderContext* context);
-    
+
+    void ShowStep(WizardStep step);
+    void RebuildProtocolButtons();
     void SelectProtocol(SmartHomeProtocolType protocol);
     void StartSearch();
     void StopSearch();
-    void ConfigureDevice();
-    void FinishPairing();
-    
+    void Fail(const std::string& message);
+    void StopTimer();
+
     WizardStep currentStep = WizardStep::SelectProtocol;
     std::vector<SmartHomeProtocolType> supportedProtocols;
     SmartHomeProtocolType selectedProtocol = SmartHomeProtocolType::Unknown;
-    
-    std::vector<SmartHomeDeviceInfo> discoveredDevices;
-    std::string selectedDeviceId;
+
+    std::vector<std::string> knownDevices;   // the home's devices when the search began
     SmartHomeDeviceInfo pairedDevice;
-    
     std::string errorMessage;
-    int searchProgress = 0;
-    
+    int searchTimeout = 60;
+    uint64_t searchStartedMs = 0;
+    uint32_t timerId = 0;     // the application timer while searching
+
+    std::shared_ptr<UltraCanvasContainer> protocolStep;
+    std::shared_ptr<UltraCanvasContainer> protocolList;
+    std::vector<std::shared_ptr<UltraCanvasButton>> protocolButtons;
+    std::shared_ptr<UltraCanvasLabel> noProtocols;
+
+    std::shared_ptr<UltraCanvasContainer> searchStep;
+    std::shared_ptr<UltraCanvasLabel> searchTitle;
+    std::shared_ptr<UltraCanvasGaugeDiagramElement> searchProgress;
+    std::shared_ptr<UltraCanvasLabel> searchHint;
+    std::shared_ptr<UltraCanvasButton> cancelButton;
+
+    std::shared_ptr<UltraCanvasContainer> doneStep;
+    std::shared_ptr<UltraCanvasLabel> doneText;
+    std::shared_ptr<UltraCanvasButton> doneButton;
+
+    std::shared_ptr<UltraCanvasContainer> errorStep;
+    std::shared_ptr<UltraCanvasLabel> errorText;
+    std::shared_ptr<UltraCanvasButton> backButton;
+
     std::function<void(const SmartHomeDeviceInfo&)> onComplete;
     std::function<void()> onCancel;
 };

@@ -17,11 +17,13 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasListModel.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSwitch.h"
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 namespace SmartHome {
@@ -82,6 +84,7 @@ inline std::shared_ptr<UltraCanvasLabel> Label(const std::string& id, const std:
     l->SetFontSize(size);
     l->SetTextColor(color);
     if (bold) l->SetFontWeight(FontWeight::Bold);
+    l->SetWrap(TextWrap::WrapNone);   // one line; a caller that wants more says so
     Height(*l, size + 8.0f);
     return l;
 }
@@ -126,6 +129,30 @@ inline std::shared_ptr<UltraCanvasSwitch> Switch(const std::string& id, bool on)
     Size(*s, 44, 26);
     return s;
 }
+
+// Rows of text for a list view: a scene's actions, an automation's
+// triggers. Set() replaces them and tells the view.
+class RowsModel : public IListModel {
+public:
+    explicit RowsModel(std::vector<ListColumnDef> cols) : columns(std::move(cols)) {}
+    void Set(std::vector<std::vector<std::string>> r) { rows = std::move(r); NotifyDataChanged(); }
+    int GetRowCount() const override { return static_cast<int>(rows.size()); }
+    int GetColumnCount() const override { return static_cast<int>(columns.size()); }
+    ListColumnDef GetColumnDef(int column) const override {
+        return column >= 0 && column < GetColumnCount() ? columns[static_cast<size_t>(column)] : ListColumnDef("", 100);
+    }
+    ListDataValue GetData(const ListIndex& index, ListDataRole role) const override {
+        if (role != ListDataRole::DisplayRole || index.row < 0 || index.row >= GetRowCount()) return {};
+        const auto& row = rows[static_cast<size_t>(index.row)];
+        return index.column >= 0 && index.column < static_cast<int>(row.size())
+                   ? ListDataValue(row[static_cast<size_t>(index.column)]) : ListDataValue{};
+    }
+    bool SetData(const ListIndex&, ListDataRole, const ListDataValue&) override { return false; }
+
+private:
+    std::vector<ListColumnDef> columns;
+    std::vector<std::vector<std::string>> rows;
+};
 
 } // namespace Kit
 } // namespace SmartHome

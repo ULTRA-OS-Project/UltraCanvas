@@ -82,7 +82,16 @@ std::shared_ptr<UltraCanvasContainer> CaptionRow(const std::string& id, const st
 SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
                                              float x, float y, float w, float h)
     : UltraCanvasContainer(identifier, x, y, w, h) {
-    AsControl(*this, 8, true);
+    AsControl(*this, 0, true);
+    // The rows sit in a column of their own: a scrolling container lays its
+    // children out across its full width but clips them a scrollbar short,
+    // so the column keeps that strip free and nothing is cut at the right.
+    auto body = CreateContainer(identifier + "_Body");
+    AsColumn(*body, 8, 0);
+    body->SetPadding(0, GetContainerStyle().scrollbarStyle.trackSize, 0, 0);
+    body->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    body->layoutItem.SetFlexShrink(0);
+    AddChild(body);
 
     auto top = Row(identifier + "_Power", 10, 28);
     powerSwitch = Kit::Switch(identifier + "_Switch", false);
@@ -95,7 +104,7 @@ SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
     Grow(*powerLabel);
     top->AddChild(powerSwitch);
     top->AddChild(powerLabel);
-    AddChild(top);
+    body->AddChild(top);
 
     brightnessRow = CreateContainer(identifier + "_BrightnessRow");
     AsColumn(*brightnessRow, 2, 0);
@@ -114,7 +123,7 @@ SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
         SendState();
     };
     brightnessRow->AddChild(brightness);
-    AddChild(brightnessRow);
+    body->AddChild(brightnessRow);
 
     colorTempRow = CreateContainer(identifier + "_ColorTempRow");
     AsColumn(*colorTempRow, 2, 0);
@@ -135,7 +144,7 @@ SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
         SendState();
     };
     colorTempRow->AddChild(colorTemp);
-    AddChild(colorTempRow);
+    body->AddChild(colorTempRow);
 
     // Hue and intensity as two bars: the compact design, and the one that
     // maps onto what a bulb can do.
@@ -150,7 +159,7 @@ SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
     colorPicker->onColorChanged = [this](const Color& c) {
         if (!syncing) PickColor(c);
     };
-    AddChild(colorPicker);
+    body->AddChild(colorPicker);
 
     presetBar = CreateColorSwatchBar(identifier + "_Presets", 0, 0, 236, 26, {});
     presetBar->SetWrap(true);
@@ -162,7 +171,7 @@ SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
         syncing = false;
     };
     presetBar->SetVisible(false);   // until there is a preset
-    AddChild(presetBar);
+    body->AddChild(presetBar);
 
     Sync();
 }
@@ -468,6 +477,7 @@ SmartHomeLockControl::SmartHomeLockControl(const std::string& identifier,
     activityList->SetShowHeader(false);
     activityList->SetRowHeight(20);
     activityList->SetAccessibleName("Recent activity");
+    activityList->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(100));
     Grow(*activityList);
     AddChild(activityList);
 
