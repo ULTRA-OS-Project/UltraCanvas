@@ -95,6 +95,10 @@ private:
     void RefreshNearby();           // the "On this network" list
     void ToggleMatrixForm();
     void SignInToMatrix(bool stored);
+    // The keys to encrypted Matrix rooms to a passphrase-protected file (the
+    // format Element reads), and back from one.
+    void ExportMatrixKeys();
+    void ImportMatrixKeys();
     // The provider of a conversation (Direct, or Matrix for its rooms).
     std::string ProviderOf(const std::string& conversationId) const;
     void ToggleGroupForm();
@@ -148,6 +152,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixUser_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixPassword_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixSignIn_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixKeysForm_;   // once signed in
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
     std::string matrixProviderId_ = "matrix";
     std::string activeProvider_;    // the open conversation's provider

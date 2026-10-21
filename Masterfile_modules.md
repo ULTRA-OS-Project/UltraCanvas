@@ -1721,8 +1721,11 @@ backing library is never visible in a public header.
 - `UltraCrypt_AesCbcEncrypt`, `UltraCrypt_AesCbcDecrypt`,
   `UltraCrypt_GetAesBlockSize` (AES-128/192/256-CBC, interop only;
   constant-time portable software, independent of libsodium)
+- `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
+  only - Matrix key exports and attachments, WebCrypto)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
-  `UltraCrypt_RecommendedKdfParams`
+  `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
+  (PBKDF2-HMAC-SHA-256/512, interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
@@ -1753,7 +1756,8 @@ defects, not shortcuts.
 **XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
 offered, because the formats are ours and a second choice would only be a
 second code path in every reader. AES-256-GCM is present solely for reading
-foreign data and is hardware-gated. Algorithm agility lives in format
+foreign data and is hardware-gated; AES-CBC, AES-CTR and PBKDF2 solely for
+formats defined elsewhere. Algorithm agility lives in format
 version numbers, not in per-file algorithm identifiers.
 
 **Implementation status (this branch):** Implemented on libsodium
@@ -2503,6 +2507,8 @@ UltraIM elements must comply with the following rules:
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
 - `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
+  to encrypted conversations as a passphrase-protected file)
 
 **Implementation status:** Phase 1 core implemented — target `UltraIM`
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
@@ -2520,7 +2526,10 @@ both ends authenticate with their identity keys carrying the signalling).
 Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
 `ultraim_matrix`): password or token sign-in with .well-known discovery,
 `/sync`, direct chats and groups, invitations, replies, edits, redactions,
-receipts, typing, presence, paged history; encrypted rooms not yet. Tests in `Tests/UltraIM`. See
+receipts, typing, presence, paged history, and end-to-end encryption -
+Olm and Megolm through vodozemac (Rust, behind a C ABI shim built with
+Corrosion), device keys trusted on first use, room keys shared per device,
+new rooms created encrypted, Element-compatible key export. Tests in `Tests/UltraIM`. See
 `Docs/Modules/UltraIM/README.md`.
 
 ---

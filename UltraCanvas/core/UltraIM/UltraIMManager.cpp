@@ -502,6 +502,31 @@ void UltraIM_FetchNearbyContacts(const std::string& providerId, UltraIMContactsC
                                            : [](const UltraIMResult&, const std::vector<UltraIMContact>&) {});
 }
 
+void UltraIM_ExportEncryptionKeys(const std::string& providerId, const std::string& passphrase,
+                                  UltraIMKeyExportCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, std::string>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), std::string());
+        return;
+    }
+    provider->ExportEncryptionKeys(passphrase, callback ? callback : [](const UltraIMResult&, const std::string&) {});
+}
+
+void UltraIM_ImportEncryptionKeys(const std::string& providerId, const std::string& data,
+                                  const std::string& passphrase, UltraIMKeyImportCallback onResult) {
+    // Redispatch hands its values on by const reference.
+    std::function<void(const UltraIMResult&, const int&)> byRef;
+    if (onResult) byRef = [onResult](const UltraIMResult& r, const int& imported) { onResult(r, imported); };
+    auto callback = Redispatch<UltraIMResult, int>(std::move(byRef));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), 0);
+        return;
+    }
+    provider->ImportEncryptionKeys(data, passphrase, callback ? callback : [](const UltraIMResult&, int) {});
+}
+
 void UltraIM_AddContact(const std::string& providerId, const std::string& address,
                         UltraIMConversationCallback onResult) {
     auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));

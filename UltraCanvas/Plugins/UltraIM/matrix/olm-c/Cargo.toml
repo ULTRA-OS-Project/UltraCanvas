@@ -1,0 +1,23 @@
+[package]
+name        = "ultraim_olm"
+version     = "0.1.0"
+edition     = "2021"
+description = "C ABI shim around vodozemac (Olm and Megolm) for the UltraIM Matrix provider."
+license     = "Apache-2.0"
+publish     = false
+
+[lib]
+name       = "ultraim_olm"
+crate-type = ["staticlib"]
+
+[dependencies]
+# vodozemac: Matrix's audited Rust implementation of Olm and Megolm. Pinned
+# exactly; Cargo.lock pins the rest of the tree.
+vodozemac = { version = "=0.11.1", default-features = false, features = ["precomputed-tables"] }
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
+strip         = "symbols"
+panic         = "abort"

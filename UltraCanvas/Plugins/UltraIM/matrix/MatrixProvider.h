@@ -3,13 +3,15 @@
 // discovery), the session kept in a DeviceKeyVault, /sync as a long poll,
 // direct chats (m.direct) and groups, invitations, text with replies, edits
 // and redactions, read receipts, typing, presence, and history paged back
-// with /messages. End-to-end encrypted rooms are shown as such and cannot
-// be written in yet (no Olm / Megolm).
-// Version: 0.1.0
+// with /messages. End-to-end encrypted rooms are read and written through
+// MatrixCrypto (Olm / Megolm, vodozemac), and new rooms are created
+// encrypted when it is built in.
+// Version: 0.2.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "MatrixCrypto.h"
 #include "MatrixHttp.h"
 
 #include "UltraIM/UltraIMPlugins.h"
@@ -17,6 +19,8 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -39,7 +43,7 @@ public:
 
     std::string GetProviderId() const override { return providerId_; }
     std::string GetDisplayName() const override { return "Matrix"; }
-    std::string GetVersion() const override { return "0.1.0"; }
+    std::string GetVersion() const override { return "0.2.0"; }
     UltraIMCapabilityFlags GetCapabilities() const override;
     UltraIMLoginType GetLoginType() const override { return UltraIMLoginType::UsernamePassword; }
 
@@ -75,9 +79,22 @@ public:
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
+    // The Element-compatible room-key export (MatrixCrypto::ExportRoomKeys).
+    void ExportEncryptionKeys(const std::string& passphrase, UltraIMKeyExportCallback onResult) override;
+    void ImportEncryptionKeys(const std::string& data, const std::string& passphrase,
+                              UltraIMKeyImportCallback onResult) override;
+
     // ---- for tests ----------------------------------------------------------
     void SetTimings(const MatrixTimings& timings) { timings_ = timings; }
     std::string GetHomeserverUrl() const;
+    std::string GetDeviceId() const;
+    // Whether this session encrypts (vodozemac built in and the key store open).
+    bool IsEncryptionReady() const { return crypto_.IsOpen(); }
+    // Why it does not, when it does not.
+    std::string GetEncryptionError() const;
+    std::vector<MatrixDeviceInfo> GetDevicesOf(const std::string& userId) const { return crypto_.DevicesOf(userId); }
+    // Rounds of the export's passphrase stretching (PBKDF2); fewer in tests.
+    void SetKeyExportRounds(uint32_t rounds) { exportRounds_ = rounds; }
 
 private:
     struct Room {
@@ -90,6 +107,11 @@ private:
         bool invited = false;                   // an invitation to us, not joined yet
         std::string inviter;
         bool encrypted = false;
+        MatrixRoomEncryption encryption;        // m.room.encryption's rotation settings
+        // Everyone joined or invited, from /members: whom an encrypted
+        // message's key goes to (the sync's members are lazily loaded).
+        std::set<std::string> recipients;
+        bool recipientsKnown = false;
         std::vector<UltraIMMessage> timeline;   // oldest first
         std::string prevBatch;                  // where /messages pages back from
         bool historyComplete = false;
@@ -129,6 +151,24 @@ private:
 
     void SetDirect(const std::string& userId, const std::string& roomId);
 
+    // ---- encryption -------------------------------------------------------------
+    void OpenCrypto(const std::string& userId, const std::string& deviceId);
+    std::string CryptoStorePath(const std::string& userId, const std::string& deviceId) const;
+    // Mutex held: an encrypted event in the clear (true), or the placeholder
+    // text to show for it; one whose key may still come is kept for then.
+    bool DecryptForTimeline(Room& room, const UltraCanvas::JSONValue& event, UltraCanvas::JSONValue& clear,
+                            std::string& placeholder);
+    // The events held for keys that have now arrived.
+    void RetryPending(const std::vector<MatrixSessionRef>& arrived);
+    // On the send thread: (type, content) into an encrypted room, waiting.
+    bool SendEncrypted(const std::shared_ptr<MatrixHttp>& http, const std::string& roomId, const std::string& txnId,
+                       const std::string& type, const UltraCanvas::JSONValue& content, std::string& eventId,
+                       std::string& error);
+    // Jobs that wait (key sharing, joining before sending) run one after
+    // another, in order, on the send thread.
+    void Enqueue(std::function<void()> job);
+    void SendLoop();
+
     std::string     providerId_;
     UltraIMConfig   config_;
     UltraIMEventSink sink_;
@@ -143,6 +183,8 @@ private:
 
     mutable std::mutex mutex_;
     std::string     userId_;
+    std::string     deviceId_;
+    std::string     cryptoError_;
     std::string     nextBatch_;
     std::map<std::string, Room> rooms_;
     std::map<std::string, std::vector<std::string>> direct_;    // m.direct: user -> rooms
@@ -151,6 +193,17 @@ private:
 
     std::thread     syncThread_;
     std::atomic<bool> stopping_{false};
+
+    MatrixCrypto    crypto_;
+    uint32_t        exportRounds_ = 500000;
+    // room "|" session id -> events waiting for that key (mutex_)
+    std::map<std::string, std::vector<UltraCanvas::JSONValue>> pendingDecrypt_;
+
+    std::mutex      jobMutex_;
+    std::condition_variable jobChanged_;
+    std::deque<std::function<void()>> jobs_;
+    bool            jobsStopping_ = false;
+    std::thread     sendThread_;
 };
 
 } // namespace UltraIMMatrix

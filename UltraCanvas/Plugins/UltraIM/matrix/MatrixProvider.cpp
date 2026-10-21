@@ -1,6 +1,6 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
@@ -8,6 +8,8 @@
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCanvasTextUtils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -79,6 +81,8 @@ std::string SnippetOf(const UltraIMMessage& m) {
     return text.size() > 120 ? text.substr(0, 120) : text;
 }
 
+const char* const kWaitingForKey = "Waiting for the key to this encrypted message";
+
 UltraIMResult HttpError(const MatrixResponse& r, UltraIMResultCode fallback) {
     UltraIMResultCode code = fallback;
     if (r.status == 0) code = UltraIMResultCode::NetworkError;
@@ -103,9 +107,10 @@ MatrixProvider::~MatrixProvider() {
 
 UltraIMCapabilityFlags MatrixProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
-    return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
-           F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-           F::CreateGroup;
+    const F flags = F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
+                    F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
+                    F::CreateGroup;
+    return OlmAvailable() ? flags | F::E2EEncryption : flags;
 }
 
 UltraIMResult MatrixProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -150,6 +155,11 @@ std::shared_ptr<MatrixHttp> MatrixProvider::Http() const {
 std::string MatrixProvider::GetLocalUserId() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return userId_;
+}
+
+std::string MatrixProvider::GetDeviceId() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return deviceId_;
 }
 
 std::string MatrixProvider::GetHomeserverUrl() const {
@@ -237,6 +247,13 @@ void MatrixProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
     }
     std::string server = Trim(credentials.server);
     if (server.empty() && IsUserId(username)) server = username.substr(username.find(':') + 1);
+    // Signing in again as the same user: the same device, when its keys are
+    // still here - its encrypted rooms stay readable.
+    std::string reuseDevice;
+    if (usePassword && stored && !storedDevice.empty() &&
+        (storedUser == username || Localpart(storedUser) == Localpart(username)) &&
+        MatrixCrypto::StoreExists(CryptoStorePath(storedUser, storedDevice)))
+        reuseDevice = storedDevice;
     if (server.empty() && (usePassword || useToken)) {
         finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
                                     "Give the homeserver, or your full Matrix ID (@name:server)"));
@@ -252,8 +269,14 @@ void MatrixProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
     const std::string password = credentials.password;
     const std::string token = credentials.accessToken;
     // Discovery, login and the sync loop all run on the session's thread.
+    {
+        std::lock_guard<std::mutex> lock(jobMutex_);
+        jobsStopping_ = false;
+        jobs_.clear();
+    }
+    sendThread_ = std::thread([this]() { SendLoop(); });
     syncThread_ = std::thread([this, finish, usePassword, useToken, server, username, password, token, storedUrl,
-                               storedToken]() {
+                               storedToken, reuseDevice]() {
         std::shared_ptr<MatrixHttp> http = Http();
         auto fail = [this, finish](const UltraIMResult& r) {
             if (stopping_) return;
@@ -277,6 +300,7 @@ void MatrixProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
                 login.Set("identifier", identifier);
                 login.Set("password", JSONValue(password));
                 login.Set("initial_device_display_name", JSONValue("ChatCube"));
+                if (!reuseDevice.empty()) login.Set("device_id", JSONValue(reuseDevice));
                 MatrixResponse r = http->Await("POST", std::string(kClient) + "/login", &login, 20000);
                 if (stopping_) return;
                 if (!r.Ok()) return fail(HttpError(r, UltraIMResultCode::AuthFailed));
@@ -302,11 +326,15 @@ void MatrixProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
             return fail(HttpError(who, UltraIMResultCode::AuthFailed));
         }
         const std::string userId = who.body["user_id"].GetString();
-        SaveSession(url, userId, who.body["device_id"].GetString(), accessToken);
+        const std::string deviceId = who.body["device_id"].GetString();
+        SaveSession(url, userId, deviceId, accessToken);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             userId_ = userId;
+            deviceId_ = deviceId;
         }
+        OpenCrypto(userId, deviceId);
+        if (stopping_) return;
         SetState(UltraIMConnectionState::Connected);
         finish(UltraIMResult::Ok());
         SyncLoop();
@@ -323,6 +351,13 @@ void MatrixProvider::SignOut() {
     if (http) http->Stop();
     if (syncThread_.joinable()) syncThread_.join();
     {
+        std::lock_guard<std::mutex> lock(jobMutex_);
+        jobsStopping_ = true;
+    }
+    jobChanged_.notify_all();
+    if (sendThread_.joinable()) sendThread_.join();
+    crypto_.Close();
+    {
         std::lock_guard<std::mutex> lock(httpMutex_);
         http_.reset();
     }
@@ -333,6 +368,8 @@ void MatrixProvider::SignOut() {
         presence_.clear();
         nextBatch_.clear();
         txnToClient_.clear();
+        pendingDecrypt_.clear();
+        deviceId_.clear();
     }
     SetState(UltraIMConnectionState::Disconnected);
 }
@@ -369,7 +406,11 @@ void MatrixProvider::SyncLoop() {
         MatrixResponse r = http->Await("GET", path, nullptr, wait + 20000);
         if (stopping_ || r.cancelled) break;
         if (r.Ok()) {
+            // Room keys first: the messages they open may be in this very sync.
+            const std::vector<MatrixSessionRef> arrived = crypto_.HandleSync(*http, r.body);
             ApplySync(r.body, initial);
+            RetryPending(arrived);
+            crypto_.Flush();
             initial = false;
             backoffMs = 1000;
             if (state_ != UltraIMConnectionState::Connected) SetState(UltraIMConnectionState::Connected);
@@ -465,9 +506,11 @@ void MatrixProvider::ApplyRoom(const std::string& roomId, const JSONValue& data,
         for (const auto& event : data["state"]["events"].GetElements()) ApplyState(room, event);
         const JSONValue& timeline = data["timeline"];
         if (timeline["limited"].GetBoolean(false) && !initial) {
-            // A gap: what came before is no longer next to what we hold.
+            // A gap: what came before is no longer next to what we hold, and
+            // who left in it may not be in the (lazily loaded) state.
             room.timeline.clear();
             room.historyComplete = false;
+            room.recipientsKnown = false;
         }
         if (room.prevBatch.empty() || timeline["limited"].GetBoolean(false))
             room.prevBatch = timeline["prev_batch"].GetString(room.prevBatch);
@@ -532,9 +575,15 @@ void MatrixProvider::ApplyState(Room& room, const JSONValue& event) {
         room.alias = content["alias"].GetString();
     } else if (type == "m.room.encryption") {
         room.encrypted = true;
+        const int64_t ms = content["rotation_period_ms"].GetInteger(0);
+        const int64_t msgs = content["rotation_period_msgs"].GetInteger(0);
+        if (ms > 0) room.encryption.rotationPeriodMs = ms;
+        if (msgs > 0) room.encryption.rotationPeriodMessages = static_cast<int>(msgs);
     } else if (type == "m.room.member") {
         const std::string user = event["state_key"].GetString();
         const std::string membership = content["membership"].GetString();
+        if (membership == "join" || membership == "invite") room.recipients.insert(user);
+        else room.recipients.erase(user);
         const std::string name = content["displayname"].GetString();
         if (membership == "join" || membership == "invite") {
             room.members[user] = !name.empty() ? name : (room.members.count(user) ? room.members[user] : Localpart(user));
@@ -564,8 +613,8 @@ bool MatrixProvider::MessageFrom(const Room& room, const JSONValue& event, Ultra
     out.clientMessageId = !txn.empty() ? txn : out.messageId;
 
     if (event["type"].GetString() == "m.room.encrypted") {
-        out.type = UltraIMMessageType::SystemEvent;
-        out.text = "Encrypted message - ChatCube cannot read end-to-end encrypted Matrix rooms yet";
+        // Not decrypted (yet): the caller says why in the text.
+        out.text = kWaitingForKey;
         return true;
     }
     // The newest edit, when the server bundles it.
@@ -659,7 +708,29 @@ bool MatrixProvider::ApplyEvent(Room& room, const JSONValue& event, bool live, s
         if (live) events.push_back(e);
         return true;
     }
-    if (type != "m.room.message" && type != "m.room.encrypted") return false;
+    if (type == "m.room.encrypted") {
+        JSONValue clear;
+        std::string placeholder;
+        if (DecryptForTimeline(room, event, clear, placeholder)) return ApplyEvent(room, clear, live, events);
+        UltraIMMessage message;
+        if (!MessageFrom(room, event, message)) return false;
+        message.text = placeholder;
+        for (const auto& m : room.timeline) {
+            if (m.messageId == message.messageId) return false;
+        }
+        room.timeline.push_back(message);
+        if (live) {
+            UltraIMEvent e;
+            e.type = UltraIMEventType::MessageReceive;
+            e.providerId = providerId_;
+            e.conversationId = room.id;
+            e.contactId = message.senderId;
+            e.message = message;
+            events.push_back(e);
+        }
+        return true;
+    }
+    if (type != "m.room.message") return false;
     const JSONValue& relates = content["m.relates_to"];
     if (relates["rel_type"].GetString() == "m.replace") {
         const std::string target = relates["event_id"].GetString();
@@ -776,6 +847,7 @@ UltraIMConversation MatrixProvider::ConversationOf(const Room& room) const {
         if (c.title.empty()) c.title = "Empty room";
     }
     for (const auto& m : room.joined) c.memberIds.push_back(m);
+    c.isEncrypted = room.encrypted;
     if (!c.directContactId.empty()) {
         auto p = presence_.find(c.directContactId);
         if (p != presence_.end()) c.presence = p->second;
@@ -895,12 +967,18 @@ void MatrixProvider::FetchMessages(const std::string& conversationId, const std:
                 Room& room = it->second;
                 for (const auto& event : r.body["state"].GetElements()) ApplyState(room, event);
                 std::vector<UltraIMMessage> older;
-                for (const auto& event : r.body["chunk"].GetElements()) {     // newest first
+                for (const auto& raw : r.body["chunk"].GetElements()) {     // newest first
+                    JSONValue clear;
+                    std::string placeholder;
+                    const bool encrypted = raw["type"].GetString() == "m.room.encrypted";
+                    const bool readable = encrypted && DecryptForTimeline(room, raw, clear, placeholder);
+                    const JSONValue& event = readable ? clear : raw;
                     const std::string type = event["type"].GetString();
                     if (type != "m.room.message" && type != "m.room.encrypted") continue;
                     if (event["content"]["m.relates_to"]["rel_type"].GetString() == "m.replace") continue;
                     UltraIMMessage m;
                     if (!MessageFrom(room, event, m)) continue;
+                    if (encrypted && !readable) m.text = placeholder;
                     bool known = false;
                     for (const auto& have : room.timeline) known = known || have.messageId == m.messageId;
                     if (!known) older.push_back(m);
@@ -972,22 +1050,35 @@ void MatrixProvider::AddContact(const std::string& address, UltraIMConversationC
     JSONValue body = JSONValue::MakeObject();
     body.Set("preset", JSONValue("trusted_private_chat"));
     body.Set("is_direct", JSONValue(true));
+    const bool encrypt = crypto_.IsOpen();
+    if (encrypt) {
+        JSONValue encryption = JSONValue::MakeObject();
+        encryption.Set("type", JSONValue("m.room.encryption"));
+        encryption.Set("state_key", JSONValue(""));
+        JSONValue content = JSONValue::MakeObject();
+        content.Set("algorithm", JSONValue("m.megolm.v1.aes-sha2"));
+        encryption.Set("content", content);
+        JSONValue initial = JSONValue::MakeArray();
+        initial.Append(encryption);
+        body.Set("initial_state", initial);
+    }
     JSONValue invite = JSONValue::MakeArray();
     invite.Append(JSONValue(user));
     body.Set("invite", invite);
     http->Request("POST", std::string(kClient) + "/createRoom", &body, 20000,
-                  [this, http, user, onResult](const MatrixResponse& r) {
+                  [this, http, user, encrypt, onResult](const MatrixResponse& r) {
         if (!r.Ok()) return onResult(HttpError(r, UltraIMResultCode::Unknown), {});
         const std::string roomId = r.body["room_id"].GetString();
         SetDirect(user, roomId);
         // Their name, for the title until the sync brings the room.
         http->Request("GET", std::string(kClient) + "/profile/" + PathSegment(user) + "/displayname", nullptr, 10000,
-                      [this, user, roomId, onResult](const MatrixResponse& p) {
+                      [this, user, roomId, encrypt, onResult](const MatrixResponse& p) {
             UltraIMConversation c;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 Room& room = rooms_[roomId];
                 room.id = roomId;
+                room.encrypted = room.encrypted || encrypt;
                 room.joined.insert(userId_);
                 if (!room.members.count(userId_)) room.members[userId_] = Localpart(userId_);
                 const std::string name = p.Ok() ? p.body["displayname"].GetString() : std::string();
@@ -1015,6 +1106,18 @@ void MatrixProvider::CreateGroup(const std::string& title, const std::vector<std
     JSONValue body = JSONValue::MakeObject();
     body.Set("preset", JSONValue("private_chat"));
     body.Set("name", JSONValue(title));
+    const bool encrypt = crypto_.IsOpen();
+    if (encrypt) {
+        JSONValue encryption = JSONValue::MakeObject();
+        encryption.Set("type", JSONValue("m.room.encryption"));
+        encryption.Set("state_key", JSONValue(""));
+        JSONValue content = JSONValue::MakeObject();
+        content.Set("algorithm", JSONValue("m.megolm.v1.aes-sha2"));
+        encryption.Set("content", content);
+        JSONValue initial = JSONValue::MakeArray();
+        initial.Append(encryption);
+        body.Set("initial_state", initial);
+    }
     JSONValue invite = JSONValue::MakeArray();
     for (const auto& m : memberIds) {
         const std::string user = Trim(m);
@@ -1026,7 +1129,7 @@ void MatrixProvider::CreateGroup(const std::string& title, const std::vector<std
     }
     body.Set("invite", invite);
     http->Request("POST", std::string(kClient) + "/createRoom", &body, 20000,
-                  [this, title, memberIds, onResult](const MatrixResponse& r) {
+                  [this, title, memberIds, encrypt, onResult](const MatrixResponse& r) {
         if (!r.Ok()) return onResult(HttpError(r, UltraIMResultCode::Unknown), {});
         const std::string roomId = r.body["room_id"].GetString();
         UltraIMConversation c;
@@ -1035,6 +1138,7 @@ void MatrixProvider::CreateGroup(const std::string& title, const std::vector<std
             Room& room = rooms_[roomId];
             room.id = roomId;
             room.name = title;
+            room.encrypted = room.encrypted || encrypt;
             room.joined.insert(userId_);
             room.members[userId_] = Localpart(userId_);
             for (const auto& m : memberIds) room.members[Trim(m)] = Localpart(Trim(m));
@@ -1060,15 +1164,17 @@ UltraIMResult MatrixProvider::SendText(const std::string& conversationId, const 
     if (!http || state_ == UltraIMConnectionState::Disconnected)
         return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix");
     bool invited = false;
+    bool encrypted = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = rooms_.find(conversationId);
         if (it == rooms_.end()) return UltraIMResult::Error(UltraIMResultCode::NotFound, "No such room");
-        if (it->second.encrypted)
-            return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
-                                        "This Matrix room is end-to-end encrypted - ChatCube cannot write in it yet");
         invited = it->second.invited;
+        encrypted = it->second.encrypted;
     }
+    if (encrypted && !crypto_.IsOpen())
+        return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                    "This Matrix room is end-to-end encrypted: " + GetEncryptionError());
     const std::string clientId = options.clientMessageId.empty() ? UltraIM_NewClientMessageId() : options.clientMessageId;
     JSONValue body = JSONValue::MakeObject();
     body.Set("msgtype", JSONValue("m.text"));
@@ -1101,6 +1207,22 @@ UltraIMResult MatrixProvider::SendText(const std::string& conversationId, const 
             else delivered(UltraIMDeliveryStatus::Failed, std::string());
         });
     };
+    if (encrypted) {
+        // Sharing the room's key waits on the server: the send thread, in order.
+        Enqueue([this, http, conversationId, clientId, body, invited, delivered]() {
+            if (invited) {
+                MatrixResponse joined = http->Await("POST", std::string(kClient) + "/join/" + PathSegment(conversationId),
+                                                    nullptr, 20000);
+                if (!joined.Ok()) return delivered(UltraIMDeliveryStatus::Failed, std::string());
+            }
+            std::string eventId, error;
+            if (SendEncrypted(http, conversationId, clientId, "m.room.message", body, eventId, error))
+                delivered(UltraIMDeliveryStatus::Sent, eventId);
+            else
+                delivered(UltraIMDeliveryStatus::Failed, std::string());
+        });
+        return UltraIMResult::Ok();
+    }
     if (!invited) {
         send();
         return UltraIMResult::Ok();
@@ -1129,6 +1251,22 @@ UltraIMResult MatrixProvider::EditMessage(const std::string& conversationId, con
     relates.Set("rel_type", JSONValue("m.replace"));
     relates.Set("event_id", JSONValue(messageId));
     body.Set("m.relates_to", relates);
+    bool encrypted = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = rooms_.find(conversationId);
+        encrypted = it != rooms_.end() && it->second.encrypted;
+    }
+    if (encrypted) {
+        if (!crypto_.IsOpen())
+            return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                        "This Matrix room is end-to-end encrypted: " + GetEncryptionError());
+        Enqueue([this, http, conversationId, body]() {
+            std::string eventId, error;
+            SendEncrypted(http, conversationId, UltraIM_NewClientMessageId(), "m.room.message", body, eventId, error);
+        });
+        return UltraIMResult::Ok();
+    }
     // The edit arrives back through the sync as a MessageUpdate.
     http->Request("PUT", std::string(kClient) + "/rooms/" + PathSegment(conversationId) + "/send/m.room.message/" +
                              PathSegment(UltraIM_NewClientMessageId()),
@@ -1199,6 +1337,266 @@ UltraIMResult MatrixProvider::SetTyping(const std::string& conversationId, bool 
     http->Request("PUT", std::string(kClient) + "/rooms/" + PathSegment(conversationId) + "/typing/" + PathSegment(me),
                   &body, 15000, [](const MatrixResponse&) {});
     return UltraIMResult::Ok();
+}
+
+// ============================================================================
+// ENCRYPTION
+// ============================================================================
+
+std::string MatrixProvider::GetEncryptionError() const {
+    if (!OlmAvailable()) return "this ChatCube was built without end-to-end encryption";
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cryptoError_.empty() ? std::string("encryption is not set up yet") : cryptoError_;
+}
+
+std::string MatrixProvider::CryptoStorePath(const std::string& userId, const std::string& deviceId) const {
+    // One store per account and device; the name says neither.
+    const std::string id = userId + "|" + deviceId;
+    std::vector<uint8_t> digest;
+    UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, id.data(), id.size(), digest);
+    const std::string name = "crypto-" + UltraCrypt_ToHex(digest).substr(0, 24) + ".store";
+    const std::filesystem::path dir =
+        UltraCanvas::PathFromUtf8(config_.dataDirectory) / UltraCanvas::PathFromUtf8(providerId_);
+    return UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(name));
+}
+
+void MatrixProvider::OpenCrypto(const std::string& userId, const std::string& deviceId) {
+    auto failed = [this](const std::string& why) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        cryptoError_ = why;
+    };
+    if (!OlmAvailable()) return failed("this ChatCube was built without end-to-end encryption");
+    if (!vaultReady_ || deviceId.empty()) return failed("there is no device to keep the keys of");
+    // The store's key lives in the vault; the store itself is a file of ours.
+    const std::string account = "crypto:" + userId + ":" + deviceId;
+    std::string keyText;
+    vault_.Use([&](UltraVault::DeviceKeyVault& v) { v.Retrieve(account, keyText); });
+    std::vector<uint8_t> key = UltraCanvas::Base64Decode(keyText);
+    const std::string path = CryptoStorePath(userId, deviceId);
+    if (key.size() != 32) {
+        if (MatrixCrypto::StoreExists(path)) return failed("the key to this device's encryption keys is gone");
+        if (!UltraCrypt_RandomBytes(key, 32)) return failed("no randomness for the key store");
+        bool stored = false;
+        const std::string encoded = UltraCanvas::Base64Encode(key, false);
+        vault_.Use([&](UltraVault::DeviceKeyVault& v) { stored = v.Store(account, encoded); });
+        if (!stored) return failed("the vault does not keep the key store's key");
+    }
+    std::string error;
+    const bool opened = crypto_.Open(path, key, userId, deviceId, error);
+    UltraCrypt_SecureZero(key.data(), key.size());
+    if (!opened) return failed(error);
+    std::shared_ptr<MatrixHttp> http = Http();
+    if (!http || !crypto_.UploadKeys(*http, -1, true, error)) {
+        crypto_.Close();
+        return failed("the homeserver did not take this device's keys: " + error);
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    cryptoError_.clear();
+}
+
+bool MatrixProvider::DecryptForTimeline(Room& room, const JSONValue& event, JSONValue& clear,
+                                        std::string& placeholder) {
+    MatrixDecrypted d = crypto_.DecryptRoomEvent(room.id, event);
+    if (d.state == MatrixDecryptState::Ok && d.event["type"].GetString() != "m.room.encrypted") {
+        clear = d.event;
+        return true;
+    }
+    if (d.state == MatrixDecryptState::MissingKey) {
+        auto& waiting = pendingDecrypt_[room.id + "|" + d.sessionId];
+        const std::string eventId = event["event_id"].GetString();
+        bool held = false;
+        for (const auto& e : waiting) held = held || e["event_id"].GetString() == eventId;
+        if (!held) waiting.push_back(event);
+        placeholder = kWaitingForKey;
+    } else if (!crypto_.IsOpen()) {
+        // (mutex_ held: cryptoError_ read here, not through GetEncryptionError)
+        placeholder = "Encrypted message - " + (!OlmAvailable() ? std::string("this ChatCube was built without "
+                                                                              "end-to-end encryption")
+                                                : cryptoError_.empty() ? std::string("encryption is not set up")
+                                                                       : cryptoError_);
+    } else {
+        placeholder = "This encrypted message cannot be read: " + d.error;
+    }
+    return false;
+}
+
+void MatrixProvider::RetryPending(const std::vector<MatrixSessionRef>& arrived) {
+    if (arrived.empty()) return;
+    std::vector<UltraIMEvent> events;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto& ref : arrived) {
+            auto held = pendingDecrypt_.find(ref.first + "|" + ref.second);
+            if (held == pendingDecrypt_.end()) continue;
+            const std::vector<JSONValue> waiting = std::move(held->second);
+            pendingDecrypt_.erase(held);
+            auto r = rooms_.find(ref.first);
+            if (r == rooms_.end()) continue;
+            Room& room = r->second;
+            for (const JSONValue& event : waiting) {
+                const std::string eventId = event["event_id"].GetString();
+                auto at = std::find_if(room.timeline.begin(), room.timeline.end(),
+                                       [&](const UltraIMMessage& m) { return m.messageId == eventId; });
+                JSONValue clear;
+                std::string placeholder;
+                if (!DecryptForTimeline(room, event, clear, placeholder)) {
+                    if (at != room.timeline.end() && at->text != placeholder) {
+                        at->text = placeholder;
+                        UltraIMEvent e;
+                        e.type = UltraIMEventType::MessageUpdate;
+                        e.providerId = providerId_;
+                        e.conversationId = room.id;
+                        e.message = *at;
+                        events.push_back(e);
+                    }
+                    continue;
+                }
+                UltraIMMessage message;
+                const bool plain = clear["type"].GetString() == "m.room.message" &&
+                                   clear["content"]["m.relates_to"]["rel_type"].GetString() != "m.replace";
+                if (plain && at != room.timeline.end() && MessageFrom(room, clear, message)) {
+                    // The placeholder becomes the message, where it stood.
+                    *at = message;
+                    UltraIMEvent e;
+                    e.type = UltraIMEventType::MessageUpdate;
+                    e.providerId = providerId_;
+                    e.conversationId = room.id;
+                    e.message = message;
+                    events.push_back(e);
+                    continue;
+                }
+                // An edit (or something not shown): no line of its own.
+                if (at != room.timeline.end()) {
+                    UltraIMEvent e;
+                    e.type = UltraIMEventType::MessageDelete;
+                    e.providerId = providerId_;
+                    e.conversationId = room.id;
+                    e.message = *at;
+                    events.push_back(e);
+                    room.timeline.erase(at);
+                }
+                ApplyEvent(room, clear, true, events);
+            }
+            UltraIMEvent update;
+            update.type = UltraIMEventType::ConversationUpdate;
+            update.providerId = providerId_;
+            update.conversationId = room.id;
+            update.conversation = ConversationOf(room);
+            events.push_back(update);
+        }
+    }
+    for (const auto& e : events) Emit(e);
+}
+
+bool MatrixProvider::SendEncrypted(const std::shared_ptr<MatrixHttp>& http, const std::string& roomId,
+                                   const std::string& txnId, const std::string& type, const JSONValue& content,
+                                   std::string& eventId, std::string& error) {
+    std::vector<std::string> members;
+    MatrixRoomEncryption settings;
+    bool known = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = rooms_.find(roomId);
+        if (it == rooms_.end()) {
+            error = "No such room";
+            return false;
+        }
+        settings = it->second.encryption;
+        known = it->second.recipientsKnown;
+        members.assign(it->second.recipients.begin(), it->second.recipients.end());
+    }
+    if (!known) {
+        // Everyone joined or invited, not only those the sync mentioned.
+        MatrixResponse r = http->Await("GET", std::string(kClient) + "/rooms/" + PathSegment(roomId) +
+                                                  "/members?not_membership=leave",
+                                       nullptr, 20000);
+        if (!r.Ok()) {
+            error = r.error;
+            return false;
+        }
+        std::set<std::string> fresh;
+        for (const auto& member : r.body["chunk"].GetElements()) {
+            const std::string membership = member["content"]["membership"].GetString();
+            if (membership == "join" || membership == "invite") fresh.insert(member["state_key"].GetString());
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = rooms_.find(roomId);
+        if (it != rooms_.end()) {
+            it->second.recipients = fresh;
+            it->second.recipientsKnown = true;
+        }
+        members.assign(fresh.begin(), fresh.end());
+    }
+    JSONValue encrypted;
+    if (!crypto_.EncryptRoomEvent(*http, roomId, members, settings, type, content, encrypted, error)) return false;
+    MatrixResponse r = http->Await("PUT", std::string(kClient) + "/rooms/" + PathSegment(roomId) +
+                                              "/send/m.room.encrypted/" + PathSegment(txnId),
+                                   &encrypted, 30000);
+    if (!r.Ok()) {
+        error = r.error;
+        return false;
+    }
+    eventId = r.body["event_id"].GetString();
+    return true;
+}
+
+void MatrixProvider::Enqueue(std::function<void()> job) {
+    {
+        std::lock_guard<std::mutex> lock(jobMutex_);
+        if (jobsStopping_) return;
+        jobs_.push_back(std::move(job));
+    }
+    jobChanged_.notify_one();
+}
+
+void MatrixProvider::SendLoop() {
+    for (;;) {
+        std::function<void()> job;
+        {
+            std::unique_lock<std::mutex> lock(jobMutex_);
+            jobChanged_.wait(lock, [this]() { return jobsStopping_ || !jobs_.empty(); });
+            if (jobsStopping_) return;
+            job = std::move(jobs_.front());
+            jobs_.pop_front();
+        }
+        job();
+    }
+}
+
+void MatrixProvider::ExportEncryptionKeys(const std::string& passphrase, UltraIMKeyExportCallback onResult) {
+    if (!crypto_.IsOpen()) {
+        if (onResult)
+            onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing, "Encryption: " + GetEncryptionError()),
+                     std::string());
+        return;
+    }
+    // The passphrase stretching takes its time: on the send thread.
+    Enqueue([this, passphrase, onResult]() {
+        std::string out, error;
+        const bool ok = crypto_.ExportRoomKeys(passphrase, exportRounds_, out, error);
+        if (onResult)
+            onResult(ok ? UltraIMResult::Ok() : UltraIMResult::Error(UltraIMResultCode::InvalidArgument, error), out);
+    });
+}
+
+void MatrixProvider::ImportEncryptionKeys(const std::string& data, const std::string& passphrase,
+                                          UltraIMKeyImportCallback onResult) {
+    if (!crypto_.IsOpen()) {
+        if (onResult)
+            onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing, "Encryption: " + GetEncryptionError()),
+                     0);
+        return;
+    }
+    Enqueue([this, data, passphrase, onResult]() {
+        std::vector<MatrixSessionRef> imported;
+        std::string error;
+        const bool ok = crypto_.ImportRoomKeys(data, passphrase, imported, error);
+        // Messages that were waiting for these keys open now.
+        if (ok) RetryPending(imported);
+        if (onResult)
+            onResult(ok ? UltraIMResult::Ok() : UltraIMResult::Error(UltraIMResultCode::InvalidArgument, error),
+                     static_cast<int>(imported.size()));
+    });
 }
 
 } // namespace UltraIMMatrix

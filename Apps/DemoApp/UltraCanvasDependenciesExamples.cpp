@@ -158,6 +158,7 @@ namespace UltraCanvas {
         // --- Vectorizer plugin ---
         {"VTracer",           "https://www.visioncortex.org/vtracer-docs",                         "https://github.com/visioncortex/vtracer",                       "MIT"},
         {"visioncortex",      "https://www.visioncortex.org/",                                     "https://github.com/visioncortex/visioncortex",                  "MIT"},
+        {"vodozemac",         "https://docs.rs/vodozemac",                                         "https://github.com/matrix-org/vodozemac",                       "Apache 2"},
         {"cargo",             "https://doc.rust-lang.org/cargo/",                                  "https://github.com/rust-lang/cargo",                            ""},
         {"rustc",             "https://www.rust-lang.org/",                                        "https://github.com/rust-lang/rust",                             ""},
         {"corrosion-rs",      "https://corrosion-rs.github.io/corrosion/",                         "https://github.com/corrosion-rs/corrosion",                     "MIT"},

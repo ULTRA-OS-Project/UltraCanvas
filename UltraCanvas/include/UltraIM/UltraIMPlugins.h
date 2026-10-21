@@ -183,6 +183,21 @@ public:
         if (onResult) onResult(Unsupported("stickers"), {});
     }
 
+    // ---- End-to-end encryption keys ---------------------------------------------
+    // The keys to encrypted conversations as one passphrase-protected text
+    // (Matrix: the room-key export file other clients read and write), to keep
+    // or to carry to another device; and back. The passphrase is stretched on
+    // purpose, so this takes a moment: do it off the caller's thread.
+    virtual void ExportEncryptionKeys(const std::string& passphrase, UltraIMKeyExportCallback onResult) {
+        (void)passphrase;
+        if (onResult) onResult(Unsupported("exporting encryption keys"), std::string());
+    }
+    virtual void ImportEncryptionKeys(const std::string& data, const std::string& passphrase,
+                                      UltraIMKeyImportCallback onResult) {
+        (void)data; (void)passphrase;
+        if (onResult) onResult(Unsupported("importing encryption keys"), 0);
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,

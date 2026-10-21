@@ -1,9 +1,9 @@
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-17
+**Last Modified:** 2026-10-21
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -27,8 +27,9 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
 Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
-X25519 key agreement (§5.8.1) and
-AES-128/192/256-CBC for foreign formats (§5.9).
+X25519 key agreement (§5.8.1),
+AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
+formats (§5.9, §5.10).
 (The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
@@ -1008,6 +1009,62 @@ of password-protected `.xlsx` and `.docx` files
 (`UltraCanvas/core/UltraCanvasOfficeEncryption.cpp`, ECMA-376 agile
 encryption), which checks the files' `dataIntegrity` HMAC before it decrypts a
 byte — the rule above, applied. See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+### 5.10 AES-CTR and PBKDF2 — interop only
+
+For the formats defined elsewhere that are built on them: Matrix's room-key
+export files (PBKDF2-HMAC-SHA-512, AES-256-CTR, HMAC-SHA-256 - the format
+Element and every other Matrix client read and write), its encrypted
+attachments and secret-storage passphrases, WebCrypto's AES-CTR.
+
+```cpp
+struct UltraCryptCtrParams {
+    // Encrypt: if empty, a fresh random IV is generated and written back.
+    // A format that wants its own shape of IV (Matrix: random with bit 63
+    // clear) supplies it. Decrypt: the IV used at encryption.
+    std::vector<uint8_t> iv;
+};
+
+// The ciphertext is exactly as long as the plaintext.
+UltraCryptResult UltraCrypt_AesCtrEncrypt(const UltraCryptSecureBuffer& key,
+                                          UltraCryptCtrParams& params,
+                                          const void* plaintext, size_t size,
+                                          std::vector<uint8_t>& outCiphertext);
+UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptCtrParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+
+// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
+                                            const UltraCryptSecureBuffer& password,
+                                            const std::vector<uint8_t>& salt,
+                                            uint32_t iterations,
+                                            size_t outputLength,
+                                            UltraCryptSecureBuffer& outKey);
+```
+
+The IV is the first counter block, and each next block adds one to it as a
+128-bit big-endian number (NIST SP 800-38A) — the same bytes as WebCrypto's
+`length: 64` counter for as long as that does not wrap, which Matrix rules
+out by clearing bit 63 of its IVs. CTR runs on the same bitsliced,
+constant-time AES as CBC, four blocks a pass. PBKDF2 keys the password's HMAC
+state once and copies it for every iteration, so a format's 500 000 rounds
+cost what they should and no more.
+
+**Using them safely.** CTR has no integrity either, and needs no padding, so
+there is no padding oracle — but one counter block used twice under one key
+gives away the XOR of two plaintexts, so every message needs its own IV. The
+rule of §5.9 holds: check the format's MAC (or the hash Matrix attachments
+carry) before decrypting. PBKDF2 is not memory-hard; it is here to read and
+write what others defined, never for anything UltraCanvas defines itself —
+that is Argon2id (§5.5).
+
+*Serves:* the Matrix provider's room-key export and import
+(`UltraCanvas/Plugins/UltraIM/matrix/MatrixCrypto.cpp`), which checks the
+file's HMAC before it decrypts a byte. Tested against SP 800-38A F.5 (CTR),
+RFC 7914 §11 (PBKDF2-SHA-256) and SHA-512 values, plus the 128-bit counter
+carry, any message length and the refusals.
 
 ## 6. Usage sketches
 

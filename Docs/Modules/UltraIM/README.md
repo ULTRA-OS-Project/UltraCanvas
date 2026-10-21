@@ -88,6 +88,15 @@ says whether our camera goes on; `UltraIM_SetCallCamera` turns it off and on
 during the call, and the other side gets `CallMediaChange` (`isVideo` = the
 camera is on), so it can show a caption instead of a frozen picture.
 
+End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
+Their keys travel as a passphrase-protected text:
+`UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
+save through `UltraCanvasFileLoader::SaveFileDialog`, and
+`UltraIM_ImportEncryptionKeys(provider, text, passphrase, cb)` takes one in
+(the count of keys new to it in the callback). A provider without
+encryption answers `CapabilityMissing`; the one with it lists
+`UltraIMCapabilityFlags::E2EEncryption`.
+
 ## Writing a provider
 
 Implement `IUltraIMProviderPlugin` (`UltraIMPlugins.h`). Identity, the
@@ -205,15 +214,52 @@ other over mDNS alone, which skips without a responder unless
   `Sent` when the server took it, `Read` when someone's read receipt covers
   it. Typing, presence of the other person in a direct chat, unread counts.
   `FetchMessages` pages older history back with `/messages`.
-- **Not yet:** end-to-end encryption (Olm / Megolm): an encrypted room's
-  messages show as such and sending there is refused; media up- and
-  download; calls; SSO sign-in.
+- **End-to-end encryption** (`m.olm.v1.curve25519-aes-sha2`,
+  `m.megolm.v1.aes-sha2`): the cryptography is
+  [vodozemac](https://github.com/matrix-org/vodozemac), Matrix's audited
+  Rust implementation, behind a C ABI shim (`matrix/olm-c`, built with
+  Corrosion; `ULTRAIM_MATRIX_E2EE`, on, needs cargo). `MatrixCrypto` does
+  the bookkeeping around it:
+  - this device's identity and one-time keys signed (canonical JSON) and
+    published, topped up as the sync's count runs low, with a fallback key;
+  - other users' device lists (`/keys/query`), their signatures checked and
+    each device's keys **trusted on first use** - a device whose keys change
+    gets no more room keys, and what it sends is not believed;
+  - an Olm session per device (claimed one-time keys, signature checked), the
+    room key going to every device of the room's joined and invited members
+    as an `m.room_key` to-device message;
+  - a Megolm session per room, replaced after the room's
+    `rotation_period_msgs` (100) or `rotation_period_ms` (a week), and when
+    someone or a device is gone from the room;
+  - decryption with a replay guard (one event per message index), the room
+    and the key's sender checked; a message whose key has not come is shown
+    as *waiting for the key* and becomes the message (`MessageUpdate`) when it
+    does - by to-device message or by an import.
+  New direct chats and groups are created encrypted. Signing in again with
+  the password reuses the device while its keys are here, so its rooms stay
+  readable. Everything is kept in one internal file per account and device,
+  `crypto-<hash>.store` next to the vault, sealed (XChaCha20-Poly1305) with
+  a key the vault holds. The key export is the format Element and other
+  clients read and write (PBKDF2-HMAC-SHA-512 with 500 000 rounds,
+  AES-256-CTR, HMAC-SHA-256 - UltraCrypt's). Built without cargo, encrypted
+  rooms say they cannot be read and new rooms are not encrypted.
+- **Not yet:** cross-signing and device verification (emoji / QR), key
+  backup on the server, key requests between our own devices; media up-
+  and download; calls; SSO sign-in.
 
-Tests: `Tests/UltraIM/MatrixProviderTests.cpp` against a real Synapse, which
-`Tests/UltraIM/matrix_test_server.py` sets up (config, open registration,
-the test users) with the python in `ULTRAIM_MATRIX_PYTHON` - one with
-`matrix-synapse` installed; it skips without one unless
-`ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI).
+Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` without a server (canonical
+JSON against the spec's examples, vodozemac through the shim, the store,
+replay and room checks, export files); `Tests/UltraIM/MatrixProviderTests.cpp`
+against a real Synapse, which `Tests/UltraIM/matrix_test_server.py` sets up
+(config, open registration, the test users) with the python in
+`ULTRAIM_MATRIX_PYTHON` - one with `matrix-synapse` installed; it skips
+without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). Its
+encryption part checks the server holds only ciphertext, a second device
+(keys from then on, earlier ones by import), signing in again on the same
+device, and an encrypted room with
+[matrix-nio](https://github.com/matrix-nio/matrix-nio)
+(`matrix_nio_peer.py`), key export files read both ways - with
+`matrix-nio[e2e]` in that python (`ULTRAIM_TEST_MATRIX_NIO_REQUIRED` in CI).
 
 ## Status
 

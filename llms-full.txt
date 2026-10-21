@@ -1900,8 +1900,11 @@ backing library is never visible in a public header.
 - `UltraCrypt_AesCbcEncrypt`, `UltraCrypt_AesCbcDecrypt`,
   `UltraCrypt_GetAesBlockSize` (AES-128/192/256-CBC, interop only;
   constant-time portable software, independent of libsodium)
+- `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
+  only - Matrix key exports and attachments, WebCrypto)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
-  `UltraCrypt_RecommendedKdfParams`
+  `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
+  (PBKDF2-HMAC-SHA-256/512, interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
@@ -1932,7 +1935,8 @@ defects, not shortcuts.
 **XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
 offered, because the formats are ours and a second choice would only be a
 second code path in every reader. AES-256-GCM is present solely for reading
-foreign data and is hardware-gated. Algorithm agility lives in format
+foreign data and is hardware-gated; AES-CBC, AES-CTR and PBKDF2 solely for
+formats defined elsewhere. Algorithm agility lives in format
 version numbers, not in per-file algorithm identifiers.
 
 **Implementation status (this branch):** Implemented on libsodium
@@ -2682,6 +2686,8 @@ UltraIM elements must comply with the following rules:
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
 - `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
+  to encrypted conversations as a passphrase-protected file)
 
 **Implementation status:** Phase 1 core implemented — target `UltraIM`
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
@@ -2699,7 +2705,10 @@ both ends authenticate with their identity keys carrying the signalling).
 Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
 `ultraim_matrix`): password or token sign-in with .well-known discovery,
 `/sync`, direct chats and groups, invitations, replies, edits, redactions,
-receipts, typing, presence, paged history; encrypted rooms not yet. Tests in `Tests/UltraIM`. See
+receipts, typing, presence, paged history, and end-to-end encryption -
+Olm and Megolm through vodozemac (Rust, behind a C ABI shim built with
+Corrosion), device keys trusted on first use, room keys shared per device,
+new rooms created encrypted, Element-compatible key export. Tests in `Tests/UltraIM`. See
 `Docs/Modules/UltraIM/README.md`.
 
 ---
@@ -3621,6 +3630,7 @@ their *License* is likewise marked **—** (OS component).
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
 | V4L2 (Video4Linux2) | [docs.kernel.org](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html) | [git.linuxtv.org/v4l-utils.git](https://git.linuxtv.org/v4l-utils.git) | — |
 | visioncortex | [visioncortex.org](https://www.visioncortex.org/) | [github.com/visioncortex/visioncortex](https://github.com/visioncortex/visioncortex) | [MIT](https://spdx.org/licenses/MIT.html) |
+| vodozemac (+ dalek, RustCrypto, prost crates) | [docs.rs/vodozemac](https://docs.rs/vodozemac) | [github.com/matrix-org/vodozemac](https://github.com/matrix-org/vodozemac) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | VTracer | [visioncortex.org/vtracer-docs](https://www.visioncortex.org/vtracer-docs) | [github.com/visioncortex/vtracer](https://github.com/visioncortex/vtracer) | [MIT](https://spdx.org/licenses/MIT.html) |
 | WASAPI | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi) | — | — |
 | wasmtime | [wasmtime.dev](https://wasmtime.dev/) | [github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) | [Apache 2 with LLVM exception](https://spdx.org/licenses/LLVM-exception.html) |
@@ -85868,9 +85878,9 @@ FILE: Docs/Modules/UltraCrypt/README.md
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-17
+**Last Modified:** 2026-10-21
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -85894,8 +85904,9 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
 Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
-X25519 key agreement (§5.8.1) and
-AES-128/192/256-CBC for foreign formats (§5.9).
+X25519 key agreement (§5.8.1),
+AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
+formats (§5.9, §5.10).
 (The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
@@ -86876,6 +86887,62 @@ of password-protected `.xlsx` and `.docx` files
 encryption), which checks the files' `dataIntegrity` HMAC before it decrypts a
 byte — the rule above, applied. See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
 
+### 5.10 AES-CTR and PBKDF2 — interop only
+
+For the formats defined elsewhere that are built on them: Matrix's room-key
+export files (PBKDF2-HMAC-SHA-512, AES-256-CTR, HMAC-SHA-256 - the format
+Element and every other Matrix client read and write), its encrypted
+attachments and secret-storage passphrases, WebCrypto's AES-CTR.
+
+```cpp
+struct UltraCryptCtrParams {
+    // Encrypt: if empty, a fresh random IV is generated and written back.
+    // A format that wants its own shape of IV (Matrix: random with bit 63
+    // clear) supplies it. Decrypt: the IV used at encryption.
+    std::vector<uint8_t> iv;
+};
+
+// The ciphertext is exactly as long as the plaintext.
+UltraCryptResult UltraCrypt_AesCtrEncrypt(const UltraCryptSecureBuffer& key,
+                                          UltraCryptCtrParams& params,
+                                          const void* plaintext, size_t size,
+                                          std::vector<uint8_t>& outCiphertext);
+UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptCtrParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+
+// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
+                                            const UltraCryptSecureBuffer& password,
+                                            const std::vector<uint8_t>& salt,
+                                            uint32_t iterations,
+                                            size_t outputLength,
+                                            UltraCryptSecureBuffer& outKey);
+```
+
+The IV is the first counter block, and each next block adds one to it as a
+128-bit big-endian number (NIST SP 800-38A) — the same bytes as WebCrypto's
+`length: 64` counter for as long as that does not wrap, which Matrix rules
+out by clearing bit 63 of its IVs. CTR runs on the same bitsliced,
+constant-time AES as CBC, four blocks a pass. PBKDF2 keys the password's HMAC
+state once and copies it for every iteration, so a format's 500 000 rounds
+cost what they should and no more.
+
+**Using them safely.** CTR has no integrity either, and needs no padding, so
+there is no padding oracle — but one counter block used twice under one key
+gives away the XOR of two plaintexts, so every message needs its own IV. The
+rule of §5.9 holds: check the format's MAC (or the hash Matrix attachments
+carry) before decrypting. PBKDF2 is not memory-hard; it is here to read and
+write what others defined, never for anything UltraCanvas defines itself —
+that is Argon2id (§5.5).
+
+*Serves:* the Matrix provider's room-key export and import
+(`UltraCanvas/Plugins/UltraIM/matrix/MatrixCrypto.cpp`), which checks the
+file's HMAC before it decrypts a byte. Tested against SP 800-38A F.5 (CTR),
+RFC 7914 §11 (PBKDF2-SHA-256) and SHA-512 values, plus the 128-bit counter
+carry, any message length and the refusals.
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -87568,6 +87635,15 @@ says whether our camera goes on; `UltraIM_SetCallCamera` turns it off and on
 during the call, and the other side gets `CallMediaChange` (`isVideo` = the
 camera is on), so it can show a caption instead of a frozen picture.
 
+End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
+Their keys travel as a passphrase-protected text:
+`UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
+save through `UltraCanvasFileLoader::SaveFileDialog`, and
+`UltraIM_ImportEncryptionKeys(provider, text, passphrase, cb)` takes one in
+(the count of keys new to it in the callback). A provider without
+encryption answers `CapabilityMissing`; the one with it lists
+`UltraIMCapabilityFlags::E2EEncryption`.
+
 ## Writing a provider
 
 Implement `IUltraIMProviderPlugin` (`UltraIMPlugins.h`). Identity, the
@@ -87685,15 +87761,52 @@ other over mDNS alone, which skips without a responder unless
   `Sent` when the server took it, `Read` when someone's read receipt covers
   it. Typing, presence of the other person in a direct chat, unread counts.
   `FetchMessages` pages older history back with `/messages`.
-- **Not yet:** end-to-end encryption (Olm / Megolm): an encrypted room's
-  messages show as such and sending there is refused; media up- and
-  download; calls; SSO sign-in.
+- **End-to-end encryption** (`m.olm.v1.curve25519-aes-sha2`,
+  `m.megolm.v1.aes-sha2`): the cryptography is
+  [vodozemac](https://github.com/matrix-org/vodozemac), Matrix's audited
+  Rust implementation, behind a C ABI shim (`matrix/olm-c`, built with
+  Corrosion; `ULTRAIM_MATRIX_E2EE`, on, needs cargo). `MatrixCrypto` does
+  the bookkeeping around it:
+  - this device's identity and one-time keys signed (canonical JSON) and
+    published, topped up as the sync's count runs low, with a fallback key;
+  - other users' device lists (`/keys/query`), their signatures checked and
+    each device's keys **trusted on first use** - a device whose keys change
+    gets no more room keys, and what it sends is not believed;
+  - an Olm session per device (claimed one-time keys, signature checked), the
+    room key going to every device of the room's joined and invited members
+    as an `m.room_key` to-device message;
+  - a Megolm session per room, replaced after the room's
+    `rotation_period_msgs` (100) or `rotation_period_ms` (a week), and when
+    someone or a device is gone from the room;
+  - decryption with a replay guard (one event per message index), the room
+    and the key's sender checked; a message whose key has not come is shown
+    as *waiting for the key* and becomes the message (`MessageUpdate`) when it
+    does - by to-device message or by an import.
+  New direct chats and groups are created encrypted. Signing in again with
+  the password reuses the device while its keys are here, so its rooms stay
+  readable. Everything is kept in one internal file per account and device,
+  `crypto-<hash>.store` next to the vault, sealed (XChaCha20-Poly1305) with
+  a key the vault holds. The key export is the format Element and other
+  clients read and write (PBKDF2-HMAC-SHA-512 with 500 000 rounds,
+  AES-256-CTR, HMAC-SHA-256 - UltraCrypt's). Built without cargo, encrypted
+  rooms say they cannot be read and new rooms are not encrypted.
+- **Not yet:** cross-signing and device verification (emoji / QR), key
+  backup on the server, key requests between our own devices; media up-
+  and download; calls; SSO sign-in.
 
-Tests: `Tests/UltraIM/MatrixProviderTests.cpp` against a real Synapse, which
-`Tests/UltraIM/matrix_test_server.py` sets up (config, open registration,
-the test users) with the python in `ULTRAIM_MATRIX_PYTHON` - one with
-`matrix-synapse` installed; it skips without one unless
-`ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI).
+Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` without a server (canonical
+JSON against the spec's examples, vodozemac through the shim, the store,
+replay and room checks, export files); `Tests/UltraIM/MatrixProviderTests.cpp`
+against a real Synapse, which `Tests/UltraIM/matrix_test_server.py` sets up
+(config, open registration, the test users) with the python in
+`ULTRAIM_MATRIX_PYTHON` - one with `matrix-synapse` installed; it skips
+without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). Its
+encryption part checks the server holds only ciphertext, a second device
+(keys from then on, earlier ones by import), signing in again on the same
+device, and an encrypted room with
+[matrix-nio](https://github.com/matrix-nio/matrix-nio)
+(`matrix_nio_peer.py`), key export files read both ways - with
+`matrix-nio[e2e]` in that python (`ULTRAIM_TEST_MATRIX_NIO_REQUIRED` in CI).
 
 ## Status
 

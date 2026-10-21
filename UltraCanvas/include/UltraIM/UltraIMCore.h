@@ -109,6 +109,16 @@ UltraIMResult UltraIM_SetCallCamera(const std::string& providerId, const std::st
 UltraIMResult UltraIM_SetCallVideoSinks(const std::string& providerId, const std::string& callId,
                                         UltraIMVideoFrameCallback remote, UltraIMVideoFrameCallback local);
 
+// ---- End-to-end encryption keys ------------------------------------------------
+// A passphrase-protected export of the keys to the provider's encrypted
+// conversations (Matrix: the format Element and other clients read), and an
+// import of one; a provider without encryption answers CapabilityMissing.
+// Write the export with UltraCanvasFileLoader like any file the user saves.
+void UltraIM_ExportEncryptionKeys(const std::string& providerId, const std::string& passphrase,
+                                  UltraIMKeyExportCallback onResult);
+void UltraIM_ImportEncryptionKeys(const std::string& providerId, const std::string& data,
+                                  const std::string& passphrase, UltraIMKeyImportCallback onResult);
+
 // ---- Helpers -----------------------------------------------------------------
 // A fresh client message id (a UUID v4).
 std::string   UltraIM_NewClientMessageId();

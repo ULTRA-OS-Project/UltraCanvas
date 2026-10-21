@@ -211,6 +211,6 @@ libdatachannel's DTLS backend); without it, every call answers
 | 8 | LAN without server: mDNS advertising, TCP signalling | two instances on one network chat with no relay configured - done: `DirectProviderTests` (by address, and over mDNS alone), ChatCube against `chatcube-peer` with no relay |
 | 9 | Voice calls (UltraRTC phase 2) | a 1:1 call between two ChatCubes - done: audio both ways in `DirectProviderTests`, ChatCube's call bar run against `chatcube-peer` |
 | 10 | Video calls (UltraRTC phase 3) | a 1:1 video call between two ChatCubes - done: pictures across in `UltraRTCTests` and `DirectProviderTests`, ChatCube's video panel run against `chatcube-peer`'s test picture |
-| 11 | Matrix, then Telegram and other providers | per provider - Matrix done: `MatrixProviderTests` against a real Synapse, ChatCube with a Matrix account next to Direct; Telegram next |
+| 11 | Matrix, then Telegram and other providers | per provider - Matrix done: `MatrixProviderTests` against a real Synapse, ChatCube with a Matrix account next to Direct, end-to-end encrypted rooms through vodozemac (`MatrixCryptoTests`, and matrix-nio on the other side of an encrypted room); Telegram next |
 
 Every phase ends with a clean build, its tests, and a push.

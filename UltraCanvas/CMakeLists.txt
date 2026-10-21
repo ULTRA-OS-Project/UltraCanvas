@@ -3769,15 +3769,55 @@ endif()
 # /sync, direct chats and groups, receipts, typing, edits, redactions. Like
 # Direct, an archive the tests link, and the module loaded from
 # <build>/Plugins/UltraIM.
-if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault)
+#
+# End-to-end encryption (Olm / Megolm) is vodozemac, Matrix's audited Rust
+# implementation, behind a C ABI shim (matrix/olm-c, built with Corrosion like
+# the Vectorizer plugin). Without cargo the provider still builds and reads
+# and writes unencrypted rooms; encrypted ones then say they cannot be read.
+option(ULTRAIM_MATRIX_E2EE "Matrix provider: end-to-end encryption through vodozemac (requires cargo)" ON)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt)
     set(_ultraim_matrix_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/matrix)
     add_library(UltraIMMatrixCore STATIC
         ${_ultraim_matrix_dir}/MatrixHttp.cpp
+        ${_ultraim_matrix_dir}/MatrixOlm.cpp
+        ${_ultraim_matrix_dir}/MatrixCrypto.cpp
         ${_ultraim_matrix_dir}/MatrixProvider.cpp)
     set_target_properties(UltraIMMatrixCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_compile_features(UltraIMMatrixCore PUBLIC cxx_std_20)
     target_include_directories(UltraIMMatrixCore PUBLIC ${_ultraim_matrix_dir})
-    target_link_libraries(UltraIMMatrixCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault)
+    target_link_libraries(UltraIMMatrixCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    set(_ultraim_matrix_e2ee "no (ULTRAIM_MATRIX_E2EE is OFF)")
+    if(ULTRAIM_MATRIX_E2EE AND ULTRACANVAS_PLATFORM STREQUAL "WASM")
+        set(_ultraim_matrix_e2ee "no (not in a WebAssembly build)")
+    elseif(ULTRAIM_MATRIX_E2EE)
+        find_program(CARGO_EXECUTABLE cargo)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/UltraCanvasRust.cmake)
+        ultracanvas_find_rust_toolchain(_uc_rust_ok _uc_rust_why)
+        if(NOT CARGO_EXECUTABLE)
+            set(_ultraim_matrix_e2ee "no (cargo not found; install via https://rustup.rs/)")
+        elseif(NOT _uc_rust_ok)
+            set(_ultraim_matrix_e2ee "no (no native Windows Rust toolchain)")
+            message(STATUS "  Matrix end-to-end encryption needs a native Windows Rust toolchain. ${_uc_rust_why}")
+        else()
+            ultracanvas_fetch_corrosion()
+            corrosion_import_crate(
+                MANIFEST_PATH ${_ultraim_matrix_dir}/olm-c/Cargo.toml
+                PROFILE       release
+                CRATES        ultraim_olm)
+            target_include_directories(UltraIMMatrixCore PRIVATE ${_ultraim_matrix_dir}/olm-c/include)
+            target_compile_definitions(UltraIMMatrixCore PRIVATE ULTRAIM_HAVE_OLM=1)
+            target_link_libraries(UltraIMMatrixCore PUBLIC ultraim_olm)
+            # What Rust's std needs from the system, named here because
+            # Corrosion's list can come through empty (see Plugins/Vectorizer).
+            if(WIN32)
+                target_link_libraries(UltraIMMatrixCore PUBLIC ntdll userenv ws2_32 dbghelp bcrypt)
+            elseif(UNIX AND NOT APPLE)
+                target_link_libraries(UltraIMMatrixCore PUBLIC pthread dl m)
+            endif()
+            set(_ultraim_matrix_e2ee "yes (vodozemac)")
+        endif()
+    endif()
 
     add_library(UltraIMMatrixPlugin MODULE ${_ultraim_matrix_dir}/MatrixModule.cpp)
     set_target_properties(UltraIMMatrixPlugin PROPERTIES
@@ -3785,9 +3825,9 @@ if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault)
         PREFIX ""
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
     target_link_libraries(UltraIMMatrixPlugin PRIVATE UltraIMMatrixCore)
-    message(STATUS "  [✓] UltraIM provider Matrix - ENABLED")
+    message(STATUS "  [✓] UltraIM provider Matrix - ENABLED (end-to-end encryption: ${_ultraim_matrix_e2ee})")
 else()
-    message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault)")
+    message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====

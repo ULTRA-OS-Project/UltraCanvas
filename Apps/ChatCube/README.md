@@ -29,7 +29,11 @@ The first ChatCube draft, which this replaces, is kept under
    **Matrix account** signs in to a Matrix homeserver (`matrix.org`, or your
    own) with your user name and password; your Matrix rooms then sit in the
    same list, and a Matrix ID (`@name:server`) in *Add* or *New group* goes
-   there. Encrypted Matrix rooms cannot be read in this version.
+   there. Encrypted rooms work as in Element, and the rooms ChatCube starts
+   are encrypted (*end-to-end encrypted* under the name). Signed in, the
+   Matrix account button shows **Export keys** / **Import keys**: a
+   passphrase-protected file of the room keys, the one Element reads and
+   writes, so a new device can read the messages from before it.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    green `✓✓` read.
@@ -45,8 +49,10 @@ The first ChatCube draft, which this replaces, is kept under
 ## Building and running
 
 ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
-UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider module is built next
-to it in `<build>/Plugins/UltraIM/`. `CHATCUBE_PLUGIN_DIR` points it elsewhere.
+UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
+to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
+(cargo) at build time; without one the Matrix module cannot open encrypted
+rooms. `CHATCUBE_PLUGIN_DIR` points it elsewhere.
 Its data - the identity's key vault, contacts, history - is in the per-user
 data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).

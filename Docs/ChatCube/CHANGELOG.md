@@ -32,9 +32,16 @@
   ChatCube Direct, with replies, edits, deletions, typing, read ticks and
   unread counts. An invitation shows in the list; answering it accepts it.
   Add someone on Matrix by their `@name:server`. The sign-in is kept, so
-  ChatCube reconnects by itself. Not yet: end-to-end encrypted rooms (they
-  show that they are encrypted, and cannot be written in), pictures and
-  files, calls.
+  ChatCube reconnects by itself. Not yet: pictures and files, calls.
+- **Encrypted Matrix rooms.** ChatCube reads and writes end-to-end encrypted
+  Matrix rooms like Element does (Olm and Megolm), and the direct chats and
+  groups it starts are encrypted - the header says *end-to-end encrypted*.
+  Each of your other devices and each of the other person's gets the keys
+  from the moment ChatCube sees it; a message whose key has not arrived yet
+  says so and opens when it does. *Export keys* / *Import keys* (click the
+  Matrix account button once signed in) write and read the passphrase
+  protected key file Element uses, to read earlier messages on a new
+  device. A device whose keys change is no longer trusted.
 - History that arrives late (a Matrix invitation's messages, once it is
   accepted) takes its place by time instead of coming last.
 - A call the other person hangs up now always ends as a hang-up: the closing

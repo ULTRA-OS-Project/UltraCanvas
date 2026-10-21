@@ -11,9 +11,11 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSelection.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasVideoTile.h"
@@ -274,6 +276,16 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     matrixForm_->AddChild(matrixSignIn_);
     matrixForm_->SetVisible(false);
     sidebar->AddChild(matrixForm_);
+    // Signed in: the keys to the encrypted rooms, to keep or to move.
+    matrixKeysForm_ = MakeRow("cc-matrix-keys", 6);
+    auto exportKeys = MakeButton("cc-matrix-export", "Export keys", (kSidebarWidth - 22) / 2);
+    exportKeys->SetOnClick([this]() { ExportMatrixKeys(); });
+    matrixKeysForm_->AddChild(exportKeys);
+    auto importKeys = MakeButton("cc-matrix-import", "Import keys", (kSidebarWidth - 22) / 2);
+    importKeys->SetOnClick([this]() { ImportMatrixKeys(); });
+    matrixKeysForm_->AddChild(importKeys);
+    matrixKeysForm_->SetVisible(false);
+    sidebar->AddChild(matrixKeysForm_);
 
     groupForm_ = std::make_shared<UltraCanvasContainer>("cc-group-form");
     groupForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -594,8 +606,70 @@ void ChatCubeWindow::ToggleMatrixForm() {
         SetStatus("The Matrix module was not found (Plugins/UltraIM).");
         return;
     }
-    matrixForm_->SetVisible(!matrixForm_->IsVisible());
+    // Signed in, the form is the keys' buttons; signed out, the sign-in.
+    if (info.connectionState == UltraIMConnectionState::Connected) {
+        matrixForm_->SetVisible(false);
+        const bool canExport = UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::E2EEncryption);
+        if (!canExport) SetStatus("Matrix: this ChatCube was built without end-to-end encryption.");
+        matrixKeysForm_->SetVisible(canExport && !matrixKeysForm_->IsVisible());
+    } else {
+        matrixKeysForm_->SetVisible(false);
+        matrixForm_->SetVisible(!matrixForm_->IsVisible());
+    }
     if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::ExportMatrixKeys() {
+    UltraCanvasFileLoader::RequestNewDocumentPassword(window_.get(), [this](bool proceed, const std::string& passphrase) {
+        if (!proceed) return;
+        SetStatus("Matrix: exporting the room keys\xE2\x80\xA6");
+        UltraIM_ExportEncryptionKeys(matrixProviderId_, passphrase, [this](const UltraIMResult& r, const std::string& data) {
+            if (!r) {
+                SetStatus("Matrix: " + r.message);
+                return;
+            }
+            FileDialogOptions opts;
+            opts.SetTitle("Save the Matrix room keys")
+                .SetDefaultFileName("matrix-room-keys.txt")
+                .AddFilter("Matrix room keys", std::vector<std::string>{"txt"})
+                .AddFilter("All files", std::vector<std::string>{"*"})
+                .SetParentWindow(window_.get());
+            UltraCanvasFileLoader::SaveFileDialog(opts, [this, data](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+                // The provider wrote the format; the file is the user's.
+                std::FILE* f = OpenFileUtf8(path, "wb");
+                const bool written = f && std::fwrite(data.data(), 1, data.size(), f) == data.size();
+                if (f) std::fclose(f);
+                SetStatus(written ? "Matrix: room keys saved to " + path : "Matrix: could not write " + path);
+            });
+        });
+    });
+}
+
+void ChatCubeWindow::ImportMatrixKeys() {
+    FileDialogOptions opts;
+    opts.SetTitle("Import Matrix room keys")
+        .AddFilter("Matrix room keys", std::vector<std::string>{"txt"})
+        .AddFilter("All files", std::vector<std::string>{"*"})
+        .SetParentWindow(window_.get());
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
+        if (!file.success) {
+            SetStatus("Matrix: " + file.error);
+            return;
+        }
+        const std::string data(file.bytes.begin(), file.bytes.end());
+        UltraCanvasFileLoader::RequestDocumentPassword(path, window_.get(),
+                                                       [this, data](bool proceed, const std::string& passphrase) {
+            if (!proceed) return;
+            SetStatus("Matrix: importing the room keys\xE2\x80\xA6");
+            UltraIM_ImportEncryptionKeys(matrixProviderId_, data, passphrase, [this](const UltraIMResult& r, int imported) {
+                SetStatus(r ? "Matrix: " + std::to_string(imported) + " room keys imported" : "Matrix: " + r.message);
+                if (r) RefreshConversations();
+            });
+        });
+    });
 }
 
 void ChatCubeWindow::SignInToMatrix(bool stored) {
@@ -726,12 +800,14 @@ void ChatCubeWindow::UpdateHeader() {
     if (!typingContact_.empty() && NowMs() < typingUntilMs_) {
         subtitle_->SetText("typing\xE2\x80\xA6");
     } else if (c->isGroup) {
-        subtitle_->SetText(std::to_string(c->memberIds.size()) + " members");
+        subtitle_->SetText(std::to_string(c->memberIds.size()) + " members" +
+                           (c->isEncrypted ? " \xC2\xB7 end-to-end encrypted" : ""));
     } else if (c->providerId == providerId_) {
         subtitle_->SetText(PresenceText(c->presence));
     } else {
         // Not ChatCube Direct: no relay to wait on.
-        subtitle_->SetText(c->presence == UltraIMPresence::Offline ? "offline" : PresenceText(c->presence));
+        subtitle_->SetText((c->presence == UltraIMPresence::Offline ? "offline" : PresenceText(c->presence)) +
+                           (c->isEncrypted ? " \xC2\xB7 end-to-end encrypted" : ""));
     }
     // Calls need UltraRTC media; the provider says when they are possible.
     // One call at a time.

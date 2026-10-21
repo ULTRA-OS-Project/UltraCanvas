@@ -40,6 +40,13 @@ endif()
 # starts with the python in ULTRAIM_MATRIX_PYTHON (else python3); skips when
 # that python has no matrix-synapse.
 if(TARGET UltraIMMatrixCore)
+    # The encryption on its own, no homeserver: canonical JSON, vodozemac
+    # through the shim, the key store, room-key export files.
+    add_executable(MatrixCryptoTests MatrixCryptoTests.cpp)
+    target_compile_features(MatrixCryptoTests PRIVATE cxx_std_20)
+    target_link_libraries(MatrixCryptoTests PRIVATE UltraIMMatrixCore)
+    add_test(NAME MatrixCryptoTests COMMAND MatrixCryptoTests)
+
     add_executable(MatrixProviderTests MatrixProviderTests.cpp)
     target_compile_features(MatrixProviderTests PRIVATE cxx_std_20)
     target_link_libraries(MatrixProviderTests PRIVATE UltraIMMatrixCore)

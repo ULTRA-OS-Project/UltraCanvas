@@ -9,6 +9,8 @@
 //    AuthenticationFailed AND an empty output
 //  - AES-CBC against FIPS 197 App. C and SP 800-38A F.2, PKCS #7 lengths,
 //    and refused padding reported as DecryptionFailed with an empty output
+//  - AES-CTR against SP 800-38A F.5, any message length, the 128-bit counter
+//    carry, and PBKDF2 against RFC 7914 (SHA-256) and SHA-512 values
 //  - KDF determinism, salt sensitivity and stored-parameter honesty
 //  - Ed25519 against the RFC 8032 §7.1 vectors, plus a flipped message bit, a
 //    flipped signature bit and a wrong key, each reported as SignatureInvalid
@@ -841,6 +843,137 @@ static void TestHkdf() {
           "different info yields different key material");
 }
 
+// ===== AES-CTR — SP 800-38A F.5 vectors =====
+static void TestAesCtr() {
+    std::printf("AES-CTR (SP 800-38A F.5 vectors)\n");
+    std::vector<uint8_t> plain, counter;
+    UltraCrypt_FromHex("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"
+                       "30c81c46a35ce411e5fbc1191a0a52eff69f2445df4f9b17ad2b417be66c3710",
+                       plain);
+    UltraCrypt_FromHex("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff", counter);
+    struct Vector { const char* key; const char* ct; };
+    const Vector sp[] = {
+        {"2b7e151628aed2a6abf7158809cf4f3c",
+         "874d6191b620e3261bef6864990db6ce9806f66b7970fdff8617187bb9fffdff"
+         "5ae4df3edbd5d35e5b4f09020db03eab1e031dda2fbe03d1792170a0f3009cee"},
+        {"603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4",
+         "601ec313775789a5b7a7f504bbf3d228f443e3ca4d62b59aca84e990cacaf5c5"
+         "2b0930daa23de94ce87017ba2d84988ddfc9c58db67aada613c2dd08457941a6"},
+    };
+    for (const Vector& v : sp) {
+        const UltraCryptSecureBuffer key = BufferFromHex(v.key);
+        const std::string bits = std::to_string(key.GetSize() * 8);
+        UltraCryptCtrParams params;
+        params.iv = counter;
+        std::vector<uint8_t> ct;
+        Check(static_cast<bool>(UltraCrypt_AesCtrEncrypt(key, params, plain.data(), plain.size(), ct)),
+              "CTR-AES" + bits + " encrypts");
+        CheckHex(ct, v.ct, "SP 800-38A F.5 CTR-AES" + bits);
+        UltraCryptSecureBuffer back;
+        Check(UltraCrypt_AesCtrDecrypt(key, params, ct.data(), ct.size(), back) &&
+                  back.GetSize() == plain.size() && std::memcmp(back.Data(), plain.data(), plain.size()) == 0,
+              "CTR-AES" + bits + " decrypts back");
+        // Any length, not just whole blocks: a prefix of the key stream.
+        std::vector<uint8_t> part;
+        Check(UltraCrypt_AesCtrEncrypt(key, params, plain.data(), 37, part) && part.size() == 37 &&
+                  std::memcmp(part.data(), ct.data(), 37) == 0,
+              "CTR-AES" + bits + " encrypts a 37-byte message as the prefix");
+    }
+
+    // The counter carries across all 128 bits: from ff..ff on to 00..00.
+    {
+        const UltraCryptSecureBuffer key = BufferFromHex("2b7e151628aed2a6abf7158809cf4f3c");
+        UltraCryptCtrParams params;
+        params.iv.assign(16, 0xff);
+        const std::vector<uint8_t> zeros(80, 0);
+        std::vector<uint8_t> ct;
+        UltraCrypt_AesCtrEncrypt(key, params, zeros.data(), zeros.size(), ct);
+        CheckHex(ct,
+                 "8af2860142f786f409307c1a3f7eaaac7df76b0c1ab899b33e42f047b91b546f"
+                 "57127d4034b1bebfaef466b9c7726fc6973f2ef34879e2027f1734303ff21f89"
+                 "469c7fcb75d5d9a1b418cb997b09a185",
+                 "CTR counter wraps from ff..ff to 00..00");
+    }
+
+    // A fresh random IV when none is given, and the refusals.
+    {
+        const UltraCryptSecureBuffer key = BufferFromHex("2b7e151628aed2a6abf7158809cf4f3c");
+        UltraCryptCtrParams first, second;
+        std::vector<uint8_t> a, b;
+        Check(UltraCrypt_AesCtrEncrypt(key, first, plain.data(), 16, a) &&
+                  UltraCrypt_AesCtrEncrypt(key, second, plain.data(), 16, b) && first.iv.size() == 16 &&
+                  first.iv != second.iv && a != b,
+              "CTR draws a fresh 16-byte IV each time none is given");
+        UltraCryptCtrParams bad;
+        bad.iv.assign(12, 0);
+        std::vector<uint8_t> ct;
+        Check(UltraCrypt_AesCtrEncrypt(key, bad, plain.data(), 16, ct).code == UltraCryptResultCode::InvalidNonceSize,
+              "CTR refuses a 12-byte IV");
+        UltraCryptSecureBuffer back;
+        Check(UltraCrypt_AesCtrDecrypt(key, bad, plain.data(), 16, back).code ==
+                  UltraCryptResultCode::InvalidNonceSize && back.IsEmpty(),
+              "CTR decrypt refuses a 12-byte IV, output empty");
+        const UltraCryptSecureBuffer shortKey = BufferFromHex("2b7e151628aed2a6");
+        Check(UltraCrypt_AesCtrEncrypt(shortKey, first, plain.data(), 16, ct).code ==
+                  UltraCryptResultCode::InvalidKeySize,
+              "CTR refuses an 8-byte key");
+        Check(UltraCrypt_AesCtrEncrypt(key, first, nullptr, 0, ct) && ct.empty(), "CTR encrypts nothing to nothing");
+    }
+}
+
+// ===== PBKDF2 — RFC 7914 §11 (SHA-256) and the SHA-512 values =====
+static void TestPbkdf2() {
+    std::printf("PBKDF2 (RFC 7914 vectors, SHA-512)\n");
+    auto derive = [](UltraCryptHashAlgorithm algorithm, const std::string& password, const std::string& salt,
+                     uint32_t iterations, size_t length, std::vector<uint8_t>& out) {
+        const UltraCryptSecureBuffer pw(password.data(), password.size());
+        UltraCryptSecureBuffer key;
+        auto r = UltraCrypt_DeriveKeyPbkdf2(algorithm, pw, std::vector<uint8_t>(salt.begin(), salt.end()), iterations,
+                                            length, key);
+        out.assign(key.Data(), key.Data() + key.GetSize());
+        return r;
+    };
+    std::vector<uint8_t> out;
+    Check(static_cast<bool>(derive(UltraCryptHashAlgorithm::SHA256, "passwd", "salt", 1, 64, out)),
+          "PBKDF2-SHA-256 succeeds");
+    CheckHex(out,
+             "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc"
+             "49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783",
+             "RFC 7914 PBKDF2-HMAC-SHA-256, c = 1");
+    derive(UltraCryptHashAlgorithm::SHA256, "Password", "NaCl", 80000, 64, out);
+    CheckHex(out,
+             "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56"
+             "a1d425a1225833549adb841b51c9b3176a272bdebba1d078478f62b397f33c8d",
+             "RFC 7914 PBKDF2-HMAC-SHA-256, c = 80000");
+    derive(UltraCryptHashAlgorithm::SHA512, "password", "salt", 1, 64, out);
+    CheckHex(out,
+             "867f70cf1ade02cff3752599a3a53dc4af34c7a669815ae5d513554e1c8cf252"
+             "c02d470a285a0501bad999bfe943c08f050235d7d68b1da55e63f73b60a57fce",
+             "PBKDF2-HMAC-SHA-512, c = 1");
+    derive(UltraCryptHashAlgorithm::SHA512, "password", "salt", 2, 64, out);
+    CheckHex(out,
+             "e1d9c16aa681708a45f5c7c4e215ceb66e011a2e9f0040713f18aefdb866d53c"
+             "f76cab2868a39b9f7840edce4fef5a82be67335c77a6068e04112754f27ccf4e",
+             "PBKDF2-HMAC-SHA-512, c = 2");
+    // Past one block (T_2), with an empty salt.
+    derive(UltraCryptHashAlgorithm::SHA512, "pass", "", 3, 70, out);
+    CheckHex(out,
+             "4a3c00e64ca6fe13a0c8e1b595603603e94a1fbf2539e7c650708ac19a39d911"
+             "804e73d74ce3990cea73023e14adae7fba5bd2d1dccfd4c4af055cc9407e28d6"
+             "a6a1f5119ca4",
+             "PBKDF2-HMAC-SHA-512, 70 bytes from an empty salt");
+
+    Check(derive(UltraCryptHashAlgorithm::SHA1, "p", "s", 1, 20, out).code == UltraCryptResultCode::NotSupported &&
+              out.empty(),
+          "PBKDF2-SHA-1 is refused");
+    Check(derive(UltraCryptHashAlgorithm::SHA256, "p", "s", 0, 32, out).code ==
+              UltraCryptResultCode::InvalidArgument,
+          "PBKDF2 refuses zero iterations");
+    Check(derive(UltraCryptHashAlgorithm::SHA256, "p", "s", 1, 0, out).code ==
+              UltraCryptResultCode::InvalidArgument,
+          "PBKDF2 refuses a zero output length");
+}
+
 // ===== Base32 / Base64 (RFC 4648) =====
 // The codecs live in UltraCanvasUtils (UltraCanvasTextUtils.h). UltraCrypt
 // keeps one wrapper, UltraCrypt_Base32Decode, which decodes into a zeroizing
@@ -983,9 +1116,11 @@ int main() {
     TestSha1();
     TestHmac();
     TestHkdf();
+    TestPbkdf2();
     TestEncodings();
     TestAead();
     TestAesCbc();
+    TestAesCtr();
     TestKdf();
     TestSignatures();
     TestKeyExchange();

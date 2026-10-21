@@ -108,6 +108,8 @@ struct UltraIMConversation {
     std::string     lastMessageSnippet;
     int64_t         lastMessageTimeMs = 0;
     int             unreadCount = 0;
+    // End-to-end encrypted: only its members' devices can read what is in it.
+    bool            isEncrypted = false;
 };
 
 // ============================================================================
@@ -334,3 +336,5 @@ using UltraIMMessagesCallback     = std::function<void(const UltraIMResult& resu
                                                        const std::vector<UltraIMMessage>& messages)>;
 using UltraIMStickerPacksCallback = std::function<void(const UltraIMResult& result,
                                                        const std::vector<UltraIMStickerPack>& packs)>;
+using UltraIMKeyExportCallback    = std::function<void(const UltraIMResult& result, const std::string& data)>;
+using UltraIMKeyImportCallback    = std::function<void(const UltraIMResult& result, int imported)>;
