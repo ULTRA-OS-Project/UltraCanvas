@@ -1,0 +1,24 @@
+# The ChatCube relay (Server/ChatCubeRelay): its tests, on every change
+# to it. Pure Python, no system packages.
+name: ChatCube relay
+
+on:
+  push:
+    branches: [main]
+    paths: ['Server/ChatCubeRelay/**', '.github/workflows/chatcube-relay.yml']
+  pull_request:
+    paths: ['Server/ChatCubeRelay/**', '.github/workflows/chatcube-relay.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Server/ChatCubeRelay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[test]'
+      - run: python -m pytest -q
