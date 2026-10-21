@@ -2,7 +2,7 @@
 // AnchorPoint - GUI application entry point. It opens no files from the
 // command line: when AnchorPoint is already running, a second start brings
 // the running window forward and quits (UltraCanvasSingleInstance.h). The
-// headless `anchorpoint` (cli/main.cpp) is not limited to one copy.
+// headless `anchorpoint-cli` (cli/main.cpp) is not limited to one copy.
 // Version: 0.3.0 - one copy per user: a second start brings the running
 //                  window forward
 // Version: 0.2.0

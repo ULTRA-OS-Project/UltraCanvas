@@ -4,7 +4,9 @@
 #
 # Targets:
 #   anchorpoint_core  static lib: transfer protocol + raw-socket transport (UltraCrypt)
-#   anchorpoint       headless CLI (always built)
+#   anchorpoint-cli   headless CLI (always built). Not `anchorpoint`: on the
+#                     case-insensitive file systems of macOS and Windows that
+#                     is the same file as the window's `AnchorPoint`.
 #   anchorpoint_tests protocol tests, run by ctest (-DANCHORPOINT_BUILD_TESTS=OFF to skip)
 #   AnchorPoint       UltraCanvas GUI (built when the framework is available;
 #                     toggle with -DANCHORPOINT_BUILD_GUI=ON/OFF)
@@ -96,10 +98,10 @@ endif()
 # ===========================================================================
 # Headless CLI (always)
 # ===========================================================================
-add_executable(anchorpoint cli/main.cpp)
-target_link_libraries(anchorpoint PRIVATE anchorpoint_core)
-set_target_properties(anchorpoint PROPERTIES OUTPUT_NAME "anchorpoint")
-install(TARGETS anchorpoint RUNTIME DESTINATION bin)
+add_executable(anchorpoint-cli cli/main.cpp)
+target_link_libraries(anchorpoint-cli PRIVATE anchorpoint_core)
+set_target_properties(anchorpoint-cli PROPERTIES OUTPUT_NAME "anchorpoint-cli")
+install(TARGETS anchorpoint-cli RUNTIME DESTINATION bin)
 
 # ===========================================================================
 # Tests (headless, core only)
@@ -171,7 +173,7 @@ if(ANCHORPOINT_BUILD_GUI)
                 gui/AnchorPointApp.cpp)
         # One copy per user; a second start brings the running one forward
         # (UltraCanvasSingleInstance.h). The GUI only: the headless
-        # `anchorpoint` runs as many times as it is started. Included here
+        # `anchorpoint-cli` runs as many times as it is started. Included here
         # too for a standalone build, where the root CMakeLists.txt that
         # defines the function is not read.
         include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasSingleInstance.cmake")
@@ -207,7 +209,7 @@ if(ANCHORPOINT_BUILD_GUI)
                 OUTPUT_NAME "AnchorPoint"
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
         # Windows Release builds open no console window beside AnchorPoint's
-        # (cmake/UltraCanvasWindowsGuiApp.cmake). The headless `anchorpoint`
+        # (cmake/UltraCanvasWindowsGuiApp.cmake). The headless `anchorpoint-cli`
         # stays a console program.
         include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
         ultracanvas_windows_gui_app(AnchorPoint)

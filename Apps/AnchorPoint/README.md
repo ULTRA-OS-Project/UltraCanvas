@@ -18,7 +18,7 @@ through NAT, after which the file flows directly and end-to-end encrypted.
 
 | Milestone | Scope | State |
 |---|---|---|
-| **M1 — Core + CLI** | Transfer protocol (chunked, SHA-256 verified, resumable) + raw-socket TCP transport + headless `anchorpoint` CLI | ✅ Done, tested |
+| **M1 — Core + CLI** | Transfer protocol (chunked, SHA-256 verified, resumable) + raw-socket TCP transport + headless `anchorpoint-cli` | ✅ Done, tested |
 | **M2 — GUI** | UltraCanvas window: choose a file, enter a peer address, send/receive with live progress | ✅ Done |
 | **M3 — Internet** | Signaling client + STUN/UDP hole-punching + relay fallback + E2E encryption + pairing codes | ⏳ Planned |
 
@@ -80,12 +80,12 @@ cd Apps/AnchorPoint
 # Core + headless CLI only (no UI framework — UltraCrypt, libsodium, sockets):
 cmake -B build -DANCHORPOINT_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-# → build/bin/anchorpoint
+# → build/bin/anchorpoint-cli
 
 # Core + CLI + UltraCanvas GUI (needs the framework toolchain):
 cmake -B build -DANCHORPOINT_BUILD_GUI=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-# → build/bin/AnchorPoint  and  build/bin/anchorpoint
+# → build/bin/AnchorPoint  and  build/bin/anchorpoint-cli
 ```
 
 The core + CLI need **libsodium** (found through pkg-config; `libsodium-dev` on
@@ -97,10 +97,10 @@ files the SHA-256 check needs. The protocol tests build with them;
 UltraCanvas framework the same way `Apps/Texter` does.
 
 The framework's own build also builds AnchorPoint - window, CLI and tests -
-on Linux (`BUILD_ANCHORPOINT`, on by default there), so CI builds the window
-in every Linux job. It is off on macOS and Windows for now: their file
-systems ignore case, so the window `AnchorPoint` and the command line
-`anchorpoint` would be one file in `bin/`.
+(`BUILD_ANCHORPOINT`, on by default), so CI builds the window on Linux, macOS
+and Windows. The command line is `anchorpoint-cli` rather than `anchorpoint`
+because macOS and Windows file systems ignore case: `anchorpoint` and the
+window's `AnchorPoint` would be one file in `bin/`.
 
 ---
 
@@ -112,12 +112,12 @@ will use later.
 
 ```bash
 # Receiver waits; sender connects and pushes:
-anchorpoint recv --out ./downloads --listen --port 5040     # machine A
-anchorpoint send ./photo.jpg --to 192.168.1.20:5040         # machine B
+anchorpoint-cli recv --out ./downloads --listen --port 5040     # machine A
+anchorpoint-cli send ./photo.jpg --to 192.168.1.20:5040         # machine B
 
 # Or sender waits; receiver connects and pulls:
-anchorpoint send ./photo.jpg --listen --port 5040           # machine A
-anchorpoint recv --out ./downloads --from 192.168.1.10:5040 # machine B
+anchorpoint-cli send ./photo.jpg --listen --port 5040           # machine A
+anchorpoint-cli recv --out ./downloads --from 192.168.1.10:5040 # machine B
 ```
 
 Transfers show live progress, resume from interrupted partials, and refuse to
@@ -128,7 +128,7 @@ report success unless the received bytes hash-match the source.
 ## GUI usage (M2)
 
 Launch `AnchorPoint`. One copy runs per user: launching it again brings the
-running window forward (the headless `anchorpoint` is not limited). The
+running window forward (the headless `anchorpoint-cli` is not limited). The
 window has two halves:
 
 * **Send a file** — click *Choose File…* to pick it, type the peer's address

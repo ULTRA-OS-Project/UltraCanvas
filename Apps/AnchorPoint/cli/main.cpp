@@ -4,10 +4,10 @@
 // Author: AnchorPoint
 //
 // Usage:
-//   anchorpoint send <file> --to <host>[:port]      connect to a listener, push
-//   anchorpoint send <file> --listen [--port N]     wait for a peer, then push
-//   anchorpoint recv [--out DIR] --listen [--port N] wait for a sender
-//   anchorpoint recv [--out DIR] --from <host>[:port] connect to a listening sender
+//   anchorpoint-cli send <file> --to <host>[:port]      connect to a listener, push
+//   anchorpoint-cli send <file> --listen [--port N]     wait for a peer, then push
+//   anchorpoint-cli recv [--out DIR] --listen [--port N] wait for a sender
+//   anchorpoint-cli recv [--out DIR] --from <host>[:port] connect to a listening sender
 //
 // The connection role (listen/connect) is independent of the data role
 // (send/recv), mirroring how NAT-traversed sessions will work later.
@@ -58,10 +58,10 @@ void PrintProgress(uint64_t done, uint64_t total) {
 int Usage() {
     std::cerr <<
         "AnchorPoint CLI (M1)\n"
-        "  anchorpoint send <file> --to <host>[:port]\n"
-        "  anchorpoint send <file> --listen [--port N]\n"
-        "  anchorpoint recv [--out DIR] --listen [--port N]\n"
-        "  anchorpoint recv [--out DIR] --from <host>[:port]\n";
+        "  anchorpoint-cli send <file> --to <host>[:port]\n"
+        "  anchorpoint-cli send <file> --listen [--port N]\n"
+        "  anchorpoint-cli recv [--out DIR] --listen [--port N]\n"
+        "  anchorpoint-cli recv [--out DIR] --from <host>[:port]\n";
     return 2;
 }
 

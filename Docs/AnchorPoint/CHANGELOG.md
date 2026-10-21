@@ -12,12 +12,12 @@
   - `SendFile` / `ReceiveFile` (`net/Protocol.h`) take an optional cancel flag,
     checked between chunks, and report `cancelled` in their result; a call
     blocked on the network is woken with the new `IConnection::Interrupt()`.
-    The headless `anchorpoint` passes no flag and is unchanged.
+    The headless CLI passes no flag and is unchanged.
   - Stop does not interrupt the SHA-256 the sender takes of the whole file
     before it connects to send; a large file still finishes hashing first.
 - **A send to a peer that has gone no longer ends the program.** On Linux and
   macOS, writing to a connection the receiver had closed raised SIGPIPE, which
-  quit the sending AnchorPoint (or `anchorpoint`) with no message. It is now an
+  quit the sending AnchorPoint (or its CLI) with no message. It is now an
   ordinary failed send.
 - **The progress bar no longer shows the last transfer next to a new
   message.** *"Choose a file first."*, a bad peer address or a bad listen port
@@ -35,11 +35,15 @@
   directly. A file picked to send is not added to the recent-files list.
   The received file's path is joined with `PathFromUtf8` / `PathToUtf8`, so
   a folder or file name in any script works on Windows too.
-- **CI builds the window.** The framework's build now includes AnchorPoint on
-  Linux (`BUILD_ANCHORPOINT`), so every Linux CI job builds the window, the
-  CLI and the tests; until now CI only built the core and CLI on their own.
-  Not on macOS and Windows yet: `AnchorPoint` and `anchorpoint` are one name
-  on their case-insensitive file systems.
+- **The command line is `anchorpoint-cli` now, not `anchorpoint`.** On macOS
+  and Windows, whose file systems ignore case, `anchorpoint` and the window's
+  `AnchorPoint` are the same file, so building both in one folder kept only
+  one of them. Scripts that ran `anchorpoint send ...` or `anchorpoint recv
+  ...` need the new name; the arguments are unchanged.
+- **CI builds the window, on Linux, macOS and Windows.** The framework's build
+  now includes AnchorPoint (`BUILD_ANCHORPOINT`), so every CI job builds the
+  window and the CLI; until now CI only built the core and CLI on their own,
+  on Linux.
 - The README no longer says the window's build is blocked by unfinished
   UltraNet sources; it builds.
 

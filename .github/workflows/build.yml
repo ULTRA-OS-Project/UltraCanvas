@@ -1493,8 +1493,7 @@ jobs:
           echo "VideoFX engine built and VideoFXTest ran"
 
       # AnchorPoint is also its own CMake project. The build above includes it
-      # on Linux (BUILD_ANCHORPOINT), which builds the window against the
-      # framework; this step builds the core and CLI *without* the framework,
+      # (BUILD_ANCHORPOINT), which builds the window against the framework; this step builds the core and CLI *without* the framework,
       # the way its README says - that standalone link once broke (UltraCrypt
       # had started calling the shared Base32 codec) and nobody saw - and runs
       # the protocol tests: hostile file names against the receiver, and
