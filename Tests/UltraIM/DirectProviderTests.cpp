@@ -29,7 +29,9 @@
 #include <thread>
 #include <vector>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -53,8 +55,16 @@ int g_checks = 0;
 
 namespace fs = std::filesystem;
 
+int ProcessId() {
+#if defined(_WIN32)
+    return _getpid();
+#else
+    return ::getpid();
+#endif
+}
+
 fs::path TempDir(const std::string& name) {
-    fs::path dir = fs::temp_directory_path() / ("ultraim-direct-" + name + "-" + std::to_string(::getpid()));
+    fs::path dir = fs::temp_directory_path() / ("ultraim-direct-" + name + "-" + std::to_string(ProcessId()));
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir, ec);
