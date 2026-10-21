@@ -276,7 +276,8 @@ device, and an encrypted room with
 id `telegram`) is a client of TDLib, Telegram's own client library, through
 its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
 `td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
-provider builds everywhere and works wherever a libtdjson is found - the
+provider builds on every platform but WebAssembly (which loads no native
+library) and works wherever a libtdjson is found - the
 `tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
 system's `libtdjson.so` / `.dylib` / `tdjson.dll` (TDLib 1.7 or later; 1.8.69
 is what the tests use). One thread receives for every client in the process.

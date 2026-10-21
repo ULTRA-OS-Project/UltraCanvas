@@ -3885,9 +3885,13 @@ endif()
 # signs in wherever a libtdjson is found (next to the plugins in tdlib/, or
 # ULTRAIM_TDJSON_PATH, or the system's). The application's API credentials
 # from my.telegram.org can be built in; otherwise the user gives them.
+# Not in WebAssembly: there is no libtdjson to load there, and no loadable
+# provider module either.
 set(ULTRAIM_TELEGRAM_API_ID "" CACHE STRING "Telegram API ID (my.telegram.org) built into the Telegram provider")
 set(ULTRAIM_TELEGRAM_API_HASH "" CACHE STRING "Telegram API hash (my.telegram.org) built into the Telegram provider")
-if(TARGET UltraIM AND TARGET UltraVault AND TARGET UltraCrypt)
+if(EMSCRIPTEN)
+    message(STATUS "  [−] UltraIM provider Telegram - SKIPPED (WebAssembly: no run-time loading of TDLib)")
+elseif(TARGET UltraIM AND TARGET UltraVault AND TARGET UltraCrypt)
     set(_ultraim_telegram_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/telegram)
     add_library(UltraIMTelegramCore STATIC
         ${_ultraim_telegram_dir}/TdJson.cpp
