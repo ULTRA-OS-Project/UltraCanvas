@@ -56,6 +56,13 @@ const std::vector<UltraDbMigration>& Migrations() {
          "CREATE TABLE reading (device_id TEXT NOT NULL, sensor_type INTEGER NOT NULL,"
          "  value REAL NOT NULL, unit TEXT NOT NULL, triggered INTEGER NOT NULL, time_ms INTEGER NOT NULL);"
          "CREATE INDEX reading_device_time ON reading (device_id, time_ms);"},
+        // The home model: rooms by id, and a device's room by id, so renaming
+        // a room keeps its devices. The version-1 room names stay readable
+        // and become ids on the first open (SmartHomeManager::OpenStore).
+        {2, "smarthome v2: rooms",
+         "CREATE TABLE room (room_id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT NOT NULL DEFAULT '',"
+         "  floor TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0);"
+         "ALTER TABLE device_override ADD COLUMN room_id TEXT NOT NULL DEFAULT '';"},
     };
     return steps;
 }
@@ -191,16 +198,69 @@ bool SmartHomeStore::SetDeviceRoom(const std::string& deviceId, const std::strin
     return r ? true : Fail("Saving the room of " + deviceId, r.message);
 }
 
+bool SmartHomeStore::SetDeviceRoomId(const std::string& deviceId, const std::string& roomId) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!open) return false;
+    // The version-1 name goes: the id is what counts from now on.
+    UltraDbResult r = UltraDb_Exec(connection,
+        "INSERT INTO device_override (device_id, room, room_id) VALUES (?, '', ?)"
+        " ON CONFLICT(device_id) DO UPDATE SET room = '', room_id = excluded.room_id",
+        {deviceId, roomId});
+    return r ? true : Fail("Saving the room of " + deviceId, r.message);
+}
+
 std::map<std::string, SmartHomeDeviceOverride> SmartHomeStore::LoadDeviceOverrides() {
     std::lock_guard<std::mutex> lock(mutex);
     std::map<std::string, SmartHomeDeviceOverride> overrides;
     if (!open) return overrides;
     UltraDbResultSet rows;
-    if (!UltraDb_Query(connection, "SELECT device_id, name, room FROM device_override", rows)) return overrides;
+    if (!UltraDb_Query(connection, "SELECT device_id, name, room, room_id FROM device_override", rows)) return overrides;
     for (const auto& row : rows) {
-        overrides[row["device_id"].AsString()] = {row["name"].AsString(), row["room"].AsString()};
+        overrides[row["device_id"].AsString()] = {row["name"].AsString(), row["room"].AsString(),
+                                                  row["room_id"].AsString()};
     }
     return overrides;
+}
+
+// ===== ROOMS =====
+
+bool SmartHomeStore::SaveRoom(const SmartHomeRoom& room) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!open) return false;
+    UltraDbResult r = UltraDb_Exec(connection,
+        "INSERT INTO room (room_id, name, icon, floor, sort_order) VALUES (?, ?, ?, ?, ?)"
+        " ON CONFLICT(room_id) DO UPDATE SET name = excluded.name, icon = excluded.icon,"
+        " floor = excluded.floor, sort_order = excluded.sort_order",
+        {room.RoomId, room.Name, room.Icon, room.Floor, static_cast<int64_t>(room.SortOrder)});
+    return r ? true : Fail("Saving room " + room.Name, r.message);
+}
+
+bool SmartHomeStore::DeleteRoom(const std::string& roomId) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!open) return false;
+    UltraDbResult r = UltraDb_Exec(connection, "DELETE FROM room WHERE room_id = ?", {roomId});
+    return r ? true : Fail("Deleting room " + roomId, r.message);
+}
+
+std::vector<SmartHomeRoom> SmartHomeStore::LoadRooms() {
+    std::lock_guard<std::mutex> lock(mutex);
+    std::vector<SmartHomeRoom> rooms;
+    if (!open) return rooms;
+    UltraDbResultSet rows;
+    if (!UltraDb_Query(connection,
+                       "SELECT room_id, name, icon, floor, sort_order FROM room ORDER BY sort_order, name", rows)) {
+        return rooms;
+    }
+    for (const auto& row : rows) {
+        SmartHomeRoom room;
+        room.RoomId = row["room_id"].AsString();
+        room.Name = row["name"].AsString();
+        room.Icon = row["icon"].AsString();
+        room.Floor = row["floor"].AsString();
+        room.SortOrder = static_cast<int>(row["sort_order"].AsInt64());
+        rooms.push_back(std::move(room));
+    }
+    return rooms;
 }
 
 // ===== SCENES AND AUTOMATIONS =====
@@ -420,7 +480,11 @@ bool SmartHomeStore::SetSetting(const std::string&, const std::string&) { return
 std::optional<std::string> SmartHomeStore::GetSetting(const std::string&) { return std::nullopt; }
 bool SmartHomeStore::SetDeviceName(const std::string&, const std::string&) { return false; }
 bool SmartHomeStore::SetDeviceRoom(const std::string&, const std::string&) { return false; }
+bool SmartHomeStore::SetDeviceRoomId(const std::string&, const std::string&) { return false; }
 std::map<std::string, SmartHomeDeviceOverride> SmartHomeStore::LoadDeviceOverrides() { return {}; }
+bool SmartHomeStore::SaveRoom(const SmartHomeRoom&) { return false; }
+bool SmartHomeStore::DeleteRoom(const std::string&) { return false; }
+std::vector<SmartHomeRoom> SmartHomeStore::LoadRooms() { return {}; }
 bool SmartHomeStore::SaveScene(const SmartHomeScene&) { return false; }
 bool SmartHomeStore::DeleteScene(const std::string&) { return false; }
 std::vector<SmartHomeScene> SmartHomeStore::LoadScenes() { return {}; }

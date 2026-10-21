@@ -9,6 +9,7 @@
 #include "SmartHomeAutomationEngine.h"
 #include "SmartHomeStore.h"
 #include <deque>
+#include <set>
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -162,6 +163,14 @@ public:
     // ===== THE HOME =====
     bool SetDeviceName(const std::string& deviceId, const std::string& name);
     bool SetDeviceRoom(const std::string& deviceId, const std::string& room);
+    std::vector<SmartHomeRoom> GetRooms() const;
+    SmartHomeRoom GetRoom(const std::string& roomId) const;
+    bool CreateRoom(const SmartHomeRoom& room, std::string* createdId);
+    bool UpdateRoom(const SmartHomeRoom& room);
+    bool DeleteRoom(const std::string& roomId);
+    bool AssignDeviceToRoom(const std::string& deviceId, const std::string& roomId);
+    std::string GetDeviceRoom(const std::string& deviceId) const;
+    void SetOnHomeChange(OnHomeChange callback);
     bool SetHomeLocation(double latitude, double longitude);
     bool GetHomeLocation(double& latitude, double& longitude) const;
     bool GetSunTimes(int64_t& sunrise, int64_t& sunset) const;
@@ -205,8 +214,19 @@ private:
     // Registers a device a backend reports, with the backend's device
     // object when it keeps one.
     void AdoptDevice(ISmartHomeProtocol* protocol, const SmartHomeDeviceInfo& info);
-    // The person's name and room over the backend's.
-    void ApplyOverrides(SmartHomeDeviceInfo& info) const;
+    // The person's name and room over the backend's, and the room resolved
+    // to one of the home's (a room name seen for the first time becomes a
+    // room). Called with no lock held.
+    void ApplyOverrides(SmartHomeDeviceInfo& info);
+    // Reads a device back from its backend, applies the overrides and
+    // stores the result (after its room or a room changed).
+    void ReapplyDevice(const std::string& deviceId);
+    // Under homeMutex: the room with this name (not minding case), made and
+    // saved when there is none; a new id unlike every other.
+    std::string RoomForNameLocked(const std::string& name);
+    std::string NewRoomIdLocked(const std::string& name) const;
+    // Calls OnHomeChange when the rooms changed since the last call.
+    void NotifyHomeChange();
     // Sensor history: what a device reads now, when it moved past its
     // deadband or 15 minutes have passed (store open only).
     void RecordReadings(const std::string& deviceId);
@@ -262,6 +282,14 @@ private:
     // The store, and what of it lives in memory
     std::unique_ptr<SmartHomeStore> store;
     std::map<std::string, SmartHomeDeviceOverride> overrides;   // under deviceMutex
+    // The home's rooms. Lock order: deviceMutex, then homeMutex - never the
+    // other way round.
+    std::vector<SmartHomeRoom> rooms;                           // under homeMutex
+    // Rooms the person made or changed while no store was open; the others
+    // came from backend names and are made again from them when it opens.
+    std::set<std::string> roomsChosen;                          // under homeMutex
+    mutable std::mutex homeMutex;
+    std::atomic<bool> homeChanged{false};
     mutable std::mutex locationMutex;
     bool hasLocation = false;
     double homeLatitude = 0.0, homeLongitude = 0.0;
@@ -283,6 +311,7 @@ private:
     mutable std::mutex callbackMutex;                           // the two below
     OnAutomationNotify onAutomationNotify;
     OnSmartHomeEvent onEvent;
+    OnHomeChange onHomeChange;
 };
 
 } // namespace SmartHome

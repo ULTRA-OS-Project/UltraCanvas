@@ -374,6 +374,17 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     endif()
     add_test(NAME SmartHomeAutomation COMMAND SmartHomeAutomationTest)
 
+    # The home's rooms, with and without smarthome.db.
+    add_executable(SmartHomeHomeModelTest tests/HomeModelTest.cpp)
+    target_link_libraries(SmartHomeHomeModelTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeHomeModelTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/core
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
+    if(TARGET uc-database)
+        target_compile_definitions(SmartHomeHomeModelTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
+    endif()
+    add_test(NAME SmartHomeHomeModel COMMAND SmartHomeHomeModelTest)
+
     # Pure framing, so it builds whether or not the Zigbee backend is on.
     add_executable(SmartHomeAshCodecTest tests/AshCodecTest.cpp
                    protocols/Zigbee/ezsp/AshCodec.cpp)
