@@ -1,3 +1,16 @@
+#### 2026-10-21 *0.2.28*
+- **An open adjustment follows the image it works on.** An adjustment or
+  filter dialog (Levels, Curves, Colour to Alpha, Blur and the rest) took a
+  copy of the layer when it opened and put that copy back on every change in
+  the dialog: an image pasted while it was open - as a new layer or as a new
+  image - was replaced by the picture from before as soon as a slider moved,
+  and *OK* applied the adjustment to the old pixels. The preview now works on
+  the active layer as it is: a paste moves it to the pasted layer (the layer
+  it leaves gets its own pixels back), *Paste as New Image* or opening an
+  image moves it to the new picture, and a stroke or an undo on the layer is
+  kept and adjusted rather than undone. It refreshes on its own as soon as
+  the image changes, Curves redraws its histogram for the new pixels, and on
+  a locked or text layer the preview waits and says why.
 #### 2026-10-20 *0.2.27*
 - **Password-protected images.** *File > Password Protection...* gives the
   image a password; saved as an UltraCanvas layered image (`.ucd`) it is then

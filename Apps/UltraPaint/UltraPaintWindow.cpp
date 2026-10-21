@@ -1017,8 +1017,15 @@ void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const 
     // the magnifying glass each add theirs in SetDocument): the panels and
     // the title follow the document without chaining behind anyone's slot.
     UCRasterDocument::Listener l;
+#ifdef HAS_LIBVIPS
+    // An open adjustment follows the image: a pasted layer, an undo, another
+    // image altogether.
+    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); SchedulePreviewRefresh(); };
+    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); SchedulePreviewRefresh(); };
+#else
     l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
     l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); };
+#endif
     documentListener = document->AddListener(std::move(l));
     surface->SetDocument(document);
     if (magnifier) magnifier->SetDocument(document);
@@ -1027,6 +1034,9 @@ void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const 
     UpdateUndoButtons();
     UpdateTitle();
     UpdateStatus();
+#ifdef HAS_LIBVIPS
+    SchedulePreviewRefresh();
+#endif
 }
 
 void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
@@ -2946,21 +2956,87 @@ void UltraPaintWindow::CmdSelectModify(int kind) {
 // ===========================================================================
 
 #ifdef HAS_LIBVIPS
+namespace {
+    // FNV-1a over the pixels, a word at a time: tells whether a layer still
+    // holds what the preview left in it without keeping a second copy.
+    uint64_t PixelHash(const UCRasterLayer& layer) {
+        uint64_t h = 1469598103934665603ULL;
+        const uint8_t* p = layer.Data();
+        const size_t n = layer.DataSize();
+        size_t i = 0;
+        for (; i + 8 <= n; i += 8) {
+            uint64_t w;
+            std::memcpy(&w, p + i, 8);
+            h = (h ^ w) * 1099511628211ULL;
+        }
+        for (; i < n; ++i) h = (h ^ p[i]) * 1099511628211ULL;
+        return h;
+    }
+}
+
 void UltraPaintWindow::BeginPreview() {
     if (!document) return;
-    auto layer = document->GetActiveLayer();
-    if (!layer) return;
-    previewOriginal = layer->Clone();
-    previewLayerIndex = document->GetActiveLayerIndex();
     previewActive = true;
+    previewOp = nullptr;
+    SyncPreviewTarget();
+}
+
+std::shared_ptr<UCRasterLayer> UltraPaintWindow::SyncPreviewTarget() {
+    auto shownOn = previewLayer.lock();
+    const bool sameDocument = document && previewDocument.lock() == document;
+    // Painted on, undone, redone by something other than the preview: what
+    // the layer holds now is the user's, and the preview starts from it.
+    const bool changedElsewhere = shownOn && PixelHash(*shownOn) != previewShownHash;
+    auto active = document ? document->GetActiveLayer() : nullptr;
+    if (shownOn && shownOn == active && sameDocument && !changedElsewhere) return active;
+
+    // The target moved - a pasted layer on top, another image: the layer
+    // left behind gets its own pixels back, unless it left with its document.
+    if (shownOn && sameDocument && !changedElsewhere && previewOriginal && LayerIndexOf(*document, shownOn) >= 0) {
+        shownOn->CopyFrom(*previewOriginal, 0, 0);
+        document->NotifyChanged(shownOn->GetRect());
+    }
+    previewOriginal.reset();
+    previewLayer.reset();
+    previewDocument = document;
+    if (!active || active->locked || active->IsTextLayer()) {
+        if (statusHint && active) {
+            statusHint->SetText(active->locked ? "The active layer is locked" : "The active layer is a text layer");
+        }
+        return nullptr;
+    }
+    previewOriginal = active->Clone();
+    previewLayer = active;
+    previewShownHash = PixelHash(*active);
+    if (previewSourceChanged) previewSourceChanged(*active);
+    return active;
+}
+
+void UltraPaintWindow::SchedulePreviewRefresh() {
+    if (!previewActive || previewRefreshPending) return;
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    previewRefreshPending = true;
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([this, alive]() {
+        if (alive.expired()) return;
+        previewRefreshPending = false;
+        if (!previewActive || !document) return;
+        auto shownOn = previewLayer.lock();
+        if (shownOn && shownOn == document->GetActiveLayer() && previewDocument.lock() == document &&
+            PixelHash(*shownOn) == previewShownHash) return;   // nothing under the preview changed
+        ShowPreview(previewOp);
+    });
 }
 
 void UltraPaintWindow::ShowPreview(const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op) {
     if (!previewActive || !document) return;
-    auto layer = document->GetLayer(previewLayerIndex);
+    previewOp = op;
+    auto layer = SyncPreviewTarget();
     if (!layer || !previewOriginal) return;
     if (!op) {   // preview off: show the original
         layer->CopyFrom(*previewOriginal, 0, 0);
+        previewShownHash = PixelHash(*layer);
         document->NotifyChanged(layer->GetRect());
         return;
     }
@@ -2982,31 +3058,39 @@ void UltraPaintWindow::ShowPreview(const std::function<PixelFX::PFXImage(const P
                 for (int c = 0; c < 4; ++c) dp[c] = static_cast<uint8_t>(dp[c] + ((sp[c] - dp[c]) * cov + 127) / 255);
             }
         }
-        document->NotifyChanged(layer->GetRect());
     } catch (const std::exception& e) {
+        layer->CopyFrom(*previewOriginal, 0, 0);
         if (statusHint) statusHint->SetText(std::string("Filter failed: ") + e.what());
     }
+    previewShownHash = PixelHash(*layer);
+    document->NotifyChanged(layer->GetRect());
 }
 
 void UltraPaintWindow::EndPreview(bool commit, const std::string& label,
                                   const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op) {
-    if (!previewActive || !document) return;
+    if (!previewActive) return;
+    // Whatever the image became while the dialog was open is what it applies to.
+    auto layer = document ? SyncPreviewTarget() : nullptr;
     previewActive = false;
-    auto layer = document->GetLayer(previewLayerIndex);
     if (layer && previewOriginal) {
         // put the original back silently, then apply through the document so
         // the change is one undo entry
         layer->CopyFrom(*previewOriginal, 0, 0);
         document->InvalidateComposite();
         if (commit && op) {
-            if (!document->ApplyFilterToLayer(label, previewLayerIndex, op) && statusHint)
+            if (!document->ApplyFilterToLayer(label, LayerIndexOf(*document, layer), op) && statusHint)
                 statusHint->SetText(label + " could not be applied");
         } else {
             document->NotifyChanged(layer->GetRect());
         }
+    } else if (commit && op && statusHint) {
+        statusHint->SetText(label + " could not be applied");
     }
     previewOriginal.reset();
-    previewLayerIndex = -1;
+    previewLayer.reset();
+    previewDocument.reset();
+    previewOp = nullptr;
+    previewSourceChanged = nullptr;
 }
 #endif
 
@@ -3051,26 +3135,30 @@ void UltraPaintWindow::CmdCurves() {
     auto layer = document->GetActiveLayer();
     if (!layer || layer->locked) return;
     if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
-    BeginPreview();
     auto dlg = std::make_shared<UltraCanvasCurvesDialog>(ToneCurveSet());
-    // histogram backdrop from the layer
-    {
+    // histogram backdrop from the layer - again whenever the layer the
+    // curves work on changes while the dialog is open
+    std::weak_ptr<UltraCanvasCurvesDialog> weakDlg = dlg;
+    previewSourceChanged = [weakDlg](const UCRasterLayer& source) {
+        auto curves = weakDlg.lock();
+        if (!curves) return;
         std::vector<uint32_t> bins[4];
         for (auto& b : bins) b.assign(256, 0);
-        for (int y = 0; y < layer->GetHeight(); ++y) {
-            const uint8_t* row = layer->Row(y);
-            for (int x = 0; x < layer->GetWidth(); ++x) {
+        for (int y = 0; y < source.GetHeight(); ++y) {
+            const uint8_t* row = source.Row(y);
+            for (int x = 0; x < source.GetWidth(); ++x) {
                 const uint8_t* p = row + static_cast<size_t>(x) * 4;
                 if (!p[3]) continue;
                 ++bins[1][p[0]]; ++bins[2][p[1]]; ++bins[3][p[2]];
                 ++bins[0][(p[0] + p[1] + p[2]) / 3];
             }
         }
-        dlg->SetHistogram(ToneCurveChannel::RGB, bins[0]);
-        dlg->SetHistogram(ToneCurveChannel::Red, bins[1]);
-        dlg->SetHistogram(ToneCurveChannel::Green, bins[2]);
-        dlg->SetHistogram(ToneCurveChannel::Blue, bins[3]);
-    }
+        curves->SetHistogram(ToneCurveChannel::RGB, bins[0]);
+        curves->SetHistogram(ToneCurveChannel::Red, bins[1]);
+        curves->SetHistogram(ToneCurveChannel::Green, bins[2]);
+        curves->SetHistogram(ToneCurveChannel::Blue, bins[3]);
+    };
+    BeginPreview();
     auto opFor = [](const ToneCurveSet& set) {
         return [set](const PixelFX::PFXImage& img) -> PixelFX::PFXImage {
             if (set.IsIdentity()) return img;
