@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# Package an UltraCanvas app library into an installable, debug-signed APK
+# with the Android SDK's build tools - no Gradle.
+#
+#   1. UltraCanvasActivity.java -> classes.dex   (javac, d8)
+#   2. AndroidManifest.xml + assets/ -> base APK (aapt2 link)
+#   3. + classes.dex + lib/<abi>/lib<App>.so     (stripped with the NDK's llvm-strip)
+#   4. zipalign, then apksigner with a throwaway debug key
+#
+# The assets are what the app opens by path at run time. On the first launch
+# after an install UltraCanvasAndroidAssets.cpp copies assets/<path> to
+# $HOME/share/<path>, which is where GetResourcesDir() points on Android - the
+# same layout a desktop build has in build/share/. The demo's set is the one
+# its WebAssembly page preloads (the root CMakeLists.txt, _uc_demo_preload):
+# the media it shows, without the four largest 3D samples and the audio and
+# video ones, plus the docs and its own sources for the source viewer.
+#
+# The Gradle template next to the manifest (UltraCanvas/OS/Android/packaging/)
+# is the route for an app with its own Gradle project; this script is what CI
+# runs, and it needs nothing a GitHub Ubuntu runner does not have already.
+#
+# Usage: scripts/android-package-apk.sh --abi ABI --lib PATH --out APK
+#            [--ndk DIR] [--sdk DIR] [--version-name X.Y.Z]
+#   ABI      arm64-v8a or x86_64 (the directory under lib/ in the APK)
+#   --lib    the app library, e.g. build-android/lib/libUltraCanvasDemo.so;
+#            its name must match the manifest's android.app.lib_name
+#   --ndk    defaults to $ANDROID_NDK_HOME / $ANDROID_NDK_LATEST_HOME
+#   --sdk    defaults to $ANDROID_SDK_ROOT / $ANDROID_HOME
+#   --version-name  defaults to the framework version, line 1 of
+#            Docs/UltraCanvas/CHANGELOG.md
+set -euo pipefail
+
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+packaging="$repo/UltraCanvas/OS/Android/packaging"
+java_root="$repo/UltraCanvas/OS/Android/java"
+min_sdk=28      # what the dependency sysroot is built for (packaging/README.md)
+target_sdk=34
+
+abi="" lib="" out="" ndk="" sdk="" version_name=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --abi) abi="$2"; shift 2 ;;
+        --lib) lib="$2"; shift 2 ;;
+        --out) out="$2"; shift 2 ;;
+        --ndk) ndk="$2"; shift 2 ;;
+        --sdk) sdk="$2"; shift 2 ;;
+        --version-name) version_name="$2"; shift 2 ;;
+        *) echo "android-package-apk: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+die() { echo "android-package-apk: $*" >&2; exit 2; }
+[ -n "$abi" ] && [ -n "$lib" ] && [ -n "$out" ] || die "--abi, --lib and --out are required"
+[ -f "$lib" ] || die "no app library at $lib"
+case "$abi" in arm64-v8a|x86_64|armeabi-v7a|x86) ;; *) die "unknown ABI $abi" ;; esac
+
+ndk="${ndk:-${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}}"
+sdk="${sdk:-${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}}"
+[ -d "$ndk" ] || die "no NDK (pass --ndk or set ANDROID_NDK_HOME)"
+[ -d "$sdk/build-tools" ] || die "no SDK build-tools under $sdk (pass --sdk)"
+
+# The newest build-tools and platform the SDK has; the platform must be at
+# least targetSdk, since aapt2 links the manifest against it.
+build_tools="$(ls -d "$sdk"/build-tools/*/ | sort -V | tail -1)"
+android_jar="$(ls -d "$sdk"/platforms/android-*/android.jar | sort -V | tail -1)"
+platform_level="$(basename "$(dirname "$android_jar")")"; platform_level="${platform_level#android-}"
+platform_level="${platform_level%%[!0-9]*}"
+[ "${platform_level:-0}" -ge "$target_sdk" ] ||
+    die "newest platform is android-$platform_level, need $target_sdk or later"
+for tool in aapt2 d8 zipalign apksigner; do
+    [ -x "$build_tools/$tool" ] || die "$build_tools has no $tool"
+done
+strip="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+[ -x "$strip" ] || die "no llvm-strip in the NDK at $strip"
+
+if [ -z "$version_name" ]; then
+    version_name="$(head -1 "$repo/Docs/UltraCanvas/CHANGELOG.md" | grep -o '\*[0-9][0-9.]*\*' | tr -d '*')"
+fi
+[[ "$version_name" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || die "version name '$version_name' is not X.Y.Z"
+# 0.9.351 -> 9351: rises with every release, as Android requires of an update.
+version_code=$(( BASH_REMATCH[1] * 1000000 + BASH_REMATCH[2] * 1000 + BASH_REMATCH[3] ))
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+echo "android-package-apk: $abi, version $version_name ($version_code)"
+echo "  build-tools $(basename "$build_tools"), platform android-$platform_level"
+
+# ---- 1. Java -> dex. Same flags as scripts/android-java-check.sh.
+mapfile -t sources < <(find "$java_root" -name '*.java' | sort)
+mkdir -p "$work/classes" "$work/dex"
+javac -nowarn -Xlint:-options -bootclasspath "$android_jar" -source 8 -target 8 \
+      -d "$work/classes" "${sources[@]}"
+mapfile -t class_files < <(find "$work/classes" -name '*.class')
+"$build_tools/d8" --release --min-api "$min_sdk" --lib "$android_jar" \
+      --output "$work/dex" "${class_files[@]}"
+
+# ---- 2. Assets, laid out as $HOME/share expects them.
+assets="$work/assets"
+mkdir -p "$assets/DemoApp"
+for path in media/fonts media/icons media/appicon media/images media/vector \
+            media/flags media/textsamples media/ebooks media/diagrams media/docs \
+            media/3D/3DS media/3D/Alembic media/3D/COLLADA media/3D/DWG \
+            media/3D/DXF media/3D/FBX media/3D/MS3D media/3D/OBJ media/3D/STEP \
+            media/3D/X3D media/3D/XFile media/3D/spring.obj media/3D/torusknot.obj \
+            Docs/UltraCanvas Docs/Modules; do
+    [ -e "$repo/$path" ] || continue
+    mkdir -p "$assets/$(dirname "$path")"
+    cp -R "$repo/$path" "$assets/$path"
+done
+cp "$repo"/Apps/DemoApp/*.cpp "$repo"/Apps/DemoApp/*.h "$assets/DemoApp/"
+echo "  assets $(du -sh "$assets" | cut -f1)"
+
+# ---- 3. Manifest + assets, then the dex and the stripped library.
+"$build_tools/aapt2" link -o "$work/base.apk" \
+      --manifest "$packaging/AndroidManifest.xml" -I "$android_jar" \
+      --min-sdk-version "$min_sdk" --target-sdk-version "$target_sdk" \
+      --version-code "$version_code" --version-name "$version_name" \
+      -A "$assets"
+mkdir -p "$work/stage/lib/$abi"
+cp "$work/dex/classes.dex" "$work/stage/"
+"$strip" --strip-unneeded -o "$work/stage/lib/$abi/$(basename "$lib")" "$lib"
+echo "  $(basename "$lib") $(du -h "$lib" | cut -f1) -> $(du -h "$work/stage/lib/$abi/$(basename "$lib")" | cut -f1) stripped"
+# The library is stored, not deflated, and zipalign below puts it on a page
+# boundary, so Android can map it straight from the APK.
+(cd "$work/stage" && zip -q "$work/base.apk" classes.dex && zip -q -0 -r "$work/base.apk" lib)
+
+# ---- 4. Align and sign. A debug key made here: an APK for a test install,
+# not for a store (a release key is the publisher's, and never in CI).
+# -P 16 aligns stored libraries to 16 KB pages (build-tools 35 and later);
+# older zipalign knows only 4 KB pages (-p).
+"$build_tools/zipalign" -f -P 16 4 "$work/base.apk" "$work/aligned.apk" 2>/dev/null ||
+    "$build_tools/zipalign" -f -p 4 "$work/base.apk" "$work/aligned.apk"
+keytool -genkeypair -keystore "$work/debug.keystore" -storepass android \
+        -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+        -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+mkdir -p "$(dirname "$out")"
+"$build_tools/apksigner" sign --ks "$work/debug.keystore" --ks-pass pass:android \
+        --key-pass pass:android --out "$out" "$work/aligned.apk"
+
+# What a device will see: the signature, the package, the SDK levels and the
+# native code it declares.
+"$build_tools/apksigner" verify --min-sdk-version "$min_sdk" "$out"
+"$build_tools/aapt2" dump badging "$out" |
+    grep -E "^(package|sdkVersion|targetSdkVersion|launchable-activity|native-code):" || true
+echo "android-package-apk: $out ($(du -h "$out" | cut -f1))"
