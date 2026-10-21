@@ -59,9 +59,12 @@ for ((elapsed = 0; elapsed < timeout; elapsed += 2)); do
     fi
     if [ -n "$(adb shell pidof "$package" | tr -d '\r')" ]; then
         started=1
-    elif [ "$started" -eq 1 ]; then
-        echo "::error::$package died before presenting a frame (see logcat-crash.txt)"
+    elif [ "$started" -eq 1 ] || [ "$elapsed" -ge 10 ]; then
+        # Gone, or never seen at all after ten seconds: an app that fails to
+        # load its library dies before the first look.
+        echo "::error::$package is not running and presented no frame (see logcat-crash.txt)"
         adb logcat -d -b crash | tail -40 || true
+        adb logcat -d -s UltraCanvas:V AndroidRuntime:E | tail -20 || true
         exit 1
     fi
     sleep 2
