@@ -5783,6 +5783,24 @@ else()
     message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ScrollContainerGutterTest =====
+# A scrolling container lays its children out clear of its vertical
+# scrollbar instead of under it. Headless.
+if(TARGET UltraCanvas)
+    add_executable(ScrollContainerGutterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ScrollContainerGutterTest.cpp
+    )
+    target_include_directories(ScrollContainerGutterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ScrollContainerGutterTest PRIVATE cxx_std_20)
+    target_link_libraries(ScrollContainerGutterTest PRIVATE UltraCanvas)
+    set_target_properties(ScrollContainerGutterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ScrollContainerGutterTest COMMAND ScrollContainerGutterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ScrollContainerGutterTest")
+endif()
+
 # ===== ScrollKeepsPositionOnResizeTest =====
 # A scroll view keeps its position across a resize inside a split pane and a
 # tabbed container (they used to run a throwaway block layout first).
