@@ -64,6 +64,15 @@
   so the framework's `int id` members and `const std::string& id` parameters
   are not findings. Its first run found nothing; the baseline is empty, and
   a site that is correct as it stands says `// objc-name-ok: <why>`.
+- **One script for the three name checks.** `scripts/check_platform_names.py`
+  replaces `check_win32_names.py`, `check_x11_names.py` and
+  `check_objc_names.py`: the same rules and finding kinds (`win32-name-*`,
+  `x11-*`, `objc-*`), the same `// <platform>-name-ok` markers, one
+  workflow (`platform-names.yml`) and one baseline
+  (`scripts/platform_names_baseline.txt`, carrying the Win32 sites still
+  being worked off). `--platform win32|x11|objc` narrows a run,
+  `--self-test` covers all three, and `--generate-names` takes the platform
+  whose list to rebuild.
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

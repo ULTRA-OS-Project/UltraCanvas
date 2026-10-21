@@ -824,7 +824,7 @@ endif()
 # -Wunused-parameter. One file includes them all, in sorted order: the
 # library's own sources include them in every order already, and the
 # Win32 names <windows.h> would rename are kept out of our APIs by
-# scripts/check_win32_names.py, so the order needs no care.
+# scripts/check_platform_names.py, so the order needs no care.
 if(TARGET UltraCanvas AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
     set(_ucHeaderGlobs
         ${ULTRACANVAS_INCLUDE_DIR}/*.h

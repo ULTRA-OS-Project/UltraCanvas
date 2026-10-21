@@ -1,0 +1,71 @@
+name: Platform macro names
+
+# Blocks new identifiers that a platform header takes for itself - one check,
+# three platforms (scripts/check_platform_names.py):
+#
+#   win32  <windows.h> #defines CreateFile, LoadImage, SendMessage and a few
+#          thousand more to their A/W variant, which renames OUR method of
+#          that name in the files that include windows.h; the Windows link
+#          then fails with an undefined `...W` symbol no other platform shows.
+#   x11    <X11/Xlib.h> #defines None, Success, Status, Bool, Always, Above,
+#          Below, True, False and a few hundred more as object-like macros; an
+#          enumerator, method or member of that name fails ("expected
+#          identifier") in any file that includes a window header first.
+#   objc   in a .mm file YES / NO / nil / Nil are macros and id / Class / SEL /
+#          IMP / BOOL / Protocol are global typedefs that a file-scope
+#          declaration of the same name redefines.
+#
+# See AGENTS.md. The Win32 names come from scripts/win32_aw_macros.txt and the
+# X11 names from scripts/x11_macro_names.txt, both generated from the headers.
+# Sites that predate the checks are listed in
+# scripts/platform_names_baseline.txt (Win32 names still being worked off; the
+# X11 and Objective-C sets are empty); only additions fail. A site that is
+# correct as it stands says so with `// win32-name-ok: <why>`,
+# `// x11-name-ok: <why>` or `// objc-name-ok: <why>`.
+
+# Trigger policy matches build.yml / locale-numbers.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    # Every folder scripts/check_platform_names.py scans (the platforms' roots).
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'VirtualFS/**'
+      - 'UltraNet/**'
+      - 'VideoFX/**'
+      - 'Apps/**'
+      - 'Tests/**'
+      - 'scripts/check_platform_names.py'
+      - 'scripts/win32_aw_macros.txt'
+      - 'scripts/x11_macro_names.txt'
+      - 'scripts/platform_names_baseline.txt'
+      - '.github/workflows/platform-names.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The rules first, against examples of their own - a rule that stopped
+      # matching would otherwise pass the scan below by finding nothing.
+      - name: Self-test the checks
+        run: python3 scripts/check_platform_names.py --self-test
+      - name: Check for identifiers a platform header takes
+        run: python3 scripts/check_platform_names.py --strict

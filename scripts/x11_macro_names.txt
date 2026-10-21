@@ -1,9 +1,10 @@
 # Object-like macros that <X11/X.h>, <X11/Xlib.h> and <X11/Xutil.h> #define
 # with ordinary-looking names (None, Success, Status, Bool, Always, NoValue,
-# Above, Below, True, False, KeyPress, ...). Read by scripts/check_x11_names.py:
-# no enumerator, function, method or member of ours may carry one of them,
-# and no header may #undef one. Regenerate with:
-#     python3 scripts/check_x11_names.py --generate-names /usr/include/X11
+# Above, Below, True, False, KeyPress, ...). Read by
+# scripts/check_platform_names.py (x11): no enumerator, function, method or
+# member of ours may carry one of them, and no header may #undef one.
+# Regenerate with:
+#     python3 scripts/check_platform_names.py --platform x11 --generate-names /usr/include/X11
 Above
 AllHints
 AllPlanes
