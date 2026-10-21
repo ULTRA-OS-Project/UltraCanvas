@@ -226,6 +226,7 @@ private:
     bool demoHome_ = false;
     int ticks_ = 0;
     UltraCanvas::TimerId uiTimer_ = 0;
+    SmartHomeListenerId listenerId_ = 0;
     std::string iconsDir_;
 
     // ===== FROM API THREADS =====

@@ -389,6 +389,7 @@ protected:
     // What the module reported from its threads, for Poll().
     std::atomic<bool> devicesChanged{false};
     std::atomic<bool> statesChanged{false};
+    SmartHomeListenerId listenerId = 0;
     std::atomic<bool> pairingChanged{false};
     std::mutex pendingMutex;
     int pendingProgress = 0;

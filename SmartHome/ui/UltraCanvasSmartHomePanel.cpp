@@ -174,6 +174,7 @@ SmartHomePanel::SmartHomePanel(const std::string& identifier,
 }
 
 SmartHomePanel::~SmartHomePanel() {
+    if (listenerId != 0) SMARTHOME_API.RemoveListener(listenerId);
     if (pollTimer) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(pollTimer);
     }
@@ -196,23 +197,26 @@ void SmartHomePanel::SetupCallbacks() {
     // The module pushes, from its own threads; the panel notes what changed
     // and Poll() re-reads on the UI thread. Anything finer would have to
     // guess which of the six layouts is showing the changed device.
-    SMARTHOME_API.SetOnDeviceUpdate([this](const std::string&) { statesChanged = true; });
-    SMARTHOME_API.SetOnDeviceStateChange(
-        [this](const std::string&, SmartHomeDeviceState) { statesChanged = true; });
-    SMARTHOME_API.SetOnDeviceDiscover(
-        [this](const SmartHomeDeviceInfo&) { devicesChanged = true; });
-    SMARTHOME_API.SetOnPairingProgress([this](int progress, const std::string& status) {
+    // A listener, not the SetOn* slots, so the application hosting the
+    // panel keeps its own callbacks.
+    SmartHomeListener l;
+    l.DeviceUpdate = [this](const std::string&) { statesChanged = true; };
+    l.DeviceStateChange = [this](const std::string&, SmartHomeDeviceState) { statesChanged = true; };
+    l.DeviceDiscover = [this](const SmartHomeDeviceInfo&) { devicesChanged = true; };
+    l.PairingProgress = [this](int progress, const std::string& status) {
         std::lock_guard<std::mutex> lock(pendingMutex);
         pendingProgress = progress;
         pendingStatus = status;
         pairingChanged = true;
-    });
-    SMARTHOME_API.SetOnPairingComplete([this](bool, const SmartHomeDeviceInfo&) {
+    };
+    l.PairingComplete = [this](bool, const SmartHomeDeviceInfo&) {
         std::lock_guard<std::mutex> lock(pendingMutex);
         pendingPairingDone = true;
         pairingChanged = true;
         devicesChanged = true;
-    });
+    };
+    if (listenerId != 0) SMARTHOME_API.RemoveListener(listenerId);
+    listenerId = SMARTHOME_API.AddListener(std::move(l));
     if (!pollTimer) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
             pollTimer = app->StartTimer(500, /*periodic=*/true, [this](TimerId) { Poll(); });

@@ -150,14 +150,7 @@ SmartHomeCenterWindow::SmartHomeCenterWindow() = default;
 
 SmartHomeCenterWindow::~SmartHomeCenterWindow() {
     // The API outlives the window: stop it calling into us first.
-    auto& api = SmartHomeAPI::Instance();
-    api.SetOnHomeChange(nullptr);
-    api.SetOnDeviceUpdate(nullptr);
-    api.SetOnDeviceStateChange(nullptr);
-    api.SetOnDeviceDiscover(nullptr);
-    api.SetOnPairingComplete(nullptr);
-    api.SetOnSmartHomeError(nullptr);
-    api.SetOnEvent(nullptr);
+    if (listenerId_ != 0) SmartHomeAPI::Instance().RemoveListener(listenerId_);
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(uiTimer_);
     }
@@ -1023,42 +1016,45 @@ void SmartHomeCenterWindow::NoteEvent(const DeviceView& view, bool initial) {
 
 void SmartHomeCenterWindow::ConnectApi() {
     // These run on the API's threads. They only note what changed; OnTimer
-    // reads it back on the UI thread.
-    auto& api = SmartHomeAPI::Instance();
-    api.SetOnDeviceUpdate([this](const std::string& id) {
+    // reads it back on the UI thread. A listener rather than the SetOn*
+    // slots, so a SmartHomePanel in the same process can listen alongside.
+    SmartHomeListener l;
+    l.DeviceUpdate = [this](const std::string& id) {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingIds_.insert(id);
-    });
-    api.SetOnDeviceStateChange([this](const std::string& id, SmartHomeDeviceState) {
+    };
+    l.DeviceStateChange = [this](const std::string& id, SmartHomeDeviceState) {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingIds_.insert(id);
-    });
-    api.SetOnDeviceDiscover([this](const SmartHomeDeviceInfo&) {
+    };
+    l.DeviceDiscover = [this](const SmartHomeDeviceInfo&) {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingAll_ = true;
-    });
-    api.SetOnPairingComplete([this](bool success, const SmartHomeDeviceInfo& device) {
+    };
+    l.PairingComplete = [this](bool success, const SmartHomeDeviceInfo& device) {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingAll_ = true;
         pendingNotes_.push_back(success ? "Added " + device.Name + " - give it a room in its details"
                                         : "Pairing found nothing");
-    });
-    api.SetOnSmartHomeError([this](int, const std::string& message) {
+    };
+    l.Error = [this](int, const std::string& message) {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingNotes_.push_back("Error: " + message);
-    });
-    api.SetOnHomeChange([this]() {
+    };
+    l.HomeChange = [this]() {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingHome_ = true;
         pendingAll_ = true;   // devices may carry new room names
-    });
+    };
     // The engine's own log: automations that ran and why, their notices,
     // scenes, problems. Device changes the window logs itself.
-    api.SetOnEvent([this](const SmartHomeEvent& event) {
+    l.Event = [this](const SmartHomeEvent& event) {
         if (event.Kind == "device") return;
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingEvents_.push_back(event);
-    });
+    };
+    if (listenerId_ != 0) SmartHomeAPI::Instance().RemoveListener(listenerId_);
+    listenerId_ = SmartHomeAPI::Instance().AddListener(std::move(l));
 }
 
 void SmartHomeCenterWindow::OnTimer() {

@@ -12,6 +12,9 @@
   white on a round disc of the device's category colour on the tiles, in the
   inspector and on the device's page.
 - The app links the module's widget library (`SmartHomeUI`) for the two.
+- The app hears the module through a listener (`SmartHomeAPI::AddListener`)
+  rather than its single callbacks, so a `SmartHomePanel` in the same
+  process no longer takes them over.
 
 #### 2026-10-21 *0.2.0*
 - **Rooms, a page per device, Scenes, Settings and a first-run guide** -

@@ -126,15 +126,20 @@ public:
     SmartHomeNetworkInfo GetNetwork(SmartHomeProtocolType protocol) const;
     
     // ===== EVENT CALLBACKS =====
-    void SetOnDeviceDiscover(OnDeviceDiscover callback) { onDeviceDiscover = callback; }
-    void SetOnDeviceStateChange(OnDeviceStateChange callback) { onDeviceStateChange = callback; }
-    void SetOnDeviceUpdate(OnDeviceUpdate callback) { onDeviceUpdate = callback; }
-    void SetOnNetworkChange(OnNetworkChange callback) { onNetworkChange = callback; }
-    void SetOnPairingProgress(OnPairingProgress callback) { onPairingProgress = callback; }
-    void SetOnPairingComplete(OnPairingComplete callback) { onPairingComplete = callback; }
-    void SetOnSensorRead(OnSensorRead callback) { onSensorRead = callback; }
-    void SetOnAutomationTrigger(OnAutomationTrigger callback) { onAutomationTrigger = callback; }
-    void SetOnSmartHomeError(OnSmartHomeError callback) { onSmartHomeError = callback; }
+    // The SetOn* slot of each notification (under callbackMutex: they are
+    // set on the UI thread and read on the backends').
+    void SetOnDeviceDiscover(OnDeviceDiscover callback) { SetPrimary(&SmartHomeListener::DeviceDiscover, std::move(callback)); }
+    void SetOnDeviceStateChange(OnDeviceStateChange callback) { SetPrimary(&SmartHomeListener::DeviceStateChange, std::move(callback)); }
+    void SetOnDeviceUpdate(OnDeviceUpdate callback) { SetPrimary(&SmartHomeListener::DeviceUpdate, std::move(callback)); }
+    void SetOnNetworkChange(OnNetworkChange callback) { SetPrimary(&SmartHomeListener::NetworkChange, std::move(callback)); }
+    void SetOnPairingProgress(OnPairingProgress callback) { SetPrimary(&SmartHomeListener::PairingProgress, std::move(callback)); }
+    void SetOnPairingComplete(OnPairingComplete callback) { SetPrimary(&SmartHomeListener::PairingComplete, std::move(callback)); }
+    void SetOnSensorRead(OnSensorRead callback) { SetPrimary(&SmartHomeListener::SensorRead, std::move(callback)); }
+    void SetOnAutomationTrigger(OnAutomationTrigger callback) { SetPrimary(&SmartHomeListener::AutomationTrigger, std::move(callback)); }
+    void SetOnSmartHomeError(OnSmartHomeError callback) { SetPrimary(&SmartHomeListener::Error, std::move(callback)); }
+
+    SmartHomeListenerId AddListener(SmartHomeListener listener);
+    void RemoveListener(SmartHomeListenerId id);
     
     // ===== EVENT DISPATCHING (called by protocols/devices) =====
     void DispatchDeviceDiscover(const SmartHomeDeviceInfo& info);
@@ -267,16 +272,6 @@ private:
     std::thread discoveryThread;
     std::thread automationThread;
     
-    // Callbacks
-    OnDeviceDiscover onDeviceDiscover;
-    OnDeviceStateChange onDeviceStateChange;
-    OnDeviceUpdate onDeviceUpdate;
-    OnNetworkChange onNetworkChange;
-    OnPairingProgress onPairingProgress;
-    OnPairingComplete onPairingComplete;
-    OnSensorRead onSensorRead;
-    OnAutomationTrigger onAutomationTrigger;
-    OnSmartHomeError onSmartHomeError;
     
     // Pairing state
     std::atomic<SmartHomeProtocolType> pairingProtocol;  // read on backend threads
@@ -311,10 +306,29 @@ private:
     // The event log in memory (the store keeps the rest)
     std::deque<SmartHomeEvent> recentEvents;                    // newest first
     mutable std::mutex eventMutex;
-    mutable std::mutex callbackMutex;                           // the two below
-    OnAutomationNotify onAutomationNotify;
-    OnSmartHomeEvent onEvent;
-    OnHomeChange onHomeChange;
+    // Who hears the notifications: the SetOn* slots, and the listeners.
+    // A listener's calls are counted while they run, so RemoveListener can
+    // wait for one in flight on another thread before it returns.
+    struct ListenerEntry {
+        SmartHomeListener fns;
+        std::atomic<int> active{0};
+        std::atomic<bool> removed{false};
+    };
+    mutable std::mutex callbackMutex;                           // the three below
+    SmartHomeListener primary;
+    std::vector<std::pair<SmartHomeListenerId, std::shared_ptr<ListenerEntry>>> listeners;
+    SmartHomeListenerId nextListenerId = 1;
+
+    template <typename Fn>
+    void SetPrimary(Fn SmartHomeListener::* member, Fn callback) {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        primary.*member = std::move(callback);
+    }
+
+    // Calls `member` of the slot and of every listener that has it, outside
+    // any lock: a copy of the slot and of the listener list is taken first.
+    template <typename Fn, typename... Args>
+    void Notify(Fn SmartHomeListener::* member, const Args&... args);
 };
 
 } // namespace SmartHome

@@ -357,6 +357,11 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     add_executable(SmartHomeFacadeTest tests/FacadeTest.cpp)
     target_link_libraries(SmartHomeFacadeTest PRIVATE SmartHome)
 
+    # Several listeners per notification, and safe removal.
+    add_executable(SmartHomeListenerTest tests/ListenerTest.cpp)
+    target_link_libraries(SmartHomeListenerTest PRIVATE SmartHome)
+    add_test(NAME SmartHomeListener COMMAND SmartHomeListenerTest)
+
     # The demo home, on a clock the test drives, through the facade.
     add_executable(SmartHomeSimulatedTest tests/SimulatedTest.cpp)
     target_link_libraries(SmartHomeSimulatedTest PRIVATE SmartHome)

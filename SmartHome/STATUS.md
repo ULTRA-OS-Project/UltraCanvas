@@ -232,6 +232,21 @@ room view groups by the home's rooms when the panel was given none of its
 own. The demo application's Smart Home entry opens the panel on the
 simulated home.
 
+### Several listeners per notification (2026-10-21)
+
+Each `SetOn*` setter held one callback, so a `SmartHomePanel` and the
+application hosting it took the slot from each other. `SmartHomeListener`
+holds any of the twelve callbacks; `AddListener` adds one and returns the id
+`RemoveListener` takes. A notification calls the `SetOn*` slot first, then
+every listener with that member set, in the order they were added, with no
+module lock held. Once `RemoveListener` returns, its listener is not running
+and is not called again - except when it is called from inside a
+notification on the same thread, which may be the listener's own call; it
+stops all later calls. `SmartHomePanel` and SmartHome Center now listen
+this way and leave the slots to whoever else hosts them.
+`tests/ListenerTest.cpp` covers it, with removal raced against a
+notifying thread.
+
 ### Known latent bug
 
 `MatterProtocol::SubscribeAttribute` stores its callback in

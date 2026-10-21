@@ -566,12 +566,7 @@ std::string SmartHomeManager::RoomForNameLocked(const std::string& name) {
 
 void SmartHomeManager::NotifyHomeChange() {
     if (!homeChanged.exchange(false)) return;
-    OnHomeChange callback;
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        callback = onHomeChange;
-    }
-    if (callback) callback();
+    Notify(&SmartHomeListener::HomeChange);
 }
 
 void SmartHomeManager::AdoptDevice(ISmartHomeProtocol* protocol, const SmartHomeDeviceInfo& info) {
@@ -933,12 +928,7 @@ void SmartHomeManager::EnsureAutomationEngine() {
     host.activateScene = [this](const std::string& sceneId) { ActivateScene(sceneId); };
     host.notify = [this](const std::string& automationId, const std::string& message) {
         RecordEvent({Now(), "automation", "", automationId, "Notice: " + message});
-        OnAutomationNotify callback;
-        {
-            std::lock_guard<std::mutex> lock(callbackMutex);
-            callback = onAutomationNotify;
-        }
-        if (callback) callback(automationId, message);
+        Notify(&SmartHomeListener::AutomationNotify, automationId, message);
     };
     host.disable = [this](const std::string& automationId) {
         SetAutomationEnabled(automationId, false);
@@ -1002,59 +992,101 @@ void SmartHomeManager::DispatchDeviceDiscover(const SmartHomeDeviceInfo& info) {
         discoveredDevices.push_back(info);
     }
     
-    if (onDeviceDiscover) {
-        onDeviceDiscover(info);
-    }
+    Notify(&SmartHomeListener::DeviceDiscover, info);
 }
 
 void SmartHomeManager::DispatchDeviceStateChange(const std::string& deviceId, SmartHomeDeviceState state) {
-    if (onDeviceStateChange) {
-        onDeviceStateChange(deviceId, state);
-    }
+    Notify(&SmartHomeListener::DeviceStateChange, deviceId, state);
 }
 
 void SmartHomeManager::DispatchDeviceUpdate(const std::string& deviceId) {
-    if (onDeviceUpdate) {
-        onDeviceUpdate(deviceId);
-    }
+    Notify(&SmartHomeListener::DeviceUpdate, deviceId);
 }
 
 void SmartHomeManager::DispatchNetworkChange(const SmartHomeNetworkInfo& info) {
-    if (onNetworkChange) {
-        onNetworkChange(info);
-    }
+    Notify(&SmartHomeListener::NetworkChange, info);
 }
 
 void SmartHomeManager::DispatchPairingProgress(int progress, const std::string& status) {
-    if (onPairingProgress) {
-        onPairingProgress(progress, status);
-    }
+    Notify(&SmartHomeListener::PairingProgress, progress, status);
 }
 
 void SmartHomeManager::DispatchPairingComplete(bool success, const SmartHomeDeviceInfo& device) {
     pairing = false;
-    
-    if (onPairingComplete) {
-        onPairingComplete(success, device);
-    }
+    Notify(&SmartHomeListener::PairingComplete, success, device);
 }
 
 void SmartHomeManager::DispatchSensorRead(const std::string& deviceId, const SmartHomeSensorReading& reading) {
-    if (onSensorRead) {
-        onSensorRead(deviceId, reading);
-    }
+    Notify(&SmartHomeListener::SensorRead, deviceId, reading);
 }
 
 void SmartHomeManager::DispatchAutomationTrigger(const std::string& automationId) {
-    if (onAutomationTrigger) {
-        onAutomationTrigger(automationId);
-    }
+    Notify(&SmartHomeListener::AutomationTrigger, automationId);
 }
 
 void SmartHomeManager::DispatchError(int code, const std::string& message) {
-    if (onSmartHomeError) {
-        onSmartHomeError(code, message);
+    Notify(&SmartHomeListener::Error, code, message);
+}
+
+// ===== LISTENERS =====
+
+namespace {
+// How deep this thread is inside notifications: RemoveListener from inside
+// one must not wait for calls in flight - it may be one of them.
+thread_local int tlsNotifyDepth = 0;
+}
+
+template <typename Fn, typename... Args>
+void SmartHomeManager::Notify(Fn SmartHomeListener::* member, const Args&... args) {
+    Fn slot;
+    std::vector<std::shared_ptr<ListenerEntry>> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        slot = primary.*member;
+        for (const auto& [id, entry] : listeners) {
+            if (entry->fns.*member) snapshot.push_back(entry);
+        }
     }
+    struct Depth {
+        Depth() { ++tlsNotifyDepth; }
+        ~Depth() { --tlsNotifyDepth; }
+    } depth;
+    if (slot) slot(args...);
+    for (const auto& entry : snapshot) {
+        // Counted before the check: a RemoveListener that marks it after
+        // this point waits for the call; one that marked it before is seen.
+        struct Active {
+            std::atomic<int>& n;
+            explicit Active(std::atomic<int>& c) : n(c) { ++n; }
+            ~Active() { --n; }
+        } active(entry->active);
+        if (entry->removed) continue;
+        (entry->fns.*member)(args...);
+    }
+}
+
+SmartHomeListenerId SmartHomeManager::AddListener(SmartHomeListener listener) {
+    auto entry = std::make_shared<ListenerEntry>();
+    entry->fns = std::move(listener);
+    std::lock_guard<std::mutex> lock(callbackMutex);
+    const SmartHomeListenerId id = nextListenerId++;
+    listeners.emplace_back(id, std::move(entry));
+    return id;
+}
+
+void SmartHomeManager::RemoveListener(SmartHomeListenerId id) {
+    std::shared_ptr<ListenerEntry> entry;
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        auto it = std::find_if(listeners.begin(), listeners.end(),
+                               [id](const auto& l) { return l.first == id; });
+        if (it == listeners.end()) return;
+        entry = it->second;
+        listeners.erase(it);
+    }
+    entry->removed = true;
+    if (tlsNotifyDepth > 0) return;   // inside a notification: later calls stop, this one may be ours
+    while (entry->active > 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
 // ===== PERSISTENCE =====
@@ -1386,8 +1418,7 @@ std::string SmartHomeManager::GetDeviceRoom(const std::string& deviceId) const {
 }
 
 void SmartHomeManager::SetOnHomeChange(OnHomeChange callback) {
-    std::lock_guard<std::mutex> lock(callbackMutex);
-    onHomeChange = std::move(callback);
+    SetPrimary(&SmartHomeListener::HomeChange, std::move(callback));
 }
 
 bool SmartHomeManager::SetHomeLocation(double latitude, double longitude) {
@@ -1548,12 +1579,7 @@ void SmartHomeManager::RecordEvent(const SmartHomeEvent& event) {
         if (recentEvents.size() > 1000) recentEvents.pop_back();
     }
     if (store) store->AppendEvent(event);
-    OnSmartHomeEvent callback;
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        callback = onEvent;
-    }
-    if (callback) callback(event);
+    Notify(&SmartHomeListener::Event, event);
 }
 
 std::vector<SmartHomeEvent> SmartHomeManager::GetEventLog(int64_t since, size_t limit) const {
@@ -1568,13 +1594,11 @@ std::vector<SmartHomeEvent> SmartHomeManager::GetEventLog(int64_t since, size_t 
 }
 
 void SmartHomeManager::SetOnAutomationNotify(OnAutomationNotify callback) {
-    std::lock_guard<std::mutex> lock(callbackMutex);
-    onAutomationNotify = std::move(callback);
+    SetPrimary(&SmartHomeListener::AutomationNotify, std::move(callback));
 }
 
 void SmartHomeManager::SetOnEvent(OnSmartHomeEvent callback) {
-    std::lock_guard<std::mutex> lock(callbackMutex);
-    onEvent = std::move(callback);
+    SetPrimary(&SmartHomeListener::Event, std::move(callback));
 }
 
 // ===== STATISTICS =====
@@ -1913,6 +1937,8 @@ void SmartHomeAPI::SetOnPairingComplete(OnPairingComplete callback) { SmartHomeM
 void SmartHomeAPI::SetOnSensorRead(OnSensorRead callback) { SmartHomeManager::Instance().SetOnSensorRead(callback); }
 void SmartHomeAPI::SetOnAutomationTrigger(OnAutomationTrigger callback) { SmartHomeManager::Instance().SetOnAutomationTrigger(callback); }
 void SmartHomeAPI::SetOnSmartHomeError(OnSmartHomeError callback) { SmartHomeManager::Instance().SetOnSmartHomeError(callback); }
+SmartHomeListenerId SmartHomeAPI::AddListener(SmartHomeListener listener) { return SmartHomeManager::Instance().AddListener(std::move(listener)); }
+void SmartHomeAPI::RemoveListener(SmartHomeListenerId id) { SmartHomeManager::Instance().RemoveListener(id); }
 
 // ===== UTILITY FUNCTIONS =====
 

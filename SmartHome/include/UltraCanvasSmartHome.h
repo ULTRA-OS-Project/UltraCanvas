@@ -1,6 +1,6 @@
 // include/UltraCanvasSmartHome.h
 // Smart Home Integration Module - Main Public API
-// Version: 1.1.0 - the home's rooms (SmartHomeRoom, GetRooms and friends)
+// Version: 1.2.0 - several listeners per notification (SmartHomeListener, AddListener)
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #pragma once
@@ -265,6 +265,27 @@ using OnAutomationNotify = std::function<void(const std::string& automationId, c
 using OnSmartHomeEvent = std::function<void(const SmartHomeEvent& event)>;
 using OnHomeChange = std::function<void()>;   // the rooms changed
 
+// Several parts of a program can listen to the module at once - the
+// application's window, a dashboard widget, a pairing wizard - each with a
+// listener of its own: fill in the notifications it wants, leave the rest
+// empty. AddListener returns the id RemoveListener takes. The SetOn*
+// setters below are one more slot of their own, as before.
+struct SmartHomeListener {
+    OnDeviceDiscover DeviceDiscover;
+    OnDeviceStateChange DeviceStateChange;
+    OnDeviceUpdate DeviceUpdate;
+    OnNetworkChange NetworkChange;
+    OnPairingProgress PairingProgress;
+    OnPairingComplete PairingComplete;
+    OnSensorRead SensorRead;
+    OnAutomationTrigger AutomationTrigger;
+    OnSmartHomeError Error;
+    OnAutomationNotify AutomationNotify;
+    OnSmartHomeEvent Event;
+    OnHomeChange HomeChange;
+};
+using SmartHomeListenerId = uint64_t;
+
 // ===== MAIN API CLASS =====
 
 class SmartHomeAPI {
@@ -438,6 +459,15 @@ public:
     // The rooms changed: one added, renamed, reordered or removed. Called on
     // whichever thread made the change, with no lock held.
     void SetOnHomeChange(OnHomeChange callback);
+
+    // Listeners, alongside the SetOn* slot: every notification goes to the
+    // slot and then to each listener that fills it in, on the thread that
+    // caused it, with no module lock held. RemoveListener returns once no
+    // call of that listener is still running on another thread - so a
+    // widget can remove itself in its destructor - except when called from
+    // inside a notification, where it only stops later calls.
+    SmartHomeListenerId AddListener(SmartHomeListener listener);
+    void RemoveListener(SmartHomeListenerId id);
     
 private:
     SmartHomeAPI();
