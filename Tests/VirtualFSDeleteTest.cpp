@@ -65,7 +65,7 @@ static std::vector<uint8_t> PayloadFor(const std::string& name) {
 static bool BuildArchive(const std::string& archivePath, size_t bulkCount,
                          std::vector<std::string>& outAllPaths) {
     VirtualFSLibArchiveProvider writer;
-    if (writer.CreateArchive(archivePath) != VirtualFSResult::Success) {
+    if (writer.CreateArchive(archivePath) != VirtualFSResult::Ok) {
         std::printf("  could not create %s: %s\n", archivePath.c_str(),
                     writer.GetLastError().c_str());
         return false;
@@ -84,18 +84,18 @@ static bool BuildArchive(const std::string& archivePath, size_t bulkCount,
     outAllPaths.push_back("also_kept.dat");
 
     for (const std::string& p : outAllPaths) {
-        if (writer.AddFromMemory(p, PayloadFor(p)) != VirtualFSResult::Success) {
+        if (writer.AddFromMemory(p, PayloadFor(p)) != VirtualFSResult::Ok) {
             std::printf("  could not add %s: %s\n", p.c_str(),
                         writer.GetLastError().c_str());
             return false;
         }
     }
-    return writer.Finalize() == VirtualFSResult::Success;
+    return writer.Finalize() == VirtualFSResult::Ok;
 }
 
 static bool EntryContentIntact(VirtualFSLibArchiveProvider& p, const std::string& path) {
     std::vector<uint8_t> data;
-    if (p.ReadFile(path, data) != VirtualFSResult::Success) return false;
+    if (p.ReadFile(path, data) != VirtualFSResult::Ok) return false;
     return data == PayloadFor(path);
 }
 
@@ -109,7 +109,7 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
     CHECK(BuildArchive(archivePath, bulkCount, allPaths), "archive created");
 
     VirtualFSLibArchiveProvider p;
-    CHECK(p.Open(archivePath) == VirtualFSResult::Success, "archive opens");
+    CHECK(p.Open(archivePath) == VirtualFSResult::Ok, "archive opens");
 
     // BuildArchive() adds files only; the provider synthesizes an entry for
     // each parent directory that has no explicit header of its own, so the
@@ -131,7 +131,7 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
     };
 
     auto result = p.DeleteEntries({"media", "docs/manual.txt"}, progress);
-    CHECK(result == VirtualFSResult::Success, "batched delete succeeds");
+    CHECK(result == VirtualFSResult::Ok, "batched delete succeeds");
 
     // Correctness: deleted entries gone, survivors intact.
     CHECK(!p.Exists("media/file_0000.bin"), "first bulk file removed");
@@ -169,7 +169,7 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
     CHECK(p.DeleteEntries({"docs/readme.txt"}, cancel) == VirtualFSResult::Cancelled,
           "cancel callback aborts delete");
     VirtualFSLibArchiveProvider check;
-    CHECK(check.Open(archivePath) == VirtualFSResult::Success &&
+    CHECK(check.Open(archivePath) == VirtualFSResult::Ok &&
               check.Exists("docs/readme.txt"),
           "cancelled delete leaves archive intact on disk");
     check.Close();
@@ -177,7 +177,7 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
     // Delete everything that is left -> a valid, empty archive.
     std::vector<std::string> rest;
     for (const auto& e : p.ListAll()) rest.push_back(e.path);
-    CHECK(p.DeleteEntries(rest) == VirtualFSResult::Success, "delete-all succeeds");
+    CHECK(p.DeleteEntries(rest) == VirtualFSResult::Ok, "delete-all succeeds");
     CHECK(p.GetArchiveInfo().entryCount == 0, "archive is empty after delete-all");
     p.Close();
 }
@@ -216,25 +216,25 @@ int main(int argc, char** argv) {
 
         auto& mgr = VirtualFSManager::Instance();
         CHECK(mgr.DeleteFromArchive(zipPath, {"media", "docs/license.txt"})
-                  == VirtualFSResult::Success,
+                  == VirtualFSResult::Ok,
               "manager batch delete succeeds");
 
         // The test zip stores no explicit directory entries, so check the
         // files themselves rather than directory listings.
         std::vector<uint8_t> data;
         CHECK(VirtualFS_ReadFile(zipPath + "/media/file_0000.bin", data)
-                  != VirtualFSResult::Success,
+                  != VirtualFSResult::Ok,
               "manager delete removed the folder");
         CHECK(VirtualFS_ReadFile(zipPath + "/docs/readme.txt", data)
-                      == VirtualFSResult::Success &&
+                      == VirtualFSResult::Ok &&
                   data == PayloadFor("docs/readme.txt"),
               "manager delete kept the sibling folder");
         CHECK(VirtualFS_ReadFile(zipPath + "/docs/license.txt", data)
-                  != VirtualFSResult::Success,
+                  != VirtualFSResult::Ok,
               "manager delete removed the named file");
 
         CHECK(VirtualFS_ReadFile(zipPath + "/keep_root.txt", data)
-                      == VirtualFSResult::Success &&
+                      == VirtualFSResult::Ok &&
                   data == PayloadFor("keep_root.txt"),
               "manager delete kept file content readable");
     }

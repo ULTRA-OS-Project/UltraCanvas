@@ -33,7 +33,7 @@ namespace UltraCanvas {
 // Every blocking call returns one of these, the way UltraNet_* returns
 // UltraNetResult: the code says why, not just whether.
 enum class NetworkMonitorResultCode {
-    Success,
+    Ok,
     NotSupported,      // no backend on this platform / build
     PermissionDenied,  // the OS refused the socket table itself
     IoError,           // the table exists but could not be read
@@ -51,7 +51,7 @@ struct NetworkMonitorResult {
 
     static NetworkMonitorResult Ok() {
         NetworkMonitorResult r;
-        r.code = NetworkMonitorResultCode::Success;
+        r.code = NetworkMonitorResultCode::Ok;
         r.success = true;
         return r;
     }

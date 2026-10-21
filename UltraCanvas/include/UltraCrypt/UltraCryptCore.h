@@ -35,20 +35,11 @@
 #include <string>
 #include <vector>
 
-// When included after X11 headers, Xlib's `Success` macro (0) collides with
-// UltraCryptResultCode::Success and the enum fails to compile — the same
-// collision UltraVault.h neutralizes, and UltraAICommon.h neutralizes for
-// X11's `None`. Any GUI consumer on Linux hits this, so undefine it before
-// our declarations.
-#ifdef Success
-#undef Success
-#endif
-
 // ============================================================================
 // Result
 // ============================================================================
 enum class UltraCryptResultCode : uint8_t {
-    Success,
+    Ok,
     NotSupported,          // algorithm not available in this build / on this CPU
     InvalidArgument,
     InvalidKeySize,

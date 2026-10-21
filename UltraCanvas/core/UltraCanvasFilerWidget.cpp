@@ -179,12 +179,6 @@
 #endif
 #endif
 
-// X11 (pulled in via UltraCanvasApplication.h) #defines Success, which
-// collides with the VirtualFS::VirtualFSResult enumerator used below.
-#ifdef Success
-#undef Success
-#endif
-
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
@@ -6957,7 +6951,7 @@ namespace UltraCanvas {
         for (const std::string& archive : archiveOrder) {
             auto result = VirtualFS::VirtualFS_DeleteFromArchive(
                     archive, archiveVictims[archive]);
-            if (result != VirtualFS::VirtualFSResult::Success) {
+            if (result != VirtualFS::VirtualFSResult::Ok) {
                 ReportError("Delete failed in " + archive + ": " +
                             VirtualFS::VirtualFSResultToString(result));
                 continue;

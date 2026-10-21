@@ -146,12 +146,12 @@ VirtualFSResult VirtualFS_CreateRamDisk(const std::string& name,
     disk.requestedBytes = sizeBytes;
 
     const VirtualFSResult result = RamDiskDetail::PlatformCreate(name, sizeBytes, disk);
-    if (result != VirtualFSResult::Success) {
+    if (result != VirtualFSResult::Ok) {
         return result;
     }
 
     outDisk = disk;
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFS_DestroyRamDisk(VirtualFSRamDisk& disk) {
@@ -168,7 +168,7 @@ VirtualFSResult VirtualFS_DestroyRamDisk(VirtualFSRamDisk& disk) {
     }
 
     const VirtualFSResult result = RamDiskDetail::PlatformDestroy(disk);
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         disk = VirtualFSRamDisk{};
     }
     return result;
@@ -187,7 +187,7 @@ VirtualFSResult VirtualFS_UseRamDiskForTemp(const VirtualFSRamDisk& disk) {
         return VirtualFSResult::NotFound;
     }
     VirtualFS_SetTempDirectory(disk.mountPath);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 } // namespace VirtualFS

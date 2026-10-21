@@ -72,7 +72,7 @@ struct VaultResult {
     bool Ok() const { return code == VaultError::NoError; }
     explicit operator bool() const { return Ok(); }
 
-    static VaultResult Success() { return {}; }
+    static VaultResult NoError() { return {}; }
     static VaultResult Fail(VaultError code, const std::string& message) { return {code, message}; }
 };
 

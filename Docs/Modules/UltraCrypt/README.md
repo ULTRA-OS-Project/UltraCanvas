@@ -488,7 +488,7 @@ so calls stay readable and extensible; **nothing throws**.
 
 ```cpp
 enum class UltraCryptResultCode : uint8_t {
-    Success,
+    Ok,
     NotSupported,          // algorithm not available in this build
     InvalidArgument,
     InvalidKeySize,

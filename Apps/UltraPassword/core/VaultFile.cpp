@@ -158,7 +158,7 @@ VaultResult SealImage(const UltraCryptSecureBuffer& key, const std::vector<uint8
 
     image = std::move(header);
     image.insert(image.end(), cipher.begin(), cipher.end());
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 // Parses a file image, derives the key from `password` and decrypts.
@@ -210,7 +210,7 @@ VaultResult OpenImage(const std::vector<uint8_t>& image, const UltraCryptSecureB
     outSalt = std::move(kdf.salt);
     outIterations = iterations;
     outMemoryKiB = memoryKiB;
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 bool SamePath(const std::string& a, const std::string& b) {
@@ -295,7 +295,7 @@ VaultResult VaultFile::Create(const std::string& path, const UltraCryptSecureBuf
     iterations_ = kdf.iterations;
     memoryKiB_ = kdf.memoryKiB;
     isOpen_ = true;
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 VaultResult VaultFile::Open(const std::string& path, const UltraCryptSecureBuffer& password,
@@ -317,7 +317,7 @@ VaultResult VaultFile::Open(const std::string& path, const UltraCryptSecureBuffe
     if (!opened) { Close(); return opened; }
     path_ = path;
     isOpen_ = true;
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 VaultResult VaultFile::Save(const PasswordVault& contents) {
@@ -327,7 +327,7 @@ VaultResult VaultFile::Save(const PasswordVault& contents) {
     if (!sealed) return sealed;
     if (!WriteFileAtomically(path_, image))
         return VaultResult::Fail(VaultError::IoError, "The vault file could not be saved.");
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 VaultResult VaultFile::ChangePassword(const UltraCryptSecureBuffer& newPassword,
@@ -363,7 +363,7 @@ VaultResult VaultFile::ChangePassword(const UltraCryptSecureBuffer& newPassword,
     salt_ = std::move(kdf.salt);
     iterations_ = kdf.iterations;
     memoryKiB_ = kdf.memoryKiB;
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 VaultResult VaultFile::ExportCopy(const std::string& destination, const PasswordVault& contents) const {
@@ -376,7 +376,7 @@ VaultResult VaultFile::ExportCopy(const std::string& destination, const Password
     if (!sealed) return sealed;
     if (!WriteFileAtomically(destination, image))
         return VaultResult::Fail(VaultError::IoError, "The export file could not be written.");
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 VaultResult VaultFile::ExportWithPassword(const std::string& destination,
@@ -400,7 +400,7 @@ VaultResult VaultFile::ExportWithPassword(const std::string& destination,
     if (!sealed) return sealed;
     if (!WriteFileAtomically(destination, image))
         return VaultResult::Fail(VaultError::IoError, "The export file could not be written.");
-    return VaultResult::Success();
+    return VaultResult::NoError();
 }
 
 VaultResult VaultFile::ReadFile(const std::string& path, const UltraCryptSecureBuffer& password,

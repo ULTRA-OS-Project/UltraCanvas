@@ -135,7 +135,7 @@ VirtualFSResult PlatformCreate(const std::string& name,
     outDisk.capacityBytes = blocks * 512;
     outDisk.backing = VirtualFSRamDiskBacking::HdiUtil;
     outDisk.deviceId = device;
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
@@ -143,7 +143,7 @@ VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
     const bool mounted = std::filesystem::exists(disk.mountPath, ec);
 
     if (!mounted && disk.deviceId.empty()) {
-        return VirtualFSResult::Success;  // already gone
+        return VirtualFSResult::Ok;  // already gone
     }
 
     int exitCode = 0;
@@ -159,7 +159,7 @@ VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
     if (exitCode != 0 && std::filesystem::exists(disk.mountPath, ec)) {
         return VirtualFSResult::Error;
     }
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 std::vector<VirtualFSRamDisk> PlatformList() {

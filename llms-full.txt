@@ -86657,7 +86657,7 @@ so calls stay readable and extensible; **nothing throws**.
 
 ```cpp
 enum class UltraCryptResultCode : uint8_t {
-    Success,
+    Ok,
     NotSupported,          // algorithm not available in this build
     InvalidArgument,
     InvalidKeySize,
@@ -91837,7 +91837,7 @@ provides.
 
 VirtualFSRamDisk disk;
 if (VirtualFS_CreateRamDisk("scratch", 256 * 1024 * 1024, disk)
-        == VirtualFSResult::Success) {
+        == VirtualFSResult::Ok) {
 
     // A real path: any process, any API, not just VirtualFS_*
     std::ofstream out(disk.mountPath + "/frame.raw", std::ios::binary);

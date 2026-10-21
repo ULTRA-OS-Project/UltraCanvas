@@ -12,13 +12,9 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Success` as a macro, which would
-// turn our enum-class members into literal integers (same guard as
-// UltraNetCore.h — UltraCanvas's Linux platform glue pulls X11 in
-// transitively).
-#ifdef Success
-#undef Success
-#endif
+// Defensive: X11/Xlib.h defines `Bool` and `Status` as macros, which would
+// break the declarations below (same guard as UltraNetCore.h — UltraCanvas's
+// Linux platform glue pulls X11 in transitively).
 #ifdef Bool
 #undef Bool
 #endif
@@ -38,7 +34,7 @@ constexpr UltraWinHandle UltraWinInvalidHandle = 0;
 // reserved up front so the surface is stable for downstream callers.
 // ============================================================================
 enum class UltraWinResultCode {
-    Success,
+    Ok,
     NotInitialized,
     NotSupported,          // wrong platform, or tier not available on host
     InvalidArgument,
@@ -83,7 +79,7 @@ struct UltraWinResult {
 
     static UltraWinResult Ok() {
         UltraWinResult r;
-        r.code = UltraWinResultCode::Success;
+        r.code = UltraWinResultCode::Ok;
         r.success = true;
         return r;
     }

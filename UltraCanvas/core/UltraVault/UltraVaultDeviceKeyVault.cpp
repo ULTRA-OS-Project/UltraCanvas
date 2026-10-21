@@ -124,7 +124,7 @@ std::map<std::string, std::string> ReadLegacyVault(const std::string& dir) {
 // Map an UltraVault result to the reason the caller reports.
 UnlockStatus StatusFor(const Result& r) {
     switch (r.code) {
-        case ResultCode::Success:            return UnlockStatus::Ok;
+        case ResultCode::Ok:            return UnlockStatus::Ok;
         case ResultCode::AccessDenied:       return UnlockStatus::WrongPassphrase;
         case ResultCode::BackendUnavailable: return UnlockStatus::Unavailable;
         case ResultCode::IoError:            return UnlockStatus::IoError;

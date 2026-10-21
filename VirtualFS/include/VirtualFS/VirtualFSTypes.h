@@ -11,14 +11,6 @@
 #include <cstdint>
 #include <memory>
 
-// X11's Xlib.h defines Success as an object-like macro, which would
-// break the enum member below when this header is included after X11.
-// Shield the header body; the macros are restored at the end of the file.
-// (Use sites in application code compiled against X11 still need to avoid
-// or #undef the name themselves - that cannot be fixed from here.)
-#pragma push_macro("Success")
-#undef Success
-
 namespace VirtualFS {
 
 // ============================================================================
@@ -34,7 +26,7 @@ class VirtualFSManager;
 // ============================================================================
 
 enum class VirtualFSResult {
-    Success = 0,            // Operation completed successfully
+    Ok = 0,            // Operation completed successfully
     
     // General errors (1-99)
     Error = 1,              // Generic error
@@ -464,7 +456,7 @@ using VirtualFSEntryCallback = std::function<void(const VirtualFSEntry& entry)>;
 // Convert result to human-readable string
 inline std::string VirtualFSResultToString(VirtualFSResult result) {
     switch (result) {
-        case VirtualFSResult::Success: return "Success";
+        case VirtualFSResult::Ok: return "Success";
         case VirtualFSResult::Error: return "Generic error";
         case VirtualFSResult::NotFound: return "File or directory not found";
         case VirtualFSResult::AccessDenied: return "Access denied";
@@ -534,5 +526,3 @@ inline std::string VirtualFSCompressionMethodToString(VirtualFSCompressionMethod
 }
 
 } // namespace VirtualFS
-
-#pragma pop_macro("Success")

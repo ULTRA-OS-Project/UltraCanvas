@@ -12,12 +12,9 @@
 #include <vector>
 
 // Defensive: X11/Xlib.h (pulled in transitively by UltraCanvas's Linux
-// platform glue) defines Success / Bool / Status as macros, which
-// would turn our enum-class members into literal integers. Undef them so any
+// platform glue) defines Bool / Status as macros, which would
+// break the declarations below. Undef them so any
 // translation unit that includes both an X11 header and this one compiles.
-#ifdef Success
-#undef Success
-#endif
 #ifdef Bool
 #undef Bool
 #endif
@@ -33,7 +30,7 @@ constexpr UltraDbHandle UltraDbInvalidHandle = 0;
 // Result code for every blocking operation. Drivers map their native error
 // codes onto this enum.
 enum class UltraDbResultCode {
-    Success = 0,
+    Ok = 0,
     InvalidArgument,
     ConnectionNotFound,
     DriverNotFound,
@@ -57,7 +54,7 @@ enum class UltraDbResultCode {
 // for `if (UltraDb_Exec(...))` style checks; the structured fields carry
 // diagnostics.
 struct UltraDbResult {
-    UltraDbResultCode code = UltraDbResultCode::Success;
+    UltraDbResultCode code = UltraDbResultCode::Ok;
     bool              success = true;
     std::string       message;          // human-readable diagnostic
     std::string       driver;           // driver id that produced the result

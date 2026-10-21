@@ -13,17 +13,12 @@
 #include <string>
 #include <vector>
 
-// X11 headers leak these as macros; the enums below use the names.
-#ifdef Success
-#undef Success
-#endif
-
 // ---------------------------------------------------------------------------
 // Results and handles
 // ---------------------------------------------------------------------------
 
 enum class UltraMsgResultCode {
-    Success = 0,
+    Ok = 0,
     InvalidArgument,     // bad app id, empty topic, malformed pattern, ...
     NotConnected,        // the endpoint is not (or no longer) connected
     BrokerUnavailable,   // no broker reachable and none could be started
@@ -40,7 +35,7 @@ enum class UltraMsgResultCode {
 
 struct UltraMsgResult {
     bool ok = true;
-    UltraMsgResultCode code = UltraMsgResultCode::Success;
+    UltraMsgResultCode code = UltraMsgResultCode::Ok;
     std::string message;
 
     explicit operator bool() const { return ok; }

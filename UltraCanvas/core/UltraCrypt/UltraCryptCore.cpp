@@ -34,7 +34,7 @@
 // ============================================================================
 UltraCryptResult UltraCryptResult::Ok() {
     UltraCryptResult r;
-    r.code = UltraCryptResultCode::Success;
+    r.code = UltraCryptResultCode::Ok;
     r.success = true;
     return r;
 }

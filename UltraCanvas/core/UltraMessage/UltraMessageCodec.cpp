@@ -761,7 +761,7 @@ std::string DefaultJournalPath() {
 
 const char* UltraMsg_ResultCodeName(UltraMsgResultCode code) {
     switch (code) {
-        case UltraMsgResultCode::Success: return "Success";
+        case UltraMsgResultCode::Ok: return "Success";
         case UltraMsgResultCode::InvalidArgument: return "InvalidArgument";
         case UltraMsgResultCode::NotConnected: return "NotConnected";
         case UltraMsgResultCode::BrokerUnavailable: return "BrokerUnavailable";

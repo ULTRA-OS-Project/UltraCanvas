@@ -358,7 +358,7 @@ struct Fixture {
         const VirtualFS::VirtualFSResult r = VirtualFS::VirtualFS_CreateArchive(
             PathToUtf8(bundleZip),
             {PathToUtf8(stage / PathFromUtf8(FindExecutableName())), PathToUtf8(stage / "LICENSE")});
-        if (r != VirtualFS::VirtualFSResult::Success ||
+        if (r != VirtualFS::VirtualFSResult::Ok ||
             UltraCanvas::GetEnvUtf8("ULTRAAI_TEST_NO_ARCHIVES") == "1") {
             std::cerr << "bundle archive not available (" << VirtualFS::VirtualFSResultToString(r)
                       << "): engine-bundle checks skipped, the engine comes from the override\n";

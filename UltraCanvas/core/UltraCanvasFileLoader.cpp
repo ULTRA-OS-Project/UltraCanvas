@@ -46,12 +46,6 @@
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
 #include <VirtualFS/VirtualFSCompression.h>
-// Xlib.h (pulled in via UltraCanvasCommonTypes.h) defines Success as a
-// macro, colliding with VirtualFSResult::Success used below. This file
-// uses no X11 API, so the macro can be dropped for the rest of the TU.
-#ifdef Success
-#undef Success
-#endif
 #endif
 
 namespace UltraCanvas {
@@ -81,7 +75,7 @@ namespace UltraCanvas {
             std::vector<uint8_t> plain;
             if (VirtualFS::VirtualFS_DecompressBuffer(out.bytes.data(), out.bytes.size(),
                                                       plain, method)
-                    == VirtualFS::VirtualFSResult::Success) {
+                    == VirtualFS::VirtualFSResult::Ok) {
                 // gzip and zlib both decode through Deflate; report gzip by
                 // its distinct magic so callers see the on-disk format
                 if (method == VirtualFS::VirtualFSCompressionMethod::Deflate &&

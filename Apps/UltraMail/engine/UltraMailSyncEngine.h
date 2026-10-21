@@ -64,7 +64,7 @@ struct SyncOutcome {
     // Why it failed, as UltraNet classified it (Success when ok, Unknown for
     // a failure that did not come from UltraNet). The app reads it to tell
     // "the network is not there" from "the server said no".
-    UltraNetResultCode code = UltraNetResultCode::Success;
+    UltraNetResultCode code = UltraNetResultCode::Ok;
 
     explicit operator bool() const { return ok; }
     static SyncOutcome Fail(const std::string& m) {

@@ -941,7 +941,7 @@ std::string IppStatusToString(uint16_t status) {
 }
 
 IODeviceResultCode IppStatusToResultCode(uint16_t status) {
-    if (IppStatusSucceeded(status)) return IODeviceResultCode::Success;
+    if (IppStatusSucceeded(status)) return IODeviceResultCode::Ok;
     switch (status) {
         case 0x0400:
         case 0x0409:

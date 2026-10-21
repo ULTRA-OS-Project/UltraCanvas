@@ -166,7 +166,7 @@ bool Create(const std::string& name, uint64_t sizeBytes, RamDisc& outDisc,
 #ifdef ULTRAFILER_HAS_RAMDISK
     VirtualFSRamDisk disk;
     const VirtualFSResult result = VirtualFS::VirtualFS_CreateRamDisk(name, sizeBytes, disk);
-    if (result != VirtualFSResult::Success) {
+    if (result != VirtualFSResult::Ok) {
         outError = CreateErrorText(result, name, sizeBytes);
         return false;
     }
@@ -190,7 +190,7 @@ bool Eject(const std::string& mountPath, std::string& outError) {
     for (VirtualFSRamDisk& disk : VirtualFS::VirtualFS_ListRamDisks()) {
         if (NormalizedRoot(disk.mountPath) != root) continue;
         const VirtualFSResult result = VirtualFS::VirtualFS_DestroyRamDisk(disk);
-        if (result == VirtualFSResult::Success) return true;
+        if (result == VirtualFSResult::Ok) return true;
         outError = "The RAM disc \"" + disk.name + "\" could not be ejected (" +
                    VirtualFS::VirtualFSResultToString(result) + "). A program "
                    "may still have a file open on it.";

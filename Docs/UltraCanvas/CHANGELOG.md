@@ -26,6 +26,18 @@
   `Drag::NoDrag`; LaTeX `MathAtomClass::NoClass`. The strings the file
   formats write are unchanged. (`NoValue` is also an X11 macro, hence
   `NoVisualization`.)
+- **Nor is any named `Success`.** X11's `Success` macro (0) did the same to
+  the result-code enumerators, guarded by `#undef Success` in UltraNet,
+  UltraWin, UltraMessage, UltraDatabase, UltraCrypt, UltraVault, IODevice,
+  EBook and VirtualFS headers and two core sources. The enumerator is `Ok`
+  in every result code - `VirtualFSResult::Ok`, `UltraNetResultCode::Ok`,
+  `UltraWinResultCode::Ok`, `UltraMsgResultCode::Ok`, `UltraDbResultCode::Ok`,
+  `UltraCryptResultCode::Ok`, `UltraVault::ResultCode::Ok`,
+  `IODeviceResultCode::Ok`, `NetworkMonitorResultCode::Ok`,
+  `StoreResultCode::Ok` - and the factories `WasmStatus::Success()` and
+  `VaultResult::Success()` are `WasmStatus::Ok()` (like `UltraNetResult::Ok()`)
+  and `VaultResult::NoError()` (`VaultResult::Ok()` is its query). Every
+  `#undef Success` is gone; the `Bool` and `Status` guards stay.
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

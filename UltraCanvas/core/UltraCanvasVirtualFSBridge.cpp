@@ -51,7 +51,7 @@ bool UltraCanvasVirtualFSBridge::Initialize() {
     }
     
     auto result = VirtualFS::VirtualFS_Initialize();
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError("Failed to initialize VirtualFS: " + 
                  VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
@@ -673,7 +673,7 @@ bool UltraCanvasVirtualFSBridge::ReadFileFromArchive(
     std::string virtualPath = archivePath + "/" + entryPath;
     auto result = VirtualFS::VirtualFS_ReadFile(virtualPath, output);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError(VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
     }
@@ -691,7 +691,7 @@ bool UltraCanvasVirtualFSBridge::ReadVirtualFile(
     
     auto result = VirtualFS::VirtualFS_ReadFile(virtualPath, output);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError(VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
     }
@@ -748,7 +748,7 @@ bool UltraCanvasVirtualFSBridge::ExtractArchive(
         VirtualFS::VirtualFSExtractOptions::Default(),
         vfsCallback, &detail);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         // The provider's own account (which entries were skipped, and why)
         // says more than the result code's generic text.
         if (detail.empty()) detail = VirtualFS::VirtualFS_GetErrorMessage(result);
@@ -809,7 +809,7 @@ bool UltraCanvasVirtualFSBridge::CreateArchive(
     auto result = VirtualFS::VirtualFS_CreateArchive(
         archivePath, sourcePaths, vfsOptions, vfsCallback);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError(VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
     }

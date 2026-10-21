@@ -85,7 +85,7 @@ int main() {
     const VirtualFSResult created =
         VirtualFS_CreateRamDisk("unittest", 4ull * 1024 * 1024, disk);
 
-    if (created != VirtualFSResult::Success) {
+    if (created != VirtualFSResult::Ok) {
         std::printf("  FAIL  could not create RAM disc (%s)\n",
                     VirtualFSResultToString(created).c_str());
         return 1;
@@ -191,7 +191,7 @@ int main() {
         const std::string longestName(maxName, 'n');
         VirtualFSRamDisk longest;
         CHECK(VirtualFS_CreateRamDisk(longestName, 1024 * 1024, longest) ==
-                  VirtualFSResult::Success,
+                  VirtualFSResult::Ok,
               "a name of the longest length is accepted");
         bool listedWhole = false;
         for (const VirtualFSRamDisk& d : VirtualFS_ListRamDisks()) {
@@ -200,7 +200,7 @@ int main() {
             }
         }
         CHECK(listedWhole, "and the disc is listed under its whole name");
-        CHECK(VirtualFS_DestroyRamDisk(longest) == VirtualFSResult::Success,
+        CHECK(VirtualFS_DestroyRamDisk(longest) == VirtualFSResult::Ok,
               "and destroyed");
     }
 
@@ -213,7 +213,7 @@ int main() {
     const std::string originalTemp =
         VirtualFS_GetTempDirectory();
 
-    CHECK(VirtualFS_UseRamDiskForTemp(disk) == VirtualFSResult::Success,
+    CHECK(VirtualFS_UseRamDiskForTemp(disk) == VirtualFSResult::Ok,
           "temp directory redirects onto the disc");
     CHECK(VirtualFS_GetTempDirectory() == disk.mountPath,
           "manager reports the disc as its temp directory");
@@ -224,7 +224,7 @@ int main() {
 
     // --- 7. Destroy ---------------------------------------------------------
     const std::string mountPath = disk.mountPath;
-    CHECK(VirtualFS_DestroyRamDisk(disk) == VirtualFSResult::Success,
+    CHECK(VirtualFS_DestroyRamDisk(disk) == VirtualFSResult::Ok,
           "disc is destroyed");
     CHECK(!fs::exists(UltraCanvas::PathFromUtf8(mountPath)), "mount path is gone after destroy");
     CHECK(!fs::exists(UltraCanvas::PathFromUtf8(probe)), "disc contents went with it");
@@ -242,7 +242,7 @@ int main() {
     stale.name = "unittest";
     stale.mountPath = mountPath;
     stale.backing = VirtualFSRamDiskBacking::Tmpfs;
-    CHECK(VirtualFS_DestroyRamDisk(stale) == VirtualFSResult::Success,
+    CHECK(VirtualFS_DestroyRamDisk(stale) == VirtualFSResult::Ok,
           "destroying an already-gone disc is idempotent");
 
     VirtualFS_Shutdown();

@@ -27,7 +27,7 @@ UltraDbResultCode MapSqliteError(int rc) {
     switch (rc & 0xFF) {
         case SQLITE_OK:
         case SQLITE_ROW:
-        case SQLITE_DONE:       return UltraDbResultCode::Success;
+        case SQLITE_DONE:       return UltraDbResultCode::Ok;
         case SQLITE_CONSTRAINT: return UltraDbResultCode::ConstraintViolation;
         case SQLITE_BUSY:
         case SQLITE_LOCKED:     return UltraDbResultCode::Busy;

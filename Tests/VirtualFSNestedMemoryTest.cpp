@@ -56,15 +56,15 @@ static std::vector<uint8_t> PayloadFor(const std::string& name) {
 static bool BuildArchive(const std::string& archivePath,
                          const std::vector<std::string>& entries) {
     VirtualFSLibArchiveProvider writer;
-    if (writer.CreateArchive(archivePath) != VirtualFSResult::Success) {
+    if (writer.CreateArchive(archivePath) != VirtualFSResult::Ok) {
         return false;
     }
     for (const auto& e : entries) {
-        if (writer.AddFromMemory(e, PayloadFor(e)) != VirtualFSResult::Success) {
+        if (writer.AddFromMemory(e, PayloadFor(e)) != VirtualFSResult::Ok) {
             return false;
         }
     }
-    return writer.Finalize() == VirtualFSResult::Success;
+    return writer.Finalize() == VirtualFSResult::Ok;
 }
 
 // Wraps an existing file as a single entry inside a new ZIP.
@@ -72,13 +72,13 @@ static bool WrapFileInArchive(const std::string& outerPath,
                               const std::string& innerName,
                               const std::string& innerFile) {
     VirtualFSLibArchiveProvider writer;
-    if (writer.CreateArchive(outerPath) != VirtualFSResult::Success) {
+    if (writer.CreateArchive(outerPath) != VirtualFSResult::Ok) {
         return false;
     }
-    if (writer.AddFile(innerFile, innerName) != VirtualFSResult::Success) {
+    if (writer.AddFile(innerFile, innerName) != VirtualFSResult::Ok) {
         return false;
     }
-    return writer.Finalize() == VirtualFSResult::Success;
+    return writer.Finalize() == VirtualFSResult::Ok;
 }
 
 static size_t CountFiles(const fs::path& dir) {
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
 
     std::vector<uint8_t> got;
     const VirtualFSResult r = VirtualFS_ReadFile(nested, got);
-    CHECK(r == VirtualFSResult::Success, "nested read succeeds");
+    CHECK(r == VirtualFSResult::Ok, "nested read succeeds");
     CHECK(got == PayloadFor("docs/readme.txt"), "nested read is byte-identical");
 
     // --- 2. The inner archive never spilled to disk ------------------------
@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
     // A second read of a different entry exercises the cached provider.
     std::vector<uint8_t> got2;
     CHECK(VirtualFS_ReadFile(outerPath + "/bundle/inner.zip/src/main.cpp", got2)
-              == VirtualFSResult::Success,
+              == VirtualFSResult::Ok,
           "second nested read succeeds from the cached provider");
     CHECK(got2 == PayloadFor("src/main.cpp"),
           "second nested read is byte-identical");

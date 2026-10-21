@@ -1350,7 +1350,7 @@ void UltraMailApp::RunMailboxAction(
             // Default Success: only a credential failure carries an auth code the
             // UI thread can turn into a re-sign-in offer; an IMAP-op failure keeps
             // Success here and falls through to the plain error alert.
-            UltraNetResultCode credCode = UltraNetResultCode::Success;
+            UltraNetResultCode credCode = UltraNetResultCode::Ok;
             if (!cred) {
                 outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
@@ -2721,7 +2721,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         auto arrived = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
         // Stash the credential-resolve code so the UI thread can tell an expired
         // OAuth sign-in (offer re-sign-in) from an ordinary sync failure.
-        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Success);
+        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Ok);
         svc->SyncInBackground(aid, acc.serverUrl, opts,
                               [this, aid, username, provider, credCode](UltraNetMailOptions& o) {
                                   UltraNetResult r = ResolveCredentials(aid, username, provider,

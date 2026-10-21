@@ -84,13 +84,13 @@ public:
     // Set to fail every envelope fetch with this UltraNet code — the way the
     // IMAP plug-in fails when the server cannot be reached (HostNotFound) or
     // refuses the sign-in (AuthenticationFailed).
-    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Success;
+    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Ok;
     UltraNetResult FetchEnvelopes(const std::string&, const std::string& folder,
                                   uint32_t sinceUid, std::vector<UltraNetMailEnvelope>& out,
                                   const UltraNetMailOptions&) override {
         out.clear();
         ++fetchEnvelopesCalls;
-        if (fetchEnvelopesFail != UltraNetResultCode::Success) {
+        if (fetchEnvelopesFail != UltraNetResultCode::Ok) {
             UltraNetResult r = UltraNetResult::Error(fetchEnvelopesFail, "could not fetch");
             r.diagnostics = "Server: imaps://x/";
             return r;
@@ -297,10 +297,10 @@ TEST(sync_now_keeps_the_inbox_failure_code_and_details) {
     REQUIRE(!r.ok);
     REQUIRE(!r.NetworkUnreachable());
 
-    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Success;
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Ok;
     r = svc.SyncNow("erika", "imaps://x/", opts);
     REQUIRE(r.ok);
-    REQUIRE(r.code == UltraNetResultCode::Success);
+    REQUIRE(r.code == UltraNetResultCode::Ok);
 }
 
 TEST(sync_folders_populates_store) {

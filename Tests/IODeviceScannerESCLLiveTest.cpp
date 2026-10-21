@@ -545,7 +545,7 @@ int main(int argc, char** argv) {
                      page.channels == 3;
         return true;
     });
-    Check(run.success && run.code == IODeviceResultCode::Success,
+    Check(run.success && run.code == IODeviceResultCode::Ok,
           "a feeder run over the pinned connection completes, the empty feeder ending it: " +
               run.message);
     Check(pages == 3 && pagesWhole, "  with the three pages the scanner had, each 64 x 88 in colour");
