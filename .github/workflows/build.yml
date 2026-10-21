@@ -57,9 +57,10 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  # A merge commit that brings in a pending changelog entry does not carry its
-  # version yet: changelog-fold.yml assigns it in the commit that follows, and
-  # line 1 of CHANGELOG.md here is still the PREVIOUS release. Building the
+  # A merge commit that brings in a pending changelog entry - the framework's
+  # or any app's - does not carry its version yet: changelog-fold.yml assigns
+  # it in the commit that follows, and line 1 of that product's CHANGELOG.md
+  # here is still the PREVIOUS release. Building the
   # release from this commit would package new code under an already-published
   # number, so the release build waits for the fold commit - which carries the
   # right one - and this gate skips the commit before it.
@@ -88,8 +89,13 @@ jobs:
       - id: check
         shell: bash
         run: |
-          count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
-                       ! -name 'README.md' 2>/dev/null | wc -l)
+          # Every product's pending entries, not only the framework's: the
+          # artifacts carry every app stamped with its own changelog's line 1,
+          # so an app entry left unfolded here would ship that app under its
+          # previous number. The fold commit (framework number unchanged when
+          # only apps were folded) is the one release build for this merge.
+          count=$(find Docs -path '*/changelog.d/*.md' ! -name 'README.md' \
+                       2>/dev/null | wc -l)
           # A release dispatch is gated like a push. It names the fold commit,
           # so nothing is pending there - unless the fold had to rebase onto
           # a merge that landed meanwhile: then that merge's entry is still
