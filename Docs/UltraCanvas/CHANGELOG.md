@@ -1,3 +1,123 @@
+#### 2026-10-21 *0.9.361*
+- **Chart axes are marked at whole steps.** The line, area, scatter and bar
+  charts (and every chart that uses the base class's axes) divided the value
+  range into six equal parts, so an axis read 0, 24.85, 49.7 ... 149.1 with
+  as many decimals as the division produced, and the grid's eight and ten
+  fixed lines matched none of them. Ticks now fall on every multiple of a
+  whole step - 1, 2, 2.5 or 5 x 10^n - inside the range, labelled with the
+  decimals that step needs and in K or M once the largest tick reaches ten
+  thousand or ten million; the grid lies on the same ticks (in DataLabel
+  mode, on the labelled points). `ComputeChartAxisTicks` and `ChartNiceStep`
+  are public for charts that draw their own axes. `FormatAxisLabel` writes
+  1500 as "1.5K" (it truncated to "1K") and no longer goes through
+  `std::to_string`.
+- **A bar chart whose smallest value is 0 started its axis below zero.** The
+  base class padded the range by 5 % first, and the bar chart's "the axis
+  reaches 0" check then saw -7.1 and did nothing, so the zero line floated
+  above the bottom of the plot. The axis now reaches 0 before it is padded,
+  is padded only away from zero, and is rounded out to the next whole tick.
+- **`UltraCanvasBarChartElement` runs sideways and takes a fixed range.**
+  `SetOrientation(BarChartOrientation::Horizontal)`: one row per category,
+  its name on the left, values along the bottom - for named amounts like
+  power by device. `SetValueRange(min, max)` / `ClearValueRange()` fix the
+  value axis (a bar past it stops at the plot's edge). `SetShowValueLabels`
+  now works for bars (off by default for them), a point's own colour is
+  drawn instead of the bar colour, and `GetBarRect(index)` says where a bar
+  is. `Tests/ChartElementBehaviourTest.cpp` section 12 covers all of it.
+- **A chart with no data says what you set.** `SetEmptyMessage(text, detail)`
+  and `SetEmptyMessageColor` on `UltraCanvasChartElementBase`: a line and an
+  optional smaller one under it, centred - "Nothing is drawing power / All 5
+  metered plugs are idle." - in place of the fixed "No data to display". An
+  empty text draws the background alone. The empty state is painted on the
+  chart's own background colour (it was a fixed grey box whatever the chart's
+  colours), and the text is centred (it began 60 px left of the middle, so a
+  longer message ran off-centre). The jitter plot uses the same empty state
+  instead of a copy of the old one.
+- **An icon over the empty-state message.** `SetEmptyIcon(path, iconColor,
+  badgeColor)`: 32 px over the text, or 28 px on a 54 px rounded badge when
+  `badgeColor` is set; `iconColor` paints a single-colour icon in that
+  colour. The icon, message and detail are centred as one block.
+- **The gauge's bar modes fit their box.** `UltraCanvasGaugeDiagramElement`
+  drew five of its six linear modes for the box they wanted: an LED strip was
+  44 px tall whatever it was given, MultiPointer kept 80 px empty on the right
+  and WithArrow 60, the title and the value line overlapped the bar in a short
+  box, and a narrow MultiPointer drew its bar left of the element. Vertical
+  LinearBar judged the room for its title on the width (drawing nothing at
+  320 x 60 and a dot at 320 x 160) and rounded its ends with half its length,
+  which drew past the element. All six now share one layout: the full card
+  where there is room, then a tight card, then the card without the mode's
+  marks, then the bar alone - nothing outside the element, in either
+  orientation, and a clip to the element as the guarantee.
+  - LinearSegmented runs vertically (it ignored the orientation).
+  - LinearWithArrow's value label sits under its arrow (it was a line lower,
+    often outside the element), carries the unit, and stays inside at the
+    ends; a narrow vertical one drops its min/max labels before its arrow.
+  - MultiPointer's labels stay inside the element, 3 px clear of its edge
+    (flush with it, cairo 1.16 painted their last pixel outside), and one
+    that would cover another is left out; the tuner's station labels no longer cover the title
+    or the value line.
+  - The value follows the range: it was clamped only when set, so
+    `SetValue(150)` then `SetMaxValue(200)` showed 100, and a range narrowed
+    afterwards left the value outside it, drawn past the track. A range,
+    pointer or threshold outside min..max sits at the end of the scale.
+  - `Tests/GaugeLinearModesTest.cpp`: every mode, both orientations, seven
+    sizes from a card to an 8 px strip.
+- **SmartHome: a simulated demo home, and the engine bugs it exposed.**
+  `SmartHome/protocols/Simulated` is a backend with no radio: 30 devices in
+  8 rooms covering every device kind (lights, plugs, a relay, thermostats,
+  locks, blinds, temperature, humidity, motion, door, leak and smoke
+  sensors), on a clock that moves them - thermostats warm their rooms,
+  blinds travel, a fridge's compressor cycles, motion fires and clears, the
+  meters count. Pairing finds a new device after a few seconds, and four
+  `simulate*` commands stage events through `SmartHomeAPI::SendCommand`. It
+  is always built and registered, under its own
+  `SmartHomeProtocolType::Simulated`, so a fake device is never taken for a
+  real one. Driving it through the facade found what no backend had reached:
+  - The first device ever to join deadlocked the manager: `RegisterDevice`
+    dispatched `DispatchDeviceDiscover` with `deviceMutex` held, and that
+    takes it again. No callback runs under a registry lock now.
+  - Devices a backend already has when it is enabled were never registered;
+    a join registered no device object; pairing never completed; an update
+    never refreshed the registry's copy of the device's info.
+  - Every state query (`GetLightState`, `GetThermostatState`,
+    `GetLockState`, `GetSwitchState`, `GetSensorReading`) returned an empty
+    struct. They read the backend's device objects now, and the facade gains
+    `GetBlindPosition`, `GetBatteryLevel`, `GetPowerUsage` and
+    `GetEnergyUsage`. `SmartHomeDeviceInfo` gains `Room`.
+  - `SetThermostatTarget` sent `std::to_string(float)`: "23,500000" under a
+    comma-decimal locale. It is dot-decimal now.
+  - `SmartHome/tests/SimulatedTest.cpp`: 51 checks through the facade, run
+    under `de_DE.UTF-8`.
+- **DemoApp: the Smart Home module is "partially implemented"**, no longer
+  "planned": the module, its widgets and SmartHome Center exist
+  (`Docs/SmartHomeCenter/CHANGELOG.md`).
+- **SmartHome: the home is kept, and automations run.**
+  - `SmartHomeAPI::OpenStore(path)` opens **smarthome.db**, an UltraDatabase
+    (SQLite) store: scenes and automations (written through on every
+    change), the names and rooms given to devices (`RenameDevice`, new
+    `SetDeviceRoom`), the home's location (`SetHomeLocation`), the event log
+    (`GetEventLog`, `SetOnEvent`) and sensor history. `ExportStore` writes a
+    consistent copy; the manager's `SaveConfiguration` / `LoadConfiguration`
+    TODOs are that copy and an open. Built without SQLite, the store refuses
+    to open and says why.
+  - `GetSensorHistory` returned nothing. It answers from the store: sensor
+    values, a thermostat's room temperature and a metered plug's power
+    (`SmartHomeSensorType::Power`, new) are recorded past a deadband and at
+    least every 15 minutes.
+  - `EvaluateAutomations` was a TODO, so no automation ever ran. The new
+    engine reads the trigger JSON and condition strings the automation
+    editor writes (documented on `SmartHomeAutomation`): device triggers
+    that fire once per match, optionally after `forMinutes`; time, sunrise
+    and sunset triggers (`GetSunTimes`); time, weekday and device
+    conditions; `notify` (`SetOnAutomationNotify`), `delay` and
+    `activateScene` actions. It evaluates once a second and at once when a
+    device changes, switches off an automation that keeps triggering
+    itself, and logs every run with its reason. `RunAutomation` runs one by
+    hand.
+  - `SmartHome/tests/AutomationTest.cpp`: the store across a restart, every
+    trigger and condition kind, the delay, the loop guard and the sun, on a
+    clock the test sets.
+
 #### 2026-10-21 *0.9.360*
 - **UltraDatabase 0.3.0: streaming cursors, per-statement scripts and
   cancelling** - the module half of UltraDBAdmin's stage 1
