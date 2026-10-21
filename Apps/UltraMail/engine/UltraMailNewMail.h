@@ -4,6 +4,8 @@
 // words of that notification. UltraMail posts it through UltraMessage
 // (FeedPublisher::Notify), and the desktop's notification server draws it.
 // Headless, so the rules are tested without a server or a screen.
+// Version: 0.2.0 - NewMailTarget and its launch string: where a click on the
+//                 notification leads, carried by the notification itself
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -77,5 +79,21 @@ struct NewMailText {
 // so the notification says which one; empty leaves it out. Sender and
 // subject are used as stored: decode them before (DisplayHeader).
 NewMailText FormatNewMail(const NewMailSummary& summary, const std::string& accountLabel = "");
+
+// Where a click on a new-mail notification leads.
+struct NewMailTarget {
+    std::string accountId;
+    std::string folder;     // empty: the account's inbox
+    int64_t     uid = 0;    // 0: no single message
+
+    bool operator==(const NewMailTarget&) const = default;
+};
+
+// The notification's `launch` string for a target (SystemNotification::launch),
+// which a click reaching UltraMail outside the bus hands back - a Windows toast
+// clicked after the broker host quit, or with UltraMail not running at all.
+std::string NewMailLaunch(const NewMailTarget& target);
+// The target a launch string names; false when it names no account.
+bool ParseNewMailLaunch(const std::string& launch, NewMailTarget& out);
 
 } // namespace UltraMail

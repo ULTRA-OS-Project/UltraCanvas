@@ -682,7 +682,12 @@ number anywhere else, and never introduce a new literal copy of one:
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
-   runs that too.
+   runs that too. Posting a `system.notification` from an application? It
+   also calls `UltraCanvas::RegisterNotificationActivator` at its start and
+   gives the notification a `launch`, or a click on its Windows toast does
+   nothing once the broker host has quit
+   (`UltraCanvasNotificationActivation.h`) — run
+   `python3 scripts/check_notification_activators.py`; CI runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:

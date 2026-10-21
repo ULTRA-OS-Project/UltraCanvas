@@ -243,11 +243,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
         "what the user should see but need not answer now: it sits in a corner, never takes the focus, and "
         "goes by itself - low 5 s, normal 8 s, critical stays; the pointer resting on it holds it.\n\n"
         "From an application, post a system.notification on UltraMessage:\n"
-        "  UltraMessage::SystemNotification n;  n.appName = \"MyApp\";\n"
-        "  n.summary = \"Export finished\";  n.actions = {{\"default\", \"Open\"}};\n"
+        "  UltraMessage::SystemNotification n;  n.appId = \"org.example.myapp\";  n.appName = \"MyApp\";\n"
+        "  n.summary = \"Export finished\";  n.actions = {{\"default\", \"Open\"}};  n.launch = \"file=report.pdf\";\n"
         "  UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSystemNotification(n));\n"
         "The desktop's notification service shows it - on ULTRA OS the desktop's toast host, as here; on GNOME, "
-        "Plasma or Windows their own - and a click comes back as system.notification.action.\n\n"
+        "Plasma or Windows their own - and a click comes back as system.notification.action.\n"
+        "Register for the clicks once at the start, so one on a Windows toast reaches the application even after "
+        "the bus is gone (UltraCanvasNotificationActivation.h):\n"
+        "  UltraCanvas::RegisterNotificationActivator(\"org.example.myapp\", [](const auto& click) { Open(click.launch); });\n\n"
         "A desktop shell runs the host itself: UltraCanvasNotificationToastHost toasts; "
         "toasts.SetScreenMargins(0, 0, barWidth, 0); toasts.Connect();");
     notes->SetFontSize(11);

@@ -3,6 +3,11 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.8 - OpenFromActivation: a notification's click that reaches
+//                   UltraMail outside the bus (a Windows toast clicked after the
+//                   broker host quit, or with UltraMail not running) opens the
+//                   mail its launch string names; a click arriving both ways
+//                   opens it once (OpenNotificationTarget)
 // Version: 0.12.7 - GuardQuitDuringTransfers: the last window asks before it
 //                   ends a cloud upload or download
 // Version: 0.12.6 - the cloud stores and service are shared (shared_ptr), so
@@ -68,6 +73,7 @@
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailFeedPublisher.h"
 #include "UltraMailNewMail.h"
+#include "UltraCanvasNotificationActivation.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailOAuth.h"
 
@@ -557,6 +563,14 @@ private:
     // mail it announced on screen - the message, or the account's inbox when
     // it announced several.
     void OpenFromNotification(const std::string& notificationId);
+    // The same click when Windows hands it to UltraMail's notification
+    // activator (UltraCanvasNotificationActivation.h): the mail the
+    // notification's launch string names, else the one its id is known for.
+    void OpenFromActivation(const UltraCanvas::NotificationActivation& click);
+    // The window to the front and the target on screen; the same target asked
+    // for again within a few seconds (one click by the bus and by the
+    // activator) is shown once.
+    void OpenNotificationTarget(const NewMailTarget& target);
     // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
     IMailboxProtocolPlugin* ImapPlugin() const;
     // The JMAP plug-in as the mailbox interface, or null when it is not loaded.
@@ -782,12 +796,12 @@ private:
     NewMailTracker  newMail_;
     // What a click on a notification opens, by the notification's bus id
     // (UI thread only).
-    struct NotificationTarget {
-        std::string accountId;
-        std::string folder;     // empty: the account's inbox
-        int64_t     uid = 0;    // 0: no single message
-    };
+    using NotificationTarget = NewMailTarget;
     std::map<std::string, NotificationTarget> notificationTargets_;
+    // The target last opened from a notification, and when: one click can
+    // arrive by the bus and by the activator.
+    NotificationTarget lastOpenedTarget_;
+    std::chrono::steady_clock::time_point lastOpenedAt_{};
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
     // The Contacts window while it is open (one at a time).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;

@@ -478,6 +478,14 @@ sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-diagnose.bat" > "$DIST_DIR/uc-diagnose.bat
 sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-diagnose.ps1" > "$DIST_DIR/uc-diagnose.ps1"
 echo "  Added uc-diagnose.bat + uc-diagnose.ps1 (startup troubleshooting launchers)"
 
+# The ZIP has no uninstaller, and Windows keeps the applications' notification
+# registrations (name, icon, the program a click starts) for the account.
+# uc-remove-registrations.cmd removes them, as the installer's uninstaller does
+# (UOS-Settings --remove-notification-registrations); run before deleting the
+# folder. CRLF, like the diagnose launcher.
+sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-remove-registrations.cmd" > "$DIST_DIR/uc-remove-registrations.cmd"
+echo "  Added uc-remove-registrations.cmd (removes the notification registrations; the ZIP has no uninstaller)"
+
 cd $DIST_DIR
 zip -r ../$PACKAGE_ZIP *
 cd ..
