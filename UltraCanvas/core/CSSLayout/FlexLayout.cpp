@@ -2,6 +2,8 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.6.1 - a wrapping row breaks its lines at an AtMost main extent
+//                 too, so a column measuring it gets every line's height.
 // Version: 1.6.0 - widthSetByParent: an Exact width is the container's used width
 //                 (a table cell measured for its row's height)
 // Version: 1.5.0 - an item stretches only when the container or the item asks
@@ -561,7 +563,11 @@ namespace UltraCanvas {
                     float itMain = it.hypoMain + it.marginMainStart + it.marginMainEnd;
                     float gap    = current.items.empty() ? 0.f : s.mainGap;
                     bool fits = (cursor + gap + itMain) <= s.availableMain + 0.001f;
-                    bool canWrap = (s.fl.wrap != FlexWrap::NoWrap) && s.mainKnown;
+                    // An AtMost main extent is a wrap budget too (as noted
+                    // where it is set): a wrapping row measured by a column at
+                    // "at most this wide" has to break its lines there, or it
+                    // reports one line's height and the parent clips the rest.
+                    bool canWrap = (s.fl.wrap != FlexWrap::NoWrap) && std::isfinite(s.availableMain);
                     if (canWrap && !fits && !current.items.empty()) {
                         s.lines.push_back(std::move(current));
                         current = {};
