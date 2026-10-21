@@ -195,6 +195,7 @@ struct UltraIMProviderInfo {
     UltraIMLoginType        loginType = UltraIMLoginType::UsernamePassword;
     UltraIMConnectionState  connectionState = UltraIMConnectionState::Disconnected;
     std::string             localUserId;   // Signed-in identity ("" when signed out)
+    bool                    hasStoredSession = false; // Can sign in without asking the user
 };
 
 struct UltraIMSendOptions {

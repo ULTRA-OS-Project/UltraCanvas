@@ -514,6 +514,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 |---|---|
 | `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, the modules, the build system, DemoApp |
 | `Docs/AnchorPoint/CHANGELOG.md` | AnchorPoint |
+| `Docs/ChatCube/CHANGELOG.md` | ChatCube — the ULTRA OS messenger |
 | `Docs/ArtCreator/CHANGELOG.md` | ArtCreator |
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/SmartHomeCenter/CHANGELOG.md` | SmartHome Center — the home control window |

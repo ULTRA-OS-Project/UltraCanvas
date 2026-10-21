@@ -650,6 +650,16 @@ if(BUILD_ULTRACLAUDE)
     add_subdirectory(Apps/UltraClaude)
 endif()
 
+# ===== CHATCUBE =====
+# The ULTRA OS native messenger on UltraIM: peer-to-peer, end-to-end
+# encrypted chat with no account, groups through a relay (Server/ChatCubeRelay).
+option(BUILD_CHATCUBE "Build the ChatCube messenger" ON)
+if(BUILD_CHATCUBE)
+    message(STATUS "")
+    message(STATUS "── Building ChatCube ──")
+    add_subdirectory(Apps/ChatCube)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless

@@ -1,0 +1,66 @@
+# ChatCube
+
+The ULTRA OS native messenger. Chat directly with the people you know -
+end-to-end encrypted, peer to peer when both of you are online, through a
+relay server when the other person is offline and for groups. There is no
+account and no password: your ChatCube ID is a key made on your computer.
+
+ChatCube is the window; the networks are UltraIM providers
+([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
+uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`). Matrix, Telegram
+and other messengers with an open API come later as further providers.
+Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
+The first ChatCube draft, which this replaces, is kept under
+[`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
+
+## Using it
+
+1. Start ChatCube, type your name and the address of a ChatCube relay
+   (`Server/ChatCubeRelay`), and press **Create my ChatCube ID**. Later starts
+   sign in by themselves.
+2. **Copy** your ID and send it to the people who should reach you; paste
+   theirs into *Contact's ChatCube ID* and press **Add**.
+3. **New group** takes a name and the members' IDs, separated by commas.
+4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
+   `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
+   green `✓✓` read.
+
+Calls are not in this release; the buttons stay disabled until UltraRTC
+carries audio and video.
+
+## Building and running
+
+ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
+UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider module is built next
+to it in `<build>/Plugins/UltraIM/`. `CHATCUBE_PLUGIN_DIR` points it elsewhere.
+Its data - the identity's key vault, contacts, history - is in the per-user
+data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
+`~/Library/Application Support/ChatCube`).
+
+### Trying it alone
+
+`chatcube-peer` (built with the app) is a second ChatCube identity on the
+command line:
+
+```bash
+# a relay on this machine
+cd Server/ChatCubeRelay && python3 -m venv .venv && .venv/bin/pip install -e .
+CHATCUBE_RELAY_DB=/tmp/relay.sqlite3 .venv/bin/chatcube-relay &      # http://127.0.0.1:8790
+
+# Bob, who answers everything for ten minutes
+build/chatcube-peer --relay http://127.0.0.1:8790 --data /tmp/bob --name Bob --create --print-id
+build/chatcube-peer --data /tmp/bob --add <your ChatCube ID> --echo 600
+```
+
+Then add Bob's ID in ChatCube and write to him.
+
+## Files
+
+| | |
+|---|---|
+| `main.cpp` | start-up: UltraNet, UltraRTC, UltraIM with the UI-thread dispatcher, provider modules |
+| `ui/ChatCubeWindow.*` | the window: sign-in page, sidebar, conversation pane, UltraIM events |
+| `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
+| `peer/main.cpp` | `chatcube-peer` |
+
+Version: `Docs/ChatCube/CHANGELOG.md` (first line).
