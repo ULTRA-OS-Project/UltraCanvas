@@ -1,3 +1,46 @@
+#### 2026-10-21 *0.9.363*
+- **The UltraNet JMAP plug-in pushes (phase 3), and the mail plug-ins share
+  one message builder.** `IMailboxProtocolPlugin::WatchMailbox` opens a
+  watch on an account and returns its handle; the plug-in then reports a
+  change (`UltraNetMailChange`: which folders when known, and whether the
+  folder list changed) on its own thread each time the server announces
+  one, and `onEnd` once the watch is over - the stream closed, the
+  connection dropped, or `StopWatching` ended it (Cancelled); the caller
+  opens the next watch when it wants one. The JMAP plug-in holds the
+  session's event source open (`UltraNet_SseStreamAsync`, `Email,Mailbox`,
+  a ping every five minutes, a stall limit of two missed pings) and reports
+  a `StateChange` whose Email or Mailbox state it has not seen - the first
+  event only records where the account stands. The defaults report "not
+  implemented", so the IMAP plug-in and test fakes are simply polled.
+  `UltraNet_MimeBuildMailMessage` (UltraNetMime.h) builds the raw RFC 5322
+  message of a `UltraNetMailMessage` - media type and charset from
+  `contentType`, the text alternative and inline pictures of an HTML body,
+  the attachments, the extra headers - and the SMTP and JMAP plug-ins both
+  send through it instead of a copy each. The plug-in host table is ABI 3:
+  `MimeBuildMailMessage`, `SseStreamAsync`, `CancelRequest` and
+  `IsRequestActive` appended; the shim refuses an older host, since every
+  plug-in in the tree calls them.
+- **The UltraNet JMAP plug-in writes as well as reads (phase 2).**
+  `StoreFlags` patches the message's keywords (`$seen`, `$answered`,
+  `$flagged`, `$draft`); `\Deleted`, which JMAP has not, moves the message
+  to the Trash mailbox, or destroys it when it is there already or the
+  account has none, and clearing it is a no-op. `MoveMessage` replaces the
+  message's `mailboxIds`, `ExpungeMessage` destroys it, `AppendMessage`
+  uploads the raw message to the session's `uploadUrl` and imports it into
+  the folder with its keywords (`Email/import`), and `FetchAllFlags` walks
+  the folder and reads every message's keywords, so a client's reconcile
+  step sees reads and deletions made elsewhere. `SendMail` sends through
+  JMAP: the raw message (built with `UltraNet_MimeBuild`, as the SMTP
+  plug-in does) is uploaded, imported into Drafts and handed to
+  `EmailSubmission/set` with the `Identity` whose address is the From (a
+  domain wildcard identity, else the account's first); on success the
+  server files it in Sent with `$draft` cleared, or destroys it when there
+  is no Sent mailbox. The `jmap://` server URL comes in
+  `UltraNetMailOptions::serverUrl`, as for SMTP. The wire shapes live in
+  `JmapCore.h` and are tested without a server
+  (`Tests/UltraNet/test_jmap_plugin.cpp`); push over the session's event
+  source (phase 3) remains.
+
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows
   each port next to its original.** Twelve engine-native elements under
