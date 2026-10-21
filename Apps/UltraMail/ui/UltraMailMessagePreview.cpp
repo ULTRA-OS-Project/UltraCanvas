@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.18.3 - loan scams (loan-offer-fraud) are named in the warning strip
 // Version: 0.18.2 - the More menu is anchored to its button: above it when there is
 //                   no room below
 // Version: 0.18.1 - a blocked sender's mail: the strip says "You blocked this sender"
@@ -1080,6 +1081,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
     const bool romance = security.HasFinding("romance-scam");
+    const bool loan = security.HasFinding("loan-offer-fraud");
     const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
                            security.HasFinding("government-impersonation");
     const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
@@ -1133,6 +1135,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     const char* what = romance                ? "romance scam"
                      : phishing || lookalike  ? "phishing"
                      : cryptoScam ? "cryptocurrency scam"
+                     : loan       ? "loan scam"
                      : nullptr;
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
         (what ? std::string(scam ? "Warning: This is likely a " : "Warning: This may be a ") +
@@ -1158,6 +1161,10 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (onlyBlocked)
         text += "\nRight-click the sender to unblock them. \"Mark as spam\" moves the "
                 "message to the junk folder.";
+    else if (loan)
+        text += "\nDo not pay any fee, insurance or charge to receive a loan, and do not "
+                "send copies of your passport or bank details. Ask your own bank if you need "
+                "credit.";
     else if (romance)
         text += "\nDo not send money, gift cards or crypto to someone you only know from "
                 "email or the internet, and do not sign up or give card details on a site "
@@ -1175,6 +1182,11 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     else if (phishing || lookalike)
         text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
+    else if (loan && !cryptoScam)
+        text += "\n\n\xC2\xB2 Loan scams offer credit or \"project funding\" - often "
+                "millions at a few percent - to strangers by email. Only a bank may lend, and "
+                "banks do not write to people out of the blue: the \"lender\" collects a "
+                "processing fee, an insurance or a transfer charge, and the loan never comes.";
     else if (cryptoScam)
         text += "\n\n\xC2\xB2 Cryptocurrency scams ask for a wallet's recovery phrase, "
                 "demand payment to a wallet address (blackmail, fake invoices) or promise "
