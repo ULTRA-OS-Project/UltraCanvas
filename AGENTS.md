@@ -546,13 +546,14 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
 | `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
 
-Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
-write that line at all**: drop your bullets in a new file under
-[`Docs/UltraCanvas/changelog.d/`](Docs/UltraCanvas/changelog.d/README.md) with
-no header and no number, and CI assigns the number on `main` after the merge
-(see *Pending entries* below). For an application changelog, adding the entry
-at the top is still the whole bump. Either way, do **not** hand-edit a version
-number anywhere else, and never introduce a new literal copy of one:
+Format: `#### YYYY-MM-DD *x.y.z*`. **You do not write that line at all, for
+the framework or for an application**: drop your bullets in a new file in the
+`changelog.d/` next to the product's changelog —
+[`Docs/UltraCanvas/changelog.d/`](Docs/UltraCanvas/changelog.d/README.md) for
+the framework, `Docs/<App>/changelog.d/` for an app — with no header and no
+number, and CI assigns each product's number on `main` after the merge (see
+*Pending entries* below). Do **not** hand-edit a version number anywhere else,
+and never introduce a new literal copy of one:
 
 - `cmake/UltraCanvasVersion.cmake` parses the first line of each file at
   configure time and sets one `<PREFIX>_VERSION` per row of the table above —
@@ -593,7 +594,7 @@ number anywhere else, and never introduce a new literal copy of one:
   it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
   what shipped in each framework release. Do not backfill it into the app
   files — that would put one change in two places under two numbers.
-- **Pending entries: the framework's number is assigned on `main`, not by
+- **Pending entries: every product's number is assigned on `main`, not by
   you.** Line 1 of a shared file was the most contended line in the
   repository, and two open pull requests collided there every time, in one of
   two ways. Either a branch picked the next number, `main` released past it
@@ -606,20 +607,29 @@ number anywhere else, and never introduce a new literal copy of one:
   any of this was checked, and on 2026-09-23 one branch was renumbered five
   times in a morning (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each
   renumber throwing away a six-platform CI matrix, with 0.9.29 consumed and
-  lost in the churn.
+  lost in the churn. The app changelogs went the same way once several
+  branches touched one app: on 2026-10-21 one pull request (#924) was
+  renumbered five times (UltraFiler 1.77.1 → 1.83.0 → 1.87.0, UltraPaint
+  0.2.26 → 0.2.27), conflicting each time on line 1 of the changelog and of
+  UltraFiler's `.rc` and `.manifest`.
   So the routine case no longer touches line 1: write
-  `Docs/UltraCanvas/changelog.d/<change-name>.md` containing just the bullets.
-  Two branches adding two files cannot collide, there is nothing to renumber
-  when `main` moves, and `.github/workflows/changelog-fold.yml` folds whatever
-  is pending into `CHANGELOG.md` under the next free version once it lands —
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` for a framework change and
+  `Docs/<App>/changelog.d/<change-name>.md` for an app change (the directory
+  next to the changelog in the table above; create it with your first entry),
+  containing just the bullets. Two branches adding two files cannot collide,
+  there is nothing to renumber when `main` moves, and
+  `.github/workflows/changelog-fold.yml` folds whatever is pending into each
+  product's `CHANGELOG.md` under that product's next version once it lands —
   `scripts/fold_changelog.py` does the same locally if you want to see it.
+  The next version keeps each file's own habit: the component that changed
+  between its two latest releases is bumped (UltraFiler 1.88.0 → 1.89.0,
+  UltraPaint 0.2.28 → 0.2.29, Texter 1.69 → 1.70, the framework a patch).
   Name the file after the change, not the branch. Never put a `####` header in
   one: a number chosen on a branch is the collision this ends, and
   `scripts/check_changelog.py` refuses it.
   A release that must carry a *specific* number — a hand-cut hotfix — can
   still be written straight into the changelog as a top entry, and the same
-  rules apply to it: unique, and above every version below it. Application
-  changelogs are unchanged; they see little contention, one product to a file.
+  rules apply to it: unique, and above every version below it.
   Run `git fetch origin main` and then
   `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
   runs it too. The check compares a top entry with line 1 of `main`'s copy of
@@ -648,9 +658,11 @@ number anywhere else, and never introduce a new literal copy of one:
   `package-macos.sh`) parse the same line for artefact file names.
 - Only the Windows resource files still hold literals, because windres reads
   them from disk: `Apps/Texter/UltraTexter.{rc,manifest}` and
-  `Apps/UltraFiler/UltraFiler.{rc,manifest}`. Run `./set-version.sh` after
-  bumping either app's version; a CMake configure on any platform warns when
-  they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
+  `Apps/UltraFiler/UltraFiler.{rc,manifest}`. The fold runs `./set-version.sh`
+  and commits them with the new line 1, so a branch with a `changelog.d/`
+  entry leaves them alone. Run it yourself only after a hand-written top entry
+  for either app (the hotfix case); a CMake configure on any platform warns
+  when they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
   fails the pull request - the warning alone let UltraFiler 1.72.4 ship with
   a 1.72.3 version resource. Nothing else may hold a literal — UltraFiler's compile
   definition did, and titled its window `UltraFiler 0.8.0` for thirteen

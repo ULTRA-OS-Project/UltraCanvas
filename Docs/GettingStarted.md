@@ -507,11 +507,12 @@ evidence; a description of what it "should" look like is not.
 
 ## Step 8 — Version, document, regenerate
 
-- **The app's changelog is its version.** A release is a new
-  `#### YYYY-MM-DD *x.y.z*` line at the top of `Docs/MyApp/CHANGELOG.md`;
-  nothing else is hand-edited. A framework change the app needed goes in
-  `Docs/UltraCanvas/changelog.d/<change-name>.md` as bullets with no header;
-  CI assigns the framework number on `main`.
+- **The app's changelog is its version.** After the first entry, a change is
+  `Docs/MyApp/changelog.d/<change-name>.md` holding bullets with no header;
+  CI folds it into `Docs/MyApp/CHANGELOG.md` under the app's next
+  `#### YYYY-MM-DD *x.y.z*` line on `main`, and nothing else is hand-edited.
+  A framework change the app needed goes in
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` the same way.
 - **A new or changed public API gets its doc in the same change**:
   `Docs/UltraCanvas/UltraCanvas<Name>.md` for a component, a row on the
   catalogue page for a new element, the module README for a module.
@@ -636,8 +637,9 @@ password refuses the published one, so on a machine still using it `-Mode Sign` 
 still packages. Delete any other copy of the old `.pfx` - it still opens with
 the old password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
-copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version; the CMake configure warns when they are stale and
+copy, because `windres` reads them from disk: the changelog fold on `main`
+runs `./set-version.sh` for the apps listed in it, and you run it yourself
+only after a hand-written top entry; the CMake configure warns when they are stale and
 `scripts/check_changelog.py` fails CI on it.
 
 </details>
