@@ -518,8 +518,8 @@ with their vault, the tree, Browse, Structure and the SQL console with Stop.
 **Stage 2 has begun with row editing** (UltraDBAdmin 0.2): Browse stages
 edits, new rows and deletions by primary key, previews them as SQL and
 commits them in one transaction (§5.3), with the destructive guard for
-deletions and production connections. **Structure editing followed**
-(UltraDBAdmin 0.3): columns added, changed, renamed and dropped, indexes
+deletions and production connections. **Structure editing followed**:
+columns added, changed, renamed and dropped, indexes
 added and dropped and the table renamed, staged, previewed as DDL and
 applied in one transaction - `ALTER TABLE` on PostgreSQL, and on SQLite its
 own `ALTER TABLE` plus the documented 12-step rebuild, working from the
