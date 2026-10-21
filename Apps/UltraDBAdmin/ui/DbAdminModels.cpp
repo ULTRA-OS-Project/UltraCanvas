@@ -62,10 +62,23 @@ ListDataValue ResultSetModel::GetData(const ListIndex& index, ListDataRole role)
     const UltraDbRow& row = rows_.Row(static_cast<size_t>(index.row));
     if (static_cast<size_t>(index.column) >= row.Size()) return {};
     const UltraDbValue& value = row[static_cast<size_t>(index.column)];
+    const CellValue* staged = nullptr;
+    bool deleted = false;
+    if (pending_ && (role == ListDataRole::DisplayRole || role == ListDataRole::ToolTipRole)) {
+        staged = pending_->PendingCell(row, columns_[static_cast<size_t>(index.column)]);
+        deleted = pending_->PendingDelete(row);
+    }
     switch (role) {
         case ListDataRole::DisplayRole:
+            if (deleted && index.column == 0) return "DEL " + CellText(value);
+            if (staged) {
+                return (staged->kind == CellValue::Kind::Null ? std::string(NullText())
+                                                              : CellText(UltraDbValue(staged->text))) + " *";
+            }
             return CellText(value);
         case ListDataRole::ToolTipRole:
+            if (deleted) return std::string("Deleted when you commit; Revert keeps it.");
+            if (staged) return "Was: " + TooltipText(value) + "\nStaged: " + PreviewLiteral(*staged);
             return TooltipText(value);
         case ListDataRole::SortRole:
             // Numbers sort as numbers; everything else by its text. NULL

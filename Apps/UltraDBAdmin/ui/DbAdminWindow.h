@@ -4,6 +4,9 @@
 // left, and three tabs on the right:
 //   Browse    - the selected table a page at a time (TablePager), sorted on
 //               the server by a click on a column header, Previous / Next;
+//               and edited: a row changed, added or deleted is staged
+//               (EditBuffer), shown in the grid and as SQL, and written by
+//               Commit in one transaction, or dropped by Revert;
 //   Structure - its columns, its keys, indexes, foreign keys and triggers,
 //               and a view's definition;
 //   SQL       - a script editor with Run (Ctrl+Enter) and Stop, what each
@@ -23,6 +26,7 @@
 #pragma once
 
 #include "DbAdminConnections.h"
+#include "DbAdminEditBuffer.h"
 #include "DbAdminJobQueue.h"
 #include "DbAdminModels.h"
 #include "DbAdminSqlRunner.h"
@@ -117,6 +121,27 @@ private:
     void UpdateBrowseBar();
     void ClearObject(const std::string& message);
 
+    // ===== EDITING =====
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildEditBar();
+    // Why rows cannot be edited now, or "": no table, a view or a table
+    // without a key, a read-only connection, a commit under way.
+    std::string EditBlockReason() const;
+    int SelectedBrowseRow() const;          // -1: none
+    void AddRow();
+    void EditRow(int row);
+    void DeleteSelectedRow();
+    void AfterEdit();                       // redraw the grid, recount the bar
+    void PreviewChanges();
+    void CommitChanges();
+    void RunCommit();
+    void ApplyCommit(uint64_t generation, const UltraDbResult& result, size_t failed,
+                     const std::string& failedSql);
+    void RevertChanges();
+    void UpdateEditBar();
+    // Runs `then` at once when nothing is staged, else after the user agrees
+    // to drop the staged changes ("... and `what`?"; empty: just drop them).
+    void ConfirmDiscard(const std::string& what, std::function<void()> then);
+
     // ===== SQL =====
     SqlRunner* RunnerFor(const ConnectionSpec& spec);
     void RunSql();
@@ -151,6 +176,17 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> browseNote_;
     std::shared_ptr<ResultSetModel> browseModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> browseView_;
+
+    // Editing: the staged changes of the table Browse shows.
+    EditBuffer edits_;
+    bool committing_ = false;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> addRowButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> editRowButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> deleteRowButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> pendingLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> previewButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> revertButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> commitButton_;
 
     // Structure
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> structureInfo_;

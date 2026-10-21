@@ -2,11 +2,13 @@
 // UltraDBAdmin's engine without a window: the connection store (its file
 // never holds a password, its vault does), cell formatting, the Browse pager
 // (pages, sorting, quoting), the SQL runner (a script on a worker thread,
-// Stop, history) and the job queue the window's queries run on. SQLite
-// throughout, in temporary folders only.
+// Stop, history), the job queue the window's queries run on, and the staged
+// row edits of Browse (the SQL they become, one transaction, all or nothing).
+// SQLite throughout, in temporary folders only.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
+#include "DbAdminEditBuffer.h"
 #include "DbAdminFormat.h"
 #include "DbAdminJobQueue.h"
 #include "DbAdminSqlRunner.h"
@@ -276,6 +278,92 @@ void TestSqlRunner() {
     UltraDb_CloseConnection(c);
 }
 
+// The rows of `sql` on `c`, for the edit-buffer tests.
+UltraDbResultSet Rows(const std::string& c, const std::string& sql) {
+    UltraDbResultSet rows;
+    UltraDb_Query(c, sql, rows);
+    return rows;
+}
+
+void TestEditBuffer() {
+    Section("Editing rows");
+    TempDir dir;
+    ConnectionStore store;
+    store.OpenInMemory();
+    const std::string c = MakeSqlite(store, dir, 3);
+    UltraDb_Exec(c, "CREATE TABLE \"line items\"(\"order\" INTEGER, line INTEGER, sku TEXT NOT NULL, "
+                    "qty INTEGER DEFAULT 1, PRIMARY KEY(\"order\", line))");
+    UltraDb_Exec(c, "INSERT INTO \"line items\" VALUES (1, 1, 'a', 2), (1, 2, 'b', 3)");
+    UltraDb_Exec(c, "CREATE TABLE nokey(v TEXT)");
+    UltraDb_Exec(c, "CREATE VIEW v AS SELECT * FROM items");
+
+    UltraDbTableSchema items, lines, nokey, view;
+    UltraDb_DescribeTable(c, "main", "items", items);
+    UltraDb_DescribeTable(c, "main", "line items", lines);
+    UltraDb_DescribeTable(c, "main", "nokey", nokey);
+    UltraDb_DescribeTable(c, "main", "v", view);
+    Check(EditBuffer(items).ReadOnlyReason().empty(), "a table with a key is editable");
+    Check(!EditBuffer(nokey).ReadOnlyReason().empty(), "a table without a key is not, and says why");
+    Check(!EditBuffer(view).ReadOnlyReason().empty(), "nor is a view");
+
+    // Stage: an edit, a new row, a deletion.
+    EditBuffer buffer(lines);
+    const UltraDbResultSet page = Rows(c, "SELECT * FROM \"line items\" ORDER BY \"order\", line");
+    std::string error;
+    Check(buffer.UpdateRow(page.Row(0), {{"qty", CellValue::Of("5")}, {"sku", CellValue::Of("it's")}}, error),
+          "an edit is staged (" + error + ")");
+    Check(buffer.UpdateRow(page.Row(0), {{"qty", CellValue::Of("2")}}, error) && buffer.Count() == 1,
+          "editing a cell back to what was read drops that cell, not the change");
+    Check(buffer.PendingCell(page.Row(0), "sku") && buffer.PendingCell(page.Row(0), "sku")->text == "it's" &&
+          !buffer.PendingCell(page.Row(0), "qty"), "the grid can ask for a cell's staged value");
+    Check(buffer.InsertRow({{"order", CellValue::Of("1")}, {"line", CellValue::Of("3")},
+                            {"sku", CellValue::Of("c")}, {"qty", CellValue::DefaultValue()}}, error),
+          "a new row is staged");
+    Check(buffer.DeleteRow(page.Row(1), error) && buffer.PendingDelete(page.Row(1)), "a deletion is staged");
+    Check(!buffer.UpdateRow(page.Row(1), {{"sku", CellValue::Of("x")}}, error),
+          "a row to be deleted cannot also be edited");
+    Check(buffer.Count() == 3 && buffer.Count(RowChange::Kind::Delete) == 1, "three changes pending");
+
+    std::vector<GeneratedStatement> statements;
+    Check(buffer.Statements(c, statements).success && statements.size() == 3, "they become three statements");
+    if (statements.size() == 3) {
+        Check(statements[0].sql == "UPDATE \"main\".\"line items\" SET \"sku\" = ? WHERE \"order\" = ? AND \"line\" = ?",
+              "an update binds its values and addresses the row by its whole key: " + statements[0].sql);
+        Check(statements[0].preview ==
+                  "UPDATE \"main\".\"line items\" SET \"sku\" = 'it''s' WHERE \"order\" = 1 AND \"line\" = 1",
+              "the preview writes the values in, quotes doubled: " + statements[0].preview);
+        Check(statements[1].sql == "INSERT INTO \"main\".\"line items\" (\"line\", \"order\", \"sku\") VALUES (?, ?, ?)",
+              "an insert leaves a DEFAULT column out: " + statements[1].sql);
+        Check(statements[2].sql == "DELETE FROM \"main\".\"line items\" WHERE \"order\" = ? AND \"line\" = ?",
+              "a delete by key: " + statements[2].sql);
+    }
+
+    size_t failed = 0;
+    Check(buffer.Commit(c, failed).success, "the changes commit");
+    const UltraDbResultSet after = Rows(c, "SELECT * FROM \"line items\" ORDER BY \"order\", line");
+    Check(after.Size() == 2 && after.Row(0)["sku"].AsString() == "it's" && after.Row(1)["line"].AsInt64() == 3 &&
+          after.Row(1)["qty"].AsInt64() == 1, "the edit, the new row with its default, and no deleted row");
+
+    // All or nothing: a row that vanished fails the commit and undoes the rest.
+    EditBuffer stale(items);
+    const UltraDbResultSet itemRows = Rows(c, "SELECT * FROM items ORDER BY id");
+    stale.UpdateRow(itemRows.Row(0), {{"label", CellValue::Of("changed")}}, error);
+    stale.UpdateRow(itemRows.Row(1), {{"label", CellValue::NullValue()}}, error);
+    UltraDb_Exec(c, "DELETE FROM items WHERE id = 2");          // meanwhile, elsewhere
+    UltraDbResult result = stale.Commit(c, failed);
+    Check(!result.success && failed == 1, "an update of a row that is gone fails, naming the statement");
+    Check(Rows(c, "SELECT label FROM items WHERE id = 1").Row(0)["label"].AsString() == "item 1",
+          "and the statement before it is rolled back");
+    Check(stale.Count() == 2, "the buffer keeps its changes for another try");
+
+    // New row with nothing given.
+    EditBuffer bare(items);
+    bare.InsertRow({}, error);
+    Check(bare.Statements(c, statements).success && statements[0].sql == "INSERT INTO \"main\".\"items\" DEFAULT VALUES",
+          "a new row with no values given uses DEFAULT VALUES");
+    UltraDb_CloseConnection(c);
+}
+
 void TestJobQueue() {
     Section("Job queue");
     std::mutex m;
@@ -327,6 +415,7 @@ int main() {
     TestPager();
     TestSqlRunner();
     TestJobQueue();
+    TestEditBuffer();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

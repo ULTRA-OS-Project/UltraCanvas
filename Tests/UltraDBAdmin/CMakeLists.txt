@@ -13,6 +13,7 @@ set(_dbadmin ${CMAKE_SOURCE_DIR}/Apps/UltraDBAdmin)
 add_executable(UltraDBAdminEngineTests
     UltraDBAdminEngineTests.cpp
     ${_dbadmin}/engine/DbAdminConnections.cpp
+    ${_dbadmin}/engine/DbAdminEditBuffer.cpp
     ${_dbadmin}/engine/DbAdminFormat.cpp
     ${_dbadmin}/engine/DbAdminJobQueue.cpp
     ${_dbadmin}/engine/DbAdminPaths.cpp

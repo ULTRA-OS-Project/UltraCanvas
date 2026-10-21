@@ -24,6 +24,7 @@ endif()
 add_executable(UltraDBAdmin
     main.cpp
     engine/DbAdminConnections.cpp
+    engine/DbAdminEditBuffer.cpp
     engine/DbAdminFormat.cpp
     engine/DbAdminJobQueue.cpp
     engine/DbAdminPaths.cpp
@@ -31,6 +32,7 @@ add_executable(UltraDBAdmin
     engine/DbAdminTablePager.cpp
     ui/DbAdminConnectionDialog.cpp
     ui/DbAdminModels.cpp
+    ui/DbAdminRowDialog.cpp
     ui/DbAdminWindow.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).

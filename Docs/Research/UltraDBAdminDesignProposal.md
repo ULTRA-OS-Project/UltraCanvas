@@ -512,7 +512,14 @@ G3 `UltraDb_OpenCursor` / `UltraDb_FetchRows` / `UltraDb_CloseCursor`
 (server-side cursors on PostgreSQL), G4 `UltraDb_CancelQuery(connection)`
 (`sqlite3_interrupt`, `PQcancel`), G6 `UltraDb_ExecBatch` (every statement of
 a script with its own result, split as psql splits on PostgreSQL). The
-application itself is next.
+application followed (UltraDBAdmin 0.1, `Apps/UltraDBAdmin`): connections
+with their vault, the tree, Browse, Structure and the SQL console with Stop.
+
+**Stage 2 has begun with row editing** (UltraDBAdmin 0.2): Browse stages
+edits, new rows and deletions by primary key, previews them as SQL and
+commits them in one transaction (§5.3), with the destructive guard for
+deletions and production connections. Structure editing, the SQLite
+rebuild and import are still to come.
 
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for
