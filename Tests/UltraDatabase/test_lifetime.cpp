@@ -5,7 +5,9 @@
 // connection under that statement nor fail it: the running call finishes on
 // the connection it started on, and the next call opens the new one. The
 // same holds for a cursor, a prepared statement and a transaction whose
-// handle is closed, or whose name is replaced, while a call on it runs.
+// handle is closed, or whose name is replaced, while a call on it runs - and
+// a cancel by name, which must still reach a statement that began on the
+// name before it changed hands.
 //
 // Each slow call goes back to its connection after the slow part (a second
 // statement), because that is where a freed connection is touched again;
@@ -20,6 +22,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -185,4 +188,52 @@ TEST(pg_query_survives_close_and_reregister) {
     REQUIRE(result.success);
     REQUIRE(rows.Size() == 1 && rows.Row(0)["n"].AsInt64() == 7);
     UltraDb_CloseConnection(c);
+}
+
+namespace {
+
+// Minutes of work, unless it is cancelled.
+const std::string kCancellable =
+    "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000000000) "
+    "SELECT count(*) AS n FROM n";
+
+// Runs `kCancellable` on `c`, does `change` to the name while it runs, then
+// cancels by name. The statement must stop, although the name no longer
+// leads to the connection it runs on.
+void CancelAfter(const std::string& c, const std::function<void()>& change) {
+    UltraDbResult result;
+    UltraDbResultSet rows;
+    std::atomic<bool> done{false};
+    const auto start = std::chrono::steady_clock::now();
+    std::thread worker([&] { result = UltraDb_Query(c, kCancellable, rows); done = true; });
+    Pause(150);
+    REQUIRE(!done);
+    change();
+    REQUIRE(UltraDb_CancelQuery(c).success);
+    worker.join();
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    REQUIRE(result.code == UltraDbResultCode::Cancelled);
+    REQUIRE(seconds < 10.0);
+}
+
+} // namespace
+
+TEST(cancel_reaches_a_statement_on_a_replaced_connection) {
+    const std::string c = Register("lifetime-cancel-replaced");
+    CancelAfter(c, [&] {
+        UltraDbConnectionConfig fresh;
+        fresh.name = c;
+        fresh.database = ":memory:";
+        REQUIRE(UltraDb_RegisterConnection(fresh).success);
+    });
+    UltraDbResultSet rows;
+    REQUIRE(UltraDb_Query(c, "SELECT 1 AS one", rows).success);   // the new one is untouched
+    UltraDb_CloseConnection(c);
+}
+
+TEST(cancel_reaches_a_statement_on_a_closed_connection) {
+    const std::string c = Register("lifetime-cancel-closed");
+    CancelAfter(c, [&] { REQUIRE(UltraDb_CloseConnection(c).success); });
+    // Nothing runs under the name any more: unknown again.
+    REQUIRE(UltraDb_CancelQuery(c).code == UltraDbResultCode::ConnectionNotFound);
 }
