@@ -1,10 +1,11 @@
 // Apps/DemoApp/UltraCanvasSmartHomeExamples.cpp
 // The Smart Home module on its simulated demo home: the module's dashboard
-// widget (SmartHomePanel) over 30 simulated devices in 8 rooms, with a
-// switch between its device grid, room and list views. Nothing here touches
+// widget (SmartHomePanel) over 30 simulated devices in 8 rooms; its own
+// toolbar switches between the device grid, rooms, list, scenes,
+// automations and the network. Nothing here touches
 // real hardware. The full application on the same module is SmartHome
 // Center (Apps/SmartHomeCenter).
-// Version: 1.0.0
+// Version: 1.1.0 - the panel's own toolbar picks the view
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
@@ -14,7 +15,6 @@
 #include "UltraCanvasSmartHomePanel.h"
 
 #include "UltraCanvasDemo.h"
-#include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 
@@ -49,7 +49,8 @@ namespace UltraCanvas {
         container->AddChild(title);
         auto subtitle = CreateLabel("SmartHomeSubtitle", 0, 0, 0, 36,
             "The module's dashboard widget (SmartHomePanel) on the simulated home: 30 devices in 8 rooms that "
-            "answer like real ones; a press on a card switches it. The full application is SmartHome Center.");
+            "answer like real ones. A press on a card switches it; the toolbar picks the view and searches. "
+            "The full application is SmartHome Center.");
         subtitle->SetFontSize(12);
         subtitle->SetWrap(TextWrap::WrapWord);
         subtitle->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(36));
@@ -59,30 +60,6 @@ namespace UltraCanvas {
         panel->Initialize();
         panel->RefreshDevices();
         panel->RefreshScenes();
-
-        auto modes = std::make_shared<UltraCanvasContainer>("SmartHomeModes", 0, 0, 0, 34);
-        modes->layout.SetFlexRow().SetFlexGap(8);
-        modes->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(34));
-        const struct { const char* id; const char* text; SmartHome::SmartHomePanelMode mode; } views[] = {
-            {"SmartHomeModeGrid", "Devices", SmartHome::SmartHomePanelMode::DeviceGrid},
-            {"SmartHomeModeRooms", "Rooms", SmartHome::SmartHomePanelMode::RoomView},
-            {"SmartHomeModeList", "List", SmartHome::SmartHomePanelMode::DeviceList},
-            {"SmartHomeModeScenes", "Scenes", SmartHome::SmartHomePanelMode::SceneView},
-        };
-        // The buttons live in the container that also holds the panel: a raw
-        // pointer, so no callback keeps it alive.
-        SmartHome::SmartHomePanel* target = panel.get();
-        for (const auto& v : views) {
-            auto button = CreateButton(v.id, 0, 0, 100, 32, v.text);
-            button->SetElementSize(CSSLayout::Dimension::Px(100), CSSLayout::Dimension::Px(32));
-            const SmartHome::SmartHomePanelMode mode = v.mode;
-            button->SetOnClick([target, mode]() {
-                target->SetMode(mode);
-                target->RefreshDevices();
-            });
-            modes->AddChild(button);
-        }
-        container->AddChild(modes);
 
         panel->layoutItem.SetFlexGrow(1);
         panel->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));

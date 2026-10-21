@@ -49,6 +49,7 @@ SEARCH_ROOTS = [
     "UltraCanvas/include",
     "UltraCanvas/dialogs",
     "Apps",
+    "SmartHome/ui",
 ]
 SKIP_PARTS = {"third_party", "3rdparty", "build", "cmake-build-debug"}
 SOURCE_SUFFIXES = {".cpp", ".h", ".hpp", ".mm"}

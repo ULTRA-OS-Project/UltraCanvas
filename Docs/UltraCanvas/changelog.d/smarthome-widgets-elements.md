@@ -34,7 +34,33 @@
     device that joins the home, on an application timer (`Poll()` for a host
     without an event loop), and leaves SmartHomeAPI's callbacks to the host.
     `SetSearchTimeout`, `IsSearching` and `GetErrorMessage` are new.
+- **SmartHome: the dashboard panel and the topology, energy, scheduler and
+  group widgets are built from framework elements.** `SmartHomePanel` is a
+  container: a toolbar (a segmented control for its six views, a search
+  field, "Add device"), a pairing banner, and a scrolling body whose
+  children are the device and scene cards themselves, in rows that wrap.
+  It used to lay the cards out and draw them by hand and pass them events
+  itself. The module's callbacks, which arrive on its threads, now only note
+  the change; `Poll()` applies it on the UI thread from an application
+  timer. Its automations are a list view (double-click turns one on or off)
+  and its network view is a `SmartHomeNetworkTopology`.
+  - `SmartHomeNetworkTopology` is an `UltraCanvasNodeDiagram` under a
+    layout switch and a radio filter; `SetAutoRefresh` uses an application
+    timer instead of refreshing from `Render`.
+  - `SmartHomeEnergyMonitor` plots power, energy or cost as a line chart
+    with a segmented control; `SmartHomeGroupControl` has buttons, sliders, a
+    list view and a dropdown to add a device; `SmartHomeScheduler` has a
+    segmented control for day / week / list, a list view, Turn off / Remove,
+    and draws only its week grid.
+  - New getters reach the elements; `GetNodes()`, `GetLinks()`,
+    `GetEvents()`, `GetViewMode()`, `GetSelectedEvent()`, `GetGroup()`,
+    `GetDeviceCard()`, `GetSceneCard()` and `IsPairing()` are new.
+  - The demo application's Smart Home entry drops its own view buttons: the
+    panel's toolbar has them.
+  - `scripts/check_ui_reuse.py` scans `SmartHome/ui`; the element catalogue
+    lists the Smart Home widgets and what each is built from.
   - `SmartHomeWidgetTest` drives the controls, the dialog, the wizard (a
-    simulated device pairs through it) and the editors through a real window
+    simulated device pairs through it), the editors, the advanced widgets and
+    the panel through a real window
     and the application's dispatch; CI's Linux row now builds the Smart Home suite
     (`BUILD_TESTS` turns it on) and runs that test on a virtual display.

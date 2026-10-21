@@ -2,54 +2,88 @@
 // The last four dashboard widgets: network topology, energy monitor,
 // scheduler and group control.
 //
+// Each is a container of framework elements: the topology is a node diagram
+// under a toolbar (layout, protocol), the energy history a line chart with a
+// segmented control for what it plots, the group control buttons, sliders,
+// a list view and a dropdown. The scheduler's day and week grid is the one
+// picture drawn here - the framework has no calendar element - and its list
+// view, view switch and actions are elements.
+//
+// Version: 2.0.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSmartHomeAdvancedWidgets.h"
+#include "SmartHomeWidgetKit.h"
+
+#include "UltraCanvasApplication.h"
+#include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
+#include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 
 namespace UltraCanvas {
 namespace SmartHome {
 
+using namespace Kit;
+
 namespace {
-
-constexpr double kPad = 14.0;
-constexpr double kRow = 26.0;
-
-const Color kText    (0x21, 0x21, 0x21);
-const Color kTextDim (0x75, 0x75, 0x75);
-const Color kTrack   (0xE0, 0xE0, 0xE0);
-const Color kAccent  (33, 150, 243);
-const Color kSheet   (0xFF, 0xFF, 0xFF);
-const Color kBg      (0xFA, 0xFA, 0xFA);
-
-uint64_t NowMs() {
-    using namespace std::chrono;
-    return static_cast<uint64_t>(
-        duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
-}
 
 std::string Fixed(double v, int places) {
     char buf[48];
-    std::snprintf(buf, sizeof buf, "%.*f", places, v);
+    std::snprintf(buf, sizeof buf, "%.*f", places, v);   // locale-ok: display text
     return buf;
 }
 
-bool Hit(const Rect2Dd& r, int x, int y) {
-    return x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height;
+void AsWidget(UltraCanvasContainer& c, float gap) {
+    AsColumn(c, gap, 14.0f);
+    c.SetBackgroundColor(kPanelBg);
 }
 
-void Button(IRenderContext* ctx, const Rect2Dd& r, const std::string& label,
-            const Color& fill, const Color& textColor) {
-    ctx->SetFillPaint(fill);
-    ctx->FillRoundedRectangle(r, r.height / 2.0);
-    ctx->SetTextPaint(textColor);
-    ctx->SetFontSize(11.0);
-    ctx->DrawTextInRect(label, Rect2Dd(r.x + 8.0, r.y + r.height / 2.0 - 7.0,
-                                       r.width - 16.0, 14.0));
+std::shared_ptr<UltraCanvasContainer> Gap(const std::string& id) {
+    auto s = CreateContainer(id);
+    Plain(*s);
+    Grow(*s);
+    return s;
+}
+
+std::shared_ptr<UltraCanvasListView> List(const std::string& id, const std::shared_ptr<RowsModel>& model,
+                                          const std::string& accessibleName, bool header) {
+    auto list = std::make_shared<UltraCanvasListView>(id, 0, 0, 200, 80);
+    list->SetModel(model);
+    list->SetShowHeader(header);
+    list->SetRowHeight(24);
+    list->SetAccessibleName(accessibleName);
+    list->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(80));
+    Grow(*list);
+    return list;
+}
+
+std::shared_ptr<UltraCanvasSegmentedControl> Segments(const std::string& id,
+                                                      const std::vector<std::string>& labels, float height = 26) {
+    constexpr float kSegment = 64.0f;
+    auto s = CreateSegmentedControl(id, 0, 0, kSegment * labels.size(), height);
+    SegmentedControlStyle style;
+    style.fontSize = 10.0f;
+    style.selectedColor = kAccent;
+    s->SetStyle(style);
+    for (const auto& l : labels) s->AddSegment(l);
+    Size(*s, kSegment * labels.size(), height);
+    return s;
+}
+
+// "Sunday" ... for 0-6.
+const char* DayName(int day, bool shortName) {
+    static const char* kLong[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char* kShort[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    day = std::clamp(day, 0, 6);
+    return shortName ? kShort[day] : kLong[day];
+}
+
+std::string DeviceName(const std::string& id) {
+    const SmartHomeDeviceInfo info = SMARTHOME_API.GetDevice(id);
+    return info.Name.empty() ? id : info.Name;
 }
 
 }  // namespace
@@ -60,9 +94,52 @@ void Button(IRenderContext* ctx, const Rect2Dd& r, const std::string& label,
 
 SmartHomeNetworkTopology::SmartHomeNetworkTopology(const std::string& identifier,
                                                    float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsWidget(*this, 8);
 
-SmartHomeNetworkTopology::~SmartHomeNetworkTopology() = default;
+    auto bar = Row(identifier + "_Toolbar", 8, 26);
+    layoutSelector = Segments(identifier + "_Layout", {"Force", "Radial", "Tree"});
+    layoutSelector->SetSelectedIndex(0);
+    layoutSelector->onSegmentSelected = [this](int index) {
+        static const char* kLayouts[] = {"force", "radial", "tree"};
+        if (!syncing && index >= 0 && index < 3) SetLayout(kLayouts[index]);
+    };
+    protocolChoice = CreateDropdown(identifier + "_Protocol", 0, 0, 130, 26);
+    Size(*protocolChoice, 130, 26);
+    protocolChoice->onSelectionChanged = [this](int index, const DropdownItem&) {
+        if (syncing || index < 0 || index >= static_cast<int>(protocolChoices.size())) return;
+        SetProtocolFilter(protocolChoices[static_cast<size_t>(index)]);
+    };
+    bar->AddChild(layoutSelector);
+    bar->AddChild(protocolChoice);
+    bar->AddChild(Gap(identifier + "_ToolbarGap"));
+    AddChild(bar);
+
+    diagram = CreateNodeDiagram(identifier + "_Diagram", 0, 0, 400, 300);
+    diagram->SetBackgroundColor(Colors::White);
+    diagram->SetGridVisible(false);
+    diagram->SetNodesConnectable(false);   // a map of the network, not an editor of it
+    diagram->SetLegendVisible(true);
+    diagram->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(200));
+    Grow(*diagram);
+    diagram->onNodeClick = [this](const std::string& id) {
+        selectedNodeId = id;
+        ShowSelection();
+        if (onNodeSelected) onNodeSelected(id);
+    };
+    AddChild(diagram);
+
+    summary = Label(identifier + "_Summary", "", 10, kTextDim);
+    AddChild(summary);
+
+    FillProtocolChoice();
+}
+
+SmartHomeNetworkTopology::~SmartHomeNetworkTopology() {
+    if (refreshTimer) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(refreshTimer);
+    }
+}
 
 Color SmartHomeNetworkTopology::GetProtocolColor(SmartHomeProtocolType protocol) const {
     switch (protocol) {
@@ -73,18 +150,19 @@ Color SmartHomeNetworkTopology::GetProtocolColor(SmartHomeProtocolType protocol)
         case SmartHomeProtocolType::KNX:       return Color(121, 85, 72);
         case SmartHomeProtocolType::WiFi:      return kAccent;
         case SmartHomeProtocolType::Bluetooth: return Color(63, 81, 181);
-        default:                               return Color(0x9E, 0x9E, 0x9E);
+        default:                               return Color(0x78, 0x90, 0x9C);
     }
 }
 
 Color SmartHomeNetworkTopology::GetSignalColor(int signal) const {
     // LQI runs 0-255 and RSSI is negative dBm; treat anything negative as RSSI
-    // so one scale does not misreport the other.
+    // so one scale does not misreport the other. 0 is "not reported".
+    if (signal == 0) return Color(0xB0, 0xBE, 0xC5);
     const int quality = signal < 0 ? std::clamp((signal + 100) * 255 / 70, 0, 255)
                                    : std::clamp(signal, 0, 255);
-    if (quality > 170) return Color(76, 175, 80);
-    if (quality > 85)  return Color(255, 152, 0);
-    return Color(0xF4, 0x43, 0x36);
+    if (quality > 170) return kGood;
+    if (quality > 85)  return kWarn;
+    return kBad;
 }
 
 void SmartHomeNetworkTopology::LoadNetworkData() {
@@ -128,99 +206,123 @@ void SmartHomeNetworkTopology::LoadNetworkData() {
             break;
         }
     }
-    lastRefresh = NowMs();
 }
 
-void SmartHomeNetworkTopology::ApplyRadialLayout() {
-    const Rect2Df b = GetLocalBounds();
-    const double cx = b.width / 2.0;
-    const double cy = b.height / 2.0;
-    const double radius = std::min(b.width, b.height) / 2.0 - 40.0;
-    if (nodes.empty()) return;
+void SmartHomeNetworkTopology::FillProtocolChoice() {
+    syncing = true;
+    protocolChoice->ClearItems();
+    protocolChoices = {SmartHomeProtocolType::Unknown};
+    protocolChoice->AddItem("All radios");
+    for (const auto& device : SMARTHOME_API.GetDevices()) {
+        if (std::find(protocolChoices.begin(), protocolChoices.end(), device.Protocol) != protocolChoices.end()) continue;
+        protocolChoices.push_back(device.Protocol);
+        protocolChoice->AddItem(ProtocolTypeToString(device.Protocol));
+    }
+    const auto it = std::find(protocolChoices.begin(), protocolChoices.end(), protocolFilter);
+    protocolChoice->SetSelectedIndex(it == protocolChoices.end() ? 0 : static_cast<int>(it - protocolChoices.begin()), false);
+    syncing = false;
+}
 
-    // Routers in the middle, everything else on the ring: the shape then says
-    // something about the network rather than just spacing the dots out.
+// The nodes and links into the diagram, placed by the chosen layout: the
+// diagram's force simulation, or routers in the middle (radial) or along the
+// top (tree) with their devices around or under them.
+void SmartHomeNetworkTopology::FillDiagram() {
+    diagram->Clear();
+    diagram->ClearLegendEntries();
+
     std::vector<TopologyViewNode*> hubs, leaves;
     for (auto& n : nodes) (n.IsRouter ? hubs : leaves).push_back(&n);
-
-    for (size_t i = 0; i < hubs.size(); ++i) {
-        const double a = hubs.size() == 1 ? 0.0
-                                          : 2.0 * M_PI * static_cast<double>(i) / hubs.size();
-        hubs[i]->X = static_cast<float>(cx + (hubs.size() == 1 ? 0.0 : radius * 0.35 * std::cos(a)));
-        hubs[i]->Y = static_cast<float>(cy + (hubs.size() == 1 ? 0.0 : radius * 0.35 * std::sin(a)));
-    }
-    for (size_t i = 0; i < leaves.size(); ++i) {
-        const double a = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(leaves.size(), 1);
-        leaves[i]->X = static_cast<float>(cx + radius * std::cos(a));
-        leaves[i]->Y = static_cast<float>(cy + radius * std::sin(a));
-    }
-}
-
-void SmartHomeNetworkTopology::ApplyTreeLayout() {
-    const Rect2Df b = GetLocalBounds();
-    std::vector<TopologyViewNode*> hubs, leaves;
-    for (auto& n : nodes) (n.IsRouter ? hubs : leaves).push_back(&n);
-
-    const double hubY = kPad + 40.0;
-    const double leafY = b.height - kPad - 50.0;
-    for (size_t i = 0; i < hubs.size(); ++i) {
-        hubs[i]->X = static_cast<float>(b.width * (i + 1.0) / (hubs.size() + 1.0));
-        hubs[i]->Y = static_cast<float>(hubY);
-    }
-    for (size_t i = 0; i < leaves.size(); ++i) {
-        leaves[i]->X = static_cast<float>(b.width * (i + 1.0) / (leaves.size() + 1.0));
-        leaves[i]->Y = static_cast<float>(leafY);
-    }
-}
-
-void SmartHomeNetworkTopology::ApplyForceLayout() {
-    if (nodes.empty()) return;
-    const Rect2Df b = GetLocalBounds();
-
-    // Start from the radial arrangement so the relaxation has something sane to
-    // improve on; from a random start it can settle into a tangle.
-    ApplyRadialLayout();
-
-    // A fixed, small number of passes: this runs on every refresh and the
-    // arrangement only has to be readable, not optimal.
-    for (int pass = 0; pass < 60; ++pass) {
-        for (auto& a : nodes) {
-            double fx = 0.0, fy = 0.0;
-            for (const auto& c : nodes) {
-                if (&a == &c) continue;
-                double dx = a.X - c.X, dy = a.Y - c.Y;
-                double d2 = dx * dx + dy * dy;
-                if (d2 < 1.0) d2 = 1.0;
-                const double repel = 4000.0 / d2;
-                const double d = std::sqrt(d2);
-                fx += dx / d * repel;
-                fy += dy / d * repel;
-            }
-            for (const auto& l : links) {
-                const bool isSource = l.SourceId == a.DeviceId;
-                if (!isSource && l.TargetId != a.DeviceId) continue;
-                const std::string& otherId = isSource ? l.TargetId : l.SourceId;
-                auto it = std::find_if(nodes.begin(), nodes.end(),
-                                       [&](const TopologyViewNode& n){ return n.DeviceId == otherId; });
-                if (it == nodes.end()) continue;
-                fx += (it->X - a.X) * 0.02;
-                fy += (it->Y - a.Y) * 0.02;
-            }
-            a.X = static_cast<float>(std::clamp<double>(a.X + fx * 0.05, 30.0, b.width - 30.0));
-            a.Y = static_cast<float>(std::clamp<double>(a.Y + fy * 0.05, 30.0, b.height - 40.0));
+    // World coordinates; FitView scales them to the element.
+    constexpr double kW = 760.0, kH = 540.0;
+    if (layoutAlgorithm == "tree") {
+        for (size_t i = 0; i < hubs.size(); ++i) {
+            hubs[i]->X = static_cast<float>(kW * (i + 1.0) / (hubs.size() + 1.0));
+            hubs[i]->Y = 40.0f;
+        }
+        for (size_t i = 0; i < leaves.size(); ++i) {
+            // Two staggered rows, so neighbouring names do not run together.
+            leaves[i]->X = static_cast<float>(kW * 1.4 * (i + 1.0) / (leaves.size() + 1.0));
+            leaves[i]->Y = static_cast<float>(kH - 120.0 + (i % 3) * 45.0);
+        }
+    } else {
+        const double radius = std::min(kW, kH) / 2.0;
+        for (size_t i = 0; i < hubs.size(); ++i) {
+            const double a = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(hubs.size(), 1);
+            const double r = hubs.size() == 1 ? 0.0 : radius * 0.45;
+            hubs[i]->X = static_cast<float>(kW / 2 + r * std::cos(a));
+            hubs[i]->Y = static_cast<float>(kH / 2 + r * std::sin(a));
+        }
+        for (size_t i = 0; i < leaves.size(); ++i) {
+            const double a = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(leaves.size(), 1);
+            leaves[i]->X = static_cast<float>(kW / 2 + radius * 1.3 * std::cos(a));
+            leaves[i]->Y = static_cast<float>(kH / 2 + radius * std::sin(a));
         }
     }
+
+    std::vector<SmartHomeProtocolType> shown;
+    for (const auto& n : nodes) {
+        NodeDiagramNode dn(n.DeviceId, n.Name);
+        dn.shape = NodeShape::Rectangle;
+        dn.width = n.IsRouter ? 100.0 : 88.0;
+        dn.height = n.IsRouter ? 26.0 : 22.0;
+        dn.x = n.X - dn.width / 2.0;
+        dn.y = n.Y - dn.height / 2.0;
+        const bool online = n.State == SmartHomeDeviceState::Online;
+        dn.fillColor = online ? GetProtocolColor(n.Protocol) : kTrack;
+        dn.borderColor = n.IsRouter ? kText : dn.fillColor;
+        dn.borderWidth = n.IsRouter ? 2.0 : 1.0;
+        dn.textColor = online ? Colors::White : kTextDim;
+        dn.fontSize = 9.0;
+        dn.deletable = false;
+        diagram->AddNode(dn);
+        if (std::find(shown.begin(), shown.end(), n.Protocol) == shown.end()) {
+            shown.push_back(n.Protocol);
+            diagram->AddLegendEntry(ProtocolTypeToString(n.Protocol), GetProtocolColor(n.Protocol));
+        }
+    }
+    int linkNo = 0;
+    for (const auto& l : links) {
+        NodeDiagramLink dl("link" + std::to_string(linkNo++), l.SourceId, l.TargetId);
+        dl.directed = false;
+        dl.lineColor = l.IsActive ? GetSignalColor(l.LinkQuality) : kTrack;
+        dl.lineWidth = l.IsActive ? 1.5 : 1.0;
+        dl.deletable = false;
+        diagram->AddLink(dl);
+    }
+
+    diagram->SetLayout(layoutAlgorithm == "force" ? NodeDiagramLayout::ForceDirected : NodeDiagramLayout::Manual);
+    if (layoutAlgorithm == "force") diagram->RunLayout();
+    diagram->FitView();
+    needsFit = true;
+    if (!selectedNodeId.empty()) diagram->SelectNode(selectedNodeId);
+    ShowSelection();
 }
 
-void SmartHomeNetworkTopology::CalculateLayout() {
-    if (layoutAlgorithm == "radial")    ApplyRadialLayout();
-    else if (layoutAlgorithm == "tree") ApplyTreeLayout();
-    else                                ApplyForceLayout();
+void SmartHomeNetworkTopology::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+    if (needsFit && diagram->GetWidth() > 0 && diagram->GetHeight() > 0) {
+        needsFit = false;
+        if (layoutAlgorithm == "force") diagram->RunLayout();   // the simulation spreads over the real size
+        diagram->FitView();
+    }
+    UltraCanvasContainer::Render(ctx, dirtyRect);
+}
+
+void SmartHomeNetworkTopology::ShowSelection() {
+    std::string text = std::to_string(nodes.size()) + " devices, " + std::to_string(links.size()) + " links";
+    auto it = std::find_if(nodes.begin(), nodes.end(),
+                           [&](const TopologyViewNode& n){ return n.DeviceId == selectedNodeId; });
+    if (it != nodes.end()) {
+        text = it->Name + " · " + ProtocolTypeToString(it->Protocol) + (it->IsRouter ? " · router" : "") +
+               "   (" + text + ")";
+    }
+    if (nodes.empty()) text = "No devices to map";
+    summary->SetText(text);
 }
 
 void SmartHomeNetworkTopology::RefreshTopology() {
     LoadNetworkData();
-    CalculateLayout();
+    FillProtocolChoice();
+    FillDiagram();
     RequestRedraw();
 }
 
@@ -230,152 +332,23 @@ void SmartHomeNetworkTopology::SetProtocolFilter(SmartHomeProtocolType protocol)
 }
 
 void SmartHomeNetworkTopology::SetLayout(const std::string& algorithm) {
+    if (algorithm != "force" && algorithm != "radial" && algorithm != "tree") return;
     layoutAlgorithm = algorithm;
-    CalculateLayout();
+    syncing = true;
+    layoutSelector->SetSelectedIndex(algorithm == "radial" ? 1 : algorithm == "tree" ? 2 : 0);
+    syncing = false;
+    FillDiagram();
     RequestRedraw();
 }
 
 void SmartHomeNetworkTopology::SetAutoRefresh(bool enable, int intervalMs) {
-    autoRefresh = enable;
-    // A zero or negative interval would refresh on every frame; keep a floor.
-    refreshInterval = std::max(intervalMs, 250);
-}
-
-void SmartHomeNetworkTopology::RenderLinks(IRenderContext* ctx) {
-    for (const auto& link : links) {
-        auto s = std::find_if(nodes.begin(), nodes.end(),
-                              [&](const TopologyViewNode& n){ return n.DeviceId == link.SourceId; });
-        auto t = std::find_if(nodes.begin(), nodes.end(),
-                              [&](const TopologyViewNode& n){ return n.DeviceId == link.TargetId; });
-        if (s == nodes.end() || t == nodes.end()) continue;
-        ctx->SetStrokePaint(link.IsActive ? GetSignalColor(link.LinkQuality) : kTrack);
-        ctx->SetStrokeWidth(link.IsActive ? 1.5 : 1.0);
-        ctx->DrawLine(Point2Dd(s->X, s->Y), Point2Dd(t->X, t->Y));
-    }
-}
-
-void SmartHomeNetworkTopology::RenderNodes(IRenderContext* ctx) {
-    ctx->SetFontSize(9.0);
-    for (const auto& node : nodes) {
-        const double r = node.IsRouter ? 12.0 : 8.0;
-        ctx->SetFillPaint(node.State == SmartHomeDeviceState::Online
-                              ? GetProtocolColor(node.Protocol)
-                              : kTrack);
-        ctx->FillEllipse(Rect2Dd(node.X - r, node.Y - r, r * 2, r * 2));
-
-        if (node.DeviceId == selectedNodeId) {
-            ctx->SetStrokePaint(kText);
-            ctx->SetStrokeWidth(2.0);
-            ctx->DrawEllipse(Rect2Dd(node.X - r - 3.0, node.Y - r - 3.0,
-                                     (r + 3.0) * 2, (r + 3.0) * 2));
-        }
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect(node.Name, Rect2Dd(node.X - 40.0, node.Y + r + 2.0, 80.0, 12.0));
-    }
-}
-
-void SmartHomeNetworkTopology::RenderLegend(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(9.0);
-    ctx->DrawTextInRect(std::to_string(nodes.size()) + " devices, " +
-                            std::to_string(links.size()) + " links · " + layoutAlgorithm,
-                        Rect2Dd(kPad, b.height - kPad - 12.0, b.width - 2 * kPad, 12.0));
-}
-
-void SmartHomeNetworkTopology::RenderNodeInfo(IRenderContext* ctx) {
-    if (selectedNodeId.empty()) return;
-    auto it = std::find_if(nodes.begin(), nodes.end(),
-                           [&](const TopologyViewNode& n){ return n.DeviceId == selectedNodeId; });
-    if (it == nodes.end()) return;
-
-    ctx->SetFillPaint(kSheet);
-    ctx->FillRoundedRectangle(Rect2Dd(kPad, kPad, 180.0, 44.0), 6.0);
-    ctx->SetTextPaint(kText);
-    ctx->SetFontSize(11.0);
-    ctx->DrawTextInRect(it->Name, Rect2Dd(kPad + 8.0, kPad + 6.0, 164.0, 14.0));
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(9.0);
-    ctx->DrawTextInRect(ProtocolTypeToString(it->Protocol) +
-                            (it->IsRouter ? " · router" : ""),
-                        Rect2Dd(kPad + 8.0, kPad + 24.0, 164.0, 12.0));
-}
-
-void SmartHomeNetworkTopology::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    if (autoRefresh && NowMs() - lastRefresh >= static_cast<uint64_t>(refreshInterval)) {
-        RefreshTopology();
-    }
-    ctx->SetFillPaint(kBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-
-    if (nodes.empty()) {
-        const Rect2Df b = GetLocalBounds();
-        ctx->SetTextPaint(kTextDim);
-        ctx->SetFontSize(12.0);
-        ctx->DrawTextInRect("No devices to map",
-                            Rect2Dd(0.0, b.height / 2.0 - 8.0, b.width, 18.0));
-        return;
-    }
-    RenderLinks(ctx);
-    RenderNodes(ctx);
-    RenderNodeInfo(ctx);
-    RenderLegend(ctx);
-}
-
-bool SmartHomeNetworkTopology::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    const int x = event.pointer.x;
-    const int y = event.pointer.y;
-
-    switch (event.type) {
-        case UCEventType::MouseDown:
-        case UCEventType::TouchStart: {
-            if (!Contains(Point2Df(static_cast<float>(x), static_cast<float>(y)))) return false;
-            for (const auto& node : nodes) {
-                const double r = node.IsRouter ? 12.0 : 8.0;
-                const double dx = x - node.X, dy = y - node.Y;
-                if (std::sqrt(dx * dx + dy * dy) <= r + 4.0) {
-                    selectedNodeId = node.DeviceId;
-                    draggingNodeId = node.DeviceId;
-                    if (onNodeSelected) onNodeSelected(node.DeviceId);
-                    RequestRedraw();
-                    return true;
-                }
-            }
-            selectedNodeId.clear();
-            RequestRedraw();
-            return true;
-        }
-
-        case UCEventType::MouseMove:
-        case UCEventType::TouchMove: {
-            if (draggingNodeId.empty()) return false;
-            auto it = std::find_if(nodes.begin(), nodes.end(),
-                                   [&](const TopologyViewNode& n){ return n.DeviceId == draggingNodeId; });
-            if (it != nodes.end()) {
-                it->X = static_cast<float>(x);
-                it->Y = static_cast<float>(y);
-                RequestRedraw();
-            }
-            return true;
-        }
-
-        case UCEventType::MouseUp:
-        case UCEventType::TouchEnd:
-            if (draggingNodeId.empty()) return false;
-            draggingNodeId.clear();
-            return true;
-
-        case UCEventType::MouseWheel:
-            viewScale = std::clamp(viewScale + event.wheelDelta * 0.1f, 0.4f, 3.0f);
-            RequestRedraw();
-            return true;
-
-        default:
-            return false;
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (refreshTimer && app) app->StopTimer(refreshTimer);
+    refreshTimer = 0;
+    // A zero or negative interval would refresh on every tick; keep a floor.
+    if (enable && app) {
+        refreshTimer = app->StartTimer(static_cast<unsigned>(std::max(intervalMs, 250)), /*periodic=*/true,
+                                       [this](TimerId) { RefreshTopology(); });
     }
 }
 
@@ -385,7 +358,57 @@ bool SmartHomeNetworkTopology::OnEvent(const UCEvent& event) {
 
 SmartHomeEnergyMonitor::SmartHomeEnergyMonitor(const std::string& identifier,
                                                float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsWidget(*this, 6);
+
+    powerLabel = Label(identifier + "_Power", "0 W", 26, kText, true);
+    AddChild(powerLabel);
+    sourceLabel = Label(identifier + "_Source", "whole home", 10, kTextDim);
+    AddChild(sourceLabel);
+
+    modeSelector = Segments(identifier + "_Mode", {"Power", "Energy", "Cost"});
+    modeSelector->SetSelectedIndex(0);
+    modeSelector->onSegmentSelected = [this](int index) {
+        if (index < 0 || index > 2) return;
+        chartMode = index;
+        Refresh();
+    };
+    AddChild(modeSelector);
+
+    chartData = std::make_shared<ChartDataVector>();
+    chart = CreateLineChartElement(identifier + "_Chart", 0, 0, 300, 120);
+    chart->SetLineColor(kAccent);
+    chart->SetLineWidth(1.5f);
+    chart->SetShowDataPoints(false);
+    chart->SetShowValueLabels(false);
+    chart->SetBackgroundColor(kPanelBg);
+    chart->SetPlotAreaColor(kPanelBg);
+    // A sparkline at this size; the range is written above it.
+    chart->SetShowAxes(false);
+    chart->SetShowGrid(false);
+    chart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+    chart->SetEmptyMessage("No readings yet");
+    chart->SetEmptyMessageColor(kTextDim);
+    chart->SetDataSource(chartData);
+    chart->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(120));
+    Grow(*chart);
+    AddChild(chart);
+
+    auto stats = Row(identifier + "_Stats", 6, 34);
+    for (const char* name : {"today", "average", "peak", "cost"}) {
+        auto cell = CreateContainer(identifier + "_Stat_" + name);
+        AsColumn(*cell, 0, 0);
+        Grow(*cell);
+        cell->layoutItem.SetFlexBasis(CSSLayout::Dimension::Auto());   // wide enough for "0.59 kWh"
+        cell->AddChild(Label(identifier + "_StatName_" + name, name, 9, kTextDim));
+        auto value = Label(identifier + "_StatValue_" + name, "-", 10, kText, true);
+        cell->AddChild(value);
+        statValues.push_back(value);
+        stats->AddChild(cell);
+    }
+    AddChild(stats);
+    Refresh();
+}
 
 SmartHomeEnergyMonitor::~SmartHomeEnergyMonitor() = default;
 
@@ -393,30 +416,30 @@ void SmartHomeEnergyMonitor::SetDevice(const std::string& id) {
     deviceId = id;
     readings.clear();
     stats = EnergyStats{};
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeEnergyMonitor::SetTimeRange(int hours) {
     timeRangeHours = std::max(hours, 1);
     CalculateStats();
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeEnergyMonitor::SetCostRate(float rate, const std::string& symbol) {
     costPerKwh = rate;
     currency = symbol;
     CalculateStats();
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeEnergyMonitor::AddReading(const EnergyReading& reading) {
     readings.push_back(reading);
     constexpr size_t kMax = 4096;
     if (readings.size() > kMax) {
-        readings.erase(readings.begin(), readings.begin() + (readings.size() - kMax));
+        readings.erase(readings.begin(), readings.begin() + static_cast<long>(readings.size() - kMax));
     }
     CalculateStats();
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeEnergyMonitor::CalculateStats() {
@@ -454,125 +477,221 @@ void SmartHomeEnergyMonitor::CalculateStats() {
     stats.EstimatedCost = stats.TotalEnergyMonth * costPerKwh;
 }
 
-void SmartHomeEnergyMonitor::RenderCurrentPower(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const float watts = readings.empty() ? 0.0f : readings.back().Power;
-    ctx->SetTextPaint(kText);
-    ctx->SetFontSize(26.0);
-    ctx->DrawTextInRect(Fixed(watts, 0) + " W", Rect2Dd(kPad, kPad, b.width - 2 * kPad, 32.0));
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(10.0);
-    ctx->DrawTextInRect(deviceId.empty() ? "whole home" : deviceId,
-                        Rect2Dd(kPad, kPad + 32.0, b.width - 2 * kPad, 12.0));
-}
+void SmartHomeEnergyMonitor::Refresh() {
+    powerLabel->SetText(Fixed(readings.empty() ? 0.0 : readings.back().Power, 0) + " W");
 
-void SmartHomeEnergyMonitor::RenderEnergyChart(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd plot(kPad, kPad + 52.0, b.width - 2 * kPad, b.height - kPad - 132.0);
-    if (plot.width <= 0.0 || plot.height <= 0.0 || readings.size() < 2) return;
-
-    const uint64_t newest = readings.back().Timestamp;
-    const uint64_t window = static_cast<uint64_t>(timeRangeHours) * 3600ull * 1000ull;
-
-    size_t first = 0;
-    for (size_t i = readings.size(); i-- > 0;) {
-        if (newest > window && readings[i].Timestamp < newest - window) { first = i + 1; break; }
-    }
-    if (readings.size() - first < 2) return;
-
-    float lo = 0.0f, hi = 0.0f;
-    for (size_t i = first; i < readings.size(); ++i) {
-        const float v = chartMode == 0 ? readings[i].Power : readings[i].Energy;
-        hi = std::max(hi, v);
-        lo = std::min(lo, v);
-    }
-    if (hi - lo < 0.001f) hi = lo + 1.0f;
-
-    ctx->SetStrokePaint(kAccent);
-    ctx->SetStrokeWidth(1.5);
-    const size_t count = readings.size() - first;
-    for (size_t i = first + 1; i < readings.size(); ++i) {
-        const float v0 = chartMode == 0 ? readings[i - 1].Power : readings[i - 1].Energy;
-        const float v1 = chartMode == 0 ? readings[i].Power     : readings[i].Energy;
-        const double t0 = static_cast<double>(i - 1 - first) / (count - 1);
-        const double t1 = static_cast<double>(i - first) / (count - 1);
-        ctx->DrawLine(Point2Dd(plot.x + plot.width * t0,
-                               plot.y + plot.height * (1.0 - (v0 - lo) / (hi - lo))),
-                      Point2Dd(plot.x + plot.width * t1,
-                               plot.y + plot.height * (1.0 - (v1 - lo) / (hi - lo))));
-    }
-}
-
-void SmartHomeEnergyMonitor::RenderStatistics(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double y = b.height - kPad - 62.0;
-    ctx->SetFontSize(9.0);
-
-    const std::pair<std::string, std::string> cells[] = {
-        {"today",   Fixed(stats.TotalEnergyToday, 2) + " kWh"},
-        {"average", Fixed(stats.AveragePower, 0) + " W"},
-        {"peak",    Fixed(stats.PeakPower, 0) + " W"},
-        {"cost",    currency + Fixed(stats.EstimatedCost, 2)},
-    };
-    const double w = (b.width - 2 * kPad) / 4.0;
-    for (int i = 0; i < 4; ++i) {
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect(cells[i].first, Rect2Dd(kPad + i * w, y, w, 12.0));
-        ctx->SetTextPaint(kText);
-        ctx->SetFontSize(11.0);
-        ctx->DrawTextInRect(cells[i].second, Rect2Dd(kPad + i * w, y + 13.0, w, 14.0));
-        ctx->SetFontSize(9.0);
-    }
-}
-
-void SmartHomeEnergyMonitor::RenderDeviceBreakdown(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    static const char* kModes[] = {"Power", "Energy", "Cost"};
-    const double w = 70.0;
-    const double y = b.height - kPad - 26.0;
-    for (int i = 0; i < 3; ++i) {
-        const bool active = i == chartMode;
-        Button(ctx, Rect2Dd(kPad + i * (w + 6.0), y, w, 24.0), kModes[i],
-               active ? kAccent : kTrack, active ? Colors::White : kTextDim);
-    }
-}
-
-void SmartHomeEnergyMonitor::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-    RenderCurrentPower(ctx);
-    RenderEnergyChart(ctx);
-    RenderStatistics(ctx);
-    RenderDeviceBreakdown(ctx);
-}
-
-bool SmartHomeEnergyMonitor::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-    if (event.type != UCEventType::MouseDown && event.type != UCEventType::TouchStart) {
-        return false;
-    }
-    const Rect2Df b = GetLocalBounds();
-    const double y = b.height - kPad - 26.0;
-    for (int i = 0; i < 3; ++i) {
-        if (Hit(Rect2Dd(kPad + i * 76.0, y, 70.0, 24.0), event.pointer.x, event.pointer.y)) {
-            chartMode = i;
-            RequestRedraw();
-            return true;
+    // The window the chart shows, from the newest reading back.
+    std::vector<ChartDataPoint> points;
+    if (!readings.empty()) {
+        const uint64_t newest = readings.back().Timestamp;
+        const uint64_t window = static_cast<uint64_t>(timeRangeHours) * 3600ull * 1000ull;
+        size_t first = 0;
+        for (size_t i = readings.size(); i-- > 0;) {
+            if (newest > window && readings[i].Timestamp < newest - window) { first = i + 1; break; }
+        }
+        // Energy and cost from the start of the window, not since the meter
+        // was installed.
+        const float energyBase = readings[first].Energy;
+        for (size_t i = first; i < readings.size(); ++i) {
+            const double used = std::max(0.0f, readings[i].Energy - energyBase);
+            const double v = chartMode == 0 ? readings[i].Power : chartMode == 1 ? used : used * costPerKwh;
+            const time_t t = static_cast<time_t>(readings[i].Timestamp / 1000);
+            std::tm local{};
+            localtime_r(&t, &local);
+            char clock[8];
+            std::snprintf(clock, sizeof clock, "%02d:%02d", local.tm_hour, local.tm_min);
+            points.emplace_back(static_cast<double>(points.size()), v, 0.0, clock, 0.0);
         }
     }
-    return Contains(Point2Df(static_cast<float>(event.pointer.x),
-                             static_cast<float>(event.pointer.y)));
+    static const double kSpan[] = {20.0, 0.1, 0.05};   // W, kWh, money: a floor, as for sensors
+    chart->SetMinimumValueSpan(kSpan[std::clamp(chartMode, 0, 2)]);
+
+    std::string source = deviceId.empty() ? "whole home" : DeviceName(deviceId);
+    if (points.size() >= 2) {
+        auto [lo, hi] = std::minmax_element(points.begin(), points.end(),
+            [](const ChartDataPoint& a, const ChartDataPoint& b) { return a.y < b.y; });
+        const int places = chartMode == 0 ? 0 : 2;
+        const std::string unit = chartMode == 0 ? " W" : chartMode == 1 ? " kWh" : "";
+        const std::string money = chartMode == 2 ? currency : "";
+        source += " · " + std::to_string(timeRangeHours) + " h: " + money + Fixed(lo->y, places) + " - " +
+                  money + Fixed(hi->y, places) + unit;
+    }
+    sourceLabel->SetText(source);
+    chartData->LoadFromArray(points);
+    chart->SetDataSource(chartData);
+
+    statValues[0]->SetText(Fixed(stats.TotalEnergyToday, 2) + " kWh");
+    statValues[1]->SetText(Fixed(stats.AveragePower, 0) + " W");
+    statValues[2]->SetText(Fixed(stats.PeakPower, 0) + " W");
+    statValues[3]->SetText(currency + Fixed(stats.EstimatedCost, 2));
+    RequestRedraw();
 }
 
 // ============================================================================
 // Scheduler
 // ============================================================================
 
+// The day or week as a time grid with the events on it: a press on an event
+// selects it, a press on empty time asks the host to create one there.
+// Drawn here because the framework has no calendar or timetable element.
+class SmartHomeSchedulerGrid : public UltraCanvasUIElement {
+public:
+    SmartHomeSchedulerGrid(const std::string& id, SmartHomeScheduler& owner)
+        : UltraCanvasUIElement(id, 0, 0, 300, 200), owner(owner) {}
+
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        if (!ctx || !IsVisible()) return;
+        const Rect2Df b = GetLocalBounds();
+        ctx->SetFillPaint(Colors::White);
+        ctx->FillRectangle(Rect2Dd(b));
+
+        const bool week = owner.viewMode == "week";
+        const double dayW = (b.width - kLeft) / (week ? 7.0 : 1.0);
+        ctx->SetFontSize(9.0);
+        ctx->SetTextPaint(kTextDim);
+        if (week) {
+            for (int i = 0; i < 7; ++i) {
+                ctx->DrawTextInRect(DayName(i, true), Rect2Dd(kLeft + i * dayW + 2.0, 2.0, dayW, 12.0));
+            }
+        } else {
+            ctx->DrawTextInRect(DayName(owner.selectedDay, false), Rect2Dd(kLeft + 2.0, 2.0, 120.0, 12.0));
+        }
+
+        // Hour lines every three hours.
+        const double height = b.height - kTop;
+        ctx->SetStrokePaint(kTrack);
+        ctx->SetStrokeWidth(1.0);
+        ctx->SetFontSize(8.0);
+        for (int hour = 0; hour <= 24; hour += 3) {
+            const double y = kTop + height * (hour / 24.0);
+            ctx->DrawLine(Point2Dd(kLeft, y), Point2Dd(b.width, y));
+            ctx->DrawTextInRect(std::to_string(hour) + ":00", Rect2Dd(0.0, y - 5.0, kLeft - 2.0, 10.0));
+        }
+
+        for (const auto& [e, rect] : Blocks()) {
+            const bool chosen = e->EventId == owner.selectedEventId;
+            ctx->SetFillPaint(!e->Enabled ? kTrack : (chosen ? kText : kAccent));
+            ctx->FillRoundedRectangle(rect, 3.0);
+            ctx->SetTextPaint(e->Enabled ? Colors::White : kTextDim);
+            ctx->DrawTextInRect(e->Name, Rect2Dd(rect.x + 3.0, rect.y + 2.0, rect.width - 6.0, 10.0));
+        }
+    }
+
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsVisible() || IsDisabled()) return false;
+        if (event.type != UCEventType::MouseDown && event.type != UCEventType::TouchStart) {
+            return UltraCanvasUIElement::OnEvent(event);
+        }
+        // The pointer arrives in the element's own coordinates.
+        const Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
+        if (!Contains(p)) return false;
+        const Rect2Df b = GetLocalBounds();
+        const double lx = p.x, ly = p.y;
+        for (const auto& [e, rect] : Blocks()) {
+            if (rect.Contains(Point2Dd(lx, ly))) { owner.Select(e->EventId); return true; }
+        }
+        // Empty time: a request to create something at that day and hour.
+        const bool week = owner.viewMode == "week";
+        const double dayW = (b.width - kLeft) / (week ? 7.0 : 1.0);
+        const double height = b.height - kTop;
+        if (ly >= kTop && lx >= kLeft && height > 0.0) {
+            const int hour = std::clamp(static_cast<int>((ly - kTop) / height * 24.0), 0, 23);
+            const int day = week ? std::clamp(static_cast<int>((lx - kLeft) / dayW), 0, 6) : owner.selectedDay;
+            if (owner.onEventCreate) {
+                char buf[8];
+                std::snprintf(buf, sizeof buf, "%02d:00", hour);
+                owner.onEventCreate(buf, day);
+            }
+        }
+        return true;
+    }
+
+private:
+    static constexpr double kLeft = 30.0;   // hour labels
+    static constexpr double kTop = 16.0;    // day names
+
+    // Where each event is drawn, element-local: one block per day it runs.
+    std::vector<std::pair<const ScheduledEvent*, Rect2Dd>> Blocks() const {
+        std::vector<std::pair<const ScheduledEvent*, Rect2Dd>> out;
+        const Rect2Df b = GetBounds();
+        const bool week = owner.viewMode == "week";
+        const double dayW = (b.width - kLeft) / (week ? 7.0 : 1.0);
+        const double height = b.height - kTop;
+        for (const auto& e : owner.events) {
+            // "HH:MM" - anything else has no place on a clock face.
+            int hh = 0, mm = 0;
+            if (std::sscanf(e.Time.c_str(), "%d:%d", &hh, &mm) != 2) continue;
+            if (hh < 0 || hh > 23 || mm < 0 || mm > 59) continue;
+            const double y = kTop + height * ((hh + mm / 60.0) / 24.0);
+            for (int day : e.Days) {
+                if (day < 0 || day > 6) continue;
+                if (!week && day != owner.selectedDay) continue;
+                const double x = kLeft + (week ? day * dayW : 0.0);
+                out.emplace_back(&e, Rect2Dd(x + 1.0, y, dayW - 2.0, 14.0));
+            }
+        }
+        return out;
+    }
+
+    SmartHomeScheduler& owner;
+};
+
 SmartHomeScheduler::SmartHomeScheduler(const std::string& identifier,
                                        float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsWidget(*this, 8);
+
+    auto bar = Row(identifier + "_Toolbar", 8, 26);
+    viewSelector = Segments(identifier + "_View", {"Day", "Week", "List"});
+    viewSelector->onSegmentSelected = [this](int index) {
+        static const char* kModes[] = {"day", "week", "list"};
+        if (!syncing && index >= 0 && index < 3) SetViewMode(kModes[index]);
+    };
+    bar->AddChild(viewSelector);
+    bar->AddChild(Gap(identifier + "_ToolbarGap"));
+    AddChild(bar);
+
+    std::vector<std::string> days;
+    for (int i = 0; i < 7; ++i) days.push_back(DayName(i, true));
+    daySelector = CreateSegmentedControl(identifier + "_Day", 0, 0, 300, 24);
+    SegmentedControlStyle dayStyle;
+    dayStyle.fontSize = 9.0f;
+    dayStyle.selectedColor = kAccent;
+    daySelector->SetStyle(dayStyle);
+    for (const auto& d : days) daySelector->AddSegment(d);
+    Height(*daySelector, 24);
+    daySelector->onSegmentSelected = [this](int index) {
+        if (syncing || index < 0 || index > 6) return;
+        selectedDay = index;
+        Refresh();
+    };
+    AddChild(daySelector);
+
+    grid = std::make_shared<SmartHomeSchedulerGrid>(identifier + "_Grid", *this);
+    grid->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(200));
+    Grow(*grid);
+    AddChild(grid);
+
+    eventModel = std::make_shared<RowsModel>(std::vector<ListColumnDef>{{"Time", 60}, {"Name", 170}, {"Days", 120}, {"", 50}});
+    eventList = List(identifier + "_Events", eventModel, "Scheduled events", true);
+    eventList->onItemClicked = [this](int row) {
+        if (row >= 0 && row < static_cast<int>(events.size())) Select(events[static_cast<size_t>(row)].EventId);
+    };
+    AddChild(eventList);
+
+    auto actions = Row(identifier + "_Actions", 8, 28);
+    toggleButton = Kit::Button(identifier + "_Toggle", "Turn off");
+    Size(*toggleButton, 90, 28);
+    toggleButton->SetOnClick([this]() { if (!selectedEventId.empty()) ToggleEvent(selectedEventId); });
+    removeButton = Kit::Button(identifier + "_Remove", "Remove");
+    Size(*removeButton, 90, 28);
+    removeButton->SetOnClick([this]() { if (!selectedEventId.empty()) RemoveEvent(selectedEventId); });
+    actions->AddChild(toggleButton);
+    actions->AddChild(removeButton);
+    AddChild(actions);
+
+    Refresh();
+}
 
 SmartHomeScheduler::~SmartHomeScheduler() = default;
 
@@ -580,7 +699,7 @@ void SmartHomeScheduler::RefreshSchedule() {
     // Scheduled events belong to automations with a time trigger; until the
     // manager exposes them directly, what the widget already holds is the
     // schedule, and hosts add to it through AddEvent.
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeScheduler::AddEvent(const ScheduledEvent& event) {
@@ -588,7 +707,7 @@ void SmartHomeScheduler::AddEvent(const ScheduledEvent& event) {
                            [&](const ScheduledEvent& e){ return e.EventId == event.EventId; });
     if (it != events.end()) *it = event;    // adding the same id twice is an edit
     else                    events.push_back(event);
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeScheduler::RemoveEvent(const std::string& eventId) {
@@ -596,170 +715,57 @@ void SmartHomeScheduler::RemoveEvent(const std::string& eventId) {
                                 [&](const ScheduledEvent& e){ return e.EventId == eventId; }),
                  events.end());
     if (selectedEventId == eventId) selectedEventId.clear();
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeScheduler::ToggleEvent(const std::string& eventId) {
     for (auto& e : events) {
         if (e.EventId == eventId) { e.Enabled = !e.Enabled; break; }
     }
-    RequestRedraw();
+    Refresh();
 }
 
 void SmartHomeScheduler::SetViewMode(const std::string& mode) {
     if (mode != "day" && mode != "week" && mode != "list") return;   // ignore nonsense
     viewMode = mode;
-    scrollOffset = 0.0f;
+    Refresh();
+}
+
+void SmartHomeScheduler::Select(const std::string& eventId) {
+    selectedEventId = eventId;
+    Refresh();
+    if (onEventSelected) onEventSelected(eventId);
+}
+
+void SmartHomeScheduler::Refresh() {
+    syncing = true;
+    viewSelector->SetSelectedIndex(viewMode == "day" ? 0 : viewMode == "list" ? 2 : 1);
+    daySelector->SetSelectedIndex(selectedDay);
+    syncing = false;
+    daySelector->SetVisible(viewMode == "day");
+    grid->SetVisible(viewMode != "list");
+    eventList->SetVisible(viewMode == "list");
+
+    std::vector<std::vector<std::string>> rows;
+    for (const auto& e : events) {
+        std::string days;
+        for (int d : e.Days) {
+            if (d < 0 || d > 6) continue;
+            if (!days.empty()) days += " ";
+            days += DayName(d, true);
+        }
+        rows.push_back({e.Time, e.Name, days, e.Enabled ? "on" : "off"});
+    }
+    eventModel->Set(std::move(rows));
+
+    auto it = std::find_if(events.begin(), events.end(),
+                           [&](const ScheduledEvent& e){ return e.EventId == selectedEventId; });
+    toggleButton->SetDisabled(it == events.end());
+    removeButton->SetDisabled(it == events.end());
+    toggleButton->SetText(it != events.end() && !it->Enabled ? "Turn on" : "Turn off");
+    grid->RequestRedraw();
+    InvalidateLayout();
     RequestRedraw();
-}
-
-void SmartHomeScheduler::RenderTimeGrid(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double top = kPad + 26.0;
-    const double height = b.height - top - kPad;
-    ctx->SetStrokePaint(kTrack);
-    ctx->SetStrokeWidth(1.0);
-    ctx->SetFontSize(8.0);
-    for (int hour = 0; hour <= 24; hour += 3) {
-        const double y = top + height * (hour / 24.0) - scrollOffset;
-        if (y < top || y > b.height) continue;
-        ctx->DrawLine(Point2Dd(kPad + 26.0, y), Point2Dd(b.width - kPad, y));
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect(std::to_string(hour) + ":00", Rect2Dd(kPad, y - 5.0, 24.0, 10.0));
-    }
-}
-
-void SmartHomeScheduler::RenderEvents(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double top = kPad + 26.0;
-    const double height = b.height - top - kPad;
-    const double left = kPad + 26.0;
-    const double dayW = (b.width - left - kPad) / 7.0;
-
-    ctx->SetFontSize(8.0);
-    for (const auto& e : events) {
-        // "HH:MM" — anything else has no place on a clock face.
-        if (e.Time.size() < 4 || e.Time.find(':') == std::string::npos) continue;
-        int hh = 0, mm = 0;
-        if (std::sscanf(e.Time.c_str(), "%d:%d", &hh, &mm) != 2) continue;
-        if (hh < 0 || hh > 23 || mm < 0 || mm > 59) continue;
-
-        const double y = top + height * ((hh + mm / 60.0) / 24.0) - scrollOffset;
-        for (int day : e.Days) {
-            if (day < 0 || day > 6) continue;
-            if (viewMode == "day" && day != selectedDay) continue;
-            const double x = viewMode == "day" ? left : left + day * dayW;
-            const double w = viewMode == "day" ? (b.width - left - kPad) : dayW - 2.0;
-            const bool chosen = e.EventId == selectedEventId;
-            ctx->SetFillPaint(!e.Enabled ? kTrack : (chosen ? kText : kAccent));
-            ctx->FillRoundedRectangle(Rect2Dd(x, y, w, 14.0), 3.0);
-            ctx->SetTextPaint(e.Enabled ? Colors::White : kTextDim);
-            ctx->DrawTextInRect(e.Name, Rect2Dd(x + 3.0, y + 2.0, w - 6.0, 10.0));
-        }
-    }
-}
-
-void SmartHomeScheduler::RenderWeekView(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    static const char* kDays[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
-    const double left = kPad + 26.0;
-    const double dayW = (b.width - left - kPad) / 7.0;
-
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(9.0);
-    for (int i = 0; i < 7; ++i) {
-        ctx->DrawTextInRect(kDays[i], Rect2Dd(left + i * dayW, kPad + 8.0, dayW, 12.0));
-    }
-    RenderTimeGrid(ctx);
-    RenderEvents(ctx);
-}
-
-void SmartHomeScheduler::RenderDayView(IRenderContext* ctx) {
-    static const char* kDays[] = {"Sunday","Monday","Tuesday","Wednesday",
-                                  "Thursday","Friday","Saturday"};
-    ctx->SetTextPaint(kText);
-    ctx->SetFontSize(11.0);
-    ctx->DrawTextInRect(kDays[std::clamp(selectedDay, 0, 6)],
-                        Rect2Dd(kPad + 26.0, kPad + 6.0, 120.0, 14.0));
-    RenderTimeGrid(ctx);
-    RenderEvents(ctx);
-}
-
-void SmartHomeScheduler::RenderListView(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    double y = kPad - scrollOffset;
-    ctx->SetFontSize(11.0);
-    for (const auto& e : events) {
-        if (y > b.height - kPad) break;
-        const bool chosen = e.EventId == selectedEventId;
-        ctx->SetFillPaint(chosen ? kAccent : kSheet);
-        ctx->FillRoundedRectangle(Rect2Dd(kPad, y, b.width - 2 * kPad, kRow), 5.0);
-        ctx->SetTextPaint(chosen ? Colors::White : (e.Enabled ? kText : kTextDim));
-        ctx->DrawTextInRect(e.Time + "  " + e.Name,
-                            Rect2Dd(kPad + 8.0, y + 6.0, b.width - 2 * kPad - 16.0, 14.0));
-        y += kRow + 4.0;
-    }
-    if (events.empty()) {
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect("Nothing scheduled",
-                            Rect2Dd(0.0, b.height / 2.0 - 8.0, b.width, 16.0));
-    }
-}
-
-void SmartHomeScheduler::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-    if (viewMode == "day")       RenderDayView(ctx);
-    else if (viewMode == "list") RenderListView(ctx);
-    else                         RenderWeekView(ctx);
-}
-
-bool SmartHomeScheduler::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    const Rect2Df b = GetLocalBounds();
-    const int x = event.pointer.x;
-    const int y = event.pointer.y;
-
-    if (event.type == UCEventType::MouseWheel) {
-        scrollOffset = std::max(0.0f, scrollOffset - event.wheelDelta * 16.0f);
-        RequestRedraw();
-        return true;
-    }
-    if (event.type != UCEventType::MouseDown && event.type != UCEventType::TouchStart) {
-        return false;
-    }
-    if (!Contains(Point2Df(static_cast<float>(x), static_cast<float>(y)))) return false;
-
-    if (viewMode == "list") {
-        const int index = static_cast<int>((y - (kPad - scrollOffset)) / (kRow + 4.0));
-        if (index >= 0 && index < static_cast<int>(events.size())) {
-            selectedEventId = events[static_cast<size_t>(index)].EventId;
-            if (onEventSelected) onEventSelected(selectedEventId);
-            RequestRedraw();
-        }
-        return true;
-    }
-
-    // On a grid, a tap on empty space is a request to create something at that
-    // day and hour, which is what onEventCreate reports.
-    const double top = kPad + 26.0;
-    const double height = b.height - top - kPad;
-    const double left = kPad + 26.0;
-    const double dayW = (b.width - left - kPad) / 7.0;
-    if (y >= top && height > 0.0) {
-        const int hour = static_cast<int>(((y + scrollOffset - top) / height) * 24.0);
-        const int day = viewMode == "day" ? selectedDay
-                                          : static_cast<int>((x - left) / dayW);
-        if (day >= 0 && day <= 6 && hour >= 0 && hour <= 23 && onEventCreate) {
-            char buf[8];
-            std::snprintf(buf, sizeof buf, "%02d:00", hour);
-            onEventCreate(buf, day);
-        }
-    }
-    return true;
 }
 
 // ============================================================================
@@ -768,7 +774,82 @@ bool SmartHomeScheduler::OnEvent(const UCEvent& event) {
 
 SmartHomeGroupControl::SmartHomeGroupControl(const std::string& identifier,
                                              float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsWidget(*this, 8);
+
+    title = Label(identifier + "_Title", "Group", 14, kText, true);
+    AddChild(title);
+    countLabel = Label(identifier + "_Count", "", 10, kTextDim);
+    AddChild(countLabel);
+
+    auto master = Row(identifier + "_Master", 8, 28);
+    allOnButton = Kit::Button(identifier + "_AllOn", "All on");
+    Size(*allOnButton, 80, 28);
+    allOnButton->SetOnClick([this]() { AllOn(); });
+    allOffButton = Kit::Button(identifier + "_AllOff", "All off");
+    Size(*allOffButton, 80, 28);
+    allOffButton->SetOnClick([this]() { AllOff(); });
+    master->AddChild(allOnButton);
+    master->AddChild(allOffButton);
+    AddChild(master);
+
+    auto sliderRow = [&](const std::string& key, const std::string& caption,
+                         std::shared_ptr<UltraCanvasLabel>& value) {
+        auto row = Row(identifier + "_" + key + "Row", 6, 18);
+        auto label = Label(identifier + "_" + key + "Caption", caption, 11, kTextDim);
+        Grow(*label);
+        value = Label(identifier + "_" + key + "Value", "", 11, kText, true);
+        value->SetAlignment(TextAlignment::Right);
+        Size(*value, 70, 18);
+        row->AddChild(label);
+        row->AddChild(value);
+        AddChild(row);
+    };
+    sliderRow("Brightness", "Brightness", brightnessValue);
+    brightness = Kit::Slider(identifier + "_Brightness", 0, 100, kAccent);
+    brightness->onValueChanged = [this](float v) {
+        if (!syncing) SetGroupBrightness(static_cast<uint8_t>(std::lround(v)));
+    };
+    AddChild(brightness);
+    sliderRow("ColorTemp", "Colour temperature", colorTempValue);
+    colorTemp = Kit::Slider(identifier + "_ColorTemp", 2200, 6500, Color(0xFF, 0xC1, 0x07));
+    colorTemp->SetStep(50);
+    colorTemp->SetTrackGradient({GradientStop(0.0, Color(255, 176, 80)),
+                                 GradientStop(0.5, Color(255, 236, 210)),
+                                 GradientStop(1.0, Color(200, 222, 255))});
+    colorTemp->onValueChanged = [this](float k) {
+        if (!syncing) SetGroupColorTemp(static_cast<uint16_t>(std::lround(k)));
+    };
+    AddChild(colorTemp);
+
+    deviceModel = std::make_shared<RowsModel>(std::vector<ListColumnDef>{{"Device", 140}, {"State", 50}});
+    deviceList = List(identifier + "_Devices", deviceModel, "Devices in the group", false);
+    AddChild(deviceList);
+
+    auto edit = Row(identifier + "_Edit", 6, 28);
+    deviceChoice = CreateDropdown(identifier + "_DeviceChoice", 0, 0, 140, 28);
+    Grow(*deviceChoice);
+    addButton = Kit::Button(identifier + "_Add", "Add");
+    Size(*addButton, 56, 28);
+    addButton->SetOnClick([this]() {
+        const int index = deviceChoice->GetSelectedIndex();
+        if (index >= 0 && index < static_cast<int>(candidates.size())) {
+            AddDevice(candidates[static_cast<size_t>(index)].DeviceId);
+        }
+    });
+    removeButton = Kit::Button(identifier + "_Remove", "Remove");
+    Size(*removeButton, 72, 28);
+    removeButton->SetOnClick([this]() {
+        const int row = deviceList->GetSelection() ? deviceList->GetSelection()->GetCurrentRow() : -1;
+        if (row >= 0 && row < static_cast<int>(devices.size())) RemoveDevice(devices[static_cast<size_t>(row)].DeviceId);
+    });
+    edit->AddChild(deviceChoice);
+    edit->AddChild(addButton);
+    edit->AddChild(removeButton);
+    AddChild(edit);
+
+    UpdateGroupState();
+}
 
 SmartHomeGroupControl::~SmartHomeGroupControl() = default;
 
@@ -778,13 +859,45 @@ void SmartHomeGroupControl::UpdateGroupState() {
         SmartHomeDeviceInfo info = SMARTHOME_API.GetDevice(id);
         if (!info.DeviceId.empty()) devices.push_back(info);
     }
-    // The master switch reads on when anything in the group is on, so turning
-    // it off is always the way to make the room dark.
+    // The master reads on when anything in the group is on, so "All off" is
+    // always the way to make the room dark.
     masterOn = false;
     for (const auto& d : devices) {
         if (SMARTHOME_API.GetSwitchState(d.DeviceId)) { masterOn = true; break; }
     }
+
+    syncing = true;
+    title->SetText(group.Name.empty() ? "Group" : group.Name);
+    countLabel->SetText(std::to_string(group.DeviceIds.size()) + " devices" + (masterOn ? ", some on" : ""));
+    brightness->SetValue(masterBrightness);
+    brightnessValue->SetText(std::to_string(masterBrightness) + " %");
+    colorTemp->SetValue(masterColorTemp);
+    colorTempValue->SetText(std::to_string(masterColorTemp) + " K");
+    syncing = false;
+
+    std::vector<std::vector<std::string>> rows;
+    for (const auto& d : devices) {
+        rows.push_back({d.Name.empty() ? d.DeviceId : d.Name,
+                        d.State == SmartHomeDeviceState::Online
+                            ? (SMARTHOME_API.GetSwitchState(d.DeviceId) ? "on" : "off")
+                            : DeviceStateToString(d.State)});
+    }
+    deviceModel->Set(std::move(rows));
+    removeButton->SetDisabled(devices.empty());
+    FillDeviceChoice();
     RequestRedraw();
+}
+
+void SmartHomeGroupControl::FillDeviceChoice() {
+    candidates.clear();
+    deviceChoice->ClearItems();
+    for (const auto& d : SMARTHOME_API.GetDevices()) {
+        if (std::find(group.DeviceIds.begin(), group.DeviceIds.end(), d.DeviceId) != group.DeviceIds.end()) continue;
+        candidates.push_back(d);
+        deviceChoice->AddItem(d.Name.empty() ? d.DeviceId : d.Name);
+    }
+    if (!candidates.empty()) deviceChoice->SetSelectedIndex(0, false);
+    addButton->SetDisabled(candidates.empty());
 }
 
 void SmartHomeGroupControl::SetGroup(const std::string& groupId) {
@@ -842,139 +955,28 @@ void SmartHomeGroupControl::AllOff() {
     RequestRedraw();
 }
 
-void SmartHomeGroupControl::SetGroupBrightness(uint8_t brightness) {
+void SmartHomeGroupControl::SetGroupBrightness(uint8_t value) {
     // This API is documented 0-100, while SmartHomeLightState::Brightness is
     // 0-255. Scale here so a group set to 50 matches a single light set to
     // half, rather than arriving as a fifth of full.
-    masterBrightness = std::min<uint8_t>(brightness, 100);
+    masterBrightness = std::min<uint8_t>(value, 100);
     const int scaled = masterBrightness * 255 / 100;
     SendGroupCommand("setLevel", {{"brightness", std::to_string(scaled)}});
+    syncing = true;
+    brightness->SetValue(masterBrightness);
+    syncing = false;
+    brightnessValue->SetText(std::to_string(masterBrightness) + " %");
     RequestRedraw();
 }
 
-void SmartHomeGroupControl::SetGroupColorTemp(uint16_t colorTemp) {
-    masterColorTemp = colorTemp;
-    SendGroupCommand("setColorTemp", {{"colorTemp", std::to_string(colorTemp)}});
+void SmartHomeGroupControl::SetGroupColorTemp(uint16_t value) {
+    masterColorTemp = value;
+    SendGroupCommand("setColorTemp", {{"colorTemp", std::to_string(value)}});
+    syncing = true;
+    colorTemp->SetValue(value);
+    syncing = false;
+    colorTempValue->SetText(std::to_string(value) + " K");
     RequestRedraw();
-}
-
-void SmartHomeGroupControl::RenderGroupHeader(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetTextPaint(kText);
-    ctx->SetFontSize(14.0);
-    ctx->DrawTextInRect(group.Name.empty() ? "Group" : group.Name,
-                        Rect2Dd(kPad, kPad, b.width - 2 * kPad, 18.0));
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(10.0);
-    ctx->DrawTextInRect(std::to_string(group.DeviceIds.size()) + " devices",
-                        Rect2Dd(kPad, kPad + 20.0, b.width - 2 * kPad, 12.0));
-}
-
-void SmartHomeGroupControl::RenderMasterControls(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double y = kPad + 40.0;
-    Button(ctx, Rect2Dd(kPad, y, 70.0, 26.0), "All on",
-           masterOn ? kAccent : kTrack, masterOn ? Colors::White : kText);
-    Button(ctx, Rect2Dd(kPad + 78.0, y, 70.0, 26.0), "All off", kTrack, kText);
-
-    const Rect2Dd track(kPad, y + 38.0, b.width - 2 * kPad, 6.0);
-    ctx->SetFillPaint(kTrack);
-    ctx->FillRoundedRectangle(track, 3.0);
-    ctx->SetFillPaint(kAccent);
-    ctx->FillRoundedRectangle(Rect2Dd(track.x, track.y, track.width * (masterBrightness / 100.0),
-                                      6.0), 3.0);
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(9.0);
-    ctx->DrawTextInRect(std::to_string(masterBrightness) + "%",
-                        Rect2Dd(track.x, track.y + 10.0, 50.0, 12.0));
-}
-
-void SmartHomeGroupControl::RenderDeviceList(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    double y = kPad + 108.0 - scrollOffset;
-    ctx->SetFontSize(11.0);
-    for (const auto& d : devices) {
-        if (y > b.height - 40.0) break;
-        ctx->SetFillPaint(kSheet);
-        ctx->FillRoundedRectangle(Rect2Dd(kPad, y, b.width - 2 * kPad, kRow), 5.0);
-        ctx->SetTextPaint(d.State == SmartHomeDeviceState::Online ? kText : kTextDim);
-        ctx->DrawTextInRect(d.Name.empty() ? d.DeviceId : d.Name,
-                            Rect2Dd(kPad + 8.0, y + 6.0, b.width - 2 * kPad - 30.0, 14.0));
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect("×", Rect2Dd(b.width - kPad - 18.0, y + 6.0, 12.0, 14.0));
-        y += kRow + 4.0;
-    }
-    if (devices.empty()) {
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect("This group has no devices yet.",
-                            Rect2Dd(kPad, y + 4.0, b.width - 2 * kPad, 14.0));
-    }
-}
-
-void SmartHomeGroupControl::RenderAddDeviceButton(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    Button(ctx, Rect2Dd(kPad, b.height - kPad - 26.0, 110.0, 26.0),
-           "Add device", kTrack, kText);
-}
-
-void SmartHomeGroupControl::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-    RenderGroupHeader(ctx);
-    RenderMasterControls(ctx);
-    RenderDeviceList(ctx);
-    RenderAddDeviceButton(ctx);
-}
-
-bool SmartHomeGroupControl::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    const Rect2Df b = GetLocalBounds();
-    const int x = event.pointer.x;
-    const int y = event.pointer.y;
-    const double my = kPad + 40.0;
-    const Rect2Dd bright(kPad, my + 38.0, b.width - 2 * kPad, 6.0);
-
-    switch (event.type) {
-        case UCEventType::MouseDown:
-        case UCEventType::TouchStart: {
-            if (!Contains(Point2Df(static_cast<float>(x), static_cast<float>(y)))) return false;
-            if (Hit(Rect2Dd(kPad, my, 70.0, 26.0), x, y))        { AllOn();  return true; }
-            if (Hit(Rect2Dd(kPad + 78.0, my, 70.0, 26.0), x, y)) { AllOff(); return true; }
-
-            if (y >= bright.y - 10.0 && y <= bright.y + 16.0) {
-                dragging = 1;
-                const double t = std::clamp((x - bright.x) / bright.width, 0.0, 1.0);
-                SetGroupBrightness(static_cast<uint8_t>(t * 100.0));
-                return true;
-            }
-            const int index = static_cast<int>((y - (kPad + 108.0 - scrollOffset)) / (kRow + 4.0));
-            if (index >= 0 && index < static_cast<int>(devices.size()) &&
-                x >= b.width - kPad - 20.0) {
-                RemoveDevice(devices[static_cast<size_t>(index)].DeviceId);
-                return true;
-            }
-            return true;
-        }
-
-        case UCEventType::MouseMove:
-        case UCEventType::TouchMove:
-            if (dragging != 1) return false;
-            SetGroupBrightness(static_cast<uint8_t>(
-                std::clamp((x - bright.x) / bright.width, 0.0, 1.0) * 100.0));
-            return true;
-
-        case UCEventType::MouseUp:
-        case UCEventType::TouchEnd:
-            if (dragging == 0) return false;
-            dragging = 0;
-            return true;
-
-        default:
-            return false;
-    }
 }
 
 // ===== FACTORIES =====

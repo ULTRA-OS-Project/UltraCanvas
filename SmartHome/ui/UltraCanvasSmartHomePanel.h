@@ -1,7 +1,9 @@
 // UltraCanvasSmartHomePanel.h
 // Smart Home Control Panel UI Component
-// Version: 1.0.1 - cards drawn where they are laid out; the room view from the home's rooms
-// Last Modified: 2025-12-08
+// Version: 2.0.0 - a container of framework elements: a toolbar (mode,
+//                  search, add), the cards as real children in a scrolling
+//                  body, a pairing banner, the network as a topology widget
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,7 +12,16 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasSmartHome.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasTextInput.h"
+#include <atomic>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <functional>
 
@@ -20,7 +31,8 @@ namespace SmartHome {
 // Forward declarations
 class SmartHomeDeviceCard;
 class SmartHomeSceneCard;
-class SmartHomeRoomView;
+class SmartHomeNetworkTopology;
+namespace Kit { class RowsModel; }
 
 /**
  * @brief Panel display mode
@@ -101,10 +113,8 @@ using OnPanelModeChange = std::function<void(SmartHomePanelMode mode)>;
  * parent->AddChild(panel);
  * @endcode
  */
-class SmartHomePanel : public UltraCanvasUIElement {
+class SmartHomePanel : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomePanel(const std::string& identifier, float x, float y, float w, float h);
     SmartHomePanel(const std::string& identifier, float w, float h)
         : SmartHomePanel(identifier, -1, -1, w, h) {}
@@ -308,87 +318,85 @@ public:
     void SetOnAddDevice(OnAddDevice callback) { onAddDevice = callback; }
     void SetOnPanelModeChange(OnPanelModeChange callback) { onPanelModeChange = callback; }
     
-    // ===== UltraCanvasUIElement OVERRIDES =====
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    // ===== UPDATES =====
+
+    /**
+     * @brief Apply what the module reported since the last call: devices
+     * added or changed, pairing progress. The module calls back on its own
+     * threads, so the panel only notes it there; its timer calls this on the
+     * UI thread twice a second. A host without an event loop calls it itself.
+     */
+    void Poll();
+
+    // ===== ELEMENTS =====
+    // For a host that styles or drives them, and for tests.
+
+    UltraCanvasSegmentedControl* GetModeSelector() const { return modeSelector.get(); }
+    UltraCanvasTextInput* GetSearchInput() const { return searchInput.get(); }
+    UltraCanvasButton* GetAddButton() const { return addButton.get(); }
+    UltraCanvasButton* GetPairingCancelButton() const { return pairingCancel.get(); }
+    SmartHomeDeviceCard* GetDeviceCard(const std::string& deviceId) const;
+    SmartHomeSceneCard* GetSceneCard(const std::string& sceneId) const;
+    UltraCanvasListView* GetAutomationList() const { return automationList.get(); }
+    SmartHomeNetworkTopology* GetTopology() const { return topology.get(); }
+    bool IsPairing() const { return pairingMode; }
+
+    // Escape cancels pairing.
     bool OnEvent(const UCEvent& event) override;
 
 protected:
     // ===== INTERNAL METHODS =====
-    
+
     void SetupCallbacks();
-    void CreateToolbar();
-    void CreateDeviceGrid();
-    void CreateDeviceList();
-    void CreateRoomView();
-    void CreateSceneView();
-    void CreateAutomationView();
-    void CreateNetworkView();
-    
-    void LayoutCards();
+    void RebuildBody();          // the body for the mode, from the filtered devices
     void UpdateCardStates();
+    void UpdateCounts();
+    void ShowPairing();
     void AnimateCardTransition(const std::string& deviceId, bool newState);
-    
     void ApplyFilter();
     void SortDevices();
-    
-    void RenderToolbar(IRenderContext* context);
-    void RenderDeviceGrid(IRenderContext* context);
-    void RenderDeviceList(IRenderContext* context);
-    void RenderRoomView(IRenderContext* context);
-    void RenderSceneView(IRenderContext* context);
-    void RenderAutomationView(IRenderContext* context);
-    void RenderNetworkView(IRenderContext* context);
-    void RenderEmptyState(IRenderContext* context);
-    void RenderPairingOverlay(IRenderContext* context);
-    
+
     std::shared_ptr<SmartHomeDeviceCard> CreateDeviceCard(const SmartHomeDeviceInfo& device);
     std::shared_ptr<SmartHomeSceneCard> CreateSceneCard(const SmartHomeScene& scene);
-    
-    // Cards are laid out by this panel rather than added as child elements,
-    // so events must be rebased into a card's own coordinates before it can
-    // hit-test them against its local bounds.
-    UCEvent TranslatedTo(const UltraCanvasUIElement& child, const UCEvent& event) const;
+    std::shared_ptr<UltraCanvasContainer> CardFlow(const std::string& id);   // cards in rows that wrap
 
-    void HandleDeviceClick(const std::string& deviceId, int x, int y);
     void HandleDeviceLongPress(const std::string& deviceId);
-    void HandleDragStart(const std::string& deviceId, int x, int y);
-    void HandleDragMove(int x, int y);
-    void HandleDragEnd(int x, int y);
-    
+
     // ===== STATE =====
-    
+
     SmartHomePanelConfig config;
-    
     std::vector<SmartHomeDeviceInfo> allDevices;
     std::vector<SmartHomeDeviceInfo> filteredDevices;
     std::vector<SmartHomeScene> scenes;
     std::vector<SmartHomeAutomation> automations;
-    
+
     std::map<std::string, std::shared_ptr<SmartHomeDeviceCard>> deviceCards;
     std::map<std::string, std::shared_ptr<SmartHomeSceneCard>> sceneCards;
-    
+
     std::string selectedDeviceId;
-    std::string hoveredDeviceId;
-    std::string draggingDeviceId;
-    int dragOffsetX = 0, dragOffsetY = 0;
-    
-    // Room organization
+
+    // Room organization (the panel's own rooms; none = the home's)
     std::map<std::string, std::vector<std::string>> rooms;  // room -> deviceIds
     std::map<std::string, std::string> deviceRooms;          // deviceId -> room
     std::map<std::string, std::string> roomIcons;            // room -> icon
-    
-    // Scroll state
-    float scrollOffset = 0;
-    float scrollVelocity = 0;
-    float maxScroll = 0;
-    
+
     // Pairing state
     bool pairingMode = false;
     SmartHomeProtocolType pairingProtocol = SmartHomeProtocolType::Unknown;
     int pairingProgress = 0;
     std::string pairingStatus;
-    
+
+    // What the module reported from its threads, for Poll().
+    std::atomic<bool> devicesChanged{false};
+    std::atomic<bool> statesChanged{false};
+    std::atomic<bool> pairingChanged{false};
+    std::mutex pendingMutex;
+    int pendingProgress = 0;
+    std::string pendingStatus;
+    bool pendingPairingDone = false;
+    uint32_t pollTimer = 0;
+    bool syncing = false;
+
     // Theme colors
     Color colorBackground = Color::FromRGBA(0xF5F5F5FF);
     Color colorCardBackground = Color::FromRGBA(0xFFFFFFFF);
@@ -398,7 +406,27 @@ protected:
     Color colorOnline = Color::FromRGBA(0x4CAF50FF);
     Color colorOffline = Color::FromRGBA(0x9E9E9EFF);
     Color colorError = Color::FromRGBA(0xF44336FF);
-    
+
+    // Elements
+    std::shared_ptr<UltraCanvasContainer> toolbar;
+    std::shared_ptr<UltraCanvasLabel> countLabel;
+    std::shared_ptr<UltraCanvasSegmentedControl> modeSelector;
+    std::shared_ptr<UltraCanvasTextInput> searchInput;
+    std::shared_ptr<UltraCanvasButton> addButton;
+    std::shared_ptr<UltraCanvasContainer> pairingBanner;
+    std::shared_ptr<UltraCanvasLabel> pairingLabel;
+    std::shared_ptr<UltraCanvasUIElement> pairingBar;
+    std::shared_ptr<UltraCanvasButton> pairingCancel;
+    std::shared_ptr<UltraCanvasContainer> body;              // scrolls
+    // The rows of cards in the body. The cards outlive them (the maps keep
+    // them), so they are emptied before they go: a card must not keep a
+    // freed row as its parent.
+    std::vector<std::shared_ptr<UltraCanvasContainer>> flows;
+    std::shared_ptr<UltraCanvasLabel> emptyLabel;
+    std::shared_ptr<Kit::RowsModel> automationModel;
+    std::shared_ptr<UltraCanvasListView> automationList;
+    std::shared_ptr<SmartHomeNetworkTopology> topology;
+
     // Callbacks
     OnDeviceSelected onDeviceSelected;
     OnDeviceAction onDeviceAction;
@@ -406,16 +434,6 @@ protected:
     OnAutomationToggle onAutomationToggle;
     OnAddDevice onAddDevice;
     OnPanelModeChange onPanelModeChange;
-    
-    // Animation state
-    std::map<std::string, float> cardAnimations;  // deviceId -> animation progress
-    
-    // Touch handling
-    int activeTouchId = -1;
-    float touchStartX = 0, touchStartY = 0;
-    float touchLastX = 0, touchLastY = 0;
-    bool touchMoved = false;
-    uint64_t touchStartTime = 0;
 };
 
 /**

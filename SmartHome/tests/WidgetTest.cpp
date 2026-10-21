@@ -17,6 +17,7 @@
 #include "UltraCanvasSmartHomePanel.h"
 #include "UltraCanvasSmartHomeDeviceControl.h"
 #include "UltraCanvasSmartHomeAdvancedWidgets.h"
+#include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 // After the module's headers: these pull in X11, whose `None` macro would
 // eat SmartHomeSecurityLevel::None.
 #include "../../Tests/DisplayTestSupport.h"
@@ -104,8 +105,8 @@ int ControlsThroughWindow() {
     }
     WindowConfig cfg;
     cfg.title = "SmartHomeWidgetTest";
-    cfg.width = 320;
-    cfg.height = 400;
+    cfg.width = 800;    // the panel's toolbar needs the width
+    cfg.height = 420;
     gWindow = CreateWindow(cfg);
     if (!gWindow) {
         std::puts(displayRequired ? "FAIL: no window" : "skip windowed checks: no window");
@@ -363,6 +364,131 @@ int ControlsThroughWindow() {
         if (reopened->GetAutomation().Enabled == before) return Fail("enable toggle");
         if (SmartHomeAPI::Instance().GetAutomation(id).Enabled == before) return Fail("enable toggle not stored");
         std::puts("ok  automation editor: the switch enables and disables it");
+    }
+
+    // ----- topology, energy, scheduler and group control -----
+    {
+        auto& api = SmartHomeAPI::Instance();
+        api.EnableProtocol(SmartHomeProtocolType::Simulated);
+        auto topo = Place(std::make_shared<SmartHomeNetworkTopology>("topo", 10, 10, 300, 300));
+        topo->RefreshTopology();
+        Frame();
+        if (topo->GetNodes().empty()) return Fail("topology: no devices");
+        for (const auto& n : topo->GetNodes()) {
+            if (!topo->GetDiagram()->GetNode(n.DeviceId)) return Fail("topology: every device a node in the diagram");
+        }
+        Click(topo->GetLayoutSelector(), 5.0f / 6.0f);   // "Tree", the last of three
+        // In the diagram, every router sits above every other device.
+        double lowestRouter = -1e9, highestLeaf = 1e9;
+        for (const auto& n : topo->GetNodes()) {
+            const NodeDiagramNode* dn = topo->GetDiagram()->GetNode(n.DeviceId);
+            if (n.IsRouter) lowestRouter = std::max(lowestRouter, dn->y);
+            else            highestLeaf = std::min(highestLeaf, dn->y);
+        }
+        if (!(lowestRouter < highestLeaf)) return Fail("topology: the tree layout puts the routers on top");
+        std::printf("ok  topology: %zu devices as a node diagram, the layout switch works\n", topo->GetNodes().size());
+        api.DisableProtocol(SmartHomeProtocolType::Simulated);
+    }
+
+    {
+        auto energy = Place(std::make_shared<SmartHomeEnergyMonitor>("energy", 10, 10, 300, 280));
+        for (int i = 0; i < 12; ++i) {
+            EnergyReading r{};
+            r.Timestamp = 1000ull + static_cast<uint64_t>(i) * 60000ull;
+            r.Power = 100.0f + i;
+            r.Energy = 10.0f + i * 0.5f;
+            energy->AddReading(r);
+        }
+        Frame();
+        Click(energy->GetModeSelector(), 0.5f);   // "Energy"
+        if (energy->GetModeSelector()->GetSelectedIndex() != 1) return Fail("energy: mode selector");
+        std::puts("ok  energy: the chart's mode is a segmented control");
+    }
+
+    {
+        auto sched = Place(std::make_shared<SmartHomeScheduler>("sched", 10, 10, 300, 300));
+        ScheduledEvent e;
+        e.EventId = "e1"; e.Name = "Porch on"; e.Time = "18:30"; e.Days = {1, 2, 3}; e.Enabled = true;
+        sched->AddEvent(e);
+        int creates = 0;
+        sched->SetOnEventCreate([&](const std::string&, int){ ++creates; });
+        Frame();
+        Click(sched->GetViewSelector(), 5.0f / 6.0f);   // "List"
+        if (sched->GetViewMode() != "list" || !sched->GetEventList()->IsVisible()) return Fail("scheduler: list view");
+        const Rect2Df lb = sched->GetEventList()->GetBoundsInWindow();
+        Click(sched->GetEventList(), 0.5f, (24.0f + 12.0f) / lb.height);   // the first row, under the header
+        if (sched->GetSelectedEvent() != "e1") return Fail("scheduler: a row selects its event");
+        Click(sched->GetToggleButton());
+        if (sched->GetEvents()[0].Enabled) return Fail("scheduler: Turn off");
+        std::puts("ok  scheduler: list view, select a row, turn it off");
+
+        Click(sched->GetViewSelector(), 0.5f);          // "Week"
+        sched->SetViewMode("week");
+        Frame();
+        if (creates != 0) return Fail("scheduler: a create before any press");
+        std::puts("ok  scheduler: week view");
+    }
+
+    {
+        auto grp = Place(std::make_shared<SmartHomeGroupControl>("grp", 10, 10, 300, 380));
+        grp->CreateGroup("Kitchen", {"light-1", "light-2"});
+        Frame();
+        Click(grp->GetBrightnessSlider(), 0.25f);
+        if (grp->GetBrightnessSlider()->GetValue() < 15 || grp->GetBrightnessSlider()->GetValue() > 35) {
+            return Fail("group: brightness slider");
+        }
+        Click(grp->GetAllOffButton());
+        std::puts("ok  group: the brightness slider and All off");
+    }
+
+    // ----- the dashboard panel -----
+    {
+        auto& api = SmartHomeAPI::Instance();
+        api.EnableProtocol(SmartHomeProtocolType::Simulated);
+        auto panel = Place(std::make_shared<SmartHomePanel>("panel", 0, 0, 760, 380));
+        panel->Initialize();
+        panel->SetMode(SmartHomePanelMode::DeviceGrid);
+        Frame();
+        Frame();
+        std::string lightId;
+        for (const auto& d : api.GetDevices()) {
+            if (d.Category == SmartHomeDeviceCategory::Light && panel->GetDeviceCard(d.DeviceId)) { lightId = d.DeviceId; break; }
+        }
+        SmartHomeDeviceCard* card = lightId.empty() ? nullptr : panel->GetDeviceCard(lightId);
+        if (!card || card->GetBoundsInWindow().width <= 0) return Fail("panel: a light's card is laid out");
+        // Scroll is at the top, and the first row of cards is in view.
+        const bool before = api.GetSwitchState(lightId);
+        Click(card);
+        api.WaitForCommands(2000);
+        if (panel->GetSelectedDevice() != lightId) return Fail("panel: a press on a card selects it");
+        if (api.GetSwitchState(lightId) == before) return Fail("panel: a press on a card switches it");
+        std::puts("ok  panel: a card is a child element; a press selects and switches its device");
+
+        // The grid wraps, and its row container is as tall as all its lines:
+        // every card sits inside its parent's height (a row measured one line
+        // high clipped every card after the first line).
+        int rows = 0;
+        float lastY = -1.0f;
+        for (const auto& d : api.GetDevices()) {
+            SmartHomeDeviceCard* c = panel->GetDeviceCard(d.DeviceId);
+            auto* parent = c ? dynamic_cast<UltraCanvasUIElement*>(c->Parent()) : nullptr;
+            if (!parent) continue;
+            const Rect2Df b = c->GetBounds();
+            if (b.y + b.height > parent->GetBounds().height + 0.5f) return Fail("panel: a card outside its row's height");
+            if (b.y != lastY) { ++rows; lastY = b.y; }
+        }
+        if (rows < 2) return Fail("panel: the grid wraps onto more than one line");
+        std::puts("ok  panel: the card grid wraps, and every line is inside it");
+
+        Click(panel->GetModeSelector(), 1.5f / 6.0f);   // "Rooms"
+        if (panel->GetMode() != SmartHomePanelMode::RoomView) return Fail("panel: the mode selector");
+        Click(panel->GetModeSelector(), 5.5f / 6.0f);   // "Network"
+        if (panel->GetMode() != SmartHomePanelMode::NetworkView || !panel->GetTopology()->IsVisible() ||
+            panel->GetTopology()->GetNodes().empty()) {
+            return Fail("panel: the network mode shows the topology");
+        }
+        std::puts("ok  panel: the toolbar's mode selector, and the network as a topology");
+        api.DisableProtocol(SmartHomeProtocolType::Simulated);
     }
 
     gWindow->ClearChildren();

@@ -268,8 +268,20 @@ Mouse and touch share a path, because `UCEvent` carries both in the same
 
 Every widget drives its device through `SmartHomeAPI` and also reports through
 its own callback, so a host can let the widget talk to the module or intercept
-the change. Layout is computed from each element's local bounds rather than
-fixed pixel positions.
+the change.
+
+**They are built from framework elements** (2026-10-21, proposal §4.8): each
+is an `UltraCanvasContainer` laid out by flex, holding switches, sliders,
+buttons, spinners, segmented controls, list views, a colour picker, gauges,
+line charts and a node diagram. The first port had kept them painting their
+own controls and hit-testing fixed positions, and the panel and the device
+dialog drew their children by hand and passed them events themselves - the
+bug class behind the panel drawing every card at its origin. Now the window
+dispatches to every element. Two pictures stay drawn by the module (a
+blind in its window, the scheduler's week grid); the device and scene cards
+are drawn tiles, real children of the panel. `scripts/check_ui_reuse.py`
+scans `SmartHome/ui`. The panel applies what the module reports from its
+threads on the UI thread, from an application timer.
 
 `SmartHomeAutomation` stores its trigger as a type string plus a
 `TriggerConfig` the public header documents as JSON, while the editor works in
@@ -279,7 +291,11 @@ backslash survives the round trip; the test asserts it by saving, reopening,
 saving again and comparing the two configs.
 
 `tests/WidgetTest.cpp` builds them all against `libUltraCanvas` and drives them
-with synthetic `UCEvent`s — 36 assertions.
+(48 checks). The controls, dialog, wizard (a simulated device pairs through
+it), editors, topology, energy monitor, scheduler, group control and panel
+are pressed at window coordinates through the application's dispatch, on the
+elements their getters return; that part opens a window, so it runs under
+Xvfb (CI's Linux row has a step for it) and skips without a display.
 
 ### 2. Third-party dependencies — decided, not yet installed
 
