@@ -75,14 +75,14 @@ UltraCanvasUIElement
 
 ```cpp
 enum class ArcEdgeType {
-    Above,     // Arc curves above the baseline (forward, default)
-    Below,     // Arc curves below the baseline (back/secondary)
+    AboveBaseline, // Arc curves above the baseline (forward, default)
+    BelowBaseline, // Arc curves below the baseline (back/secondary)
     Auto       // Above when source < target index, else below
 };
 
 enum class ArcLabelSide {
-    Below,         // Default
-    Above,
+    BelowBaseline, // Default
+    AboveBaseline,
     Alternating,   // Alternates by node index
     Vertical       // Rotated 90° descending below baseline
 };
@@ -165,7 +165,7 @@ struct ArcDiagramStyle {
     // Labels
     float        labelFontSize = 11.0f;
     Color        labelColor    = Color(40, 40, 40, 255);
-    ArcLabelSide labelSide     = ArcLabelSide::Below;
+    ArcLabelSide labelSide     = ArcLabelSide::BelowBaseline;
 
     // Arcs
     float          arcMinWidth     = 0.5f;
@@ -326,7 +326,7 @@ for (const auto& e : edges) {
     ae.targetId = e.b;
     ae.weight   = e.w;
     ae.color    = Color(160, 160, 160, static_cast<uint8_t>(60 + e.w * 15));
-    ae.side     = ArcEdgeType::Above;
+    ae.side     = ArcEdgeType::AboveBaseline;
     diagram->AddEdge(ae);
 }
 
@@ -380,7 +380,7 @@ for (const auto& e : catEdges) {
     ArcEdge ae;
     ae.sourceId = e.a; ae.targetId = e.b;
     ae.weight   = e.w; ae.color    = e.col;
-    ae.side     = ArcEdgeType::Above;
+    ae.side     = ArcEdgeType::AboveBaseline;
     diagram->AddEdge(ae);
 }
 
@@ -388,7 +388,7 @@ ArcDiagramStyle s;
 s.arcHeightMode = ArcHeightMode::Semicircle;
 s.arcMinWidth   = 1.0f;
 s.arcMaxWidth   = 6.0f;
-s.labelSide     = ArcLabelSide::Below;
+s.labelSide     = ArcLabelSide::BelowBaseline;
 s.labelFontSize = 13.0f;
 s.nodeBaseSize  = 10.0f;
 s.nodePadding   = 90.0f;
@@ -439,16 +439,16 @@ Color green (80, 180, 80, 200);
 Color gray  (150, 150, 150, 180);
 Color violet(160, 80, 200, 180);
 
-diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true, ArcEdgeType::Above, "10"));
-diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true, ArcEdgeType::Above, "13"));
-diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true, ArcEdgeType::Above, "10"));
-diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true, ArcEdgeType::Above, "5"));
-diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true, ArcEdgeType::Above, "5"));
-diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true, ArcEdgeType::Above, "5"));
+diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true, ArcEdgeType::AboveBaseline, "10"));
+diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true, ArcEdgeType::AboveBaseline, "13"));
+diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true, ArcEdgeType::AboveBaseline, "10"));
+diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
+diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
+diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
 
 // Self-loop drawn below the baseline
 ArcEdge selfLoop = makeEdge("special","special", 3.0f, violet, true,
-                             ArcEdgeType::Below, "3");
+                             ArcEdgeType::BelowBaseline, "3");
 diagram->AddEdge(selfLoop);
 
 ArcDiagramStyle s;
@@ -459,7 +459,7 @@ s.arcMaxWidth      = 7.0f;
 s.showArrows       = true;
 s.arrowPosition    = ArcArrowPosition::AtMidArc;   // Arrow at apex, not at target
 s.arrowSize        = 9.0f;
-s.labelSide        = ArcLabelSide::Below;
+s.labelSide        = ArcLabelSide::BelowBaseline;
 s.labelFontSize    = 11.0f;
 s.arcLabelFontSize = 11.0f;
 s.nodeSizeMode     = ArcNodeSizeMode::Fixed;
@@ -502,7 +502,7 @@ for (const auto& p : knownPairs) {
     ArcEdge e;
     e.sourceId = idA; e.targetId = idB;
     e.weight = 1.0f;  e.color    = p.c;
-    e.side  = ArcEdgeType::Above;    // Known pairs above
+    e.side  = ArcEdgeType::AboveBaseline;    // Known pairs above
     diagram->AddEdge(e);
 }
 
@@ -517,7 +517,7 @@ for (const auto& p : novelPairs) {
     ArcEdge e;
     e.sourceId = idA; e.targetId = idB;
     e.weight = 1.0f;  e.color    = p.c;
-    e.side  = ArcEdgeType::Below;    // Novel pairs below
+    e.side  = ArcEdgeType::BelowBaseline;    // Novel pairs below
     diagram->AddEdge(e);
 }
 
@@ -527,7 +527,7 @@ s.arcMinWidth      = 0.8f;
 s.arcMaxWidth      = 2.0f;
 s.bundleHeightStep = 6.0f;    // Stack parallel arcs by this delta
 s.sortBySpan       = true;
-s.labelSide        = ArcLabelSide::Below;
+s.labelSide        = ArcLabelSide::BelowBaseline;
 s.labelFontSize    = 10.0f;
 s.nodeBaseSize     = 5.0f;
 s.nodePadding      = 30.0f;

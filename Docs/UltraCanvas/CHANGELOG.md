@@ -45,6 +45,16 @@
   names are unchanged), `UltraDbType::Bool` and `ZWaveValueType::Bool` are
   `Boolean`, `AiStatus::Status()` is `StatusOf()` and the IMAP response's
   `Status()` is `StatusWord()`. Nothing was named `Always` any more.
+- **CI keeps it that way.** `scripts/check_x11_names.py` (`x11-names.yml`)
+  fails on an enumerator, function, method or member named like any of the
+  481 object-like macros `<X11/X.h>`, `Xlib.h` and `Xutil.h` define, and on
+  an `#undef` or `push_macro` of one; the list is generated from the headers
+  into `scripts/x11_macro_names.txt`, the baseline is empty, and a site that
+  is correct as it stands says `// x11-name-ok: <why>`. The names it found
+  on its first run are gone too: `ArcEdgeType` and `ArcLabelSide` say
+  `AboveBaseline` / `BelowBaseline`, the IPP tag is `IppTag::NoValueTag`, the
+  Zigbee frames' `Status` fields are `StatusCode`, and a handful of file-local
+  helpers named `Bool`, `Below` or `CurrentTime` are renamed.
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

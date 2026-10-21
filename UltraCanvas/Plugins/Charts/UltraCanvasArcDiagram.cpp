@@ -181,9 +181,9 @@ namespace UltraCanvas {
             float labelH = style.labelFontSize + style.labelMargin + style.nodeBaseSize;
             baselinePos = static_cast<float>(GetHeight()) * 0.5f;
             // Shift baseline down if labels are below to give arcs more space above
-            if (style.labelSide == ArcLabelSide::Below) {
+            if (style.labelSide == ArcLabelSide::BelowBaseline) {
                 baselinePos = static_cast<float>(GetHeight()) * 0.4f;
-            } else if (style.labelSide == ArcLabelSide::Above) {
+            } else if (style.labelSide == ArcLabelSide::AboveBaseline) {
                 baselinePos = static_cast<float>(GetHeight()) * 0.6f;
             }
         } else {
@@ -329,8 +329,8 @@ namespace UltraCanvas {
             const ArcEdge& edge, int srcIdx, int tgtIdx) const
     {
         switch (edge.side) {
-            case ArcEdgeType::Above: return true;
-            case ArcEdgeType::Below: return false;
+            case ArcEdgeType::AboveBaseline: return true;
+            case ArcEdgeType::BelowBaseline: return false;
             default: // Auto
                 return srcIdx < tgtIdx; // forward = above, back = below
         }
@@ -557,7 +557,7 @@ namespace UltraCanvas {
 
         float nodeR  = NodeRadius(nodeIdx);
         float loopR  = nodeR * 1.4f + 6.0f;
-        bool  above  = (edge.side != ArcEdgeType::Below);
+        bool  above  = (edge.side != ArcEdgeType::BelowBaseline);
         float sign   = above ? -1.0f : 1.0f;
         float loopCY = cy + sign * (nodeR + loopR);
 
@@ -768,7 +768,7 @@ namespace UltraCanvas {
             // Determine label side for this node
             bool labelBelow = true;
             switch (style.labelSide) {
-                case ArcLabelSide::Above:       labelBelow = false; break;
+                case ArcLabelSide::AboveBaseline:       labelBelow = false; break;
                 case ArcLabelSide::Alternating: labelBelow = (i % 2 == 0); break;
                 default:                        labelBelow = true; break;
             }

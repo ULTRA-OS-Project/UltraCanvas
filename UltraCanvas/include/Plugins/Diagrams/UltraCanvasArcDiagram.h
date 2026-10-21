@@ -24,28 +24,21 @@
 #include <cmath>
 #include <limits>
 
-#ifdef Below
-#undef Below
-#endif
-#ifdef Above
-#undef Above
-#endif
-
 namespace UltraCanvas {
 
 // ===== ENUMERATIONS =====
 
     /// Which side of the baseline arcs are drawn on
     enum class ArcEdgeType {
-        Above,          ///< Arc curves above the baseline (forward links, default)
-        Below,          ///< Arc curves below the baseline (back links, secondary)
+        AboveBaseline,  ///< Arc curves above the baseline (forward links, default)
+        BelowBaseline,  ///< Arc curves below the baseline (back links, secondary)
         Auto            ///< Above when source < target index, below otherwise
     };
 
     /// Where node labels are positioned relative to the node dot
     enum class ArcLabelSide {
-        Below,          ///< Labels below the baseline (default)
-        Above,          ///< Labels above the baseline
+        BelowBaseline,  ///< Labels below the baseline (default)
+        AboveBaseline,  ///< Labels above the baseline
         Alternating,    ///< Alternates above/below by index — reduces overlap for dense graphs
         Vertical        ///< P2 — labels rotated 90° descending below baseline (image 1 style)
     };
@@ -131,7 +124,7 @@ namespace UltraCanvas {
         float   labelFontSize       = 11.0f;    ///< Node label font size
         Color   labelColor          = Color(40, 40, 40, 255);       ///< Node label text color
         float   labelMargin         = 6.0f;     ///< Gap between node dot and label
-        ArcLabelSide labelSide      = ArcLabelSide::Below;
+        ArcLabelSide labelSide      = ArcLabelSide::BelowBaseline;
 
         // Arcs
         float   arcMinWidth         = 0.5f;     ///< Minimum arc stroke width

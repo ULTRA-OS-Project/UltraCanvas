@@ -1117,7 +1117,7 @@ std::string Number(double value) {
     // (as %g does) and drops trailing zeros.
     return FormatFloatClassic(std::round(value * 100.0) / 100.0, 12);
 }
-std::string Bool(bool value) { return value ? "true" : "false"; }
+std::string BoolText(bool value) { return value ? "true" : "false"; }
 } // namespace
 
 std::optional<std::string> SmartHomeManager::ReadDeviceAttribute(const std::string& deviceId,
@@ -1126,7 +1126,7 @@ std::optional<std::string> SmartHomeManager::ReadDeviceAttribute(const std::stri
     if (info.DeviceId.empty()) return std::nullopt;
     const std::string a = attribute;
     if (a == "state") return DeviceStateToString(info.State);
-    if (a == "online" || a == "reachable") return Bool(info.Reachable);
+    if (a == "online" || a == "reachable") return BoolText(info.Reachable);
 
     std::shared_ptr<ISmartHomeDevice> device = GetDevice(deviceId);
     if (!device) return std::nullopt;
@@ -1135,12 +1135,12 @@ std::optional<std::string> SmartHomeManager::ReadDeviceAttribute(const std::stri
         return std::to_string(device->GetBatteryLevel());
     }
     if (auto light = std::dynamic_pointer_cast<ISmartLight>(device)) {
-        if (a == "on") return Bool(light->IsOn());
+        if (a == "on") return BoolText(light->IsOn());
         if (a == "brightness") return std::to_string((light->GetBrightness() * 100 + 127) / 255);
         if (a == "colorTemp") return std::to_string(light->GetColorTemperature());
     }
     if (auto sw = std::dynamic_pointer_cast<ISmartSwitch>(device)) {
-        if (a == "on") return Bool(sw->IsOn());
+        if (a == "on") return BoolText(sw->IsOn());
         if (a == "power" && sw->SupportsPowerMonitoring()) return Number(sw->GetPower());
         if (a == "energy" && sw->SupportsPowerMonitoring()) return Number(sw->GetEnergyUsage());
     }
@@ -1149,16 +1149,16 @@ std::optional<std::string> SmartHomeManager::ReadDeviceAttribute(const std::stri
         if (a == "target") return Number(t->GetTargetTemperature());
         if (a == "humidity") return Number(t->GetHumidity());
         if (a == "mode") return t->GetMode();
-        if (a == "running") return Bool(t->IsRunning());
+        if (a == "running") return BoolText(t->IsRunning());
     }
     if (auto lock = std::dynamic_pointer_cast<ISmartLock>(device)) {
-        if (a == "locked") return Bool(lock->IsLocked());
-        if (a == "jammed") return Bool(lock->IsJammed());
+        if (a == "locked") return BoolText(lock->IsLocked());
+        if (a == "jammed") return BoolText(lock->IsJammed());
     }
     if (auto blind = std::dynamic_pointer_cast<ISmartBlind>(device)) {
         if (a == "position") return std::to_string(blind->GetPosition());
         if (a == "tilt") return std::to_string(blind->GetTilt());
-        if (a == "moving") return Bool(blind->IsMoving());
+        if (a == "moving") return BoolText(blind->IsMoving());
     }
     if (auto sensor = std::dynamic_pointer_cast<ISmartSensor>(device)) {
         const SmartHomeSensorReading r = sensor->GetReading();
@@ -1169,7 +1169,7 @@ std::optional<std::string> SmartHomeManager::ReadDeviceAttribute(const std::stri
         if (a == "value") return Number(r.Value);
         if (a == "triggered" || a == "motion" || a == "open" || a == "contact" || a == "water" ||
             a == "leak" || a == "smoke") {
-            return binary ? std::optional<std::string>(Bool(r.Triggered)) : std::nullopt;
+            return binary ? std::optional<std::string>(BoolText(r.Triggered)) : std::nullopt;
         }
         if ((a == "temperature" && r.Type == SmartHomeSensorType::Temperature) ||
             (a == "humidity" && r.Type == SmartHomeSensorType::Humidity)) {

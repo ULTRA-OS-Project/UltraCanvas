@@ -1,0 +1,62 @@
+name: X11 macro names
+
+# Blocks new identifiers named like an X11 macro, and new #undef guards for
+# one. On Linux and BSD the window headers reach <X11/Xlib.h>, which #defines
+# None, Success, Status, Bool, Always, NoValue, Above, Below, True, False and
+# a few hundred more as object-like macros; an enumerator, method or member
+# of that name compiles in the files that include the X11 header after it and
+# fails ("expected identifier") in the one that includes a window header
+# first. Every such name was renamed in 0.9.363 and every `#undef` guard
+# removed - this check keeps it that way. See AGENTS.md.
+#
+# The names come from scripts/x11_macro_names.txt, generated from the X11
+# headers. Sites that predate the check would be listed in
+# scripts/x11_names_baseline.txt (empty when the check was introduced); only
+# additions fail. A site that is correct as it stands says so with
+# `// x11-name-ok: <why>`.
+
+# Trigger policy matches build.yml / locale-numbers.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    # Every folder scripts/check_x11_names.py scans (SEARCH_ROOTS).
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'VirtualFS/**'
+      - 'UltraNet/**'
+      - 'VideoFX/**'
+      - 'Apps/**'
+      - 'Tests/**'
+      - 'scripts/check_x11_names.py'
+      - 'scripts/x11_macro_names.txt'
+      - 'scripts/x11_names_baseline.txt'
+      - '.github/workflows/x11-names.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The rules first, against examples of their own - a rule that stopped
+      # matching would otherwise pass the scan below by finding nothing.
+      - name: Self-test the check
+        run: python3 scripts/check_x11_names.py --self-test
+      - name: Check for identifiers named like an X11 macro
+        run: python3 scripts/check_x11_names.py --strict

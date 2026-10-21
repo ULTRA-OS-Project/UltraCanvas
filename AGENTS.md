@@ -214,6 +214,19 @@ before adding cross-module code.
   `scripts/win32_aw_macros.txt`; `scripts/win32_names_baseline.txt` holds the
   sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
+- **No identifier is named like an X11 macro.** On Linux and BSD the window
+  headers reach `<X11/Xlib.h>`, which `#define`s `None`, `Success`, `Status`,
+  `Bool`, `Always`, `NoValue`, `Above`, `Below`, `True`, `False` and a few
+  hundred more as object-like macros, so an enumerator, method or member of
+  that name compiles in the files that include X11 after it and fails
+  ("expected identifier") in the one that includes a window header first.
+  Say what the value means instead - `ErrorCode::Ok`, `BorderStyle::NoBorder`,
+  `ArcEdgeType::AboveBaseline` - and never add an `#undef None` guard: it
+  only moves the failure to the next file. `scripts/check_x11_names.py`
+  enforces this in CI (`x11-names.yml`) from the name list in
+  `scripts/x11_macro_names.txt` (generated from the X11 headers);
+  `scripts/x11_names_baseline.txt` is empty and stays so. A site that is
+  correct as it stands says so with `// x11-name-ok: <why>`.
 - **An inline body in a public header uses all its parameters.** It is
   compiled into every file that includes the header, so a parameter it
   leaves unused warns in every build with `-Wextra` (the Models plugin, the
@@ -670,7 +683,9 @@ number anywhere else, and never introduce a new literal copy of one:
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   CI runs that too. Nor after an X11 macro (`None`, `Success`, `Status`,
+   `Bool`, `Above`) — run `python3 scripts/check_x11_names.py`; CI runs that
+   too. Reading HTML, CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI

@@ -492,6 +492,7 @@ python3 scripts/check_callback_cycles.py      # no shared_ptr cycles in callback
 python3 scripts/check_path_string.py          # UTF-8 paths only
 python3 scripts/check_locale_numbers.py       # dot-decimal in file formats
 python3 scripts/check_win32_names.py          # no A/W macro collisions
+python3 scripts/check_x11_names.py            # no None/Success/Status enumerators
 python3 scripts/check_element_catalogue.py    # every element is on the catalogue page
 git fetch origin main && python3 scripts/check_changelog.py --base origin/main
 ```

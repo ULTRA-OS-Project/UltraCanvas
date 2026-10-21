@@ -178,7 +178,7 @@ void PutValue(std::vector<uint8_t>& out, const std::string& name,
         }
         case IppTag::Unsupported:
         case IppTag::Unknown:
-        case IppTag::NoValue:
+        case IppTag::NoValueTag:
             PutU16(out, 0);
             break;
         default:
