@@ -2774,6 +2774,25 @@ if(ULTRACANVAS_ENABLE_NET)
             # test when its result variable is already set, so it must not reuse
             # a name we pre-initialised (UC_CURL_HAS_WS).
             check_symbol_exists(curl_ws_send "curl/curl.h;curl/websockets.h" UC_SYS_CURL_HAS_WS)
+            # The symbol is not enough: Ubuntu 24.04's libcurl 8.5 exports
+            # curl_ws_send but is built without WebSockets (the protocol list
+            # has no "ws", and every connect answers "not built in"). Ask the
+            # library itself which protocols it was built with.
+            if(UC_SYS_CURL_HAS_WS)
+                include(CheckCSourceRuns)
+                check_c_source_runs("
+                    #include <curl/curl.h>
+                    #include <string.h>
+                    int main(void) {
+                        const curl_version_info_data* info = curl_version_info(CURLVERSION_NOW);
+                        for (const char* const* p = info->protocols; p && *p; ++p)
+                            if (strcmp(*p, \"ws\") == 0) return 0;
+                        return 1;
+                    }" UC_SYS_CURL_WS_BUILT_IN)
+                if(NOT UC_SYS_CURL_WS_BUILT_IN)
+                    set(UC_SYS_CURL_HAS_WS FALSE)
+                endif()
+            endif()
             unset(CMAKE_REQUIRED_INCLUDES)
             unset(CMAKE_REQUIRED_LIBRARIES)
             if(UC_SYS_CURL_HAS_WS)
@@ -3670,6 +3689,36 @@ endforeach()
 _ultracanvas_absorb_modules(
     uc-net uc-win ${_ultracanvas_optional_archives} uc-message uc-networkmonitor
     uc-database uc-vault uc-crypt VirtualFS)
+
+# ===== ULTRAIM PROVIDER: CHATCUBE DIRECT =====
+# The ULTRA OS native messenger as an UltraIM provider module
+# (Plugins/UltraIM/direct/, Docs/Research/ChatCubeDirectPlan.md). Its code is
+# an archive so the tests can link it directly; the module is that archive
+# plus the UltraIM_PluginInit entry point, loaded from <build>/Plugins/UltraIM.
+if(TARGET UltraIM AND TARGET UltraRTC AND TARGET UltraNet AND TARGET UltraDatabase AND TARGET UltraVault)
+    set(_ultraim_direct_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/direct)
+    add_library(UltraIMDirectCore STATIC
+        ${_ultraim_direct_dir}/DirectCrypto.cpp
+        ${_ultraim_direct_dir}/DirectStore.cpp
+        ${_ultraim_direct_dir}/DirectRelayClient.cpp
+        ${_ultraim_direct_dir}/DirectLinks.cpp
+        ${_ultraim_direct_dir}/DirectProvider.cpp)
+    set_target_properties(UltraIMDirectCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMDirectCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMDirectCore PUBLIC ${_ultraim_direct_dir})
+    target_link_libraries(UltraIMDirectCore PUBLIC
+        ${ULTRACANVAS_LIB_NAME} UltraIM UltraRTC UltraNet UltraDatabase UltraVault UltraCrypt)
+
+    add_library(UltraIMDirectPlugin MODULE ${_ultraim_direct_dir}/DirectModule.cpp)
+    set_target_properties(UltraIMDirectPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_direct"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMDirectPlugin PRIVATE UltraIMDirectCore)
+    message(STATUS "  [✓] UltraIM provider ChatCube Direct - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider ChatCube Direct - DISABLED (needs UltraIM, UltraRTC, UltraNet, UltraDatabase, UltraVault)")
+endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")

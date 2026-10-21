@@ -1424,10 +1424,22 @@ jobs:
           # here if the runner has no IPv6 loopback.
           ip -6 addr show dev lo | grep -q '::1' || echo "::warning::no IPv6 loopback - ippeveprinter will not start"
 
+      # DirectProviderTests runs two ChatCube Direct providers against the
+      # relay (Server/ChatCubeRelay), which is Python: give the test a
+      # python3 that has its packages, and forbid the skip below.
+      - name: Install the ChatCube relay for the end-to-end test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/chatcube-relay"
+          "$RUNNER_TEMP/chatcube-relay/bin/pip" install -q -r Server/ChatCubeRelay/requirements.txt
+          echo "$RUNNER_TEMP/chatcube-relay/bin" >> "$GITHUB_PATH"
+
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
         env:
+          # DirectProviderTests: no relay is a failure, not a skip.
+          ULTRAIM_TEST_RELAY_REQUIRED: 1
           # IODevicePrinterIPPLiveTest prints to a real ippeveprinter; a skip
           # would look like a pass, so forbid it, as for the database test.
           ULTRACANVAS_TEST_IPP_REQUIRED: 1

@@ -89,8 +89,45 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 never unloads it (queued callbacks may still point into it). A provider
 compiled into the application uses `UltraIM_RegisterProvider` instead.
 
+## Provider: ChatCube Direct
+
+The ULTRA OS native messenger, provider id `direct`, module
+`<build>/Plugins/UltraIM/ultraim_direct.{so,dll,dylib}`, sources
+`UltraCanvas/Plugins/UltraIM/direct/`. Plan and protocol:
+[`Docs/Research/ChatCubeDirectPlan.md`](../../Research/ChatCubeDirectPlan.md);
+server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
+
+- **Identity:** `UltraIMLoginType::KeyPair`. `SignIn` with
+  `createAccount = true` and a `displayName` makes an Ed25519 key pair on the
+  device, kept in the provider's `DeviceKeyVault` under
+  `<dataDirectory>/direct/`; later sign-ins reuse it (`server` may then be
+  empty: the relay URL is remembered). The user id is 32 hex characters,
+  derived from the public key - it is what a contact types into
+  `UltraIM_AddContact`.
+- **Messages** are end-to-end encrypted envelopes (X25519 + HKDF +
+  XChaCha20-Poly1305, header authenticated). Between two online contacts
+  they go over a WebRTC data channel (UltraRTC) whose set-up is signed with
+  the identity keys; otherwise, and for groups, through the relay's queue.
+  Every message keeps its client id on every path, so one that arrived twice
+  is shown once.
+- **Delivery ticks:** `Sending` → `Sent` (in the relay's queue) →
+  `Delivered` (the peer's device has it: data-channel ack or receipt) →
+  `Read` (`UltraIM_MarkRead` on the other side). Groups stop at `Sent`.
+- **Local record:** contacts and their keys, conversations, history and the
+  outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
+  `FetchMessages` answers from it; nothing waits for the network.
+- **Not yet:** calls (`CanCall` answers no until UltraRTC carries media),
+  files and images, LAN without a relay (mDNS advertising), several devices
+  per identity.
+
+Tests: `Tests/UltraIM/DirectProviderTests.cpp` - the envelope and the store,
+then two providers against a relay started from `Server/ChatCubeRelay` (P2P
+delivery, read receipt, offline queue, sign-in again with the stored
+identity, a group). It needs a `python3` with the relay's packages on `PATH`
+and skips without one, unless `ULTRAIM_TEST_RELAY_REQUIRED` is set (CI).
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
-the merged conversation fetch and every forwarding call. Providers: none
-yet — ChatCube Direct is next (see the plan).
+the merged conversation fetch and every forwarding call; the ChatCube
+Direct provider (above). Next: the ChatCube application on top of it.

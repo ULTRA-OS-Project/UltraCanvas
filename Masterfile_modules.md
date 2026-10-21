@@ -2506,8 +2506,12 @@ UltraIM elements must comply with the following rules:
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
 provider registry, the module loader (`UltraIM_PluginInit`, ABI 1), the event
 bus with the injected dispatcher, the merged conversation fetch and every
-forwarding call above. Tests in `Tests/UltraIM`. No provider yet; ChatCube
-Direct is next. See `Docs/Modules/UltraIM/README.md`.
+forwarding call above. Provider: ChatCube Direct
+(`UltraCanvas/Plugins/UltraIM/direct/`, module `ultraim_direct`): key-pair
+identity, end-to-end encrypted messages peer to peer over UltraRTC data
+channels, the relay (`Server/ChatCubeRelay`) for rendezvous, the offline
+queue and groups, delivery and read receipts, local history. Tests in
+`Tests/UltraIM`. See `Docs/Modules/UltraIM/README.md`.
 
 ---
 

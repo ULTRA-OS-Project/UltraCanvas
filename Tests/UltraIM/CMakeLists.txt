@@ -18,3 +18,16 @@ target_compile_definitions(UltraIMTests PRIVATE
     ULTRAIM_TEST_MODULE_DIR="$<TARGET_FILE_DIR:UltraIMTestProviderModule>")
 add_dependencies(UltraIMTests UltraIMTestProviderModule)
 add_test(NAME UltraIMTests COMMAND UltraIMTests)
+
+# ChatCube Direct: envelope and store units always; the end-to-end part
+# starts the relay from Server/ChatCubeRelay with the python3 it finds and
+# skips when that python has no fastapi / uvicorn / cryptography.
+if(TARGET UltraIMDirectCore)
+    add_executable(DirectProviderTests DirectProviderTests.cpp)
+    target_compile_features(DirectProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(DirectProviderTests PRIVATE UltraIMDirectCore)
+    target_compile_definitions(DirectProviderTests PRIVATE
+        ULTRAIM_RELAY_DIR="${CMAKE_SOURCE_DIR}/Server/ChatCubeRelay")
+    add_test(NAME DirectProviderTests COMMAND DirectProviderTests)
+    set_tests_properties(DirectProviderTests PROPERTIES TIMEOUT 180)
+endif()
