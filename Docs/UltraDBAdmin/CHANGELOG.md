@@ -1,3 +1,16 @@
+#### 2026-10-21 *0.2*
+- **Editing rows in Browse, staged** (the start of stage 2 of
+  `Docs/Research/UltraDBAdminDesignProposal.md`). **Add row…**, **Edit
+  row…** (or a double-click) and **Delete row** stage a change, which the
+  grid marks and the bar counts; **Preview SQL…** shows the statements and
+  **Commit** runs them in one transaction - every UPDATE and DELETE must hit
+  exactly one row, by primary key, or nothing is written - while **Revert**
+  drops them. Values are bound as parameters, typed as text and converted by
+  the database. Views, sequences, tables without a primary key and read-only
+  connections are not editable, and say why. Deleting, or committing on a
+  production connection, asks first; so does leaving a table or closing the
+  window with changes staged.
+
 #### 2026-10-20 *0.1*
 - **First version: a database browser with a SQL console, on UltraDatabase**
   (stage 1 of `Docs/Research/UltraDBAdminDesignProposal.md`). Connections

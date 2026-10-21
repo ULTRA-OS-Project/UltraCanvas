@@ -13,6 +13,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "DbAdminEditBuffer.h"
+
 #include <UltraDatabase/UltraDatabase.h>
 
 #include "UltraCanvasListModel.h"
@@ -39,7 +41,15 @@ public:
     void Clear() { Replace(UltraDbResultSet()); }
     const UltraDbResultSet& Rows() const { return rows_; }
 
+    // Browse's staged edits, shown over the rows: a changed cell reads its
+    // new value followed by " *", a row to be deleted starts with "DEL ".
+    // Null: none. The buffer belongs to the window; call
+    // Refresh() after it changes.
+    void SetPending(const EditBuffer* pending) { pending_ = pending; }
+    void Refresh() { NotifyDataChanged(); }
+
 private:
+    const EditBuffer* pending_ = nullptr;
     UltraDbResultSet rows_;
     std::vector<std::string> columns_;
     std::vector<std::string> columnTypes_;

@@ -5,6 +5,7 @@
 
 #include "DbAdminConnectionDialog.h"
 #include "DbAdminFormat.h"
+#include "DbAdminRowDialog.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasModalDialog.h"
@@ -47,6 +48,8 @@ const Color kStatusColor(70, 70, 76);
 const Color kProductionColor(190, 30, 30);
 
 const char* const kPlaceholderText = "…";
+
+
 
 // ----- layout helpers, as UltraNetMonitor has them -----
 
@@ -238,6 +241,13 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     window_->onWindowResize = [this](int width, int height) {
         LayoutForSize(static_cast<float>(width), static_cast<float>(height));
     };
+    // Staged changes are not lost to a closed window without a word.
+    window_->onWindowClosing = [this]() -> bool {
+        if (committing_) { SetStatus("A commit is running: the window closes once it has finished."); return false; }
+        if (edits_.Empty()) return true;
+        ConfirmDiscard("close UltraDBAdmin", [this]() { window_->Close(); });
+        return false;
+    };
 
     // Every connection gets its two sessions; each opens on its first query.
     for (const auto& spec : store_.All()) {
@@ -343,14 +353,52 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
 
     page->AddChild(bar);
     PinToolbar(bar);
+    auto editBar = BuildEditBar();
+    page->AddChild(editBar);
+    PinToolbar(editBar);
 
     browseModel_ = std::make_shared<ResultSetModel>();
+    browseModel_->SetPending(&edits_);
     browseView_ = MakeList("dbaBrowseGrid", browseModel_);
     // The order is the server's: a click on a header asks for the page again,
     // ORDER BY that column (then the key) - never a sort of the 200 rows shown.
     browseView_->onHeaderClicked = [this](int column) { SortBrowse(column); };
+    browseView_->onItemDoubleClicked = [this](int row) { EditRow(row); };
     FillWith(page, browseView_);
     return page;
+}
+
+std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildEditBar() {
+    auto bar = MakeToolbar("dbaEditBar");
+
+    addRowButton_ = MakeToolbarButton("dbaAddRow", "Add row…", "Stage a new row");
+    addRowButton_->SetOnClick([this]() { AddRow(); });
+    bar->AddChild(addRowButton_);
+
+    editRowButton_ = MakeToolbarButton("dbaEditRow", "Edit row…",
+                                       "Stage changes to the selected row (or double-click it)");
+    editRowButton_->SetOnClick([this]() { EditRow(SelectedBrowseRow()); });
+    bar->AddChild(editRowButton_);
+
+    deleteRowButton_ = MakeToolbarButton("dbaDeleteRow", "Delete row", "Stage the deletion of the selected row");
+    deleteRowButton_->SetOnClick([this]() { DeleteSelectedRow(); });
+    bar->AddChild(deleteRowButton_);
+
+    pendingLabel_ = MakeBarStatus("dbaPending");
+    bar->AddChild(pendingLabel_);
+
+    previewButton_ = MakeToolbarButton("dbaPreview", "Preview SQL…", "The statements Commit will run");
+    previewButton_->SetOnClick([this]() { PreviewChanges(); });
+    bar->AddChild(previewButton_);
+
+    revertButton_ = MakeToolbarButton("dbaRevert", "Revert", "Drop every staged change");
+    revertButton_->SetOnClick([this]() { RevertChanges(); });
+    bar->AddChild(revertButton_);
+
+    commitButton_ = MakeToolbarButton("dbaCommit", "Commit", "Write every staged change, in one transaction");
+    commitButton_->SetOnClick([this]() { CommitChanges(); });
+    bar->AddChild(commitButton_);
+    return bar;
 }
 
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
@@ -671,7 +719,9 @@ void DbAdminWindow::OnNodeSelected(TreeNode* node) {
     if (!ref || ref->kind == NodeRef::Kind::Placeholder) return;
     selectedNode_ = node->data.nodeId;
     UpdateSqlBar();
-    if (ref->kind == NodeRef::Kind::Object) OpenObject(*ref);
+    if (ref->kind != NodeRef::Kind::Object) return;
+    const NodeRef object = *ref;
+    ConfirmDiscard("open " + object.schema + "." + object.name, [this, object]() { OpenObject(object); });
 }
 
 void DbAdminWindow::AddConnection() {
@@ -780,7 +830,9 @@ void DbAdminWindow::ClearObject(const std::string& message) {
     structureInfo_->SetText(message);
     browseNote_->SetText(message);
     browseNote_->SetTextColor(kStatusColor);
+    edits_ = EditBuffer();
     UpdateBrowseBar();
+    UpdateEditBar();
 }
 
 void DbAdminWindow::OpenObject(const NodeRef& ref) {
@@ -838,6 +890,8 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
     structureInfo_->SetText(info);
 
     pager_ = std::make_shared<TablePager>(RegisteredName(*store_.Find(objectConnectionId_)), table, kPageSize);
+    edits_ = EditBuffer(table);
+    UpdateEditBar();
     LoadPage(0);
     CountRows();
 }
@@ -960,6 +1014,230 @@ void DbAdminWindow::UpdateBrowseBar() {
                                      : pageRows_ == kPageSize;
     nextButton_->SetDisabled(!open || pageLoading_ || !more);
     reloadButton_->SetDisabled(!open);
+}
+
+// ===== EDITING =====
+
+std::string DbAdminWindow::EditBlockReason() const {
+    if (!pager_) return "Open a table to edit its rows.";
+    const std::string reason = edits_.ReadOnlyReason();
+    if (!reason.empty()) return reason;
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (spec && spec->readOnly) return "The connection is read only.";
+    if (committing_) return "Committing…";
+    return std::string();
+}
+
+int DbAdminWindow::SelectedBrowseRow() const {
+    IListSelection* selection = browseView_ ? browseView_->GetSelection() : nullptr;
+    if (!selection) return -1;
+    const std::vector<int> rows = selection->GetSelectedRows();
+    return rows.empty() ? -1 : rows.front();
+}
+
+void DbAdminWindow::AfterEdit() {
+    browseModel_->Refresh();
+    UpdateEditBar();
+}
+
+void DbAdminWindow::AddRow() {
+    const std::string blocked = EditBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const uint64_t generation = objectGen_;
+    ShowRowDialog(window_.get(), edits_.Table(), nullptr, nullptr,
+                  [this, generation](const std::map<std::string, CellValue>& values) -> std::string {
+                      if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
+                      std::string error;
+                      if (!edits_.InsertRow(values, error)) return error;
+                      AfterEdit();
+                      return std::string();
+                  });
+}
+
+void DbAdminWindow::EditRow(int row) {
+    const std::string blocked = EditBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    if (row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) {
+        SetStatus("Select a row to edit (or double-click it).");
+        return;
+    }
+    const UltraDbRow original = browseModel_->Rows().Row(static_cast<size_t>(row));
+    if (edits_.PendingDelete(original)) {
+        SetStatus("This row is to be deleted; Revert to keep it.");
+        return;
+    }
+    const uint64_t generation = objectGen_;
+    ShowRowDialog(window_.get(), edits_.Table(), &original, &edits_,
+                  [this, generation, original](const std::map<std::string, CellValue>& values) -> std::string {
+                      if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
+                      std::string error;
+                      if (!edits_.UpdateRow(original, values, error)) return error;
+                      AfterEdit();
+                      return std::string();
+                  });
+}
+
+void DbAdminWindow::DeleteSelectedRow() {
+    const std::string blocked = EditBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const int row = SelectedBrowseRow();
+    if (row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) {
+        SetStatus("Select the row to delete.");
+        return;
+    }
+    std::string error;
+    if (!edits_.DeleteRow(browseModel_->Rows().Row(static_cast<size_t>(row)), error)) {
+        SetStatus(error, true);
+        return;
+    }
+    AfterEdit();
+}
+
+void DbAdminWindow::PreviewChanges() {
+    if (edits_.Empty() || !pager_) return;
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (!spec) return;
+    const std::string connection = RegisteredName(*spec);
+    const EditBuffer snapshot = edits_;
+    const std::string label = objectLabel_;
+    // Quoting asks the connection: on the worker, like every query.
+    Background([this, snapshot, connection, label]() -> std::function<void()> {
+        std::vector<GeneratedStatement> statements;
+        const UltraDbResult result = snapshot.Statements(connection, statements);
+        return [this, result, statements, label]() {
+            if (!result) { SetStatus(result.message, true); return; }
+            std::string sql;
+            for (const auto& statement : statements) sql += statement.preview + ";\n";
+            ShowSqlPreview(window_.get(), "Staged changes to " + label,
+                           "Commit runs these in one transaction. Values are bound as parameters, and a value "
+                           "you typed is sent as text for the database to convert to the column's type.",
+                           sql);
+        };
+    });
+}
+
+void DbAdminWindow::CommitChanges() {
+    if (edits_.Empty() || committing_) return;
+    const std::string blocked = EditBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    const size_t deletes = edits_.Count(RowChange::Kind::Delete);
+    const bool production = spec && spec->production;
+    if (deletes == 0 && !production) { RunCommit(); return; }
+    // A deletion, or anything on a production database, is said out loud first.
+    std::string message;
+    if (production) message += "**" + spec->name + " is a production connection.**\n\n";
+    message += "Commit " + std::to_string(edits_.Count()) + (edits_.Count() == 1 ? " change" : " changes") +
+               " to " + objectLabel_ + "?";
+    if (deletes > 0)
+        message += " This deletes " + std::to_string(deletes) + (deletes == 1 ? " row." : " rows.");
+    UltraCanvasDialogManager::ShowConfirmation(message, "Commit changes",
+                                               [this](bool confirmed) { if (confirmed) RunCommit(); },
+                                               window_.get());
+}
+
+void DbAdminWindow::RunCommit() {
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    if (!spec || edits_.Empty() || committing_) return;
+    committing_ = true;
+    UpdateEditBar();
+    SetStatus("Committing " + std::to_string(edits_.Count()) + " changes to " + objectLabel_ + "…");
+    const std::string connection = RegisteredName(*spec);
+    const EditBuffer snapshot = edits_;
+    const uint64_t generation = objectGen_;
+    // On the job queue, after any page still loading: the whole transaction
+    // runs as one job, so no other query of the window lands inside it.
+    Background([this, snapshot, connection, generation]() -> std::function<void()> {
+        size_t failed = 0;
+        const UltraDbResult result = snapshot.Commit(connection, failed);
+        std::string failedSql;
+        if (!result) {
+            std::vector<GeneratedStatement> statements;
+            if (snapshot.Statements(connection, statements) && failed < statements.size())
+                failedSql = statements[failed].preview;
+        }
+        return [this, generation, result, failed, failedSql]() { ApplyCommit(generation, result, failed, failedSql); };
+    });
+}
+
+void DbAdminWindow::ApplyCommit(uint64_t generation, const UltraDbResult& result, size_t failed,
+                                const std::string& failedSql) {
+    committing_ = false;
+    if (generation != objectGen_) {
+        // Only reachable if the table was closed some other way meanwhile.
+        SetStatus(result ? std::string("The changes were committed.") : "Commit failed: " + OneLine(result.message),
+                  !result);
+        UpdateEditBar();
+        return;
+    }
+    if (!result) {
+        SetStatus("Nothing was changed: statement " + std::to_string(failed + 1) + " failed - " +
+                  OneLine(result.message), true);
+        if (!failedSql.empty()) statusLabel_->SetTooltip(failedSql + "\n\n" + result.message);
+        UpdateEditBar();
+        return;
+    }
+    const size_t count = edits_.Count();
+    edits_.Revert();
+    SetStatus(std::to_string(count) + (count == 1 ? " change" : " changes") + " committed to " + objectLabel_ + ".");
+    AfterEdit();
+    LoadPage(pageIndex_);
+    CountRows();
+}
+
+void DbAdminWindow::RevertChanges() {
+    if (edits_.Empty() || committing_) return;
+    ConfirmDiscard(std::string(), [this]() {
+        SetStatus("Staged changes dropped.");
+    });
+}
+
+void DbAdminWindow::ConfirmDiscard(const std::string& what, std::function<void()> then) {
+    if (edits_.Empty()) { then(); return; }
+    const size_t count = edits_.Count();
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Drop " + std::to_string(count) + (count == 1 ? " staged change" : " staged changes") + " to " +
+            objectLabel_ + (what.empty() ? std::string() : " and " + what) +
+            (count == 1 ? "? It has not been written." : "? None of them has been written."),
+        "Uncommitted changes",
+        [this, then](bool confirmed) {
+            if (!confirmed) return;
+            edits_.Revert();
+            AfterEdit();
+            then();
+        },
+        window_.get());
+}
+
+void DbAdminWindow::UpdateEditBar() {
+    if (!pendingLabel_) return;
+    const std::string blocked = EditBlockReason();
+    const bool editable = blocked.empty();
+    addRowButton_->SetDisabled(!editable);
+    editRowButton_->SetDisabled(!editable);
+    deleteRowButton_->SetDisabled(!editable);
+    const bool any = !edits_.Empty();
+    previewButton_->SetDisabled(!any || committing_);
+    revertButton_->SetDisabled(!any || committing_);
+    commitButton_->SetDisabled(!any || !editable);
+    std::string text;
+    if (any) {
+        std::vector<std::string> parts;
+        auto part = [&](RowChange::Kind kind, const char* one, const char* many) {
+            const size_t n = edits_.Count(kind);
+            if (n > 0) parts.push_back(std::to_string(n) + " " + (n == 1 ? one : many));
+        };
+        part(RowChange::Kind::Update, "row edited", "rows edited");
+        part(RowChange::Kind::Insert, "new row", "new rows");
+        part(RowChange::Kind::Delete, "row to delete", "rows to delete");
+        for (size_t i = 0; i < parts.size(); ++i) text += (i == 0 ? "" : ", ") + parts[i];
+        text += committing_ ? " - committing…" : " - not yet written";
+    } else {
+        text = editable ? std::string("Double-click a row to edit it.") : blocked;
+    }
+    pendingLabel_->SetText(text);
+    pendingLabel_->SetTooltip(text);
+    pendingLabel_->SetTextColor(any ? kProductionColor : kStatusColor);
 }
 
 // ===== SQL =====
