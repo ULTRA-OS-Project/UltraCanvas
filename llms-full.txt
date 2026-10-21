@@ -5319,6 +5319,9 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
+**Status:** it is now - `android-build.yml` packages `UltraCanvasDemo-x86_64.apk`
+on every run (`scripts/android-package-apk.sh`) - so the emulator job below is
+the next step, installing that artifact.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator
@@ -5474,7 +5477,8 @@ today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
 keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
 opening and saving, APK asset extraction). The dependency sysroot builds in
 CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
-an APK carries; APK packaging remains, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+an APK carries, and CI packages that into a debug-signed APK for `arm64-v8a`
+and `x86_64`; nothing has installed one yet, so none of it has run on a device — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -62106,7 +62110,7 @@ EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial, UltraFIBU and
 UltraWin Manager raise their window. The document applications - Texter,
 UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraVideo and AnchorPoint -
 use `ListenOpen`: a file opened from the file manager while one of them runs
-opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint`,
+opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint-cli`,
 `ultrafibu`) do not use it: scripts run several of them at once, and a helper
 process an application starts itself (UltraFiler's elevated helper) must
 never claim.
