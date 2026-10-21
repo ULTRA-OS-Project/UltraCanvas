@@ -343,6 +343,7 @@ if(EMSCRIPTEN)
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
+    set(BUILD_ULTRADBADMIN OFF CACHE BOOL "Build the UltraDBAdmin application")
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
@@ -659,6 +660,16 @@ if(BUILD_ULTRANETMONITOR)
     message(STATUS "")
     message(STATUS "── Building UltraNetMonitor ──")
     add_subdirectory(Apps/UltraNetMonitor)
+endif()
+
+# ===== ULTRADBADMIN =====
+# Browse and query the databases UltraDatabase reaches - SQLite files and
+# PostgreSQL servers (Docs/Research/UltraDBAdminDesignProposal.md).
+option(BUILD_ULTRADBADMIN "Build the UltraDBAdmin application" ON)
+if(BUILD_ULTRADBADMIN)
+    message(STATUS "")
+    message(STATUS "── Building UltraDBAdmin ──")
+    add_subdirectory(Apps/UltraDBAdmin)
 endif()
 
 # ===== ULTRAWEB =====
@@ -1424,6 +1435,18 @@ if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
     add_subdirectory(Tests/UltraFIBU)
     message(STATUS "")
     message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
+endif()
+
+# ===== ULTRADBADMIN ENGINE TESTS =====
+# The database admin's engine: the connection list and its password vault,
+# cell formatting, the Browse pager, the SQL runner (with Stop). Compiles the
+# engine sources directly, so it runs where the UI library cannot be built.
+option(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS "Build the UltraDBAdmin engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS AND TARGET UltraDatabase AND TARGET UltraVault)
+    enable_testing()
+    add_subdirectory(Tests/UltraDBAdmin)
+    message(STATUS "")
+    message(STATUS "── UltraDBAdmin engine test suite enabled (target: UltraDBAdminEngineTests) ──")
 endif()
 
 # ===== ULTRAPRESS ENGINE TESTS =====
@@ -2528,7 +2551,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()
@@ -2579,6 +2602,9 @@ endif()
 # so the asset copy has to exist before the binary is run out of the build tree.
 if(TARGET UltraNetMonitor)
     add_dependencies(UltraNetMonitor copy_assets)
+endif()
+if(TARGET UltraDBAdmin)
+    add_dependencies(UltraDBAdmin copy_assets)
 endif()
 if(TARGET UltraAuthenticator)
     add_dependencies(UltraAuthenticator copy_assets)
