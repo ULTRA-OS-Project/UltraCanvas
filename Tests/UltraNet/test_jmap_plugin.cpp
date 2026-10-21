@@ -18,6 +18,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -293,6 +294,33 @@ TEST(jmap_fnv1a_stable) {
     REQUIRE_EQ(Fnv1a32("a"), (uint32_t)0xE40C292Cu);
     REQUIRE_EQ(Fnv1a32("A1/MB1"), Fnv1a32("A1/MB1"));
     CHECK(Fnv1a32("A1/MB1") != Fnv1a32("A1/MB2"));
+}
+
+// ---- the guard around every entry point ------------------------------------
+
+TEST(jmap_guarded_turns_an_exception_into_a_plugin_error) {
+    UltraNetResult ok = Guarded("ListFolders", []() { return UltraNetResult::Ok(); });
+    REQUIRE(bool(ok));
+    UltraNetResult passthrough = Guarded("ListFolders", []() {
+        return UltraNetResult::Error(UltraNetResultCode::NotFound, "no such mailbox");
+    });
+    REQUIRE_EQ(passthrough.code, UltraNetResultCode::NotFound);   // a result is not touched
+
+    UltraNetResult thrown = Guarded("FetchEnvelopes", []() -> UltraNetResult {
+        throw std::runtime_error("[json.exception.type_error.302] type must be string, but is null");
+    });
+    CHECK(!bool(thrown));
+    REQUIRE_EQ(thrown.code, UltraNetResultCode::PluginError);
+    REQUIRE_EQ(thrown.message, std::string("FetchEnvelopes: [json.exception.type_error.302] "
+                                           "type must be string, but is null"));
+    UltraNetResult odd = Guarded("SendMail", []() -> UltraNetResult { throw 42; });
+    REQUIRE_EQ(odd.code, UltraNetResultCode::PluginError);
+    REQUIRE_EQ(odd.message, std::string("SendMail: an unexpected error"));
+
+    bool ran = false;
+    REQUIRE(GuardedVoid([&]() { ran = true; }));
+    CHECK(ran);
+    REQUIRE(!GuardedVoid([]() { throw std::logic_error("x"); }));
 }
 
 // ---- nulls where strings and numbers are expected --------------------------
