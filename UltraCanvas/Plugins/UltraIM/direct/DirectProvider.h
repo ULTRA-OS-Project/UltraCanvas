@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "DirectCalls.h"
 #include "DirectCrypto.h"
 #include "DirectLinks.h"
 #include "DirectRelayClient.h"
@@ -77,8 +78,12 @@ public:
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
-    // Calls come with UltraRTC media (plan phase 9); not offered yet.
+    // ---- calls (1:1 voice) -------------------------------------------------
     bool CanCall(const std::string& conversationId, bool video) const override;
+    UltraIMResult StartCall(const std::string& conversationId, bool video, std::string& outCallId) override;
+    UltraIMResult AcceptCall(const std::string& callId, bool video) override;
+    UltraIMResult EndCall(const std::string& callId) override;
+    UltraIMResult SetCallMuted(const std::string& callId, bool muted) override;
 
     // ---- for tests ----------------------------------------------------------
     void SetTimings(const ProviderTimings& timings) { timings_ = timings; }
@@ -86,6 +91,10 @@ public:
     int  CountSentOverLink() const { return sentOverLink_.load(); }
     int  CountSentOverRelay() const { return sentOverRelay_.load(); }
     bool IsLinkOpen(const std::string& userId);
+    void SetCallTimings(const CallTimings& timings) { calls_.SetTimings(timings); }
+    // false: calls do not open the microphone and speaker.
+    void SetCallUseDevices(bool useDevices) { calls_.SetUseDevices(useDevices); }
+    UltraRtcHandle GetCallAudioTrack(const std::string& callId) { return calls_.GetAudioTrack(callId); }
 
 private:
     struct Attempt {
@@ -95,7 +104,11 @@ private:
 
     // ---- helpers --------------------------------------------------------------
     void Emit(const UltraIMEvent& event);
-    void SetState(UltraIMConnectionState state, const std::string& error = std::string());
+    // always: emit the event even when the state does not change.
+    void SetState(UltraIMConnectionState state, const std::string& error = std::string(), bool always = false);
+    // Signs a signalling message and sends it through the relay.
+    bool SendSignal(const std::string& to, const std::string& kind, const std::string& session,
+                    const std::string& data);
     bool LoadIdentity(std::string& error);
     bool SaveIdentity();
     void AfterLogin();
@@ -137,6 +150,7 @@ private:
     std::string     displayName_;
     KeyRing         keyRing_;
     LinkManager     links_;
+    CallManager     calls_;
     std::shared_ptr<RelayClient> relay_;   // replaced per sign-in; read through Relay()
     mutable std::mutex relayMutex_;
     std::shared_ptr<RelayClient> Relay() const;

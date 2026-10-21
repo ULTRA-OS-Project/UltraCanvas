@@ -280,6 +280,7 @@ enum class UltraIMResultCode {
     NetworkError,
     PluginError,
     Unsupported,
+    InvalidState,           // Not possible now (another call is in progress, ...)
     Unknown
 };
 

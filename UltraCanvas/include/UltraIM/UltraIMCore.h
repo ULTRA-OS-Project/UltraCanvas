@@ -96,7 +96,11 @@ bool          UltraIM_CanCall(const std::string& providerId, const std::string& 
 UltraIMResult UltraIM_StartCall(const std::string& providerId, const std::string& conversationId,
                                 bool video, std::string& outCallId);
 UltraIMResult UltraIM_AcceptCall(const std::string& providerId, const std::string& callId, bool video);
+// Ends a call in any state: hangs up, cancels an outgoing call, declines an
+// incoming one.
 UltraIMResult UltraIM_EndCall(const std::string& providerId, const std::string& callId);
+// A muted call sends no audio; the other side hears silence.
+UltraIMResult UltraIM_SetCallMuted(const std::string& providerId, const std::string& callId, bool muted);
 
 // ---- Helpers -----------------------------------------------------------------
 // A fresh client message id (a UUID v4).

@@ -8,6 +8,7 @@
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraRTC/UltraRTCCore.h"
 
 #include <algorithm>
 #include <cctype>
@@ -86,7 +87,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
-           F::CreateGroup;
+           F::CreateGroup | F::VoiceCalls;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -107,21 +108,12 @@ UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEve
     vault_ = UltraVault::DeviceKeyVault(UltraCanvas::PathToUtf8(dir),
                                         {"direct.vault", "com.cloverleaf.chatcube." + providerId_ + "."});
 
-    links_.sendSignal = [this](const std::string& to, const std::string& kind, const std::string& session,
-                               const std::string& data) {
-        std::shared_ptr<RelayClient> relay = Relay();
-        if (!relay) return;
-        JSONValue payload = JSONValue::MakeObject();
-        payload.Set("d", JSONValue(data));
-        payload.Set("s", JSONValue(Sign(identity_, SignalMessage(identity_.userId, to, session, kind, data))));
-        JSONValue frame = JSONValue::MakeObject();
-        frame.Set("type", JSONValue("signal"));
-        frame.Set("to", JSONValue(to));
-        frame.Set("kind", JSONValue(kind));
-        frame.Set("session", JSONValue(session));
-        frame.Set("payload", payload);
-        relay->SendFrame(frame);
-    };
+    auto sendSignal = [this](const std::string& to, const std::string& kind, const std::string& session,
+                             const std::string& data) { return SendSignal(to, kind, session, data); };
+    links_.sendSignal = sendSignal;
+    calls_.sendSignal = sendSignal;
+    calls_.emit = [this](const UltraIMEvent& event) { Emit(event); };
+    calls_.SetProviderId(providerId_);
     links_.onOpen = [this](const std::string&) { Wake(); };
     links_.onMessage = [this](const std::string& peer, const std::string& text) { OnLinkMessage(peer, text); };
     links_.onClosed = [this](const std::string& peer) {
@@ -136,6 +128,22 @@ UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEve
     stopping_ = false;
     worker_ = std::thread([this]() { WorkerLoop(); });
     return UltraIMResult::Ok();
+}
+
+bool DirectProvider::SendSignal(const std::string& to, const std::string& kind, const std::string& session,
+                                const std::string& data) {
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay) return false;
+    JSONValue payload = JSONValue::MakeObject();
+    payload.Set("d", JSONValue(data));
+    payload.Set("s", JSONValue(Sign(identity_, SignalMessage(identity_.userId, to, session, kind, data))));
+    JSONValue frame = JSONValue::MakeObject();
+    frame.Set("type", JSONValue("signal"));
+    frame.Set("to", JSONValue(to));
+    frame.Set("kind", JSONValue(kind));
+    frame.Set("session", JSONValue(session));
+    frame.Set("payload", payload);
+    return relay->SendFrame(frame);
 }
 
 void DirectProvider::Shutdown() {
@@ -194,8 +202,8 @@ std::string DirectProvider::GetLocalUserId() const {
     return identity_.userId;
 }
 
-void DirectProvider::SetState(UltraIMConnectionState state, const std::string& error) {
-    if (state_.exchange(state) == state && error.empty()) return;
+void DirectProvider::SetState(UltraIMConnectionState state, const std::string& error, bool always) {
+    if (state_.exchange(state) == state && error.empty() && !always) return;
     UltraIMEvent event;
     event.type = UltraIMEventType::ConnectionStateChange;
     event.providerId = providerId_;
@@ -241,6 +249,7 @@ void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
     if (displayName_.empty()) displayName_ = "ChatCube user";
     store_.SetSetting("display_name", displayName_);
     links_.SetLocalUserId(identity_.userId);
+    calls_.SetLocalUserId(identity_.userId);
 
     auto relayOwner = std::make_shared<RelayClient>();
     {
@@ -253,7 +262,9 @@ void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
     relay->SetBaseUrl(relayUrl);
     relay->onFrame = [this](const JSONValue& frame) { OnFrame(frame); };
     relay->onSocketOpen = [this]() {
-        SetState(UltraIMConnectionState::Connected);
+        // Reported even when already Connected: what the socket carries
+        // (calls, presence) is available from now, and a UI re-checks.
+        SetState(UltraIMConnectionState::Connected, std::string(), true);
         FetchQueue();
         Wake();
     };
@@ -330,11 +341,13 @@ void DirectProvider::AfterLogin() {
             if (!server.url.empty()) servers.push_back(server);
         }
         links_.SetIceServers(servers);
+        calls_.SetIceServers(servers);
     });
     relay->StartSocket();
 }
 
 void DirectProvider::SignOut() {
+    calls_.EndAll("signed out");      // while the relay can still carry the hang-ups
     links_.CloseAll();
     std::shared_ptr<RelayClient> relay;
     {
@@ -583,8 +596,12 @@ void DirectProvider::OnFrame(const JSONValue& frame) {
             if (!known) return;
             // Only the contact's own key may set up a link with us.
             if (!Verify(KeyOf(from), SignalMessage(from, identity_.userId, session, kind, data), signature)) return;
-            links_.HandleSignal(from, kind, session, data);
+            if (CallManager::IsCallSession(session)) calls_.HandleSignal(from, kind, session, data);
+            else links_.HandleSignal(from, kind, session, data);
         });
+    } else if (type == "signal.undeliverable") {
+        const std::string session = frame["session"].GetString();
+        if (CallManager::IsCallSession(session)) calls_.HandleUndeliverable(frame["to"].GetString(), session);
     } else if (type == "typing") {
         const std::string from = frame["from"].GetString();
         const std::string conversation = frame["conversation"].GetString();
@@ -842,9 +859,32 @@ UltraIMResult DirectProvider::SetTyping(const std::string& conversationId, bool 
 }
 
 bool DirectProvider::CanCall(const std::string& conversationId, bool video) const {
-    (void)conversationId;
-    (void)video;
-    return false;
+    // Voice, 1:1, with the relay's socket up (it carries the signalling);
+    // video and group calls come later.
+    if (video || conversationId.empty() || IsGroupId(conversationId)) return false;
+    if (state_.load() != UltraIMConnectionState::Connected || !UltraRtc_GetCapabilities().audio) return false;
+    std::shared_ptr<RelayClient> relay = Relay();
+    return relay && relay->IsSocketOpen();
+}
+
+UltraIMResult DirectProvider::StartCall(const std::string& conversationId, bool video, std::string& outCallId) {
+    outCallId.clear();
+    if (!CanCall(conversationId, video))
+        return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing, "Calls are not available in this conversation");
+    return calls_.Start(conversationId, video, outCallId);
+}
+
+UltraIMResult DirectProvider::AcceptCall(const std::string& callId, bool video) {
+    (void)video;        // voice only for now
+    return calls_.Accept(callId);
+}
+
+UltraIMResult DirectProvider::EndCall(const std::string& callId) {
+    return calls_.End(callId);
+}
+
+UltraIMResult DirectProvider::SetCallMuted(const std::string& callId, bool muted) {
+    return calls_.SetMuted(callId, muted);
 }
 
 bool DirectProvider::IsLinkOpen(const std::string& userId) {
@@ -949,6 +989,7 @@ void DirectProvider::Pump() {
     if (!identity_.IsValid() || !Relay()) return;
     const int64_t now = NowMs();
     links_.ExpireStale(now, timings_.linkTimeoutMs);
+    calls_.ExpireStale(now);
 
     std::map<std::string, std::vector<OutboxEntry>> groupCopies;   // client id -> copies
     for (const auto& entry : store_.Outbox()) {

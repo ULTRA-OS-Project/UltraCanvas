@@ -5,10 +5,14 @@
 // Author: UltraCanvas Framework
 
 #include "UltraRTC/UltraRTCCore.h"
+#include "UltraRTCAudioDevices.h"
+#include "UltraRTCOpus.h"
 
 #include <rtc/rtc.hpp>
 
+#include <algorithm>
 #include <atomic>
+#include <random>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -30,6 +34,41 @@ struct PeerEntry {
     std::shared_ptr<rtc::PeerConnection> connection;
     std::shared_ptr<UltraRtcPeerEventCallback> onEvent;
     std::set<UltraRtcHandle> channels;
+    std::set<UltraRtcHandle> tracks;
+};
+
+// What an audio track's callbacks share. The track's callbacks own it; it
+// points back at the track weakly, so nothing owns itself.
+struct AudioMedia {
+    // ---- sending (the microphone's thread, or a caller of SendAudioFrame) ----
+    std::mutex sendMutex;
+    UltraRtcInternal::OpusEncoder encoder;
+    std::vector<int16_t> pending;           // less than one 20 ms frame
+    uint32_t nextTimestamp = 0;
+    bool enabled = true;
+    bool canSend = false;                   // the track has our packetizer
+    std::weak_ptr<rtc::Track> track;
+
+    // ---- receiving (an engine thread) ----
+    std::mutex receiveMutex;
+    UltraRtcInternal::OpusDecoder decoder;
+    bool haveTimestamp = false;
+    uint32_t expectedTimestamp = 0;
+    std::vector<int16_t> decoded;
+    UltraRtcAudioFrameCallback onFrame;
+    std::unique_ptr<UltraRtcInternal::SpeakerPlayback> speaker;
+
+    // ---- devices ----
+    std::mutex deviceMutex;
+    std::unique_ptr<UltraRtcInternal::MicrophoneCapture> microphone;
+};
+
+struct TrackEntry {
+    std::shared_ptr<rtc::Track> track;
+    UltraRtcHandle peer = UltraRtcInvalidHandle;
+    UltraRtcMediaKind kind = UltraRtcMediaKind::Audio;
+    std::string mid;
+    std::shared_ptr<AudioMedia> audio;
 };
 
 struct ChannelEntry {
@@ -43,6 +82,7 @@ struct EngineState {
     std::atomic<UltraRtcHandle> nextHandle{1};
     std::map<UltraRtcHandle, PeerEntry> peers;
     std::map<UltraRtcHandle, ChannelEntry> channels;
+    std::map<UltraRtcHandle, TrackEntry> tracks;
     UltraRtcDispatcher dispatcher;
 };
 
@@ -200,6 +240,146 @@ UltraRtcHandle AdoptChannel(UltraRtcHandle peer, std::shared_ptr<rtc::DataChanne
     return handle;
 }
 
+constexpr uint8_t kOpusPayloadType = 111;
+constexpr int kMaxConcealedFrames = 5;      // a longer gap starts over instead
+
+// Cuts PCM into 20 ms frames, encodes and sends them.
+void SendPcm(AudioMedia& media, const int16_t* samples, size_t count) {
+    std::lock_guard<std::mutex> lock(media.sendMutex);
+    if (!media.canSend) return;
+    media.pending.insert(media.pending.end(), samples, samples + count);
+    auto track = media.track.lock();
+    std::vector<uint8_t> packet;
+    size_t used = 0;
+    while (media.pending.size() - used >= static_cast<size_t>(UltraRtcInternal::kOpusFrameSamples)) {
+        const int16_t* frame = media.pending.data() + used;
+        used += UltraRtcInternal::kOpusFrameSamples;
+        const uint32_t timestamp = media.nextTimestamp;
+        media.nextTimestamp += UltraRtcInternal::kOpusFrameSamples;
+        if (!media.enabled || !track || !track->isOpen()) continue;     // muted: the clock still runs
+        if (!media.encoder.Encode(frame, packet)) continue;
+        try {
+            track->sendFrame(reinterpret_cast<const std::byte*>(packet.data()), packet.size(),
+                             rtc::FrameInfo(timestamp));
+        } catch (const std::exception&) {
+            // The transport went away; the peer's state change reports it.
+        }
+    }
+    media.pending.erase(media.pending.begin(), media.pending.begin() + static_cast<std::ptrdiff_t>(used));
+}
+
+// Decodes one received packet, concealing the frames lost before it, and
+// hands out the PCM 20 ms at a time.
+void ReceivePacket(AudioMedia& media, const std::byte* data, size_t size, uint32_t timestamp) {
+    std::lock_guard<std::mutex> lock(media.receiveMutex);
+    const auto* packet = reinterpret_cast<const uint8_t*>(data);
+    media.decoded.clear();
+    if (media.haveTimestamp) {
+        const int32_t ahead = static_cast<int32_t>(timestamp - media.expectedTimestamp);
+        if (ahead < 0) return;                          // late or repeated: already concealed
+        const int lost = ahead / UltraRtcInternal::kOpusFrameSamples;
+        if (lost > 0 && lost <= kMaxConcealedFrames) {
+            for (int i = 0; i < lost - 1; ++i) media.decoder.Decode(nullptr, 0, false, media.decoded);
+            media.decoder.Decode(packet, size, true, media.decoded);    // the frame just before, from FEC
+        }
+    }
+    media.haveTimestamp = true;
+    media.decoder.Decode(packet, size, false, media.decoded);
+    media.expectedTimestamp = timestamp + UltraRtcInternal::kOpusFrameSamples;
+
+    UltraRtcAudioFrame frame;
+    for (size_t at = 0; at < media.decoded.size(); at += UltraRtcInternal::kOpusFrameSamples) {
+        const size_t n = std::min<size_t>(UltraRtcInternal::kOpusFrameSamples, media.decoded.size() - at);
+        if (media.speaker) media.speaker->Push(media.decoded.data() + at, n);
+        if (media.onFrame) {
+            frame.samples.assign(media.decoded.begin() + static_cast<std::ptrdiff_t>(at),
+                                 media.decoded.begin() + static_cast<std::ptrdiff_t>(at + n));
+            media.onFrame(frame);
+        }
+    }
+}
+
+// Wires the receive side (and, when `sendSsrc` is set, the send side) of a
+// track and registers it.
+UltraRtcHandle AdoptTrack(UltraRtcHandle peer, std::shared_ptr<rtc::Track> track, UltraRtcMediaKind kind,
+                          uint32_t sendSsrc) {
+    auto audio = std::make_shared<AudioMedia>();
+    audio->track = track;
+    std::shared_ptr<rtc::MediaHandler> head;
+    if (sendSsrc != 0) {
+        auto config = std::make_shared<rtc::RtpPacketizationConfig>(sendSsrc, "ultrartc", kOpusPayloadType,
+                                                                    rtc::OpusRtpPacketizer::DefaultClockRate);
+        auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(config);
+        packetizer->addToChain(std::make_shared<rtc::RtcpSrReporter>(config));
+        packetizer->addToChain(std::make_shared<rtc::RtcpNackResponder>());
+        head = packetizer;
+        audio->canSend = true;
+        std::mt19937 random(std::random_device{}());
+        audio->nextTimestamp = static_cast<uint32_t>(random());
+    }
+    auto depacketizer = std::make_shared<rtc::OpusRtpDepacketizer>();
+    depacketizer->addToChain(std::make_shared<rtc::RtcpReceivingSession>());
+    if (head) {
+        head->addToChain(depacketizer);
+    } else {
+        head = depacketizer;
+    }
+    track->setMediaHandler(head);
+
+    const UltraRtcHandle handle = State().nextHandle++;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        auto it = State().peers.find(peer);
+        if (it == State().peers.end()) return UltraRtcInvalidHandle;
+        it->second.tracks.insert(handle);
+        TrackEntry entry;
+        entry.track = track;
+        entry.peer = peer;
+        entry.kind = kind;
+        entry.mid = track->mid();
+        entry.audio = audio;
+        State().tracks[handle] = std::move(entry);
+    }
+    track->onFrame([audio](rtc::binary data, rtc::FrameInfo info) {
+        ReceivePacket(*audio, data.data(), data.size(), info.timestamp);
+    });
+    auto base = [peer, handle](UltraRtcPeerEventType type) {
+        UltraRtcPeerEvent event;
+        event.type = type;
+        event.peer = peer;
+        event.track = handle;
+        return event;
+    };
+    track->onOpen([base]() { Emit(base(UltraRtcPeerEventType::TrackOpen)); });
+    track->onClosed([base]() { Emit(base(UltraRtcPeerEventType::TrackClose)); });
+    return handle;
+}
+
+std::shared_ptr<AudioMedia> FindAudio(UltraRtcHandle track) {
+    std::lock_guard<std::mutex> lock(State().mutex);
+    auto it = State().tracks.find(track);
+    return it == State().tracks.end() ? nullptr : it->second.audio;
+}
+
+// Stops a track's devices (outside the engine lock: closing a device waits
+// for its thread, which may be inside one of this track's callbacks).
+void StopDevices(const std::shared_ptr<AudioMedia>& audio) {
+    if (!audio) return;
+    std::unique_ptr<UltraRtcInternal::MicrophoneCapture> microphone;
+    {
+        std::lock_guard<std::mutex> lock(audio->deviceMutex);
+        microphone = std::move(audio->microphone);
+    }
+    if (microphone) microphone->Stop();
+    std::unique_ptr<UltraRtcInternal::SpeakerPlayback> speaker;
+    {
+        std::lock_guard<std::mutex> lock(audio->receiveMutex);
+        speaker = std::move(audio->speaker);
+        audio->onFrame = nullptr;
+    }
+    if (speaker) speaker->Stop();
+}
+
 } // namespace
 
 // ============================================================================
@@ -240,6 +420,7 @@ UltraRtcCapabilities UltraRtc_GetCapabilities() {
     caps.available = true;
     caps.engine = "libdatachannel " RTC_VERSION;
     caps.dataChannels = true;
+    caps.audio = UltraRtcInternal::OpusAvailable();
     return caps;
 }
 
@@ -348,6 +529,23 @@ UltraRtcResult UltraRtc_CreatePeer(const UltraRtcPeerConfig& config,
         Emit(std::move(event));
     });
 
+    // A track the other side added that we did not: receive it.
+    connection->onTrack([handle](std::shared_ptr<rtc::Track> track) {
+        const rtc::Description::Media description = track->description();
+        const UltraRtcMediaKind kind =
+            description.type() == "video" ? UltraRtcMediaKind::Video : UltraRtcMediaKind::Audio;
+        const std::string mid = track->mid();
+        const UltraRtcHandle trackHandle = AdoptTrack(handle, std::move(track), kind, 0);
+        if (trackHandle == UltraRtcInvalidHandle) return;
+        UltraRtcPeerEvent event;
+        event.type = UltraRtcPeerEventType::Track;
+        event.peer = handle;
+        event.track = trackHandle;
+        event.mediaKind = kind;
+        event.mid = mid;
+        Emit(std::move(event));
+    });
+
     outPeer = handle;
     return UltraRtcResult::Ok();
 }
@@ -355,11 +553,21 @@ UltraRtcResult UltraRtc_CreatePeer(const UltraRtcPeerConfig& config,
 UltraRtcResult UltraRtc_ClosePeer(UltraRtcHandle peer) {
     std::shared_ptr<rtc::PeerConnection> connection;
     std::vector<std::shared_ptr<rtc::DataChannel>> channels;
+    std::vector<std::shared_ptr<AudioMedia>> audios;
+    std::vector<std::shared_ptr<rtc::Track>> trackObjects;
     {
         std::lock_guard<std::mutex> lock(State().mutex);
         auto it = State().peers.find(peer);
         if (it == State().peers.end()) return BadHandle();
         connection = it->second.connection;
+        for (UltraRtcHandle track : it->second.tracks) {
+            auto t = State().tracks.find(track);
+            if (t != State().tracks.end()) {
+                audios.push_back(t->second.audio);
+                trackObjects.push_back(t->second.track);
+                State().tracks.erase(t);
+            }
+        }
         for (UltraRtcHandle channel : it->second.channels) {
             auto c = State().channels.find(channel);
             if (c != State().channels.end()) {
@@ -368,6 +576,10 @@ UltraRtcResult UltraRtc_ClosePeer(UltraRtcHandle peer) {
             }
         }
         State().peers.erase(it);
+    }
+    for (const auto& audio : audios) StopDevices(audio);
+    for (const auto& track : trackObjects) {
+        if (track) track->resetCallbacks();
     }
     try {
         connection->resetCallbacks();
@@ -563,4 +775,131 @@ UltraRtcHandle UltraRtc_GetDataChannelPeer(UltraRtcHandle channel) {
 size_t UltraRtc_GetDataChannelBufferedAmount(UltraRtcHandle channel) {
     auto engineChannel = FindChannel(channel);
     return engineChannel ? engineChannel->bufferedAmount() : 0;
+}
+
+// ============================================================================
+// AUDIO
+// ============================================================================
+
+UltraRtcResult UltraRtc_AddAudioTrack(UltraRtcHandle peer, const std::string& mid,
+                                      UltraRtcDirection direction, UltraRtcHandle& outTrack) {
+    outTrack = UltraRtcInvalidHandle;
+    if (!UltraRtcInternal::OpusAvailable())
+        return UltraRtcResult::Error(UltraRtcResultCode::Unsupported, "This build has no Opus codec");
+    auto connection = FindPeer(peer);
+    if (!connection) return BadHandle();
+    if (mid.empty()) return UltraRtcResult::Error(UltraRtcResultCode::InvalidArgument, "A track needs a mid");
+
+    rtc::Description::Direction engineDirection = rtc::Description::Direction::SendRecv;
+    if (direction == UltraRtcDirection::SendOnly) engineDirection = rtc::Description::Direction::SendOnly;
+    if (direction == UltraRtcDirection::RecvOnly) engineDirection = rtc::Description::Direction::RecvOnly;
+    if (direction == UltraRtcDirection::Inactive) engineDirection = rtc::Description::Direction::Inactive;
+
+    std::mt19937 random(std::random_device{}());
+    uint32_t ssrc = static_cast<uint32_t>(random());
+    if (ssrc == 0) ssrc = 1;
+    rtc::Description::Audio description(mid, engineDirection);
+    description.addOpusCodec(kOpusPayloadType);
+    const bool sends = direction == UltraRtcDirection::SendRecv || direction == UltraRtcDirection::SendOnly;
+    if (sends) description.addSSRC(ssrc, std::string("ultrartc"), std::string("ultrartc-stream"), mid);
+
+    std::shared_ptr<rtc::Track> track;
+    try {
+        track = connection->addTrack(description);
+    } catch (const std::exception& e) {
+        return UltraRtcResult::Error(UltraRtcResultCode::InvalidState, e.what());
+    }
+    outTrack = AdoptTrack(peer, std::move(track), UltraRtcMediaKind::Audio, sends ? ssrc : 0);
+    if (outTrack == UltraRtcInvalidHandle) return BadHandle();
+    return UltraRtcResult::Ok();
+}
+
+UltraRtcResult UltraRtc_SendAudioFrame(UltraRtcHandle track, const UltraRtcAudioFrame& frame) {
+    auto audio = FindAudio(track);
+    if (!audio) return BadHandle();
+    if (frame.sampleRate != UltraRtcInternal::kOpusSampleRate)
+        return UltraRtcResult::Error(UltraRtcResultCode::InvalidArgument, "Audio frames must be 48 kHz");
+    if (frame.channels <= 1) {
+        SendPcm(*audio, frame.samples.data(), frame.samples.size());
+        return UltraRtcResult::Ok();
+    }
+    std::vector<int16_t> mono(frame.samples.size() / static_cast<size_t>(frame.channels));
+    for (size_t i = 0; i < mono.size(); ++i) {
+        int sum = 0;
+        for (int c = 0; c < frame.channels; ++c) sum += frame.samples[i * static_cast<size_t>(frame.channels) + static_cast<size_t>(c)];
+        mono[i] = static_cast<int16_t>(sum / frame.channels);
+    }
+    SendPcm(*audio, mono.data(), mono.size());
+    return UltraRtcResult::Ok();
+}
+
+UltraRtcResult UltraRtc_SetAudioFrameCallback(UltraRtcHandle track, UltraRtcAudioFrameCallback onFrame) {
+    auto audio = FindAudio(track);
+    if (!audio) return BadHandle();
+    std::lock_guard<std::mutex> lock(audio->receiveMutex);
+    audio->onFrame = std::move(onFrame);
+    return UltraRtcResult::Ok();
+}
+
+UltraRtcResult UltraRtc_SetTrackEnabled(UltraRtcHandle track, bool enabled) {
+    auto audio = FindAudio(track);
+    if (!audio) return BadHandle();
+    std::lock_guard<std::mutex> lock(audio->sendMutex);
+    audio->enabled = enabled;
+    return UltraRtcResult::Ok();
+}
+
+bool UltraRtc_IsTrackOpen(UltraRtcHandle track) {
+    std::lock_guard<std::mutex> lock(State().mutex);
+    auto it = State().tracks.find(track);
+    return it != State().tracks.end() && it->second.track && it->second.track->isOpen();
+}
+
+UltraRtcResult UltraRtc_StartMicrophone(UltraRtcHandle track, const std::string& deviceId) {
+    auto audio = FindAudio(track);
+    if (!audio) return BadHandle();
+    std::lock_guard<std::mutex> lock(audio->deviceMutex);
+    if (audio->microphone) return UltraRtcResult::Ok();
+    std::string error;
+    std::weak_ptr<AudioMedia> weak = audio;
+    audio->microphone = UltraRtcInternal::OpenMicrophone(deviceId, [weak](const int16_t* samples, size_t count) {
+        if (auto media = weak.lock()) SendPcm(*media, samples, count);
+    }, error);
+    if (!audio->microphone) return UltraRtcResult::Error(UltraRtcResultCode::Unknown, error);
+    return UltraRtcResult::Ok();
+}
+
+UltraRtcResult UltraRtc_StopMicrophone(UltraRtcHandle track) {
+    auto audio = FindAudio(track);
+    if (!audio) return BadHandle();
+    std::unique_ptr<UltraRtcInternal::MicrophoneCapture> microphone;
+    {
+        std::lock_guard<std::mutex> lock(audio->deviceMutex);
+        microphone = std::move(audio->microphone);
+    }
+    if (microphone) microphone->Stop();
+    return UltraRtcResult::Ok();
+}
+
+UltraRtcResult UltraRtc_StartPlayback(UltraRtcHandle track, const std::string& deviceId) {
+    auto audio = FindAudio(track);
+    if (!audio) return BadHandle();
+    std::string error;
+    auto speaker = UltraRtcInternal::OpenSpeaker(deviceId, error);
+    if (!speaker) return UltraRtcResult::Error(UltraRtcResultCode::Unknown, error);
+    std::lock_guard<std::mutex> lock(audio->receiveMutex);
+    audio->speaker = std::move(speaker);
+    return UltraRtcResult::Ok();
+}
+
+UltraRtcResult UltraRtc_StopPlayback(UltraRtcHandle track) {
+    auto audio = FindAudio(track);
+    if (!audio) return BadHandle();
+    std::unique_ptr<UltraRtcInternal::SpeakerPlayback> speaker;
+    {
+        std::lock_guard<std::mutex> lock(audio->receiveMutex);
+        speaker = std::move(audio->speaker);
+    }
+    if (speaker) speaker->Stop();
+    return UltraRtcResult::Ok();
 }

@@ -570,3 +570,15 @@ real_time_communication:
       required: false
       vendored: true                  # with libjuice (MPL-2.0), usrsctp, libsrtp (BSD-3), plog (MIT)
       needs: ["openssl"]
+
+    libopus:
+      min_version: "1.3"
+      purpose: "Opus voice codec for UltraRTC audio tracks (ChatCube voice calls) - without it calls are off"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "opus"
+      apt: "libopus-dev"
+      vcpkg: "opus"
+      brew: "opus"
+      msys2: "mingw-w64-x86_64-opus"

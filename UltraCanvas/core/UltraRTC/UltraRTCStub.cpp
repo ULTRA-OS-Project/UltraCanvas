@@ -47,3 +47,16 @@ UltraRtcDataChannelState UltraRtc_GetDataChannelState(UltraRtcHandle) { return U
 std::string UltraRtc_GetDataChannelLabel(UltraRtcHandle) { return std::string(); }
 UltraRtcHandle UltraRtc_GetDataChannelPeer(UltraRtcHandle) { return UltraRtcInvalidHandle; }
 size_t UltraRtc_GetDataChannelBufferedAmount(UltraRtcHandle) { return 0; }
+
+UltraRtcResult UltraRtc_AddAudioTrack(UltraRtcHandle, const std::string&, UltraRtcDirection, UltraRtcHandle& outTrack) {
+    outTrack = UltraRtcInvalidHandle;
+    return NoEngine();
+}
+UltraRtcResult UltraRtc_SendAudioFrame(UltraRtcHandle, const UltraRtcAudioFrame&) { return NoEngine(); }
+UltraRtcResult UltraRtc_SetAudioFrameCallback(UltraRtcHandle, UltraRtcAudioFrameCallback) { return NoEngine(); }
+UltraRtcResult UltraRtc_SetTrackEnabled(UltraRtcHandle, bool) { return NoEngine(); }
+bool UltraRtc_IsTrackOpen(UltraRtcHandle) { return false; }
+UltraRtcResult UltraRtc_StartMicrophone(UltraRtcHandle, const std::string&) { return NoEngine(); }
+UltraRtcResult UltraRtc_StopMicrophone(UltraRtcHandle) { return NoEngine(); }
+UltraRtcResult UltraRtc_StartPlayback(UltraRtcHandle, const std::string&) { return NoEngine(); }
+UltraRtcResult UltraRtc_StopPlayback(UltraRtcHandle) { return NoEngine(); }

@@ -7,6 +7,8 @@
   event and callback reaches the application through the dispatcher it
   installs, so a UI subscribes on its UI thread and needs no lock; a
   conversation fetch merges every connected provider; sends carry a client
-  message id for optimistic display. Plan:
+  message id for optimistic display; calls are started, answered, muted and
+  ended through the same API (`UltraIM_SetCallMuted`, result code
+  `InvalidState`). Plan:
   `Docs/Research/ChatCubeDirectPlan.md`; doc: `Docs/Modules/UltraIM/README.md`;
   tests: `Tests/UltraIM` (`ULTRACANVAS_BUILD_ULTRAIM_TESTS`).

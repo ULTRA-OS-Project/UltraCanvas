@@ -20,6 +20,11 @@
 //   |                               | [ Message...                       ] [Send]   |
 //   | status line                                                                   |
 //
+// A call shows a bar across the top of the chat view:
+//
+//   | Incoming call from Bob                              [Accept] [Decline] |
+//   | In call with Bob   01:42                              [Mute] [Hang up] |
+//
 // Everything comes from UltraIM (provider "direct", ChatCube Direct), through
 // its dispatcher on the UI thread: this window never takes a lock.
 // Sending is optimistic: the bubble appears at once (…), and the provider's
@@ -83,6 +88,15 @@ private:
     void RefreshConversations();
     void ScrollToEnd();
 
+    // ---- calls ---------------------------------------------------------------
+    void StartVoiceCall();
+    void AcceptCall();
+    void EndCall();
+    void ToggleMute();
+    void OnCallEvent(const UltraIMEvent& event);
+    void UpdateCallBar();
+    std::string ContactName(const std::string& contactId) const;
+
     // ---- UltraIM -------------------------------------------------------------
     void OnEvent(const UltraIMEvent& event);
 
@@ -119,6 +133,19 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
+
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> callBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     callText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callAccept_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callMute_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callEnd_;
+    std::string      callId_;               // empty: no call
+    std::string      callContact_;
+    bool             callIncoming_ = false;
+    bool             callMuted_ = false;
+    UltraIMCallState callState_ = UltraIMCallState::Ended;
+    int64_t          callActiveSinceMs_ = 0;
+    uint64_t         callTimer_ = 0;        // the duration ticker (0: none)
 
     std::string activeConversation_;
     std::string typingContact_;

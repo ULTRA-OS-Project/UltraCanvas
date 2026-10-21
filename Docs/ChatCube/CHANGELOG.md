@@ -8,5 +8,10 @@
   WebRTC data channel), through the relay when the other side is offline,
   and through the relay for groups. Bubbles show their delivery ticks:
   … sending, ✓ queued on the relay, ✓✓ on the other computer, green ✓✓ read.
-  Typing and presence show under the name. Calls are not in this release
-  (the buttons stay disabled).
+  Typing and presence show under the name.
+- **Voice calls.** *Call* rings the open contact; a bar across the top
+  shows the call - *Accept* / *Decline* when it rings, *Mute* and
+  *Hang up* during it, with its duration. The voice goes directly between
+  the two computers (Opus over WebRTC, encrypted), and the status line says
+  why a call ended: declined, busy, no answer, offline, missed. Video calls
+  are not in this release.

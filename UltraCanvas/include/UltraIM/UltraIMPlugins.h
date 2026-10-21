@@ -134,7 +134,9 @@ public:
 
     // ---- Calls ---------------------------------------------------------------
     // Whether a call can be placed in this conversation now (Direct: never in
-    // a group in v1).
+    // a group in v1). A call reports itself with CallReceive (incoming) and
+    // CallStateChange events; Ended and Failed are final, with errorText
+    // saying why ("declined", "busy", "no answer", ...).
     virtual bool CanCall(const std::string& conversationId, bool video) const {
         (void)conversationId; (void)video;
         return false;
@@ -150,6 +152,10 @@ public:
     }
     virtual UltraIMResult EndCall(const std::string& callId) {
         (void)callId;
+        return Unsupported("calls");
+    }
+    virtual UltraIMResult SetCallMuted(const std::string& callId, bool muted) {
+        (void)callId; (void)muted;
         return Unsupported("calls");
     }
 

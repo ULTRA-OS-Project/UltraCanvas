@@ -25,8 +25,10 @@ The first ChatCube draft, which this replaces, is kept under
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    green `✓✓` read.
 
-Calls are not in this release; the buttons stay disabled until UltraRTC
-carries audio and video.
+5. **Call** rings the open contact (1:1, voice; the button is off for groups
+   and while not connected). A bar across the top shows the call:
+   *Accept* / *Decline* when it rings here, *Mute* and *Hang up* during it,
+   with its duration. Video calls come next.
 
 ## Building and running
 

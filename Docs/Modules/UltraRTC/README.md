@@ -1,7 +1,7 @@
 # UltraRTC — real-time communication
 
-WebRTC behind an UltraCanvas-owned API: peer connections, data channels and
-(next) audio and video calls, as `UltraRtc_*` free functions with opaque
+WebRTC behind an UltraCanvas-owned API: peer connections, data channels,
+audio calls and (next) video, as `UltraRtc_*` free functions with opaque
 `UltraRtcHandle`s and an `UltraRtcResult` from every call. First user:
 ChatCube Direct, for peer-to-peer chat and calls. Design:
 [`Docs/Research/UltraRTCDesignProposal.md`](../../Research/UltraRTCDesignProposal.md);
@@ -14,7 +14,7 @@ engine choice and phases: [`Docs/Research/ChatCubeDirectPlan.md`](../../Research
 | Target | `UltraRTC` (archive `uc-rtc`, absorbed into the shared core) |
 | Option | `ULTRACANVAS_ENABLE_ULTRARTC` (ON) |
 | Engine | libdatachannel 0.24.6 + libjuice, usrsctp, libsrtp, plog — vendored, `UltraCanvas/third_party/libdatachannel/` |
-| Needs | OpenSSL (the engine's DTLS). Without it the module builds and every call answers `Unsupported` |
+| Needs | OpenSSL (the engine's DTLS). Without it the module builds and every call answers `Unsupported`. Audio also needs libopus (pkg-config `opus`); without it `caps.audio` is false and `UltraRtc_AddAudioTrack` answers `Unsupported` |
 | Tests | `Tests/UltraRTC` (`-DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON`, binary `UltraRTCTests`) |
 
 ## Rules
@@ -75,10 +75,43 @@ UltraRtc_Shutdown();
 With `autoNegotiation = false` call `UltraRtc_SetLocalDescription(peer)`
 yourself once the channels are added and after each remote offer.
 
+## Audio
+
+An audio track is Opus at 48 kHz, mono, 20 ms frames, with in-band FEC: a
+lost packet is rebuilt from the next one where it can be, and concealed
+otherwise. Both sides add the track, with the same mid, before the offer is
+made (and before the remote offer is applied), so the two share one
+send-and-receive m-line. Media alone does not trigger auto-negotiation: the
+caller asks with `UltraRtc_SetLocalDescription(peer, Offer)`; the answer
+follows by itself.
+
+```cpp
+UltraRtcHandle track = UltraRtcInvalidHandle;
+UltraRtc_AddAudioTrack(peer, "audio", UltraRtcDirection::SendRecv, track);
+UltraRtc_SetLocalDescription(peer, UltraRtcSdpType::Offer);   // the caller only
+
+// On the TrackOpen event for `track`: the microphone and the speaker.
+UltraRtc_StartMicrophone(track);       // "" = the default device
+UltraRtc_StartPlayback(track);
+UltraRtc_SetTrackEnabled(track, false);   // mute
+```
+
+`UltraRtc_SendAudioFrame` / `UltraRtc_SetAudioFrameCallback` feed and read
+the track directly (tests, an application with its own audio): PCM of any
+length goes in, decoded 20 ms frames come out on a media thread. The devices
+are the framework's audio backend - `UltraCanvasAudioRecorder` in live mode
+for the microphone, `UltraCanvasAudioPlayer`'s push sink for the speaker,
+which drops the oldest audio when more than 120 ms piles up, keeping the
+delay of a call short. A device that cannot be opened makes the Start call
+fail; the track still carries the other direction. Closing the peer stops
+both devices.
+
 ## Status
 
 Phase 1 implemented: peers, ICE servers (STUN / TURN / TURNS), transport
 policy, port range, the W3C state machines as events, data channels (ordered
 or not, reliable or partially reliable, negotiated ids), text and binary
-messages. Next: audio (Opus) and video tracks with device capture and
-playback, then the `UltraCanvasVideoTile` / `UltraCanvasCallView` elements.
+messages. Phase 2 implemented: Opus audio tracks, the microphone and the
+speaker. Next: video tracks with camera capture, then the
+`UltraCanvasVideoTile` / `UltraCanvasCallView` elements. Known limit: the
+miniaudio backend opens the default devices whatever `deviceId` says.

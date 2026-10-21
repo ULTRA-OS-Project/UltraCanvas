@@ -67,7 +67,16 @@ if (!r) { /* mark the row Failed */ }
 ```
 
 Calls: ask `UltraIM_CanCall(provider, conversation, video)` before offering
-the buttons — ChatCube Direct answers no for groups in v1.
+the buttons — ChatCube Direct offers 1:1 voice calls while its relay socket
+is up, not group or video calls yet. `UltraIM_StartCall` gives the call id;
+the other side gets `CallReceive` and answers with `UltraIM_AcceptCall` or
+declines with `UltraIM_EndCall`. Both then follow `CallStateChange`:
+`Ringing` → `Connecting` → `Active` → `Ended` (or `Failed`), the final
+state's `errorText` saying why: `declined`, `busy`, `no answer`, `missed`,
+`offline`, `crossed` (both called at once - the other call replaces it, and
+its `CallReceive` follows), empty for a plain hang-up.
+`UltraIM_SetCallMuted` mutes the microphone. One call at a time:
+`StartCall` during another answers `InvalidState`.
 
 ## Writing a provider
 
@@ -116,14 +125,21 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.
-- **Not yet:** calls (`CanCall` answers no until UltraRTC carries media),
-  files and images, LAN without a relay (mDNS advertising), several devices
-  per identity.
+- **Voice calls** (1:1): the invite, accept, reject and hang-up are
+  signalling messages signed like the data channel's set-up and carried by
+  the relay socket (session `call:<uuid>`); the media is a separate UltraRTC
+  peer per call with an Opus track, the microphone and the speaker
+  (`SetCallUseDevices(false)` leaves them closed - tests feed the track,
+  `GetCallAudioTrack`). An unanswered call ends after 45 s, one that does
+  not connect fails after 20 s (`SetCallTimings`).
+- **Not yet:** video and group calls, files and images, LAN without a relay
+  (mDNS advertising), several devices per identity.
 
 Tests: `Tests/UltraIM/DirectProviderTests.cpp` - the envelope and the store,
 then two providers against a relay started from `Server/ChatCubeRelay` (P2P
 delivery, read receipt, offline queue, sign-in again with the stored
-identity, a group). It needs a `python3` with the relay's packages on `PATH`
+identity, a group, calls: declined, answered with audio both ways, muted,
+hung up, and a call to a contact who is offline). It needs a `python3` with the relay's packages on `PATH`
 and skips without one, unless `ULTRAIM_TEST_RELAY_REQUIRED` is set (CI).
 
 ## Status

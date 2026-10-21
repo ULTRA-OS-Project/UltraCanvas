@@ -6,6 +6,8 @@
   sent peer to peer over an UltraRTC data channel whose set-up is signed
   with the identity keys, the ChatCube relay for sign-in, presence,
   signalling, the offline queue and groups, delivery and read receipts, and
-  a local SQLite record of contacts, conversations, history and the outbox.
+  a local SQLite record of contacts, conversations, history and the outbox,
+  and 1:1 voice calls (signed invite / accept / reject / hang-up over the
+  relay, an UltraRTC Opus peer per call, mute).
   `Tests/UltraIM/DirectProviderTests.cpp` runs two providers against a local
   relay end to end; CI installs the relay for it.

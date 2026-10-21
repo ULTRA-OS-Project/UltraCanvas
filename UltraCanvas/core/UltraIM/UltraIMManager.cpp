@@ -628,6 +628,12 @@ UltraIMResult UltraIM_EndCall(const std::string& providerId, const std::string& 
     return provider->EndCall(callId);
 }
 
+UltraIMResult UltraIM_SetCallMuted(const std::string& providerId, const std::string& callId, bool muted) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->SetCallMuted(callId, muted);
+}
+
 // ============================================================================
 // HELPERS
 // ============================================================================

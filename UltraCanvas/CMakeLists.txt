@@ -798,6 +798,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCAudioDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
@@ -3621,8 +3622,24 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
 
     # The archive is uc-rtc; UltraRTC is its home ("MODULE HOMES").
     if(_ultrartc_engine)
-        add_library(uc-rtc STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCEngine.cpp)
+        # Call audio is Opus (raw libopus; the Ogg Opus file codecs elsewhere
+        # use libopusenc / opusfile on top of it). The microphone and speaker
+        # glue (UltraRTCAudioDevices.cpp) is compiled into the core library,
+        # next to the recorder and player it uses.
+        add_library(uc-rtc STATIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCEngine.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCOpus.cpp)
         target_link_libraries(uc-rtc PRIVATE datachannel-static)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(UC_RTC_OPUS opus)
+        endif()
+        if(UC_RTC_OPUS_FOUND)
+            target_compile_definitions(uc-rtc PRIVATE ULTRARTC_HAVE_OPUS=1)
+            target_include_directories(uc-rtc PRIVATE ${UC_RTC_OPUS_INCLUDE_DIRS})
+            target_link_directories(uc-rtc PUBLIC ${UC_RTC_OPUS_LIBRARY_DIRS})
+            target_link_libraries(uc-rtc PUBLIC ${UC_RTC_OPUS_LIBRARIES})
+        endif()
     else()
         add_library(uc-rtc STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCStub.cpp)
     endif()
@@ -3641,7 +3658,11 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraRTC)
     endif()
     if(_ultrartc_engine)
-        message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION})")
+        if(UC_RTC_OPUS_FOUND)
+            message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION}, Opus ${UC_RTC_OPUS_VERSION})")
+        else()
+            message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION}) - no Opus (pkg-config opus): audio calls off")
+        endif()
     else()
         message(STATUS "  [✓] UltraRTC - ENABLED without an engine (no OpenSSL): every call answers Unsupported")
     endif()
@@ -3701,6 +3722,7 @@ if(TARGET UltraIM AND TARGET UltraRTC AND TARGET UltraNet AND TARGET UltraDataba
         ${_ultraim_direct_dir}/DirectCrypto.cpp
         ${_ultraim_direct_dir}/DirectStore.cpp
         ${_ultraim_direct_dir}/DirectRelayClient.cpp
+        ${_ultraim_direct_dir}/DirectCalls.cpp
         ${_ultraim_direct_dir}/DirectLinks.cpp
         ${_ultraim_direct_dir}/DirectProvider.cpp)
     set_target_properties(UltraIMDirectCore PROPERTIES POSITION_INDEPENDENT_CODE ON)

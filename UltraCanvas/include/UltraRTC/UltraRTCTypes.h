@@ -91,6 +91,27 @@ struct UltraRtcDataChannelInit {
 };
 
 // ============================================================================
+// MEDIA
+// ============================================================================
+
+enum class UltraRtcMediaKind { Audio, Video };
+
+enum class UltraRtcDirection { SendRecv, SendOnly, RecvOnly, Inactive };
+
+// Uncompressed audio, interleaved 16-bit samples. Calls run at 48 kHz mono;
+// a frame of any length may be sent - it is cut into the codec's 20 ms
+// frames inside.
+struct UltraRtcAudioFrame {
+    int                  sampleRate = 48000;
+    int                  channels = 1;
+    std::vector<int16_t> samples;
+};
+
+// Called on a media thread for every decoded 20 ms of received audio. It
+// must not block; copy what it needs and return.
+using UltraRtcAudioFrameCallback = std::function<void(const UltraRtcAudioFrame& frame)>;
+
+// ============================================================================
 // STATES (W3C spellings)
 // ============================================================================
 
@@ -113,13 +134,19 @@ enum class UltraRtcPeerEventType {
     DataChannelOpen,        // channel
     DataChannelClose,       // channel
     DataChannelMessage,     // channel, isBinary, text or binary
-    DataChannelError        // channel, error
+    DataChannelError,       // channel, error
+    Track,                  // track, mediaKind, mid: the remote side added a track we had not
+    TrackOpen,              // track: media can flow
+    TrackClose              // track
 };
 
 struct UltraRtcPeerEvent {
     UltraRtcPeerEventType     type = UltraRtcPeerEventType::LocalDescription;
     UltraRtcHandle            peer = UltraRtcInvalidHandle;
     UltraRtcHandle            channel = UltraRtcInvalidHandle;
+    UltraRtcHandle            track = UltraRtcInvalidHandle;
+    UltraRtcMediaKind         mediaKind = UltraRtcMediaKind::Audio;
+    std::string               mid;
     UltraRtcSdpType           sdpType = UltraRtcSdpType::Unspecified;
     std::string               sdp;
     std::string               candidate;

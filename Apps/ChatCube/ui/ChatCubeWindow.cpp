@@ -18,7 +18,9 @@
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMCore.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <sstream>
 
 using namespace UltraCanvas;
@@ -43,6 +45,9 @@ const Color kRuleColor = Color(222, 224, 228, 255);
 const Color kAccent = Color(46, 150, 70, 255);          // ChatCube green
 const Color kAccentHover = Color(36, 128, 58, 255);
 const Color kSelection = Color(46, 150, 70, 255);
+const Color kCallBackground = Color(228, 243, 232, 255);
+const Color kHangUp = Color(200, 52, 52, 255);
+const Color kHangUpHover = Color(170, 40, 40, 255);
 
 int64_t NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -113,6 +118,8 @@ ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId)
 
 ChatCubeWindow::~ChatCubeWindow() {
     if (subscription_) UltraIM_Unsubscribe(subscription_);
+    if (callTimer_)
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(callTimer_);
 }
 
 bool ChatCubeWindow::Create() {
@@ -283,6 +290,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     header->AddChild(titles);
     voiceCall_ = MakeButton("cc-call", "Call", 60);
     voiceCall_->SetDisabled(true);
+    voiceCall_->SetOnClick([this]() { StartVoiceCall(); });
     header->AddChild(voiceCall_);
     videoCall_ = MakeButton("cc-video", "Video", 60);
     videoCall_->SetDisabled(true);
@@ -366,6 +374,29 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
     chatView_ = std::make_shared<UltraCanvasContainer>("cc-chat");
     chatView_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     chatView_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // ----- the call bar (hidden without a call) -----
+    callBar_ = MakeRow("cc-call-bar");
+    callBar_->SetPadding(6, 12, 6, 12);
+    callBar_->SetBackgroundColor(kCallBackground);
+    callBar_->SetBorderBottom(1, kRuleColor);
+    callText_ = MakeLabel("cc-call-text", "", 11.0f);
+    callText_->SetFontWeight(FontWeight::Bold);
+    callText_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    callBar_->AddChild(callText_);
+    callAccept_ = MakeButton("cc-call-accept", "Accept", 80, true);
+    callAccept_->SetOnClick([this]() { AcceptCall(); });
+    callBar_->AddChild(callAccept_);
+    callMute_ = MakeButton("cc-call-mute", "Mute", 80);
+    callMute_->SetOnClick([this]() { ToggleMute(); });
+    callBar_->AddChild(callMute_);
+    callEnd_ = MakeButton("cc-call-end", "Hang up", 80);
+    callEnd_->SetColors(kHangUp, kHangUpHover);
+    callEnd_->SetTextColors(Color(255, 255, 255, 255));
+    callEnd_->SetOnClick([this]() { EndCall(); });
+    callBar_->AddChild(callEnd_);
+    callBar_->SetVisible(false);
+    chatView_->AddChild(callBar_);
 
     auto body = std::make_shared<UltraCanvasContainer>("cc-chat-body");
     body->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -546,7 +577,8 @@ void ChatCubeWindow::UpdateHeader() {
         subtitle_->SetText(PresenceText(c->presence));
     }
     // Calls need UltraRTC media; the provider says when they are possible.
-    voiceCall_->SetDisabled(!UltraIM_CanCall(providerId_, activeConversation_, false));
+    // One call at a time.
+    voiceCall_->SetDisabled(!callId_.empty() || !UltraIM_CanCall(providerId_, activeConversation_, false));
     videoCall_->SetDisabled(!UltraIM_CanCall(providerId_, activeConversation_, true));
 }
 
@@ -585,6 +617,137 @@ void ChatCubeWindow::SendCurrentMessage() {
         messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
         SetStatus("Not sent: " + r.message);
     }
+}
+
+// =================================================================== calls
+
+std::string ChatCubeWindow::ContactName(const std::string& contactId) const {
+    const UltraIMConversation* c = conversations_->Find(contactId);
+    if (c && !c->title.empty()) return c->title;
+    return GroupUserId(contactId);
+}
+
+void ChatCubeWindow::StartVoiceCall() {
+    if (!callId_.empty() || activeConversation_.empty()) return;
+    std::string callId;
+    const UltraIMResult r = UltraIM_StartCall(providerId_, activeConversation_, false, callId);
+    if (!r) {
+        SetStatus("Could not call: " + r.message);
+        return;
+    }
+    // The Ringing event that follows fills the bar; set it up now so a fast
+    // answer finds the call.
+    callId_ = callId;
+    callContact_ = activeConversation_;
+    callIncoming_ = false;
+    callMuted_ = false;
+    callState_ = UltraIMCallState::Ringing;
+    UpdateCallBar();
+    UpdateHeader();
+}
+
+void ChatCubeWindow::AcceptCall() {
+    if (callId_.empty() || !callIncoming_ || callState_ != UltraIMCallState::Ringing) return;
+    const UltraIMResult r = UltraIM_AcceptCall(providerId_, callId_, false);
+    if (!r) SetStatus("Could not answer: " + r.message);
+}
+
+void ChatCubeWindow::EndCall() {
+    if (callId_.empty()) return;
+    UltraIM_EndCall(providerId_, callId_);
+}
+
+void ChatCubeWindow::ToggleMute() {
+    if (callId_.empty()) return;
+    if (UltraIM_SetCallMuted(providerId_, callId_, !callMuted_)) {
+        callMuted_ = !callMuted_;
+        UpdateCallBar();
+    }
+}
+
+void ChatCubeWindow::UpdateCallBar() {
+    if (!callBar_) return;
+    const bool inCall = !callId_.empty();
+    callBar_->SetVisible(inCall);
+    if (inCall) {
+        const std::string name = ContactName(callContact_);
+        std::string text;
+        switch (callState_) {
+            case UltraIMCallState::Ringing:
+                text = callIncoming_ ? "Incoming call from " + name : "Calling " + name + "\xE2\x80\xA6";
+                break;
+            case UltraIMCallState::Connecting:
+                text = "Connecting to " + name + "\xE2\x80\xA6";
+                break;
+            case UltraIMCallState::Active: {
+                const int64_t seconds = std::max<int64_t>(0, (NowMs() - callActiveSinceMs_) / 1000);
+                char clock[16];
+                std::snprintf(clock, sizeof(clock), "%02d:%02d", static_cast<int>(seconds / 60),
+                              static_cast<int>(seconds % 60));
+                text = "In call with " + name + "   " + clock;
+                if (callMuted_) text += "   (muted)";
+                break;
+            }
+            case UltraIMCallState::Ended:
+            case UltraIMCallState::Failed:
+                break;
+        }
+        callText_->SetText(text);
+        const bool ringingHere = callIncoming_ && callState_ == UltraIMCallState::Ringing;
+        callAccept_->SetVisible(ringingHere);
+        callMute_->SetVisible(!ringingHere);
+        callMute_->SetText(callMuted_ ? "Unmute" : "Mute");
+        callEnd_->SetText(ringingHere ? "Decline" : (callState_ == UltraIMCallState::Ringing ? "Cancel" : "Hang up"));
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::OnCallEvent(const UltraIMEvent& e) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (e.type == UltraIMEventType::CallReceive) {
+        if (!callId_.empty() && callId_ != e.callId) return;     // the provider answers "busy" itself
+        callId_ = e.callId;
+        callContact_ = e.contactId;
+        callIncoming_ = true;
+        callMuted_ = false;
+        callState_ = UltraIMCallState::Ringing;
+        SetStatus("Incoming call from " + ContactName(e.contactId));
+        if (activeConversation_.empty() && conversations_->Find(e.contactId)) OpenConversation(e.contactId);
+        UpdateCallBar();
+        UpdateHeader();
+        return;
+    }
+    if (e.callId != callId_) return;
+    callState_ = e.callState;
+    if (e.callState == UltraIMCallState::Active) {
+        callActiveSinceMs_ = NowMs();
+        if (!e.errorText.empty()) SetStatus(e.errorText);           // e.g. no microphone
+        if (app && !callTimer_) callTimer_ = app->StartTimer(1000, true, [this](TimerId) { UpdateCallBar(); });
+    }
+    if (e.callState == UltraIMCallState::Ended && e.errorText == "crossed") {
+        // We called each other at once: the CallReceive for the other side's
+        // call, answered by the provider, follows at once.
+        callId_.clear();
+        return;
+    }
+    if (e.callState == UltraIMCallState::Ended || e.callState == UltraIMCallState::Failed) {
+        const std::string name = ContactName(callContact_);
+        std::string why;
+        if (e.errorText == "declined")       why = name + " declined the call";
+        else if (e.errorText == "busy")      why = name + " is in another call";
+        else if (e.errorText == "no answer") why = name + " did not answer";
+        else if (e.errorText == "missed")    why = "Missed call from " + name;
+        else if (e.errorText == "offline")   why = name + " is offline";
+        else if (!e.errorText.empty())       why = "Call ended: " + e.errorText;
+        else                                 why = "Call ended";
+        if (!why.empty()) SetStatus(why);
+        callId_.clear();
+        callContact_.clear();
+        if (app && callTimer_) app->StopTimer(callTimer_);
+        callTimer_ = 0;
+    }
+    UpdateCallBar();
+    UpdateHeader();
 }
 
 // =================================================================== UltraIM
@@ -652,6 +815,11 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     break;
                 case UltraIMConnectionState::Disconnected: SetStatus("Signed out"); break;
             }
+            UpdateHeader();         // whether a call can be placed follows the connection
+            break;
+        case UltraIMEventType::CallReceive:
+        case UltraIMEventType::CallStateChange:
+            OnCallEvent(e);
             break;
         case UltraIMEventType::AuthRequire:
             ShowSignInPage();

@@ -1,6 +1,6 @@
 // Tests/UltraIM/DirectProviderTests.cpp
 // ChatCube Direct: the envelope, the store, and two providers end to end
-// through a local relay (P2P, read receipts, offline queue, groups)
+// through a local relay (P2P, read receipts, offline queue, groups, calls)
 // Version: 0.1.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -14,7 +14,9 @@
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraRTC/UltraRTCCore.h"
 
+#include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -247,6 +249,101 @@ bool IsReceived(const UltraIMEvent& e, const std::string& text) {
     return e.type == UltraIMEventType::MessageReceive && e.message.text == text;
 }
 
+#if !defined(_WIN32)
+bool IsCallState(const UltraIMEvent& e, const std::string& callId, UltraIMCallState state) {
+    return e.type == UltraIMEventType::CallStateChange && e.callId == callId && e.callState == state;
+}
+
+// 1:1 voice calls between two signed-in providers: declined, then answered
+// with audio both ways, then hung up.
+void TestCalls(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, Events& bobEvents,
+               const std::string& aliceId, const std::string& bobId) {
+    alice.SetCallUseDevices(false);
+    bob.SetCallUseDevices(false);
+    CHECK(alice.CanCall(bobId, false));
+    CHECK(!alice.CanCall(bobId, true));             // voice only for now
+    CHECK((alice.GetCapabilities() & UltraIMCapabilityFlags::VoiceCalls) == UltraIMCapabilityFlags::VoiceCalls);
+
+    // Declined.
+    std::string declined;
+    CHECK(alice.StartCall(bobId, false, declined) && declined.rfind("call:", 0) == 0);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::CallReceive && e.callId == declined && e.contactId == aliceId && !e.isVideo;
+    }));
+    CHECK(bob.EndCall(declined));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+        return IsCallState(e, declined, UltraIMCallState::Ended) && e.errorText == "declined";
+    }));
+    CHECK(!alice.EndCall(declined));                // over
+
+    // Answered: audio flows both ways.
+    std::string callId;
+    CHECK(alice.StartCall(bobId, false, callId));
+    std::string second;
+    CHECK(alice.StartCall(bobId, false, second).code == UltraIMResultCode::InvalidState);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::CallReceive && e.callId == callId;
+    }));
+    CHECK(bob.AcceptCall(callId, false));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Active); }));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Active); }));
+
+    std::atomic<int> bobHeard{0};
+    std::atomic<int> aliceHeard{0};
+    auto loud = [](const UltraRtcAudioFrame& f) {
+        double sum = 0;
+        for (int16_t v : f.samples) sum += static_cast<double>(v) * v;
+        return !f.samples.empty() && std::sqrt(sum / static_cast<double>(f.samples.size())) > 3000.0;
+    };
+    const UltraRtcHandle aliceTrack = alice.GetCallAudioTrack(callId);
+    const UltraRtcHandle bobTrack = bob.GetCallAudioTrack(callId);
+    CHECK(aliceTrack != UltraRtcInvalidHandle && bobTrack != UltraRtcInvalidHandle);
+    UltraRtc_SetAudioFrameCallback(bobTrack, [&](const UltraRtcAudioFrame& f) { if (loud(f)) ++bobHeard; });
+    UltraRtc_SetAudioFrameCallback(aliceTrack, [&](const UltraRtcAudioFrame& f) { if (loud(f)) ++aliceHeard; });
+    constexpr double kPi = 3.14159265358979323846;     // M_PI is not standard C++
+    UltraRtcAudioFrame tone;
+    tone.samples.resize(960);
+    for (size_t i = 0; i < tone.samples.size(); ++i)
+        tone.samples[i] = static_cast<int16_t>(10000.0 * std::sin(2.0 * kPi * 400.0 * static_cast<double>(i) / 48000.0));
+    for (int i = 0; i < 25; ++i) {
+        UltraRtc_SendAudioFrame(aliceTrack, tone);
+        UltraRtc_SendAudioFrame(bobTrack, tone);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    std::printf("  call: Bob heard %d loud frames, Alice %d\n", bobHeard.load(), aliceHeard.load());
+    CHECK(bobHeard.load() >= 15);
+    CHECK(aliceHeard.load() >= 15);
+
+    // Muted: Bob hears nothing more from Alice.
+    CHECK(alice.SetCallMuted(callId, true));
+    const int heardBefore = bobHeard.load();
+    for (int i = 0; i < 10; ++i) {
+        UltraRtc_SendAudioFrame(aliceTrack, tone);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(bobHeard.load() == heardBefore);
+
+    // Alice hangs up: Bob's call ends too.
+    CHECK(alice.EndCall(callId));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return IsCallState(e, callId, UltraIMCallState::Ended) && e.errorText.empty();
+    }));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return IsCallState(e, callId, UltraIMCallState::Ended); }));
+    CHECK(bob.GetCallAudioTrack(callId) == UltraRtcInvalidHandle);
+
+    // Bob offline: the relay cannot deliver the invite and the call ends.
+    bob.SignOut();
+    CHECK(!bob.CanCall(aliceId, false));            // no relay socket
+    std::string unreachable;
+    CHECK(alice.StartCall(bobId, false, unreachable));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+        return IsCallState(e, unreachable, UltraIMCallState::Ended) && e.errorText == "offline";
+    }));
+}
+#endif
+
 void TestEndToEnd() {
 #if defined(_WIN32)
     std::printf("DirectProviderTests: end-to-end part skipped on Windows\n");
@@ -352,6 +449,12 @@ void TestEndToEnd() {
         return IsReceived(e, "hello team") && e.conversationId == group.conversationId;
     }));
     CHECK(!bob->CanCall(group.conversationId, false));
+
+    if (UltraRtc_GetCapabilities().audio) {
+        TestCalls(*alice, aliceEvents, *bob, bobEvents, aliceId, bobId);
+    } else {
+        std::printf("  calls skipped: this build has no Opus\n");
+    }
 
     // History is local: Bob's store holds what arrived, oldest first.
     std::vector<UltraIMMessage> history;

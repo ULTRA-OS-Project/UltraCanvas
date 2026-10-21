@@ -1,20 +1,25 @@
 // Tests/UltraRTC/UltraRTCTests.cpp
-// UltraRTC: peers, signalling pass-through, data channels, closing
+// UltraRTC: peers, signalling pass-through, data channels, audio tracks, closing
 // Version: 0.1.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 #include "UltraRTC/UltraRTCCore.h"
 
+#include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdio>
 #include <functional>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
+
+constexpr double kPi = 3.14159265358979323846;   // M_PI is not standard C++
 
 int g_failures = 0;
 int g_checks = 0;
@@ -34,6 +39,7 @@ struct Side {
     UltraRtcHandle channel = UltraRtcInvalidHandle;     // ours or the one the other side opened
     bool open = false;
     bool connected = false;
+    int tracksOpen = 0;
     std::vector<std::string> texts;
     std::vector<std::vector<uint8_t>> binaries;
 };
@@ -66,6 +72,7 @@ UltraRtcPeerEventCallback MakeHandler(Side& self, Side& other) {
             self.channel = e.channel;
         }
         if (e.type == UltraRtcPeerEventType::DataChannelOpen) self.open = true;
+        if (e.type == UltraRtcPeerEventType::TrackOpen) ++self.tracksOpen;
         if (e.type == UltraRtcPeerEventType::ConnectionStateChange &&
             e.connectionState == UltraRtcConnectionState::Connected)
             self.connected = true;
@@ -126,6 +133,127 @@ void TestDataChannel() {
     CHECK(UltraRtc_ClosePeer(b.peer));
 }
 
+// Received audio: how much arrived and what it sounds like.
+struct Received {
+    std::mutex mutex;
+    std::vector<int16_t> samples;
+    size_t frames = 0;
+};
+
+UltraRtcAudioFrameCallback Collect(Received& into) {
+    return [&into](const UltraRtcAudioFrame& frame) {
+        std::lock_guard<std::mutex> lock(into.mutex);
+        CHECK(frame.sampleRate == 48000 && frame.channels == 1);
+        into.samples.insert(into.samples.end(), frame.samples.begin(), frame.samples.end());
+        ++into.frames;
+    };
+}
+
+// Sends `seconds` of a sine, paced like a microphone (10 ms blocks, which
+// the engine cuts into 20 ms codec frames).
+void SendTone(UltraRtcHandle track, double hz, double seconds) {
+    UltraRtcAudioFrame block;
+    block.samples.resize(480);
+    static size_t phase = 0;
+    const int blocks = static_cast<int>(seconds * 100);
+    for (int b = 0; b < blocks; ++b) {
+        for (auto& s : block.samples) {
+            s = static_cast<int16_t>(12000.0 * std::sin(2.0 * kPi * hz * static_cast<double>(phase++) / 48000.0));
+        }
+        CHECK(UltraRtc_SendAudioFrame(track, block));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+// The loudness and the pitch (from zero crossings) of the newest `count`
+// samples.
+void Measure(Received& r, size_t count, double& rms, double& hz) {
+    std::lock_guard<std::mutex> lock(r.mutex);
+    rms = 0;
+    hz = 0;
+    if (r.samples.size() < count) return;
+    const int16_t* s = r.samples.data() + (r.samples.size() - count);
+    double sum = 0;
+    int crossings = 0;
+    for (size_t i = 0; i < count; ++i) {
+        sum += static_cast<double>(s[i]) * s[i];
+        if (i > 0 && (s[i - 1] < 0) != (s[i] < 0)) ++crossings;
+    }
+    rms = std::sqrt(sum / static_cast<double>(count));
+    hz = crossings / 2.0 / (static_cast<double>(count) / 48000.0);
+}
+
+void TestAudio() {
+    Side a, b;
+    UltraRtcPeerConfig config;
+    CHECK(UltraRtc_CreatePeer(config, MakeHandler(a, b), a.peer));
+    CHECK(UltraRtc_CreatePeer(config, MakeHandler(b, a), b.peer));
+
+    // Both sides add the track before the offer: one shared m-line.
+    UltraRtcHandle trackA = UltraRtcInvalidHandle, trackB = UltraRtcInvalidHandle;
+    CHECK(UltraRtc_AddAudioTrack(a.peer, "audio", UltraRtcDirection::SendRecv, trackA));
+    CHECK(UltraRtc_AddAudioTrack(b.peer, "audio", UltraRtcDirection::SendRecv, trackB));
+    UltraRtcHandle unused = UltraRtcInvalidHandle;
+    CHECK(!UltraRtc_AddAudioTrack(a.peer, "", UltraRtcDirection::SendRecv, unused));
+    Received atA, atB;
+    CHECK(UltraRtc_SetAudioFrameCallback(trackA, Collect(atA)));
+    CHECK(UltraRtc_SetAudioFrameCallback(trackB, Collect(atB)));
+
+    CHECK(UltraRtc_SetLocalDescription(a.peer, UltraRtcSdpType::Offer));
+    const bool open = WaitFor([&]() { return a.tracksOpen > 0 && b.tracksOpen > 0; });
+    CHECK(open);
+    if (!open) return;
+    CHECK(UltraRtc_IsTrackOpen(trackA) && UltraRtc_IsTrackOpen(trackB));
+    UltraRtcSdpType type;
+    std::string sdp;
+    CHECK(UltraRtc_GetLocalDescription(a.peer, type, sdp) && sdp.find("opus/48000") != std::string::npos);
+
+    UltraRtcAudioFrame wrongRate;
+    wrongRate.sampleRate = 44100;
+    wrongRate.samples.resize(441);
+    CHECK(!UltraRtc_SendAudioFrame(trackA, wrongRate));
+
+    // A to B: a 440 Hz tone arrives as a 440 Hz tone.
+    SendTone(trackA, 440.0, 1.0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    double rms = 0, hz = 0;
+    Measure(atB, 9600, rms, hz);
+    {
+        std::lock_guard<std::mutex> lock(atB.mutex);
+        CHECK(atB.frames >= 40);
+        std::printf("audio A->B: %zu frames, rms %.0f, %.0f Hz\n", atB.frames, rms, hz);
+    }
+    CHECK(rms > 4000.0);
+    CHECK(std::fabs(hz - 440.0) < 20.0);
+
+    // B to A, a different pitch.
+    SendTone(trackB, 660.0, 0.6);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    Measure(atA, 9600, rms, hz);
+    CHECK(rms > 4000.0);
+    CHECK(std::fabs(hz - 660.0) < 20.0);
+
+    // Muted: nothing is sent.
+    CHECK(UltraRtc_SetTrackEnabled(trackA, false));
+    size_t before;
+    {
+        std::lock_guard<std::mutex> lock(atB.mutex);
+        before = atB.frames;
+    }
+    SendTone(trackA, 440.0, 0.3);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    {
+        std::lock_guard<std::mutex> lock(atB.mutex);
+        CHECK(atB.frames == before);
+    }
+    CHECK(UltraRtc_SetTrackEnabled(trackA, true));
+
+    CHECK(UltraRtc_ClosePeer(a.peer));
+    CHECK(UltraRtc_SendAudioFrame(trackA, wrongRate).code == UltraRtcResultCode::InvalidHandle);
+    CHECK(!UltraRtc_IsTrackOpen(trackA));
+    CHECK(UltraRtc_ClosePeer(b.peer));
+}
+
 } // namespace
 
 int main() {
@@ -139,6 +267,11 @@ int main() {
     CHECK(caps.available && caps.dataChannels);
     std::printf("UltraRTC engine: %s\n", caps.engine.c_str());
     TestDataChannel();
+    if (caps.audio) {
+        TestAudio();
+    } else {
+        std::printf("UltraRTCTests: no Opus in this build - audio skipped\n");
+    }
     UltraRtc_Shutdown();
     std::printf("UltraRTCTests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

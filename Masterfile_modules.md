@@ -2500,7 +2500,7 @@ UltraIM elements must comply with the following rules:
   `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`, `UltraIM_DeleteMessage`,
   `UltraIM_EditMessage`, `UltraIM_MarkRead`, `UltraIM_SetTyping`
 - `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
-  `UltraIM_EndCall`
+  `UltraIM_EndCall`, `UltraIM_SetCallMuted`
 
 **Implementation status:** Phase 1 core implemented — target `UltraIM`
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
@@ -2510,8 +2510,10 @@ forwarding call above. Provider: ChatCube Direct
 (`UltraCanvas/Plugins/UltraIM/direct/`, module `ultraim_direct`): key-pair
 identity, end-to-end encrypted messages peer to peer over UltraRTC data
 channels, the relay (`Server/ChatCubeRelay`) for rendezvous, the offline
-queue and groups, delivery and read receipts, local history. Tests in
-`Tests/UltraIM`. See `Docs/Modules/UltraIM/README.md`.
+queue and groups, delivery and read receipts, local history, and 1:1 voice
+calls (signed invite / accept / reject / hang-up over the relay, Opus over an
+UltraRTC peer per call). Tests in `Tests/UltraIM`. See
+`Docs/Modules/UltraIM/README.md`.
 
 ---
 
@@ -2543,11 +2545,19 @@ Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
 `UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
 `UltraRtc_GetDataChannelPeer`, `UltraRtc_GetDataChannelBufferedAmount`.
 
-**Planned (Phase 2–3):** audio and video tracks, device tracks, playback,
+**Phase 2 — audio:** `UltraRtc_AddAudioTrack`, `UltraRtc_SendAudioFrame`,
+`UltraRtc_SetAudioFrameCallback`, `UltraRtc_SetTrackEnabled`,
+`UltraRtc_IsTrackOpen`, `UltraRtc_StartMicrophone` / `UltraRtc_StopMicrophone`,
+`UltraRtc_StartPlayback` / `UltraRtc_StopPlayback`.
+
+**Planned (Phase 3):** video tracks, camera capture,
 `UltraCanvasVideoTile` / `UltraCanvasCallView` elements.
 
-**Implementation status:** Phase 1 implemented — target `UltraRTC`
+**Implementation status:** Phases 1 and 2 implemented — target `UltraRTC`
 (`UltraCanvas/{include,core}/UltraRTC/`, umbrella `<UltraRTC/UltraRTC.h>`):
 peers, ICE configuration, events through an injectable dispatcher, data
-channels with text and binary messages. Tests in `Tests/UltraRTC`. See
-`Docs/Modules/UltraRTC/README.md`.
+channels with text and binary messages; Opus audio tracks (48 kHz mono,
+in-band FEC, loss concealment) with the microphone and speaker through
+`UltraCanvasAudioRecorder` (live mode) and `UltraCanvasAudioPlayer` (push
+sink). Opus needs libopus (pkg-config `opus`); without it `caps.audio` is
+false. Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.

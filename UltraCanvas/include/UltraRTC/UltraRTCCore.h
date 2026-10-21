@@ -66,3 +66,29 @@ UltraRtcDataChannelState UltraRtc_GetDataChannelState(UltraRtcHandle channel);
 std::string    UltraRtc_GetDataChannelLabel(UltraRtcHandle channel);
 UltraRtcHandle UltraRtc_GetDataChannelPeer(UltraRtcHandle channel);
 size_t         UltraRtc_GetDataChannelBufferedAmount(UltraRtcHandle channel);
+
+// ---- Audio -------------------------------------------------------------------
+// An Opus audio track (48 kHz, mono, in-band FEC). Add it on both sides,
+// with the same mid, before the offer / before applying the remote offer:
+// the two then share one send-and-receive m-line. A track the other side
+// adds that we did not arrives as a Track event.
+UltraRtcResult UltraRtc_AddAudioTrack(UltraRtcHandle peer, const std::string& mid,
+                                      UltraRtcDirection direction, UltraRtcHandle& outTrack);
+// Encodes and sends PCM (48 kHz; stereo is mixed down). For a test or an
+// application that captures audio itself; UltraRtc_StartMicrophone does it
+// from a device.
+UltraRtcResult UltraRtc_SendAudioFrame(UltraRtcHandle track, const UltraRtcAudioFrame& frame);
+// Decoded received audio, 20 ms at a time, on a media thread (lost packets
+// are concealed). Replaces any earlier callback; nullptr removes it.
+UltraRtcResult UltraRtc_SetAudioFrameCallback(UltraRtcHandle track, UltraRtcAudioFrameCallback onFrame);
+// Mute: a disabled track sends nothing (the other side conceals silence).
+UltraRtcResult UltraRtc_SetTrackEnabled(UltraRtcHandle track, bool enabled);
+bool           UltraRtc_IsTrackOpen(UltraRtcHandle track);
+
+// Device audio: the microphone feeds the track, received audio plays on the
+// output device. deviceId "" = the system default. Stopped by the Stop
+// calls or when the peer closes.
+UltraRtcResult UltraRtc_StartMicrophone(UltraRtcHandle track, const std::string& deviceId = std::string());
+UltraRtcResult UltraRtc_StopMicrophone(UltraRtcHandle track);
+UltraRtcResult UltraRtc_StartPlayback(UltraRtcHandle track, const std::string& deviceId = std::string());
+UltraRtcResult UltraRtc_StopPlayback(UltraRtcHandle track);
