@@ -264,6 +264,9 @@ if(ANDROID)
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
+    # APPLE) and asks pkg-config for X11.
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
     # libvips is not in this list: it is part of UltraCanvas on Android as on
     # every platform, built into the sysroot with the rest of the stack
