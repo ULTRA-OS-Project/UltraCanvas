@@ -62,7 +62,7 @@ public:
     bool AddMessage(const UltraIMMessage& message);
     bool UpdateStatus(const std::string& conversationId, const std::string& clientId,
                       UltraIMDeliveryStatus status);
-    bool GetMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& out);
+    bool FindMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& out);
     // Oldest first; beforeClientId "" = the newest page.
     std::vector<UltraIMMessage> Messages(const std::string& conversationId,
                                          const std::string& beforeClientId, int limit);

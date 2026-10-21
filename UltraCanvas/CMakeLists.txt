@@ -4489,6 +4489,18 @@ endif()
 if(TARGET UltraDatabase)
     list(APPEND _uc_export_targets UltraDatabase)
 endif()
+# UltraIM and UltraRTC, the messaging modules: their homes as for the others;
+# on a static core their archives go along.
+foreach(_uc_module_pair "UltraIM;uc-im" "UltraRTC;uc-rtc")
+    list(GET _uc_module_pair 0 _uc_home)
+    list(GET _uc_module_pair 1 _uc_archive)
+    if(TARGET ${_uc_home})
+        list(APPEND _uc_export_targets ${_uc_home})
+        if(NOT ULTRACANVAS_BUILD_SHARED)
+            list(APPEND _uc_export_targets ${_uc_archive})
+        endif()
+    endif()
+endforeach()
 # UltraNet: exportable only on a system libcurl, which CMake re-finds as
 # CURL::libcurl. The vendored libcurl (ULTRACANVAS_USE_VENDORED_CURL, built by
 # cmake/VendoredCurl.cmake) is an EXCLUDE_FROM_ALL sub-build with no
@@ -4514,6 +4526,15 @@ if(TARGET UltraNet)
         set(_uc_package_blocked
             "a static libUltraCanvas names UltraNet in its link interface, and this UltraNet links the vendored libcurl, which has no installable package - build with ULTRACANVAS_BUILD_SHARED=ON, or against a system libcurl with WebSocket support")
     endif()
+endif()
+
+# UltraRTC, likewise: its engine is the vendored libdatachannel (with libjuice,
+# usrsctp and libsrtp), a sub-build with no installable package of ours. A
+# shared core folds it in; a static core names it, and then there is no
+# package to install. (Without OpenSSL UltraRTC is the stub, and exports.)
+if(NOT _uc_package_blocked AND NOT ULTRACANVAS_BUILD_SHARED AND _ultrartc_engine)
+    set(_uc_package_blocked
+        "a static libUltraCanvas names UltraRTC in its link interface, and UltraRTC's engine is the vendored libdatachannel, which has no installable package - build with ULTRACANVAS_BUILD_SHARED=ON")
 endif()
 
 if(_uc_package_blocked)

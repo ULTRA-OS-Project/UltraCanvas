@@ -126,7 +126,7 @@ void TestStore() {
     CHECK(!store.UpdateStatus("bob", "m1", UltraIMDeliveryStatus::Sent));     // never downgraded
     CHECK(!store.UpdateStatus("bob", "m1", UltraIMDeliveryStatus::Failed));   // a delivered message cannot fail
     UltraIMMessage back;
-    CHECK(store.GetMessage("bob", "m1", back) && back.deliveryStatus == UltraIMDeliveryStatus::Read);
+    CHECK(store.FindMessage("bob", "m1", back) && back.deliveryStatus == UltraIMDeliveryStatus::Read);
 
     for (int i = 2; i <= 5; ++i) {
         UltraIMMessage n = m;
