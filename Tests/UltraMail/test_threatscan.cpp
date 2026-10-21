@@ -6,6 +6,8 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.8.0 - loan and credit offers (loan-offer-fraud): two real letters,
+//                  a proven bank, an ordinary mention of a loan
 // Version: 0.7.0 - romance scams (the letters of one reader's inbox), the
 //                  "abandoned baggage" advance-fee letter, answers asked for at
 //                  another address, cryptocurrency
@@ -371,6 +373,106 @@ TEST(a_large_number_without_the_story_is_not_advance_fee) {
     story.fromAddr = "aunt@example.test";
     story.body     = "Grandpa passed away last week; the funeral is on Friday.";
     REQUIRE(!HasFinding(ScanMessage(story), "advance-fee-fraud"));
+}
+
+// ---------------------------------------------------------------------------
+// Loan and credit offers
+// ---------------------------------------------------------------------------
+TEST(a_loan_facility_from_a_free_mailbox_is_a_scam) {
+    // As it arrived: From a gmail.com address it was not sent through (the
+    // signature is the relay's), Reply-To elsewhere, quoted-printable HTML.
+    const std::string raw =
+        "Authentication-Results: mail.riscoscloverleaf.com;\r\n"
+        "\tdkim=pass (2048-bit key; unprotected) header.d=highlet.in header.i=@highlet.in\r\n"
+        "Reply-To: admin@yourmindcoach.in\r\n"
+        "From: Hyun Lee<hyun.lee@gmail.com>\r\n"
+        "To: info@ultraos.eu\r\n"
+        "Subject: Re: Credit Loan Facility\r\n"
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Transfer-Encoding: quoted-printable\r\n\r\n"
+        "<html><body style=3D\"margin: 0.4em;\">Compliments,<br><br>My grou=\r\n"
+        "p renders financial services and loan facilities at a very reasonable rate =\r\n"
+        "of 3% yearly repayment, please get back to me for more information if you a=\r\n"
+        "re interested.<br><br>We currently have USD/EURO 10M &#8211; 500M available=\r\n"
+        "=2E<br><br>Kind Regards<br>Hyun W. Lee</body></html>\r\n";
+    const ThreatReport r = ScanRawMessage(raw);
+    REQUIRE(r.Has("loan-offer-fraud"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(a_loan_funding_offer_for_your_project_is_a_scam) {
+    const std::string raw =
+        "Reply-To: fccccorp@fcgroups.com\r\n"
+        "From: Leonard Bernstein <info@investing.com>\r\n"
+        "To: info@riscoscloverleaf.com\r\n"
+        "Subject: LOAN FUNDING / FINANCING OFFER  ( Ranges from $ 5 Million USD to $10 "
+        "Billion USD and above) for your project\r\n"
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: text/html; charset=\"iso-8859-1\"\r\n"
+        "Content-Transfer-Encoding: quoted-printable\r\n\r\n"
+        "<HTML><body><P>Attn: Sir/Madam,</P>\r\n"
+        "<P>I am contacting you with a keen interest to consider a possible collabor=\r\n"
+        "ation through investments in viable projects in your country.</P>\r\n"
+        "<P>He is ready to invest in project deve=\r\n"
+        "lopments and business ventures that can generate at least 3% Annual Return =\r\n"
+        "on Investment (ROI).</P>\r\n"
+        "<P>He will be willing to go on an Investment/Loan Funding Program with you =\r\n"
+        "in any viable project initiative within your scope of funding.</P></BODY></HTML>\r\n";
+    const ThreatReport r = ScanRawMessage(raw);
+    REQUIRE(r.Has("loan-offer-fraud"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(a_bare_loan_offer_from_a_stranger_is_suspicious) {
+    ScanInput in;
+    in.fromAddr = "finance.desk@mailbox.example";
+    in.subject  = "Do you need a loan?";
+    in.body     = "We offer loans to individuals and companies. Contact us today.";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("loan-offer-fraud"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+}
+
+TEST(a_proven_bank_may_offer_credit) {
+    ScanInput in;
+    in.fromAddr    = "offers@chase.com";
+    in.authResults = "mx.example; dmarc=pass header.from=chase.com; dkim=pass header.d=chase.com";
+    in.subject     = "Your personal loan offer";
+    in.body        = "You are pre-approved for a personal loan at 6.9% APR.";
+    REQUIRE(!ScanMessage(in).Has("loan-offer-fraud"));
+}
+
+TEST(a_bank_name_without_proof_is_not_a_bank) {
+    ScanInput in;
+    in.fromAddr = "offers@chase.com";   // no Authentication-Results: anyone could write this
+    in.subject  = "Your personal loan offer";
+    in.body     = "You are pre-approved for a personal loan at 6.9% APR.";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("loan-offer-fraud"));
+    REQUIRE(r.level == ThreatLevel::Suspicious);   // a second look, not a verdict
+}
+
+TEST(talk_of_a_loan_is_not_an_offer) {
+    ScanInput in;
+    in.fromAddr = "friend@example.test";
+    in.body     = "Thanks for the loan of your drill - I'll bring it back on Sunday. The "
+                  "mortgage repayment went through, so we can book the holiday.";
+    REQUIRE(!ScanMessage(in).Has("loan-offer-fraud"));
+    ScanInput chat;
+    chat.fromAddr = "friend@example.test";
+    chat.body     = "Can I borrow your car on Friday? The bank finally approved our mortgage.";
+    REQUIRE(!ScanMessage(chat).Has("loan-offer-fraud"));
+}
+
+TEST(a_proven_senders_newsletter_about_loans_is_left_alone) {
+    ScanInput in;
+    in.fromAddr        = "news@lender.example";
+    in.authResults     = "mx.example; dmarc=pass header.from=lender.example";
+    in.listUnsubscribe = "<https://lender.example/unsubscribe>";
+    in.subject         = "Business loans at 4.5% interest";
+    in.body            = "Our business loan rates have changed.";
+    REQUIRE(!ScanMessage(in).Has("loan-offer-fraud"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1241,7 +1343,8 @@ TEST(every_finding_belongs_to_a_switch) {
                               "link-brand-mismatch", "link-brand-lookalike",
                               "link-domain-lookalike",
                               "insecure-login-link", "many-foreign-domains",
-                              "credential-request", "advance-fee-fraud", "reply-to-mismatch",
+                              "credential-request", "advance-fee-fraud", "loan-offer-fraud",
+                              "reply-to-mismatch",
                               "reply-elsewhere", "attachment-disguised-executable",
                               "attachment-executable", "attachment-double-extension",
                               "romance-scam", "government-impersonation", "crypto-content",

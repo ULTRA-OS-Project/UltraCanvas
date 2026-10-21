@@ -257,6 +257,7 @@ cascade. The rules, with their weights:
 | `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
 | `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
 | `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
+| `loan-offer-fraud` | 50 / 30 / 25 | A loan, credit or project funding offered ("loan facilities", "LOAN FUNDING / FINANCING OFFER", "fund viable projects") by anyone but a bank whose own domain is proven (a registry bank with DKIM/DMARC passing): 50 with a rate, a repayment, a return or a sum ("3% yearly repayment", "USD/EURO 10M - 500M"), 30 for the bare offer; 25 when the sender proved its own (not free-mailbox) domain, or writes from a registry bank's domain nothing proved, and names terms; nothing for a proven domain's bulk mail |
 | `crypto-payment-demand` | 40 | A crypto wallet address in the text (Bitcoin `bc1…`/`1…`/`3…`, Ethereum `0x…`, TRON `T…`) — blackmail and fake invoices; not from a proven exchange, not a token inside a link |
 | `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
@@ -402,7 +403,7 @@ from a domain of its own. Where the brand table already reported the claim
 |---|---|
 | Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
 | Romance scams | `romance-scam` |
-| Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Advance-fee letters | `advance-fee-fraud`, `loan-offer-fraud`, `reply-elsewhere` |
 | Letters in an agency's name | `government-impersonation` |
 | Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
 | Any mail about cryptocurrency | `crypto-content` (the caution strip) |

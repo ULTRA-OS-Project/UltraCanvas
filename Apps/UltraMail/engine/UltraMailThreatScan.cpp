@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.10.0 - loan-offer-fraud: a loan, credit or project funding offered
+//                   by anyone but a proven bank; LargeMoneySum reads "USD/EURO 10M"
 // Version: 0.9.0 - SenderLists: trusted senders keep only the findings that catch a
 //                  lie or a forgery; blocked senders get blocked-sender
 // Version: 0.8.0 - link-domain-lookalike: link targets dressed up as a brand's;
@@ -245,15 +247,68 @@ const std::vector<std::string>& AdvanceFeeStoryPhrases() {
     return v;
 }
 
+// ---------------------------------------------------------------------------
+// Loan and credit offers
+// ---------------------------------------------------------------------------
+// "My group renders loan facilities at 3% yearly", "LOAN FUNDING / FINANCING
+// OFFER from $5 Million to $10 Billion", "an investor ready to fund viable
+// projects at 3% ROI". A bank does not write to strangers offering millions;
+// the "lender" asks for a processing fee, an insurance or a transfer charge
+// first - and the loan never comes. Matched as words over subject and text.
+const std::vector<std::string>& LoanOfferPhrases() {
+    static const std::vector<std::string> v = {
+        "loan facility", "loan facilities", "loan offer", "loan offers", "loan funding",
+        "loan program", "loan programme", "loan programs", "loan services",
+        "loan service", "loan lender", "loan lenders", "loan company", "loan firm",
+        "credit facility", "credit facilities", "credit loan", "credit loans",
+        "credit offer", "financing offer", "funding offer", "finance offer",
+        "financial offer", "business loan", "business loans", "personal loan",
+        "personal loans", "private loan", "private loans", "private lender",
+        "private lenders", "quick loan", "instant loan", "urgent loan", "fast loan",
+        "easy loan", "cheap loan", "offer loans",
+        "offers loans", "offering loans", "give out loans", "grant loans",
+        "need a loan", "need financing", "need funding", "need a credit",
+        "financial services and loan", "investment/loan", "loan/investment",
+        "fund your project", "fund your business", "finance your project",
+        "funding for your project", "funding for your business", "project funding",
+        "project financing", "project finance", "debt financing", "equity financing",
+        "viable project", "viable projects", "viable business",
+        "kreditangebot", "kredit angebot", "privatkredit", "darlehen",
+        "finanzierungsangebot", "offre de pr\xC3\xAAt", "pr\xC3\xAAt entre particuliers",
+        "pr\xC3\xA9stamo",
+    };
+    return v;
+}
+
+// What the offer promises: a rate, a repayment, a return, no checks.
+const std::vector<std::string>& LoanTermsPhrases() {
+    static const std::vector<std::string> v = {
+        "interest rate", "low interest", "low rate", "reasonable rate", "affordable rate",
+        "fixed rate", "per annum", "p.a.", "repayment", "repay", "return on investment",
+        "roi", "annual return", "collateral", "no collateral", "guarantor", "no credit check",
+        "bad credit", "poor credit", "tenure", "loan term", "duration of the loan",
+        "zinssatz", "zinsen", "tilgung", "taux d'int\xC3\xA9r\xC3\xAAt",
+    };
+    return v;
+}
+
+// A rate as these letters quote it: "3% yearly", "2% interest", "3% annual".
+std::string LoanRate(const std::string& textLower) {
+    static const std::regex rate(
+        R"(\d+(?:[.,]\d+)?\s?%\s?(?:yearly|per year|a year|annual\w*|per annum|p\.a\.|interest|apr|rate|repayment|return|roi|j\xC3\xA4hrlich|zins\w*))");
+    std::smatch m;
+    return std::regex_search(textLower, m, rate) ? m.str() : std::string();
+}
+
 // A sum in the millions, as the scam writes it: "$12,500,000", "US$ 4.5
-// million", "10.5 million united states dollars", "USD 7,000,000". Returns the
+// million", "10.5 million united states dollars", "USD 7,000,000", "USD/EURO 10M". Returns the
 // phrase as found (for the reason), or "" when there is none.
 std::string LargeMoneySum(const std::string& textLower) {
     static const std::regex digits(
         R"((?:us\s?\$|\$|usd|eur|euro|€|£|gbp)\s?\d{1,3}(?:[,.' ]\d{3}){2,}(?:\.\d+)?)"
         R"(|\d{1,3}(?:[,.' ]\d{3}){2,}(?:\.\d+)?\s?(?:us\s?dollars|usd|dollars|euros?|pounds|\$|€))");
     static const std::regex words(
-        R"((?:(?:us\s?\$|\$|usd|eur|€|£)\s?)?\d+(?:[.,]\d+)?\s?(?:million|billion|m\b|mio)\s?)"
+        R"((?:(?:us\s?\$|\$|usd|euros?|eur|€|£)(?:\s?/\s?(?:usd|euros?|eur))?\s?)?\d+(?:[.,]\d+)?\s?(?:million|billion|m\b|mio)\s?)"
         R"((?:(?:united states |us |u\.s\. |american )?dollars|usd|euros?|pounds|\(?\s?(?:us\s?\$|usd)\)?)?)");
     std::smatch m;
     if (std::regex_search(textLower, m, digits)) return m.str();
@@ -758,7 +813,8 @@ bool ThreatReport::Has(const std::string& code) const {
 bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
     if (code == "romance-scam")             return o.romance;
     if (code == "government-impersonation") return o.government;
-    if (code == "advance-fee-fraud" || code == "reply-elsewhere") return o.advanceFee;
+    if (code == "advance-fee-fraud" || code == "loan-offer-fraud" ||
+        code == "reply-elsewhere") return o.advanceFee;
     if (code == "crypto-content")           return o.cryptoCaution;
     if (code.compare(0, 7, "crypto-") == 0) return o.cryptoScams;
     if (code.compare(0, 11, "attachment-") == 0) return o.attachments;
@@ -1304,6 +1360,50 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 // Money plus one ingredient is worth a second look; money plus
                 // two (an estate *and* a fee, say) is the scam itself.
                 Add(report, parts >= 2 ? 50 : 25, "advance-fee-fraud", why);
+            }
+        }
+    }
+
+    // ---- Loan and credit offers ---------------------------------------------
+    // A loan, a credit line or "funding for your project" offered out of the
+    // blue: unless a bank proved it wrote the mail, it is advance-fee fraud
+    // dressed as a lender. With a rate, a repayment or a sum named it is the
+    // scam itself; the bare offer from an unproven sender is worth a second
+    // look. A sender that proved its own domain (a lender's newsletter, a
+    // colleague) is only asked a second look, and its bulk mail not at all;
+    // so is a bank's own address that nothing proved (the server may not
+    // have checked).
+    {
+        const std::string offerText = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
+        const bool bankDomain = senderBrand && senderBrand->category == BrandCategory::Banking;
+        const bool provenBank = verifiedBrand && bankDomain;
+        const bool freeSender = IsPersonalMailboxDomain(senderDomain);
+        const bool ownDomain = (authenticated && !freeSender) || bankDomain;
+        const std::string* offer = FirstWordPhraseIn(offerText, LoanOfferPhrases());
+        if (offer && !provenBank && !IsGovernmentDomain(senderDomain) &&
+            !(report.bulk && ownDomain)) {
+            std::string terms = LoanRate(offerText);
+            if (terms.empty())
+                if (const std::string* t = FirstWordPhraseIn(offerText, LoanTermsPhrases())) terms = *t;
+            const std::string sum = LargeMoneySum(offerText);
+            const std::string* fee = FirstPhraseIn(offerText, FeePhrases());
+            const bool specific = !terms.empty() || !sum.empty();
+            const int weight = ownDomain ? (specific ? 25 : 0) : (specific ? 50 : 30);
+            if (weight > 0) {
+                std::string why = "The message offers a loan, credit or funding (\"" + *offer + "\")";
+                std::vector<std::string> extras;
+                if (!sum.empty())   extras.push_back("a large sum (\"" + sum + "\")");
+                if (!terms.empty()) extras.push_back("its terms (\"" + terms + "\")");
+                if (fee)            extras.push_back("a fee (\"" + *fee + "\")");
+                for (std::size_t i = 0; i < extras.size(); ++i)
+                    why += (i == 0 ? " and names " : (i + 1 == extras.size() ? " and " : ", ")) + extras[i];
+                why += ", but it was not sent by a bank";
+                if (freeSender) why += " - it came from a free mailbox (" + senderDomain + ")";
+                else if (!senderDomain.empty()) why += " (" + senderDomain + ")";
+                why += ". Banks do not offer loans to strangers by email; the \"lender\" asks "
+                       "for a processing fee, an insurance or a transfer charge first, and the "
+                       "loan never comes.";
+                Add(report, weight, "loan-offer-fraud", why);
             }
         }
     }

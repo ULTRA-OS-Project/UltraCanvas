@@ -1041,7 +1041,7 @@ namespace {
               "A romance scam - a love letter from a stranger",
               &ThreatScanOptions::romance },
             { "um-set-warn-advance-fee",
-              "An advance-fee letter - millions waiting for a small fee",
+              "An advance-fee letter - millions waiting for a small fee, a loan offered by a stranger",
               &ThreatScanOptions::advanceFee },
             { "um-set-warn-government",
               "A letter in the name of the FBI, Interpol, the IMF ...",
