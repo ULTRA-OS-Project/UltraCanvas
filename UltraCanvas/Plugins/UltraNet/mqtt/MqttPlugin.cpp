@@ -7,12 +7,16 @@
 // time when paho-mqtt-c isn't available (libpaho-mqtt-dev on Debian
 // derivatives, paho-mqtt-c on brew, mingw-w64-x86_64-libpaho-mqtt on
 // MSYS2).
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
@@ -206,135 +210,145 @@ public:
         return {"mqtt", "mqtts"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions.clear();
+        ultranet_plugin::GuardedVoid([&]() {
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            g_sessions.clear();
+        });
     }
 
     UltraNetHandle Connect(const std::string& url,
                            const UltraNetMessagingOptions& options) override {
-        std::string serverUri, urlUser, urlPass;
-        if (!BuildServerUri(url, serverUri, urlUser, urlPass)) {
-            return UltraNetInvalidHandle;
-        }
-        const std::string clientId = options.clientId.empty()
-                                         ? GenerateClientId()
-                                         : options.clientId;
-
-        auto s = std::make_shared<Session>();
-        s->serverUri = serverUri;
-        s->qos       = options.qos;
-
-        const int rc = MQTTAsync_create(
-            &s->client, serverUri.c_str(), clientId.c_str(),
-            MQTTCLIENT_PERSISTENCE_NONE, nullptr);
-        if (rc != MQTTASYNC_SUCCESS) return UltraNetInvalidHandle;
-
-        MQTTAsync_setCallbacks(s->client, s.get(),
-                               /*connlost*/ nullptr,
-                               &OnMessageArrived,
-                               /*delivered*/ nullptr);
-
-        MQTTAsync_connectOptions copts = MQTTAsync_connectOptions_initializer;
-        copts.keepAliveInterval  = options.keepAliveSeconds > 0
-                                       ? options.keepAliveSeconds : 60;
-        copts.cleansession       = options.cleanSession ? 1 : 0;
-        copts.connectTimeout     = options.connectTimeoutMs > 0
-                                       ? options.connectTimeoutMs / 1000
-                                       : 10;
-        copts.context            = s.get();
-        copts.onSuccess          = &OnConnectSuccess;
-        copts.onFailure          = &OnConnectFailure;
-
-        // Credentials precedence: explicit options first, URL userinfo second.
-        const std::string user = !options.credentials.username.empty()
-                                     ? options.credentials.username : urlUser;
-        const std::string pass = !options.credentials.password.empty()
-                                     ? options.credentials.password : urlPass;
-        if (!user.empty()) copts.username = user.c_str();
-        if (!pass.empty()) copts.password = pass.c_str();
-
-        MQTTAsync_SSLOptions sslOpts = MQTTAsync_SSLOptions_initializer;
-        if (options.useTls || serverUri.rfind("ssl://", 0) == 0) {
-            copts.ssl = &sslOpts;
-        }
-
-        if (MQTTAsync_connect(s->client, &copts) != MQTTASYNC_SUCCESS) {
-            return UltraNetInvalidHandle;
-        }
-        // Block until the success/failure callback fires.
-        {
-            std::unique_lock<std::mutex> lk(s->connectMutex);
-            const auto wait = std::chrono::milliseconds(
-                options.connectTimeoutMs > 0 ? options.connectTimeoutMs : 10000);
-            if (!s->connectCv.wait_for(lk, wait, [&] { return s->connectDone; })) {
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            std::string serverUri, urlUser, urlPass;
+            if (!BuildServerUri(url, serverUri, urlUser, urlPass)) {
                 return UltraNetInvalidHandle;
             }
-            if (s->connectResult != 0) return UltraNetInvalidHandle;
-        }
+            const std::string clientId = options.clientId.empty()
+                                             ? GenerateClientId()
+                                             : options.clientId;
 
-        const UltraNetHandle h =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        s->handle = h;
-        {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions[h] = s;
-        }
-        return h;
+            auto s = std::make_shared<Session>();
+            s->serverUri = serverUri;
+            s->qos       = options.qos;
+
+            const int rc = MQTTAsync_create(
+                &s->client, serverUri.c_str(), clientId.c_str(),
+                MQTTCLIENT_PERSISTENCE_NONE, nullptr);
+            if (rc != MQTTASYNC_SUCCESS) return UltraNetInvalidHandle;
+
+            MQTTAsync_setCallbacks(s->client, s.get(),
+                                   /*connlost*/ nullptr,
+                                   &OnMessageArrived,
+                                   /*delivered*/ nullptr);
+
+            MQTTAsync_connectOptions copts = MQTTAsync_connectOptions_initializer;
+            copts.keepAliveInterval  = options.keepAliveSeconds > 0
+                                           ? options.keepAliveSeconds : 60;
+            copts.cleansession       = options.cleanSession ? 1 : 0;
+            copts.connectTimeout     = options.connectTimeoutMs > 0
+                                           ? options.connectTimeoutMs / 1000
+                                           : 10;
+            copts.context            = s.get();
+            copts.onSuccess          = &OnConnectSuccess;
+            copts.onFailure          = &OnConnectFailure;
+
+            // Credentials precedence: explicit options first, URL userinfo second.
+            const std::string user = !options.credentials.username.empty()
+                                         ? options.credentials.username : urlUser;
+            const std::string pass = !options.credentials.password.empty()
+                                         ? options.credentials.password : urlPass;
+            if (!user.empty()) copts.username = user.c_str();
+            if (!pass.empty()) copts.password = pass.c_str();
+
+            MQTTAsync_SSLOptions sslOpts = MQTTAsync_SSLOptions_initializer;
+            if (options.useTls || serverUri.rfind("ssl://", 0) == 0) {
+                copts.ssl = &sslOpts;
+            }
+
+            if (MQTTAsync_connect(s->client, &copts) != MQTTASYNC_SUCCESS) {
+                return UltraNetInvalidHandle;
+            }
+            // Block until the success/failure callback fires.
+            {
+                std::unique_lock<std::mutex> lk(s->connectMutex);
+                const auto wait = std::chrono::milliseconds(
+                    options.connectTimeoutMs > 0 ? options.connectTimeoutMs : 10000);
+                if (!s->connectCv.wait_for(lk, wait, [&] { return s->connectDone; })) {
+                    return UltraNetInvalidHandle;
+                }
+                if (s->connectResult != 0) return UltraNetInvalidHandle;
+            }
+
+            const UltraNetHandle h =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            s->handle = h;
+            {
+                std::lock_guard<std::mutex> lk(g_sessionsMutex);
+                g_sessions[h] = s;
+            }
+            return h;
+        });
     }
 
     UltraNetResult Publish(UltraNetHandle handle,
                            const std::string& topic,
                            const std::vector<uint8_t>& payload) override {
-        auto s = Find(handle);
-        if (!s) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                         "no such MQTT session");
-        }
-        MQTTAsync_message msg = MQTTAsync_message_initializer;
-        msg.payload    = const_cast<void*>(static_cast<const void*>(payload.data()));
-        msg.payloadlen = static_cast<int>(payload.size());
-        msg.qos        = s->qos;
-        msg.retained   = 0;
+        return ultranet_plugin::Guarded("Publish", [&]() -> UltraNetResult {
+            auto s = Find(handle);
+            if (!s) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                             "no such MQTT session");
+            }
+            MQTTAsync_message msg = MQTTAsync_message_initializer;
+            msg.payload    = const_cast<void*>(static_cast<const void*>(payload.data()));
+            msg.payloadlen = static_cast<int>(payload.size());
+            msg.qos        = s->qos;
+            msg.retained   = 0;
 
-        MQTTAsync_responseOptions ropts = MQTTAsync_responseOptions_initializer;
-        const int rc = MQTTAsync_sendMessage(s->client, topic.c_str(),
-                                             &msg, &ropts);
-        if (rc != MQTTASYNC_SUCCESS) {
-            return UltraNetResult::Error(UltraNetResultCode::SendFailed,
-                                         "MQTTAsync_sendMessage failed");
-        }
-        return UltraNetResult::Ok();
+            MQTTAsync_responseOptions ropts = MQTTAsync_responseOptions_initializer;
+            const int rc = MQTTAsync_sendMessage(s->client, topic.c_str(),
+                                                 &msg, &ropts);
+            if (rc != MQTTASYNC_SUCCESS) {
+                return UltraNetResult::Error(UltraNetResultCode::SendFailed,
+                                             "MQTTAsync_sendMessage failed");
+            }
+            return UltraNetResult::Ok();
+        });
     }
 
     UltraNetResult Subscribe(UltraNetHandle handle,
                              const std::string& topic,
                              MessageHandler onMessage) override {
-        auto s = Find(handle);
-        if (!s) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                         "no such MQTT session");
-        }
-        if (!onMessage) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                         "onMessage callback is required");
-        }
-        {
-            std::lock_guard<std::mutex> lk(s->handlersMutex);
-            s->handlers[topic] = std::move(onMessage);
-        }
-        MQTTAsync_responseOptions ropts = MQTTAsync_responseOptions_initializer;
-        const int rc = MQTTAsync_subscribe(s->client, topic.c_str(),
-                                           s->qos, &ropts);
-        if (rc != MQTTASYNC_SUCCESS) {
-            std::lock_guard<std::mutex> lk(s->handlersMutex);
-            s->handlers.erase(topic);
-            return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                         "MQTTAsync_subscribe failed");
-        }
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Subscribe", [&]() -> UltraNetResult {
+            auto s = Find(handle);
+            if (!s) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                             "no such MQTT session");
+            }
+            if (!onMessage) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                             "onMessage callback is required");
+            }
+            {
+                std::lock_guard<std::mutex> lk(s->handlersMutex);
+                s->handlers[topic] = std::move(onMessage);
+            }
+            MQTTAsync_responseOptions ropts = MQTTAsync_responseOptions_initializer;
+            const int rc = MQTTAsync_subscribe(s->client, topic.c_str(),
+                                               s->qos, &ropts);
+            if (rc != MQTTASYNC_SUCCESS) {
+                std::lock_guard<std::mutex> lk(s->handlersMutex);
+                s->handlers.erase(topic);
+                return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                             "MQTTAsync_subscribe failed");
+            }
+            return UltraNetResult::Ok();
+        });
     }
 };
 

@@ -1,13 +1,16 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
+// Version: 1.10.0 - a held key is one press, its repeats, and one release: detectable
+//                   auto-repeat, and the fake releases dropped where the server lacks it
 // Version: 1.9.0 - Property events of a clipboard copy sent in pieces go to the clipboard
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxAccessibility.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLinuxClipboard.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasEmojiSettings.h"
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
@@ -20,6 +23,7 @@
 #include <clocale>  // For setlocale
 #include <fontconfig/fontconfig.h>
 #include "UltraCanvasDebug.h"
+#include <X11/XKBlib.h>   // XkbSetDetectableAutoRepeat
 
 namespace UltraCanvas {
     UltraCanvasLinuxApplication* UltraCanvasLinuxApplication::instance = nullptr;
@@ -146,6 +150,13 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvas: Cannot connect to X server" << std::endl;
             return false;
         }
+
+        // A held key: one KeyPress per repeat and one KeyRelease when it is
+        // let go, as on Windows and macOS. X11's default sends a release
+        // before every repeat, so a key-up handler ran once per repeat.
+        Bool autoRepeatSupported = False;
+        XkbSetDetectableAutoRepeat(display, True, &autoRepeatSupported);
+        detectableAutoRepeat = autoRepeatSupported == True;
 
         // Get display information
         screen = DefaultScreen(display);
@@ -380,7 +391,18 @@ namespace UltraCanvas {
 
 // ===== EVENT PROCESSING =====
 
+    bool UltraCanvasLinuxApplication::IsAutoRepeatRelease(const XEvent& xEvent) {
+        if (detectableAutoRepeat) return false;
+        if (XEventsQueued(display, QueuedAfterReading) == 0) return false;
+        XEvent next;
+        XPeekEvent(display, &next);
+        return next.type == KeyPress && next.xkey.window == xEvent.xkey.window &&
+               next.xkey.keycode == xEvent.xkey.keycode && next.xkey.time == xEvent.xkey.time;
+    }
+
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {
+        // The release half of an auto-repeat is no release at all.
+        if (xEvent.type == KeyRelease && IsAutoRepeatRelease(xEvent)) return;
         // Find the window that owns this event
         if (xEvent.type == SelectionRequest || xEvent.type == SelectionNotify || xEvent.type == SelectionClear) {
             // An active XDnD source drag owns XdndSelection: it answers the
@@ -1071,6 +1093,9 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
             }
         }
+        // The emoji font the emoji setting picks (UOS-Settings), and the rule
+        // that draws emoji in it.
+        ApplyEmojiSettings();
         // Materialise the FontSet so FcMatch (and therefore Pango) can
         // actually find the just-added app fonts. No-op on a system-loaded
         // config; required on a FcConfigCreate'd fallback one.

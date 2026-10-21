@@ -8,7 +8,9 @@
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
+#include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace UltraCanvas {
 
@@ -72,6 +74,12 @@ namespace UltraCanvas {
 // BAR CHART ELEMENT
 // =============================================================================
 
+    // Which way the bars run. Vertical: categories along the bottom, values
+    // up the left. Horizontal: one row per category, its name on the left,
+    // values along the bottom - the form for "power by device" or any list
+    // of named amounts whose names are longer than a bar is wide.
+    enum class BarChartOrientation { Vertical, Horizontal };
+
     class UltraCanvasBarChartElement : public UltraCanvasChartElementBase {
     private:
         // Bar-specific properties
@@ -79,10 +87,17 @@ namespace UltraCanvas {
         Color barBorderColor = Color(0, 51, 102, 255);
         float barBorderWidth = 1.0f;
         float barSpacing = 0.1f; // 10% of bar width
+        BarChartOrientation orientation = BarChartOrientation::Vertical;
+        bool hasValueRange = false;
+        double valueRangeMin = 0.0;
+        double valueRangeMax = 0.0;
 
     public:
         UltraCanvasBarChartElement(const std::string &id, int x, int y, int width, int height)
                 : UltraCanvasChartElementBase(id, x, y, width, height) {
+            // Bars carry no value labels unless asked (SetShowValueLabels):
+            // a long series would bury itself in them.
+            showValueLabels = false;
         }
 
 //    ChartType GetChartType() const override {
@@ -110,14 +125,63 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
+        void SetOrientation(BarChartOrientation newOrientation) {
+            orientation = newOrientation;
+            InvalidateCache();
+            RequestRedraw();
+        }
+        BarChartOrientation GetOrientation() const { return orientation; }
+
+        // A fixed value axis, from min to max, instead of one fitted to the
+        // data: two charts side by side then compare, and a live chart does
+        // not rescale every time its biggest value moves. A bar beyond the
+        // range is cut at the plot's edge. min and max may come in either
+        // order; an empty range is ignored.
+        void SetValueRange(double min, double max) {
+            if (max < min) std::swap(min, max);
+            if (!(max > min)) return;
+            hasValueRange = true;
+            valueRangeMin = min;
+            valueRangeMax = max;
+            InvalidateCache();
+            RequestRedraw();
+        }
+        // Back to a value axis fitted to the data.
+        void ClearValueRange() {
+            hasValueRange = false;
+            InvalidateCache();
+            RequestRedraw();
+        }
+        bool HasValueRange() const { return hasValueRange; }
+
         void RenderChart(IRenderContext *ctx) override;
         double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) override;
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
 
+        // Where bar `index` is drawn, in element coordinates (for tests and
+        // for a host that annotates a bar).
+        Rect2Dd GetBarRect(size_t index);
+
     protected:
         // The value axis always includes 0, so bars rise from (or hang
-        // below) the zero line.
+        // below) the zero line; it is padded only away from zero and then
+        // rounded out to the next whole tick. A value range replaces it.
         ChartDataBounds CalculateDataBounds() override;
+        // Horizontal bars need room on the left for the category names.
+        ChartPlotArea CalculatePlotArea() override;
+        // Grid lines on the value ticks only: lines across the categories
+        // would run through the bars.
+        void RenderGrid(IRenderContext *ctx) override;
+        void RenderAxisLabels(IRenderContext *ctx) override;
+        // Eight: the axis is rounded out to a whole tick, and the finer the
+        // step the less room that rounding leaves empty.
+        int GetYAxisTickTarget() const override { return 8; }
+
+    private:
+        // Screen position of a value along the value axis: y when vertical,
+        // x when horizontal.
+        double ValueToScreen(double value) const;
+        void DrawBarValueLabel(IRenderContext *ctx, const Rect2Dd &bar, double value);
     };
 
 // =============================================================================

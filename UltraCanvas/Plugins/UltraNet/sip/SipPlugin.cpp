@@ -19,12 +19,16 @@
 //   ExecuteCommand(handle, message)  → sends a SIP MESSAGE with the given
 //                                       text body; the response status line
 //                                       and reason land in outStdOut.
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
@@ -279,56 +283,62 @@ public:
         return {"sip"};   // "sips" (SIP over TLS) is a future extension
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions.clear();
+        ultranet_plugin::GuardedVoid([&]() {
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            g_sessions.clear();
+        });
     }
 
     UltraNetHandle OpenShell(const std::string& url,
                              const UltraNetRemoteOptions& options) override {
-        UltraNetUrlComponents c;
-        if (!UltraNet_ParseUrl(url, c) || c.scheme != "sip") {
-            return UltraNetInvalidHandle;
-        }
-        if (c.host.empty()) return UltraNetInvalidHandle;
-        const int port = c.port > 0 ? c.port : 5060;
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            UltraNetUrlComponents c;
+            if (!UltraNet_ParseUrl(url, c) || c.scheme != "sip") {
+                return UltraNetInvalidHandle;
+            }
+            if (c.host.empty()) return UltraNetInvalidHandle;
+            const int port = c.port > 0 ? c.port : 5060;
 
-        auto s = std::make_shared<Session>();
-        s->serverHost = c.host;
-        s->serverPort = port;
-        s->callId  = RandomHex(24) + "@ultranet.local";
-        s->fromTag = RandomHex(8);
-        if (options.connectTimeoutMs > 0) s->timeoutMs = options.connectTimeoutMs;
+            auto s = std::make_shared<Session>();
+            s->serverHost = c.host;
+            s->serverPort = port;
+            s->callId  = RandomHex(24) + "@ultranet.local";
+            s->fromTag = RandomHex(8);
+            if (options.connectTimeoutMs > 0) s->timeoutMs = options.connectTimeoutMs;
 
-        if (!Resolve(c.host, port, s->serverAddr, s->serverAddrLen)) {
-            return UltraNetInvalidHandle;
-        }
-        s->fd = ::socket(s->serverAddr.ss_family, SOCK_DGRAM, IPPROTO_UDP);
-        if (s->fd == kInvalidFd) return UltraNetInvalidHandle;
-        if (!BindEphemeral(s->fd, s->localAddr, s->localPort)) {
-            return UltraNetInvalidHandle;
-        }
+            if (!Resolve(c.host, port, s->serverAddr, s->serverAddrLen)) {
+                return UltraNetInvalidHandle;
+            }
+            s->fd = ::socket(s->serverAddr.ss_family, SOCK_DGRAM, IPPROTO_UDP);
+            if (s->fd == kInvalidFd) return UltraNetInvalidHandle;
+            if (!BindEphemeral(s->fd, s->localAddr, s->localPort)) {
+                return UltraNetInvalidHandle;
+            }
 
-        // Probe with OPTIONS. Any 2xx (200 OK) status = success.
-        SipResponse resp;
-        const std::string targetUri = "sip:" + c.host + ':' + std::to_string(port);
-        if (!Roundtrip(*s, "OPTIONS", targetUri, "", resp)) {
-            return UltraNetInvalidHandle;
-        }
-        if (resp.status < 200 || resp.status >= 300) {
-            return UltraNetInvalidHandle;
-        }
+            // Probe with OPTIONS. Any 2xx (200 OK) status = success.
+            SipResponse resp;
+            const std::string targetUri = "sip:" + c.host + ':' + std::to_string(port);
+            if (!Roundtrip(*s, "OPTIONS", targetUri, "", resp)) {
+                return UltraNetInvalidHandle;
+            }
+            if (resp.status < 200 || resp.status >= 300) {
+                return UltraNetInvalidHandle;
+            }
 
-        const UltraNetHandle h =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        s->handle = h;
-        {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions[h] = s;
-        }
-        return h;
+            const UltraNetHandle h =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            s->handle = h;
+            {
+                std::lock_guard<std::mutex> lk(g_sessionsMutex);
+                g_sessions[h] = s;
+            }
+            return h;
+        });
     }
 
     UltraNetResult ExecuteCommand(UltraNetHandle handle,
@@ -336,29 +346,31 @@ public:
                                   std::string& outStdOut,
                                   std::string& outStdErr,
                                   int& outExitCode) override {
-        outStdOut.clear();
-        outStdErr.clear();
-        outExitCode = -1;
+        return ultranet_plugin::Guarded("ExecuteCommand", [&]() -> UltraNetResult {
+            outStdOut.clear();
+            outStdErr.clear();
+            outExitCode = -1;
 
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(
-            UltraNetResultCode::InvalidHandle, "no such SIP session");
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(
+                UltraNetResultCode::InvalidHandle, "no such SIP session");
 
-        SipResponse resp;
-        const std::string targetUri = "sip:" + s->serverHost + ':' +
-                                      std::to_string(s->serverPort);
-        if (!Roundtrip(*s, "MESSAGE", targetUri, command, resp)) {
-            return UltraNetResult::Error(UltraNetResultCode::SendFailed,
-                                         "SIP MESSAGE roundtrip failed");
-        }
-        std::ostringstream os;
-        os << "SIP/2.0 " << resp.status << ' ' << resp.reason;
-        if (!resp.body.empty()) os << "\r\n\r\n" << resp.body;
-        outStdOut = os.str();
-        outExitCode = (resp.status >= 200 && resp.status < 300) ? 0 : resp.status;
-        return outExitCode == 0
-            ? UltraNetResult::Ok()
-            : UltraNetResult::Error(UltraNetResultCode::HttpError, resp.reason);
+            SipResponse resp;
+            const std::string targetUri = "sip:" + s->serverHost + ':' +
+                                          std::to_string(s->serverPort);
+            if (!Roundtrip(*s, "MESSAGE", targetUri, command, resp)) {
+                return UltraNetResult::Error(UltraNetResultCode::SendFailed,
+                                             "SIP MESSAGE roundtrip failed");
+            }
+            std::ostringstream os;
+            os << "SIP/2.0 " << resp.status << ' ' << resp.reason;
+            if (!resp.body.empty()) os << "\r\n\r\n" << resp.body;
+            outStdOut = os.str();
+            outExitCode = (resp.status >= 200 && resp.status < 300) ? 0 : resp.status;
+            return outExitCode == 0
+                ? UltraNetResult::Ok()
+                : UltraNetResult::Error(UltraNetResultCode::HttpError, resp.reason);
+        });
     }
 };
 

@@ -2,6 +2,7 @@
 // Synchronous HTTP verbs + UltraNetHttpHeaders. Uses ultranet_internal helpers
 // from UltraNetHttpEasy.h to keep option-setting logic in one place.
 // Async lives in UltraNetHttpAsync.cpp.
+// Version: 0.4.0 - a body sent from a file as it goes (bodyFilePath)
 // Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -100,7 +101,17 @@ namespace {
         std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
             slistGuard(slist, curl_slist_free_all);
 
-        if (readBody && !readBody->empty()) {
+        // The body: read from a file as it is sent when the request names
+        // one, else the bytes it carries.
+        ultranet_internal::BodyFileSource bodyFile;
+        const UltraNetResult bodyOpened = ultranet_internal::OpenBodyFile(request, bodyFile);
+        if (!bodyOpened) {
+            sink.CloseFile();
+            return bodyOpened;
+        }
+        if (bodyFile.file) {
+            ultranet_internal::ApplyBodyFile(easy.get(), &bodyFile);
+        } else if (readBody && !readBody->empty()) {
             curl_easy_setopt(easy.get(), CURLOPT_POSTFIELDSIZE_LARGE,
                              static_cast<curl_off_t>(readBody->size()));
             curl_easy_setopt(easy.get(), CURLOPT_POSTFIELDS, readBody->data());

@@ -7,9 +7,11 @@
 // Both render *at* the requested size rather than rendering small and
 // scaling up: the whole point of a vector source is that the resolution is
 // chosen at rasterization time.
+// Version: 1.3.0 - password-protected PDFs: a password to open them with, and a report of
+//                  one needed or wrong (an /Encrypt dictionary behind a refusal)
 // Version: 1.2.0 - RasterizeVectorDocument: a whole page at any size
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
@@ -29,6 +31,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 #include <cmath>
 #include <filesystem>
 
@@ -167,7 +170,8 @@ namespace {
     // `targetH` directly, falling back to a resample when the loader lands a
     // pixel or two off (rounding) or cannot be steered at all.
     PixelFX::PFXImage LoadAtSize(const std::string& path, PipelineKind kind, int page,
-                                 int naturalW, int naturalH, int targetW, int targetH) {
+                                 int naturalW, int naturalH, int targetW, int targetH,
+                                 const std::string& password) {
         const double sx = naturalW > 0 ? static_cast<double>(targetW) / naturalW : 1.0;
         const double sy = naturalH > 0 ? static_cast<double>(targetH) / naturalH : 1.0;
         // One scale for the render — non-uniform scaling is finished by the
@@ -183,7 +187,7 @@ namespace {
                 img = PixelFX::FileIO::LoadSvg(path, 72.0, s);
                 break;
             case PipelineKind::Pdf:
-                img = PixelFX::FileIO::LoadPdf(path, page, 72.0 * s);
+                img = PixelFX::FileIO::LoadPdf(path, page, 72.0 * s, password);
                 break;
             default:
                 // EPS / PS: whichever delegate the build has, at its own idea
@@ -331,7 +335,44 @@ std::vector<std::string> GetVectorRasterExtensions() {
     return out;
 }
 
-VectorSourceInfo InspectVectorFile(const std::string& path) {
+#ifdef HAS_LIBVIPS
+namespace {
+    // Whether a PDF is encrypted: its trailer (or cross-reference stream)
+    // names an /Encrypt dictionary. Asked only after the loader refused the
+    // file, to tell "it needs its password" from "it is damaged" whatever
+    // the loader's words for it - poppler says "Document is encrypted" for a
+    // missing and a wrong password alike. Encrypted strings and streams
+    // never show the name in the clear, so where it stands is a dictionary.
+    bool PdfIsEncrypted(const std::string& path) {
+        std::ifstream in(PathFromUtf8(path), std::ios::binary);
+        if (!in) return false;
+        static const std::string kName = "/Encrypt";
+        std::string carry;
+        std::vector<char> chunk(1 << 20);
+        while (in) {
+            in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+            const std::streamsize got = in.gcount();
+            if (got <= 0) break;
+            std::string window = carry;
+            window.append(chunk.data(), static_cast<size_t>(got));
+            size_t at = window.find(kName);
+            while (at != std::string::npos) {
+                // "/Encrypt" itself, not a longer name such as /EncryptMetadata.
+                const size_t end = at + kName.size();
+                if (end >= window.size()) break;   // decided with the next chunk
+                const char next = window[end];
+                if (!std::isalnum(static_cast<unsigned char>(next)) && next != '_') return true;
+                at = window.find(kName, at + 1);
+            }
+            const size_t keep = std::min(window.size(), kName.size() + 1);
+            carry = window.substr(window.size() - keep);
+        }
+        return false;
+    }
+}
+#endif
+
+VectorSourceInfo InspectVectorFile(const std::string& path, const std::string& password) {
     VectorSourceInfo info;
     const std::string ext = LowerExt(path);
     if (ext.empty()) {
@@ -345,9 +386,9 @@ VectorSourceInfo InspectVectorFile(const std::string& path) {
         try {
             // libvips is lazy: this reads the header and the page count, not
             // the pixels.
-            PixelFX::PFXImage probe = (kind == PipelineKind::Svg)
-                    ? PixelFX::FileIO::LoadSvg(path, 72.0, 1.0)
-                    : PixelFX::FileIO::Load(path);
+            PixelFX::PFXImage probe = (kind == PipelineKind::Svg) ? PixelFX::FileIO::LoadSvg(path, 72.0, 1.0)
+                                    : (kind == PipelineKind::Pdf) ? PixelFX::FileIO::LoadPdf(path, 0, 72.0, password)
+                                                                  : PixelFX::FileIO::Load(path);
             info.ok = true;
             info.source = VectorRasterSource::ImagePipeline;
             info.naturalWidth = probe.Width();
@@ -360,6 +401,12 @@ VectorSourceInfo InspectVectorFile(const std::string& path) {
             return info;
         } catch (const std::exception& e) {
             info.error = e.what();
+            if (kind == PipelineKind::Pdf && PdfIsEncrypted(path)) {
+                info.passwordRequired = true;
+                info.passwordWrong = !password.empty();
+                info.error = info.passwordWrong ? "The password is not right for " + path
+                                                : path + " is password-protected: it opens with its password";
+            }
             return info;
         }
 #endif
@@ -385,7 +432,7 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
                                                    const VectorRasterOptions& options,
                                                    std::string& error) {
     error.clear();
-    const VectorSourceInfo info = InspectVectorFile(path);
+    const VectorSourceInfo info = InspectVectorFile(path, options.password);
     if (!info.ok) {
         error = info.error.empty() ? ("Cannot rasterize " + path) : info.error;
         return nullptr;
@@ -417,7 +464,8 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
     const int page = std::max(0, std::min(options.page, std::max(0, info.pageCount - 1)));
     if (info.pageCount > 1) name += " page " + std::to_string(page + 1);
     try {
-        PixelFX::PFXImage img = LoadAtSize(path, kind, page, info.naturalWidth, info.naturalHeight, w, h);
+        PixelFX::PFXImage img = LoadAtSize(path, kind, page, info.naturalWidth, info.naturalHeight, w, h,
+                                           options.password);
         auto layer = std::make_shared<UCRasterLayer>();
         if (!layer->FromPixelFX(img)) {
             error = "Could not convert the rendered " + path + " into a raster layer";

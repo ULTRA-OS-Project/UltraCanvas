@@ -33,6 +33,33 @@ the format specifies. `ReadStream` and `HasStream` look in the root storage;
 when a writer left the directory tree empty (or it is damaged), the first
 stream of that name anywhere is taken instead.
 
+## Writing one
+
+`UCCompoundFileWriter` builds a compound file in memory - what the
+[password-protected `.xlsx` / `.docx` writer](UltraCanvasOfficeEncryption.md)
+puts its `EncryptionInfo`, `EncryptedPackage` and `\x06DataSpaces` streams in:
+
+<!-- doc-check: std::vector<uint8_t> info; std::vector<uint8_t> package; std::vector<uint8_t> primary; -->
+```cpp
+#include "UltraCanvasCompoundFile.h"
+
+UltraCanvas::UCCompoundFileWriter writer;
+writer.AddStream("EncryptionInfo", info);
+writer.AddStream("EncryptedPackage", package);
+// Storages are named on the way, separated by '/'.
+writer.AddStream("\x06" "DataSpaces/TransformInfo/StrongEncryptionTransform/\x06" "Primary", primary);
+std::vector<uint8_t> file = writer.Build();
+```
+
+`AddStream` refuses an empty name, one over 31 characters or not ASCII, and a
+stream where a storage of that name already is (or the other way round);
+adding a path again replaces the stream. `Build` writes version 3: 512-byte
+sectors, every stream under 4096 bytes in the mini stream as the format
+requires, a FAT of any size (DIFAT sectors past the header's 109 entries), and
+each storage's children in a balanced tree coloured as a valid red-black tree
+(the deepest level red when it is not full), ordered as [MS-CFB] 2.6.4 orders
+names - which Office checks.
+
 ## Implementation notes
 
 - Version 3 (512-byte sectors) and version 4 (4096-byte sectors, 64-bit stream
@@ -50,13 +77,18 @@ stream of that name anywhere is taken instead.
 
 ## Where it is used
 
-The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`),
-the [`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
+The reader: the `.doc` importer
+(`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`), the
+[`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
 [password-protected `.xlsx` and `.docx` files](UltraCanvasOfficeEncryption.md),
-which reads their `EncryptionInfo` and `EncryptedPackage` streams.
+which reads their `EncryptionInfo` and `EncryptedPackage` streams. The writer:
+the encryptor of those files, which builds them.
 
 ## Test
 
-Covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a `.doc`, and a file
-that is no compound file) and, through the `.doc` importer, by
-`Tests/WordFormatsTest.cpp`.
+The reader is covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a
+`.doc`, and a file that is no compound file) and, through the `.doc` importer,
+by `Tests/WordFormatsTest.cpp`. The writer by `Tests/OfficeEncryptionTest.cpp`:
+what it builds read back, streams in the mini stream and in sectors, nested
+storages, and a 9 MB file that needs DIFAT sectors; Python's olefile and
+msoffcrypto-tool opened its output when it was written.

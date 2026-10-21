@@ -4,33 +4,35 @@ A comprehensive, self-contained media viewer widget
 (`include/UltraCanvasMediaViewer.h`, `core/UltraCanvasMediaViewer.cpp`).
 One widget displays every media kind the framework knows, chooses the right
 display view automatically from the file kind, and brings its own chrome: a
-folder breadcrumb, two toolbar rows (open / navigation / slideshow /
-transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
+folder breadcrumb, one compact toolbar (open / navigation / slideshow /
+transitions, then zoom / rotate / mirror / adjust / curves / save), an image
 adjustments panel and a bottom info bar with a Details panel.
 
-The toolbars are **icons with tooltips**, not captions, so two rows still fit
-the narrow preview pane UltraFiler gives the viewer. Every icon comes from the
+The toolbar is **flat, small (16 px) icons with tooltips**, not captions, so
+one row holds every control; a window too narrow for it scrolls the row (mouse
+wheel, or the chevron at its edge) instead of clipping it. Every icon comes from the
 framework's own set under `media/icons/` and is drawn as a mask, so it takes the
 toolbar's foreground colour and greys out with the button; hovering shows the
 caption, with the key where there is one:
 
-| Row | Icon | Tooltip |
+| Group | Icon | Tooltip |
 |---|---|---|
-| 1 | `folder-open` | Open a file or folder |
-| 1 | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
-| 1 | `slideshow` (toggle) | Slideshow (Space) |
-| 1 | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
-| 2 | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
-| 2 | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
-| 2 | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
-| 2 | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
-| 2 | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
-| 2 | `curves` | Curves |
-| 2 | `save` | Save as… |
-| 2 | `file-info` | Details |
+| Browse | `folder-open` | Open a file or folder |
+| Browse | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
+| Browse | `slideshow` (toggle) | Slideshow (Space) |
+| Browse | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
+| View | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
+| View | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
+| View | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
+| View | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
+| Edit | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
+| Edit | `curves` | Curves |
+| Edit | `save` | Save as… |
 
-Row 2 shows only the groups the file on show takes - see
-[Tools per kind of file](#tools-per-kind-of-file).
+The browse group is always there; the view and edit groups only as far as the
+file on show takes them - see
+[Tools per kind of file](#tools-per-kind-of-file). *Details* is not on the
+toolbar: its button sits at the right end of the info bar.
 
 The three dropdowns stay text because a value picker shows its value; the
 interval and transition ones start on the defaults. The Slideshow toggle
@@ -65,7 +67,7 @@ using it costs nothing in capability and gains two things:
   fallback.
 
 Embed it as UltraFiler does, with `SetTopBarsVisible(false)` for a pane too
-small for two toolbar rows (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
+small for the toolbar (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
 `UltraCanvasMediaViewer::IsSupportedMedia(path)` answers, before you load
 anything, whether this build can show a given file at all.
 
@@ -77,14 +79,14 @@ tool and a missing plugin should stop it running.
 | `MediaKind` | Formats | Display view |
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
-| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
+| `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`); a password-protected one is unlocked first (*Password-protected files*). Classified before `Vector`: a libvips with a PDF loader would otherwise take a PDF for a drawing and show its first page flat. Without the plugin a PDF is an image the pipeline rasterizes |
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
-| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
-| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
+| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
@@ -105,7 +107,7 @@ so the viewer gets full player control for free.
 
 ## Tools per kind of file
 
-The second toolbar row offers only the tools that mean something for the file
+The toolbar's view and edit groups offer only the tools that mean something for the file
 on show; the rest are hidden, not greyed, so a video or a spreadsheet is not
 handed colour sliders it cannot apply. Each load decides it, and a host with
 its own controls can ask the same question:
@@ -120,14 +122,16 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
 | Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
 | Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
-| `*.ucd` preview thumbnail | yes | — | — | — |
+| `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
 | Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
 
-*Details* is always there. Separators follow the groups, so none is left
-standing alone. Text, spreadsheet, font, 3D, video and audio views carry their
-own controls (the players' transport bar, the model's orbit and dolly), so the
-row is down to *Details* for them.
+*Unlock* (`tools.unlock`) is there only while the shown file is
+password-protected and not unlocked yet - see *Password-protected files*.
+Separators follow the groups, so none is left standing alone. Text,
+spreadsheet, font, 3D, video and audio views carry their own controls (the
+players' transport bar, the model's orbit and dolly), so the toolbar is down to
+the browse group for them; *Details* stays in the info bar for every kind.
 
 A drawing's pixels are only a rendering of it at the size it is shown, so it
 takes no gamma, colour or curve: the adjustments carry from one bitmap to the
@@ -228,23 +232,126 @@ recognised by the 12-byte signature of the fixed header, read through the
 container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
 format deliberately makes available without parsing the body:
 
-- the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
-  fixed header) on the image surface, when present — respecting the
-  `PRIVATE` flag, which suppresses the preview;
-- otherwise a **header summary** in the text view.
+- a **layered image** (`UCBitmap`) whole: its layers read through
+  `UCRasterDocument::LoadUCD` and composited, at full size - the picture,
+  not the 256 px thumbnail - and zoomable like a photo (it is still not an
+  image to turn or save from here); a password-protected one once it is
+  unlocked (*Password-protected files*);
+- otherwise the **embedded preview thumbnail** (raw HEIC/PNG stored
+  directly after the fixed header) on the image surface, when present —
+  respecting the `PRIVATE` flag, which suppresses the preview. A
+  password-protected layered image shows this until it is unlocked;
+- otherwise a **header summary** in the viewer's **note view**: dark like
+  the rest of the viewer and laid out as the Details panel lays out its
+  facts (a heading, then a table of the container's fields) - not on the
+  white page a text file is shown on.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
 container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
 `UCBitmap` …), version, body encoding, compression, encryption (always
 XChaCha20-Poly1305; the key from a password or from SuperVault) and
 thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
-document) gets a summary saying why. A layered image (`UCBitmap`) shows its
-thumbnail here; `UCRasterDocument` opens it with its layers.
+document) gets a summary saying why. For a layered image it adds the size
+and the layer count, and a *Shown* row says what the pane shows - the image
+at full size, or the thumbnail and why not the image (password-protected,
+damaged).
+
+## Password-protected files
+
+A file the viewer can open with its password - a layered `*.ucd` image
+(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
+or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
+(its header summary when the document is private), or a note saying the PDF
+is password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
+that hides the top bars, such as UltraFiler's preview pane, still offers it)
+and as an icon in the toolbar; **Enter** does the same. Unlock
+asks for the password over the viewer's window - again, saying so, when it
+is not right - and then shows the file whole: the image at full size with
+its layers composited, the PDF in its view with every page.
+
+Nothing asks on its own: browsing a folder of protected files never pops up
+a prompt. The info bar says *password-protected*, and the Details panel adds
+an *Encryption* row and a *Shown* row that says what Unlock would show.
+
+**Passwords are kept for the folder being browsed.** A password Unlock was
+given opens, without asking again, the file it unlocked when it is browsed
+back to, and is tried - with the others kept, the one that opened that file
+first - on every other protected file shown in the same folder, which then
+shows whole straight away. A file none of them opens is not tried again
+until another password is given. They are held in `UltraCryptSecureBuffer`s
+(zeroed when freed), at most `kMaxRememberedPasswords` (8), and only for that
+folder: opening another folder, or a selection in another folder, forgets
+them; `CloseFile` keeps them, so a preview pane that closes and reopens the
+same folder does not ask again. `ForgetPasswords()` forgets them at once, and
+`SetRememberPasswords(false)` keeps none - every protected file asks each
+time it is shown.
+
+**They do not outlive the user stepping away.** When the desktop session
+locks ([UltraCanvasSessionLock](UltraCanvasSessionLock.md): the screen locked
+by hand or by the screensaver), or the viewer's window has had no key or
+mouse input for `GetForgetPasswordsAfterIdle()` - ten minutes unless set -
+the viewer calls `ForgetPasswords()` itself. That forgets the passwords *and*
+shows a file showing unlocked locked again: the PDF closes behind its note,
+the image goes back to its thumbnail (or to nothing, when it is private). The
+viewer watches for this only while it holds something - a kept password or
+an unlocked file. Input means a key, a click, a wheel turn or the mouse moving
+anywhere in the viewer's window, and a password given - typed into Unlock or
+passed to `UnlockWithPassword` - but not a kept password opening a file as it
+is shown, so an unattended slideshow through protected files still forgets.
+`SetForgetPasswordsAfterIdle(std::chrono::seconds(0))` turns the idle half
+off; the session lock still forgets. `ForgetPasswordsIfIdle()` is what the
+idle timer runs.
+
+**An unlocked file says so.** A protected file opened with its password -
+typed, or kept - looks like any other once it is open, so the info bar puts
+*unlocked* beside its kind (`name · PDF · unlocked · page 1 / 3 · …`,
+`name · UC DOCUMENT · unlocked · …`) and the Details name its encryption.
+`IsUnlocked()` reports the same.
+
+```cpp
+viewer->SetRememberPasswords(false);   // a kiosk: ask every time
+viewer->ForgetPasswords();             // or: forget now - and lock the shown file again
+viewer->SetForgetPasswordsAfterIdle(std::chrono::minutes(2));   // a shared desk: sooner
+if (viewer->IsUnlocked()) { /* the shown file is protected, and open */ }
+```
+
+**A host's settings.** `SetSettingsAction(action)` puts a gear at the right
+end of the info bar, beside Details, that runs `action`: UltraViewer opens
+its settings there - *Forget passwords after*, which it passes on to
+`SetForgetPasswordsAfterIdle`. The gear is hidden while no action is set, and
+an empty one hides it again; the optional second argument is its tooltip.
+
+```cpp
+viewer->SetSettingsAction([this]() { ShowSettings(); });   // the gear appears
+viewer->SetSettingsAction(nullptr);                        // ... and goes again
+```
+
+```cpp
+if (viewer->IsLocked()) {
+    viewer->Unlock();                      // asks, in a dialog
+}
+// ... or, with a password the host already has:
+const std::string password = "tulip";
+std::string why;
+const MediaUnlockResult result = viewer->UnlockWithPassword(password, why);
+if (result == MediaUnlockResult::WrongPassword) { /* still locked; `why` says so */ }
+else if (result == MediaUnlockResult::Failed)   { /* right, but it would not open */ }
+// Unlocked: shown whole. NotLocked: there was nothing to unlock.
+```
+
+What a protected PDF needs from the engine is a reason: `IPDFDocument` and
+`UltraCanvasPDFView` report it with `GetLastOpenError()` - `NeedsPassword`
+for a document opened without one, `WrongPassword` for one opened with the
+wrong one, `Failed` for anything else - so the viewer offers Unlock rather
+than calling the file damaged. A host that hides both bars still has Enter,
+or calls `Unlock()` itself. Formats the framework can tell are encrypted but
+not decrypt - an encrypted Excel workbook - say so in their view instead
+(*"The workbook is password-protected"*), with no Unlock.
 
 ## Details panel
 
-The **Details** button in the info bar (the `file-info` icon; the same icon
-sits at the end of the second toolbar row) opens a scrollable panel over the
+The **Details** button at the right end of the info bar (the `file-info`
+icon) opens a scrollable panel over the
 active view, for every media kind:
 file name, path and size, the kind-specific facts (dimensions, channels,
 colour space, dpi and loader for an image; title / author for an e-book; page
@@ -425,7 +532,7 @@ the user has stored any. An SVG has no pixel size of its own: it is offered as
 written by drawing it again at the size chosen - sharp at any size, where the
 picture shown would blur when stretched. The surface does it:
 
-<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; void ShowSettings(); -->
 ```cpp
 UltraCanvasMediaSurface* surface = viewer->GetSurface();
 const FileSavePicture picture = surface->GetSavePicture();   // turned as shown

@@ -20,9 +20,12 @@
 //
 // Which one applies to a given file — and whether this build can rasterize it
 // at all — is what InspectVectorFile() reports; nothing here throws.
+// Version: 1.3.0 - password-protected PDFs: VectorRasterOptions::password,
+//                  InspectVectorFile(path, password), VectorSourceInfo::passwordRequired /
+//                  passwordWrong
 // Version: 1.2.0 - RasterizeVectorDocument: a whole page at any size
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -63,6 +66,12 @@ struct VectorSourceInfo {
     int pageCount = 1;                                   // > 1 only for paged sources (PDF)
     std::string provider;                                // human-readable, for status lines
     std::string error;                                   // why `ok` is false
+    // A password-protected PDF (or .ai) that does not open without its
+    // password: `ok` is false and `passwordRequired` true - ask for it and
+    // inspect again with it. `passwordWrong` when the one given does not
+    // open it either.
+    bool passwordRequired = false;
+    bool passwordWrong = false;
 };
 
 // ===== HOW TO RASTERIZE IT =====
@@ -75,6 +84,7 @@ struct VectorRasterOptions {
     int height = 0;
     int page = 0;                                    // paged sources; 0-based
     RasterPixel background = RasterPixel(0, 0, 0, 0);
+    std::string password;                            // a password-protected PDF's
     // Refuses anything larger, so a stray "×100" cannot ask for a 40 GB
     // buffer. Counted on the target size, not the file.
     size_t maxPixels = 256u * 1024u * 1024u;
@@ -92,11 +102,15 @@ bool IsVectorGraphicsPath(const std::string& path);
 std::vector<std::string> GetVectorRasterExtensions();
 
 // Opens the file far enough to report its natural size and page count.
-VectorSourceInfo InspectVectorFile(const std::string& path);
+// `password` opens a password-protected PDF; without it (or with a wrong
+// one) such a file reports passwordRequired (passwordWrong).
+VectorSourceInfo InspectVectorFile(const std::string& path,
+                                   const std::string& password = std::string());
 
 // Rasterizes `path` into a fresh layer, or returns null and fills `error`.
 // The layer is named after the file (page number appended for a paged source)
-// so it reads sensibly in a layer list.
+// so it reads sensibly in a layer list. A password-protected PDF needs
+// `options.password`; InspectVectorFile says whether it does.
 std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
                                                    const VectorRasterOptions& options,
                                                    std::string& error);

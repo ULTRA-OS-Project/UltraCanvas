@@ -1,3 +1,70 @@
+#### 2026-10-19 *0.8.2*
+- **Colour palettes under the picker**, as UltraPaint's: the row of swatches
+  in the Colour card ends in a small **+** that opens a gallery of colour
+  schemes (basics, moods, design systems, retro machines, indexed palettes
+  up to 256 colours for a GIF); each scheme's **+** adds it as another row,
+  and with several rows each row ends in a **−** that takes it away while
+  the **+** moves to the last row. A left click on a swatch sets the fill.
+- **A right click on a palette swatch edits it** in a small foreground-only
+  colour picker next to it; *Revert* puts it back. (It used to set the line
+  colour; the picker's own background swatch still does that.)
+- The rows are kept in the settings file (`picker.palettes`).
+
+#### 2026-10-19 *0.8.1*
+- **The right panel in cards, as UltraPaint's.** Icon, colour, tool options,
+  gradient, line and layers are each a white card (the framework's SectionCard
+  group box) on the panel's light page, as in UltraPaint - with a smaller,
+  quieter caption than UltraPaint's, as the caption only names the section.
+  The layer buttons are flat, as UltraPaint's.
+- **A tool's cards only while it is active.** *Tool Options* shows the
+  active tool's options and is gone for a tool without any (Zoom, Push);
+  the *Gradient* card (the fill's ramp, captioned *Fill* before - the Fill
+  tool's options carry that name already) shows under them with the Fill
+  tool, and the
+  *Line* card (width, arrowheads, profile, brush) with the tools that draw
+  lines - Pen, Freehand and Straight Line - and with the Selector or the
+  Shape Editor while a line (a straight line, polyline or open path) is
+  selected, so its arrowheads, profile and brush are set without changing
+  tools.
+- **Transform bar fixes.**
+  - The *lock* button now also holds when the selection is scaled with the
+    mouse: a corner handle scales width and height alike (shift frees it for
+    that drag), and an edge handle scales the other way by as much, about
+    the middle of its edge. Without the lock, shift on a corner keeps the
+    ratio as before.
+  - The two *%* fields have no up / down arrows any more: a percentage is
+    typed (the arrow keys and the wheel still step it by 1).
+  - Every field steps by 1: one unit of the page's unit (centimetres and
+    inches too, which stepped by a tenth), 1 % and 1 deg for rotation and
+    shear (were 15 and 5 deg).
+
+#### 2026-10-17 *0.8.0*
+- **A transform bar for the selection.** A bar under the toolbar shows and
+  sets the selected objects' position, size, scale, rotation and shear, as
+  Xara's selector bar does:
+  - a *reference point* picker on the left - nine points for the corners,
+    edge midpoints and centre of the selection - says which point stays put
+    when the selection is resized, rotated or sheared, and which point X and
+    Y give the place of;
+  - *X* / *Y* move that point to the position typed; *W* / *H* make the
+    selection that wide or high; the two *%* fields scale it by a
+    percentage and go back to 100;
+  - the *lock* button keeps the aspect ratio: with it down, changing the
+    width changes the height in proportion, and the other way round;
+  - *rotation* and *shear* show one object's own angles (counter-clockwise,
+    and how far its top leans to the right) and set them; with several
+    objects selected they show 0 and turn or shear by what is typed. The
+    rotation counts on past 180 deg while the same objects stay selected -
+    holding the up arrow from 165 shows 180, 195, ... 345, not -165 - and a
+    typed angle turns the shortest way to it.
+
+  Lengths are in the page's unit (*File > Document Setup*), or in icon
+  pixels in icon mode, and follow a drag as it happens. Every change is one
+  step of undo - a held arrow key, the arrow buttons clicked or the wheel
+  turned in one go too: the drawing follows each step, and *Undo* takes the
+  whole run back (framework: `UltraCanvasSpinner::onStepsFinished`). The reference point picker is a new framework element
+  (framework changelog: `reference-point-picker`).
+
 #### 2026-10-17 *0.7.3*
 - **The colour picker stays as it was left.** ArtCreator opens the picker
   with the design chosen in its list and the channels open or folded as they

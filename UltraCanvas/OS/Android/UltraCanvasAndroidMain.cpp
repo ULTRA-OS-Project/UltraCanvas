@@ -19,6 +19,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasAndroidAssets.h"
+#include "UltraCanvasAndroidJni.h"
 #include "UltraCanvasAndroidLog.h"
 
 #include <android/looper.h>
@@ -77,6 +78,10 @@ void android_main(android_app* app) {
 
     UltraCanvas::UltraCanvasAndroidApplication::SetAndroidApp(app);
     ExportSandboxEnvironment(app);
+
+    // One logcat line saying whether Java can call back into this library -
+    // every dialog answer, keystroke and permission answer depends on it.
+    UltraCanvas::AndroidJni::CheckJavaToNativeBridge();
 
     // Before anything can load a font, icon or media file by path: inside an
     // APK those are not on the filesystem. Only the first launch after an

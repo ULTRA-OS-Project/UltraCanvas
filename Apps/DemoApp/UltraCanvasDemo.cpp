@@ -1,12 +1,13 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.11 - Widgets > Colour Palettes (UltraCanvasColorPaletteManager)
 // Version: 1.0.10 - A filter field over the component tree ("Reset" inside it); the List
 //                  View page holds the domain dashboard, which is no page of its own
 // Version: 1.0.9 - The image performance page is registered only with libvips, as it is built
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-19
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -1096,6 +1097,12 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasChartEngineExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasChartEngine.md");
 
+        chartBuilder.AddItem("chartenginecompare", "Chart Engine Comparison", "Every chart ported to the chart engine next to the legacy chart it replaces, on the same data: line, area, cumulative flow, scatter, bubble, waterfall, diverging, population, dumbbell, Mekko, financial, heatmap, radar, radial bar, pie and polar",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateChartEngineComparisonExamples(); },
+                             "DemoApp/UltraCanvasEngineComparisonExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasEngineCharts.md");
+
         chartBuilder.AddItem("linecharts", "Line Chart", "Line chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLineChartsExamples(); },
@@ -1625,7 +1632,8 @@ namespace UltraCanvas {
                 .AddVariant("matrixdiagram", "Weighted (QFD)")
                 .AddVariant("matrixdiagram", "X-Shaped")
                 .AddVariant("matrixdiagram", "Y-Shaped")
-                .AddVariant("matrixdiagram", "House of Quality");
+                .AddVariant("matrixdiagram", "House of Quality")
+                .AddVariant("matrixdiagram", "C-Shaped (Cube)");
 
         diagramBuilder.AddItem("kanbanboards", "Kanban Board",
                                "Workflow boards with WIP limits, swimlanes, drag & drop, "
@@ -2093,11 +2101,11 @@ namespace UltraCanvas {
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/PixelFX"); });
 #endif
-        // Specification only — no SmartHome sources, no build target, none of the
-        // widgets in Docs/Modules/Smarthome/README.md exist yet. "Planned", not
-        // "PartiallyImplemented": there is nothing partial to show.
+        // The engine, its widgets (SmartHome/ui) and the SmartHome Center app
+        // exist and run on the simulated demo home; the radio backends build
+        // but have met no hardware yet (SmartHome/STATUS.md).
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
-                               ImplementationStatus::Planned,
+                               ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
         // The dialogs every application asks the system for: Open / Save /
         // Select folder (UltraCanvasFileLoader), Print (RequestPrintSettings +
@@ -2247,6 +2255,20 @@ namespace UltraCanvas {
                                "Docs/UltraCanvas/UltraCanvasColorPicker.md")
                 .AddVariant("colorpicker", "Full Picker (Wheel + Sliders)")
                 .AddVariant("colorpicker", "HSV / HSL / RGB Modes");
+
+        // The picker's companion: the palette rows UltraPaint and ArtCreator
+        // show under it.
+        widgetsBuilder.AddItem("colorpalettes", "Colour Palettes",
+                               "Palette rows under a colour picker: a gallery of colour schemes "
+                               "(up to 256-colour GIF palettes) behind +, - to remove a row, and "
+                               "a right click that edits one entry",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateColorPaletteManagerExamples(); },
+                               "DemoApp/UltraCanvasColorPaletteManagerExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasColorPaletteManager.md")
+                .AddVariant("colorpalettes", "Under a Colour Picker")
+                .AddVariant("colorpalettes", "Several Palettes")
+                .AddVariant("colorpalettes", "Indexed (GIF) Palettes");
 
         widgetsBuilder.AddItem("datepicker", "Date Picker / Calendar",
                                "Calendar widgets covering single, range, multiple and week selection",

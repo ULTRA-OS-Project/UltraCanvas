@@ -1,8 +1,9 @@
 // UltraCloud/core/UltraCloudInternal.h
 // Small helpers shared by the module's own sources (not public API): JSON in
-// and out, RFC 3339 dates, query-string building.
-// Version: 0.3.0
-// Last Modified: 2026-09-04
+// and out, RFC 3339 dates, query-string building, and what an upload tells
+// CloudService about itself (UploadReport).
+// Version: 0.4.0 - UploadReport
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -13,6 +14,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +24,34 @@ namespace UltraCloud {
 namespace internal {
 
 using UltraCanvas::JSONValue;
+
+// What a provider whose uploads land as they arrive (partialUploadsRemain)
+// reports about the upload it is running, to the CloudService call that set
+// it on the thread (SetThreadUploadReport). The service needs to know when
+// the server has created the file at its name - from then on what is there
+// is the upload's, and is removed if it does not finish - and whether the
+// server refused to create it, which leaves the name as it was.
+struct UploadReport {
+    // Going straight to the file's name: an SFTP server says nothing when it
+    // creates the file, so the provider looks in the folder first, and a
+    // name that is free there counts as created by this upload.
+    bool checkFirst = false;
+    // The provider can tell when the server creates the file (FTP: the reply
+    // to STOR); `opened` false then means nothing was created at all.
+    bool watched = false;
+    bool opened = false;      // the server created (or emptied) the file
+    bool refused = false;     // the server refused to create it; nothing written
+    // Called once, on the uploading thread, when `opened` becomes true.
+    std::function<void()> onOpened;
+};
+inline thread_local UploadReport* t_uploadReport = nullptr;
+// Sets the calling thread's report and answers the one it replaces.
+inline UploadReport* SetThreadUploadReport(UploadReport* report) {
+    UploadReport* previous = t_uploadReport;
+    t_uploadReport = report;
+    return previous;
+}
+inline UploadReport* ThreadUploadReport() { return t_uploadReport; }
 
 inline JSONValue ParseJson(const std::string& text) {
     UltraCanvas::JSONParseResult pr;

@@ -75,6 +75,38 @@ onto white without touching what is drawn on top.
 `page` selects the page of a paged source; `VectorSourceInfo::pageCount` says
 how many there are (1 for everything but PDF).
 
+### A password-protected PDF
+
+A PDF (or `.ai`) that does not open without its password reports it rather
+than failing like a damaged file: `InspectVectorFile(path)` comes back with
+`ok` false and `passwordRequired` true. Ask for the password and inspect
+again with it - `passwordWrong` says the one given does not open it either -
+then hand it to the rasterizer in `VectorRasterOptions::password`:
+
+```cpp
+VectorSourceInfo info = InspectVectorFile(path);
+if (!info.ok && info.passwordRequired) {
+    const std::string password = "tulip";            // what the user typed
+    info = InspectVectorFile(path, password);
+    if (info.passwordWrong) { /* ask again */ }
+    VectorRasterOptions options;
+    options.password = password;
+    std::string error;
+    auto layer = RasterizeVectorFile(path, options, error);
+    if (!layer) ShowError(error);
+}
+```
+
+Which refusals are about a password is decided from the file, not from the
+loader's wording (poppler says *"Document is encrypted"* for a missing and a
+wrong password alike): the refused PDF names an `/Encrypt` dictionary. A
+password given to a file that has none is ignored.
+
+libvips' `pdfload` takes a password from libvips 8.13 on. Built against an
+older one (Ubuntu 22.04 ships 8.12), the framework opens a protected PDF
+through poppler-glib instead - CMake looks for it only then - so the
+password works the same everywhere.
+
 ## Elements of a loaded drawing
 
 `RasterizeVectorElements` is the same job for a drawing that is already open:
@@ -161,7 +193,8 @@ ArtCreator's Export is those two calls.
 
 UltraPaint: dropping or opening a drawing asks for the raster size and then
 comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
-`UltraPaintImportDialog`).
+`UltraPaintImportDialog`); a password-protected PDF asks for its password
+first, again while it is wrong.
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
 by `RasterizeVectorElements`, and *Export* writes PNG, JPEG and the other
@@ -181,7 +214,9 @@ build: the crop to what is painted, a stroke past the bounds, the scale, an
 ancestor's transform, and the refusals. So do its `RasterizeVectorDocument`
 checks: the natural size, a page twenty times larger with a hard edge, one
 side following the page's shape, a size in another shape, both backgrounds,
-and the refusals.
+and the refusals. A password-protected PDF (`Tests/fixtures/pdf-aes256-locked.pdf`)
+reports a missing and a wrong password as such, is refused without one, and
+measures and rasterizes with the right one.
 
 ## See also
 

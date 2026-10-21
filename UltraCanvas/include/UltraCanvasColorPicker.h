@@ -10,6 +10,8 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.9.0 - SetShowBackgroundColor(false): a foreground-only picker - one
+//                  swatch, no swap arrow, the right button edits the same colour
 // Version: 1.8.1 - ColorPickerWheelStyleName / ColorPickerWheelStyleFromName: the designs
 //                  by the names a settings file keeps them under
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
@@ -23,7 +25,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -361,6 +363,13 @@ namespace UltraCanvas {
         void SetShowAlpha(bool show);
         bool GetShowAlpha() const { return showAlpha; }
 
+        // Foreground only (false): one colour is edited - a palette entry, a
+        // single fill. The background swatch and the swap arrow are not
+        // drawn, and the right button and the eyedropper's right click work
+        // on the foreground as the left ones do. On by default.
+        void SetShowBackgroundColor(bool show);
+        bool GetShowBackgroundColor() const { return showBackground; }
+
         // The height at which a picker `width` wide draws its hue ring at the
         // full width the padding leaves - the biggest the wheel can be. Below
         // it the wheel shrinks to whatever vertical space is left over, so a
@@ -455,6 +464,7 @@ namespace UltraCanvas {
         ColorPickerStyle style;
         bool showColorWheel = true;
         bool showAlpha = true;
+        bool showBackground = true;
         bool showValueSpinners = false;
         bool slidersCollapsible = false;
         bool slidersExpanded = true;

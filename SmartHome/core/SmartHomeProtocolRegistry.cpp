@@ -21,6 +21,10 @@
 #include <map>
 #include <mutex>
 
+// Always built: it needs nothing, and an application with no radio still
+// gets a home to show (protocols/Simulated/SimulatedProtocol.h).
+#include "SimulatedProtocol.h"
+
 #ifdef ULTRACANVAS_SMARTHOME_MATTER
 #include "MatterProtocol.h"
 #endif
@@ -87,6 +91,8 @@ std::shared_ptr<ISmartHomeProtocol> CreateSmartHomeProtocol(SmartHomeProtocolTyp
 
 int RegisterBuiltinProtocols() {
     int count = 0;
+    RegisterProtocolFactory(SmartHomeProtocolType::Simulated, &CreateSimulatedProtocol);
+    ++count;
 #ifdef ULTRACANVAS_SMARTHOME_MATTER
     RegisterProtocolFactory(SmartHomeProtocolType::Matter, &CreateMatterProtocol);
     ++count;

@@ -248,22 +248,25 @@ if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE
     unset(_uc_linked)
 endif()
 
-# ===== ANDROID DEFAULTS (phase 1: core library only) =====
+# ===== ANDROID DEFAULTS (the core library and the demo) =====
 # Cache defaults only (no FORCE): -D on the command line still wins, so any of
 # these can be opted back in once its dependency exists in the NDK sysroot.
 # The desktop app executables are meaningless in an APK (an Android app is a
-# shared library loaded by the activity); packaging DemoApp via Gradle is a
-# later phase (Docs/UltraCanvas/AndroidPortInvestigation.md §5, §7).
+# shared library loaded by the activity). DemoApp is the exception and stays
+# on: it builds as libUltraCanvasDemo.so, the library the packaging template's
+# manifest names (UltraCanvas/OS/Android/packaging/).
 if(ANDROID)
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
     set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
     set(BUILD_ARTCREATOR_APP OFF CACHE BOOL "Build the ArtCreator vector drawing editor application")
-    set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
+    # APPLE) and asks pkg-config for X11.
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
     # libvips is not in this list: it is part of UltraCanvas on Android as on
     # every platform, built into the sysroot with the rest of the stack
@@ -343,6 +346,7 @@ if(EMSCRIPTEN)
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
+    set(BUILD_ULTRADBADMIN OFF CACHE BOOL "Build the UltraDBAdmin application")
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
@@ -350,6 +354,7 @@ if(EMSCRIPTEN)
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
     set(BUILD_ULTRAPASSWORD OFF CACHE BOOL "Build the UltraPassword application")
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_ULTRAWIN_MANAGER OFF CACHE BOOL "Build the UltraWin Manager application")
     set(BUILD_ULTRAWIN_SETUP OFF CACHE BOOL "Build the ultrawin-setup CLI tool")
     set(BUILD_ULTRAMSG_CLI OFF CACHE BOOL "Build the ultramsg command-line tool")
@@ -472,6 +477,14 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
 endif()
 
+# And for the session lock (UltraCanvasSessionLock: WTS session notifications /
+# logind and the screensaver over D-Bus / the loginwindow's distributed
+# notifications). Without the define the core file compiles a backend that
+# never starts: nothing is reported, and a listener keeps its own idle timeout.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
+endif()
+
 # A build machine's private OAuth settings (the sign-in service UltraNet is
 # built with), kept out of the repository - see cmake/oauth.local.cmake.example.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
@@ -514,6 +527,14 @@ if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLis
     if(TARGET UltraVault)
         set(ULTRAAI_USE_ULTRAVAULT ON CACHE BOOL
             "Enable UltraVault credential lookup")
+    endif()
+    # The module's own suite (mock adapters, routing, the cloud adapters
+    # over scripted transports, the local runtime against a fake engine)
+    # registers with CTest when asked, like every other suite.
+    option(ULTRACANVAS_BUILD_ULTRAAI_TESTS "Build the UltraAI test suite" OFF)
+    if(ULTRACANVAS_BUILD_ULTRAAI_TESTS)
+        enable_testing()   # must be the top-level call, as for every other suite
+        set(ULTRAAI_BUILD_TESTS ON CACHE BOOL "Build UltraAI unit tests" FORCE)
     endif()
     add_subdirectory(UltraAI)
 endif()
@@ -645,6 +666,16 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRADBADMIN =====
+# Browse and query the databases UltraDatabase reaches - SQLite files and
+# PostgreSQL servers (Docs/Research/UltraDBAdminDesignProposal.md).
+option(BUILD_ULTRADBADMIN "Build the UltraDBAdmin application" ON)
+if(BUILD_ULTRADBADMIN)
+    message(STATUS "")
+    message(STATUS "── Building UltraDBAdmin ──")
+    add_subdirectory(Apps/UltraDBAdmin)
+endif()
+
 # ===== ULTRAWEB =====
 # The ULTRA OS browser. This version runs WebAssembly apps that build their UI
 # out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
@@ -703,6 +734,18 @@ if(BUILD_DEVICEEXPLORER)
     add_subdirectory(Apps/DeviceExplorer)
 endif()
 
+# ===== SMARTHOME CENTER =====
+# The home control window on the SmartHome module: rooms, devices, scenes,
+# energy and activity. With no radio enabled it opens the module's simulated
+# demo home. Needs the SmartHome module (BUILD_SMARTHOME, above) and its
+# SmartHomeUI target's UI library.
+option(BUILD_SMARTHOME_CENTER "Build the SmartHome Center application" ON)
+if(BUILD_SMARTHOME_CENTER AND BUILD_SMARTHOME)
+    message(STATUS "")
+    message(STATUS "── Building SmartHome Center ──")
+    add_subdirectory(Apps/SmartHomeCenter)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -727,6 +770,20 @@ endif()
 option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
 if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraPassword)
+endif()
+
+# ===== ANCHORPOINT =====
+# Peer-to-peer file sharing with no server file storage. Apps/AnchorPoint is
+# also its own CMake project (core + CLI build without the framework); here it
+# gets the framework's library and UltraCrypt, so the window is built wherever
+# the framework is. Its command line is `anchorpoint-cli`, so it and the
+# window's `AnchorPoint` stay two files in bin/ on case-insensitive file
+# systems.
+option(BUILD_ANCHORPOINT "Build the AnchorPoint application" ON)
+if(BUILD_ANCHORPOINT AND TARGET UltraCrypt AND ULTRACANVAS_LIBRARY)
+    message(STATUS "")
+    message(STATUS "── Building AnchorPoint ──")
+    add_subdirectory(Apps/AnchorPoint)
 endif()
 
 # ===== DEMO APPLICATION =====
@@ -763,6 +820,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
+            Apps/DemoApp/UltraCanvasColorPaletteManagerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
@@ -779,6 +837,11 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonLines.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonBars.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonFinance.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonPolar.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp
             Apps/DemoApp/UltraCanvasFunnelChartExamples.cpp
@@ -995,16 +1058,28 @@ if(BUILD_DEMO_APP)
         )
     endif()
 
-    # Create executable
-    add_executable(UltraCanvasDemo
-        ${DEMO_SOURCES}
-    )
+    # Create executable. On Android the app is a shared library instead,
+    # libUltraCanvasDemo.so, which NativeActivity loads by the manifest's
+    # android.app.lib_name; main.cpp's body is then ultracanvas_app_main(),
+    # called by the framework's android_main(). The core library's interface
+    # carries the -u options that pull android_main's glue and the JNI entry
+    # points out of the static core into it (UltraCanvas/CMakeLists.txt).
+    if(ANDROID)
+        add_library(UltraCanvasDemo SHARED
+            ${DEMO_SOURCES}
+        )
+    else()
+        add_executable(UltraCanvasDemo
+            ${DEMO_SOURCES}
+        )
+    endif()
     # Export the executable's dynamic symbols so on-demand plugin modules
     # (dlopen'ed via the loader, e.g. libUltraCanvasLaTeX) can resolve
     # UltraCanvas core symbols when the core is linked statically. Not in the
     # browser: nothing is dlopen'ed there, and the setting would ask for a
-    # dynamic-linking wasm build.
-    if(NOT EMSCRIPTEN)
+    # dynamic-linking wasm build. Not on Android either: a shared library
+    # exports its symbols anyway, and nothing is dlopen'ed there.
+    if(NOT EMSCRIPTEN AND NOT ANDROID)
         set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
     endif()
 
@@ -1137,7 +1212,11 @@ if(BUILD_DEMO_APP)
 #        RUNTIME DESTINATION bin
 #    )
     
-    message(STATUS "  Demo executable: UltraCanvasDemo")
+    if(ANDROID)
+        message(STATUS "  Demo library: libUltraCanvasDemo.so")
+    else()
+        message(STATUS "  Demo executable: UltraCanvasDemo")
+    endif()
 endif()
 
 # ===== UNIT TESTS =====
@@ -1169,6 +1248,16 @@ option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS"
 if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
+endif()
+
+# ===== EMOJI TESTS WITHOUT THE FULL SUITE =====
+# EmojiSettingsTest alone, for builds that leave BUILD_TESTS off (the Windows
+# CI rows): the bundled emoji fonts and the emoji setting on the platform
+# where emoji drew as boxes of hex digits.
+option(ULTRACANVAS_BUILD_EMOJI_TESTS "Build EmojiSettingsTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_EMOJI_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/EmojiTests.cmake)
 endif()
 
 # ===== VIDEOFX TESTS WITHOUT THE FULL SUITE =====
@@ -1364,6 +1453,18 @@ if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
     add_subdirectory(Tests/UltraFIBU)
     message(STATUS "")
     message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
+endif()
+
+# ===== ULTRADBADMIN ENGINE TESTS =====
+# The database admin's engine: the connection list and its password vault,
+# cell formatting, the Browse pager, the SQL runner (with Stop). Compiles the
+# engine sources directly, so it runs where the UI library cannot be built.
+option(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS "Build the UltraDBAdmin engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS AND TARGET UltraDatabase AND TARGET UltraVault)
+    enable_testing()
+    add_subdirectory(Tests/UltraDBAdmin)
+    message(STATUS "")
+    message(STATUS "── UltraDBAdmin engine test suite enabled (target: UltraDBAdminEngineTests) ──")
 endif()
 
 # ===== ULTRAPRESS ENGINE TESTS =====
@@ -2456,8 +2557,8 @@ endif()
 #
 # The apps whose command-line modes print into the prompt they were typed at
 # - DeviceExplorer (--list), UltraCleaner (--scan), UltraNetMonitor (--list),
-# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print) and
-# UltraDesktop (--windows) - are GUI programs as well, each with a console
+# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print),
+# UltraDesktop (--windows) and SmartHomeCenter (--list) - are GUI programs as well, each with a console
 # companion beside it (ultracanvas_windows_console_companion()): <App>.com,
 # which cmd and PowerShell run for the bare name, starts the .exe, waits for
 # it and returns its exit code. So the prompt waits as for a console program,
@@ -2468,7 +2569,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()
@@ -2476,7 +2577,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     unset(_uc_gui_app)
     foreach(_uc_console_app
             DeviceExplorer UltraCleaner UltraNetMonitor UltraCanvasStart UltraWeb
-            UltraClaude UltraDesktop)
+            UltraClaude UltraDesktop SmartHomeCenter)
         if(TARGET ${_uc_console_app})
             ultracanvas_windows_console_companion(${_uc_console_app})
         endif()
@@ -2519,6 +2620,9 @@ endif()
 # so the asset copy has to exist before the binary is run out of the build tree.
 if(TARGET UltraNetMonitor)
     add_dependencies(UltraNetMonitor copy_assets)
+endif()
+if(TARGET UltraDBAdmin)
+    add_dependencies(UltraDBAdmin copy_assets)
 endif()
 if(TARGET UltraAuthenticator)
     add_dependencies(UltraAuthenticator copy_assets)

@@ -1,8 +1,9 @@
 // Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
 // MuPDF-backed implementation of IPDFDocument.
 // Built when ULTRACANVAS_PLUGIN_PDF and ULTRACANVAS_PDF_MUPDF are both enabled.
+// Version: 1.5.0 - GetLastOpenError: a missing or wrong password is reported as such
 // Version: 1.4.0
-// Last Modified: 2026-08-23
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDF.h"
@@ -108,6 +109,7 @@ public:
     bool IsOpen()  const override { return doc_ != nullptr; }
     bool IsDirty() const override;
     const std::string& GetSourcePath() const override { return path_; }
+    PDFOpenError GetLastOpenError() const override { return lastOpenError_; }
 
     // Metadata
     PDFDocumentInfo GetInfo() const override;
@@ -170,6 +172,7 @@ private:
     std::string             path_;
     std::vector<uint8_t>    memoryBuffer_;     // kept alive for OpenFromBytes
     bool                    memoryBacked_ = false;   // no handle on path_
+    PDFOpenError            lastOpenError_ = PDFOpenError::NoError;
     bool                    dirty_ = false;
 };
 
@@ -204,13 +207,18 @@ bool MuPDFDocument::LoadDocumentInternal(fz_stream* stream,
     if (!ctx_) return false;
 
     fz_document* d = nullptr;
+    PDFOpenError why = PDFOpenError::Failed;
     fz_var(d);
+    fz_var(why);
 
     fz_try(ctx_) {
         d = fz_open_document_with_stream(ctx_, "application/pdf", stream);
+        why = PDFOpenError::NoError;
         if (fz_needs_password(ctx_, d)) {
             if (password.empty() ||
                 !fz_authenticate_password(ctx_, d, password.c_str())) {
+                why = password.empty() ? PDFOpenError::NeedsPassword
+                                       : PDFOpenError::WrongPassword;
                 fz_drop_document(ctx_, d);
                 d = nullptr;
             }
@@ -218,8 +226,10 @@ bool MuPDFDocument::LoadDocumentInternal(fz_stream* stream,
     } fz_catch(ctx_) {
         if (d) fz_drop_document(ctx_, d);
         d = nullptr;
+        why = PDFOpenError::Failed;
     }
 
+    lastOpenError_ = why;
     if (!d) return false;
 
     doc_   = d;
@@ -229,6 +239,7 @@ bool MuPDFDocument::LoadDocumentInternal(fz_stream* stream,
 }
 
 bool MuPDFDocument::Open(const std::string& path, const std::string& password) {
+    lastOpenError_ = PDFOpenError::Failed;
     if (!ctx_) return false;
     std::lock_guard<std::mutex> lock(mu_);
     Close();
@@ -251,6 +262,7 @@ bool MuPDFDocument::Open(const std::string& path, const std::string& password) {
 bool MuPDFDocument::OpenOwnedBytes(std::vector<uint8_t>&& data,
                                    const std::string& password,
                                    const std::string& sourcePath) {
+    lastOpenError_ = PDFOpenError::Failed;
     if (!ctx_ || data.empty()) return false;
     std::lock_guard<std::mutex> lock(mu_);
     Close();
@@ -289,6 +301,7 @@ bool MuPDFDocument::OpenFromBytes(const std::vector<uint8_t>& data,
 
 bool MuPDFDocument::OpenInMemory(const std::string& path,
                                  const std::string& password) {
+    lastOpenError_ = PDFOpenError::Failed;
     if (!ctx_) return false;
 
     // Read first, in its own scope: the file handle is gone again before the

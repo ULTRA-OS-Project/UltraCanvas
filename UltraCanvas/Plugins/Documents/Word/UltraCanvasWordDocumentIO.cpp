@@ -2,7 +2,7 @@
 // Format detection and load/save dispatch for word-processing documents.
 // The per-format readers/writers live in UltraCanvasOdtFormat.cpp,
 // UltraCanvasDocxFormat.cpp and Plugins/Documents/LaTeX/.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 
@@ -144,14 +144,21 @@ bool UCWordDocumentIO::LoadLaTeX(const std::string& filePath, UCRichDocument& ou
 }
 
 bool UCWordDocumentIO::Save(const std::string& filePath, const UCRichDocument& document,
-                            std::string& outError) {
+                            std::string& outError, const std::string& password) {
     outError.clear();
-    switch (WordDocumentFormatFromExtension(
-        PathToUtf8(PathFromUtf8(filePath).extension()))) {
+    const WordDocumentFormat format = WordDocumentFormatFromExtension(
+        PathToUtf8(PathFromUtf8(filePath).extension()));
+    // Only a .docx can carry a password; saving another format without it
+    // would drop the protection without a word.
+    if (!password.empty() && format != WordDocumentFormat::Docx) {
+        outError = "Only a Word document (.docx) can be saved with a password: " + filePath;
+        return false;
+    }
+    switch (format) {
         case WordDocumentFormat::Odt:
             return SaveOdt(filePath, document, outError);
         case WordDocumentFormat::Docx:
-            return SaveDocx(filePath, document, outError);
+            return SaveDocx(filePath, document, outError, password);
         case WordDocumentFormat::LegacyDoc:
             outError = "Saving to the legacy .doc format is not supported. "
                        "Save as .docx instead.";

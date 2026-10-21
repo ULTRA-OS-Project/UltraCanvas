@@ -8,12 +8,17 @@
 //   * Integer  - whole-number stepping
 //   * Decimal  - fixed-precision floating stepping
 //   * List     - cycle through an ordered list of arbitrary string values
-// and two button layouts:
+// and three button layouts:
 //   * UpDownRight    - editable field with stacked up/down buttons on the right
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
+//   * FieldOnly      - the field alone; the arrow keys and the wheel still step
 //
+// Version: 1.5.0 - SpinnerLayout::FieldOnly: a field without step buttons
+// Version: 1.4.0 - onStepsFinished: once when a run of steps ends (button or key
+//                  released, the wheel at rest), not on every step
+// Version: 1.3.0 - SetSnapToStep: a Decimal value off the step grid
 // Version: 1.2.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,6 +26,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasTimer.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -41,7 +47,8 @@ namespace UltraCanvas {
 
     enum class SpinnerLayout {
         UpDownRight,      // Editable field on the left, stacked ▲/▼ buttons on the right
-        SidesHorizontal   // Buttons flanking the field:  ◀ / −   value   ▶ / +
+        SidesHorizontal,  // Buttons flanking the field:  ◀ / −   value   ▶ / +
+        FieldOnly         // The field alone, no buttons: typed, or stepped by the arrow keys and the wheel
     };
 
     // Glyph drawn inside the step buttons.
@@ -100,6 +107,7 @@ namespace UltraCanvas {
         double pageStep = 10.0;   // step for PageUp / PageDown
         int    decimals = 0;      // used when valueType == Decimal
         bool   wrap     = false;  // wrap around at the ends instead of clamping
+        bool   snapToStep = true; // round a set or typed value onto the step grid
 
         // ===== LIST MODE =====
         // In List mode `value` holds the (integer) index into listItems and the
@@ -144,6 +152,12 @@ namespace UltraCanvas {
         // spin boxes.
         bool editBufferFresh = false;
 
+        // A run of steps: from the first step that changes the value until
+        // the button or key is let go, the wheel rests or the focus leaves.
+        // Only the wheel needs the timer: it has no release.
+        bool    stepRunOpen  = false;
+        TimerId stepRunTimer = InvalidTimerId;
+
     public:
         // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
         UltraCanvasSpinner(const std::string& identifier, float x, float y, float w, float h);
@@ -153,6 +167,8 @@ namespace UltraCanvas {
 
         explicit UltraCanvasSpinner(const std::string& identifier)
             : UltraCanvasSpinner(identifier, -1, -1, -1, -1) {}
+
+        ~UltraCanvasSpinner() override;
 
         // ===== VALUE MANAGEMENT =====
         void   SetRange(double minVal, double maxVal);
@@ -185,6 +201,13 @@ namespace UltraCanvas {
 
         void SetWrap(bool enabled) { wrap = enabled; }
         bool IsWrap() const { return wrap; }
+
+        // Whether a value set or typed in is rounded onto the step grid
+        // (min + n * step). On by default. Off, a Decimal spinner keeps any
+        // value to its `decimals` places and the buttons still step by
+        // `step` from it: a measurement field showing 8.61 that steps by 0.1.
+        void SetSnapToStep(bool enabled) { snapToStep = enabled; }
+        bool IsSnapToStep() const { return snapToStep; }
 
         // Step the value up/down by one step (or a caller-supplied multiple).
         void StepUp(double steps = 1.0)   { StepBy(steps); }
@@ -234,6 +257,8 @@ namespace UltraCanvas {
         // ===== LAYOUT / STYLE =====
         void SetLayout(SpinnerLayout l) { layout = l; RequestRedraw(); }
         SpinnerLayout GetLayout() const { return layout; }
+        // False for SpinnerLayout::FieldOnly: the control is its field alone.
+        bool HasButtons() const { return layout != SpinnerLayout::FieldOnly; }
 
         void SetButtonGlyph(SpinnerButtonGlyph g) { style.glyph = g; RequestRedraw(); }
         void SetButtonThickness(float t) { style.buttonThickness = std::max(8.0f, t); RequestRedraw(); }
@@ -253,6 +278,14 @@ namespace UltraCanvas {
         std::function<void(double)> onValueChanging;  // fired on each interactive step
         std::function<void(int, const std::string&)> onSelectionChanged; // List mode
         std::function<void()> onEditingFinished;      // text edit committed / focus lost
+        // Once when a run of steps ends, with the value it ended on: the
+        // arrow button released, the arrow / Page / Home / End key released,
+        // the wheel at rest for half a second, or the focus or pointer gone.
+        // onValueChanging and onValueChanged still fire on every step; this
+        // is how a caller makes a held button one change - one undo step -
+        // instead of one per repeat. Not fired for a typed value or SetValue.
+        std::function<void(double)> onStepsFinished;
+        bool IsStepping() const { return stepRunOpen; }
 
     private:
         // ===== VALUE HELPERS =====
@@ -300,6 +333,13 @@ namespace UltraCanvas {
         bool HandleWheel(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
         bool HandleKeyChar(const UCEvent& event);
+        bool HandleKeyUp(const UCEvent& event);
+
+        // ===== STEP RUNS =====
+        static bool IsStepKey(UCKeys key);
+        void EndStepRun();                        // fires onStepsFinished once
+        void EndStepRunAfter(unsigned int ms);    // unless another step comes first
+        void CancelStepRunTimer();
     };
 
 // ===== FACTORY FUNCTIONS =====

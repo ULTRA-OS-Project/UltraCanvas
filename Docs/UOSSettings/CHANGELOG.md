@@ -1,3 +1,23 @@
+#### 2026-10-21 *0.7.0*
+- **Notifications → Registrations lists and removes what Windows keeps for
+  the applications' notifications** - each application's name and icon and
+  the program a click on its toast starts. **Remove all** does what the
+  installer's uninstaller does, for a folder unpacked from the ZIP package,
+  which has none. `UOS-Settings --remove-notification-registrations` does it
+  with no window; the ZIP's `uc-remove-registrations.cmd` runs that (framework
+  changelog: `notification-registrations-cleanup`).
+
+#### 2026-10-20 *0.6.0*
+- **Appearance → Emoji: colour, black and white, or the system's.** A new
+  page chooses how every application draws emoji: *Colour* (Noto Color Emoji,
+  the default), *Black and white* (Noto Emoji, in the text's colour) or
+  *System* (the computer's own emoji font, Noto Color Emoji where it has
+  none). Both fonts now ship with ULTRA OS, so an emoji - the 👤 at the start
+  of a LinkedIn subject in UltraMail - no longer draws as a box of hex digits
+  on a computer without an emoji font. Saved to `Emoji.conf` at once;
+  applications started afterwards use it (framework changelog:
+  `bundled-emoji-fonts`).
+
 #### 2026-10-15 *0.5.0*
 - **Desktop → At sign-in (Windows) is a choice of three:** *The Windows
   desktop*, *UltraDesktop beside Explorer* (what the switch did before:

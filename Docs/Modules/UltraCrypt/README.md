@@ -42,7 +42,11 @@ therefore in place.
 **Notes on two of these.** SHA-1 is vendored (~150 lines in
 `UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
 unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
-accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. One caller
+sets `allowLegacy`: the reader of password-protected Office files
+(`UltraCanvasOfficeEncryption.cpp`), because Office 2010 derives its keys with
+SHA-1 - a password hash and key derivation, which SHA-1's collisions do not
+reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. AES is
 vendored too (`UltraCryptAes.cpp`, ~470 lines), because libsodium has no AES

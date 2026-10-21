@@ -95,13 +95,25 @@
 // GetThumbnailCacheStats also counts the thumbnails still waiting, being
 // made and given up on. A thumbnail job running past 20 s gets another
 // worker started beside it, so one stuck file cannot stop every thumbnail.
-// TextPreviewLines gives the lines a document's preview page shows.
+// TextPreviewLines gives the lines a document's preview page shows - a
+// PowerPoint deck's slide text too.
 // GetBottomStripsHeight says how much of the bottom edge the info bar and
 // the hidden-items notice take, for a host floating something in the corner.
+// A remote folder being fetched or updated (remoteListingStatus) shows as a
+// thin blue bar sliding along the foot of the file area - its entries, or an
+// empty area, stay as they are - and the words go to the host's status line
+// (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.41.0 - a remote folder being fetched or updated: a thin blue bar
+//                  at the foot of the file area (FilerStyle::loadingBarColor)
+//                  in place of the "Loading folder" notice over it; the status
+//                  line for the host (GetListingPendingStatus,
+//                  onListingPendingChanged); remoteListingStatus is asked for a
+//                  listing with entries too
+// Version: 1.40.1 - TextPreviewLines reads a PowerPoint deck's slide text
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -497,6 +509,48 @@ namespace UltraCanvas {
                                     // empty = an empty file is created
     };
 
+    // ===== A FINISHED COPY / MOVE =====
+    // What a paste, a drop or a Move to / Copy to amounted to, handed to
+    // UltraCanvasFilerWidget::onTransferFinished once the operation is over
+    // (its windows closed, the folders refreshed). The counts are of the
+    // entries the user chose - a folder is one item however much it holds.
+    struct FilerTransferResult {
+        bool moved = false;          // a move; false = a copy
+        bool cancelled = false;      // stopped from the progress window
+        size_t items = 0;            // entries that arrived
+        size_t files = 0;            // ... of them files
+        size_t folders = 0;          // ... of them folders
+        size_t skipped = 0;          // entries that did not (see the summary)
+        std::string firstName;       // the entry's name when items == 1
+        std::string destination;     // the folder they went into
+        // The same as one sentence for a status line: "\"report.pdf\" moved
+        // to \"alt\"", "3 files copied to \"alt\"", "Copy cancelled - 2 of 5
+        // items copied to \"alt\"". Empty when nothing was asked to go anywhere
+        // (a cut pasted back into its own folder).
+        std::string message;
+    };
+
+    // ===== A FINISHED DELETE =====
+    // What a delete amounted to, handed to UltraCanvasFilerWidget::
+    // onDeleteFinished once it is over - to the trash or for good, walked to
+    // its end or cancelled. Counted like FilerTransferResult: the entries the
+    // user chose, a folder once however much it held.
+    struct FilerDeleteResult {
+        bool toTrash = false;        // moved to the trash; false = removed for good
+        bool cancelled = false;      // stopped from the progress window or a problem dialog
+        size_t items = 0;            // entries that are gone
+        size_t files = 0;            // ... of them files
+        size_t folders = 0;          // ... of them folders
+        size_t skipped = 0;          // entries that stayed (see the summary)
+        std::string firstName;       // the entry's name when items == 1
+        std::string trashName;       // "Trash", "Recycle Bin" - TrashDisplayName()
+        // The same as one sentence for a status line: "\"report.pdf\" moved
+        // to the Trash", "3 files deleted", "Delete cancelled - 2 of 5 items
+        // moved to the Trash", "3 of 5 items deleted (2 left)". Empty when
+        // nothing was deleted or asked about.
+        std::string message;
+    };
+
     // ===== "OPEN WITH >" APPLICATION =====
     struct FilerOpenWithApp {
         std::string label;
@@ -517,6 +571,9 @@ namespace UltraCanvas {
         Color selectionBorderColor = Color(60, 140, 220, 255);
         Color barColor             = Color(90, 160, 235, 255);
         Color barBackground        = Color(240, 240, 244, 255);
+        // The thin bar sliding along the foot of the file area while a remote
+        // folder is fetched or updated (remoteListingStatus): the accent blue.
+        Color loadingBarColor      = Color(37, 99, 235, 255);
         Color iconMenuBackground   = Color(50, 50, 56, 205);
         Color iconMenuGlyphColor   = Color(255, 255, 255, 235);
         Color renameFieldColor     = Color(255, 255, 255, 255);
@@ -638,6 +695,9 @@ namespace UltraCanvas {
         // ===== FOLDER =====
         void SetPath(const std::string& folderPath);   // scans + displays the folder
         const std::string& GetPath() const { return currentPath; }
+        // What the remote folder shown is waiting for (remoteListingStatus):
+        // empty when nothing is being fetched for it.
+        const std::string& GetListingPendingStatus() const { return listingPendingStatus; }
         void Refresh();                                // rescan the current folder
 
         // ===== FILE LIST (SEARCH RESULTS) =====
@@ -1595,6 +1655,14 @@ namespace UltraCanvas {
         // it. A file-list display (ShowFileList) only reports changes whose
         // folder is known, since its entries span many folders.
         std::function<void(const std::string& folderPath)> onFolderModified;
+        // A copy or move has ended - walked to its end, or cancelled part-way
+        // - with what arrived where (see FilerTransferResult). For a
+        // confirmation on the host's status line; the widget shows nothing
+        // of its own beyond the summary window for skipped entries.
+        std::function<void(const FilerTransferResult&)> onTransferFinished;
+        // The same for a delete (see FilerDeleteResult). A delete on a remote
+        // drive is the host's own and does not report here.
+        std::function<void(const FilerDeleteResult&)> onDeleteFinished;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
         // After a column splitter drag (or a programmatic width change) — the
@@ -1632,16 +1700,24 @@ namespace UltraCanvas {
         // freezes the window for as long as the server takes.
         std::function<bool(const std::string& path, std::vector<FilerEntry>& out,
                            std::string& error)> remoteListing;
-        // What is going on while the remote listing is still on its way: a
-        // line such as "Connecting to ftp.example.org" or "Waiting for 2
-        // requests ahead". Asked after remoteListing answered "nothing yet"
-        // (true with an empty listing), and again on every tick while the
-        // waiting notice is shown, so the text can follow the fetch. A
-        // non-empty answer shows the listing as loading - a progress ring
-        // over the text - instead of as an empty folder; an empty answer means
-        // the folder really is empty. Left unset, a folder being fetched shows
-        // as empty until the host's Refresh(), as it did before.
+        // What is going on while the remote listing is still on its way, or
+        // being fetched again behind the entries remoteListing answered with:
+        // a line such as "Connecting to ftp.example.org" or "Waiting for 2
+        // requests ahead". Asked after every remoteListing, and again on every
+        // tick while it answers, so the text can follow the fetch. A non-empty
+        // answer shows the folder as loading: a thin blue bar slides along the
+        // foot of the file area (FilerStyle::loadingBarColor), over the
+        // entries there are or an empty area - an empty listing is then not
+        // called empty - and the words are the host's to show
+        // (GetListingPendingStatus, onListingPendingChanged), on its status
+        // line rather than over the files. An empty answer means the listing
+        // is the folder as it is. Left unset, a folder being fetched shows as
+        // empty until the host's Refresh(), as it did before.
         std::function<std::string(const std::string& path)> remoteListingStatus;
+        // The remoteListingStatus line of the folder shown, as it changes:
+        // set when a fetch is waited for, updated as it goes, and empty once
+        // the listing is in. For the host's status line.
+        std::function<void(const std::string& status)> onListingPendingChanged;
 
         // ---- Changing a remote drive ---------------------------------------
         // Unlike remoteListing these do not answer with the result. The host
@@ -2032,10 +2108,11 @@ namespace UltraCanvas {
         TimerId pendingRenameTimer = InvalidTimerId;
 
         // The folder being fetched from a remote drive (see remoteListingStatus):
-        // what the host says is happening, shown with a progress ring in place
-        // of the empty-folder notice; the ring turns on the timer below, which
-        // also re-asks the host so the words follow the fetch. Empty when
-        // nothing is being waited for.
+        // what the host says is happening, for the host's status line, while
+        // a bar slides along the foot of the file area on the timer below -
+        // which also re-asks the host, so the words follow the fetch. Empty
+        // when nothing is being waited for. Changed through
+        // SetListingPendingStatus, which tells the host.
         std::string listingPendingStatus;
         TimerId listingPendingTimer = InvalidTimerId;
         std::chrono::steady_clock::time_point listingPendingSince{};
@@ -2822,17 +2899,22 @@ namespace UltraCanvas {
                                  const std::string& message);
         // "Nothing to show" notice for an empty folder / file list: an
         // attention icon above the message, vertically centered in the view.
-        // The waiting notice of a remote folder still being fetched: a turning
-        // progress ring, "Loading folder", and under it the host's status
-        // line (listingPendingStatus). Drawn where the empty-folder notice
-        // goes, in the same layout.
-        void DrawLoadingState(IRenderContext* ctx, const Rect2Di& bounds);
-        // Keeps the ring turning and the status line current while the
-        // notice is up: a periodic timer that re-asks remoteListingStatus and
-        // repaints. Stopped as soon as the listing arrives or the folder
-        // changes, and in the destructor.
+        // A remote folder being fetched or updated (listingPendingStatus): a
+        // thin bar along the foot of the file area, just above the info bar,
+        // with a segment sliding across it - one pass every 1.2 s, so it moves
+        // while the server says nothing. The entries, or the empty area, are
+        // left as they are.
+        void DrawListingPendingBar(IRenderContext* ctx, const Rect2Di& bounds);
+        Rect2Di ListingPendingBarRect(const Rect2Di& bounds) const;
+        // Keeps the bar sliding and the status line current while a fetch is
+        // waited for: a periodic timer that re-asks remoteListingStatus and
+        // repaints the bar. Stopped as soon as the listing arrives or the
+        // folder changes, and in the destructor.
         void StartListingPendingTicks();
         void StopListingPendingTicks();
+        // Changes listingPendingStatus, telling the host
+        // (onListingPendingChanged) when it changed.
+        void SetListingPendingStatus(const std::string& status);
         void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
                             const std::string& message);
         // ===== NAME FILTER (helpers) =====
@@ -3462,6 +3544,12 @@ namespace UltraCanvas {
             // conflict answered with Skip), and how many were.
             std::vector<SkippedItem> skipped;
             size_t pasted = 0;
+            // The chosen entries that arrived - the top of the queue, not the
+            // entries a merge spliced in - for onTransferFinished.
+            size_t arrivedFiles = 0;
+            size_t arrivedFolders = 0;
+            std::string firstArrived;
+            size_t requested = 0;     // entries the paste was asked to take
             // The folders a move actually emptied - the parent of every
             // source that was renamed away. The caller of a paste knows the
             // destination and nothing else, so these are reported to
@@ -3493,6 +3581,11 @@ namespace UltraCanvas {
         // dialog that resumes the paste.
         void ContinuePendingPaste();
         void FinishPendingPaste();
+        // Worker-side: counts a chosen entry that arrived (onTransferFinished).
+        static void NoteArrived(PendingPaste& pp, const std::string& name, bool isDir);
+        // FilerTransferResult::message for a finished paste of `requested` entries.
+        static std::string DescribeTransfer(const FilerTransferResult& result,
+                                            size_t requested);
         // The worker's walk through the queue: copies / moves entries until
         // one needs an answer, then records it in `pp->stop` and returns.
         // Runs off the UI thread and touches nothing but the queue, the
@@ -3663,8 +3756,20 @@ namespace UltraCanvas {
             // For the summary at the end: the entries that stayed, with why.
             std::vector<SkippedItem> skipped;
             size_t removed = 0;
+            // What is gone, for onDeleteFinished: files and folders apart,
+            // the first one's name, and how many the delete was asked for.
+            size_t goneFiles = 0;
+            size_t goneFolders = 0;
+            std::string firstGone;
+            size_t requested = 0;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
+        // Counts one chosen entry the delete removed (worker or UI thread,
+        // never both at once).
+        static void NoteDeleted(PendingDelete& pd, const FilerEntry& entry);
+        // FilerDeleteResult::message.
+        static std::string DescribeDelete(const FilerDeleteResult& result,
+                                          size_t requested);
 
         // Hands the queue to the file-operation worker (which stops at the
         // first victim needing a dialog) or finishes it. Called again by every

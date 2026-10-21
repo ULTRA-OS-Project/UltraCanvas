@@ -1,6 +1,7 @@
 // UltraCloud/core/UltraCloudAccountStore.cpp
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - a pending upload's completedAt (migration 4)
+// Version: 0.2.0 - pending uploads; accounts that upload straight to the name
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudAccounts.h>
 
@@ -81,6 +82,23 @@ Result AccountStore::Open(const std::string& connectionName, const std::string& 
           "  remote_folder TEXT,"
           "  is_default INTEGER DEFAULT 0,"
           "  created_at INTEGER DEFAULT (strftime('%s','now')));" },
+        { 2, "uploads to servers that write them as they arrive",
+          "CREATE TABLE cloud_pending_uploads("
+          "  account_id TEXT NOT NULL,"
+          "  remote_path TEXT NOT NULL,"
+          "  part_name INTEGER NOT NULL DEFAULT 0,"
+          "  file_size INTEGER NOT NULL DEFAULT 0,"
+          "  started_at INTEGER NOT NULL DEFAULT 0,"
+          "  PRIMARY KEY(account_id, remote_path));" },
+        // One statement per step: a step runs as one prepared statement.
+        { 3, "accounts whose uploads go straight to the name",
+          "CREATE TABLE cloud_direct_uploads("
+          "  account_id TEXT PRIMARY KEY,"
+          "  server_url TEXT NOT NULL,"
+          "  since INTEGER NOT NULL DEFAULT 0);" },
+        { 4, "a pending upload that was complete when the connection went",
+          "ALTER TABLE cloud_pending_uploads"
+          "  ADD COLUMN completed_at INTEGER NOT NULL DEFAULT 0;" },
     };
     return FromDb(UltraDb_Migrate(connection_, steps), "migrate cloud account store");
 }
@@ -119,6 +137,12 @@ Result AccountStore::Remove(const std::string& accountId) {
     UltraDbResult r = UltraDb_Exec(connection_,
         "DELETE FROM cloud_accounts WHERE account_id=?", { accountId });
     if (!r) return FromDb(r, "remove cloud account");
+    // What was kept about its uploads goes with it: a new account of the
+    // same id is another server, or the same one changed.
+    UltraDb_Exec(connection_, "DELETE FROM cloud_pending_uploads WHERE account_id=?",
+                 { accountId });
+    UltraDb_Exec(connection_, "DELETE FROM cloud_direct_uploads WHERE account_id=?",
+                 { accountId });
     // Hand the default to the first remaining account.
     if (removed.isDefault) {
         std::vector<Account> rest;
@@ -158,6 +182,78 @@ Result AccountStore::SetDefault(const std::string& accountId) {
     UltraDbResult r2 = UltraDb_Exec(connection_,
         "UPDATE cloud_accounts SET is_default=1 WHERE account_id=?", { accountId });
     return FromDb(r2, "set default cloud account");
+}
+
+Result AccountStore::AddPendingUpload(const PendingUpload& upload) {
+    if (upload.accountId.empty() || upload.remotePath.empty())
+        return Result::Error(ResultCode::InvalidArgument, "a pending upload needs an account and a path");
+    UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT INTO cloud_pending_uploads(account_id, remote_path, part_name, file_size, "
+        "started_at, completed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id, remote_path) "
+        "DO UPDATE SET part_name=excluded.part_name, file_size=excluded.file_size, "
+        "started_at=excluded.started_at, completed_at=excluded.completed_at",
+        { upload.accountId, upload.remotePath, upload.partName ? 1 : 0,
+          static_cast<int64_t>(upload.fileSize), upload.startedAt, upload.completedAt });
+    return FromDb(r, "note a pending upload");
+}
+
+Result AccountStore::RemovePendingUpload(const std::string& accountId,
+                                         const std::string& remotePath) {
+    UltraDbResult r = UltraDb_Exec(connection_,
+        "DELETE FROM cloud_pending_uploads WHERE account_id=? AND remote_path=?",
+        { accountId, remotePath });
+    return FromDb(r, "forget a pending upload");
+}
+
+Result AccountStore::ListPendingUploads(const std::string& accountId, int64_t now,
+                                        std::vector<PendingUpload>& out) {
+    out.clear();
+    UltraDb_Exec(connection_,
+        "DELETE FROM cloud_pending_uploads WHERE account_id=? AND started_at<?",
+        { accountId, now - kPendingUploadMaxAgeSeconds });
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT account_id, remote_path, part_name, file_size, started_at, completed_at "
+        "FROM cloud_pending_uploads WHERE account_id=? ORDER BY started_at, remote_path",
+        { accountId }, rs);
+    if (!q) return FromDb(q, "list pending uploads");
+    for (const auto& row : rs) {
+        PendingUpload u;
+        u.accountId = row["account_id"].AsString();
+        u.remotePath = row["remote_path"].AsString();
+        u.partName = row["part_name"].AsInt() != 0;
+        const int64_t size = row["file_size"].AsInt64();
+        u.fileSize = size > 0 ? static_cast<uint64_t>(size) : 0;
+        u.startedAt = row["started_at"].AsInt64();
+        u.completedAt = row["completed_at"].AsInt64();
+        out.push_back(std::move(u));
+    }
+    return Result::Ok();
+}
+
+Result AccountStore::SetUploadsDirect(const std::string& accountId,
+                                      const std::string& serverUrl, int64_t since) {
+    UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT INTO cloud_direct_uploads(account_id, server_url, since) VALUES(?,?,?) "
+        "ON CONFLICT(account_id) DO UPDATE SET server_url=excluded.server_url, "
+        "since=excluded.since",
+        { accountId, serverUrl, since });
+    return FromDb(r, "note an account that uploads straight to the name");
+}
+
+bool AccountStore::UploadsDirect(const std::string& accountId, const std::string& serverUrl,
+                                 int64_t now) {
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT server_url, since FROM cloud_direct_uploads WHERE account_id=?",
+        { accountId }, rs);
+    if (!q || rs.Empty()) return false;
+    if (rs.Row(0)["server_url"].AsString() == serverUrl &&
+        now - rs.Row(0)["since"].AsInt64() <= kPendingUploadMaxAgeSeconds)
+        return true;
+    UltraDb_Exec(connection_, "DELETE FROM cloud_direct_uploads WHERE account_id=?",
+                 { accountId });
+    return false;
 }
 
 Result AccountStore::GetDefault(Account& out) const {

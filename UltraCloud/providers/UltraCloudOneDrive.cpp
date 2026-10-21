@@ -1,6 +1,8 @@
 // UltraCloud/providers/UltraCloudOneDrive.cpp
+// Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
+//                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOneDrive.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -134,16 +136,17 @@ Result OneDriveProvider::MakeDirectory(const Account&, const Credentials& creden
 Result OneDriveProvider::Upload(const Account&, const Credentials& credentials,
                                 const std::string& localPath, const std::string& remotePath) {
     const int64_t total = FileSize(localPath);
-    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
-    if (total < 0 || !is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
+    if (total < 0) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     const std::string what = "upload " + remotePath;
 
+    // The bytes are read from the file as they are sent, here and in the
+    // chunks below.
     if (total <= simpleUploadLimit_) {
         UltraNetHttpRequest req;
         req.url = OneDriveItemUrl(remotePath, "content");
         req.method = UltraNetHttpMethod::Put;
         req.headers.Set("Content-Type", "application/octet-stream");
-        ReadChunk(is, 0, total, req.body);
+        req.bodyFilePath = localPath;
         UltraNetResponse resp;
         UltraNetResult net = Send(credentials, req, resp);
         return FromHttp(net, resp, what);
@@ -167,16 +170,16 @@ Result OneDriveProvider::Upload(const Account&, const Credentials& credentials,
     const std::string uploadUrl = ParseJson(BodyText(openResp))["uploadUrl"].GetString();
     if (uploadUrl.empty()) return Result::Error(ResultCode::Server, what + ": no upload session");
 
-    std::vector<uint8_t> chunk;
     for (int64_t offset = 0; offset < total; offset += chunkSize_) {
         const int64_t length = std::min(chunkSize_, total - offset);
-        ReadChunk(is, offset, length, chunk);
         UltraNetHttpRequest put;
         put.url = uploadUrl;
         put.method = UltraNetHttpMethod::Put;
         put.headers.Set("Content-Range", ContentRange(offset, length, total));
         put.headers.Set("Content-Type", "application/octet-stream");
-        put.body = chunk;
+        put.bodyFilePath = localPath;
+        put.bodyFileOffset = offset;
+        put.bodyFileLength = length;
         put.options.timeoutMs = 600000;
         UltraNetResponse putResp;
         UltraNetResult cnet = http_(put, putResp);   // session URL carries its own auth
@@ -190,15 +193,8 @@ Result OneDriveProvider::Download(const Account&, const Credentials& credentials
                                   const std::string& remotePath, const std::string& localPath) {
     UltraNetHttpRequest req;
     req.url = OneDriveItemUrl(remotePath, "content");   // 302 to the bytes; followed
-    UltraNetResponse resp;
-    UltraNetResult net = Send(credentials, req, resp);
-    Result r = FromHttp(net, resp, "download " + remotePath);
-    if (!r) return r;
-    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
-    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
-    os.write(reinterpret_cast<const char*>(resp.body.data()),
-             static_cast<std::streamsize>(resp.body.size()));
-    return os ? Result::Ok() : Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    // Written to disk as it arrives, not held in memory first.
+    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
 }
 
 Result OneDriveProvider::CreateShareLink(const Account&, const Credentials& credentials,

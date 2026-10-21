@@ -55,9 +55,11 @@ set(ULTRANET_TEST_SOURCES
     test_dns_servers.cpp
     test_ftp_parser.cpp
     test_ftp_log.cpp
+    test_body_file.cpp
     test_curl_debug.cpp
     test_loopback.cpp
     test_download.cpp
+    test_abort.cpp
     test_session.cpp
     test_oauth2.cpp
     test_oauth2_apps.cpp

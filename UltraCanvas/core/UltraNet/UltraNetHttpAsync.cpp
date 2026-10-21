@@ -18,6 +18,9 @@
 //     wants the transfer's connection to exist, so a wish made before the
 //     connect is kept and applied on a later turn). The stall check is
 //     switched off while paused.
+// Version: 0.4.1 - a body named by file (bodyFilePath) is streamed from it on the
+//                  multi worker, as on the synchronous path
+// Version: 0.4.0 - a body named by file (bodyFilePath) is read and sent
 // Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -52,6 +55,9 @@ struct AsyncRequest {
     curl_slist*    slist  = nullptr;
 
     std::vector<uint8_t> bodyOwned;     // keeps request body alive for libcurl
+    // A body named by file (bodyFilePath): open for as long as the transfer
+    // runs, read by libcurl on the multi worker as it sends.
+    ultranet_internal::BodyFileSource bodyFile;
     std::string          url;
     UltraNetResponse     response;
     WriteSink            sink;
@@ -94,6 +100,20 @@ public:
         a->url        = req.url;
         a->onComplete = std::move(cb);
         a->bodyOwned  = req.body;
+        // A body named by file is opened here and read as it is sent, on the
+        // multi worker (ApplyBodyFile below): the file is never in memory.
+        if (!req.bodyFilePath.empty()) {
+            const UltraNetResult bodyOpened = ultranet_internal::OpenBodyFile(req, a->bodyFile);
+            if (!bodyOpened) {
+                if (a->onComplete) {
+                    UltraNetResponse r;
+                    r.statusMessage = bodyOpened.message;
+                    r.transferError = r.statusMessage;
+                    a->onComplete(r);
+                }
+                return UltraNetInvalidHandle;
+            }
+        }
         a->sink.body  = &a->response.body;
 
         // The body goes to the file when the options name one; it is closed
@@ -115,7 +135,10 @@ public:
         a->slist = ultranet_internal::ConfigureEasyHandle(
             a->easy, req, cfg, &a->sink, &a->response);
 
-        if (!a->bodyOwned.empty()) {
+        if (a->bodyFile.file) {
+            a->bodyOwned.clear();   // the file wins, as on the synchronous path
+            ultranet_internal::ApplyBodyFile(a->easy, &a->bodyFile);
+        } else if (!a->bodyOwned.empty()) {
             curl_easy_setopt(a->easy, CURLOPT_POSTFIELDSIZE_LARGE,
                              static_cast<curl_off_t>(a->bodyOwned.size()));
             curl_easy_setopt(a->easy, CURLOPT_POSTFIELDS, a->bodyOwned.data());

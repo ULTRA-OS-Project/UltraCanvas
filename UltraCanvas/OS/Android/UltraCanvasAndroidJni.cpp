@@ -13,6 +13,7 @@
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasDebug.h"
 
+#include <android/log.h>
 #include <android/native_activity.h>
 #include <android_native_app_glue.h>
 
@@ -159,6 +160,29 @@ namespace AndroidJni {
         return ToJString(env, std::string(utf8 ? utf8 : ""));
     }
 
+    void CheckJavaToNativeBridge() {
+        JNIEnv* env = GetEnv();
+        jobject activity = GetActivity();
+        if (!env || !activity) return;
+        jclass cls = env->GetObjectClass(activity);
+        jmethodID mid = env->GetMethodID(cls, "checkNativeBridge", "()Z");
+        env->DeleteLocalRef(cls);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();   // plain NativeActivity: no Java half
+            return;
+        }
+        const bool ok = env->CallBooleanMethod(activity, mid) == JNI_TRUE &&
+                        !ClearException(env, "checkNativeBridge");
+        // Straight to logcat at INFO/ERROR rather than through debugOutput,
+        // which a release build keeps quiet: this line is the whole point.
+        __android_log_write(ok ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR, "UltraCanvas",
+                            ok ? "Java->native bridge OK"
+                               : "Java->native bridge BROKEN: UltraCanvasActivity cannot call "
+                                 "into this library (System.loadLibrary failed or the "
+                                 "android.app.lib_name meta-data names another library). "
+                                 "Dialogs, the keyboard and permission requests will crash.");
+    }
+
     std::vector<std::string> SplitLines(const std::string& text) {
         std::vector<std::string> lines;
         std::string::size_type start = 0;
@@ -176,3 +200,9 @@ namespace AndroidJni {
 
 } // namespace AndroidJni
 } // namespace UltraCanvas
+
+// UltraCanvasActivity.checkNativeBridge's probe: returns its argument.
+extern "C" JNIEXPORT jint JNICALL
+Java_org_ultraos_ultracanvas_UltraCanvasActivity_nativeBridgeEcho(JNIEnv*, jclass, jint value) {
+    return value;
+}

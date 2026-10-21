@@ -50,13 +50,25 @@ auto barChart = std::make_shared<UltraCanvasBarChartElement>(
 | barBorderColor | Color | Color(0, 51, 102, 255) | Border color for bars (dark blue) |
 | barBorderWidth | float | 1.0f | Width of bar borders in pixels |
 | barSpacing | float | 0.1f | Spacing between bars as percentage (0.0-0.9) |
+| orientation | BarChartOrientation | Vertical | `Vertical`: categories along the bottom; `Horizontal`: one row per category, names on the left, values along the bottom |
+| showValueLabels | bool | false | Each bar's value past its end (off by default for bars, unlike the other charts) |
+
+A point's own `ChartDataPoint::color`, when it is not transparent, is drawn
+instead of `barColor`.
 
 ### Value axis
 
-The value (y) axis always includes 0: bars rise from the zero line, and
-negative values hang below it. With all-positive data the axis runs from 0 to
-the largest value plus 5 %; with all-negative data, from the smallest value
-minus 5 % to 0.
+The value axis always includes 0: bars rise from the zero line, and negative
+values hang below it. The axis reaches 0 *before* it is padded, so a series
+whose smallest value is 0 starts at 0. It is padded by 5 % away from zero
+only, then rounded out to the next whole tick: values 0 to 142 give an axis
+from 0 to 160 marked every 20. Ticks fall on whole steps (1, 2, 2.5 or
+5 x 10^n), aiming for at most eight intervals, and the grid lines lie on them.
+
+`SetValueRange(min, max)` fixes the axis instead - two charts side by side
+then compare, and a live chart does not rescale whenever its biggest value
+moves. A bar past the range stops at the plot's edge. `ClearValueRange()`
+fits the axis to the data again.
 
 ### Inherited Properties from Base Class
 
@@ -67,6 +79,9 @@ minus 5 % to 0.
 | plotAreaColor | Color | Color(250, 250, 250, 255) | Background color of plot area |
 | showGrid | bool | true | Whether to display grid lines |
 | gridColor | Color | Color(220, 220, 220, 255) | Color of grid lines |
+| emptyMessage, emptyDetail | std::string | "No data to display", "" | What the chart says, centred, while it has no data (`SetEmptyMessage(text, detail)`); an empty text draws the background alone |
+| emptyMessageColor | Color | Color(128, 128, 128, 255) | Colour of that message (`SetEmptyMessageColor`) |
+| emptyIconPath, emptyIconColor, emptyIconBadgeColor | std::string, Color, Color | "", transparent, transparent | An optional icon over the message, in one colour and on a rounded badge when those are set (`SetEmptyIcon(path, iconColor, badgeColor)`) |
 | enableTooltips | bool | true | Enable interactive tooltips |
 | enableZoom | bool | false | Kept, but the bar chart does not zoom: the wheel goes to the parent |
 | enablePan | bool | false | Kept, but the bar chart does not pan |
@@ -133,6 +148,47 @@ Sets the spacing between bars as a percentage of bar width.
 ```cpp
 barChart->SetBarSpacing(0.2f); // 20% spacing
 ```
+
+#### SetOrientation
+```cpp
+void SetOrientation(BarChartOrientation orientation)
+```
+`GetOrientation()` reads it back.
+`BarChartOrientation::Horizontal` runs the bars sideways: one row per data
+point, first at the top, its `label` on the left, the value axis along the
+bottom. The left margin is sized for the longest label (between a fifth and
+two fifths of the width). Use it for named amounts whose names are longer
+than a bar is wide.
+
+**Example:**
+```cpp
+barChart->SetOrientation(BarChartOrientation::Horizontal);
+barChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+barChart->SetShowValueLabels(true);
+```
+
+#### SetValueRange / ClearValueRange
+```cpp
+void SetValueRange(double min, double max)
+```
+```cpp
+void ClearValueRange()
+```
+`HasValueRange()` says whether one is set.
+Fixes the value axis to `min`..`max` (either order; an empty range is
+ignored), or returns to one fitted to the data.
+
+**Example:**
+```cpp
+barChart->SetValueRange(0.0, 2500.0);   // watts: a kettle fits
+```
+
+#### GetBarRect
+```cpp
+Rect2Dd GetBarRect(size_t index)
+```
+Where bar `index` is drawn, in element coordinates - for a host that marks a
+bar, and for tests.
 
 ### Data Management Methods (Inherited)
 
@@ -296,6 +352,25 @@ perfChart->SetBarSpacing(0.25f);                       // 25% spacing
 perfChart->SetDataSource(performanceData);
 perfChart->SetChartTitle("Team Performance Metrics");
 perfChart->SetEnableTooltips(true);   // the bar chart's interaction; it does not zoom or pan
+```
+
+### Power by Device (horizontal)
+
+```cpp
+auto power = CreateBarChartElement("power", 0, 0, 700, 300);
+power->SetOrientation(BarChartOrientation::Horizontal);
+power->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+power->SetBarColor(Color(245, 165, 36, 255));
+power->SetBarBorderWidth(0);
+power->SetShowValueLabels(true);
+
+auto watts = std::make_shared<ChartDataVector>();
+watts->LoadFromArray({
+    ChartDataPoint(0, 88, 0, "TV"),
+    ChartDataPoint(1, 95, 0, "Fridge"),
+    ChartDataPoint(2, 142, 0, "Workstation")
+});
+power->SetDataSource(watts);   // axis 0..160, a tick every 20
 ```
 
 ### Dynamic Data Update

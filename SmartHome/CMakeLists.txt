@@ -25,6 +25,11 @@
 set(SMARTHOME_SOURCES
     core/UltraCanvasSmartHomeManager.cpp
     core/SmartHomeProtocolRegistry.cpp
+    core/SmartHomeStore.cpp
+    core/SmartHomeAutomationEngine.cpp
+    # The demo home: no radio, no third party, so it is always built and
+    # always registered (SmartHomeProtocolType::Simulated).
+    protocols/Simulated/SimulatedProtocol.cpp
 )
 
 # ── Protocol backends: all OFF, none of them can build yet ───────────────────
@@ -177,7 +182,8 @@ target_compile_features(SmartHome PUBLIC cxx_std_20)
 target_include_directories(SmartHome PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/include)
-target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
+target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core
+                                             ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
 # The public headers reach UltraCanvasUIElement.h, whose render context
 # includes cairo. Those include paths (Homebrew's on macOS, vcpkg's on
 # Windows) are the UltraCanvas target's public interface, so the engine has
@@ -186,6 +192,16 @@ target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
 # everywhere else, which is how the macOS arm64 CI job found this.
 if(ULTRACANVAS_LIBRARY)
     target_link_libraries(SmartHome PUBLIC ${ULTRACANVAS_LIBRARY})
+endif()
+
+# smarthome.db is an UltraDatabase (SQLite) store. Without SQLite the store
+# compiles to one that refuses to open, and everything else still works.
+if(TARGET uc-database)
+    target_link_libraries(SmartHome PRIVATE uc-database)
+    target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
+    message(STATUS "  [✓] SmartHome store - smarthome.db over UltraDatabase")
+else()
+    message(STATUS "  [−] SmartHome store - SKIPPED (UltraDatabase not built: no SQLite)")
 endif()
 
 # One definition per enabled backend, and its headers on the private include
@@ -339,6 +355,24 @@ message(STATUS "  [✓] SmartHomeUI - ENABLED (target: SmartHomeUI)")
 if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     add_executable(SmartHomeFacadeTest tests/FacadeTest.cpp)
     target_link_libraries(SmartHomeFacadeTest PRIVATE SmartHome)
+
+    # The demo home, on a clock the test drives, through the facade.
+    add_executable(SmartHomeSimulatedTest tests/SimulatedTest.cpp)
+    target_link_libraries(SmartHomeSimulatedTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeSimulatedTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
+    add_test(NAME SmartHomeSimulated COMMAND SmartHomeSimulatedTest)
+
+    # The store and the automation engine, on a clock the test sets.
+    add_executable(SmartHomeAutomationTest tests/AutomationTest.cpp)
+    target_link_libraries(SmartHomeAutomationTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeAutomationTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/core
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
+    if(TARGET uc-database)
+        target_compile_definitions(SmartHomeAutomationTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
+    endif()
+    add_test(NAME SmartHomeAutomation COMMAND SmartHomeAutomationTest)
 
     # Pure framing, so it builds whether or not the Zigbee backend is on.
     add_executable(SmartHomeAshCodecTest tests/AshCodecTest.cpp

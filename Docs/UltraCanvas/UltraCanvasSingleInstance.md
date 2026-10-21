@@ -112,7 +112,7 @@ EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial, UltraFIBU and
 UltraWin Manager raise their window. The document applications - Texter,
 UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraVideo and AnchorPoint -
 use `ListenOpen`: a file opened from the file manager while one of them runs
-opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint`,
+opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint-cli`,
 `ultrafibu`) do not use it: scripts run several of them at once, and a helper
 process an application starts itself (UltraFiler's elevated helper) must
 never claim.

@@ -407,6 +407,40 @@ the highlighter has no rules for (a LaTeX `.cls`, an Objective-C `.m`) is left
 as plain text instead of being coloured as the other language. Returns
 whether a language was set.
 
+#### Picking a language for text with no file name
+Text that arrives without a file name - a paste into a new document, a
+clipboard entry, a stream - can be given its language from its content with
+`DetectLanguageFromContent` (`UltraCanvasLanguageDetect.h`, a free function
+with no dependency beyond the standard library). It returns a language name
+`SetProgrammingLanguage` takes, `"Markdown"` for Markdown, or `""` when the
+text does not clearly say (prose, a word or two) - leave such text plain.
+
+<!-- doc-check: std::string pasted; -->
+```cpp
+#include "UltraCanvasLanguageDetect.h"
+
+const std::string lang = DetectLanguageFromContent(pasted);
+if (lang == "Markdown") {
+    textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+} else if (!lang.empty()) {
+    textArea->SetHighlightSyntax(true);
+    textArea->SetProgrammingLanguage(lang);
+}
+```
+
+It decides in this order: a `#!` line names its interpreter; a text that is
+wholly one document is that document (`<?php`, `<?xml` and its SVG / RSS /
+KML / POM roots, HTML, a complete JSON value, JSONC with comments, GeoJSON);
+otherwise each line votes for the languages it can only be, and the winner
+must score at least 4 and lead every language outside its family by 2 (C++
+and C, TypeScript and JavaScript are families: there any lead decides, and a
+tie goes to C++ / JavaScript). Lines inside a Markdown ``` fence vote for
+Markdown, not for the code they show. Only the first 64 KB is read.
+UltraTexter calls it when text is pasted into a new, empty tab whose language
+nobody chose; `UltraCanvasMediaViewer` for a `.txt` / `.text` file; the
+clipboard history to file a copy as `Code` (UltraClipboard then colours it in
+*Edit* and offers its extension in *Save as*).
+
 ### Property Setters
 
 #### SetReadOnly
@@ -968,8 +1002,10 @@ $$
 - `$...$` is text-style math (fractions and operators sized for a line of
   text); `$$...$$` on one line is display-style math inline.
 - `$$` alone on a line opens a display block; the next `$$` line closes it.
-  The block is rendered centred at the closing fence, and the source lines
-  between show only while the caret is on them.
+  The block is rendered centred at the closing fence. While the caret is on
+  any line of the block - either fence or a source line - the whole block
+  shows as raw source, one line under the other, so the formula being edited
+  is always in view; moving the caret out renders it again.
 - A pair of dollar signs counts as math only when it looks like one: no space
   right after the opener or before the closer, and no digit after the closer,
   so `costs $5 and $10` stays text.
@@ -1003,6 +1039,7 @@ unescaped, and the document view typesets them.
 - **UltraCanvasTextInput**: Single-line text input
 - **UltraCanvasMarkdownDisplay**: Read-only markdown rendering (`Plugins/Text/UltraCanvasMarkdown.h`)
 - **SyntaxTokenizer**: The highlighter behind the text area (`UltraCanvasSyntaxTokenizer.h`)
+- **DetectLanguageFromContent**: The language of text with no file name (`UltraCanvasLanguageDetect.h`)
 - **UltraCanvasSpellChecker**: The shared spell-check service
 
 ## Platform-Specific Notes
