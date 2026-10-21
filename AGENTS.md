@@ -38,13 +38,19 @@ before adding cross-module code.
 - `Docs/Modules/<Name>/README.md` — sibling-module docs (UltraAI, UltraNet,
   UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …). The UltraAI,
   UltraNet and VirtualFS ones are mirrors of `<Name>/README.md`: edit the
-  module's copy and run `python3 scripts/generate_llms_txt.py`; CI fails when
-  a mirror is stale (`MIRRORED_READMES` in the script lists them).
+  module's copy, run `python3 scripts/generate_llms_txt.py` and commit the
+  mirror it rewrites (not `llms.txt` / `llms-full.txt`, see below); CI fails
+  when a mirror is stale (`MIRRORED_READMES` in the script lists them).
 - `Docs/CSSLayout.md`, `Docs/Dependencies.md` — layout engine and
   third-party dependency policy.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
   index / full concatenation of the docs corpus for LLM consumption.
-  Regenerate with `python3 scripts/generate_llms_txt.py` after editing docs.
+  Written on `main` after each docs change lands
+  (`.github/workflows/llms-regenerate.yml`); a pull request never carries
+  them, and `llms-txt.yml` refuses one that changes them. Running
+  `python3 scripts/generate_llms_txt.py` locally still rewrites them - it is
+  also what refreshes the README mirrors - so put them back before
+  committing: `git checkout origin/main -- llms.txt llms-full.txt`.
 - Every document the demo app opens (the `Docs/....md` paths in
   `Apps/DemoApp/*.cpp`) starts with a generated `## Contents` inventory
   linking each `##` / `###` section. After adding, renaming or removing a
@@ -704,8 +710,11 @@ number anywhere else, and never introduce a new literal copy of one:
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and
    `THIRD_PARTY_LICENSES.md`.
-6. Docs changes: regenerate `llms.txt`/`llms-full.txt`
-   (`python3 scripts/generate_llms_txt.py`) — CI verifies they are in sync.
+6. Docs changes: run `python3 scripts/generate_llms_txt.py` for the README
+   mirrors it refreshes, and leave `llms.txt` / `llms-full.txt` out of the
+   commit (`git checkout origin/main -- llms.txt llms-full.txt`): `main`
+   regenerates them after the merge, and CI refuses a pull request that
+   changes them.
 
 ## Reporting back (AI sessions)
 

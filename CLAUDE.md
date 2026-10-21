@@ -7,11 +7,14 @@ Quick pointers:
 
 - Module registry: `Masterfile_modules.md`
 - Component docs (consult before using any widget): `Docs/UltraCanvas/`
-- LLM-ready docs index: `llms.txt` (full corpus: `llms-full.txt`)
+- LLM-ready docs index: `llms.txt` (full corpus: `llms-full.txt`), written on
+  `main` after each docs change lands - a pull request never carries them
 - After editing docs, run `python3 scripts/generate_doc_toc.py` (the
   `## Contents` inventory of every demo-app doc) and then
-  `python3 scripts/generate_llms_txt.py`; after
-  editing a component doc, `python3 scripts/check_doc_examples.py <doc>`
+  `python3 scripts/generate_llms_txt.py` (commit the README mirrors it
+  refreshes, then drop the two llms files from the branch:
+  `git checkout origin/main -- llms.txt llms-full.txt` - CI refuses a pull
+  request that changes them); after editing a component doc, `python3 scripts/check_doc_examples.py <doc>`
   compiles its C++ against the headers (CI runs it over every component doc
   and fails on any finding)
 - Every file a user loads or saves goes through `UltraCanvasFileLoader`
