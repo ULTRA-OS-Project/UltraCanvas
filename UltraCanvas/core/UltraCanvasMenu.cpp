@@ -1,5 +1,6 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.16.0 - the labels are shaped once and kept
 // Version: 1.15.0 - MenuStyle::FromTheme
 // Version: 1.14.0 - OpenMenuAnchored (below a widget, or above it when there is no
 //                  room below); menubar drop-downs flip above their item; symbolic
@@ -679,7 +680,7 @@ namespace UltraCanvas {
 
         // Handle header
         if (item.type == MenuItemType::Header) {
-            RenderHeader(item, itemBounds, ctx);
+            RenderHeader(index, item, itemBounds, ctx);
             return;
         }
 
@@ -744,13 +745,18 @@ namespace UltraCanvas {
             }
             int labelMaxWidth = std::max(0, labelRightX - currentX);
 
-            auto labelLayout = ctx->CreateTextLayout(item.label, false);
-            labelLayout->SetFontStyle(item.font.value_or(style.font));
-            labelLayout->SetWrap(TextWrap::WrapNone);
-            labelLayout->SetEllipsize(item.ellipsize);
-            labelLayout->SetExplicitWidth(labelMaxWidth);
+            // Shaped once and kept while the label, the font, the room and
+            // the shortening stay: the menu is repainted on every hover.
+            if (index >= static_cast<int>(labelLayouts.size())) labelLayouts.resize(static_cast<size_t>(index) + 1);
+            TextLayoutKey key;
+            key.text = item.label;
+            key.font = item.font.value_or(style.font);
+            key.wrap = TextWrap::WrapNone;
+            key.ellipsize = item.ellipsize;
+            key.width = labelMaxWidth;
             ctx->SetTextPaint(textColor);
-            ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
+            if (ITextLayout* labelLayout = labelLayouts[static_cast<size_t>(index)].Get(ctx, key))
+                ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
         }
 
         // Render shortcut (for vertical menus)
@@ -825,6 +831,13 @@ namespace UltraCanvas {
     int UltraCanvasMenu::CalculateItemWidth(const MenuItemData &item) const {
         int width = 0;
         auto ctx = GetRenderContext();
+        // Without a window there is no context to measure with (a menu drawn
+        // into an offscreen surface by a test): a rough width per character
+        // keeps the entries apart instead of a null dereference.
+        auto textWidth = [&](const std::string& text) -> int {
+            if (ctx) return ctx->GetTextLineWidth(text);
+            return static_cast<int>(text.size() * style.font.fontSize * 0.6);
+        };
         // Icon space
         if (!item.iconPath.empty() || item.iconImage) {
             width += style.iconSize + style.iconSpacing;
@@ -832,7 +845,7 @@ namespace UltraCanvas {
 
         // Text width
         if (!item.label.empty()) {
-            width += ctx->GetTextLineWidth(item.label.c_str());
+            width += textWidth(item.label);
         }
 
         // The following elements are only rendered in vertical menus
@@ -841,7 +854,7 @@ namespace UltraCanvas {
             // Shortcut width
             if (!item.shortcut.empty()) {
                 std::string displayShortcut = GetDisplayShortcut(item.shortcut);
-                width += style.shortcutSpacing + ctx->GetTextLineWidth(displayShortcut);
+                width += style.shortcutSpacing + textWidth(displayShortcut);
             }
 
             // Submenu arrow
@@ -917,7 +930,7 @@ namespace UltraCanvas {
                                  style.separatorColor, 0, Colors::Transparent);
     }
 
-    void UltraCanvasMenu::RenderHeader(const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
+    void UltraCanvasMenu::RenderHeader(int index, const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
         FontStyle headerFont = item.font.value_or(style.font);
         headerFont.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(headerFont);
@@ -926,7 +939,12 @@ namespace UltraCanvas {
         int textY = ctx->TextTopCentredOnCaps(bounds, headerFont);
 
         ctx->SetTextPaint(style.headerTextColor);
-        ctx->DrawText(item.label, Point2Di(textX, textY));
+        if (index >= static_cast<int>(labelLayouts.size())) labelLayouts.resize(static_cast<size_t>(index) + 1);
+        TextLayoutKey key;
+        key.text = item.label;
+        key.font = headerFont;
+        if (ITextLayout* layout = labelLayouts[static_cast<size_t>(index)].Get(ctx, key))
+            ctx->DrawTextLayout(*layout, Point2Di(textX, textY));
     }
 
     void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position, IRenderContext *ctx) {

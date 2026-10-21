@@ -1,5 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
+// Version: 1.1.0 - the button's text and the rows' are shaped once and kept (UltraCanvasTextLayoutCache)
+// Version: 1.0.0 - the releases before 2026-10 are in Docs/UltraCanvas/CHANGELOG.md
 // Uses ListView popup for rendering dropdown items
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
@@ -8,6 +10,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListModel.h"
 #include "UltraCanvasListDelegate.h"
@@ -137,6 +140,9 @@ namespace UltraCanvas {
 
         const DropdownStyle* style = nullptr;
         bool multiSelectEnabled = false;
+        // One kept layout per row (UltraCanvasTextLayoutCache): the list is
+        // repainted on every hover, the rows' texts seldom change.
+        std::vector<UltraCanvasTextLayoutCache> rowLayouts;
     };
 
 // ===== DROPDOWN COMPONENT =====
@@ -161,6 +167,8 @@ namespace UltraCanvas {
 
     private:
         std::vector<DropdownItem> items;
+        // The closed button's text, shaped once and kept (UltraCanvasTextLayoutCache).
+        UltraCanvasTextLayoutCache displayLayout_;
         int selectedIndex = -1;
         bool dropdownOpen = false;
         bool buttonPressed = false;

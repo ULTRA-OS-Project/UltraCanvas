@@ -5,11 +5,15 @@
   while the key is the one it was built with, else a new one with the key
   applied. The label keeps its layout this way now, so no setter of its
   resets it (only the inline images, which are not in the key), and the
-  button's middle-shortened text does too; the next element copies the
-  pattern instead of choosing one. `IRenderContext::CreateTextLayout` counts
+  button's middle-shortened text does too, and so do the text input (its
+  text and its placeholder), the dropdown (the closed button's text and
+  each row of its list) and the menu (each entry's label and header),
+  which shaped their text on every draw before; the next element copies
+  the pattern instead of choosing one. `IRenderContext::CreateTextLayout` counts
   the layouts it made (`TextLayoutsCreated`; the backend implements
-  `MakeTextLayout`), and `TextLayoutCacheTest` draws a label and a button
-  ten times each and finds one layout.
+  `MakeTextLayout`), and `TextLayoutCacheTest` draws a label, a button, a
+  text input, a dropdown and a menu bar ten times each and finds one
+  layout per text.
 - **`scripts/check_version_history.py` lists the headers under
   `UltraCanvas/include` that carry no `Version:` line**, so the history a
   reader expects in a header's head is added where it is missing;

@@ -1,6 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Version: 1.1.0 - the button's text and the rows' are shaped once and kept
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
@@ -103,9 +104,15 @@ namespace UltraCanvas {
         // Render text
         std::string text = GetStringValue(model->GetData({row, 0}, ListDataRole::DisplayRole));
         if (!text.empty()) {
-            Size2Di textSize = ctx->GetTextLineDimensions(text);
-            int textY = option.rect.y + (option.rect.height - textSize.height) / 2;
-            ctx->DrawText(text, Point2Di(currentX, textY));
+            if (row >= static_cast<int>(rowLayouts.size())) rowLayouts.resize(static_cast<size_t>(row) + 1);
+            TextLayoutKey key;
+            key.text = text;
+            key.font.fontFamily = style->fontFamily;
+            key.font.fontSize = style->fontSize;
+            if (ITextLayout* layout = rowLayouts[static_cast<size_t>(row)].Get(ctx, key)) {
+                int textY = option.rect.y + (option.rect.height - static_cast<int>(layout->GetLayoutHeight())) / 2;
+                ctx->DrawTextLayout(*layout, Point2Di(currentX, textY));
+            }
         }
     }
 
@@ -694,10 +701,16 @@ namespace UltraCanvas {
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextPaint(textColor);
 
-            Size2Di textSize = ctx->GetTextLineDimensions(displayText);
+            // Shaped once and kept while the text and the font stay.
+            TextLayoutKey key;
+            key.text = displayText;
+            key.font.fontFamily = style.fontFamily;
+            key.font.fontSize = style.fontSize;
+            ITextLayout* layout = displayLayout_.Get(ctx, key);
+            const int textHeight = layout ? static_cast<int>(layout->GetLayoutHeight()) : 0;
 
             int textX = buttonRect.x + (int)style.paddingLeft;
-            int textY = buttonRect.y + (buttonRect.height - textSize.height) / 2;
+            int textY = buttonRect.y + (buttonRect.height - textHeight) / 2;
 
             // Render icon if single selection and item has icon
             if (!multiSelectEnabled && selectedIndex >= 0 && selectedIndex < (int)items.size()) {
@@ -717,7 +730,7 @@ namespace UltraCanvas {
                 }
             }
 
-            ctx->DrawText(displayText, Point2Di(textX, textY));
+            if (layout) ctx->DrawTextLayout(*layout, Point2Di(textX, textY));
             ctx->PopState();
         }
 

@@ -1,5 +1,6 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.17.0 - the labels are shaped once and kept (UltraCanvasTextLayoutCache)
 // Version: 1.16.0 - MenuStyle::FromTheme, ApplyTheme
 // Version: 1.15.0 - OpenMenuAnchored: a menu opens below a widget, or above it when it
 //                  does not fit below, without the caller sizing it; menubar drop-downs
@@ -25,6 +26,7 @@
 #include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasScrollbar.h"
 #include <vector>
 #include <string>
@@ -307,6 +309,9 @@ namespace UltraCanvas {
 
         // Menu items
         std::vector<MenuItemData> items;
+        // One kept layout per item's label (UltraCanvasTextLayoutCache), by
+        // the item's index: a menu is repainted on every hover.
+        std::vector<UltraCanvasTextLayoutCache> labelLayouts;
 
         // Navigation state
         int activeIndex = -1;
@@ -504,7 +509,7 @@ namespace UltraCanvas {
         // ===== RENDERING HELPERS =====
         void RenderItem(int index, const MenuItemData& item, IRenderContext* ctx);
         void RenderSeparator(const Rect2Di& bounds, IRenderContext* ctx);
-        void RenderHeader(const MenuItemData& item, const Rect2Di& bounds, IRenderContext* ctx);
+        void RenderHeader(int index, const MenuItemData& item, const Rect2Di& bounds, IRenderContext* ctx);
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
         // An entry's icon in `rect`, tinted with `textColor` when the style's

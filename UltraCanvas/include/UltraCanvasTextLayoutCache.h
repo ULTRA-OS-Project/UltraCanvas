@@ -24,6 +24,7 @@
 //   UltraCanvas::UltraCanvasTextLayoutCache cache;
 //   if (UltraCanvas::ITextLayout* layout = cache.Get(nullptr, key)) ctx->DrawTextLayout(*layout, UltraCanvas::Point2Dd(0, 0));
 //
+// Version: 1.1.0 - an explicit height in the key; the text input, the dropdown and the menu on the cache
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -46,6 +47,7 @@ namespace UltraCanvas {
         VerticalAlignment valign = VerticalAlignment::Top;
         EllipsizeMode ellipsize = EllipsizeMode::EllipsizeNone;
         double width = -1;        // the explicit width; -1: none, the caller sets it
+        double height = -1;       // the explicit height, for a vertical alignment inside it; -1: none
         float lineHeightPx = 0;   // noted in the key; the element applies it
         bool operator==(const TextLayoutKey&) const = default;
     };
@@ -54,7 +56,7 @@ namespace UltraCanvas {
     public:
         // The layout for `key`: the one held when the key is the one it was
         // built with, else a new one made with `ctx` and the key applied
-        // (font, wrap, alignment, ellipsize, the width when it is given);
+        // (font, wrap, alignment, ellipsize, the width and height when given);
         // `rebuilt` says which, for what the element adds on top of a fresh
         // layout. Null without a context, or when the context gives none.
         ITextLayout* Get(IRenderContext* ctx, const TextLayoutKey& key, bool* rebuilt = nullptr) {
@@ -70,6 +72,7 @@ namespace UltraCanvas {
             layout_->SetVerticalAlignment(key.valign);
             layout_->SetEllipsize(key.ellipsize);
             if (key.width >= 0) layout_->SetExplicitWidth(key.width);
+            if (key.height >= 0) layout_->SetExplicitHeight(key.height);
             key_ = key;
             ++builds_;
             if (rebuilt) *rebuilt = true;
