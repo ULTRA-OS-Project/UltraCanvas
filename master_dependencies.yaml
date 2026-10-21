@@ -554,3 +554,19 @@ webassembly:
       # unpacked one via ULTRACANVAS_WASMTIME_DIR. No prebuilt library for
       # MSYS2 CLANG64 (gnullvm); that needs the c-api crate built with
       # Corrosion. ULTRACANVAS_ENABLE_WASM_HOST switches it.
+
+# ===== REAL-TIME COMMUNICATION (UltraRTC) =====
+#
+# UltraRTC wraps libdatachannel (WebRTC: ICE, DTLS, SCTP data channels,
+# SRTP media) behind the UltraRtc_* API. Vendored with its submodules under
+# UltraCanvas/third_party/libdatachannel (see VENDORED.md there), built
+# statically and linked privately. Its DTLS runs on OpenSSL, so the module
+# is built where OpenSSL is found; elsewhere every call reports Unsupported.
+real_time_communication:
+  core:
+    libdatachannel:
+      min_version: "0.24.6"
+      purpose: "WebRTC engine for UltraRTC / ChatCube calls and P2P chat (MPL-2.0)"
+      required: false
+      vendored: true                  # with libjuice (MPL-2.0), usrsctp, libsrtp (BSD-3), plog (MIT)
+      needs: ["openssl"]

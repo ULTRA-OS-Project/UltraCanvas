@@ -3564,6 +3564,72 @@ if(TARGET UltraMessage)
     message(STATUS "  [✓] UltraMessageCenter - ENABLED")
 endif()
 
+# ===== BUILD ULTRARTC (WebRTC peers, data channels, calls) =====
+# UI-free. The engine is libdatachannel, vendored with libjuice, usrsctp,
+# libsrtp and plog under third_party/libdatachannel (VENDORED.md there) and
+# linked privately into the archive: no engine type reaches a public header.
+# Its DTLS runs on OpenSSL; without OpenSSL the module builds from
+# UltraRTCStub.cpp and every call answers Unsupported.
+option(ULTRACANVAS_ENABLE_ULTRARTC "Build the UltraRTC real-time communication library" ON)
+if(ULTRACANVAS_ENABLE_ULTRARTC)
+    if(NOT TARGET OpenSSL::SSL)
+        find_package(OpenSSL QUIET)
+    endif()
+    set(_ultrartc_engine FALSE)
+    if(TARGET OpenSSL::SSL AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel/CMakeLists.txt")
+        # The engine's own switches, set before it reads them. Static,
+        # position-independent (it ends up inside the shared core), no
+        # examples, tests or WebSocket client (UltraNet carries signalling).
+        set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
+        set(NO_TESTS ON CACHE BOOL "" FORCE)
+        set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
+        set(LIBSRTP_TEST_APPS OFF CACHE BOOL "" FORCE)
+        set(ENABLE_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+        set(WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+        set(USE_GNUTLS OFF CACHE BOOL "" FORCE)
+        set(USE_MBEDTLS OFF CACHE BOOL "" FORCE)
+        set(USE_NICE OFF CACHE BOOL "" FORCE)
+        set(PREFER_SYSTEM_LIB OFF CACHE BOOL "" FORCE)
+        set(_ultrartc_saved_pic "${CMAKE_POSITION_INDEPENDENT_CODE}")
+        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel
+                         ${CMAKE_CURRENT_BINARY_DIR}/third_party/libdatachannel EXCLUDE_FROM_ALL)
+        set(CMAKE_POSITION_INDEPENDENT_CODE "${_ultrartc_saved_pic}")
+        if(TARGET datachannel-static)
+            set(_ultrartc_engine TRUE)
+        endif()
+    endif()
+
+    # The archive is uc-rtc; UltraRTC is its home ("MODULE HOMES").
+    if(_ultrartc_engine)
+        add_library(uc-rtc STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCEngine.cpp)
+        target_link_libraries(uc-rtc PRIVATE datachannel-static)
+    else()
+        add_library(uc-rtc STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCStub.cpp)
+    endif()
+    set_target_properties(uc-rtc PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultrartc")
+    target_compile_features(uc-rtc PUBLIC cxx_std_20)
+    target_include_directories(uc-rtc
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
+    target_link_libraries(uc-rtc PUBLIC Threads::Threads)
+    target_compile_definitions(uc-rtc PUBLIC ULTRACANVAS_HAS_ULTRARTC=1)
+    _ultracanvas_module_home(UltraRTC uc-rtc)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraRTC)
+    endif()
+    if(_ultrartc_engine)
+        message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION})")
+    else()
+        message(STATUS "  [✓] UltraRTC - ENABLED without an engine (no OpenSSL): every call answers Unsupported")
+    endif()
+else()
+    message(STATUS "  [−] UltraRTC - DISABLED")
+endif()
+
 # ===== BUILD ULTRAIM (instant-messaging framework) =====
 # UI-free: the provider registry, the event bus with its injected dispatcher
 # and the loader of provider modules (Plugins/UltraIM/<name>/, which link the
@@ -3595,12 +3661,14 @@ endif()
 # Every module archive is defined by now: fold them into a shared core, in one
 # call and dependents first (see "MODULE HOMES"). A static core links each
 # through its home instead. VirtualFS has no dependency on the others.
-set(_ultracanvas_im_archive "")
-if(TARGET uc-im)
-    set(_ultracanvas_im_archive uc-im)
-endif()
+set(_ultracanvas_optional_archives "")
+foreach(_archive uc-im uc-rtc)
+    if(TARGET ${_archive})
+        list(APPEND _ultracanvas_optional_archives ${_archive})
+    endif()
+endforeach()
 _ultracanvas_absorb_modules(
-    uc-net uc-win ${_ultracanvas_im_archive} uc-message uc-networkmonitor
+    uc-net uc-win ${_ultracanvas_optional_archives} uc-message uc-networkmonitor
     uc-database uc-vault uc-crypt VirtualFS)
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====

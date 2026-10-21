@@ -2527,10 +2527,19 @@ mandatory. Built when OpenSSL is found; otherwise every call answers
 - `UltraRtc_CreateOffer`, `UltraRtc_CreateAnswer`,
   `UltraRtc_SetLocalDescription`, `UltraRtc_SetRemoteDescription`,
   `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
-- `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelSend`,
-  `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
+- `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
+
+Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
+`UltraRtc_GetRemoteDescription`, `UltraRtc_GetIceGatheringState`,
+`UltraRtc_GetSignalingState`, `UltraRtc_DataChannelSendText` /
+`UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
+`UltraRtc_GetDataChannelPeer`, `UltraRtc_GetDataChannelBufferedAmount`.
 
 **Planned (Phase 2–3):** audio and video tracks, device tracks, playback,
 `UltraCanvasVideoTile` / `UltraCanvasCallView` elements.
 
-**Implementation status:** planned.
+**Implementation status:** Phase 1 implemented — target `UltraRTC`
+(`UltraCanvas/{include,core}/UltraRTC/`, umbrella `<UltraRTC/UltraRTC.h>`):
+peers, ICE configuration, events through an injectable dispatcher, data
+channels with text and binary messages. Tests in `Tests/UltraRTC`. See
+`Docs/Modules/UltraRTC/README.md`.

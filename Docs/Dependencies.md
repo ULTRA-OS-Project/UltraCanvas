@@ -115,6 +115,7 @@ their *License* is likewise marked **—** (OS component).
 | Leptonica | [leptonica.org](http://www.leptonica.org/) | [github.com/DanBloomberg/leptonica](https://github.com/DanBloomberg/leptonica) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | libarchive | [libarchive.org](https://www.libarchive.org/) | [github.com/libarchive/libarchive](https://github.com/libarchive/libarchive) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | libcdr | [wiki.documentfoundation.org](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) | [github.com/LibreOffice/libcdr](https://github.com/LibreOffice/libcdr) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
+| libdatachannel (+ libjuice, usrsctp, libsrtp, plog) | [libdatachannel.org](https://libdatachannel.org/) | [github.com/paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libcurl | [curl.se/libcurl](https://curl.se/libcurl/) | [github.com/curl/curl](https://github.com/curl/curl) | [curl](https://spdx.org/licenses/curl.html) |
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -177,7 +178,7 @@ their *License* is likewise marked **—** (OS component).
 | zlib | [zlib.net](https://zlib.net/) | [github.com/madler/zlib](https://github.com/madler/zlib) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | zstd | [facebook.github.io/zstd](https://facebook.github.io/zstd/) | [github.com/facebook/zstd](https://github.com/facebook/zstd) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 
-> qrcodegen, miniz, KissFFT, miniaudio and OpenCV's frontal-face Haar cascade
+> qrcodegen, miniz, KissFFT, miniaudio, libdatachannel and OpenCV's frontal-face Haar cascade
 > (data only, for VideoFX) are **bundled** (vendored in-tree); the
 > links above point to their upstream projects for reference and updates.
 
