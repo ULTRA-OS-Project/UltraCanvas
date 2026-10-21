@@ -5,7 +5,7 @@
 // Last Modified: 2026-10-21
 // Author: UltraAI Module
 
-#include "UltraAILocalRuntime.h"       // before the UI headers: X11's None macro
+#include "UltraAILocalRuntime.h"
 #include "UltraAILocalModelDialog.h"
 
 #include "UltraCanvasApplication.h"

@@ -1,8 +1,6 @@
 // Apps/DeviceExplorer/ui/DeviceExplorerWindow.cpp
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
-// Before the window header: on Linux that one reaches X11, whose `None`
-// macro would otherwise break HardwareQuery::None in this header.
 #include "UltraCanvasHardwareInfo.h"
 
 #include "DeviceExplorerWindow.h"

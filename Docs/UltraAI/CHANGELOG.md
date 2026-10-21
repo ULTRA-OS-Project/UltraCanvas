@@ -1,3 +1,17 @@
+#### 2026-10-21 *0.1.19*
+- **No enumerator is named `None` any more.** X11's `None` macro rewrote
+  `ErrorCode::None`, `ToolChoice::None` and `ControlType::None` in any file
+  that included a UltraCanvas UI header before a UltraAI one, so every such
+  file worked around it with include order and `UltraAICommon.h` carried an
+  `#undef`. They are `ErrorCode::Ok`, `ToolChoice::NoTool` and
+  `ControlType::NoControl`; the `#undef` and the include-order comments are
+  gone. `Error::IsOk()` is unchanged.
+- **The built-in catalogue's files were checked against Hugging Face.** The
+  six models' file names match their repositories; Qwen3 1.7B (Q8_0) is
+  2.17 GB (the catalogue said 1.83) and Qwen3 8B (Q4_K_M) carries its exact
+  size, so the fit and the download figures are right. The hashes are still
+  read from the tree API at install time.
+
 #### 2026-10-21 *0.1.18*
 - **The "Get a local model" dialog is the module's, for every application.**
   It moved from the dashboard into `UltraAI/ui/` (`UltraAILocalModelDialog.h`,

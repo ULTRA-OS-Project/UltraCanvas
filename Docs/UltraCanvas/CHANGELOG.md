@@ -1,3 +1,10 @@
+#### 2026-10-21 *0.9.363*
+- **`HardwareQuery::None` is `HardwareQuery::Nothing`.** X11's `None` macro
+  rewrote the enumerator in any file that included a window header before
+  `UltraCanvasHardwareInfo.h`, so DeviceExplorer, UltraNetMonitor and the
+  UltraDesktop tasks window each worked around it with include order. The
+  rename removes the trap; the include-order comments are gone.
+
 #### 2026-10-21 *0.9.361*
 - **Chart axes are marked at whole steps.** The line, area, scatter and bar
   charts (and every chart that uses the base class's axes) divided the value

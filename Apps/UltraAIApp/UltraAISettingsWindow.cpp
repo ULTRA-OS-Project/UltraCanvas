@@ -14,7 +14,7 @@
 
 #include "UltraAISettingsWindow.h"
 
-#include "UltraAI.h"                   // before the UI headers: X11's None macro
+#include "UltraAI.h"
 #include "UltraAILocalRuntime.h"
 #include "UltraAIAppSettings.h"
 #include "UltraAILocalModelsPage.h"

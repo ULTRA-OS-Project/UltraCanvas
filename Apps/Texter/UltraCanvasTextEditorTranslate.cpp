@@ -10,7 +10,6 @@
 // Author: UltraCanvas Framework
 
 #ifdef TEXTER_HAS_ULTRAAI
-// Before the UI headers: X11's None macro would rewrite UltraAI's enumerators.
 #include "UltraAILocalRuntime.h"
 #include "UltraAILocalModelDialog.h"
 #include "UltraAITranslator.h"
