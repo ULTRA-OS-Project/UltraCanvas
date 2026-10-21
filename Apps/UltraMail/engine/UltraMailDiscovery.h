@@ -4,6 +4,9 @@
 // provider preset table, then a Mozilla-style autoconfig / ISPDB lookup over
 // HTTP (UltraNet). The preset and XML-parsing steps are pure and testable; the
 // network step is orchestrated in Discover().
+// Version: 0.7.0 - IncomingServerUrl: jmap:// for a JMAP incoming server
+//                  (replaces ImapServerUrl); a protocol change is another
+//                  mailbox to IncomingMailboxChanged
 // Version: 0.6.0 - ICloudSetupGuide / OffersICloudSetupGuide: the account
 //                  wizard's "How to set up an iCloud mail account" info
 // Version: 0.5.0 - IncomingMailboxChanged: new settings that reach another mailbox
@@ -54,8 +57,12 @@ public:
     // address as username. found is false — nothing here was verified. Pure.
     static DiscoveryResult GuessForDomain(const std::string& email);
 
-    // Build an "imap(s)://host:port/" URL for the discovered incoming server.
-    static std::string ImapServerUrl(const MailServerSettings& imap);
+    // The plug-in URL of the incoming server: "imap(s)://host:port/" for an
+    // IMAP server (the scheme follows EffectiveSecurity, as ApplyConnection
+    // does), "jmap://host:port/" for a JMAP one (the JMAP plug-in resolves
+    // the session at https://host:port/.well-known/jmap). "" when the
+    // settings name no server.
+    static std::string IncomingServerUrl(const MailServerSettings& incoming);
     // Build an "smtp(s)://host:port/" URL for the discovered outgoing server.
     static std::string SmtpServerUrl(const MailServerSettings& smtp);
 };
@@ -95,9 +102,11 @@ bool OffersICloudSetupGuide(const std::string& email);
 std::string ServerNameProblem(const std::string& host);
 
 // Whether new incoming-server settings reach a different mailbox than `before`
-// did: another host or another user name (both compared without regard to
-// case or surrounding spaces). A change of port or security on the same host
-// and user is the same mailbox. False when `before` names no host - there was
+// did: another host, another user name (both compared without regard to
+// case or surrounding spaces) or another protocol - the same mailbox read
+// over JMAP instead of IMAP numbers its messages differently, so what was
+// held is of no use. A change of port or security on the same host, user and
+// protocol is the same mailbox. False when `before` names no host - there was
 // no mailbox to differ from. The mail held for an account came from `before`,
 // so when this is true it is dropped and fetched anew. Pure.
 bool IncomingMailboxChanged(const MailServerSettings& before,

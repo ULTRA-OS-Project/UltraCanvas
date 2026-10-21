@@ -1,3 +1,26 @@
+#### 2026-10-21 *0.10.62*
+- **An account's incoming server can be JMAP instead of IMAP.** The server
+  settings page - the account's Settings, and the manual page when nothing
+  is published for a domain - starts with a *Protocol* row: **IMAP**, as
+  every account was, or **JMAP**, the JSON-over-HTTPS mail protocol of
+  Fastmail, Stalwart, Cyrus and Apache James. Choosing JMAP renames the
+  incoming rows, sets the port to 443 (an unusual port you typed stays),
+  fixes the security to SSL/TLS - a JMAP server is HTTPS - and offers the
+  sign-in methods JMAP has (Automatic, Normal password, OAuth2). The sign-in
+  check on Save, every sync, the message actions and the Drafts and Sent
+  copies of such an account go through UltraNet's JMAP plug-in
+  (`ultranet_jmap`), and a missing plug-in is reported by name - *the JMAP
+  plug-in was not found* - as the IMAP one was. Sending still goes through
+  the outgoing (SMTP) server; what the JMAP plug-in does not yet do (flag
+  changes, moves, copies) says so when tried. The choice is stored with the
+  account (`incoming_protocol` in `mail.db`, schema 12) and switching an
+  account between the protocols fetches its mail anew. Engine:
+  `MailProtocol` on `MailServerSettings` (`UltraMailTypes.h`),
+  `AutoDiscovery::IncomingServerUrl` (replaces `ImapServerUrl`: `jmap://`
+  for a JMAP server), `LoginCheck::Incoming` (was `Imap`),
+  `ServerFolders::mailbox` for the outbox copies; `Docs/UltraMail/AccountSetup.md`
+  section 5 describes the page.
+
 #### 2026-10-19 *0.10.61*
 - **An *Attach cloud link* upload that was complete when the connection
   went is put in place, not thrown away.** To an FTP or SFTP account the

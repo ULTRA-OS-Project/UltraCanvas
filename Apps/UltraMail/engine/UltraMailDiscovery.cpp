@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
+// Version: 0.7.0 - IncomingServerUrl (jmap:// for a JMAP server);
+//                  IncomingMailboxChanged on a protocol change
 // Version: 0.6.0 - the autoconfig requests carry the domain only, not the
 //                  reader's e-mail address
 // Version: 0.5.0 - ICloudSetupGuide, OffersICloudSetupGuide
@@ -114,7 +116,8 @@ bool IncomingMailboxChanged(const MailServerSettings& before,
     };
     const std::string host = hostOf(before.host);
     if (host.empty()) return false;
-    return host != hostOf(after.host) || norm(before.username) != norm(after.username);
+    return host != hostOf(after.host) || norm(before.username) != norm(after.username)
+        || before.protocol != after.protocol;
 }
 
 std::string ServerNameProblem(const std::string& host) {
@@ -419,13 +422,16 @@ DiscoveryResult AutoDiscovery::GuessForDomain(const std::string& email) {
     return r;   // found stays false: nothing verified
 }
 
-std::string AutoDiscovery::ImapServerUrl(const MailServerSettings& imap) {
-    if (!imap.Valid()) return "";
+std::string AutoDiscovery::IncomingServerUrl(const MailServerSettings& incoming) {
+    if (!incoming.Valid()) return "";
+    if (incoming.protocol == MailProtocol::Jmap)
+        return "jmap://" + incoming.host + ":" + PortStr(incoming.port) + "/";
     // Reconcile against the port so imaps:// (implicit TLS) is never used on a
     // STARTTLS port; ApplyConnection derives implicitTls the same way.
     std::string scheme =
-        EffectiveSecurity(imap.port, imap.security) == MailSecurity::SslTls ? "imaps" : "imap";
-    return scheme + "://" + imap.host + ":" + PortStr(imap.port) + "/";
+        EffectiveSecurity(incoming.port, incoming.security) == MailSecurity::SslTls ? "imaps"
+                                                                                    : "imap";
+    return scheme + "://" + incoming.host + ":" + PortStr(incoming.port) + "/";
 }
 
 std::string AutoDiscovery::SmtpServerUrl(const MailServerSettings& smtp) {

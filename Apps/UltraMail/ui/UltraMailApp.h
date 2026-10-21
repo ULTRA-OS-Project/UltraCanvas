@@ -178,7 +178,8 @@ private:
     void OpenSettings();
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
-    // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
+    // the plug-in for the protocol the page chose (IMAP or JMAP); the outcome
+    // is delivered on the UI thread. A missing
     // plug-in is a failed check (the page then offers "Save anyway"). The
     // candidate carries a typed new password when the user changed it.
     ServerSettingsDialog::Verifier LoginVerifier(
@@ -543,9 +544,17 @@ private:
     void OpenFromNotification(const std::string& notificationId);
     // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
     IMailboxProtocolPlugin* ImapPlugin() const;
-    // Explain that no mail can be fetched because the IMAP plug-in was not
-    // found, naming the directory that was searched.
-    void ReportMissingImapPlugin();
+    // The JMAP plug-in as the mailbox interface, or null when it is not loaded.
+    IMailboxProtocolPlugin* JmapPlugin() const;
+    // The plug-in an incoming server of that protocol is read with: the IMAP
+    // one for IMAP, the JMAP one for JMAP; null when it is not loaded.
+    IMailboxProtocolPlugin* MailboxPluginFor(MailProtocol protocol) const;
+    // Whether any mailbox plug-in is loaded at all (the live sync loop and
+    // the passive body fetch need one; which one is decided per account).
+    bool AnyMailboxPlugin() const;
+    // Explain that no mail can be fetched because the plug-in for that
+    // protocol was not found, naming the directory that was searched.
+    void ReportMissingMailboxPlugin(MailProtocol protocol);
     // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else the first
     // Plugins/UltraNet directory next to (or up to two levels above) the
     // executable, else the working directory's — so the app finds its plug-ins

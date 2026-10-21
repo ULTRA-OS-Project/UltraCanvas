@@ -2,6 +2,8 @@
 // Account auto-discovery: provider presets, Mozilla-autoconfig XML parsing,
 // username placeholder resolution and server-URL construction. All pure — no
 // network.
+// Version: 0.4.0 - the JMAP incoming server: its URL, connection, port and
+//                  stored form; a protocol change is another mailbox
 // Version: 0.3.0 - the iCloud setup guide: which addresses offer it, and its
 //                  servers are the preset's
 // Version: 0.2.0 - ServerNameProblem
@@ -79,6 +81,13 @@ TEST(incoming_mailbox_changed_only_for_another_host_or_user) {
     MailServerSettings otherUser = before;
     otherUser.username = "office@ultraos.eu";
     REQUIRE(IncomingMailboxChanged(before, otherUser));
+
+    // The same mailbox read over JMAP numbers its messages differently: what
+    // was held is of no use.
+    MailServerSettings overJmap = before;
+    overJmap.protocol = MailProtocol::Jmap; overJmap.port = 443;
+    REQUIRE(IncomingMailboxChanged(before, overJmap));
+    REQUIRE(!IncomingMailboxChanged(overJmap, overJmap));
 
     // No server before: no mail from another mailbox to drop.
     REQUIRE(!IncomingMailboxChanged(MailServerSettings{}, otherHost));
@@ -300,7 +309,7 @@ TEST(for_account_prefers_stored_settings_over_presets) {
     REQUIRE_EQ(r.imap.port, 143);
     REQUIRE_EQ(r.imap.username, std::string("erika@gmail.com"));
     REQUIRE_EQ(r.smtp.username, std::string("erika@gmail.com"));
-    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(r.imap), std::string("imap://mail.example.org:143/"));
+    REQUIRE_EQ(AutoDiscovery::IncomingServerUrl(r.imap), std::string("imap://mail.example.org:143/"));
     REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(r.smtp), std::string("smtps://mail.example.org:465/"));
 
     // A preset stored on the account keeps its name.
@@ -324,7 +333,7 @@ TEST(guess_for_domain_is_a_prefill_not_a_result) {
 
 TEST(server_url_construction) {
     DiscoveryResult r = AutoDiscovery::FromPresets("a@gmail.com");
-    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(r.imap), std::string("imaps://imap.gmail.com:993/"));
+    REQUIRE_EQ(AutoDiscovery::IncomingServerUrl(r.imap), std::string("imaps://imap.gmail.com:993/"));
     REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(r.smtp), std::string("smtps://smtp.gmail.com:465/"));
 
     DiscoveryResult o = AutoDiscovery::FromPresets("a@outlook.com");
@@ -335,7 +344,7 @@ TEST(server_url_construction) {
 // A security choice that contradicts a well-known port must follow the port, so
 // implicit TLS never reaches a STARTTLS port (which sends a ClientHello before
 // the greeting - postfix "improper command pipelining" - and gets the IP
-// fail2ban-banned). See EffectiveSecurity / ApplyConnection / Smtp/ImapServerUrl.
+// fail2ban-banned). See EffectiveSecurity / ApplyConnection / SmtpServerUrl / IncomingServerUrl.
 TEST(security_reconciled_against_port) {
     // The raw helper.
     REQUIRE(EffectiveSecurity(587, MailSecurity::SslTls)   == MailSecurity::StartTls);
@@ -364,10 +373,72 @@ TEST(security_reconciled_against_port) {
     // IMAP symmetry: 143 + SSL/TLS -> imap:// (STARTTLS); 993 keeps imaps://.
     MailServerSettings i143; i143.host = "mail.example.com"; i143.port = 143;
     i143.security = MailSecurity::SslTls;
-    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(i143), std::string("imap://mail.example.com:143/"));
+    REQUIRE_EQ(AutoDiscovery::IncomingServerUrl(i143), std::string("imap://mail.example.com:143/"));
     MailServerSettings i993; i993.host = "mail.example.com"; i993.port = 993;
     i993.security = MailSecurity::StartTls;
-    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(i993), std::string("imaps://mail.example.com:993/"));
+    REQUIRE_EQ(AutoDiscovery::IncomingServerUrl(i993), std::string("imaps://mail.example.com:993/"));
+}
+
+// ---- JMAP incoming server ---------------------------------------------------
+
+TEST(mail_protocol_round_trips_through_its_stored_form) {
+    REQUIRE_EQ(ToString(MailProtocol::Imap), std::string("imap"));
+    REQUIRE_EQ(ToString(MailProtocol::Jmap), std::string("jmap"));
+    REQUIRE(MailProtocolFromString("jmap") == MailProtocol::Jmap);
+    REQUIRE(MailProtocolFromString("imap") == MailProtocol::Imap);
+    REQUIRE(MailProtocolFromString("") == MailProtocol::Imap);        // before the choice existed
+    REQUIRE(MailProtocolFromString("pop3") == MailProtocol::Imap);    // unknown text
+    REQUIRE(MailServerSettings{}.protocol == MailProtocol::Imap);     // the default
+
+    REQUIRE_EQ(DefaultPort(MailProtocol::Imap, MailSecurity::SslTls), 993);
+    REQUIRE_EQ(DefaultPort(MailProtocol::Imap, MailSecurity::StartTls), 143);
+    REQUIRE_EQ(DefaultPort(MailProtocol::Imap, MailSecurity::Plain), 143);
+    REQUIRE_EQ(DefaultPort(MailProtocol::Jmap, MailSecurity::SslTls), 443);
+    REQUIRE_EQ(DefaultPort(MailProtocol::Jmap, MailSecurity::StartTls), 443);
+}
+
+TEST(jmap_incoming_server_has_a_jmap_url_and_an_https_connection) {
+    MailServerSettings jmap;
+    jmap.protocol = MailProtocol::Jmap;
+    jmap.host = "api.fastmail.com"; jmap.port = 443; jmap.username = "erika@fastmail.com";
+    // The JMAP plug-in resolves jmap://host:port/ at https://host:port/.well-known/jmap.
+    REQUIRE_EQ(AutoDiscovery::IncomingServerUrl(jmap), std::string("jmap://api.fastmail.com:443/"));
+    REQUIRE(jmap.Valid());
+
+    // HTTPS whatever the security choice or the port says: a JMAP server is
+    // never reached in the clear or through STARTTLS.
+    UltraNetMailOptions opt;
+    ApplyConnection(jmap, opt);
+    REQUIRE(opt.useTls); REQUIRE(opt.implicitTls);
+    jmap.security = MailSecurity::StartTls; jmap.port = 8443;
+    ApplyConnection(jmap, opt);
+    REQUIRE(opt.useTls); REQUIRE(opt.implicitTls);
+    REQUIRE_EQ(AutoDiscovery::IncomingServerUrl(jmap), std::string("jmap://api.fastmail.com:8443/"));
+    jmap.security = MailSecurity::Plain;
+    ApplyConnection(jmap, opt);
+    REQUIRE(opt.useTls); REQUIRE(opt.implicitTls);
+    // The authentication method rides along as it does for IMAP.
+    jmap.auth = UltraNetMailAuth::OAuth2;
+    ApplyConnection(jmap, opt);
+    REQUIRE(opt.auth == UltraNetMailAuth::OAuth2);
+
+    // No server: no URL.
+    jmap.host.clear();
+    REQUIRE(AutoDiscovery::IncomingServerUrl(jmap).empty());
+
+    // Stored on an account and read back through ForAccount, the protocol
+    // travels with the other server settings.
+    Account account;
+    account.email = "erika@fastmail.com";
+    DiscoveryResult found;
+    found.found = true; found.source = "manual";
+    found.imap = jmap; found.imap.host = "api.fastmail.com";
+    found.smtp.host = "smtp.fastmail.com"; found.smtp.port = 465;
+    AutoDiscovery::ApplyTo(account, found);
+    REQUIRE(account.HasServers());
+    REQUIRE(AutoDiscovery::ForAccount(account).imap.protocol == MailProtocol::Jmap);
+    // The guess for a domain nothing is published for stays IMAP.
+    REQUIRE(AutoDiscovery::GuessForDomain("erika@example.org").imap.protocol == MailProtocol::Imap);
 }
 
 // ---- credential vault ------------------------------------------------------

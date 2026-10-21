@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.8.0 - the Protocol row: the incoming server is IMAP or JMAP; the
+//                  incoming rows, the port, the security and the sign-in
+//                  choices follow the choice
 // Version: 0.7.0 - a server name that cannot be one (an @, a scheme, a port
 //                  after a colon, ...) is reported on Save, before the sign-in
 // Version: 0.6.0 - the Signature row: the account's signature in a few words and
@@ -64,17 +67,68 @@ constexpr AuthChoice kAuthChoices[] = {
     { UltraNetMailAuth::NTLM,              "NTLM" },
     { UltraNetMailAuth::None,              "No authentication" },
 };
-constexpr int kAuthChoiceCount = static_cast<int>(sizeof(kAuthChoices) / sizeof(kAuthChoices[0]));
 
-int AuthIndex(UltraNetMailAuth auth) {
-    for (int i = 0; i < kAuthChoiceCount; ++i)
-        if (kAuthChoices[i].auth == auth) return i;
-    return 0;
+// Whether a sign-in method is offered for a server of `protocol`. JMAP signs
+// in over HTTPS with a password (Basic) or an OAuth2 token (Bearer): the
+// SASL mechanisms of IMAP and SMTP do not exist there. "No authentication"
+// is for the outgoing server only (`offerNone`): an SMTP relay may trust the
+// network, but a mailbox always needs a sign-in.
+bool OffersAuth(UltraNetMailAuth auth, MailProtocol protocol, bool offerNone) {
+    if (auth == UltraNetMailAuth::None) return offerNone;
+    if (protocol != MailProtocol::Jmap) return true;
+    return auth == UltraNetMailAuth::Any || auth == UltraNetMailAuth::Password
+        || auth == UltraNetMailAuth::OAuth2;
 }
 
-UltraNetMailAuth AuthAt(int index) {
-    return (index >= 0 && index < kAuthChoiceCount) ? kAuthChoices[index].auth
-                                                    : UltraNetMailAuth::Any;
+// (Re)fill a sign-in dropdown with the methods `protocol` offers, selecting
+// `current` - or Automatic when `current` is not offered.
+void FillAuthChoices(UltraCanvasDropdown& dd, MailProtocol protocol, bool offerNone,
+                     UltraNetMailAuth current) {
+    dd.ClearItems();
+    int selected = 0;
+    for (const AuthChoice& c : kAuthChoices) {
+        if (!OffersAuth(c.auth, protocol, offerNone)) continue;
+        if (c.auth == current) selected = dd.GetItemCount();
+        dd.AddItem(c.label, ToString(c.auth));
+    }
+    dd.SetSelectedIndex(selected, /*runNotifications=*/false);
+}
+
+// The method a sign-in dropdown shows; Automatic when nothing is selected.
+UltraNetMailAuth SelectedAuth(const UltraCanvasDropdown& dd) {
+    const DropdownItem* item = dd.GetSelectedItem();
+    return item ? MailAuthFromString(item->value) : UltraNetMailAuth::Any;
+}
+
+// The protocols in dropdown order.
+struct ProtocolChoice { MailProtocol protocol; const char* label; };
+constexpr ProtocolChoice kProtocolChoices[] = {
+    { MailProtocol::Imap, "IMAP" },
+    { MailProtocol::Jmap, "JMAP" },
+};
+
+int ProtocolIndex(MailProtocol protocol) {
+    return protocol == MailProtocol::Jmap ? 1 : 0;
+}
+
+MailProtocol ProtocolAt(int index) {
+    return index == 1 ? MailProtocol::Jmap : MailProtocol::Imap;
+}
+
+std::string ProtocolName(MailProtocol protocol) {
+    return protocol == MailProtocol::Jmap ? "JMAP" : "IMAP";
+}
+
+// The line under the fields: the usual ports, and where to find them.
+std::string NoteFor(MailProtocol protocol) {
+    if (protocol == MailProtocol::Jmap)
+        return "A JMAP server is reached over HTTPS, usually on port 443, and "
+               "answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, "
+               "Cyrus and Apache James: the mail host). Mail is read through "
+               "JMAP; sending still goes through the outgoing (SMTP) server.";
+    return "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
+           "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
+           "settings\" or \"IMAP/SMTP\" in their help.";
 }
 
 std::string Trim(const std::string& s) {
@@ -105,9 +159,9 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // The account settings page carries a display-name row and up to two
     // credential rows (a password field and/or a "Sign in with …" button) on
     // top of the server rows, plus room for a multi-line sign-in error.
-    // Two authentication rows sit under the server rows on both.
-    // The Signature row adds one more line.
-    config.height     = account.edit ? (account.onSaveSignature ? 592 : 560) : 400;
+    // A Protocol row sits above the server rows and two authentication rows
+    // under them on both. The Signature row adds one more line.
+    config.height     = account.edit ? (account.onSaveSignature ? 628 : 596) : 436;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -151,8 +205,31 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     }
 
+    // The protocol of the incoming server. IMAP for every account from before
+    // the choice existed; JMAP (JSON over HTTPS) for Fastmail, Stalwart, Cyrus
+    // and the like. The incoming rows below follow it: their caption, the
+    // usual port, the security (HTTPS, fixed) and the sign-in methods.
+    auto protocolRow = CreateContainer("srvProtocolRow", 0, 0, 0, Theme::kControlHeight);
+    protocolRow->layout.SetFlexRow()
+                       .SetFlexGap(Theme::kInnerGap)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto protocolLabel = Theme::MakeLine("srvProtocolLbl", "Protocol", Theme::kControlHeight,
+                                         Theme::kSizeBody, Theme::kTextSecondary);
+    protocolLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+    protocolRow->AddChild(protocolLabel);
+    auto protocol = CreateDropdown("srvProtocol", 0, 0, 0, Theme::kControlHeight);
+    for (const ProtocolChoice& c : kProtocolChoices)
+        protocol->AddItem(c.label, ToString(c.protocol));
+    Theme::StyleDropdown(protocol);
+    protocol->SetSelectedIndex(ProtocolIndex(prefill.imap.protocol), /*runNotifications=*/false);
+    protocolRow->AddChild(protocol);
+    protocol->layoutItem.SetFlexGrow(1);
+    content->AddChild(protocolRow);
+    protocolRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
     // One server row: caption · host (grows) · port · security.
     struct ServerRow {
+        std::shared_ptr<UltraCanvasLabel>     label;
         std::shared_ptr<UltraCanvasTextInput> host, port;
         std::shared_ptr<UltraCanvasDropdown>  security;
     };
@@ -162,12 +239,12 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->layout.SetFlexRow()
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
-        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
-        row->AddChild(label);
-
         ServerRow r;
+        r.label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
+                                  Theme::kSizeBody, Theme::kTextSecondary);
+        r.label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(r.label);
+
         r.host = CreateTextInput(id + "Host", 0, 0, 0, Theme::kControlHeight);
         r.host->SetPlaceholder("mail.example.com");
         r.host->SetText(s.host);
@@ -209,40 +286,49 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         return r;
     };
 
-    ServerRow imap = addServerRow("srvImap", "Incoming (IMAP)", prefill.imap);
+    const MailProtocol startProtocol = prefill.imap.protocol;
+    ServerRow imap = addServerRow("srvImap", "Incoming (" + ProtocolName(startProtocol) + ")",
+                                  prefill.imap);
     ServerRow smtp = addServerRow("srvSmtp", "Outgoing (SMTP)", prefill.smtp);
+    // A JMAP server is HTTPS: the security is not a choice there.
+    if (startProtocol == MailProtocol::Jmap) {
+        imap.security->SetSelectedIndex(SecurityIndex(MailSecurity::SslTls),
+                                        /*runNotifications=*/false);
+        imap.security->SetDisabled(true);
+    }
 
     // Authentication method per server, as Thunderbird offers it: prefilled
     // from the provider table (OAuth2 for Gmail, Outlook, Yahoo) or the
     // provider's autoconfig, else Automatic — whatever the server offers.
+    struct AuthRow {
+        std::shared_ptr<UltraCanvasLabel>    label;
+        std::shared_ptr<UltraCanvasDropdown> method;
+    };
     auto addAuthRow = [&content](const std::string& id, const std::string& caption,
-                                 UltraNetMailAuth current, bool offerNone) {
+                                 MailProtocol forProtocol, UltraNetMailAuth current,
+                                 bool offerNone) {
         auto row = CreateContainer(id + "Row", 0, 0, 0, Theme::kControlHeight);
         row->layout.SetFlexRow()
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
-        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
-        row->AddChild(label);
-        auto dd = CreateDropdown(id, 0, 0, 0, Theme::kControlHeight);
-        for (const AuthChoice& c : kAuthChoices) {
-            if (c.auth == UltraNetMailAuth::None && !offerNone) continue;
-            dd->AddItem(c.label, ToString(c.auth));
-        }
-        Theme::StyleDropdown(dd);
-        // "None" is last, so indices match kAuthChoices whether or not it is listed.
-        int index = AuthIndex(current);
-        if (current == UltraNetMailAuth::None && !offerNone) index = 0;
-        dd->SetSelectedIndex(index, /*runNotifications=*/false);
-        row->AddChild(dd);
-        dd->layoutItem.SetFlexGrow(1);
+        AuthRow r;
+        r.label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
+                                  Theme::kSizeBody, Theme::kTextSecondary);
+        r.label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(r.label);
+        r.method = CreateDropdown(id, 0, 0, 0, Theme::kControlHeight);
+        Theme::StyleDropdown(r.method);
+        FillAuthChoices(*r.method, forProtocol, offerNone, current);
+        row->AddChild(r.method);
+        r.method->layoutItem.SetFlexGrow(1);
         content->AddChild(row);
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        return dd;
+        return r;
     };
-    auto imapAuth = addAuthRow("srvImapAuth", "Sign-in (IMAP)", prefill.imap.auth, false);
-    auto smtpAuth = addAuthRow("srvSmtpAuth", "Sign-in (SMTP)", prefill.smtp.auth, true);
+    AuthRow imapAuth = addAuthRow("srvImapAuth", "Sign-in (" + ProtocolName(startProtocol) + ")",
+                                  startProtocol, prefill.imap.auth, false);
+    AuthRow smtpAuth = addAuthRow("srvSmtpAuth", "Sign-in (SMTP)", MailProtocol::Imap,
+                                  prefill.smtp.auth, true);
 
     // Username row.
     auto userRow = CreateContainer("srvUserRow", 0, 0, 0, Theme::kControlHeight);
@@ -331,14 +417,40 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->AddChild(editBtn);
     }
 
-    auto note = Theme::MakeLine("srvNote",
-        "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
-        "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
-        "settings\" or \"IMAP/SMTP\" in their help.", 0, Theme::kSizeBody,
-        Theme::kTextSecondary);
+    auto note = Theme::MakeLine("srvNote", NoteFor(startProtocol), 0, Theme::kSizeBody,
+                                Theme::kTextSecondary);
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
     note->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // Switching the protocol: the incoming rows say which one, a port that
+    // was the other protocol's usual one becomes this one's (a typed
+    // unusual port stays), the security is fixed to HTTPS for JMAP, and the
+    // sign-in methods are the ones the protocol has. Siblings, not the
+    // dropdown itself, are captured - no cycle.
+    protocol->onSelectionChanged = [imap, imapAuth, note](int index, const DropdownItem&) {
+        const MailProtocol chosen = ProtocolAt(index);
+        const MailProtocol other  = chosen == MailProtocol::Jmap ? MailProtocol::Imap
+                                                                 : MailProtocol::Jmap;
+        imap.label->SetText("Incoming (" + ProtocolName(chosen) + ")");
+        imapAuth.label->SetText("Sign-in (" + ProtocolName(chosen) + ")");
+        const int port = ParsePort(imap.port->GetText());
+        const bool usual = port == 0
+            || port == DefaultPort(other, MailSecurity::SslTls)
+            || port == DefaultPort(other, MailSecurity::StartTls);
+        if (chosen == MailProtocol::Jmap) {
+            imap.security->SetSelectedIndex(SecurityIndex(MailSecurity::SslTls),
+                                            /*runNotifications=*/false);
+            imap.security->SetDisabled(true);
+        } else {
+            imap.security->SetDisabled(false);
+        }
+        if (usual)
+            imap.port->SetText(std::to_string(
+                DefaultPort(chosen, SecurityAt(imap.security->GetSelectedIndex()))));
+        FillAuthChoices(*imapAuth.method, chosen, false, SelectedAuth(*imapAuth.method));
+        note->SetText(NoteFor(chosen));
+    };
 
     // Validation feedback, in place. It grows into the column's spare vertical
     // space so a long sign-in error wraps across as many lines as it needs
@@ -389,18 +501,21 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // Read + validate the fields; false (with the reason in `status`) when
     // something is missing. Fills the servers plus, on the settings page, the
     // edited display name and any typed new password.
-    auto collect = [imap, smtp, imapAuth, smtpAuth, user, status, email, nameInput,
+    auto collect = [protocol, imap, smtp, imapAuth, smtpAuth, user, status, email, nameInput,
                     passInput, prefill](Result& out) {
         DiscoveryResult& r = out.settings;
         r = DiscoveryResult{};
+        r.imap.protocol = ProtocolAt(protocol->GetSelectedIndex());
         r.imap.host = Trim(imap.host->GetText());
         r.imap.port = ParsePort(imap.port->GetText());
-        r.imap.security = SecurityAt(imap.security->GetSelectedIndex());
+        // JMAP is HTTPS: whatever the (disabled) dropdown shows.
+        r.imap.security = r.imap.protocol == MailProtocol::Jmap
+            ? MailSecurity::SslTls : SecurityAt(imap.security->GetSelectedIndex());
         r.smtp.host = Trim(smtp.host->GetText());
         r.smtp.port = ParsePort(smtp.port->GetText());
         r.smtp.security = SecurityAt(smtp.security->GetSelectedIndex());
-        r.imap.auth = AuthAt(imapAuth->GetSelectedIndex());
-        r.smtp.auth = AuthAt(smtpAuth->GetSelectedIndex());
+        r.imap.auth = SelectedAuth(*imapAuth.method);
+        r.smtp.auth = SelectedAuth(*smtpAuth.method);
         const std::string username = Trim(user->GetText());
         r.imap.username = username.empty() ? email : username;
         r.smtp.username = r.imap.username;
@@ -422,8 +537,9 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
             status->SetText(std::string(field) + " \"" + host + "\": " + problem);
             return true;
         };
-        if (r.imap.host.empty())      { status->SetText("Enter the incoming (IMAP) server."); return false; }
-        if (badHost("Incoming (IMAP) server", r.imap.host)) return false;
+        const std::string incoming = "Incoming (" + ProtocolName(r.imap.protocol) + ") server";
+        if (r.imap.host.empty())      { status->SetText("Enter the incoming (" + ProtocolName(r.imap.protocol) + ") server."); return false; }
+        if (badHost(incoming.c_str(), r.imap.host)) return false;
         if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }
         if (r.smtp.host.empty())      { status->SetText("Enter the outgoing (SMTP) server."); return false; }
         if (badHost("Outgoing (SMTP) server", r.smtp.host)) return false;

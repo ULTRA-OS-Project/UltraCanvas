@@ -361,7 +361,7 @@ void UltraMailApp::FinishStartup() {
     // registry's default directory is relative to the working directory, which
     // only matches the build tree when the app is started from there; resolve
     // it against the executable instead (ULTRAMAIL_PLUGIN_DIR overrides).
-    step.emplace("Mail plug-ins (IMAP, SMTP)", 0);
+    step.emplace("Mail plug-ins (IMAP, JMAP, SMTP)", 0);
     pluginDir_ = ResolvePluginDirectory();
     UltraNet_SetPluginDirectory(pluginDir_);
     UltraNet_RefreshPlugins();
@@ -374,10 +374,11 @@ void UltraMailApp::FinishStartup() {
     if (vault_.TryAutoUnlock()) MigrateCloudSecrets();
     step.reset();
     Trace::Line("vault " + std::string(vault_.IsUnlocked() ? "unlocked" : "locked") +
-                "; IMAP plug-in " + (ImapPlugin() ? "loaded" : "missing") + " (" + pluginDir_ + ")");
+                "; IMAP plug-in " + (ImapPlugin() ? "loaded" : "missing") +
+                ", JMAP plug-in " + (JmapPlugin() ? "loaded" : "missing") + " (" + pluginDir_ + ")");
 
-    // Register accounts for background sync (the live loop starts only when the
-    // IMAP plug-in is present).
+    // Register accounts for background sync (the live loop starts only when a
+    // mailbox plug-in is present).
     step.emplace("Background sync timer, outbox retries", 0);
     StartBackgroundSync();
     // Messages left in the outbox by an earlier run go out by themselves,
@@ -394,7 +395,7 @@ void UltraMailApp::FinishStartup() {
     // device key, so this is the only time it is asked.
     if (!accounts_.empty() && !vault_.IsUnlocked()) {
         EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
-    } else if (!accounts_.empty() && ImapPlugin()) {
+    } else if (!accounts_.empty() && AnyMailboxPlugin()) {
         // Fetch new mail right after start. The periodic timer's first tick is
         // five minutes out, so without this the inbox showed only what was
         // cached until Update was pressed - and the status line never said it
@@ -866,7 +867,7 @@ void UltraMailApp::UpdateConnectionIndicator() {
 
     // The tooltip: where, when, and why not.
     const DiscoveryResult settings = SettingsFor(*account);
-    std::string server = settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+    std::string server = settings.found ? AutoDiscovery::IncomingServerUrl(settings.imap) : "";
     if (server.empty()) server = "no server known";
     TooltipContent tip;
     tip.AddTitle("Mail server connection")
@@ -1015,8 +1016,9 @@ void UltraMailApp::HandleReload() {
     FinishStartup();   // pressed before the start had finished: finish it now
     if (accounts_.empty()) return;
     // Say what is missing before asking for a master password that would
-    // then unlock nothing useful.
-    if (!ImapPlugin()) { ReportMissingImapPlugin(); return; }
+    // then unlock nothing useful. The plug-in each account needs (IMAP or
+    // JMAP) is checked when it is synced.
+    if (!AnyMailboxPlugin()) { ReportMissingMailboxPlugin(MailProtocol::Imap); return; }
     // Reload acts on the account whose tile is selected (the one whose inbox is
     // shown), not every account: it must not fetch — or pop a settings dialog
     // for — an account the user is not looking at. The periodic background sync
@@ -1083,11 +1085,28 @@ IMailboxProtocolPlugin* UltraMailApp::ImapPlugin() const {
     return plugin ? dynamic_cast<IMailboxProtocolPlugin*>(plugin.get()) : nullptr;
 }
 
-void UltraMailApp::ReportMissingImapPlugin() {
+IMailboxProtocolPlugin* UltraMailApp::JmapPlugin() const {
+    auto plugin = UltraNet_GetPlugin("jmap");
+    return plugin ? dynamic_cast<IMailboxProtocolPlugin*>(plugin.get()) : nullptr;
+}
+
+IMailboxProtocolPlugin* UltraMailApp::MailboxPluginFor(MailProtocol protocol) const {
+    return protocol == MailProtocol::Jmap ? JmapPlugin() : ImapPlugin();
+}
+
+bool UltraMailApp::AnyMailboxPlugin() const {
+    return ImapPlugin() != nullptr || JmapPlugin() != nullptr;
+}
+
+void UltraMailApp::ReportMissingMailboxPlugin(MailProtocol protocol) {
+    const bool jmap = protocol == MailProtocol::Jmap;
+    const std::string name   = jmap ? "JMAP" : "IMAP";
+    const std::string dso    = jmap ? "ultranet_jmap" : "ultranet_imap";
+    const std::string option = jmap ? "ULTRACANVAS_PLUGIN_JMAP" : "ULTRACANVAS_PLUGIN_IMAP";
     AlertError(window_ ? window_.get() : nullptr,
-               "Mail cannot be fetched: the IMAP plug-in was not found.",
-               "UltraMail looked for ultranet_imap in " + pluginDir_
-               + ". Build the UltraNet IMAP plug-in (ULTRACANVAS_PLUGIN_IMAP) "
+               "Mail cannot be fetched: the " + name + " plug-in was not found.",
+               "UltraMail looked for " + dso + " in " + pluginDir_
+               + ". Build the UltraNet " + name + " plug-in (" + option + ") "
                  "and keep it there, or point ULTRAMAIL_PLUGIN_DIR at the folder "
                  "that holds it, then restart UltraMail.");
 }
@@ -1305,22 +1324,30 @@ void UltraMailApp::RunMailboxAction(
     const std::string& actionName, std::function<void()> onSuccess) {
     FinishStartup();   // a click before the start had finished
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
-    IMailboxProtocolPlugin* imap = ImapPlugin();
-    if (!imap) { ReportMissingImapPlugin(); return; }
+    // The plug-in for the account's protocol (IMAP or JMAP), before the vault
+    // is opened for nothing.
+    IMailboxProtocolPlugin* mailbox = nullptr;
+    for (const auto& a : accounts_) {
+        if (a.accountId != accountId) continue;
+        const MailProtocol protocol = SettingsFor(a).imap.protocol;
+        mailbox = MailboxPluginFor(protocol);
+        if (!mailbox) { ReportMissingMailboxPlugin(protocol); return; }
+    }
+    if (!mailbox) return;
 
-    // The IMAP action needs the account password / OAuth token, so unlock first
-    // (silently with the device key, or a single prompt for an old vault).
-    EnsureVaultUnlocked([this, accountId, op, actionName, parent, imap, onSuccess]() {
+    // The mailbox action needs the account password / OAuth token, so unlock
+    // first (silently with the device key, or a single prompt for an old vault).
+    EnsureVaultUnlocked([this, accountId, op, actionName, parent, mailbox, onSuccess]() {
         const Account* account = nullptr;
         for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
         if (!account) return;
 
         const DiscoveryResult settings = SettingsFor(*account);
         const std::string serverUrl =
-            settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+            settings.found ? AutoDiscovery::IncomingServerUrl(settings.imap) : "";
         if (serverUrl.empty() || !settings.found) {
             AlertWarning(parent, actionName + " could not be completed.",
-                         "No incoming (IMAP) server is known for this account.");
+                         "No incoming mail server is known for this account.");
             return;
         }
         if (vault_.MethodFor(accountId) == SignInMethod::None) {
@@ -1343,19 +1370,19 @@ void UltraMailApp::RunMailboxAction(
         ++mailboxActionsInFlight_;
         UpdateBusyIndicator();
         std::thread([this, accountId, serverUrl, opts, op, actionName,
-                     username, provider, imap, onSuccess]() mutable {
+                     username, provider, mailbox, onSuccess]() mutable {
             UltraNetResult cred = ResolveCredentials(accountId, username, provider,
                                                      opts.credentials);
             SyncOutcome outcome;
             // Default Success: only a credential failure carries an auth code the
-            // UI thread can turn into a re-sign-in offer; an IMAP-op failure keeps
-            // Success here and falls through to the plain error alert.
+            // UI thread can turn into a re-sign-in offer; a mailbox-op failure
+            // keeps Success here and falls through to the plain error alert.
             UltraNetResultCode credCode = UltraNetResultCode::Success;
             if (!cred) {
                 outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
             } else {
-                SyncEngine engine(workerStore_, *imap, mailDir_);
+                SyncEngine engine(workerStore_, *mailbox, mailDir_);
                 outcome = op(engine, serverUrl, opts);
             }
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
@@ -1387,17 +1414,16 @@ void UltraMailApp::RunMailboxActionQuiet(
     const std::string& accountId,
     std::function<SyncOutcome(SyncEngine&, const std::string&, const UltraNetMailOptions&)> op,
     std::function<void(const SyncOutcome&)> onDone) {
-    IMailboxProtocolPlugin* imap = ImapPlugin();
-    if (!imap) return;                       // quiet: no plug-in, nothing to push
-
     const Account* account = nullptr;
     for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
     if (!account) return;
 
     const DiscoveryResult settings = SettingsFor(*account);
     const std::string serverUrl =
-        settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+        settings.found ? AutoDiscovery::IncomingServerUrl(settings.imap) : "";
     if (serverUrl.empty() || !settings.found) return;
+    IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
+    if (!mailbox) return;                    // quiet: no plug-in, nothing to push
     if (vault_.MethodFor(accountId) == SignInMethod::None) return;
 
     UltraNetMailOptions opts;
@@ -1412,13 +1438,13 @@ void UltraMailApp::RunMailboxActionQuiet(
     // and the list row already reflect the change, and the next folder
     // reconcile fixes any drift if this push fails. Only `onDone`, when given,
     // hears the outcome (on the UI thread).
-    std::thread([this, accountId, serverUrl, opts, op, username, provider, imap,
+    std::thread([this, accountId, serverUrl, opts, op, username, provider, mailbox,
                  onDone]() mutable {
         UltraNetResult cred = ResolveCredentials(accountId, username, provider,
                                                  opts.credentials);
         SyncOutcome outcome = SyncOutcome::Fail(cred);
         if (cred) {
-            SyncEngine engine(workerStore_, *imap, mailDir_);
+            SyncEngine engine(workerStore_, *mailbox, mailDir_);
             outcome = op(engine, serverUrl, opts);
         }
         if (!onDone) return;
@@ -1431,7 +1457,7 @@ void UltraMailApp::FetchMissingBody(const MessageEnvelope& env) {
     // The message shown at start, before the plug-ins and the vault are up:
     // FinishStartup fetches it.
     if (!startupFinished_) { pendingBodyFetch_ = env; return; }
-    if (!ImapPlugin() || !vault_.IsUnlocked()) return;   // passive: never prompts
+    if (!AnyMailboxPlugin() || !vault_.IsUnlocked()) return;   // passive: never prompts
     const std::string key = env.accountId + "\n" + env.folder + "\n" + std::to_string(env.uid);
     if (!bodyFetchInFlight_.insert(key).second) return;   // already on its way
     mailView_.ShowBodyNote(env, "(downloading the message\xE2\x80\xA6)");
@@ -1455,7 +1481,7 @@ void UltraMailApp::FetchMissingBody(const MessageEnvelope& env) {
 void UltraMailApp::RefreshFolderSoon(const std::string& accountId, const std::string& folder) {
     // Can't fetch right now (no plug-in / vault locked): leave it unstamped so
     // opening it again retries once the prerequisites are met.
-    if (!ImapPlugin() || !vault_.IsUnlocked()) return;
+    if (!AnyMailboxPlugin() || !vault_.IsUnlocked()) return;
     const std::string key = accountId + "\n" + folder;
     if (folderSyncInFlight_.count(key)) return;   // already fetching this folder
     const int64_t now = NowMonotonicSec();
@@ -1535,7 +1561,7 @@ void UltraMailApp::HandleMarkRead(const MessageEnvelope& env) {
     RefreshAccountCounts();   // the account's unread number goes down with it
     // Only reach for the server when the vault is already open — a passive click
     // must never pop the master-password dialog.
-    if (!ImapPlugin() || !vault_.IsUnlocked()) return;
+    if (!AnyMailboxPlugin() || !vault_.IsUnlocked()) return;
     RunMailboxActionQuiet(env.accountId,
         [env](SyncEngine& engine, const std::string& url, const UltraNetMailOptions& opts) {
             return engine.SetFlag(env.accountId, env.folder, env.uid, Flag_Seen, true, url, opts);
@@ -2094,20 +2120,27 @@ void UltraMailApp::AutoRetryOutbox() {
 
 ServerCopies UltraMailApp::MakeServerCopies() {
     ServerCopies copies;
+    // The IMAP plug-in serves every IMAP account; a JMAP account's copies go
+    // through the JMAP plug-in, named per account below. Without either there
+    // are no copies at all.
     copies.imap = ImapPlugin();
-    if (!copies.imap) return copies;
+    IMailboxProtocolPlugin* jmap = JmapPlugin();
+    if (!copies.imap && !jmap) return copies;
+    if (!copies.imap) copies.imap = jmap;   // MailboxFor falls back to it
     // Copied here, on the UI thread: the worker must not read accounts_.
     struct Target {
         DiscoveryResult settings;
         std::string     email;
         std::string     draftsFolder;
         std::string     sentFolder;
+        IMailboxProtocolPlugin* mailbox = nullptr;   // the plug-in for its protocol
     };
     auto targets = std::make_shared<std::map<std::string, Target>>();
     for (const auto& a : accounts_) {
         Target t;
         t.settings = SettingsFor(a);
         t.email = a.email;
+        t.mailbox = MailboxPluginFor(t.settings.imap.protocol);
         // The folders the server marks as Drafts and Sent (known once the
         // folders were synced), else the usual names.
         t.draftsFolder = FolderWithRole(a.accountId, FolderRole::Drafts);
@@ -2125,10 +2158,16 @@ ServerCopies UltraMailApp::MakeServerCopies() {
             return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                          "the account of this message no longer exists");
         const Target& t = it->second;
-        out.serverUrl = t.settings.found ? AutoDiscovery::ImapServerUrl(t.settings.imap) : "";
+        out.serverUrl = t.settings.found ? AutoDiscovery::IncomingServerUrl(t.settings.imap) : "";
         if (out.serverUrl.empty())
             return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                         "no incoming (IMAP) server is known for " + t.email);
+                                         "no incoming mail server is known for " + t.email);
+        if (!t.mailbox)
+            return UltraNetResult::Error(UltraNetResultCode::PluginNotFound,
+                                         "the " + ToString(t.settings.imap.protocol)
+                                         + " plug-in is not loaded, so no copy can be kept for "
+                                         + t.email);
+        out.mailbox = t.mailbox;
         out.draftsFolder = t.draftsFolder;
         out.sentFolder = t.sentFolder;
         ApplyConnection(t.settings.imap, out.options);
@@ -2310,14 +2349,14 @@ void UltraMailApp::StartBackgroundSync() {
     // this is safe to repeat after an account was added.
     for (const auto& a : accounts_) {
         DiscoveryResult d = SettingsFor(a);
-        std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        std::string url = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
         scheduler_.SetAccount(a.accountId, url, prefs_.checkMailEverySec);
     }
-    // Only run the live loop when the IMAP plug-in is present (otherwise a timer
-    // would just fire against nothing), and only one of it. It ticks every few
-    // seconds; the scheduler says which accounts are due at the interval
-    // chosen in Settings, so a new choice applies at the next tick.
-    if (syncTimerStarted_ || !ImapPlugin()) return;
+    // Only run the live loop when a mailbox plug-in (IMAP or JMAP) is present
+    // (otherwise a timer would just fire against nothing), and only one of it.
+    // It ticks every few seconds; the scheduler says which accounts are due at
+    // the interval chosen in Settings, so a new choice applies at the next tick.
+    if (syncTimerStarted_ || !AnyMailboxPlugin()) return;
     if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) {
         app->StartTimer(kSyncTickMs, /*periodic=*/true,
                         [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
@@ -2338,7 +2377,7 @@ void UltraMailApp::ApplyCheckMailInterval() {
     // an account due at once if it has waited that long already.
     for (const auto& a : accounts_) {
         DiscoveryResult d = SettingsFor(a);
-        std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        std::string url = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
         scheduler_.SetAccount(a.accountId, url, prefs_.checkMailEverySec);
     }
     UpdateConnectionIndicator();   // its tooltip says how often
@@ -2369,7 +2408,7 @@ void UltraMailApp::SyncAllInBackground() {
         DiscoveryResult d = SettingsFor(a);
         ScheduledAccount sa;
         sa.accountId = a.accountId;
-        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        sa.serverUrl = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
         targets.push_back(sa);
     }
     SyncAccounts(targets, /*userInitiated=*/false);
@@ -2383,7 +2422,7 @@ void UltraMailApp::RunSyncs(bool force) {
             DiscoveryResult d = SettingsFor(a);
             ScheduledAccount sa;
             sa.accountId = a.accountId;
-            sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+            sa.serverUrl = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
             targets.push_back(sa);
         }
     } else {
@@ -2417,7 +2456,7 @@ void UltraMailApp::RetryUnreachableAccounts() {
         DiscoveryResult d = SettingsFor(a);
         ScheduledAccount sa;
         sa.accountId = a.accountId;
-        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        sa.serverUrl = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
         targets.push_back(sa);
     }
     SyncAccounts(targets, /*userInitiated=*/false);
@@ -2477,7 +2516,7 @@ void UltraMailApp::RecheckHeldAccounts() {
         DiscoveryResult d = SettingsFor(a);
         ScheduledAccount sa;
         sa.accountId = a.accountId;
-        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        sa.serverUrl = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
         targets.push_back(sa);
     }
     SyncAccounts(targets, /*userInitiated=*/false);
@@ -2501,7 +2540,7 @@ void UltraMailApp::SyncAccount(const std::string& accountId) {
         DiscoveryResult d = SettingsFor(a);
         ScheduledAccount sa;
         sa.accountId = a.accountId;
-        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        sa.serverUrl = d.found ? AutoDiscovery::IncomingServerUrl(d.imap) : "";
         SyncAccounts({sa}, /*userInitiated=*/true);
         return;
     }
@@ -2509,8 +2548,7 @@ void UltraMailApp::SyncAccount(const std::string& accountId) {
 
 void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& folder,
                               bool userInitiated) {
-    IMailboxProtocolPlugin* imap = ImapPlugin();
-    if (!imap || !vault_.IsUnlocked()) return;
+    if (!vault_.IsUnlocked()) return;
 
     const Account* account = nullptr;
     for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
@@ -2518,8 +2556,10 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
 
     const DiscoveryResult settings = SettingsFor(*account);
     const std::string serverUrl =
-        settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+        settings.found ? AutoDiscovery::IncomingServerUrl(settings.imap) : "";
     if (serverUrl.empty() || !settings.found) return;
+    IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
+    if (!mailbox) return;
     if (vault_.MethodFor(accountId) == SignInMethod::None) return;
 
     UltraNetMailOptions opts;
@@ -2530,7 +2570,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     const std::string provider = OAuthProviderFor(settings);
     opts.credentials.username  = username;
 
-    auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
+    auto svc = std::make_shared<SyncService>(workerStore_, *mailbox, mailDir_);
     if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
     // Read while the folder is still stored: a folder gone from the server
     // is dropped by the time the fetch reports back.
@@ -2635,11 +2675,11 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                        " account(s)", 50);
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
 
-    // Without the plug-in nothing can be fetched. The user asked (Reload, a
-    // new account), so say so every time; the timer never runs without it.
-    IMailboxProtocolPlugin* imap = ImapPlugin();
-    if (!imap) {
-        if (userInitiated) ReportMissingImapPlugin();
+    // Without a mailbox plug-in nothing can be fetched. The user asked (Reload,
+    // a new account), so say so every time; the timer never runs without one.
+    // Which plug-in an account needs (IMAP or JMAP) is checked per account.
+    if (!AnyMailboxPlugin()) {
+        if (userInitiated) ReportMissingMailboxPlugin(MailProtocol::Imap);
         return;
     }
 
@@ -2687,6 +2727,14 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             continue;
         }
 
+        // The plug-in for the account's protocol: an IMAP account needs the
+        // IMAP plug-in, a JMAP account the JMAP one.
+        IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
+        if (!mailbox) {
+            if (userInitiated) ReportMissingMailboxPlugin(settings.imap.protocol);
+            continue;
+        }
+
         UltraNetMailOptions opts;
         ApplyConnection(settings.imap, opts);
         const std::string username =
@@ -2694,7 +2742,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         const std::string provider = OAuthProviderFor(settings);
         opts.credentials.username = username;
 
-        auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
+        auto svc = std::make_shared<SyncService>(workerStore_, *mailbox, mailDir_);
         const std::string aid = acc.accountId;
         accountSyncsInFlight_.insert(aid);
         if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
@@ -3849,21 +3897,24 @@ ServerSettingsDialog::Verifier UltraMailApp::LoginVerifier(
                                      const std::string& username, UltraNetCredentials&)> credentials) {
     return [this, credentials](const ServerSettingsDialog::Result& candidate,
                                std::function<void(UltraNetResult)> onResult) {
-        IMailboxProtocolPlugin* imap = ImapPlugin();
-        if (!imap) {
+        // The plug-in for the protocol the page chose (IMAP or JMAP).
+        const MailProtocol protocol = candidate.settings.imap.protocol;
+        IMailboxProtocolPlugin* mailbox = MailboxPluginFor(protocol);
+        if (!mailbox) {
             onResult(UltraNetResult::Error(UltraNetResultCode::PluginNotFound,
-                "the IMAP plug-in is not loaded (" + pluginDir_ + "), so the sign-in "
+                "the " + std::string(protocol == MailProtocol::Jmap ? "JMAP" : "IMAP")
+                + " plug-in is not loaded (" + pluginDir_ + "), so the sign-in "
                 "could not be checked"));
             return;
         }
         // The check talks to the server (and may refresh an OAuth2 token
         // first), so it runs on a worker; the answer comes back on the UI.
         const DiscoveryResult settings = candidate.settings;
-        std::thread([imap, candidate, settings, credentials, onResult]() {
+        std::thread([mailbox, candidate, settings, credentials, onResult]() {
             UltraNetCredentials c;
             UltraNetResult r = credentials
                 ? credentials(candidate, settings.imap.username, c) : UltraNetResult::Ok();
-            if (r) r = LoginCheck::Imap(*imap, settings.imap, c);
+            if (r) r = LoginCheck::Incoming(*mailbox, settings.imap, c);
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
             app->PostToUIThread([onResult, r]() { onResult(r); });
@@ -3973,7 +4024,8 @@ void UltraMailApp::CompleteAccountSetup(const AccountDraft& draft, const Discove
     else
         summary = "Account ready — settings detected"
                 + (disc.displayName.empty() ? "" : " (" + disc.displayName + ")") + ".";
-    std::string detail = "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap)
+    std::string detail = "Incoming (" + std::string(disc.imap.protocol == MailProtocol::Jmap ? "JMAP" : "IMAP")
+                       + "): " + AutoDiscovery::IncomingServerUrl(disc.imap)
                        + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
     // Providers that expect OAuth2 (Gmail, Outlook), Yahoo and iCloud
     // reject the normal account password over IMAP. Gmail and Outlook sign

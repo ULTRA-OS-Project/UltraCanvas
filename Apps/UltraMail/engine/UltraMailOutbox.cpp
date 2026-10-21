@@ -359,7 +359,7 @@ bool Outbox::SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushSt
     UltraNetResult r = copies.prepare(item.accountId, where);
     if (r && where.draftsFolder.empty())
         r = UltraNetResult::Error(UltraNetResultCode::InvalidState, "no Drafts folder is known");
-    if (r) r = copies.imap->AppendMessage(where.serverUrl, where.draftsFolder, BuildDraftCopy(item),
+    if (r) r = copies.MailboxFor(where).AppendMessage(where.serverUrl, where.draftsFolder, BuildDraftCopy(item),
                                           UltraNetMailFlags::Draft | UltraNetMailFlags::Seen,
                                           where.options);
     if (r) r = store_.MarkDraftSaved(item.id, where.draftsFolder)
@@ -382,7 +382,7 @@ bool Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies,
     ServerFolders where;
     UltraNetResult r = copies.prepare(item.accountId, where);
     std::vector<UltraNetMailEnvelope> envelopes;
-    if (r) r = copies.imap->FetchEnvelopes(where.serverUrl, item.draftsFolder, 0, envelopes,
+    if (r) r = copies.MailboxFor(where).FetchEnvelopes(where.serverUrl, item.draftsFolder, 0, envelopes,
                                            where.options);
     if (!r) {
         stats.draftFailures++;
@@ -394,7 +394,7 @@ bool Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies,
     const std::string wanted = BareMessageId(item.messageId);
     for (const auto& e : envelopes) {
         if (BareMessageId(e.messageId) != wanted) continue;
-        UltraNetResult del = copies.imap->StoreFlags(where.serverUrl, item.draftsFolder, e.uid,
+        UltraNetResult del = copies.MailboxFor(where).StoreFlags(where.serverUrl, item.draftsFolder, e.uid,
                                                      UltraNetMailFlags::Deleted, true, where.options);
         if (!del) {
             stats.draftFailures++;
@@ -405,7 +405,7 @@ bool Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies,
         // Gone for good, not left flagged for a client that shows deleted
         // messages. Just this one: a server without UIDPLUS refuses, and the
         // copy stays flagged \Deleted - which is still deleted.
-        copies.imap->ExpungeMessage(where.serverUrl, item.draftsFolder, e.uid, where.options);
+        copies.MailboxFor(where).ExpungeMessage(where.serverUrl, item.draftsFolder, e.uid, where.options);
     }
     return removed;
 }
@@ -427,7 +427,7 @@ void Outbox::SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, Fl
     ServerFolders where;
     UltraNetResult r = copies.prepare(item.accountId, where);
     if (r && where.sentFolder.empty()) return;   // none wanted: the server files it
-    if (r) r = copies.imap->AppendMessage(where.serverUrl, where.sentFolder,
+    if (r) r = copies.MailboxFor(where).AppendMessage(where.serverUrl, where.sentFolder,
                                           BuildMessageCopy(item, /*waiting=*/false),
                                           UltraNetMailFlags::Seen, where.options);
     if (r) {

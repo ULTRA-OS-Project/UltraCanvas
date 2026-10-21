@@ -1,7 +1,10 @@
 # JMAP Support in UltraNet — Investigation & Design
 
 **Status:** Phase 1 implemented (read path) — see `Plugins/UltraNet/jmap/`;
-phases 2–3 remain as designed below
+phases 2–3 remain as designed below. UltraMail consumes it since 0.10.62: an
+account's incoming server is set to JMAP on its settings page
+(`Docs/UltraMail/AccountSetup.md`, section 5), and syncs, the login check and
+the outbox copies then use this plug-in in place of the IMAP one.
 **Scope:** Add JMAP (JSON Meta Application Protocol, RFC 8620 core + RFC 8621 mail)
 as an UltraNet protocol plug-in, consumable by UltraMail alongside IMAP/SMTP.
 
