@@ -33,7 +33,7 @@
 
     <!-- The backend renders with Cairo into an ANativeWindow buffer and only
          uses GLES for UltraCanvasGLSurface elements, so GLES 3 is preferred
-         but not required. Every minSdk-26 device ships ES 3.x anyway. -->
+         but not required. Every minSdk-28 device ships ES 3.x anyway. -->
     <uses-feature android:glEsVersion="0x00030000" android:required="false"/>
 
     <application
@@ -56,10 +56,13 @@
             android:exported="true">
 
             <!-- The .so Gradle built from the repo's CMake, without the "lib"
-                 prefix or the ".so" suffix. NativeActivity dlopens it and
-                 calls android_main() from UltraCanvasAndroidMain.cpp. -->
+                 prefix or the ".so" suffix: libUltraCanvasDemo.so is the
+                 demo's (the UltraCanvasDemo target). NativeActivity dlopens it
+                 and calls android_main() from UltraCanvasAndroidMain.cpp,
+                 which calls the app's ultracanvas_app_main(). Another app
+                 names its own library here. -->
             <meta-data android:name="android.app.lib_name"
-                       android:value="ultracanvas_app"/>
+                       android:value="UltraCanvasDemo"/>
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

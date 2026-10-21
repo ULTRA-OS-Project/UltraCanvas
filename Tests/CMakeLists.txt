@@ -764,6 +764,24 @@ else()
     message(STATUS "  ChartElementBehaviourTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== GAUGE LINEAR MODES TEST =====
+# The gauge's six bar modes: inside their box at every size and orientation,
+# the bar drawn where there is room, the value following a changed range.
+if(TARGET UltraCanvas)
+    add_executable(GaugeLinearModesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/GaugeLinearModesTest.cpp
+    )
+    target_include_directories(GaugeLinearModesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(GaugeLinearModesTest PRIVATE cxx_std_20)
+    target_link_libraries(GaugeLinearModesTest PRIVATE UltraCanvas)
+    set_target_properties(GaugeLinearModesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME GaugeLinearModesTest COMMAND GaugeLinearModesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: GaugeLinearModesTest")
+endif()
+
 # ===== IMAGE AND RADIO BEHAVIOUR TEST =====
 # The image element's error and tint, and radio groups that free their
 # buttons, headless.
@@ -3624,6 +3642,7 @@ add_executable(ChartEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasColormap.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp

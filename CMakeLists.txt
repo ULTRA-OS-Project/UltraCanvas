@@ -248,19 +248,19 @@ if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE
     unset(_uc_linked)
 endif()
 
-# ===== ANDROID DEFAULTS (phase 1: core library only) =====
+# ===== ANDROID DEFAULTS (the core library and the demo) =====
 # Cache defaults only (no FORCE): -D on the command line still wins, so any of
 # these can be opted back in once its dependency exists in the NDK sysroot.
 # The desktop app executables are meaningless in an APK (an Android app is a
-# shared library loaded by the activity); packaging DemoApp via Gradle is a
-# later phase (Docs/UltraCanvas/AndroidPortInvestigation.md §5, §7).
+# shared library loaded by the activity). DemoApp is the exception and stays
+# on: it builds as libUltraCanvasDemo.so, the library the packaging template's
+# manifest names (UltraCanvas/OS/Android/packaging/).
 if(ANDROID)
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
     set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
     set(BUILD_ARTCREATOR_APP OFF CACHE BOOL "Build the ArtCreator vector drawing editor application")
-    set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
@@ -719,6 +719,18 @@ if(BUILD_DEVICEEXPLORER)
     add_subdirectory(Apps/DeviceExplorer)
 endif()
 
+# ===== SMARTHOME CENTER =====
+# The home control window on the SmartHome module: rooms, devices, scenes,
+# energy and activity. With no radio enabled it opens the module's simulated
+# demo home. Needs the SmartHome module (BUILD_SMARTHOME, above) and its
+# SmartHomeUI target's UI library.
+option(BUILD_SMARTHOME_CENTER "Build the SmartHome Center application" ON)
+if(BUILD_SMARTHOME_CENTER AND BUILD_SMARTHOME)
+    message(STATUS "")
+    message(STATUS "── Building SmartHome Center ──")
+    add_subdirectory(Apps/SmartHomeCenter)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -796,6 +808,11 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonExamples.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonLines.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonBars.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonFinance.cpp
+            Apps/DemoApp/UltraCanvasEngineComparisonPolar.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp
             Apps/DemoApp/UltraCanvasFunnelChartExamples.cpp
@@ -1012,16 +1029,28 @@ if(BUILD_DEMO_APP)
         )
     endif()
 
-    # Create executable
-    add_executable(UltraCanvasDemo
-        ${DEMO_SOURCES}
-    )
+    # Create executable. On Android the app is a shared library instead,
+    # libUltraCanvasDemo.so, which NativeActivity loads by the manifest's
+    # android.app.lib_name; main.cpp's body is then ultracanvas_app_main(),
+    # called by the framework's android_main(). The core library's interface
+    # carries the -u options that pull android_main's glue and the JNI entry
+    # points out of the static core into it (UltraCanvas/CMakeLists.txt).
+    if(ANDROID)
+        add_library(UltraCanvasDemo SHARED
+            ${DEMO_SOURCES}
+        )
+    else()
+        add_executable(UltraCanvasDemo
+            ${DEMO_SOURCES}
+        )
+    endif()
     # Export the executable's dynamic symbols so on-demand plugin modules
     # (dlopen'ed via the loader, e.g. libUltraCanvasLaTeX) can resolve
     # UltraCanvas core symbols when the core is linked statically. Not in the
     # browser: nothing is dlopen'ed there, and the setting would ask for a
-    # dynamic-linking wasm build.
-    if(NOT EMSCRIPTEN)
+    # dynamic-linking wasm build. Not on Android either: a shared library
+    # exports its symbols anyway, and nothing is dlopen'ed there.
+    if(NOT EMSCRIPTEN AND NOT ANDROID)
         set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
     endif()
 
@@ -1154,7 +1183,11 @@ if(BUILD_DEMO_APP)
 #        RUNTIME DESTINATION bin
 #    )
     
-    message(STATUS "  Demo executable: UltraCanvasDemo")
+    if(ANDROID)
+        message(STATUS "  Demo library: libUltraCanvasDemo.so")
+    else()
+        message(STATUS "  Demo executable: UltraCanvasDemo")
+    endif()
 endif()
 
 # ===== UNIT TESTS =====
@@ -2483,8 +2516,8 @@ endif()
 #
 # The apps whose command-line modes print into the prompt they were typed at
 # - DeviceExplorer (--list), UltraCleaner (--scan), UltraNetMonitor (--list),
-# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print) and
-# UltraDesktop (--windows) - are GUI programs as well, each with a console
+# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print),
+# UltraDesktop (--windows) and SmartHomeCenter (--list) - are GUI programs as well, each with a console
 # companion beside it (ultracanvas_windows_console_companion()): <App>.com,
 # which cmd and PowerShell run for the bare name, starts the .exe, waits for
 # it and returns its exit code. So the prompt waits as for a console program,
@@ -2503,7 +2536,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     unset(_uc_gui_app)
     foreach(_uc_console_app
             DeviceExplorer UltraCleaner UltraNetMonitor UltraCanvasStart UltraWeb
-            UltraClaude UltraDesktop)
+            UltraClaude UltraDesktop SmartHomeCenter)
         if(TARGET ${_uc_console_app})
             ultracanvas_windows_console_companion(${_uc_console_app})
         endif()

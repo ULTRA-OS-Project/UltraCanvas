@@ -417,7 +417,11 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   leaving the one on display. The peek is live: double-clicking a subfolder
   in it descends further, a file activated in it opens with its OS default
   application, files can be dropped into it, and its context menu offers
-  the usual file commands (only the hover icon menu stays off). While
+  the usual file commands (only the hover icon menu stays off). Selecting
+  more files with **Ctrl** held (Ctrl+click, a Ctrl marquee, Ctrl+A) leaves
+  the pane as it is, so the window does not rearrange itself while a
+  multiple selection is gathered; the next selection made without Ctrl
+  updates it. While
   nothing previewable is selected the pane folds away, so the folder
   display always gets the whole width — the Preview toggle only enables /
   disables the feature, and **Esc** closes an open preview (turning the

@@ -1622,7 +1622,7 @@ jobs:
           }
           $companions = @()
           foreach ($app in 'UltraDesktop', 'UltraCleaner', 'UltraNetMonitor', 'UltraWeb', 'UltraClaude',
-                           'UltraCanvasStart', 'DeviceExplorer', 'ultrafibu', 'ultrapress') {
+                           'UltraCanvasStart', 'DeviceExplorer', 'SmartHomeCenter', 'ultrafibu', 'ultrapress') {
             $exe = Join-Path $dir "$app.exe"
             if (-not (Test-Path $exe)) { continue }
             $com = Join-Path $dir "$app.com"
@@ -1654,7 +1654,17 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "The uninstaller exited with $($p.ExitCode)" }
           $left = @(Get-ChildItem $dir -Recurse -File | Where-Object Name -ne 'Uninstall.exe')
           if ($left.Count -gt 0) { throw "Left behind: $(($left | Select-Object -First 10 | ForEach-Object FullName) -join ', ')" }
-          if (Test-Path $menu) { throw 'The Start-menu folder was left behind' }
+          # The folder can outlive the uninstaller for a moment: the shell
+          # may still hold it while it drops the removed shortcuts (a pull
+          # request that changes no packaging failed here while main at the
+          # same base passed). Allow it ten seconds before calling it left
+          # behind, and name what is still in it when it really is.
+          $deadline = (Get-Date).AddSeconds(10)
+          while ((Test-Path $menu) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $menu) {
+            $inside = @(Get-ChildItem $menu -Force | ForEach-Object Name)
+            throw "The Start-menu folder was left behind, holding: $(if ($inside) { $inside -join ', ' } else { 'nothing' })"
+          }
           if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe' -ErrorAction SilentlyContinue) {
             throw 'The App Paths entry was left behind'
           }

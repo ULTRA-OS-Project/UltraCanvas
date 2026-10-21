@@ -7,14 +7,12 @@ Quick pointers:
 
 - Module registry: `Masterfile_modules.md`
 - Component docs (consult before using any widget): `Docs/UltraCanvas/`
-- LLM-ready docs index: `llms.txt` (full corpus: `llms-full.txt`), written on
-  `main` after each docs change lands - a pull request never carries them
+- LLM-ready docs index: `llms.txt` (full corpus: `llms-full.txt`)
 - After editing docs, run `python3 scripts/generate_doc_toc.py` (the
-  `## Contents` inventory of every demo-app doc) and then
-  `python3 scripts/generate_llms_txt.py` (commit the README mirrors it
-  refreshes, then drop the two llms files from the branch:
-  `git checkout origin/main -- llms.txt llms-full.txt` - CI refuses a pull
-  request that changes them); after editing a component doc, `python3 scripts/check_doc_examples.py <doc>`
+  `## Contents` inventory of every demo-app doc). Do not commit `llms.txt` /
+  `llms-full.txt` - `main` regenerates them after the merge and CI refuses a
+  pull request that changes them; after
+  editing a component doc, `python3 scripts/check_doc_examples.py <doc>`
   compiles its C++ against the headers (CI runs it over every component doc
   and fails on any finding)
 - Every file a user loads or saves goes through `UltraCanvasFileLoader`
@@ -38,6 +36,10 @@ Quick pointers:
   3. **a pull request?** — its number and state, or the words "no pull
      request". Pushed is not in review, and the reader cannot tell the
      difference unless it is said.
+- Before opening a pull request and before every push to one, run
+  `python3 scripts/check_pr_overlap.py` (or with `--branches` and the open
+  PRs' heads from the GitHub tools): it predicts conflicts with the other open
+  pull requests - see rule 4 of *Branch and pull-request rules* in `AGENTS.md`
 - When you open a pull request, rename the chat so its title starts with
   the PR number (`#<n> <title>`, via `set_session_title`) — see rule 7 of
   *Branch and pull-request rules* in `AGENTS.md`
