@@ -588,7 +588,11 @@ void SmartHomeEnergyMonitor::Refresh() {
             const double v = chartMode == 0 ? readings[i].Power : chartMode == 1 ? used : used * costPerKwh;
             const time_t t = static_cast<time_t>(readings[i].Timestamp / 1000);
             std::tm local{};
+#ifdef _WIN32
+            localtime_s(&local, &t);
+#else
             localtime_r(&t, &local);
+#endif
             char clock[8];
             std::snprintf(clock, sizeof clock, "%02d:%02d", local.tm_hour, local.tm_min);
             points.emplace_back(static_cast<double>(points.size()), v, 0.0, clock, 0.0);

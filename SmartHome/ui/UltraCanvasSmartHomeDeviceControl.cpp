@@ -776,7 +776,11 @@ void SmartHomeSensorDisplay::RefreshGraph() {
         for (size_t i = first; i < history.size(); ++i) {
             const time_t t = static_cast<time_t>(history[i].Timestamp / 1000);
             std::tm local{};
+#ifdef _WIN32
+            localtime_s(&local, &t);
+#else
             localtime_r(&t, &local);
+#endif
             char clock[8];
             std::snprintf(clock, sizeof clock, "%02d:%02d", local.tm_hour, local.tm_min);
             points.emplace_back(static_cast<double>(points.size()), history[i].Value, 0.0, clock, 0.0);
