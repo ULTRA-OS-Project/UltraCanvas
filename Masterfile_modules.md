@@ -2498,7 +2498,12 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
   `UltraIM_EndCall`
 
-**Implementation status:** planned — see the plan's phase table.
+**Implementation status:** Phase 1 core implemented — target `UltraIM`
+(`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
+provider registry, the module loader (`UltraIM_PluginInit`, ABI 1), the event
+bus with the injected dispatcher, the merged conversation fetch and every
+forwarding call above. Tests in `Tests/UltraIM`. No provider yet; ChatCube
+Direct is next. See `Docs/Modules/UltraIM/README.md`.
 
 ---
 

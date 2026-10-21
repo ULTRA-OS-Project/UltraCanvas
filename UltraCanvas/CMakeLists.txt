@@ -3564,12 +3564,44 @@ if(TARGET UltraMessage)
     message(STATUS "  [✓] UltraMessageCenter - ENABLED")
 endif()
 
+# ===== BUILD ULTRAIM (instant-messaging framework) =====
+# UI-free: the provider registry, the event bus with its injected dispatcher
+# and the loader of provider modules (Plugins/UltraIM/<name>/, which link the
+# core like any library). Docs/Research/ChatCubeDirectPlan.md.
+option(ULTRACANVAS_ENABLE_ULTRAIM "Build the UltraIM instant-messaging library" ON)
+if(ULTRACANVAS_ENABLE_ULTRAIM)
+    # The archive is uc-im; UltraIM is its home ("MODULE HOMES").
+    add_library(uc-im STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMManager.cpp)
+    set_target_properties(uc-im PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultraim")
+    target_compile_features(uc-im PUBLIC cxx_std_20)
+    target_include_directories(uc-im
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
+    target_link_libraries(uc-im PUBLIC uc-crypt Threads::Threads ${CMAKE_DL_LIBS})
+    target_compile_definitions(uc-im PUBLIC ULTRACANVAS_HAS_ULTRAIM=1)
+    _ultracanvas_module_home(UltraIM uc-im)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraIM)
+    endif()
+    message(STATUS "  [✓] UltraIM - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM - DISABLED")
+endif()
+
 # Every module archive is defined by now: fold them into a shared core, in one
 # call and dependents first (see "MODULE HOMES"). A static core links each
 # through its home instead. VirtualFS has no dependency on the others.
+set(_ultracanvas_im_archive "")
+if(TARGET uc-im)
+    set(_ultracanvas_im_archive uc-im)
+endif()
 _ultracanvas_absorb_modules(
-    uc-net uc-win uc-message uc-networkmonitor uc-database uc-vault uc-crypt
-    VirtualFS)
+    uc-net uc-win ${_ultracanvas_im_archive} uc-message uc-networkmonitor
+    uc-database uc-vault uc-crypt VirtualFS)
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
