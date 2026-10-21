@@ -1575,8 +1575,10 @@ extended or replaced without changing callers.
 - `UltraDb_Query`, `UltraDb_Exec`, `UltraDb_QueryAsync`
 - `UltraDb_Prepare`, `UltraDb_ExecPrepared`, `UltraDb_Finalize`
 - `UltraDb_Begin`, `UltraDb_ExecInTx`, `UltraDb_Commit`, `UltraDb_Rollback`
-- `UltraDb_OpenCursor`, `UltraDb_FetchRow`, `UltraDb_CloseCursor`
-- `UltraDb_Migrate`, `UltraDb_CancelQuery`
+- `UltraDb_OpenCursor`, `UltraDb_FetchRows`, `UltraDb_CloseCursor` (page at
+  a time; server-side cursors on PostgreSQL)
+- `UltraDb_ExecBatch` (every statement of a script with its own result)
+- `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
@@ -1602,9 +1604,10 @@ migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
 `Tests/UltraDatabase`); the PostgreSQL driver
 (`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
 found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
-networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
-queries, pooling, streaming cursors and at-rest encryption. Details in
+UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
+plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
+DuckDB), async queries, pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**

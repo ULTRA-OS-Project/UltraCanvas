@@ -29,6 +29,11 @@ IUltraDbDriverPlugin* BuiltinPostgresDriver();
 // a build without libpq - see UltraDatabasePostgresSql.cpp.
 std::string PostgresPlatzhalter(const std::string& sql);
 
+// A PostgreSQL script cut into its statements, as psql cuts it: at the
+// semicolons outside text, comments and SQL-standard function bodies. Each
+// trimmed, without its ';'; empty ones dropped. For UltraDb_ExecBatch.
+std::vector<std::string> PostgresAnweisungen(const std::string& sql);
+
 // Expand a leading "~" in a filesystem path to $HOME (used by the SQLite
 // driver for database paths).
 std::string ExpandUserPath(const std::string& path);

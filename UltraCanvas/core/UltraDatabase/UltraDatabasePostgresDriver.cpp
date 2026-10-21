@@ -28,7 +28,7 @@
 // the driver is simply not registered and an attempt to open a "postgresql"
 // connection reports that the driver is missing, which is a true answer rather
 // than a link error.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDatabase/UltraDatabaseCore.h"
@@ -84,6 +84,7 @@ UltraDbResultCode MapPqError(const PGresult* res) {
     if (code.rfind("23", 0) == 0) return UltraDbResultCode::ConstraintViolation;
     if (code.rfind("08", 0) == 0) return UltraDbResultCode::ConnectionFailed;
     if (code == "40001" || code == "40P01") return UltraDbResultCode::Busy;  // serialise / deadlock
+    if (code == "57014") return UltraDbResultCode::Cancelled;                // query_canceled
     if (code.rfind("42", 0) == 0) return UltraDbResultCode::QueryFailed;
     return UltraDbResultCode::QueryFailed;
 }
@@ -280,10 +281,31 @@ private:
     std::string sql_;
 };
 
+class PostgresCursor : public IUltraDbCursor {
+public:
+    PostgresCursor(PostgresConnection* owner, std::string name)
+        : owner_(owner), name_(std::move(name)) {}
+    ~PostgresCursor() override;
+
+    UltraDbResult Fetch(size_t maxRows, UltraDbResultSet& out, bool& exhausted) override;
+
+private:
+    PostgresConnection* owner_;
+    std::string name_;
+    bool done_ = false;
+    std::vector<std::string> spalten_;          // kept for a fetch after the end
+    std::vector<UltraDbColumnInfo> spaltenInfo_;
+    friend class PostgresConnection;
+};
+
 class PostgresConnection : public IUltraDbConnection {
 public:
-    explicit PostgresConnection(PGconn* conn) : conn_(conn) {}
+    // The cancel object is made once, here: PQcancel then needs nothing of
+    // the connection, so another thread can send it while a statement holds
+    // the connection's mutex.
+    explicit PostgresConnection(PGconn* conn) : conn_(conn), abbruch_(PQgetCancel(conn)) {}
     ~PostgresConnection() override {
+        if (abbruch_ != nullptr) PQfreeCancel(abbruch_);
         if (conn_ != nullptr) PQfinish(conn_);
     }
 
@@ -337,21 +359,7 @@ public:
         if (params.empty()) {
             // A batch of ';'-separated statements. PQexec runs them all, which
             // is what the migration steps rely on.
-            PGresult* res = PQexec(conn_, sql.c_str());
-            if (res == nullptr)
-                return PqError(conn_, nullptr, "execute failed");
-            const ExecStatusType status = PQresultStatus(res);
-            if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
-                UltraDbResult r = PqError(conn_, res, "execute failed");
-                PQclear(res);
-                return r;
-            }
-            // A batch can hold DDL anywhere, and PQexec reports only the
-            // last statement's tag; the text is the only place to look.
-            if (AendertSchema(sql)) KatalogVergessen();
-            UltraDbResult r = Abschliessen(res, out);
-            PQclear(res);
-            return r;
+            return TextAusfuehren(sql, out, nullptr);
         }
 
         if (AendertSchema(sql)) KatalogVergessen();
@@ -390,6 +398,114 @@ public:
         return r;
     }
 
+    // Each statement of the script on its own, as psql sends them, under one
+    // hold of the connection: another thread's statement cannot land in the
+    // middle of a script's BEGIN ... COMMIT.
+    UltraDbResult ExecuteBatch(const std::string& sql,
+                               std::vector<UltraDbStatementResult>& out) override {
+        out.clear();
+        const std::vector<std::string> anweisungen = ultradb_internal::PostgresAnweisungen(sql);
+        std::lock_guard<std::mutex> lk(mutex_);
+        for (const std::string& anweisung : anweisungen) {
+            UltraDbStatementResult eine;
+            eine.sql = anweisung;
+            eine.result = TextAusfuehren(anweisung, eine.rows, &eine.returnsRows);
+            const bool ok = eine.result.success;
+            out.push_back(std::move(eine));
+            if (!ok) return out.back().result;
+        }
+        return UltraDbResult::Ok();
+    }
+
+    // PQcancel asks the server, on a connection of its own, to stop what this
+    // one is running; the running call then fails with SQLSTATE 57014
+    // (Cancelled). Safe from any thread, and it takes no lock here.
+    UltraDbResult Cancel() override {
+        if (abbruch_ == nullptr)
+            return UltraDbResult::Error(UltraDbResultCode::Internal,
+                                        "no cancel object for this connection", kDriverId);
+        char fehler[256] = {0};
+        if (PQcancel(abbruch_, fehler, static_cast<int>(sizeof(fehler))) != 1)
+            return UltraDbResult::Error(UltraDbResultCode::ConnectionFailed,
+                                        std::string("cancel request failed: ") + fehler, kDriverId);
+        return UltraDbResult::Ok();
+    }
+
+    // A server-side cursor. Outside a transaction WITH HOLD, so it outlives
+    // the DECLARE's own implicit transaction and the connection stays free
+    // for other statements between pages (the server keeps the result).
+    // Inside the caller's transaction WITHOUT HOLD: it ends with it.
+    std::unique_ptr<IUltraDbCursor> OpenCursor(const std::string& sql,
+                                               const UltraDbParams& params,
+                                               UltraDbResult& error) override {
+        std::lock_guard<std::mutex> lk(mutex_);
+        const bool inTx = PQtransactionStatus(conn_) == PQTRANS_INTRANS;
+        const std::string name = "uccur_" + std::to_string(++zaehler_);
+        std::string declare = "DECLARE " + name + " NO SCROLL CURSOR " +
+                              (inTx ? "WITHOUT HOLD" : "WITH HOLD") + " FOR ";
+        PGresult* res = nullptr;
+        if (params.empty()) {
+            declare += sql;
+            res = PQexec(conn_, declare.c_str());
+        } else {
+            declare += ultradb_internal::PostgresPlatzhalter(sql);
+            GebundeneParameter gebunden(params);
+            res = PQexecParams(conn_, declare.c_str(), gebunden.Anzahl(),
+                               nullptr, gebunden.Werte(), nullptr, nullptr, 0);
+        }
+        if (res == nullptr || PQresultStatus(res) != PGRES_COMMAND_OK) {
+            error = PqError(conn_, res, "declare cursor failed");
+            if (res != nullptr) PQclear(res);
+            return nullptr;
+        }
+        PQclear(res);
+        error = UltraDbResult::Ok();
+        return std::unique_ptr<IUltraDbCursor>(new PostgresCursor(this, name));
+    }
+
+    UltraDbResult FetchCursor(PostgresCursor& cursor, size_t maxRows,
+                              UltraDbResultSet& out, bool& exhausted) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        out.Clear();
+        if (cursor.done_) {
+            out.SetColumns(cursor.spalten_);
+            out.SetColumnInfo(cursor.spaltenInfo_);
+            exhausted = true;
+            return UltraDbResult::Ok();
+        }
+        const std::string fetch = "FETCH FORWARD " + std::to_string(maxRows) + " FROM " + cursor.name_;
+        PGresult* res = PQexec(conn_, fetch.c_str());
+        if (res == nullptr || PQresultStatus(res) != PGRES_TUPLES_OK) {
+            UltraDbResult r = PqError(conn_, res, "fetch failed");
+            if (res != nullptr) PQclear(res);
+            return r;
+        }
+        UltraDbResult r = Abschliessen(res, out);
+        const size_t gelesen = static_cast<size_t>(PQntuples(res));
+        PQclear(res);
+        if (!r) return r;
+        if (cursor.spalten_.empty()) {
+            cursor.spalten_ = out.Columns();
+            cursor.spaltenInfo_ = out.ColumnInfo();
+        }
+        // Fewer rows than asked for: the end. affectedRows counted the rows,
+        // which is not what a fetch's caller wants reported.
+        cursor.done_ = gelesen < maxRows;
+        exhausted = cursor.done_;
+        r.affectedRows = 0;
+        return r;
+    }
+
+    void CloseCursor(const std::string& name) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        if (conn_ == nullptr || PQstatus(conn_) != CONNECTION_OK) return;
+        // In a failed transaction CLOSE would only fail too, and the rollback
+        // that must follow drops a WITHOUT HOLD cursor anyway.
+        if (PQtransactionStatus(conn_) == PQTRANS_INERROR) return;
+        PGresult* res = PQexec(conn_, ("CLOSE " + name).c_str());
+        if (res != nullptr) PQclear(res);
+    }
+
     void Deallocate(const std::string& name) {
         std::lock_guard<std::mutex> lk(mutex_);
         if (conn_ == nullptr || PQstatus(conn_) != CONNECTION_OK) return;
@@ -398,6 +514,31 @@ public:
     }
 
 private:
+    // A statement (or several) as text, no parameters and no `?` rewriting -
+    // the batch path of ExecuteDirect and every statement of ExecuteBatch.
+    // Called with mutex_ held. `zeilen`, when given, says whether it returned
+    // rows (as opposed to a command tag).
+    UltraDbResult TextAusfuehren(const std::string& sql, UltraDbResultSet& out, bool* zeilen) {
+        out.Clear();
+        if (zeilen != nullptr) *zeilen = false;
+        PGresult* res = PQexec(conn_, sql.c_str());
+        if (res == nullptr)
+            return PqError(conn_, nullptr, "execute failed");
+        const ExecStatusType status = PQresultStatus(res);
+        if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
+            UltraDbResult r = PqError(conn_, res, "execute failed");
+            PQclear(res);
+            return r;
+        }
+        if (zeilen != nullptr) *zeilen = status == PGRES_TUPLES_OK;
+        // A batch can hold DDL anywhere, and PQexec reports only the
+        // last statement's tag; the text is the only place to look.
+        if (AendertSchema(sql)) KatalogVergessen();
+        UltraDbResult r = Abschliessen(res, out);
+        PQclear(res);
+        return r;
+    }
+
     // ===== RESULT COLUMN METADATA =====
     //
     // libpq gives each result column its type OID and modifier, and - for a
@@ -574,11 +715,20 @@ private:
     }
 
     PGconn*    conn_ = nullptr;
+    PGcancel*  abbruch_ = nullptr;
     std::mutex mutex_;
     long long  zaehler_ = 0;
     std::map<std::pair<unsigned int, int>, std::string> typNamen_;
     std::map<unsigned int, TabellenName> tabellen_;
 };
+
+PostgresCursor::~PostgresCursor() {
+    if (owner_ != nullptr) owner_->CloseCursor(name_);
+}
+
+UltraDbResult PostgresCursor::Fetch(size_t maxRows, UltraDbResultSet& out, bool& exhausted) {
+    return owner_->FetchCursor(*this, maxRows, out, exhausted);
+}
 
 PostgresStatement::~PostgresStatement() {
     if (owner_ != nullptr) owner_->Deallocate(name_);

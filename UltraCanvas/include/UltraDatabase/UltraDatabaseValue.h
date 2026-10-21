@@ -2,7 +2,7 @@
 // The engine-independent value / row / result-set model. UltraDbValue is a
 // small tagged variant; parameters are always bound (never interpolated into
 // SQL), and query results come back as an UltraDbResultSet of UltraDbRows.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -145,4 +145,13 @@ private:
         std::make_shared<const std::vector<std::string>>();
     std::vector<UltraDbRow> rows_;
     std::vector<UltraDbColumnInfo> columnInfo_;
+};
+
+// One statement of a script run by UltraDb_ExecBatch: its text, how it
+// ended, and its rows when it returned any.
+struct UltraDbStatementResult {
+    std::string      sql;               // the statement, trimmed, without its ';'
+    UltraDbResult    result;            // success or the error; affectedRows
+    bool             returnsRows = false;
+    UltraDbResultSet rows;              // the rows, when returnsRows
 };

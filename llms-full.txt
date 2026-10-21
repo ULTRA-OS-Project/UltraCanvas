@@ -1754,8 +1754,10 @@ extended or replaced without changing callers.
 - `UltraDb_Query`, `UltraDb_Exec`, `UltraDb_QueryAsync`
 - `UltraDb_Prepare`, `UltraDb_ExecPrepared`, `UltraDb_Finalize`
 - `UltraDb_Begin`, `UltraDb_ExecInTx`, `UltraDb_Commit`, `UltraDb_Rollback`
-- `UltraDb_OpenCursor`, `UltraDb_FetchRow`, `UltraDb_CloseCursor`
-- `UltraDb_Migrate`, `UltraDb_CancelQuery`
+- `UltraDb_OpenCursor`, `UltraDb_FetchRows`, `UltraDb_CloseCursor` (page at
+  a time; server-side cursors on PostgreSQL)
+- `UltraDb_ExecBatch` (every statement of a script with its own result)
+- `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
@@ -1781,9 +1783,10 @@ migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
 `Tests/UltraDatabase`); the PostgreSQL driver
 (`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
 found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
-networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
-queries, pooling, streaming cursors and at-rest encryption. Details in
+UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
+plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
+DuckDB), async queries, pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
@@ -86728,20 +86731,20 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, and
-> schema introspection.**
+> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
+> introspection, streaming cursors, per-statement scripts and cancelling.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 43 tests, the PostgreSQL ones
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 56 tests, the PostgreSQL ones
 > against a live server where one is configured). The **PostgreSQL** driver
 > (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
 > found at configure time; it takes `?` placeholders, verifies TLS by default
 > and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
 > it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
-> networked drivers (MySQL, …), async queries, pooling and streaming cursors
-> described below are still the Stage 2/3 plan.
+> networked drivers (MySQL, …), async queries and pooling described below
+> are still the Stage 2/3 plan.
 
 ---
 
@@ -86869,8 +86872,8 @@ App / Module (UltraMail, ULTRA Store, UltraAI, ...)
   transactions, streaming cursors and async queries. Zero is invalid.
 - `UltraDbResult` for every blocking operation — explicit error code,
   message, driver, SQLSTATE, affected-row count, timing.
-- Sync **and** async variants for queries; cancellation via
-  `UltraDb_CancelQuery(handle)`.
+- Sync **and** (planned) async variants for queries; cancellation via
+  `UltraDb_CancelQuery(connection)` from any thread.
 - Engine additions are **driver-only** — the core does not change to
   support a new DBMS.
 
@@ -86916,19 +86919,37 @@ UltraDb_ExecInTx(tx, "UPDATE folders SET uidnext = ? WHERE name = ?", { next, "I
 UltraDb_ExecInTx(tx, "INSERT INTO messages(...) VALUES(...)", { ... });
 UltraDb_Commit(tx);        // or UltraDb_Rollback(tx)
 
-// Async query — result delivered on a worker thread, marshal to UI.
+// Async query (planned, Stage 2) — result delivered on a worker thread.
 UltraDbHandle h = UltraDb_QueryAsync("crm",
     "SELECT * FROM contacts WHERE name ILIKE ?", { "%" + term + "%" },
     [](const UltraDbResultSet& rs) {
         // runs on the UltraDatabase worker pool — post to UI thread
     });
 
-// Streaming cursor for large result sets (rows pulled on demand).
-UltraDbHandle cur = UltraDb_OpenCursor("crm", "SELECT * FROM events", {});
-UltraDbRow row;
-while (UltraDb_FetchRow(cur, row)) { /* ... */ }
+// Streaming cursor for large result sets: a page at a time, never all of it.
+UltraDbHandle cur = UltraDb_OpenCursor("crm", "SELECT * FROM events WHERE day > ?", { since });
+UltraDbResultSet page;
+bool exhausted = false;
+while (!exhausted && UltraDb_FetchRows(cur, 1000, page, exhausted))
+    for (const auto& row : page) { /* ... */ }
 UltraDb_CloseCursor(cur);
+
+// A pasted script, every statement with its own result (a SQL console).
+std::vector<UltraDbStatementResult> results;
+UltraDb_ExecBatch("crm", script, results);   // stops after the first failure
+
+// Stop it from the UI thread: the running call returns Cancelled.
+UltraDb_CancelQuery("crm");
 ```
+
+**Cursors** step the statement as pages are asked for on SQLite; on
+PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
+connection is free for other statements between pages, `WITHOUT HOLD`
+inside one, where they end with it. **Scripts** are split as psql splits
+them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
+bodies) and by SQLite itself on SQLite; each statement reports its text,
+outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+both safe from another thread while the statement holds the connection.
 
 **Values.** `UltraDbValue` is a small variant: null, bool, int64,
 double, text (UTF-8), blob (bytes), and timestamp. Typed accessors
@@ -87102,11 +87123,12 @@ headless data module usable from any ULTRA OS process.
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
 | Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
-| Test suite (43 tests) | Passing |
+| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
+| Test suite (56 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver | Planned (Stage 2) |
-| Async + streaming cursors | Planned (Stage 2) |
+| Async queries | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
 **Suggested rollout** (mirrors UltraNet's staged approach):
