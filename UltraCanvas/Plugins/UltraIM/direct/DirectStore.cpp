@@ -276,7 +276,7 @@ bool Store::UpdateStatus(const std::string& conversationId, const std::string& c
     return r && r.affectedRows > 0;
 }
 
-bool Store::GetMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& out) {
+bool Store::FindMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& out) {
     std::lock_guard<std::mutex> lock(mutex_);
     UltraDbResultSet rows;
     if (!UltraDb_Query(connection_, "SELECT * FROM messages WHERE conv=? AND client_id=?",
