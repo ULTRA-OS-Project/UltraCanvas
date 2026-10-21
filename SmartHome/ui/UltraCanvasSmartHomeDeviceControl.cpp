@@ -2,67 +2,75 @@
 // The per-device controls: light, thermostat, lock, blind, and the read-only
 // sensor display.
 //
-// Each one drives its device through SmartHomeAPI and reports back through its
-// own callback, so a host can either let the control talk to the module or
-// intercept the change. Layout is computed from the element's local bounds
-// rather than fixed pixel positions, so the same control works in a dashboard
-// cell and in a full-width detail pane.
+// Each control is a container of framework elements laid out by flex: what
+// takes input is a switch, a slider, a button, a spinner, a segmented
+// control, a colour picker or swatch bar, so focus, keyboard, hover and
+// theming are the framework's. Each drives its device through SmartHomeAPI
+// and reports back through its own callback, so a host can either let the
+// control talk to the module or intercept the change. Two pictures take no
+// input: a blind in its window is a small view element of its own, and a
+// sensor's recent history is a line chart.
 //
+// SetState / SetPosition / SetTilt put a state into the elements without
+// sending it back to the device (the `syncing` guard): a host that mirrors
+// the device into the control must not get its own update echoed as a
+// command.
+//
+// Version: 2.0.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSmartHomeDeviceControl.h"
+#include "SmartHomeWidgetKit.h"
+
+#include "UltraCanvasListModel.h"
+#include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 
 namespace UltraCanvas {
 namespace SmartHome {
 
+using namespace Kit;
+
 namespace {
-
-constexpr double kPad = 12.0;
-constexpr double kRowH = 28.0;
-
-const Color kText      (0x21, 0x21, 0x21);
-const Color kTextDim   (0x75, 0x75, 0x75);
-const Color kTrack     (0xE0, 0xE0, 0xE0);
-const Color kAccent    (33, 150, 243);
-const Color kPanelBg   (0xFA, 0xFA, 0xFA);
-
-// A slider whose value runs left to right across `track`.
-double ValueFromX(const Rect2Dd& track, int x, double lo, double hi) {
-    if (track.width <= 0.0) return lo;
-    const double t = std::clamp((x - track.x) / track.width, 0.0, 1.0);
-    return lo + t * (hi - lo);
-}
-
-double XFromValue(const Rect2Dd& track, double value, double lo, double hi) {
-    if (hi <= lo) return track.x;
-    const double t = std::clamp((value - lo) / (hi - lo), 0.0, 1.0);
-    return track.x + t * track.width;
-}
-
-void DrawSlider(IRenderContext* ctx, const Rect2Dd& track, double t, const Color& fill) {
-    ctx->SetFillPaint(kTrack);
-    ctx->FillRoundedRectangle(track, track.height / 2.0);
-    ctx->SetFillPaint(fill);
-    ctx->FillRoundedRectangle(Rect2Dd(track.x, track.y, track.width * std::clamp(t, 0.0, 1.0),
-                                      track.height),
-                              track.height / 2.0);
-    // Handle, so the control reads as draggable rather than as a progress bar.
-    const double hx = track.x + track.width * std::clamp(t, 0.0, 1.0);
-    ctx->SetFillPaint(Colors::White);
-    ctx->FillEllipse(Rect2Dd(hx - 7.0, track.y + track.height / 2.0 - 7.0, 14.0, 14.0));
-    ctx->SetStrokePaint(kTrack);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawEllipse(Rect2Dd(hx - 7.0, track.y + track.height / 2.0 - 7.0, 14.0, 14.0));
-}
 
 std::string Fixed1(double v) {
     char buf[32];
-    std::snprintf(buf, sizeof buf, "%.1f", v);
+    std::snprintf(buf, sizeof buf, "%.1f", v);   // locale-ok: display text
     return buf;
+}
+
+std::string Percent(int pct) { return std::to_string(pct) + " %"; }
+
+// The control's own column: a light panel background, padding, no
+// scrollbars unless `scroll` - a light with every feature is taller than
+// its default cell.
+void AsControl(UltraCanvasContainer& c, float gap, bool scroll = false) {
+    AsColumn(c, gap, 12.0f);
+    c.SetBackgroundColor(kPanelBg);
+    if (scroll) {
+        ContainerStyle style;
+        style.autoShowScrollbars = true;
+        style.autoShowHorizontalScrollbar = false;
+        c.SetContainerStyle(style);
+    }
+}
+
+// "Brightness ........ 40 %" over its slider.
+std::shared_ptr<UltraCanvasContainer> CaptionRow(const std::string& id, const std::string& caption,
+                                                 std::shared_ptr<UltraCanvasLabel>& value) {
+    auto row = Row(id, 6, 18);
+    auto label = Label(id + "Caption", caption, 11, kTextDim);
+    Grow(*label);
+    value = Label(id + "Value", "", 11, kText, true);
+    value->SetAlignment(TextAlignment::Right);
+    Size(*value, 70, 18);
+    row->AddChild(label);
+    row->AddChild(value);
+    return row;
 }
 
 }  // namespace
@@ -73,205 +81,165 @@ std::string Fixed1(double v) {
 
 SmartHomeLightControl::SmartHomeLightControl(const std::string& identifier,
                                              float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsControl(*this, 8, true);
+
+    auto top = Row(identifier + "_Power", 10, 28);
+    powerSwitch = Kit::Switch(identifier + "_Switch", false);
+    powerSwitch->onStateChanged = [this](CheckedState, CheckedState now) {
+        if (syncing) return;
+        currentState.On = now == CheckedState::Checked;
+        SendState();
+    };
+    powerLabel = Label(identifier + "_PowerLabel", "Off", 13, kText, true);
+    Grow(*powerLabel);
+    top->AddChild(powerSwitch);
+    top->AddChild(powerLabel);
+    AddChild(top);
+
+    brightnessRow = CreateContainer(identifier + "_BrightnessRow");
+    AsColumn(*brightnessRow, 2, 0);
+    Height(*brightnessRow, 44);
+    brightnessRow->AddChild(CaptionRow(identifier + "_Brightness", "Brightness", brightnessValue));
+    brightness = Kit::Slider(identifier + "_BrightnessSlider", 0, 100, kAccent);
+    brightness->onValueChanging = [this](float pct) {
+        brightnessValue->SetText(Percent(static_cast<int>(std::lround(pct))));
+    };
+    brightness->onValueChanged = [this](float pct) {
+        brightnessValue->SetText(Percent(static_cast<int>(std::lround(pct))));
+        if (syncing) return;
+        currentState.Brightness = static_cast<uint8_t>(std::lround(pct * 255.0f / 100.0f));
+        // Turning the brightness up from nothing is a request for light.
+        if (currentState.Brightness > 0) currentState.On = true;
+        SendState();
+    };
+    brightnessRow->AddChild(brightness);
+    AddChild(brightnessRow);
+
+    colorTempRow = CreateContainer(identifier + "_ColorTempRow");
+    AsColumn(*colorTempRow, 2, 0);
+    Height(*colorTempRow, 44);
+    colorTempRow->AddChild(CaptionRow(identifier + "_ColorTemp", "Colour temperature", colorTempValue));
+    colorTemp = Kit::Slider(identifier + "_ColorTempSlider", colorTempMin, colorTempMax, Color(0xFF, 0xC1, 0x07));
+    colorTemp->SetStep(50);
+    colorTemp->SetTrackGradient({GradientStop(0.0, Color(255, 176, 80)),
+                                 GradientStop(0.5, Color(255, 236, 210)),
+                                 GradientStop(1.0, Color(200, 222, 255))});
+    colorTemp->onValueChanging = [this](float k) {
+        colorTempValue->SetText(std::to_string(static_cast<int>(std::lround(k))) + " K");
+    };
+    colorTemp->onValueChanged = [this](float k) {
+        colorTempValue->SetText(std::to_string(static_cast<int>(std::lround(k))) + " K");
+        if (syncing) return;
+        currentState.ColorTemp = static_cast<uint16_t>(std::lround(k));
+        SendState();
+    };
+    colorTempRow->AddChild(colorTemp);
+    AddChild(colorTempRow);
+
+    // Hue and intensity as two bars: the compact design, and the one that
+    // maps onto what a bulb can do.
+    colorPicker = CreateColorPicker(identifier + "_ColorPicker", 0, 0, 236, 120);
+    colorPicker->SetStyle(ColorPickerStyle::Light());
+    colorPicker->SetWheelStyle(ColorPickerWheelStyle::HueLightnessSliders);
+    colorPicker->SetShowAlpha(false);
+    colorPicker->SetShowBackgroundColor(false);
+    colorPicker->SetSlidersCollapsible(true, false);
+    colorPicker->SetAutoHeight(true);
+    colorPicker->layoutItem.SetFlexShrink(0);
+    colorPicker->onColorChanged = [this](const Color& c) {
+        if (!syncing) PickColor(c);
+    };
+    AddChild(colorPicker);
+
+    presetBar = CreateColorSwatchBar(identifier + "_Presets", 0, 0, 236, 26, {});
+    presetBar->SetWrap(true);
+    Height(*presetBar, 26);
+    presetBar->onColorSelected = [this](const Color& c) {
+        PickColor(c);
+        syncing = true;
+        colorPicker->SetColor(c, false);
+        syncing = false;
+    };
+    presetBar->SetVisible(false);   // until there is a preset
+    AddChild(presetBar);
+
+    Sync();
+}
 
 SmartHomeLightControl::~SmartHomeLightControl() = default;
 
 void SmartHomeLightControl::SetDevice(const std::string& id) {
     deviceId = id;
     currentState = SMARTHOME_API.GetLightState(id);
-    RequestRedraw();
+    Sync();
 }
 
 void SmartHomeLightControl::SetState(const SmartHomeLightState& state) {
     currentState = state;
-    RequestRedraw();
+    Sync();
+}
+
+void SmartHomeLightControl::SetBrightnessEnabled(bool enable) { brightnessRow->SetVisible(enable); }
+void SmartHomeLightControl::SetColorTempEnabled(bool enable) { colorTempRow->SetVisible(enable); }
+
+void SmartHomeLightControl::SetColorEnabled(bool enable) {
+    colorPicker->SetVisible(enable);
+    presetBar->SetVisible(enable && !colorPresets.empty());
 }
 
 void SmartHomeLightControl::SetColorTempRange(uint16_t min, uint16_t max) {
     if (min > max) std::swap(min, max);
     colorTempMin = min;
     colorTempMax = max;
-    RequestRedraw();
+    syncing = true;
+    colorTemp->SetRange(min, max);
+    syncing = false;
+    Sync();
 }
 
 void SmartHomeLightControl::AddColorPreset(const std::string& name,
                                            uint8_t r, uint8_t g, uint8_t b) {
     colorPresets.push_back(ColorPreset{name, r, g, b});
+    std::vector<Color> colors;
+    for (const auto& p : colorPresets) colors.emplace_back(p.R, p.G, p.B);
+    presetBar->SetColors(colors);
+    presetBar->SetVisible(colorPicker->IsVisible());
+}
+
+void SmartHomeLightControl::PickColor(const Color& c) {
+    currentState.Red = c.r;
+    currentState.Green = c.g;
+    currentState.Blue = c.b;
+    currentState.On = true;
+    SendState();
+}
+
+void SmartHomeLightControl::Sync() {
+    syncing = true;
+    powerSwitch->SetChecked(currentState.On);
+    powerLabel->SetText(currentState.On ? "On" : "Off");
+    const int pct = static_cast<int>(std::lround(currentState.Brightness * 100.0 / 255.0));
+    if (!brightness->IsDragging()) brightness->SetValue(static_cast<float>(pct));
+    brightnessValue->SetText(Percent(pct));
+    if (currentState.ColorTemp > 0) {
+        if (!colorTemp->IsDragging()) colorTemp->SetValue(currentState.ColorTemp);
+        colorTempValue->SetText(std::to_string(currentState.ColorTemp) + " K");
+    } else {
+        colorTempValue->SetText("-");
+    }
+    if (currentState.Red || currentState.Green || currentState.Blue) {
+        colorPicker->SetColor(Color(currentState.Red, currentState.Green, currentState.Blue), false);
+    }
+    syncing = false;
     RequestRedraw();
 }
 
 void SmartHomeLightControl::SendState() {
+    powerLabel->SetText(currentState.On ? "On" : "Off");
     if (!deviceId.empty()) SMARTHOME_API.SetLightState(deviceId, currentState);
     if (onStateChange) onStateChange(currentState);
     RequestRedraw();
-}
-
-void SmartHomeLightControl::HandlePowerClick() {
-    currentState.On = !currentState.On;
-    SendState();
-}
-
-void SmartHomeLightControl::HandleBrightnessChange(int x) {
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd track(kPad, kRowH + kPad, b.width - 2 * kPad, 6.0);
-    currentState.Brightness = static_cast<uint8_t>(ValueFromX(track, x, 0.0, 255.0));
-    // Dragging the brightness up from nothing is a request for light.
-    if (currentState.Brightness > 0) currentState.On = true;
-    SendState();
-}
-
-void SmartHomeLightControl::HandleColorTempChange(int x) {
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd track(kPad, kRowH + kPad + 34.0, b.width - 2 * kPad, 6.0);
-    currentState.ColorTemp = static_cast<uint16_t>(
-        ValueFromX(track, x, colorTempMin, colorTempMax));
-    SendState();
-}
-
-void SmartHomeLightControl::HandleColorWheelClick(int x, int y) {
-    // The wheel is a disc: angle picks hue, distance from the centre picks
-    // saturation, which is the usual mapping and needs no extra control.
-    const Rect2Df b = GetLocalBounds();
-    const double cx = b.width / 2.0;
-    const double cy = kRowH + kPad + 80.0 + 60.0;
-    const double dx = x - cx;
-    const double dy = y - cy;
-    const double radius = 60.0;
-    const double dist = std::sqrt(dx * dx + dy * dy);
-    if (dist > radius) return;
-
-    double angle = std::atan2(dy, dx) * 180.0 / M_PI;
-    if (angle < 0) angle += 360.0;
-
-    currentState.Hue = static_cast<uint16_t>(angle);
-    currentState.Saturation = static_cast<uint8_t>(std::clamp(dist / radius, 0.0, 1.0) * 100.0);
-    currentState.On = true;
-    SendState();
-}
-
-void SmartHomeLightControl::HandlePresetClick(int index) {
-    if (index < 0 || index >= static_cast<int>(colorPresets.size())) return;
-    const ColorPreset& p = colorPresets[static_cast<size_t>(index)];
-    currentState.Red = p.R;
-    currentState.Green = p.G;
-    currentState.Blue = p.B;
-    currentState.On = true;
-    SendState();
-}
-
-void SmartHomeLightControl::RenderPowerButton(IRenderContext* ctx) {
-    const Rect2Dd r(kPad, kPad - 4.0, 56.0, kRowH - 4.0);
-    ctx->SetFillPaint(currentState.On ? kAccent : kTrack);
-    ctx->FillRoundedRectangle(r, (kRowH - 4.0) / 2.0);
-    ctx->SetTextPaint(currentState.On ? Colors::White : kTextDim);
-    ctx->SetFontSize(11.0);
-    ctx->DrawTextInRect(currentState.On ? "On" : "Off",
-                        Rect2Dd(r.x + 14.0, r.y + 4.0, r.width - 20.0, 16.0));
-}
-
-void SmartHomeLightControl::RenderBrightnessSlider(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd track(kPad, kRowH + kPad, b.width - 2 * kPad, 6.0);
-    DrawSlider(ctx, track, currentState.Brightness / 255.0, kAccent);
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(10.0);
-    ctx->DrawTextInRect(std::to_string(currentState.Brightness * 100 / 255) + "%",
-                        Rect2Dd(track.x, track.y + 12.0, 60.0, 14.0));
-}
-
-void SmartHomeLightControl::RenderColorTempSlider(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd track(kPad, kRowH + kPad + 34.0, b.width - 2 * kPad, 6.0);
-    const double span = static_cast<double>(colorTempMax - colorTempMin);
-    const double t = span > 0.0 ? (currentState.ColorTemp - colorTempMin) / span : 0.0;
-    DrawSlider(ctx, track, t, Color(0xFF, 0xC1, 0x07));
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(10.0);
-    ctx->DrawTextInRect(std::to_string(currentState.ColorTemp) + "K",
-                        Rect2Dd(track.x, track.y + 12.0, 60.0, 14.0));
-}
-
-void SmartHomeLightControl::RenderColorWheel(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double cy = kRowH + kPad + 80.0 + 60.0;
-    ctx->SetFillPaint(Color(currentState.Red, currentState.Green, currentState.Blue));
-    ctx->FillEllipse(Rect2Dd(b.width / 2.0 - 60.0, cy - 60.0, 120.0, 120.0));
-    ctx->SetStrokePaint(kTrack);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawEllipse(Rect2Dd(b.width / 2.0 - 60.0, cy - 60.0, 120.0, 120.0));
-}
-
-void SmartHomeLightControl::RenderColorPresets(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    double x = kPad;
-    const double y = b.height - kPad - 22.0;
-    for (const auto& p : colorPresets) {
-        ctx->SetFillPaint(Color(p.R, p.G, p.B));
-        ctx->FillRoundedRectangle(Rect2Dd(x, y, 22.0, 22.0), 4.0);
-        x += 28.0;
-        if (x + 22.0 > b.width - kPad) break;
-    }
-}
-
-void SmartHomeLightControl::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kPanelBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-
-    RenderPowerButton(ctx);
-    if (brightnessEnabled) RenderBrightnessSlider(ctx);
-    if (colorTempEnabled)  RenderColorTempSlider(ctx);
-    if (colorEnabled) {
-        RenderColorWheel(ctx);
-        RenderColorPresets(ctx);
-    }
-}
-
-bool SmartHomeLightControl::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    const int x = event.pointer.x;
-    const int y = event.pointer.y;
-    const Rect2Df b = GetLocalBounds();
-
-    switch (event.type) {
-        case UCEventType::MouseDown:
-        case UCEventType::TouchStart: {
-            if (!Contains(Point2Df(static_cast<float>(x), static_cast<float>(y)))) return false;
-
-            if (y < kRowH + kPad - 4.0 && x < kPad + 56.0) { HandlePowerClick(); return true; }
-
-            if (brightnessEnabled && y >= kRowH + kPad - 8.0 && y < kRowH + kPad + 20.0) {
-                dragging = 1; HandleBrightnessChange(x); return true;
-            }
-            if (colorTempEnabled && y >= kRowH + kPad + 26.0 && y < kRowH + kPad + 54.0) {
-                dragging = 2; HandleColorTempChange(x); return true;
-            }
-            if (colorEnabled && y >= b.height - kPad - 22.0) {
-                HandlePresetClick(static_cast<int>((x - kPad) / 28.0)); return true;
-            }
-            if (colorEnabled) { dragging = 3; HandleColorWheelClick(x, y); return true; }
-            return true;
-        }
-
-        case UCEventType::MouseMove:
-        case UCEventType::TouchMove:
-            if (dragging == 1) { HandleBrightnessChange(x); return true; }
-            if (dragging == 2) { HandleColorTempChange(x); return true; }
-            if (dragging == 3) { HandleColorWheelClick(x, y); return true; }
-            return false;
-
-        case UCEventType::MouseUp:
-        case UCEventType::TouchEnd:
-            if (dragging == 0) return false;
-            dragging = 0;
-            return true;
-
-        default:
-            return false;
-    }
 }
 
 // ============================================================================
@@ -280,35 +248,136 @@ bool SmartHomeLightControl::OnEvent(const UCEvent& event) {
 
 SmartHomeThermostatControl::SmartHomeThermostatControl(const std::string& identifier,
                                                        float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsControl(*this, 8);
+
+    // The target in a ring, coloured by what the thermostat is doing.
+    gauge = CreateGaugeDiagramElement(identifier + "_Gauge", 0, 0, 216, 110);
+    gauge->SetMode(GaugeMode::CircularRing);
+    gauge->SetRingThickness(10);
+    gauge->SetMinValue(tempMin);
+    gauge->SetMaxValue(tempMax);
+    gauge->SetDecimalPlaces(1);
+    gauge->SetUnit("°C");
+    gauge->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
+    gauge->SetRingCenterLabel("target");
+    gauge->SetTrackColor(kTrack);
+    gauge->SetBackgroundColor(kPanelBg);
+    gauge->SetTextColor(kText);
+    gauge->layoutItem.SetFlexGrow(1);
+    gauge->layoutItem.SetFlexShrink(1);
+    gauge->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(80));
+    AddChild(gauge);
+
+    nowLabel = Label(identifier + "_Now", "", 11, kTextDim);
+    nowLabel->SetAlignment(TextAlignment::Center);
+    AddChild(nowLabel);
+
+    auto row = Row(identifier + "_TargetRow", 8, 30);
+    auto caption = Label(identifier + "_TargetCaption", "Target", 12, kTextDim);
+    Grow(*caption);
+    target = CreateDecimalSpinner(identifier + "_Target", 0, 0, 110, 30, tempMin, tempMax, 21.0, 0.5, 1);
+    target->SetSuffix(" °C");
+    Size(*target, 110, 30);
+    target->onValueChanged = [this](double v) {
+        if (syncing) return;
+        currentState.TargetTemperature = useCelsius ? static_cast<float>(v)
+                                                    : FahrenheitToCelsius(static_cast<float>(v));
+        SendState();
+    };
+    row->AddChild(caption);
+    row->AddChild(target);
+    AddChild(row);
+
+    modes = CreateSegmentedControl(identifier + "_Modes", 0, 0, 216, 26);
+    SegmentedControlStyle modeStyle;
+    modeStyle.fontSize = 10.0f;
+    modeStyle.selectedColor = kAccent;
+    modes->SetStyle(modeStyle);
+    Height(*modes, 26);
+    modes->onSegmentSelected = [this](int index) {
+        if (syncing || index < 0 || index >= static_cast<int>(supportedModes.size())) return;
+        currentState.Mode = supportedModes[static_cast<size_t>(index)];
+        SendState();
+    };
+    modes->SetVisible(false);   // until the modes are known
+    AddChild(modes);
+
+    Sync();
+}
 
 SmartHomeThermostatControl::~SmartHomeThermostatControl() = default;
 
 void SmartHomeThermostatControl::SetDevice(const std::string& id) {
     deviceId = id;
     currentState = SMARTHOME_API.GetThermostatState(id);
-    RequestRedraw();
+    Sync();
 }
 
 void SmartHomeThermostatControl::SetState(const SmartHomeThermostatState& state) {
     currentState = state;
-    RequestRedraw();
+    Sync();
+}
+
+void SmartHomeThermostatControl::SetCelsius(bool celsius) {
+    useCelsius = celsius;
+    Sync();
 }
 
 void SmartHomeThermostatControl::SetTemperatureRange(float min, float max) {
     if (min > max) std::swap(min, max);
     tempMin = min;
     tempMax = max;
-    RequestRedraw();
+    Sync();
 }
 
-void SmartHomeThermostatControl::SetSupportedModes(const std::vector<std::string>& modes) {
-    supportedModes = modes;
-    RequestRedraw();
+void SmartHomeThermostatControl::SetSupportedModes(const std::vector<std::string>& list) {
+    supportedModes = list;
+    syncing = true;
+    modes->ClearSegments();
+    for (const auto& m : supportedModes) {
+        std::string label = m;
+        if (!label.empty()) label[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(label[0])));
+        modes->AddSegment(label);
+    }
+    syncing = false;
+    modes->SetVisible(!supportedModes.empty());
+    Sync();
 }
 
 float SmartHomeThermostatControl::CelsiusToFahrenheit(float c) const { return c * 9.0f / 5.0f + 32.0f; }
 float SmartHomeThermostatControl::FahrenheitToCelsius(float f) const { return (f - 32.0f) * 5.0f / 9.0f; }
+
+void SmartHomeThermostatControl::Sync() {
+    syncing = true;
+    auto shown = [this](float c) { return useCelsius ? c : CelsiusToFahrenheit(c); };
+    const std::string unit = useCelsius ? "°C" : "°F";
+
+    gauge->SetMinValue(shown(tempMin));
+    gauge->SetMaxValue(shown(tempMax));
+    gauge->SetUnit(unit);
+    gauge->SetValue(shown(currentState.TargetTemperature));
+    // Heating and cooling in different colours; idle in grey, so "is it
+    // running right now" is not a guess.
+    gauge->SetGaugeColor(!currentState.Running ? Color(0x90, 0xA4, 0xAE)
+                         : currentState.Mode == "cool" ? kAccent : Color(0xFF, 0x70, 0x43));
+
+    std::string now = Fixed1(shown(currentState.CurrentTemperature)) + " " + unit + " now";
+    if (currentState.Humidity > 0.0f) now += "  ·  " + Fixed1(currentState.Humidity) + " % RH";
+    nowLabel->SetText(now);
+
+    target->SetRange(shown(tempMin), shown(tempMax));
+    target->SetSuffix(" " + unit);
+    target->SetValue(shown(currentState.TargetTemperature));
+
+    int index = -1;
+    for (size_t i = 0; i < supportedModes.size(); ++i) {
+        if (supportedModes[i] == currentState.Mode) index = static_cast<int>(i);
+    }
+    if (index >= 0) modes->SetSelectedIndex(index);
+    syncing = false;
+    RequestRedraw();
+}
 
 void SmartHomeThermostatControl::SendState() {
     if (!deviceId.empty()) {
@@ -318,7 +387,7 @@ void SmartHomeThermostatControl::SendState() {
         }
     }
     if (onStateChange) onStateChange(currentState);
-    RequestRedraw();
+    Sync();
 }
 
 void SmartHomeThermostatControl::AdjustTarget(float delta) {
@@ -327,168 +396,95 @@ void SmartHomeThermostatControl::AdjustTarget(float delta) {
     SendState();
 }
 
-void SmartHomeThermostatControl::HandleModeSelect(const std::string& mode) {
-    currentState.Mode = mode;
-    SendState();
-}
-
-void SmartHomeThermostatControl::HandleDialDrag(int x, int y) {
-    // Angle around the dial maps onto the setpoint range, starting at the
-    // bottom so the coldest and hottest ends are not adjacent.
-    const Rect2Df b = GetLocalBounds();
-    const double cx = b.width / 2.0;
-    const double cy = b.height / 2.0 - 10.0;
-    double angle = std::atan2(y - cy, x - cx) * 180.0 / M_PI + 90.0;
-    if (angle < 0) angle += 360.0;
-
-    const double t = std::clamp(angle / 360.0, 0.0, 1.0);
-    currentState.TargetTemperature =
-        static_cast<float>(tempMin + t * (tempMax - tempMin));
-    SendState();
-}
-
-void SmartHomeThermostatControl::RenderTemperatureDial(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double radius = std::min(b.width, b.height) / 2.0 - 24.0;
-    const double cx = b.width / 2.0;
-    const double cy = b.height / 2.0 - 10.0;
-
-    ctx->SetStrokePaint(kTrack);
-    ctx->SetStrokeWidth(10.0);
-    ctx->DrawEllipse(Rect2Dd(cx - radius, cy - radius, radius * 2, radius * 2));
-
-    // Heating and cooling get different colours; a dial that is only ever blue
-    // makes "is it heating right now" a guess.
-    const bool heating = currentState.Mode == "heat";
-    ctx->SetStrokePaint(currentState.Running
-                            ? (heating ? Color(0xFF, 0x70, 0x43) : kAccent)
-                            : kTrack);
-    ctx->SetStrokeWidth(6.0);
-    ctx->DrawEllipse(Rect2Dd(cx - radius + 6.0, cy - radius + 6.0,
-                             (radius - 6.0) * 2, (radius - 6.0) * 2));
-}
-
-void SmartHomeThermostatControl::RenderCurrentTemperature(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const float shown = useCelsius ? currentState.CurrentTemperature
-                                   : CelsiusToFahrenheit(currentState.CurrentTemperature);
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(11.0);
-    ctx->DrawTextInRect(Fixed1(shown) + (useCelsius ? "°C now" : "°F now"),
-                        Rect2Dd(0.0, b.height / 2.0 + 14.0, b.width, 16.0));
-}
-
-void SmartHomeThermostatControl::RenderTargetTemperature(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const float shown = useCelsius ? currentState.TargetTemperature
-                                   : CelsiusToFahrenheit(currentState.TargetTemperature);
-    ctx->SetTextPaint(kText);
-    ctx->SetFontSize(26.0);
-    ctx->DrawTextInRect(Fixed1(shown) + "°",
-                        Rect2Dd(0.0, b.height / 2.0 - 26.0, b.width, 34.0));
-}
-
-void SmartHomeThermostatControl::RenderModeSelector(IRenderContext* ctx) {
-    if (supportedModes.empty()) return;
-    const Rect2Df b = GetLocalBounds();
-    const double w = b.width / static_cast<double>(supportedModes.size());
-    const double y = b.height - 30.0;
-    for (size_t i = 0; i < supportedModes.size(); ++i) {
-        const bool active = supportedModes[i] == currentState.Mode;
-        ctx->SetFillPaint(active ? kAccent : kTrack);
-        ctx->FillRoundedRectangle(Rect2Dd(i * w + 4.0, y, w - 8.0, 22.0), 11.0);
-        ctx->SetTextPaint(active ? Colors::White : kTextDim);
-        ctx->SetFontSize(10.0);
-        ctx->DrawTextInRect(supportedModes[i], Rect2Dd(i * w + 10.0, y + 4.0, w - 20.0, 14.0));
-    }
-}
-
-void SmartHomeThermostatControl::RenderHumidity(IRenderContext* ctx) {
-    if (currentState.Humidity <= 0.0f) return;
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(10.0);
-    ctx->DrawTextInRect(Fixed1(currentState.Humidity) + "% RH",
-                        Rect2Dd(0.0, b.height / 2.0 + 32.0, b.width, 14.0));
-}
-
-void SmartHomeThermostatControl::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kPanelBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-    RenderTemperatureDial(ctx);
-    RenderTargetTemperature(ctx);
-    RenderCurrentTemperature(ctx);
-    RenderHumidity(ctx);
-    RenderModeSelector(ctx);
-}
-
 bool SmartHomeThermostatControl::OnEvent(const UCEvent& event) {
+    if (UltraCanvasContainer::OnEvent(event)) return true;
     if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    const Rect2Df b = GetLocalBounds();
-    const int x = event.pointer.x;
-    const int y = event.pointer.y;
-
-    switch (event.type) {
-        case UCEventType::MouseDown:
-        case UCEventType::TouchStart: {
-            if (!Contains(Point2Df(static_cast<float>(x), static_cast<float>(y)))) return false;
-            if (!supportedModes.empty() && y >= b.height - 30.0) {
-                const double w = b.width / static_cast<double>(supportedModes.size());
-                const size_t i = static_cast<size_t>(std::clamp<double>(x / w, 0.0,
-                                     static_cast<double>(supportedModes.size() - 1)));
-                HandleModeSelect(supportedModes[i]);
-                return true;
-            }
-            draggingDial = true;
-            HandleDialDrag(x, y);
-            return true;
-        }
-
-        case UCEventType::MouseMove:
-        case UCEventType::TouchMove:
-            if (!draggingDial) return false;
-            HandleDialDrag(x, y);
-            return true;
-
-        case UCEventType::MouseUp:
-        case UCEventType::TouchEnd:
-            if (!draggingDial) return false;
-            draggingDial = false;
-            return true;
-
-        case UCEventType::MouseWheel:
-            // Half a degree per notch: a full degree per notch overshoots on a
-            // trackpad, which sends many small deltas.
-            AdjustTarget(event.wheelDelta > 0 ? 0.5f : -0.5f);
-            return true;
-
-        default:
-            return false;
+    if (event.type == UCEventType::MouseWheel) {
+        // Half a degree per notch: a full degree per notch overshoots on a
+        // trackpad, which sends many small deltas.
+        AdjustTarget(event.wheelDelta > 0 ? 0.5f : -0.5f);
+        return true;
     }
+    return false;
 }
 
 // ============================================================================
 // Lock
 // ============================================================================
 
+// The activity, newest first, one line each: "Unlocked - Anna  14:02".
+class SmartHomeLockControl::ActivityModel : public IListModel {
+public:
+    explicit ActivityModel(const std::vector<ActivityEntry>& log) : entries(log) {}
+    void Changed() { NotifyDataChanged(); }
+    int GetRowCount() const override { return static_cast<int>(entries.size()); }
+    int GetColumnCount() const override { return 1; }
+    ListDataValue GetData(const ListIndex& index, ListDataRole role) const override {
+        if (role != ListDataRole::DisplayRole || index.row < 0 || index.row >= GetRowCount()) return {};
+        const ActivityEntry& e = entries[static_cast<size_t>(index.row)];
+        return e.User.empty() ? e.Action : e.Action + " - " + e.User;
+    }
+    bool SetData(const ListIndex&, ListDataRole, const ListDataValue&) override { return false; }
+
+private:
+    const std::vector<ActivityEntry>& entries;
+};
+
 SmartHomeLockControl::SmartHomeLockControl(const std::string& identifier,
                                            float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsControl(*this, 8);
+
+    auto top = Row(identifier + "_Top", 8, 20);
+    statusLabel = Label(identifier + "_Status", "", 11, kTextDim);
+    Grow(*statusLabel);
+    // The battery as a bar; the number is in the status line.
+    battery = CreateGaugeDiagramElement(identifier + "_Battery", 0, 0, 40, 8);
+    battery->SetMode(GaugeMode::LinearBar);
+    battery->SetOrientation(GaugeOrientation::Horizontal);
+    battery->SetMinValue(0);
+    battery->SetMaxValue(100);
+    battery->SetShowLabels(false);
+    battery->SetTrackColor(kTrack);
+    battery->SetBackgroundColor(kPanelBg);
+    Size(*battery, 40, 8);
+    batteryLabel = Label(identifier + "_BatteryLevel", "", 11, kTextDim);
+    batteryLabel->SetAlignment(TextAlignment::Right);
+    Size(*batteryLabel, 38, 18);
+    top->AddChild(statusLabel);
+    top->AddChild(battery);
+    top->AddChild(batteryLabel);
+    AddChild(top);
+
+    lockButton = Kit::Button(identifier + "_LockButton", "Lock", true, 44);
+    lockButton->SetFontSize(14);
+    lockButton->SetOnClick([this]() { HandleLockToggle(); });
+    AddChild(lockButton);
+
+    AddChild(Label(identifier + "_ActivityCaption", "Recent activity", 11, kTextDim, true));
+    activityModel = std::make_shared<ActivityModel>(activityLog);
+    activityList = std::make_shared<UltraCanvasListView>(identifier + "_Activity", 0, 0, 216, 100);
+    activityList->SetModel(activityModel);
+    activityList->SetShowHeader(false);
+    activityList->SetRowHeight(20);
+    activityList->SetAccessibleName("Recent activity");
+    Grow(*activityList);
+    AddChild(activityList);
+
+    Sync();
+}
 
 SmartHomeLockControl::~SmartHomeLockControl() = default;
 
 void SmartHomeLockControl::SetDevice(const std::string& id) {
     deviceId = id;
     currentState = SMARTHOME_API.GetLockState(id);
-    RequestRedraw();
+    Sync();
 }
 
 void SmartHomeLockControl::SetState(const SmartHomeLockState& state) {
     currentState = state;
-    RequestRedraw();
+    Sync();
 }
 
 void SmartHomeLockControl::AddActivity(uint64_t timestamp, const std::string& action,
@@ -500,18 +496,34 @@ void SmartHomeLockControl::AddActivity(uint64_t timestamp, const std::string& ac
                      [](const ActivityEntry& a, const ActivityEntry& b) {
                          return a.Timestamp > b.Timestamp;
                      });
-    RequestRedraw();
+    activityModel->Changed();
 }
 
 void SmartHomeLockControl::ClearActivity() {
     activityLog.clear();
-    RequestRedraw();
+    activityModel->Changed();
 }
 
-void SmartHomeLockControl::AnimateLock(bool locking) {
-    animating = true;
-    animatingToLocked = locking;
-    animationProgress = 0.0f;
+void SmartHomeLockControl::Sync() {
+    // The button says what a press does; its colour says what the lock is.
+    if (currentState.Jammed) {
+        lockButton->SetText("Jammed");
+        lockButton->SetColors(kBad, kBad, kBad, kBad);
+    } else if (currentState.Locked) {
+        lockButton->SetText("Unlock");
+        lockButton->SetColors(kGood, Color(67, 160, 71), Color(56, 142, 60), kTrack);
+    } else {
+        lockButton->SetText("Lock");
+        lockButton->SetColors(kWarn, Color(0xFB, 0x8C, 0x00), Color(0xF5, 0x7C, 0x00), kTrack);
+    }
+    std::string status = currentState.Jammed ? "Jammed - check the door"
+                         : currentState.Locked ? "Locked" : "Unlocked";
+    if (!currentState.LastUser.empty()) status += " · " + currentState.LastUser;
+    const int level = std::clamp(static_cast<int>(currentState.BatteryLevel), 0, 100);
+    statusLabel->SetText(status);
+    batteryLabel->SetText(Percent(level));
+    battery->SetGaugeColor(level < 20 ? kBad : kGood);
+    battery->SetValue(level);
     RequestRedraw();
 }
 
@@ -520,317 +532,203 @@ void SmartHomeLockControl::HandleLockToggle() {
     if (currentState.Jammed) return;
 
     const bool wantLocked = !currentState.Locked;
-    AnimateLock(wantLocked);
     if (!deviceId.empty()) SMARTHOME_API.SetLockState(deviceId, wantLocked);
     currentState.Locked = wantLocked;
     if (wantLocked) { if (onLock) onLock(); }
     else            { if (onUnlock) onUnlock(); }
-    RequestRedraw();
-}
-
-void SmartHomeLockControl::RenderLockButton(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double d = 72.0;
-    const Rect2Dd r(b.width / 2.0 - d / 2.0, kPad + 6.0, d, d);
-
-    Color fill = currentState.Locked ? Color(76, 175, 80) : Color(0xFF, 0x98, 0x00);
-    if (currentState.Jammed) fill = Color(0xF4, 0x43, 0x36);
-    ctx->SetFillPaint(fill);
-    ctx->FillEllipse(r);
-
-    ctx->SetTextPaint(Colors::White);
-    ctx->SetFontSize(12.0);
-    ctx->DrawTextInRect(currentState.Jammed ? "Jammed"
-                                            : (currentState.Locked ? "Locked" : "Unlocked"),
-                        Rect2Dd(r.x, r.y + d / 2.0 - 8.0, d, 16.0));
-}
-
-void SmartHomeLockControl::RenderStatus(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(10.0);
-    ctx->DrawTextInRect(currentState.LastUser.empty()
-                            ? std::string("No recent user")
-                            : "Last: " + currentState.LastUser,
-                        Rect2Dd(kPad, kPad + 88.0, b.width - 2 * kPad, 14.0));
-}
-
-void SmartHomeLockControl::RenderBattery(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double w = 40.0;
-    const Rect2Dd r(b.width - kPad - w, kPad, w, 14.0);
-    ctx->SetStrokePaint(kTrack);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawRoundedRectangle(r, 3.0);
-
-    const double level = std::clamp(currentState.BatteryLevel / 100.0, 0.0, 1.0);
-    ctx->SetFillPaint(level < 0.2 ? Color(0xF4, 0x43, 0x36) : Color(76, 175, 80));
-    ctx->FillRoundedRectangle(Rect2Dd(r.x + 2.0, r.y + 2.0, (r.width - 4.0) * level,
-                                      r.height - 4.0), 2.0);
-}
-
-void SmartHomeLockControl::RenderActivityLog(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    double y = kPad + 110.0;
-    ctx->SetFontSize(10.0);
-    for (const auto& entry : activityLog) {
-        if (y + 14.0 > b.height - kPad) break;   // clip rather than overflow
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect(entry.User.empty() ? entry.Action
-                                               : entry.Action + " — " + entry.User,
-                            Rect2Dd(kPad, y, b.width - 2 * kPad, 14.0));
-        y += 16.0;
-    }
-}
-
-void SmartHomeLockControl::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kPanelBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-    RenderBattery(ctx);
-    RenderLockButton(ctx);
-    RenderStatus(ctx);
-    RenderActivityLog(ctx);
-}
-
-bool SmartHomeLockControl::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    if (event.type != UCEventType::MouseUp && event.type != UCEventType::TouchEnd) {
-        // Consume the press so the click does not fall through to whatever is
-        // behind the panel, but act only on release.
-        return (event.type == UCEventType::MouseDown ||
-                event.type == UCEventType::TouchStart) &&
-               Contains(Point2Df(static_cast<float>(event.pointer.x),
-                                 static_cast<float>(event.pointer.y)));
-    }
-
-    const Rect2Df b = GetLocalBounds();
-    const double d = 72.0;
-    const Rect2Dd button(b.width / 2.0 - d / 2.0, kPad + 6.0, d, d);
-    const double dx = event.pointer.x - (button.x + d / 2.0);
-    const double dy = event.pointer.y - (button.y + d / 2.0);
-    if (std::sqrt(dx * dx + dy * dy) <= d / 2.0) {
-        HandleLockToggle();
-        return true;
-    }
-    return false;
+    Sync();
 }
 
 // ============================================================================
 // Blind
 // ============================================================================
 
+// The blind in its window: the slats cover the top part, position 100 is
+// fully open. A picture only; the controls are the buttons and sliders.
+class SmartHomeBlindPreview : public UltraCanvasUIElement {
+public:
+    explicit SmartHomeBlindPreview(const std::string& id) : UltraCanvasUIElement(id, 0, 0, 90, 70) {}
+    void Set(uint8_t pos, uint8_t tiltValue) { position = pos; tilt = tiltValue; RequestRedraw(); }
+
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        if (!ctx || !IsVisible()) return;
+        const Rect2Df b = GetLocalBounds();
+        const double side = std::min<double>(b.height * 1.3, b.width);
+        const Rect2Dd window(b.width / 2.0 - side / 2.0, 0.0, side, b.height);
+        ctx->SetFillPaint(Color(0xBB, 0xDE, 0xFB));   // the view outside
+        ctx->FillRectangle(window);
+
+        const double covered = window.height * (1.0 - position / 100.0);
+        ctx->SetFillPaint(Color(0x90, 0xA4, 0xAE));
+        ctx->FillRectangle(Rect2Dd(window.x, window.y, window.width, covered));
+        // Slat lines, closer together the more the slats are tilted shut.
+        ctx->SetStrokePaint(Color(0x78, 0x90, 0x9C));
+        ctx->SetStrokeWidth(1.0);
+        const double pitch = 4.0 + 4.0 * (1.0 - std::abs(tilt - 50) / 50.0);
+        for (double y = window.y + pitch; y < window.y + covered; y += pitch) {
+            ctx->DrawLine(Point2Dd(window.x, y), Point2Dd(window.x + window.width, y));
+        }
+        ctx->SetStrokePaint(kTrack);
+        ctx->DrawRectangle(window);
+    }
+
+private:
+    uint8_t position = 0;
+    uint8_t tilt = 50;
+};
+
 SmartHomeBlindControl::SmartHomeBlindControl(const std::string& identifier,
                                              float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsControl(*this, 8);
+
+    preview = std::make_shared<SmartHomeBlindPreview>(identifier + "_Preview");
+    preview->layoutItem.SetFlexGrow(1);
+    preview->layoutItem.SetFlexShrink(1);
+    preview->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(50));
+    AddChild(preview);
+
+    auto quick = Row(identifier + "_Quick", 6, 28);
+    openButton = Kit::Button(identifier + "_Open", "Open");
+    stopButton = Kit::Button(identifier + "_Stop", "Stop");
+    closeButton = Kit::Button(identifier + "_Close", "Close");
+    for (const auto& b : {openButton, stopButton, closeButton}) {
+        Grow(*b);
+        quick->AddChild(b);
+    }
+    openButton->SetOnClick([this]() { MoveTo(100); });
+    closeButton->SetOnClick([this]() { MoveTo(0); });
+    // Stop leaves the position where it is, and says so to the device.
+    stopButton->SetOnClick([this]() { MoveTo(currentPosition); });
+    AddChild(quick);
+
+    std::shared_ptr<UltraCanvasLabel> positionValue;
+    AddChild(CaptionRow(identifier + "_Position", "Position", positionValue));
+    positionLabel = positionValue;
+    position = Kit::Slider(identifier + "_PositionSlider", 0, 100, kAccent);
+    position->onValueChanging = [this](float v) { positionLabel->SetText(Percent(static_cast<int>(std::lround(v)))); };
+    position->onValueChanged = [this](float v) {
+        if (!syncing) MoveTo(static_cast<uint8_t>(std::lround(v)));
+    };
+    AddChild(position);
+
+    tiltRow = CreateContainer(identifier + "_TiltRow");
+    AsColumn(*tiltRow, 2, 0);
+    Height(*tiltRow, 44);
+    std::shared_ptr<UltraCanvasLabel> tiltValue;
+    tiltRow->AddChild(CaptionRow(identifier + "_Tilt", "Tilt", tiltValue));
+    tilt = Kit::Slider(identifier + "_TiltSlider", 0, 100, kAccent);
+    tilt->onValueChanged = [this, tiltValue](float v) {
+        tiltValue->SetText(Percent(static_cast<int>(std::lround(v))));
+        if (syncing) return;
+        currentTilt = static_cast<uint8_t>(std::lround(v));
+        preview->Set(currentPosition, currentTilt);
+        if (onTiltChange) onTiltChange(currentTilt);
+    };
+    tiltRow->AddChild(tilt);
+    tiltRow->SetVisible(false);
+    AddChild(tiltRow);
+
+    presetRow = Row(identifier + "_PresetRow", 6, 24);
+    presetRow->SetVisible(false);   // until there is a preset
+    AddChild(presetRow);
+
+    Sync();
+}
 
 SmartHomeBlindControl::~SmartHomeBlindControl() = default;
 
 void SmartHomeBlindControl::SetDevice(const std::string& id) {
     deviceId = id;
-    RequestRedraw();
+    if (!id.empty()) currentPosition = std::min<uint8_t>(SMARTHOME_API.GetBlindPosition(id), 100);
+    Sync();
 }
 
-void SmartHomeBlindControl::SetPosition(uint8_t position) {
-    currentPosition = std::min<uint8_t>(position, 100);
-    RequestRedraw();
+void SmartHomeBlindControl::SetPosition(uint8_t pos) {
+    currentPosition = std::min<uint8_t>(pos, 100);
+    Sync();
 }
 
-void SmartHomeBlindControl::SetTilt(uint8_t tilt) {
-    currentTilt = std::min<uint8_t>(tilt, 100);
-    RequestRedraw();
+void SmartHomeBlindControl::SetTilt(uint8_t value) {
+    currentTilt = std::min<uint8_t>(value, 100);
+    Sync();
 }
 
-void SmartHomeBlindControl::AddPreset(const std::string& name, uint8_t position) {
-    presets.push_back(BlindPreset{name, std::min<uint8_t>(position, 100)});
-    RequestRedraw();
+void SmartHomeBlindControl::SetTiltEnabled(bool enable) { tiltRow->SetVisible(enable); }
+
+void SmartHomeBlindControl::AddPreset(const std::string& name, uint8_t pos) {
+    const uint8_t clamped = std::min<uint8_t>(pos, 100);
+    auto button = Kit::Button(GetIdentifier() + "_Preset" + std::to_string(presetRow->GetChildCount()),
+                              name, false, 24);
+    button->SetFontSize(10);
+    Grow(*button);
+    button->SetOnClick([this, clamped]() { MoveTo(clamped); });
+    presetRow->AddChild(button);
+    presetRow->SetVisible(true);
 }
 
-void SmartHomeBlindControl::HandlePositionChange(int y) {
-    // The slider runs down the panel and 100 is fully open, so the top of the
-    // track is open and the bottom is closed — the way a real blind moves.
-    const Rect2Df b = GetLocalBounds();
-    const double top = kPad + 90.0;
-    const double height = b.height - top - 60.0;
-    if (height <= 0.0) return;
-    const double t = std::clamp((y - top) / height, 0.0, 1.0);
-    currentPosition = static_cast<uint8_t>((1.0 - t) * 100.0);
+void SmartHomeBlindControl::MoveTo(uint8_t pos) {
+    currentPosition = std::min<uint8_t>(pos, 100);
     if (!deviceId.empty()) SMARTHOME_API.SetBlindPosition(deviceId, currentPosition);
     if (onPositionChange) onPositionChange(currentPosition);
+    Sync();
+}
+
+void SmartHomeBlindControl::Sync() {
+    syncing = true;
+    preview->Set(currentPosition, currentTilt);
+    positionLabel->SetText(Percent(currentPosition));
+    if (!position->IsDragging()) position->SetValue(currentPosition);
+    if (!tilt->IsDragging()) tilt->SetValue(currentTilt);
+    syncing = false;
     RequestRedraw();
-}
-
-void SmartHomeBlindControl::HandleTiltChange(int x) {
-    if (!tiltEnabled) return;
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd track(kPad, b.height - 44.0, b.width - 2 * kPad, 6.0);
-    currentTilt = static_cast<uint8_t>(ValueFromX(track, x, 0.0, 100.0));
-    if (onTiltChange) onTiltChange(currentTilt);
-    RequestRedraw();
-}
-
-void SmartHomeBlindControl::HandlePresetClick(int index) {
-    if (index < 0 || index >= static_cast<int>(presets.size())) return;
-    SetPosition(presets[static_cast<size_t>(index)].Position);
-    if (!deviceId.empty()) SMARTHOME_API.SetBlindPosition(deviceId, currentPosition);
-    if (onPositionChange) onPositionChange(currentPosition);
-}
-
-void SmartHomeBlindControl::HandleQuickAction(const std::string& action) {
-    if (action == "open")       SetPosition(100);
-    else if (action == "close") SetPosition(0);
-    else if (action == "stop")  { /* leave the position where it is */ }
-    else return;
-
-    if (!deviceId.empty()) SMARTHOME_API.SetBlindPosition(deviceId, currentPosition);
-    if (onPositionChange) onPositionChange(currentPosition);
-}
-
-void SmartHomeBlindControl::RenderBlindPreview(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd window(b.width / 2.0 - 45.0, kPad, 90.0, 70.0);
-
-    ctx->SetFillPaint(Color(0xBB, 0xDE, 0xFB));   // the view outside
-    ctx->FillRectangle(window);
-
-    // The slats cover the top part: position 100 is open, so nothing covered.
-    const double covered = window.height * (1.0 - currentPosition / 100.0);
-    ctx->SetFillPaint(Color(0x90, 0xA4, 0xAE));
-    ctx->FillRectangle(Rect2Dd(window.x, window.y, window.width, covered));
-
-    ctx->SetStrokePaint(kTrack);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawRectangle(window);
-}
-
-void SmartHomeBlindControl::RenderPositionSlider(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    const double top = kPad + 90.0;
-    const double height = b.height - top - 60.0;
-    if (height <= 0.0) return;
-
-    const Rect2Dd track(b.width / 2.0 - 3.0, top, 6.0, height);
-    ctx->SetFillPaint(kTrack);
-    ctx->FillRoundedRectangle(track, 3.0);
-
-    const double hy = top + height * (1.0 - currentPosition / 100.0);
-    ctx->SetFillPaint(Colors::White);
-    ctx->FillEllipse(Rect2Dd(b.width / 2.0 - 8.0, hy - 8.0, 16.0, 16.0));
-    ctx->SetStrokePaint(kAccent);
-    ctx->SetStrokeWidth(2.0);
-    ctx->DrawEllipse(Rect2Dd(b.width / 2.0 - 8.0, hy - 8.0, 16.0, 16.0));
-
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(10.0);
-    ctx->DrawTextInRect(std::to_string(currentPosition) + "%",
-                        Rect2Dd(b.width / 2.0 + 14.0, hy - 7.0, 50.0, 14.0));
-}
-
-void SmartHomeBlindControl::RenderTiltSlider(IRenderContext* ctx) {
-    if (!tiltEnabled) return;
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd track(kPad, b.height - 44.0, b.width - 2 * kPad, 6.0);
-    DrawSlider(ctx, track, currentTilt / 100.0, kAccent);
-}
-
-void SmartHomeBlindControl::RenderPresets(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    double x = kPad;
-    const double y = b.height - 22.0;
-    ctx->SetFontSize(10.0);
-    for (const auto& p : presets) {
-        if (x + 54.0 > b.width - kPad) break;
-        ctx->SetFillPaint(kTrack);
-        ctx->FillRoundedRectangle(Rect2Dd(x, y, 50.0, 18.0), 9.0);
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect(p.Name, Rect2Dd(x + 6.0, y + 2.0, 42.0, 14.0));
-        x += 54.0;
-    }
-}
-
-void SmartHomeBlindControl::RenderQuickButtons(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    static const char* kLabels[] = {"Open", "Stop", "Close"};
-    const double w = (b.width - 2 * kPad) / 3.0;
-    const double y = kPad + 68.0;
-    ctx->SetFontSize(10.0);
-    for (int i = 0; i < 3; ++i) {
-        ctx->SetFillPaint(kTrack);
-        ctx->FillRoundedRectangle(Rect2Dd(kPad + i * w + 2.0, y, w - 4.0, 18.0), 9.0);
-        ctx->SetTextPaint(kTextDim);
-        ctx->DrawTextInRect(kLabels[i], Rect2Dd(kPad + i * w + 8.0, y + 2.0, w - 16.0, 14.0));
-    }
-}
-
-void SmartHomeBlindControl::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kPanelBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-    RenderBlindPreview(ctx);
-    RenderQuickButtons(ctx);
-    RenderPositionSlider(ctx);
-    RenderTiltSlider(ctx);
-    RenderPresets(ctx);
-}
-
-bool SmartHomeBlindControl::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    const Rect2Df b = GetLocalBounds();
-    const int x = event.pointer.x;
-    const int y = event.pointer.y;
-
-    switch (event.type) {
-        case UCEventType::MouseDown:
-        case UCEventType::TouchStart: {
-            if (!Contains(Point2Df(static_cast<float>(x), static_cast<float>(y)))) return false;
-
-            if (y >= kPad + 68.0 && y < kPad + 86.0) {
-                static const char* kActions[] = {"open", "stop", "close"};
-                const double w = (b.width - 2 * kPad) / 3.0;
-                const int i = static_cast<int>(std::clamp((x - kPad) / w, 0.0, 2.0));
-                HandleQuickAction(kActions[i]);
-                return true;
-            }
-            if (y >= b.height - 22.0) {
-                HandlePresetClick(static_cast<int>((x - kPad) / 54.0));
-                return true;
-            }
-            if (tiltEnabled && y >= b.height - 52.0 && y < b.height - 30.0) {
-                dragging = 2; HandleTiltChange(x); return true;
-            }
-            dragging = 1;
-            HandlePositionChange(y);
-            return true;
-        }
-
-        case UCEventType::MouseMove:
-        case UCEventType::TouchMove:
-            if (dragging == 1) { HandlePositionChange(y); return true; }
-            if (dragging == 2) { HandleTiltChange(x); return true; }
-            return false;
-
-        case UCEventType::MouseUp:
-        case UCEventType::TouchEnd:
-            if (dragging == 0) return false;
-            dragging = 0;
-            return true;
-
-        default:
-            return false;
-    }
 }
 
 // ============================================================================
-// Sensor display — read only
+// Sensor display - read only
 // ============================================================================
+
+double SensorHistoryMinimumSpan(SmartHomeSensorType type) {
+    switch (type) {
+        case SmartHomeSensorType::Temperature: return 2.0;   // °C
+        case SmartHomeSensorType::Humidity:    return 10.0;  // %
+        case SmartHomeSensorType::Power:       return 20.0;  // W
+        case SmartHomeSensorType::Light:       return 50.0;  // lx
+        default:                               return 1.0;
+    }
+}
 
 SmartHomeSensorDisplay::SmartHomeSensorDisplay(const std::string& identifier,
                                                float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    AsControl(*this, 4);
+    valueLabel = Label(identifier + "_Value", "-", 26, kText, true);
+    AddChild(valueLabel);
+    kindLabel = Label(identifier + "_Kind", "", 10, kTextDim);
+    AddChild(kindLabel);
+    graphData = std::make_shared<ChartDataVector>();
+    graph = CreateLineChartElement(identifier + "_Graph", 0, 0, 216, 80);
+    graph->SetLineColor(kAccent);
+    graph->SetLineWidth(1.5f);
+    graph->SetShowDataPoints(false);
+    graph->SetShowValueLabels(false);
+    graph->SetEnableTooltips(false);
+    graph->SetBackgroundColor(kPanelBg);
+    graph->SetPlotAreaColor(kPanelBg);
+    // A sparkline: no axes or grid at this size; the range is in the caption.
+    graph->SetShowAxes(false);
+    graph->SetShowGrid(false);
+    graph->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+    graph->SetEmptyMessage("No readings yet");
+    graph->SetEmptyMessageColor(kTextDim);
+    graph->SetDataSource(graphData);
+    Grow(*graph);
+    AddChild(graph);
+    thresholdLabel = Label(identifier + "_Thresholds", "", 9, kTextDim);
+    thresholdLabel->SetVisible(false);
+    AddChild(thresholdLabel);
+    Sync();
+}
 
 SmartHomeSensorDisplay::~SmartHomeSensorDisplay() = default;
 
@@ -838,29 +736,60 @@ void SmartHomeSensorDisplay::SetDevice(const std::string& id) {
     deviceId = id;
     currentReading = SMARTHOME_API.GetSensorReading(id);
     sensorType = currentReading.Type;
-    RequestRedraw();
+    Sync();
 }
 
 void SmartHomeSensorDisplay::SetSensorType(SmartHomeSensorType type) {
     sensorType = type;
-    RequestRedraw();
+    Sync();
+    RefreshGraph();
 }
 
 void SmartHomeSensorDisplay::AddReading(const SmartHomeSensorReading& reading) {
     history.push_back(reading);
-    // Keep the window bounded: a sensor reporting every few seconds would grow
-    // this without limit otherwise.
+    // Keep the window bounded: a sensor reporting every few seconds would
+    // grow this without limit otherwise.
     constexpr size_t kMaxHistory = 2048;
     if (history.size() > kMaxHistory) {
-        history.erase(history.begin(), history.begin() + (history.size() - kMaxHistory));
+        history.erase(history.begin(), history.begin() + static_cast<long>(history.size() - kMaxHistory));
     }
-    RequestRedraw();
+    RefreshGraph();
+}
+
+// The readings of the last graphHours hours, newest last, labelled with
+// their time of day.
+void SmartHomeSensorDisplay::RefreshGraph() {
+    std::vector<ChartDataPoint> points;
+    if (!history.empty()) {
+        const uint64_t newest = history.back().Timestamp;
+        const uint64_t window = static_cast<uint64_t>(graphHours) * 3600ull * 1000ull;
+        size_t first = history.size() - 1;
+        while (first > 0 && (newest <= window || history[first - 1].Timestamp >= newest - window)) --first;
+        for (size_t i = first; i < history.size(); ++i) {
+            const time_t t = static_cast<time_t>(history[i].Timestamp / 1000);
+            std::tm local{};
+            localtime_r(&t, &local);
+            char clock[8];
+            std::snprintf(clock, sizeof clock, "%02d:%02d", local.tm_hour, local.tm_min);
+            points.emplace_back(static_cast<double>(points.size()), history[i].Value, 0.0, clock, 0.0);
+        }
+    }
+    graphRange.clear();
+    if (points.size() >= 2) {
+        auto [lo, hi] = std::minmax_element(points.begin(), points.end(),
+            [](const ChartDataPoint& a, const ChartDataPoint& b) { return a.y < b.y; });
+        graphRange = Fixed1(lo->y) + "-" + Fixed1(hi->y) + ", " + std::to_string(graphHours) + " h";
+    }
+    graph->SetMinimumValueSpan(SensorHistoryMinimumSpan(sensorType));
+    graphData->LoadFromArray(points);
+    graph->SetDataSource(graphData);
+    Sync();
 }
 
 void SmartHomeSensorDisplay::SetCurrentReading(const SmartHomeSensorReading& reading) {
     currentReading = reading;
     if (sensorType == SmartHomeSensorType::Unknown) sensorType = reading.Type;
-    RequestRedraw();
+    Sync();
 }
 
 void SmartHomeSensorDisplay::SetThresholds(float low, float high) {
@@ -868,14 +797,19 @@ void SmartHomeSensorDisplay::SetThresholds(float low, float high) {
     lowThreshold = low;
     highThreshold = high;
     thresholdsSet = true;
-    RequestRedraw();
+    Sync();
 }
 
-void SmartHomeSensorDisplay::SetDisplayOptions(bool graph, bool unit, bool timestamp) {
-    showGraph = graph;
+void SmartHomeSensorDisplay::SetDisplayOptions(bool showGraph, bool unit, bool timestamp) {
+    graph->SetVisible(showGraph);
     showUnit = unit;
     showTimestamp = timestamp;
-    RequestRedraw();
+    Sync();
+}
+
+void SmartHomeSensorDisplay::SetGraphRange(int hours) {
+    graphHours = std::max(1, hours);
+    RefreshGraph();
 }
 
 std::string SmartHomeSensorDisplay::GetUnitString() const {
@@ -906,91 +840,27 @@ std::string SmartHomeSensorDisplay::FormatValue(float value) const {
 }
 
 Color SmartHomeSensorDisplay::GetValueColor() const {
-    if (currentReading.Triggered) return Color(0xF4, 0x43, 0x36);
+    if (currentReading.Triggered) return kBad;
     if (thresholdsSet && (currentReading.Value < lowThreshold ||
                           currentReading.Value > highThreshold)) {
-        return Color(0xFF, 0x98, 0x00);
+        return kWarn;
     }
     return kText;
 }
 
-void SmartHomeSensorDisplay::RenderCurrentValue(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetTextPaint(GetValueColor());
-    ctx->SetFontSize(28.0);
-    ctx->DrawTextInRect(FormatValue(currentReading.Value) + (showUnit ? GetUnitString() : ""),
-                        Rect2Dd(kPad, kPad, b.width - 2 * kPad, 34.0));
-}
-
-void SmartHomeSensorDisplay::RenderGraph(IRenderContext* ctx) {
-    if (!showGraph || history.size() < 2) return;
-
-    const Rect2Df b = GetLocalBounds();
-    const Rect2Dd plot(kPad, kPad + 52.0, b.width - 2 * kPad, b.height - kPad - 74.0);
-    if (plot.width <= 0.0 || plot.height <= 0.0) return;
-
-    // Only the requested window, taken from the newest reading backwards.
-    const uint64_t newest = history.back().Timestamp;
-    const uint64_t window = static_cast<uint64_t>(graphHours) * 3600ull * 1000ull;
-
-    float lo = history.back().Value, hi = lo;
-    size_t first = history.size() - 1;
-    for (size_t i = history.size(); i-- > 0;) {
-        if (newest > window && history[i].Timestamp < newest - window) break;
-        first = i;
-        lo = std::min(lo, history[i].Value);
-        hi = std::max(hi, history[i].Value);
-    }
-    if (history.size() - first < 2) return;
-
-    // A flat series would divide by zero; give it a band to sit in.
-    if (hi - lo < 0.001f) { hi = lo + 0.5f; lo -= 0.5f; }
-
-    ctx->SetStrokePaint(kAccent);
-    ctx->SetStrokeWidth(1.5);
-    const size_t count = history.size() - first;
-    for (size_t i = first + 1; i < history.size(); ++i) {
-        const double t0 = static_cast<double>(i - 1 - first) / static_cast<double>(count - 1);
-        const double t1 = static_cast<double>(i - first)     / static_cast<double>(count - 1);
-        const double y0 = plot.y + plot.height * (1.0 - (history[i - 1].Value - lo) / (hi - lo));
-        const double y1 = plot.y + plot.height * (1.0 - (history[i].Value - lo) / (hi - lo));
-        ctx->DrawLine(Point2Dd(plot.x + plot.width * t0, y0),
-                      Point2Dd(plot.x + plot.width * t1, y1));
-    }
-
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(9.0);
-    ctx->DrawTextInRect("min " + Fixed1(lo) + "   max " + Fixed1(hi),
-                        Rect2Dd(plot.x, plot.y + plot.height + 2.0, plot.width, 12.0));
-}
-
-void SmartHomeSensorDisplay::RenderThresholds(IRenderContext* ctx) {
-    if (!thresholdsSet) return;
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(9.0);
-    ctx->DrawTextInRect("alert below " + Fixed1(lowThreshold) +
-                            " or above " + Fixed1(highThreshold),
-                        Rect2Dd(kPad, b.height - kPad - 12.0, b.width - 2 * kPad, 12.0));
-}
-
-void SmartHomeSensorDisplay::RenderStatus(IRenderContext* ctx) {
-    if (!showTimestamp || currentReading.Timestamp == 0) return;
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetTextPaint(kTextDim);
-    ctx->SetFontSize(9.0);
-    ctx->DrawTextInRect(SensorTypeToString(sensorType),
-                        Rect2Dd(kPad, kPad + 38.0, b.width - 2 * kPad, 12.0));
-}
-
-void SmartHomeSensorDisplay::Render(IRenderContext* ctx, const Rect2Df&) {
-    if (!ctx || !IsVisible()) return;
-    ctx->SetFillPaint(kPanelBg);
-    ctx->FillRectangle(Rect2Dd(GetLocalBounds()));
-    RenderCurrentValue(ctx);
-    RenderStatus(ctx);
-    RenderGraph(ctx);
-    RenderThresholds(ctx);
+void SmartHomeSensorDisplay::Sync() {
+    const std::string value = FormatValue(currentReading.Value);
+    const std::string unit = GetUnitString();
+    const bool numeric = value != "Triggered" && value != "Clear";
+    valueLabel->SetText(value + (showUnit && numeric && !unit.empty() ? " " + unit : ""));
+    valueLabel->SetTextColor(GetValueColor());
+    std::string kind = SensorTypeToString(sensorType);
+    if (!graphRange.empty()) kind += " · " + graphRange;
+    kindLabel->SetText(kind);
+    kindLabel->SetVisible(showTimestamp);
+    thresholdLabel->SetText("alert below " + Fixed1(lowThreshold) + " or above " + Fixed1(highThreshold));
+    thresholdLabel->SetVisible(thresholdsSet);
+    RequestRedraw();
 }
 
 bool SmartHomeSensorDisplay::OnEvent(const UCEvent& event) {

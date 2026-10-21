@@ -1,5 +1,6 @@
 // SmartHome/tests/WidgetTest.cpp
-// Drives the ported Smart Home widgets with synthetic UCEvents.
+// Drives the Smart Home widgets with synthetic UCEvents; the device controls
+// through a real window and the application's dispatch.
 //
 // The widget headers were written against a different element API — a
 // `UIElement` base, a one-argument Render, and a separate virtual per event
@@ -16,7 +17,16 @@
 #include "UltraCanvasSmartHomePanel.h"
 #include "UltraCanvasSmartHomeDeviceControl.h"
 #include "UltraCanvasSmartHomeAdvancedWidgets.h"
+// After the module's headers: these pull in X11, whose `None` macro would
+// eat SmartHomeSecurityLevel::None.
+#include "../../Tests/DisplayTestSupport.h"
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <variant>
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::SmartHome;
@@ -24,6 +34,230 @@ using namespace UltraCanvas::SmartHome;
 static UCEvent Ev(UCEventType t, int x, int y) {
     UCEvent e; e.type = t; e.pointer = Point2Di(x, y); return e;
 }
+
+// ----- the device controls, through a window -----
+// The controls are containers of framework elements, so they are driven the
+// way a user drives them: a press and release at window coordinates, through
+// the application's own dispatch, on the element a host can reach by its
+// getter - not at a painted position. Opens a real window, so this part runs
+// under Xvfb (xvfb-run -a) and skips itself without a DISPLAY.
+
+namespace {
+
+UltraCanvasApplication* gApp = nullptr;
+std::shared_ptr<UltraCanvasWindow> gWindow;
+
+void Send(UCEventType type, const Point2Df& at, int wheel = 0) {
+    UCEvent e;
+    e.type = type;
+    e.button = (type == UCEventType::MouseDown || type == UCEventType::MouseUp) ? UCMouseButton::Left
+                                                                             : UCMouseButton::NoneButton;
+    e.wheelDelta = wheel;
+    e.targetWindow = gWindow;
+    e.nativeWindowHandle = gWindow->GetNativeHandle();
+    const Point2Di p(static_cast<int>(std::lround(at.x)), static_cast<int>(std::lround(at.y)));
+    e.pointerWindow = p;
+    e.pointer = p;
+    gApp->DispatchEvent(e);
+}
+
+void Frame() { gWindow->UpdateAndRender(); }
+
+// A click `fx`, `fy` of the way across the element (0.5, 0.5 = its centre).
+void Click(const UltraCanvasUIElement* element, float fx = 0.5f, float fy = 0.5f) {
+    const Rect2Df b = element->GetBoundsInWindow();
+    const Point2Df at(b.x + b.width * fx, b.y + b.height * fy);
+    Send(UCEventType::MouseMove, at);
+    Send(UCEventType::MouseDown, at);
+    Send(UCEventType::MouseUp, at);
+    Frame();
+}
+
+// Shows `control` alone in the window, laid out.
+template <typename T>
+std::shared_ptr<T> Place(std::shared_ptr<T> control) {
+    gWindow->ClearChildren();
+    gWindow->AddChild(control);
+    Frame();
+    Frame();
+    return control;
+}
+
+bool Fail(const char* what) { std::printf("FAIL: %s\n", what); return true; }
+
+int DeviceControlsThroughWindow() {
+    // ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step) makes
+    // a missing display a failure, so a broken Xvfb cannot pass as a skip.
+    const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
+    const bool displayRequired = required && std::string(required) == "1";
+    if (!std::getenv("DISPLAY")) {
+        if (displayRequired) { std::puts("FAIL: a display was required, and there is none"); return 1; }
+        std::puts("skip device controls: no DISPLAY (run under xvfb-run -a)");
+        return 0;
+    }
+    static UltraCanvasApplication app;
+    if (!app.Initialize("SmartHomeWidgetTest")) {
+        std::puts(displayRequired ? "FAIL: the application would not initialise" : "skip device controls: no application");
+        return displayRequired ? 1 : 0;
+    }
+    WindowConfig cfg;
+    cfg.title = "SmartHomeWidgetTest";
+    cfg.width = 320;
+    cfg.height = 400;
+    gWindow = CreateWindow(cfg);
+    if (!gWindow) {
+        std::puts(displayRequired ? "FAIL: no window" : "skip device controls: no window");
+        return displayRequired ? 1 : 0;
+    }
+    gApp = &app;
+    gWindow->Show();
+    DisplayTest::ActivateWindow(app, gWindow);
+
+    {
+        auto light = Place(std::make_shared<SmartHomeLightControl>("light", 10, 10, 260, 360));
+        SmartHomeLightState st; st.On = false; st.Brightness = 0;
+        light->SetState(st);
+        int changes = 0;
+        light->SetOnStateChange([&](const SmartHomeLightState&){ ++changes; });
+        if (changes != 0) return Fail("SetState reported a change");
+        Click(light->GetPowerSwitch());
+        if (!light->GetState().On || changes != 1) return Fail("light power");
+        Click(light->GetPowerSwitch());
+        if (light->GetState().On || changes != 2) return Fail("light power does not toggle back");
+        std::puts("ok  light: the power switch toggles and reports");
+
+        Click(light->GetBrightnessSlider(), 0.75f);
+        const int b = light->GetState().Brightness;
+        if (b < 170 || b > 210 || !light->GetState().On) {
+            std::printf("FAIL: light brightness at three quarters gave %d\n", b); return 1;
+        }
+        std::puts("ok  light: the brightness slider sets the level and turns the light on");
+
+        light->AddColorPreset("Warm", 255, 180, 100);
+        Frame();
+        const Rect2Df bar = light->GetPresetBar()->GetBoundsInWindow();
+        if (!light->GetPresetBar()->IsVisible() || bar.height <= 0) return Fail("preset bar not shown");
+        Click(light->GetPresetBar(), (bar.height / 2.0f) / bar.width);
+        if (light->GetState().Red != 255 || light->GetState().Green != 180) return Fail("light preset");
+        std::puts("ok  light: a colour preset applies");
+
+        light->SetColorEnabled(false);
+        Frame();
+        if (light->GetColorPicker()->IsVisible() || light->GetPresetBar()->IsVisible()) {
+            return Fail("SetColorEnabled(false) left the colour controls");
+        }
+        std::puts("ok  light: SetColorEnabled hides the colour controls");
+    }
+
+    {
+        auto th = Place(std::make_shared<SmartHomeThermostatControl>("thermo", 10, 10, 240, 280));
+        th->SetTemperatureRange(10.0f, 30.0f);
+        SmartHomeThermostatState st; st.TargetTemperature = 29.8f; st.CurrentTemperature = 20.5f;
+        th->SetState(st);
+        th->SetSupportedModes({"heat", "cool", "auto"});
+        Frame();
+        const Rect2Df gb = th->GetGauge()->GetBoundsInWindow();
+        Send(UCEventType::MouseWheel, Point2Df(gb.x + gb.width / 2, gb.y + gb.height / 2), 1);
+        // 29.8 + 0.5 would be 30.3; the range has to hold it at 30.
+        if (th->GetState().TargetTemperature > 30.0f || th->GetState().TargetTemperature < 29.9f) {
+            std::printf("FAIL: wheel gave %.2f\n", th->GetState().TargetTemperature); return 1;
+        }
+        std::puts("ok  thermostat: the wheel adjusts and clamps to range");
+
+        Click(th->GetModeSelector());   // the middle of three
+        if (th->GetState().Mode != "cool") return Fail("thermostat mode select");
+        std::puts("ok  thermostat: the mode selector");
+
+        th->SetState([]{ SmartHomeThermostatState s; s.TargetTemperature = 20.0f; s.Mode = "heat"; return s; }());
+        int reports = 0;
+        th->SetOnStateChange([&](const SmartHomeThermostatState&){ ++reports; });
+        th->GetTargetSpinner()->SetValue(21.5);   // as the spinner does on a step or a typed value
+        if (std::abs(th->GetState().TargetTemperature - 21.5f) > 0.01f || reports != 1) {
+            return Fail("thermostat target spinner");
+        }
+        std::puts("ok  thermostat: the target spinner sets the target");
+    }
+
+    {
+        auto lock = Place(std::make_shared<SmartHomeLockControl>("lock", 10, 10, 240, 260));
+        SmartHomeLockState st; st.Locked = false; st.BatteryLevel = 80;
+        lock->SetState(st);
+        int locked = 0;
+        lock->SetOnLock([&]{ ++locked; });
+        Click(lock->GetLockButton());
+        if (locked != 1 || !lock->GetState().Locked) return Fail("lock toggle");
+        if (lock->GetLockButton()->GetText() != "Unlock") return Fail("lock button says what it does");
+        std::puts("ok  lock: the button locks and reports");
+
+        // A jammed lock must not be toggled blindly.
+        SmartHomeLockState jammed; jammed.Locked = false; jammed.Jammed = true;
+        lock->SetState(jammed);
+        Click(lock->GetLockButton());
+        if (lock->GetState().Locked) return Fail("jammed lock was toggled");
+        std::puts("ok  lock: a jammed lock refuses to toggle");
+
+        lock->AddActivity(100, "Unlocked", "ana");
+        lock->AddActivity(300, "Locked", "ben");
+        lock->AddActivity(200, "Unlocked", "cal");
+        auto* model = lock->GetActivityList()->GetModel();
+        if (!model || model->GetRowCount() != 3) return Fail("lock activity rows");
+        const auto first = model->GetData(ListIndex{0, 0}, ListDataRole::DisplayRole);
+        if (!std::holds_alternative<std::string>(first) ||
+            std::get<std::string>(first).find("ben") == std::string::npos) {
+            return Fail("lock activity is not newest first");
+        }
+        lock->ClearActivity();
+        if (model->GetRowCount() != 0) return Fail("lock ClearActivity");
+        Frame();
+        std::puts("ok  lock: activity, newest first, in a list view");
+    }
+
+    {
+        auto blind = Place(std::make_shared<SmartHomeBlindControl>("blind", 10, 10, 220, 340));
+        int moves = 0;
+        uint8_t reported = 0;
+        blind->SetOnPositionChange([&](uint8_t p){ ++moves; reported = p; });
+        Click(blind->GetOpenButton());
+        if (blind->GetPosition() != 100 || reported != 100 || moves != 1) return Fail("blind open");
+        Click(blind->GetCloseButton());
+        if (blind->GetPosition() != 0) return Fail("blind close");
+        std::puts("ok  blind: open and close");
+
+        Click(blind->GetPositionSlider(), 0.5f);
+        if (blind->GetPosition() < 40 || blind->GetPosition() > 60) {
+            std::printf("FAIL: blind slider at half gave %d\n", blind->GetPosition()); return 1;
+        }
+        std::puts("ok  blind: the position slider moves it");
+
+        blind->AddPreset("Half", 50);
+        blind->AddPreset("Shade", 20);
+        blind->SetTiltEnabled(true);
+        Frame();
+        if (!blind->GetTiltSlider()->IsVisible()) return Fail("tilt not shown");
+        blind->SetPosition(250);                              // clamped to 100
+        if (blind->GetPosition() != 100) return Fail("blind clamp");
+        std::puts("ok  blind: presets, tilt, and the position clamps to 100");
+    }
+
+    {
+        auto sensor = Place(std::make_shared<SmartHomeSensorDisplay>("sensor", 10, 10, 240, 180));
+        sensor->SetSensorType(SmartHomeSensorType::Temperature);
+        SmartHomeSensorReading r; r.Type = SmartHomeSensorType::Temperature;
+        r.Value = 21.5f; r.Unit = "°C"; r.Timestamp = 1000;
+        sensor->SetCurrentReading(r);
+        for (int i = 0; i < 10; ++i) { r.Timestamp = 1000 + i * 60000; r.Value = 20.0f + i; sensor->AddReading(r); }
+        sensor->SetThresholds(15, 25);
+        Frame();
+        // A readout has nothing to click and must not swallow the event.
+        if (sensor->OnEvent(Ev(UCEventType::MouseDown, 20, 20))) return Fail("sensor display consumed a click");
+        std::puts("ok  sensor: accepts readings, does not consume clicks");
+    }
+
+    gWindow->ClearChildren();
+    return 0;
+}
+
+} // namespace
 
 int main() {
     SmartHomeDeviceCard card("card1", 0, 0, 120, 120);
@@ -115,99 +349,8 @@ int main() {
     if (!panel.GetFilter().SearchText.empty()) { std::puts("FAIL: ClearFilters"); return 1; }
     std::puts("ok  search and clear filters");
 
-    // ----- per-device controls -----
-    {
-        SmartHomeLightControl light("light", 0, 0, 260, 320);
-        SmartHomeLightState st; st.On = false; st.Brightness = 0;
-        light.SetState(st);
-        int changes = 0;
-        light.SetOnStateChange([&](const SmartHomeLightState&){ ++changes; });
-        light.OnEvent(Ev(UCEventType::MouseDown, 30, 20));   // the power button
-        if (!light.GetState().On || changes != 1) { std::puts("FAIL: light power"); return 1; }
-        light.OnEvent(Ev(UCEventType::MouseDown, 30, 20));
-        if (light.GetState().On) { std::puts("FAIL: light power does not toggle back"); return 1; }
-        std::puts("ok  light: power button toggles and reports");
-
-        light.AddColorPreset("Warm", 255, 180, 100);
-        light.OnEvent(Ev(UCEventType::MouseDown, 20, 305));  // the preset row
-        if (light.GetState().Red != 255) { std::puts("FAIL: light preset"); return 1; }
-        std::puts("ok  light: colour preset applies");
-    }
-
-    {
-        SmartHomeThermostatControl th("thermo", 0, 0, 240, 260);
-        th.SetTemperatureRange(10.0f, 30.0f);
-        SmartHomeThermostatState st; st.TargetTemperature = 29.8f;
-        th.SetState(st);
-        UCEvent up = Ev(UCEventType::MouseWheel, 120, 120); up.wheelDelta = 1;
-        th.OnEvent(up);
-        // 29.8 + 0.5 would be 30.3; the range has to hold it at 30.
-        if (th.GetState().TargetTemperature > 30.0f) {
-            std::puts("FAIL: thermostat exceeded its range"); return 1;
-        }
-        std::puts("ok  thermostat: wheel adjusts and clamps to range");
-
-        th.SetSupportedModes({"heat", "cool", "auto"});
-        th.OnEvent(Ev(UCEventType::MouseDown, 120, 245));    // the middle mode
-        if (th.GetState().Mode != "cool") { std::puts("FAIL: thermostat mode select"); return 1; }
-        std::puts("ok  thermostat: mode selector");
-    }
-
-    {
-        SmartHomeLockControl lock("lock", 0, 0, 240, 260);
-        SmartHomeLockState st; st.Locked = false;
-        lock.SetState(st);
-        int locked = 0;
-        lock.SetOnLock([&]{ ++locked; });
-        lock.OnEvent(Ev(UCEventType::MouseUp, 120, 54));     // the lock button
-        if (locked != 1 || !lock.GetState().Locked) { std::puts("FAIL: lock toggle"); return 1; }
-        std::puts("ok  lock: button locks and reports");
-
-        // A jammed lock must not be toggled blindly.
-        SmartHomeLockState jammed; jammed.Locked = false; jammed.Jammed = true;
-        lock.SetState(jammed);
-        lock.OnEvent(Ev(UCEventType::MouseUp, 120, 54));
-        if (lock.GetState().Locked) { std::puts("FAIL: jammed lock was toggled"); return 1; }
-        std::puts("ok  lock: a jammed lock refuses to toggle");
-
-        lock.AddActivity(100, "Unlocked", "ana");
-        lock.AddActivity(300, "Locked", "ben");
-        lock.AddActivity(200, "Unlocked", "cal");
-        lock.ClearActivity();   // no crash on an emptied log
-        std::puts("ok  lock: activity log");
-    }
-
-    {
-        SmartHomeBlindControl blind("blind", 0, 0, 220, 320);
-        int moves = 0;
-        uint8_t reported = 0;
-        blind.SetOnPositionChange([&](uint8_t p){ ++moves; reported = p; });
-        blind.OnEvent(Ev(UCEventType::MouseDown, 30, 88));   // "Open"
-        if (blind.GetPosition() != 100 || reported != 100 || moves != 1) {
-            std::puts("FAIL: blind open"); return 1;
-        }
-        blind.OnEvent(Ev(UCEventType::MouseDown, 180, 88));  // "Close"
-        if (blind.GetPosition() != 0) { std::puts("FAIL: blind close"); return 1; }
-        std::puts("ok  blind: open and close quick actions");
-
-        blind.SetPosition(250);                              // clamped to 100
-        if (blind.GetPosition() != 100) { std::puts("FAIL: blind clamp"); return 1; }
-        std::puts("ok  blind: position clamps to 100");
-    }
-
-    {
-        SmartHomeSensorDisplay sensor("sensor", 0, 0, 240, 180);
-        sensor.SetSensorType(SmartHomeSensorType::Temperature);
-        SmartHomeSensorReading r; r.Type = SmartHomeSensorType::Temperature;
-        r.Value = 21.5f; r.Unit = "°C"; r.Timestamp = 1000;
-        sensor.SetCurrentReading(r);
-        for (int i = 0; i < 10; ++i) { r.Timestamp = 1000 + i * 60000; r.Value = 20.0f + i; sensor.AddReading(r); }
-        // A readout has nothing to click and must not swallow the event.
-        if (sensor.OnEvent(Ev(UCEventType::MouseDown, 20, 20))) {
-            std::puts("FAIL: sensor display consumed a click"); return 1;
-        }
-        std::puts("ok  sensor: accepts readings, does not consume clicks");
-    }
+    // ----- per-device controls, through a real window -----
+    if (DeviceControlsThroughWindow() != 0) return 1;
 
     // ----- dialog and wizard -----
     {

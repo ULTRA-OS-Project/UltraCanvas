@@ -550,6 +550,11 @@ endif()
 # its vendor SDK is vendored — see SmartHome/STATUS.md.
 option(BUILD_SMARTHOME "Build the Smart Home module" ON)
 option(ULTRACANVAS_BUILD_SMARTHOME_TESTS "Build the Smart Home test suite" OFF)
+# BUILD_TESTS (CI's Linux row) builds it too: the suite is headless apart from
+# the widget test's device controls, which skip without a display.
+if(BUILD_TESTS)
+    set(ULTRACANVAS_BUILD_SMARTHOME_TESTS ON)
+endif()
 if(BUILD_SMARTHOME)
     if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
         enable_testing()   # must be the top-level call, as for every other suite
