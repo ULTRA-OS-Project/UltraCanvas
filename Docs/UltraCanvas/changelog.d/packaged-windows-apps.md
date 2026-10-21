@@ -36,7 +36,7 @@
     false in a package without it, so the command is not offered there only to
     fail. `package-win-msix.sh` declares it with `MSIX_ALLOW_ELEVATION=1`, for
     sideloaded and enterprise packages. The new
-    `OS/MSWindows/UltraCanvasWindowsPackage.{h,cpp}` holds the package check
+    `OS/MSWindows/UltraCanvasWindowsPackage.h` holds the package check
     both of these use: whether the process has a package identity, and what
     the installed `AppxManifest.xml` declares. It is header-only, so the
     UltraMessage library uses it as well.

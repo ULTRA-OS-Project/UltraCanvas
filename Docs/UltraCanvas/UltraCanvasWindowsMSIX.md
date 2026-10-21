@@ -126,7 +126,7 @@ Two more points:
   package. Without it, `ElevatedFileOperations::IsAvailable()` is false in
   the package, so the Filer does not offer the command. A permission error
   then ends with *Skip*, as on the platforms without the retry.
-  `OS/MSWindows/UltraCanvasWindowsPackage.cpp` reads the installed
+  `OS/MSWindows/UltraCanvasWindowsPackage.h` reads the installed
   `AppxManifest.xml` to tell. Whether `runas` works in a package that does
   declare it has not been tried on Windows yet.
 - **Non-ASCII file names.** When a file type association opens a file,
