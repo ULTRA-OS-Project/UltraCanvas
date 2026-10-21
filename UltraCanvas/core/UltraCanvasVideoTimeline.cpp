@@ -4,7 +4,7 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
-// Version: 1.2.0 - the application's drop marker on a lane (SetDropMarker)
+// Version: 1.2.0 - the application's drop feedback, ring and marker in one (SetDropFeedback); DragLeave clears both
 // Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
 // Last Modified: 2026-10-14
@@ -289,26 +289,30 @@ void UltraCanvasVideoTimeline::SetSelectedTransition(const std::string& clipId) 
     RequestRedraw();
 }
 
-double UltraCanvasVideoTimeline::SetDropMarker(const std::string& trackId, double seconds, const std::string& label) {
-    for (size_t i = 0; i < model.tracks.size(); ++i) {
-        if (model.tracks[i].id != trackId) continue;
-        const double at = DropTime(model.tracks[i], seconds);
+double UltraCanvasVideoTimeline::SetDropFeedback(const DropFeedback& feedback) {
+    dropTargetClip = feedback.clipId;
+    dropActive = false;
+    dropLabel.clear();
+    double at = -1.0;
+    for (size_t i = 0; i < model.tracks.size() && !feedback.trackId.empty(); ++i) {
+        if (model.tracks[i].id != feedback.trackId) continue;
+        at = DropTime(model.tracks[i], feedback.seconds);
         dropActive = true;
         dropTrackIndex = i;
         dropSeconds = at;
         dropCount = 0;
-        dropLabel = label;
-        RequestRedraw();
-        return at;
+        dropLabel = feedback.label;
+        break;
     }
-    ClearDropMarker();
-    return -1.0;
+    RequestRedraw();
+    return at;
 }
 
-void UltraCanvasVideoTimeline::ClearDropMarker() {
-    if (!dropActive && dropLabel.empty()) return;
+void UltraCanvasVideoTimeline::ClearDropFeedback() {
+    if (!dropActive && dropLabel.empty() && dropTargetClip.empty()) return;
     dropActive = false;
     dropLabel.clear();
+    dropTargetClip.clear();
     RequestRedraw();
 }
 
@@ -1257,11 +1261,8 @@ bool UltraCanvasVideoTimeline::OnEvent(const UCEvent& event) {
         case UCEventType::KeyDown: return IsFocused() ? HandleKey(event) : false;
         case UCEventType::DragEnter:
         case UCEventType::DragOver: return HandleDrop(event, x, y, false);
-        case UCEventType::DragLeave:
-            if (dropActive) {
-                dropActive = false;
-                RequestRedraw();
-            }
+        case UCEventType::DragLeave:   // the system's drag, or the application's carried one
+            ClearDropFeedback();
             return false;
         case UCEventType::Drop: return HandleDrop(event, x, y, true);
         default: return false;

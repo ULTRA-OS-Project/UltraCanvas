@@ -173,8 +173,13 @@ std::string trackId;
 std::string clipId = timeline->ClipAt(400.0f, 120.0f, &trackId);
 timeline->SetDropTargetClip(clipId);         // a dashed focus ring: where a drop the app carries lands
 timeline->SetDropTargetClip("");             // ... cleared
-double at = timeline->SetDropMarker("T1", 2.8, "Lower third");   // the insertion marker and readout of a carried drop, snapped
-timeline->ClearDropMarker();
+UltraCanvasVideoTimeline::DropFeedback feedback;   // what a drop the app carries would do, one call a move
+feedback.trackId = "T1";                           // the insertion marker on this lane ...
+feedback.seconds = 2.8;                            // ... at this time, snapped as a file drop is
+feedback.label = "Lower third";                    // the readout: "Lower third at 00:00:03:00"
+feedback.clipId = "";                              // or the clip to ring instead
+double at = timeline->SetDropFeedback(feedback);   // the time it would land at
+timeline->ClearDropFeedback();                     // a DragLeave event does the same
 ```
 
 ### Providers

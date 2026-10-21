@@ -1130,7 +1130,9 @@ void UltraVideoWindow::CarryDrag(const UCEvent& source, bool drop) {
             const std::string hover = takes ? "clip:" + clipId : clipId.empty() ? "" : "other";
             if (hover == dragHover_) return;
             dragHover_ = hover;
-            timeline_->SetDropTargetClip(takes ? clipId : "");
+            UltraCanvasVideoTimeline::DropFeedback feedback;
+            feedback.clipId = takes ? clipId : "";
+            timeline_->SetDropFeedback(feedback);
             if (takes) Message("Drop to put " + label + " on " + EffectClipName(target) + ".");
             else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds.");
             else Message("Drop " + label + " on a clip on the main track or the overlay lane. Esc lets go.");
@@ -1146,8 +1148,9 @@ void UltraVideoWindow::CarryDrag(const UCEvent& source, bool drop) {
     // a title style
     const std::string label = TitleLabel(key);
     const bool onLane = over && trackId == kTitleTrackId;
-    const double at = onLane ? timeline_->SetDropMarker(kTitleTrackId, timeline_->XToSeconds(local.x), label) : -1.0;
-    if (!onLane) timeline_->ClearDropMarker();
+    UltraCanvasVideoTimeline::DropFeedback feedback;   // the marker on the lane, or nothing
+    if (onLane) { feedback.trackId = kTitleTrackId; feedback.seconds = timeline_->XToSeconds(local.x); feedback.label = label; }
+    const double at = timeline_->SetDropFeedback(feedback);
     if (!drop) {
         const std::string hover = onLane ? "lane" : trackId;
         if (hover == dragHover_) return;
@@ -1165,16 +1168,10 @@ void UltraVideoWindow::CarryDrag(const UCEvent& source, bool drop) {
 
 void UltraVideoWindow::CancelDrag() {
     if (dragKind_ == DragKind::Nothing) return;
-    if (timeline_) {
-        if (dragKind_ == DragKind::File) {
-            UCEvent leave;
-            leave.type = UCEventType::DragLeave;
-            timeline_->OnEvent(leave);
-        } else if (dragKind_ == DragKind::Effect) {
-            timeline_->SetDropTargetClip("");
-        } else {
-            timeline_->ClearDropMarker();
-        }
+    if (timeline_) {   // a DragLeave ends a carried drag as it ends a system drag: marker, ring and readout go
+        UCEvent leave;
+        leave.type = UCEventType::DragLeave;
+        timeline_->OnEvent(leave);
     }
     dragKind_ = DragKind::Nothing;
     dragKey_.clear();

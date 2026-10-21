@@ -1113,7 +1113,7 @@ that writing it showed:
   finds the clip under the pointer and the element's `SetDropTargetClip`
   (1.2.0) rings it; the drop applies the preset to that clip. A title
   style (app 0.7.1) goes the same way onto the title lane: the element's
-  `SetDropMarker` (1.3.0) shows the insertion marker with the style's name
+  `SetDropFeedback` (1.3.0) shows the insertion marker with the style's name
   at the snapped time, and the drop puts the title there. The window
   carries all three drags through one arm / start / carry / cancel path.
 - **The story wizard** (§5.9, §6.11): `UltraVideoStory` shows the three

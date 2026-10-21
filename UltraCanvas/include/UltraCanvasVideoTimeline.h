@@ -14,7 +14,7 @@
 // track places clips freely. That is the shape of an engine whose export is
 // a list of segments (VideoFX) with free overlays and music beside it.
 //
-// Version: 1.3.0 - SetDropMarker: the insertion marker for a drop the application carries onto a lane
+// Version: 1.3.0 - SetDropFeedback: the ring and the insertion marker of a drop the application carries, in one call; a DragLeave clears them
 // Version: 1.2.0 - SetDropTargetClip: the clip an application-carried drop (an effect) would land on
 // Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
@@ -180,16 +180,25 @@ public:
     // cleared with "". The element's own drop path (files) does not use it.
     void SetDropTargetClip(const std::string& clipId);
     std::string GetDropTargetClip() const { return dropTargetClip; }
-    // The marker for a drop the application carries itself onto a lane (a
-    // title style dragged from its bin): the insertion line and readout the
-    // element shows for files it is handed, at `seconds` on the track -
-    // snapped as a file drop is, the nearest cut on a magnetic track and
-    // the snap points otherwise - with `label` in the readout ("Lower third
-    // at 00:00:02:00"). Returns the time the drop would land at, or -1 with
-    // no marker when the track is not in the model.
-    double SetDropMarker(const std::string& trackId, double seconds, const std::string& label);
-    void ClearDropMarker();
-    bool HasDropMarker() const { return dropActive; }
+    // What the element shows for a drop the application carries itself (a
+    // title style or an effect dragged from its bin), one call per pointer
+    // move: the clip it would land on, ringed as SetDropTargetClip rings it,
+    // and the lane and time it would land at, with the insertion line and
+    // readout the element draws for files it is handed - the time snapped as
+    // a file drop is (the nearest cut on a magnetic track, the snap points
+    // otherwise), the readout "<label> at <timecode>". Either part may be
+    // empty. Returns the snapped time of the marker, -1 without one (a
+    // track not in the model shows no marker). ClearDropFeedback, or a
+    // DragLeave event, takes both away.
+    struct DropFeedback {
+        std::string clipId;      // the clip to ring, "" for none
+        std::string trackId;     // the lane of the insertion marker, "" for none
+        double seconds = 0.0;    // where on it
+        std::string label;       // the readout's name for what is dropped
+    };
+    double SetDropFeedback(const DropFeedback& feedback);
+    void ClearDropFeedback();
+    bool HasDropFeedback() const { return dropActive || !dropTargetClip.empty(); }
 
     // ===== PROVIDERS =====
     TimelineThumbnailProvider thumbnailProvider;
@@ -349,7 +358,7 @@ private:
     double dropSeconds = 0.0;
     int dropCount = 0;
     std::string dropTargetClip;        // SetDropTargetClip
-    std::string dropLabel;             // SetDropMarker's readout; empty for a file drop
+    std::string dropLabel;             // SetDropFeedback's readout; empty for a file drop
     double DropTime(const TimelineTrack& track, double seconds) const;   // where a drop on the track lands
     double scrollDragStart = 0.0;
 
