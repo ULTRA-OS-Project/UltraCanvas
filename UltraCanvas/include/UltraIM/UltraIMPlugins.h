@@ -54,6 +54,10 @@ public:
     virtual bool HasStoredSession() const { return false; }
 
     // ---- Data ----------------------------------------------------------------
+    // A sign-in in steps (UltraIMResultCode::NeedsInput): which one is next.
+    virtual UltraIMAuthStep GetAuthStep() const { return UltraIMAuthStep::Idle; }
+    virtual std::string GetAuthHint() const { return std::string(); }
+
     virtual void FetchConversations(UltraIMConversationsCallback onResult) = 0;
     // beforeMessageId "" = the most recent page. Messages come oldest first.
     virtual void FetchMessages(const std::string& conversationId,

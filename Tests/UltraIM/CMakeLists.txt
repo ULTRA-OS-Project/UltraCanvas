@@ -54,3 +54,31 @@ if(TARGET UltraIMMatrixCore)
     add_test(NAME MatrixProviderTests COMMAND MatrixProviderTests)
     set_tests_properties(MatrixProviderTests PROPERTIES TIMEOUT 300)
 endif()
+
+# Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
+# small Telegram in memory, built here), and its requests against the real
+# TDLib when ULTRAIM_TDJSON_PATH names one (TelegramTdlibTests skips without).
+if(TARGET UltraIMTelegramCore)
+    add_library(FakeTdJson SHARED FakeTdJson.cpp)
+    target_compile_features(FakeTdJson PRIVATE cxx_std_20)
+    target_link_libraries(FakeTdJson PRIVATE UltraIM)    # (the core: its JSON)
+    set_target_properties(FakeTdJson PROPERTIES
+        OUTPUT_NAME "faketdjson"
+        # Not in modules/: UltraIMTests loads every library there as a provider.
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/fake-tdjson
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/fake-tdjson)
+
+    add_executable(TelegramProviderTests TelegramProviderTests.cpp)
+    target_compile_features(TelegramProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(TelegramProviderTests PRIVATE UltraIMTelegramCore)
+    target_compile_definitions(TelegramProviderTests PRIVATE ULTRAIM_TEST_FAKE_TDJSON="$<TARGET_FILE:FakeTdJson>")
+    add_dependencies(TelegramProviderTests FakeTdJson)
+    add_test(NAME TelegramProviderTests COMMAND TelegramProviderTests)
+    set_tests_properties(TelegramProviderTests PROPERTIES TIMEOUT 120)
+
+    add_executable(TelegramTdlibTests TelegramTdlibTests.cpp)
+    target_compile_features(TelegramTdlibTests PRIVATE cxx_std_20)
+    target_link_libraries(TelegramTdlibTests PRIVATE UltraIMTelegramCore)
+    add_test(NAME TelegramTdlibTests COMMAND TelegramTdlibTests)
+    set_tests_properties(TelegramTdlibTests PROPERTIES TIMEOUT 180)
+endif()

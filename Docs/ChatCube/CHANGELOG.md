@@ -42,6 +42,14 @@
   Matrix account button once signed in) write and read the passphrase
   protected key file Element uses, to read earlier messages on a new
   device. A device whose keys change is no longer trusted.
+- **Telegram.** *Telegram account* in the sidebar signs in with your phone
+  number, one step at a time: the code Telegram sends, then your two-step
+  password if you have one (a new number asks for your name). Your
+  Telegram chats and groups join the list with replies, edits, deletions,
+  typing, read ticks and unread counts; add people by `@username`, `t.me/`
+  link or phone number, and start groups with them. The sign-in is kept, so
+  ChatCube reconnects by itself. Not yet: secret chats, pictures and files,
+  calls.
 - History that arrives late (a Matrix invitation's messages, once it is
   accepted) takes its place by time instead of coming last.
 - A call the other person hangs up now always ends as a hang-up: the closing

@@ -41,6 +41,9 @@ UltraIMSubscriptionId UltraIM_Subscribe(UltraIMEventCallback onEvent);
 void UltraIM_Unsubscribe(UltraIMSubscriptionId subscriptionId);
 
 // ---- Sessions ----------------------------------------------------------------
+// A sign-in in steps answers NeedsInput while it waits for the next one: call
+// SignIn again with what UltraIMProviderInfo::authStep asks for (the code, the
+// password, ...), the rest of the credentials as before.
 void UltraIM_SignIn(const std::string& providerId,
                     const UltraIMCredentials& credentials,
                     UltraIMResultCallback onResult);

@@ -88,6 +88,15 @@ says whether our camera goes on; `UltraIM_SetCallCamera` turns it off and on
 during the call, and the other side gets `CallMediaChange` (`isVideo` = the
 camera is on), so it can show a caption instead of a frozen picture.
 
+A sign-in that takes more than one round (Telegram: the phone number, the
+code Telegram sends, the two-step password, a name for a new account)
+answers `NeedsInput` until the last step. `UltraIMProviderInfo::authStep`
+says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
+`authHint` how to say it (where the code went, the password's hint), and
+`AuthStepChange` reports each change. Call `UltraIM_SignIn` again with that
+one field set (`otpCode`, `password`, `displayName`); the rest of the
+credentials need not be repeated.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -261,8 +270,53 @@ device, and an encrypted room with
 (`matrix_nio_peer.py`), key export files read both ways - with
 `matrix-nio[e2e]` in that python (`ULTRAIM_TEST_MATRIX_NIO_REQUIRED` in CI).
 
+## Provider: Telegram
+
+`UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`, provider
+id `telegram`) is a client of TDLib, Telegram's own client library, through
+its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
+`td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
+provider builds everywhere and works wherever a libtdjson is found - the
+`tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
+system's `libtdjson.so` / `.dylib` / `tdjson.dll` (TDLib 1.7 or later; 1.8.69
+is what the tests use). One thread receives for every client in the process.
+
+- **Sign-in:** `UltraIMLoginType::PhoneOTP`, in steps (above): the phone
+  number with its country code, the code, the two-step password when the
+  account has one, a name for a new number. Telegram also needs the
+  *application's* API ID and hash (my.telegram.org): `credentials.apiId` /
+  `apiHash`, or built in (CMake `ULTRAIM_TELEGRAM_API_ID` /
+  `ULTRAIM_TELEGRAM_API_HASH`), or `ULTRAIM_TELEGRAM_API_ID` / `_HASH` in the
+  environment; they are kept with the session. `server = "test"` uses
+  Telegram's test servers. TDLib keeps the session, the chats and the history
+  in its own database under the provider's data directory, encrypted with a
+  key the vault holds; a later `SignIn` with nothing given resumes it.
+- **Chats:** the main chat list (`loadChats`, in TDLib's order, pinned first);
+  private chats, basic groups and supergroups, channels. A conversation's id
+  is the chat id, a message's the message id, a contact's the user id.
+  `AddContact` takes `@username`, a `t.me/` link or `+phone`; `CreateGroup`
+  makes a basic group of such members.
+- **Messages:** text with replies, photos, files, audio, voice, video and
+  stickers as their captions or names (not downloaded yet), the group's
+  service messages as system lines; edits (`MessageUpdate`), deletion for
+  everyone (`MessageDelete`); our own message reported `Sent` under its client
+  message id once TDLib has sent it, then `Read` when the other side's read
+  mark passes it; typing, presence, unread counts; `FetchMessages` pages back
+  with `getChatHistory`.
+- **Not yet:** secret chats (end-to-end encrypted; listed, marked encrypted,
+  not opened), media download and upload, calls, QR-code and e-mail sign-in.
+
+Tests: `Tests/UltraIM/TelegramProviderTests.cpp` against `FakeTdJson`, a
+libtdjson stand-in that keeps a small Telegram in memory (several providers
+in one process talk through it; `FAKE_TDJSON_ACCOUNTS` and an `echobot`
+account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
+hands every request the provider builds to the real TDLib, offline - it
+answers a request it cannot parse at once, so anything else means TDLib's
+names and fields are right. `ULTRAIM_TDJSON_PATH` names the library; CI
+takes it from the `tdjson` wheel and sets `ULTRAIM_TEST_TDLIB_REQUIRED`.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct provider and the Matrix provider (above). Next: Telegram.
+Direct, Matrix and Telegram providers (above). Next: XMPP and others.
