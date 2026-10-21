@@ -1327,6 +1327,17 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^EmojiSettingsTest$"
 
+      # The UltraMessage suite on Windows, which ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS
+      # builds there but nothing ran: the channel through Windows' named
+      # pipes, and the Windows adapters against the runner's desktop - the
+      # windows-presenter starts in toast mode (Windows 10 1903 and later, in
+      # this C++/WinRT build) or balloon mode, and the notification listener
+      # reports its state. Linux runs it in the full pass.
+      - name: Run UltraMessage tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraMessage$"
+
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)
       # against the runner's desktop: the test opens a window of its own,

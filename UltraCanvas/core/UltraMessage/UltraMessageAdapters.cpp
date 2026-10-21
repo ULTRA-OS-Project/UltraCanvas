@@ -9,6 +9,7 @@
 
 #include "UltraMessageAdapter.h"
 #include "UltraMessageInternal.h"
+#include "UltraCanvasNotificationActivation.h"   // the toast arguments' format, shared with the applications
 
 #include <algorithm>
 #include <cctype>
@@ -234,6 +235,7 @@ bool ReadPresentedContent(const UltraMsgMessage& notification, int presenterProc
     if (from.processId > 0 && from.processId != presenterProcessId && out.appName != out.title)
         out.subtitle = out.appName;
     out.iconFile = IconFilePath(n.icon);
+    out.launch = n.launch;
     out.urgency = (n.urgency == "low" || n.urgency == "critical") ? n.urgency : "normal";
     for (const auto& action : n.actions) {
         if (action.id.empty()) continue;
@@ -413,14 +415,24 @@ std::string XmlEscape(const std::string& text) {
     return out;
 }
 
-constexpr const char* kToastActionPrefix = "action:";
+// The arguments of one of the toast's activations.
+std::string ToastArguments(const PresentedContent& content, const std::string& actionId) {
+    UltraCanvas::NotificationActivation activation;
+    activation.notificationId = content.notificationId;
+    activation.actionId = actionId;
+    activation.launch = content.launch;
+    return UltraCanvas::FormatNotificationArguments(activation);
+}
 
 } // namespace
 
 std::string WindowsToastXml(const PresentedContent& content) {
-    std::string xml = "<toast";
-    if (content.hasDefaultAction) xml += " launch=\"default\"";
-    xml += "><visual><binding template=\"ToastGeneric\">";
+    // A click on the toast itself always has arguments: the application's
+    // activator, reached after the broker host quit, needs the id and launch
+    // even when the notification declares no default action.
+    std::string xml =
+        "<toast launch=\"" + XmlEscape(ToastArguments(content, content.hasDefaultAction ? "default" : "")) + "\">";
+    xml += "<visual><binding template=\"ToastGeneric\">";
     xml += "<text>" + XmlEscape(content.title) + "</text>";
     if (!content.body.empty()) xml += "<text>" + XmlEscape(content.body) + "</text>";
     // A local file is named by its path: desktop applications may.
@@ -431,7 +443,7 @@ std::string WindowsToastXml(const PresentedContent& content) {
         xml += "<actions>";
         for (const auto& button : content.buttons)
             xml += "<action content=\"" + XmlEscape(button.label) + "\" arguments=\"" +
-                   XmlEscape(kToastActionPrefix + button.id) + "\"/>";
+                   XmlEscape(ToastArguments(content, button.id)) + "\"/>";
         xml += "</actions>";
     }
     if (content.urgency == "low") xml += "<audio silent=\"true\"/>";
@@ -440,12 +452,13 @@ std::string WindowsToastXml(const PresentedContent& content) {
 }
 
 PresenterResponse WindowsToastResponse(const std::string& arguments, std::string& actionId) {
-    if (StartsWith(arguments, kToastActionPrefix)) {
-        actionId = arguments.substr(std::char_traits<char>::length(kToastActionPrefix));
-        return PresenterResponse::Action;
+    const UltraCanvas::NotificationActivation activation = UltraCanvas::ParseNotificationArguments(arguments);
+    if (activation.actionId.empty() || activation.actionId == "default") {
+        actionId.clear();
+        return PresenterResponse::Activated;
     }
-    actionId.clear();
-    return PresenterResponse::Activated;
+    actionId = activation.actionId;
+    return PresenterResponse::Action;
 }
 
 std::string PublishMirror(IAdapterHost& host, const std::string& adapterName,

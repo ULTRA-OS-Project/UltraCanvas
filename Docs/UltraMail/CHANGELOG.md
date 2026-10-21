@@ -1,3 +1,14 @@
+#### 2026-10-21 *0.10.62*
+- **A click on a new-mail toast opens the mail even after the program that
+  showed it has quit.** On Windows the toast is put up by whichever program
+  hosts the message bus (UltraFiler, say). Once that program had quit, the
+  toast still waited in the Action Center, and a click on it did nothing.
+  UltraMail is now the activator of its own toasts: Windows hands the click
+  to it, or starts UltraMail for it when it is closed, and the toast says
+  which mail it was about - the account, and the folder and message when it
+  announced one - so that mail opens. A click that reaches UltraMail both
+  ways opens it once (framework changelog: `notification-activator`).
+
 #### 2026-10-19 *0.10.61*
 - **An *Attach cloud link* upload that was complete when the connection
   went is put in place, not thrown away.** To an FTP or SFTP account the
