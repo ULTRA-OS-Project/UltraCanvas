@@ -2516,7 +2516,11 @@ queue and groups, delivery and read receipts, local history, and 1:1 voice
 and video calls (signed invite / accept / reject / camera / hang-up over the
 relay, Opus and VP8 over an UltraRTC peer per call), and the local network
 with or without a relay (mDNS announcement and discovery, a TCP connection
-both ends authenticate with their identity keys carrying the signalling). Tests in `Tests/UltraIM`. See
+both ends authenticate with their identity keys carrying the signalling).
+Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
+`ultraim_matrix`): password or token sign-in with .well-known discovery,
+`/sync`, direct chats and groups, invitations, replies, edits, redactions,
+receipts, typing, presence, paged history; encrypted rooms not yet. Tests in `Tests/UltraIM`. See
 `Docs/Modules/UltraIM/README.md`.
 
 ---

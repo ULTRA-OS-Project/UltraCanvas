@@ -486,15 +486,15 @@ void TestLocalNetwork() {
     login.displayName = "Carol";
     UltraIMResult r;
     CHECK(WaitResult([&](UltraIMResultCallback cb) { carol->SignIn(login, cb); }, r) && r);
-    // The next start signs in by itself. (Asked now: UltraVault keeps one
-    // open store per process, and Dave's sign-in below opens his.)
-    CHECK(carol->HasStoredSession());
     login.displayName = "Dave";
     CHECK(WaitResult([&](UltraIMResultCallback cb) { dave->SignIn(login, cb); }, r) && r);
     CHECK(carol->GetConnectionState() == UltraIMConnectionState::Connected);
     const std::string carolId = carol->GetLocalUserId();
     const std::string daveId = dave->GetLocalUserId();
     CHECK(carol->GetLanPort() > 0 && dave->GetLanPort() > 0);
+    // The next start signs in by itself - also with a second provider's vault
+    // in the same process (DeviceKeyVault::Use takes turns).
+    CHECK(carol->HasStoredSession() && dave->HasStoredSession());
 
     // Without a relay nobody far away can be found, and groups need one.
     UltraIMConversation none;

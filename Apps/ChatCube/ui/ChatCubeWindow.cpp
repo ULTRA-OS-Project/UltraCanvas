@@ -241,7 +241,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     sidebar->AddChild(idRow);
 
     auto addRow = MakeRow("cc-add-row");
-    contactId_ = MakeInput("cc-add-id", "Contact's ChatCube ID", kSidebarWidth - 16 - 60);
+    contactId_ = MakeInput("cc-add-id", "ChatCube ID, or @name:server on Matrix", kSidebarWidth - 16 - 60);
     contactId_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     contactId_->onEnterPressed = [this](const std::string&) { AddContact(); return true; };
     addRow->AddChild(contactId_);
@@ -253,6 +253,27 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     auto newGroup = MakeButton("cc-new-group", "New group", kSidebarWidth - 16);
     newGroup->SetOnClick([this]() { ToggleGroupForm(); });
     sidebar->AddChild(newGroup);
+
+    // A Matrix account next to ChatCube Direct.
+    matrixToggle_ = MakeButton("cc-matrix", "Matrix account", kSidebarWidth - 16);
+    matrixToggle_->SetOnClick([this]() { ToggleMatrixForm(); });
+    sidebar->AddChild(matrixToggle_);
+    matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
+    matrixForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    matrixForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    matrixServer_ = MakeInput("cc-matrix-server", "Homeserver, e.g. matrix.org", kSidebarWidth - 16);
+    matrixForm_->AddChild(matrixServer_);
+    matrixUser_ = MakeInput("cc-matrix-user", "User name, or @name:server", kSidebarWidth - 16);
+    matrixForm_->AddChild(matrixUser_);
+    matrixPassword_ = MakeInput("cc-matrix-password", "Password", kSidebarWidth - 16);
+    matrixPassword_->SetInputType(TextInputType::Password);
+    matrixPassword_->onEnterPressed = [this](const std::string&) { SignInToMatrix(false); return true; };
+    matrixForm_->AddChild(matrixPassword_);
+    matrixSignIn_ = MakeButton("cc-matrix-go", "Sign in to Matrix", kSidebarWidth - 16, true);
+    matrixSignIn_->SetOnClick([this]() { SignInToMatrix(false); });
+    matrixForm_->AddChild(matrixSignIn_);
+    matrixForm_->SetVisible(false);
+    sidebar->AddChild(matrixForm_);
 
     groupForm_ = std::make_shared<UltraCanvasContainer>("cc-group-form");
     groupForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -386,7 +407,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         const int64_t now = NowMs();
         if (now - lastTypingSentMs_ < kTypingResendMs) return;
         lastTypingSentMs_ = now;
-        UltraIM_SetTyping(providerId_, activeConversation_, true);
+        UltraIM_SetTyping(activeProvider_, activeConversation_, true);
     });
     inputRow->AddChild(input_);
     send_ = MakeButton("cc-send", "Send", 72, true);
@@ -520,6 +541,10 @@ void ChatCubeWindow::SignIn() {
         SetStatus("Connected");
         RefreshConversations();
         RefreshNearby();
+        UltraIMProviderInfo matrixInfo;
+        if (UltraIM_GetProviderInfo(matrixProviderId_, matrixInfo) && matrixInfo.hasStoredSession &&
+            matrixInfo.connectionState == UltraIMConnectionState::Disconnected)
+            SignInToMatrix(true);
     });
 }
 
@@ -548,7 +573,9 @@ void ChatCubeWindow::AddContact() {
 
 void ChatCubeWindow::AddContactById(const std::string& id) {
     SetStatus("Adding contact\xE2\x80\xA6");
-    UltraIM_AddContact(providerId_, id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
+    // @name:server is someone on Matrix; anything else a ChatCube ID.
+    const std::string provider = !id.empty() && id[0] == '@' ? matrixProviderId_ : providerId_;
+    UltraIM_AddContact(provider, id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
             SetStatus("Could not add the contact: " + r.message);
             return;
@@ -558,6 +585,42 @@ void ChatCubeWindow::AddContactById(const std::string& id) {
         SetStatus("Added " + c.title);
         OpenConversation(c.conversationId);
         RefreshNearby();
+    });
+}
+
+void ChatCubeWindow::ToggleMatrixForm() {
+    UltraIMProviderInfo info;
+    if (!UltraIM_GetProviderInfo(matrixProviderId_, info)) {
+        SetStatus("The Matrix module was not found (Plugins/UltraIM).");
+        return;
+    }
+    matrixForm_->SetVisible(!matrixForm_->IsVisible());
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SignInToMatrix(bool stored) {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::UsernamePassword;
+    if (!stored) {
+        credentials.server = Trim(matrixServer_->GetText());
+        credentials.username = Trim(matrixUser_->GetText());
+        credentials.password = matrixPassword_->GetText();
+        if (credentials.username.empty() || credentials.password.empty()) {
+            SetStatus("Matrix: enter your user name and password.");
+            return;
+        }
+        matrixSignIn_->SetDisabled(true);
+    }
+    SetStatus("Matrix: signing in\xE2\x80\xA6");
+    UltraIM_SignIn(matrixProviderId_, credentials, [this, stored](const UltraIMResult& r) {
+        if (!stored) matrixSignIn_->SetDisabled(false);
+        if (!r) {
+            SetStatus("Matrix: " + r.message);
+            return;
+        }
+        matrixPassword_->SetText("");      // not kept: the session token is
+        matrixForm_->SetVisible(false);
+        RefreshConversations();
     });
 }
 
@@ -603,7 +666,10 @@ void ChatCubeWindow::CreateGroup() {
         if (!id.empty()) members.push_back(id);
     }
     SetStatus("Creating the group\xE2\x80\xA6");
-    UltraIM_CreateGroup(providerId_, title, members, [this](const UltraIMResult& r, const UltraIMConversation& c) {
+    // Members given as @name:server: a Matrix room.
+    const bool onMatrix = !members.empty() && members.front()[0] == '@';
+    UltraIM_CreateGroup(onMatrix ? matrixProviderId_ : providerId_, title, members,
+                        [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
             SetStatus("Could not create the group: " + r.message);
             return;
@@ -617,8 +683,14 @@ void ChatCubeWindow::CreateGroup() {
     });
 }
 
+std::string ChatCubeWindow::ProviderOf(const std::string& conversationId) const {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    return c && !c->providerId.empty() ? c->providerId : providerId_;
+}
+
 void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     activeConversation_ = conversationId;
+    activeProvider_ = ProviderOf(conversationId);
     typingContact_.clear();
     const UltraIMConversation* c = conversations_->Find(conversationId);
     messages_->SetGroup(c && c->isGroup);
@@ -631,14 +703,14 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     fillingList_ = false;
     UpdateHeader();
 
-    UltraIM_FetchMessages(providerId_, conversationId, "", 200,
+    UltraIM_FetchMessages(activeProvider_, conversationId, "", 200,
                           [this, conversationId](const UltraIMResult& r, const std::vector<UltraIMMessage>& list) {
         if (conversationId != activeConversation_) return;      // the user moved on
         if (!r) SetStatus("Could not load the messages: " + r.message);
         messages_->SetMessages(list);
         ScrollToEnd();
     });
-    UltraIM_MarkRead(providerId_, conversationId);
+    UltraIM_MarkRead(activeProvider_, conversationId);
     input_->SetFocus(true);
     if (window_) window_->RequestRedraw();
 }
@@ -655,13 +727,16 @@ void ChatCubeWindow::UpdateHeader() {
         subtitle_->SetText("typing\xE2\x80\xA6");
     } else if (c->isGroup) {
         subtitle_->SetText(std::to_string(c->memberIds.size()) + " members");
-    } else {
+    } else if (c->providerId == providerId_) {
         subtitle_->SetText(PresenceText(c->presence));
+    } else {
+        // Not ChatCube Direct: no relay to wait on.
+        subtitle_->SetText(c->presence == UltraIMPresence::Offline ? "offline" : PresenceText(c->presence));
     }
     // Calls need UltraRTC media; the provider says when they are possible.
     // One call at a time.
-    voiceCall_->SetDisabled(!callId_.empty() || !UltraIM_CanCall(providerId_, activeConversation_, false));
-    videoCall_->SetDisabled(!callId_.empty() || !UltraIM_CanCall(providerId_, activeConversation_, true));
+    voiceCall_->SetDisabled(!callId_.empty() || !UltraIM_CanCall(activeProvider_, activeConversation_, false));
+    videoCall_->SetDisabled(!callId_.empty() || !UltraIM_CanCall(activeProvider_, activeConversation_, true));
 }
 
 void ChatCubeWindow::ScrollToEnd() {
@@ -675,9 +750,9 @@ void ChatCubeWindow::SendCurrentMessage() {
 
     // Optimistic: the bubble is shown now, its ticks follow the events.
     UltraIMProviderInfo info;
-    UltraIM_GetProviderInfo(providerId_, info);
+    UltraIM_GetProviderInfo(activeProvider_, info);
     UltraIMMessage message;
-    message.providerId = providerId_;
+    message.providerId = activeProvider_;
     message.conversationId = activeConversation_;
     message.clientMessageId = UltraIM_NewClientMessageId();
     message.messageId = message.clientMessageId;
@@ -690,11 +765,11 @@ void ChatCubeWindow::SendCurrentMessage() {
     ScrollToEnd();
     input_->SetText("");
     lastTypingSentMs_ = 0;
-    UltraIM_SetTyping(providerId_, activeConversation_, false);
+    UltraIM_SetTyping(activeProvider_, activeConversation_, false);
 
     UltraIMSendOptions options;
     options.clientMessageId = message.clientMessageId;
-    const UltraIMResult r = UltraIM_SendText(providerId_, activeConversation_, text, options);
+    const UltraIMResult r = UltraIM_SendText(activeProvider_, activeConversation_, text, options);
     if (!r) {
         messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
         SetStatus("Not sent: " + r.message);
@@ -712,7 +787,7 @@ std::string ChatCubeWindow::ContactName(const std::string& contactId) const {
 void ChatCubeWindow::StartCall(bool video) {
     if (!callId_.empty() || activeConversation_.empty()) return;
     std::string callId;
-    const UltraIMResult r = UltraIM_StartCall(providerId_, activeConversation_, video, callId);
+    const UltraIMResult r = UltraIM_StartCall(activeProvider_, activeConversation_, video, callId);
     if (!r) {
         SetStatus("Could not call: " + r.message);
         return;
@@ -893,13 +968,14 @@ void ChatCubeWindow::OnCallEvent(const UltraIMEvent& e) {
 // =================================================================== UltraIM
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
-    if (e.providerId != providerId_) return;
+    if (e.providerId != providerId_ && e.providerId != matrixProviderId_) return;
+    const bool matrix = e.providerId == matrixProviderId_;
     switch (e.type) {
         case UltraIMEventType::MessageReceive:
             if (e.conversationId == activeConversation_) {
                 messages_->Upsert(e.message);
                 ScrollToEnd();
-                UltraIM_MarkRead(providerId_, activeConversation_);
+                UltraIM_MarkRead(e.providerId, activeConversation_);
                 if (e.contactId == typingContact_) typingContact_.clear();
                 UpdateHeader();
             }
@@ -944,7 +1020,28 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                                 [this](TimerId) { UpdateHeader(); });
             }
             break;
+        case UltraIMEventType::MessageUpdate:
+            if (e.conversationId == activeConversation_) messages_->Upsert(e.message);
+            break;
+        case UltraIMEventType::MessageDelete:
+            if (e.conversationId == activeConversation_) messages_->Remove(e.message.messageId);
+            break;
         case UltraIMEventType::ConnectionStateChange:
+            if (matrix) {
+                // Matrix speaks for itself on the status line, Direct below.
+                if (e.connectionState == UltraIMConnectionState::Connected) {
+                    UltraIMProviderInfo info;
+                    UltraIM_GetProviderInfo(matrixProviderId_, info);
+                    SetStatus("Matrix: signed in as " + info.localUserId);
+                    matrixToggle_->SetText("Matrix: " + info.localUserId);
+                    RefreshConversations();
+                } else if (e.connectionState == UltraIMConnectionState::Error) {
+                    SetStatus("Matrix: " + e.errorText);
+                } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
+                    SetStatus("Matrix: connection lost - reconnecting\xE2\x80\xA6");
+                }
+                break;
+            }
             switch (e.connectionState) {
                 case UltraIMConnectionState::Connected:    SetStatus("Connected"); break;
                 case UltraIMConnectionState::Connecting:   SetStatus("Connecting\xE2\x80\xA6"); break;
@@ -966,6 +1063,12 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             RefreshNearby();
             break;
         case UltraIMEventType::AuthRequire:
+            if (matrix) {
+                SetStatus("Matrix: the session ended - sign in again");
+                matrixForm_->SetVisible(true);
+                matrixToggle_->SetText("Matrix account");
+                break;
+            }
             ShowSignInPage();
             SetSignInStatus("Please sign in again.");
             break;

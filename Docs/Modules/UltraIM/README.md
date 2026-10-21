@@ -179,8 +179,44 @@ side away and back (the waiting message arrives) - and two that find each
 other over mDNS alone, which skips without a responder unless
 `ULTRAIM_TEST_MDNS_REQUIRED` is set (CI starts Avahi).
 
+## Provider: Matrix
+
+`UltraCanvas/Plugins/UltraIM/matrix/` (module `ultraim_matrix`, provider id
+`matrix`) speaks the Matrix client-server API (v3) to any homeserver.
+
+- **Sign-in:** `UltraIMLoginType::UsernamePassword` - `server` is a server
+  name (`matrix.org`, found through `/.well-known/matrix/client`) or a URL,
+  or empty with a full `@name:server` user; or `accessToken` instead of a
+  password. The session (homeserver, user, device, access token) is kept in
+  the provider's `DeviceKeyVault`; a later `SignIn` with no credentials
+  resumes it, and a token the server no longer accepts raises `AuthRequire`.
+  `SignOut` disconnects and keeps the session.
+- **Rooms:** `/sync` as a long poll (30 s) on the provider's thread. A
+  direct chat is a room in `m.direct` (or a nameless room of two); the rest
+  are groups, titled by `m.room.name`, the alias, or their members. An
+  invitation is a conversation whose snippet says so; sending into it
+  accepts it. `AddContact("@name:server")` opens a direct chat (or returns
+  the one there is); `CreateGroup` makes a private room and invites.
+- **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
+  emotes, images and files as their names (attachments are not downloaded
+  yet), edits (`m.replace` - `MessageUpdate`), redactions (`MessageDelete`),
+  joins and leaves as system lines. Our own message is sent under the client
+  message id as its transaction id, so its echo matches the optimistic row;
+  `Sent` when the server took it, `Read` when someone's read receipt covers
+  it. Typing, presence of the other person in a direct chat, unread counts.
+  `FetchMessages` pages older history back with `/messages`.
+- **Not yet:** end-to-end encryption (Olm / Megolm): an encrypted room's
+  messages show as such and sending there is refused; media up- and
+  download; calls; SSO sign-in.
+
+Tests: `Tests/UltraIM/MatrixProviderTests.cpp` against a real Synapse, which
+`Tests/UltraIM/matrix_test_server.py` sets up (config, open registration,
+the test users) with the python in `ULTRAIM_MATRIX_PYTHON` - one with
+`matrix-synapse` installed; it skips without one unless
+`ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI).
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct provider (above). Next: the ChatCube application on top of it.
+Direct provider and the Matrix provider (above). Next: Telegram.

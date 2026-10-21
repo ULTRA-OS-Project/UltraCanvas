@@ -38,6 +38,7 @@
 #include <UltraVault/UltraVault.h>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 // When included after X11 headers, Xlib's `None` macro (0L) collides with
@@ -117,6 +118,13 @@ public:
     //  - no key but a vault exists (migration from a master-password vault)
     //    -> returns false so the caller prompts once, then PersistDeviceKey().
     bool TryAutoUnlock();
+
+    // The process holds one open UltraVault store, so several vaults - one per
+    // module, say two messenger providers - take turns: this opens this
+    // vault's own file (with the device key, as TryAutoUnlock), runs `use`,
+    // and closes it again, under a lock every DeviceKeyVault in the process
+    // shares. False (and `use` not run) when the vault cannot be opened.
+    bool Use(const std::function<void(DeviceKeyVault& vault)>& use);
 
     // Write `passphrase` as the device key (owner-only perms), so the next
     // launch unlocks silently. Call after a manual Unlock() succeeds.

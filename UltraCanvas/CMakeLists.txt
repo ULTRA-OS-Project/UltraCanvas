@@ -3764,6 +3764,32 @@ else()
     message(STATUS "  [−] UltraIM provider ChatCube Direct - DISABLED (needs UltraIM, UltraRTC, UltraNet, UltraDatabase, UltraVault)")
 endif()
 
+# ----- UltraIM provider: Matrix ------------------------------------------------
+# The Matrix client-server API (Plugins/UltraIM/matrix/): password sign-in,
+# /sync, direct chats and groups, receipts, typing, edits, redactions. Like
+# Direct, an archive the tests link, and the module loaded from
+# <build>/Plugins/UltraIM.
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault)
+    set(_ultraim_matrix_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/matrix)
+    add_library(UltraIMMatrixCore STATIC
+        ${_ultraim_matrix_dir}/MatrixHttp.cpp
+        ${_ultraim_matrix_dir}/MatrixProvider.cpp)
+    set_target_properties(UltraIMMatrixCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMatrixCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMatrixCore PUBLIC ${_ultraim_matrix_dir})
+    target_link_libraries(UltraIMMatrixCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault)
+
+    add_library(UltraIMMatrixPlugin MODULE ${_ultraim_matrix_dir}/MatrixModule.cpp)
+    set_target_properties(UltraIMMatrixPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_matrix"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMatrixPlugin PRIVATE UltraIMMatrixCore)
+    message(STATUS "  [✓] UltraIM provider Matrix - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault)")
+endif()
+
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
 set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")

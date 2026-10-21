@@ -168,6 +168,19 @@ int MessageListModel::Upsert(const UltraIMMessage& message) {
         NotifyRowChanged(existing);
         return existing;
     }
+    // Older than the newest shown (history a provider brings late - a Matrix
+    // invitation's messages arrive once it is accepted): into its place.
+    std::vector<UltraIMMessage> shownMessages;
+    for (const auto& r : rows_) {
+        if (r.kind == MessageRow::Kind::Message) shownMessages.push_back(r.message);
+    }
+    if (!shownMessages.empty() && message.timestampMs < shownMessages.back().timestampMs) {
+        auto at = std::upper_bound(shownMessages.begin(), shownMessages.end(), message.timestampMs,
+                                   [](int64_t ts, const UltraIMMessage& m) { return ts < m.timestampMs; });
+        shownMessages.insert(at, message);
+        SetMessages(shownMessages);
+        return FindRow(message.clientMessageId);
+    }
     // A new day starts with its date.
     std::string lastDate;
     for (auto it = rows_.rbegin(); it != rows_.rend(); ++it) {
@@ -190,6 +203,19 @@ int MessageListModel::Upsert(const UltraIMMessage& message) {
     const int index = static_cast<int>(rows_.size()) - 1;
     NotifyRowInserted(index);
     return index;
+}
+
+bool MessageListModel::Remove(const std::string& messageId) {
+    if (messageId.empty()) return false;
+    for (int i = static_cast<int>(rows_.size()) - 1; i >= 0; --i) {
+        const MessageRow& r = rows_[static_cast<size_t>(i)];
+        if (r.kind != MessageRow::Kind::Message) continue;
+        if (r.message.messageId != messageId && r.message.clientMessageId != messageId) continue;
+        rows_.erase(rows_.begin() + i);
+        NotifyRowRemoved(i);
+        return true;
+    }
+    return false;
 }
 
 bool MessageListModel::UpdateStatus(const std::string& clientId, UltraIMDeliveryStatus status) {

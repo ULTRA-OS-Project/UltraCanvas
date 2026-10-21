@@ -51,6 +51,8 @@ public:
     int Upsert(const UltraIMMessage& message);
     // Ticks of our own message, matched by client id; false when not shown.
     bool UpdateStatus(const std::string& clientId, UltraIMDeliveryStatus status);
+    // A message deleted (redacted) for everyone: by its id or its client id.
+    bool Remove(const std::string& messageId);
 
     const std::vector<MessageRow>& Rows() const { return rows_; }
 

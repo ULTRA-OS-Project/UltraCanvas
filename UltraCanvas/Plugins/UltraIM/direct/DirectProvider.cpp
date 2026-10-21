@@ -44,8 +44,6 @@ UltraIMPresence PresenceFrom(const std::string& text) {
     return UltraIMPresence::Unknown;
 }
 
-// UltraVault holds one store per process; every access re-opens ours.
-std::mutex g_vaultMutex;
 
 // A user id typed or pasted by a person: spaces and case do not matter.
 std::string NormalizeUserId(const std::string& address) {
@@ -188,15 +186,16 @@ void DirectProvider::Shutdown() {
 // SESSION
 // ============================================================================
 
+// The vault is opened for each access and closed after (DeviceKeyVault::Use):
+// the process has one open store, and other modules' vaults take turns with it.
 bool DirectProvider::LoadIdentity(std::string& error) {
-    std::lock_guard<std::mutex> lock(g_vaultMutex);
-    if (!vault_.TryAutoUnlock()) {
+    std::string secret;
+    if (!vault_.Use([&](UltraVault::DeviceKeyVault& v) { v.Retrieve("identity", secret); })) {
         error = "The key vault cannot be opened: " +
                 UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault_.GetLastUnlockStatus());
         return false;
     }
-    std::string secret;
-    if (!vault_.Retrieve("identity", secret) || secret.empty()) {
+    if (secret.empty()) {
         error.clear();
         return false;
     }
@@ -206,11 +205,11 @@ bool DirectProvider::LoadIdentity(std::string& error) {
 }
 
 bool DirectProvider::SaveIdentity() {
-    std::lock_guard<std::mutex> lock(g_vaultMutex);
-    if (!vault_.TryAutoUnlock()) return false;
     const std::vector<uint8_t> bytes(identity_.signSecret.Data(),
                                      identity_.signSecret.Data() + identity_.signSecret.GetSize());
-    return vault_.Store("identity", Base64(bytes));
+    bool stored = false;
+    vault_.Use([&](UltraVault::DeviceKeyVault& v) { stored = v.Store("identity", Base64(bytes)); });
+    return stored;
 }
 
 bool DirectProvider::HasStoredSession() const {
@@ -219,8 +218,9 @@ bool DirectProvider::HasStoredSession() const {
     // network alone.
     if (!storeOpen_) return false;
     if (self->store_.GetSetting("relay_url").empty() && self->store_.GetSetting("local_network") != "1") return false;
-    std::lock_guard<std::mutex> lock(g_vaultMutex);
-    return self->vault_.TryAutoUnlock() && self->vault_.Has("identity");
+    bool has = false;
+    self->vault_.Use([&](UltraVault::DeviceKeyVault& v) { has = v.Has("identity"); });
+    return has;
 }
 
 std::string DirectProvider::GetLocalUserId() const {

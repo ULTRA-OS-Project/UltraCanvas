@@ -1437,6 +1437,16 @@ jobs:
           "$RUNNER_TEMP/chatcube-relay/bin/pip" install -q -r Server/ChatCubeRelay/requirements.txt
           echo "$RUNNER_TEMP/chatcube-relay/bin" >> "$GITHUB_PATH"
 
+      # MatrixProviderTests talks to a real homeserver: Synapse, in a venv of
+      # its own (its dependencies are not the relay's), which the test starts
+      # through Tests/UltraIM/matrix_test_server.py.
+      - name: Install Synapse for the Matrix end-to-end test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/synapse"
+          "$RUNNER_TEMP/synapse/bin/pip" install -q matrix-synapse
+          echo "ULTRAIM_MATRIX_PYTHON=$RUNNER_TEMP/synapse/bin/python" >> "$GITHUB_ENV"
+
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
@@ -1446,6 +1456,8 @@ jobs:
           # Avahi is up (started for the IPP test): DirectProviderTests' two
           # ChatCubes must find each other over mDNS, not skip.
           ULTRAIM_TEST_MDNS_REQUIRED: 1
+          # MatrixProviderTests: no Synapse is a failure, not a skip.
+          ULTRAIM_TEST_MATRIX_REQUIRED: 1
           # IODevicePrinterIPPLiveTest prints to a real ippeveprinter; a skip
           # would look like a pass, so forbid it, as for the database test.
           ULTRACANVAS_TEST_IPP_REQUIRED: 1

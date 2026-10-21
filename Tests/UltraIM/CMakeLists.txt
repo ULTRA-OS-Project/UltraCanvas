@@ -35,3 +35,15 @@ if(TARGET UltraIMDirectCore)
     add_test(NAME DirectProviderTests COMMAND DirectProviderTests)
     set_tests_properties(DirectProviderTests PROPERTIES TIMEOUT 300)
 endif()
+
+# Matrix: against a real homeserver, Synapse, which matrix_test_server.py
+# starts with the python in ULTRAIM_MATRIX_PYTHON (else python3); skips when
+# that python has no matrix-synapse.
+if(TARGET UltraIMMatrixCore)
+    add_executable(MatrixProviderTests MatrixProviderTests.cpp)
+    target_compile_features(MatrixProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(MatrixProviderTests PRIVATE UltraIMMatrixCore)
+    target_compile_definitions(MatrixProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME MatrixProviderTests COMMAND MatrixProviderTests)
+    set_tests_properties(MatrixProviderTests PROPERTIES TIMEOUT 300)
+endif()

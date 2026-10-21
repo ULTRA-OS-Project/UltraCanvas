@@ -24,6 +24,10 @@
 //   |                               | [ Message...                       ] [Send]   |
 //   | status line                                                                   |
 //
+// Next to ChatCube Direct, a Matrix account (the "matrix" provider) can be
+// added from the sidebar; its rooms join the same list, and everything done
+// in a conversation goes to that conversation's provider.
+//
 // A call shows a bar across the top of the chat view:
 //
 //   | Incoming video call from Bob                        [Accept] [Decline] |
@@ -89,6 +93,10 @@ private:
     void AddContact();
     void AddContactById(const std::string& id);
     void RefreshNearby();           // the "On this network" list
+    void ToggleMatrixForm();
+    void SignInToMatrix(bool stored);
+    // The provider of a conversation (Direct, or Matrix for its rooms).
+    std::string ProviderOf(const std::string& conversationId) const;
     void ToggleGroupForm();
     void CreateGroup();
     void CopyMyId();
@@ -135,6 +143,14 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupMembers_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> nearbyBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixServer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixUser_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixSignIn_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
+    std::string matrixProviderId_ = "matrix";
+    std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;
 

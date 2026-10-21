@@ -26,6 +26,10 @@ The first ChatCube draft, which this replaces, is kept under
    network are listed under *On this network* - **Add** takes them over
    without typing anything.
 3. **New group** takes a name and the members' IDs, separated by commas.
+   **Matrix account** signs in to a Matrix homeserver (`matrix.org`, or your
+   own) with your user name and password; your Matrix rooms then sit in the
+   same list, and a Matrix ID (`@name:server`) in *Add* or *New group* goes
+   there. Encrypted Matrix rooms cannot be read in this version.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    green `✓✓` read.

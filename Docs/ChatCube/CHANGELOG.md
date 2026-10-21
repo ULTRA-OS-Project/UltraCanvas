@@ -27,6 +27,16 @@
   ID with its key before anything is exchanged. Next to a relay, *Also find
   people on this network* keeps the conversation going when the relay is
   out of reach. Groups still need a relay.
+- **Matrix.** *Matrix account* in the sidebar signs in to any Matrix
+  homeserver; your direct chats and rooms join the conversation list next to
+  ChatCube Direct, with replies, edits, deletions, typing, read ticks and
+  unread counts. An invitation shows in the list; answering it accepts it.
+  Add someone on Matrix by their `@name:server`. The sign-in is kept, so
+  ChatCube reconnects by itself. Not yet: end-to-end encrypted rooms (they
+  show that they are encrypted, and cannot be written in), pictures and
+  files, calls.
+- History that arrives late (a Matrix invitation's messages, once it is
+  accepted) takes its place by time instead of coming last.
 - A call the other person hangs up now always ends as a hang-up: the closing
   connection used to arrive before the hang-up message and reported the
   call as lost.
