@@ -2,6 +2,7 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
+// Version: 0.3.2 - the SQLite driver reports a statement's own changes only
 // Version: 0.3.1
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
@@ -189,7 +190,7 @@ IUltraDbDriverPlugin* UltraDatabase_GetDriver(const std::string& driverId) {
 // Core (public, declared in UltraDatabaseCore.h)
 // ============================================================================
 
-std::string UltraDatabase_GetVersion() { return "0.3.1"; }
+std::string UltraDatabase_GetVersion() { return "0.3.2"; }
 
 std::vector<std::string> UltraDatabase_GetSupportedDrivers() {
     EnsureBuiltins();
