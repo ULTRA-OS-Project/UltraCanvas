@@ -353,7 +353,9 @@ library out without a word - so `.claude/settings.json` also runs
 (`$CLAUDE_CODE_REMOTE=true`) it installs every package in its `PACKAGES` list
 that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
 Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
-builds them from source. Without it, UltraCrypt built without libsodium and
+builds them from source - the libraries of the MQTT, AMQP, CoAP, SNMP and
+SSH plug-ins among them, which neither installed until 2026-10, so a change
+to one of those five compiled nowhere. Without it, UltraCrypt built without libsodium and
 every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
