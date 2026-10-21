@@ -411,6 +411,10 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
     structureInfo_ = MakeBarStatus("dbaStructureInfo");
     infoBar->AddChild(structureInfo_);
 
+    renameTableButton_ = MakeToolbarButton("dbaRenameTable", "Rename table…", "Stage a new name for the table");
+    renameTableButton_->SetOnClick([this]() { RenameTable(); });
+    infoBar->AddChild(renameTableButton_);
+
     structurePreviewButton_ = MakeToolbarButton("dbaStructurePreview", "Preview SQL…", "The statements Apply will run");
     structurePreviewButton_->SetOnClick([this]() { PreviewStructure(); });
     infoBar->AddChild(structurePreviewButton_);
@@ -490,10 +494,6 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructureBar() {
                                          "Stage dropping the index selected in the list of keys and indexes");
     dropIndexButton_->SetOnClick([this]() { DropSelectedIndex(); });
     bar->AddChild(dropIndexButton_);
-
-    renameTableButton_ = MakeToolbarButton("dbaRenameTable", "Rename table…", "Stage a new name for the table");
-    renameTableButton_->SetOnClick([this]() { RenameTable(); });
-    bar->AddChild(renameTableButton_);
 
     structurePending_ = MakeBarStatus("dbaStructurePending");
     bar->AddChild(structurePending_);
@@ -1625,8 +1625,7 @@ void DbAdminWindow::UpdateStructureBar() {
         part(structure_.DroppedIndexes().size(), "index to drop", "indexes to drop");
         if (!structure_.NewName().empty()) parts.push_back("renamed to " + structure_.NewName());
         for (size_t i = 0; i < parts.size(); ++i) text += (i == 0 ? "" : ", ") + parts[i];
-        if (structure_.NeedsRebuild()) text += " (a rebuild)";
-        text += applying_ ? " - applying…" : " - not yet applied";
+        text += applying_ ? " - applying…" : " - not applied";
     } else {
         text = editable ? std::string("Double-click a column to change it.") : blocked;
     }

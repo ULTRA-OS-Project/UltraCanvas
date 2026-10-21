@@ -461,11 +461,15 @@ UltraDbResult StructureEdit::Plan(const std::string& connection, const SqliteTab
             if (!original || draft.dropped || !DefinitionChanged(i)) continue;
             const ColumnDraft was = DraftOf(*original);
             const std::string column = alter + " ALTER COLUMN " + quote(draft.origin);
-            const bool defaultChanged = draft.hasDefault != was.hasDefault ||
+            const bool typeChanged = draft.type != was.type;
+            // A default is dropped before the type changes and set again
+            // after: PostgreSQL does not convert it with USING, and one
+            // written for the old type ('1'::text) fails there rather than
+            // at SET DEFAULT, where its error says what to rewrite.
+            const bool defaultChanged = typeChanged || draft.hasDefault != was.hasDefault ||
                                         (draft.hasDefault && draft.defaultExpression != was.defaultExpression);
-            // The old default goes before the type changes: it may not convert.
             if (defaultChanged && was.hasDefault) add(DdlStep::Phase::Inside, column + " DROP DEFAULT");
-            if (draft.type != was.type) {
+            if (typeChanged) {
                 add(DdlStep::Phase::Inside, column + " TYPE " + draft.type + " USING CAST(" + quote(draft.origin) +
                                                 " AS " + draft.type + ")");
             }

@@ -718,6 +718,24 @@ void TestStructureEditPostgres() {
                   .Row(0)["n"].AsInt64() == 3,
           "the renamed column and the new one, filled by its default");
 
+    // A type change keeps an unchanged default, set again after the conversion.
+    UltraDb_Exec(c, "ALTER TABLE " + items + " ADD COLUMN code text DEFAULT 'x'");
+    UltraDb_DescribeTable(c, schema, "items", table);
+    StructureEdit retype(table, SqlEngine::Postgres);
+    draft = retype.Columns()[ColumnAt(retype, "code")];
+    draft.type = "varchar(10)";
+    retype.UpdateColumn(ColumnAt(retype, "code"), draft, error);
+    Check(retype.Plan(c, SqliteTableSource(), steps).success &&
+              StepWith(steps, "\"code\" DROP DEFAULT") < StepWith(steps, "\"code\" TYPE varchar(10)") &&
+              StepWith(steps, "\"code\" TYPE varchar(10)") < StepWith(steps, "\"code\" SET DEFAULT 'x'::text") &&
+              StepWith(steps, "\"code\" SET DEFAULT 'x'::text") < steps.size(),
+          "a default is dropped before a type change and set again after it");
+    Check(ApplyEdit(c, retype, message), "and the change applies (" + message + ")");
+    UltraDb_Exec(c, "INSERT INTO " + items + " (label) VALUES ('c')");
+    Check(Rows(c, "SELECT code FROM " + items + " WHERE label = 'c'").Row(0)["code"].AsString() == "x",
+          "with the default still there");
+    UltraDb_Exec(c, "ALTER TABLE " + items + " DROP COLUMN code");
+
     // A conversion that fails leaves the table as it was.
     UltraDb_DescribeTable(c, schema, "items", table);
     StructureEdit failing(table, SqlEngine::Postgres);

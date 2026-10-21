@@ -7,7 +7,7 @@
   stage a change, which the lists mark and the bar counts; **Preview SQL…**
   shows the DDL and **Apply** runs it in one transaction, while **Revert**
   drops it. PostgreSQL gets `ALTER TABLE` for everything, a type change
-  converting with `USING CAST`. SQLite gets its own `ALTER TABLE` where it
+  converting with `USING CAST` and its default set again after it. SQLite gets its own `ALTER TABLE` where it
   has one, and for a change of a column's type, NOT NULL or default the
   documented rebuild: the new table is the old `CREATE TABLE` with only that
   column rewritten - so CHECK constraints, foreign keys, COLLATE,
