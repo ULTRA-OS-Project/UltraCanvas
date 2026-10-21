@@ -89,14 +89,15 @@ jobs:
       # What vcpkg's ports build with on a Linux host besides the compilers
       # (the NDK's) and cmake / ninja / meson (vcpkg fetches its own):
       # autotools for gettext, libiconv and libffi, gperf for fontconfig,
-      # bison and flex for the odd generator.
+      # bison and flex for the odd generator. ImageMagick: the APK's launcher
+      # icons, sized from media/appicon/Demo.png (android-package-apk.sh).
       - name: Install host tools
         timeout-minutes: 20
         run: |
           scripts/ci-apt.sh update
           scripts/ci-apt.sh install --no-install-recommends \
             autoconf autoconf-archive automake libtool gperf bison flex \
-            pkg-config python3 python3-venv curl zip unzip tar git
+            pkg-config python3 python3-venv curl zip unzip tar git imagemagick
 
       # vcpkg's binary cache: each library it built, as one archive per
       # package. Keyed by the manifest, the libvips overlay and the script

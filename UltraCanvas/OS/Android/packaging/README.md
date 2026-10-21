@@ -84,11 +84,16 @@ scripts/android-package-apk.sh --abi x86_64 \
 
 1. `UltraCanvasActivity.java` is compiled against `android.jar` and turned
    into `classes.dex` (`javac`, `d8`).
-2. `aapt2 link` writes the manifest here, with `minSdk 28` and
-   `targetSdk 34`, and the assets.
-3. The library goes in stripped (the NDK's Release build keeps its debug
+2. The launcher icon the manifest names (`@mipmap/ic_launcher`) is made from
+   `media/appicon/Demo.png` (`--icon` picks another) at the five launcher
+   densities, 48 to 192 px, each square with the image centred on
+   transparency, so a non-square icon is not stretched (ImageMagick, then
+   `aapt2 compile`).
+3. `aapt2 link` writes the manifest here, with `minSdk 28` and
+   `targetSdk 34`, the icon and the assets.
+4. The library goes in stripped (the NDK's Release build keeps its debug
    information) and stored, under `lib/<abi>/`.
-4. `zipalign` puts the library on a page boundary, and `apksigner` signs with
+5. `zipalign` puts the library on a page boundary, and `apksigner` signs with
    a key made for the run: a debug APK for a test install, not one for a
    store. The script then verifies the signature and prints what a device
    reads from the package.

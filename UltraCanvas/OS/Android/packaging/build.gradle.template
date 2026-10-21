@@ -80,6 +80,9 @@ android {
             // Anything the app loads by path at runtime. Unpacked to
             // $HOME/share on first launch by UltraCanvasAndroidAssets.cpp.
             assets.srcDirs = ['src/main/assets']
+            // The launcher icon the manifest names: res/mipmap-*/ic_launcher.png
+            // at each density (scripts/android-package-apk.sh shows the sizes).
+            res.srcDirs = ['src/main/res']
             // The cross-compiled cairo/pango/glib/... .so files.
             jniLibs.srcDirs = ['src/main/jniLibs']
         }

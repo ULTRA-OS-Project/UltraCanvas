@@ -3,7 +3,8 @@
 # with the Android SDK's build tools - no Gradle.
 #
 #   1. UltraCanvasActivity.java -> classes.dex   (javac, d8)
-#   2. AndroidManifest.xml + assets/ -> base APK (aapt2 link)
+#   2. the launcher icon at every screen density (ImageMagick, aapt2 compile)
+#      + AndroidManifest.xml + assets/ -> base APK (aapt2 link)
 #   3. + classes.dex + lib/<abi>/lib<App>.so     (stripped with the NDK's llvm-strip)
 #   4. zipalign, then apksigner with a throwaway debug key
 #
@@ -20,7 +21,7 @@
 # runs, and it needs nothing a GitHub Ubuntu runner does not have already.
 #
 # Usage: scripts/android-package-apk.sh --abi ABI --lib PATH --out APK
-#            [--ndk DIR] [--sdk DIR] [--version-name X.Y.Z]
+#            [--ndk DIR] [--sdk DIR] [--version-name X.Y.Z] [--icon PNG]
 #   ABI      arm64-v8a or x86_64 (the directory under lib/ in the APK)
 #   --lib    the app library, e.g. build-android/lib/libUltraCanvasDemo.so;
 #            its name must match the manifest's android.app.lib_name
@@ -28,6 +29,8 @@
 #   --sdk    defaults to $ANDROID_SDK_ROOT / $ANDROID_HOME
 #   --version-name  defaults to the framework version, line 1 of
 #            Docs/UltraCanvas/CHANGELOG.md
+#   --icon   the launcher icon, any size or shape; defaults to the demo's,
+#            media/appicon/Demo.png. Needs ImageMagick (magick or convert).
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,7 +39,7 @@ java_root="$repo/UltraCanvas/OS/Android/java"
 min_sdk=28      # what the dependency sysroot is built for (packaging/README.md)
 target_sdk=34
 
-abi="" lib="" out="" ndk="" sdk="" version_name=""
+abi="" lib="" out="" ndk="" sdk="" version_name="" icon="$repo/media/appicon/Demo.png"
 while [ $# -gt 0 ]; do
     case "$1" in
         --abi) abi="$2"; shift 2 ;;
@@ -45,6 +48,7 @@ while [ $# -gt 0 ]; do
         --ndk) ndk="$2"; shift 2 ;;
         --sdk) sdk="$2"; shift 2 ;;
         --version-name) version_name="$2"; shift 2 ;;
+        --icon) icon="$2"; shift 2 ;;
         *) echo "android-package-apk: unknown argument $1" >&2; exit 2 ;;
     esac
 done
@@ -71,6 +75,9 @@ for tool in aapt2 d8 zipalign apksigner; do
 done
 strip="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
 [ -x "$strip" ] || die "no llvm-strip in the NDK at $strip"
+[ -f "$icon" ] || die "no icon at $icon"
+magick="$(command -v magick || command -v convert || true)"
+[ -n "$magick" ] || die "ImageMagick not found (magick or convert), needed for the launcher icon"
 
 if [ -z "$version_name" ]; then
     version_name="$(head -1 "$repo/Docs/UltraCanvas/CHANGELOG.md" | grep -o '\*[0-9][0-9.]*\*' | tr -d '*')"
@@ -109,12 +116,24 @@ done
 cp "$repo"/Apps/DemoApp/*.cpp "$repo"/Apps/DemoApp/*.h "$assets/DemoApp/"
 echo "  assets $(du -sh "$assets" | cut -f1)"
 
-# ---- 3. Manifest + assets, then the dex and the stripped library.
+# ---- 3. The launcher icon the manifest names (@mipmap/ic_launcher): one
+# square PNG per screen density, the source scaled to fit and centred on
+# transparency, so an icon that is not square is not stretched. The launcher
+# picks the density of the screen; 192 px is xxxhdpi, the largest.
+for density in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+    px="${density#*:}"
+    mkdir -p "$work/res/mipmap-${density%%:*}"
+    "$magick" "$icon" -background none -resize "${px}x${px}" -gravity center \
+              -extent "${px}x${px}" "PNG32:$work/res/mipmap-${density%%:*}/ic_launcher.png"
+done
+"$build_tools/aapt2" compile --dir "$work/res" -o "$work/res.zip"
+
+# ---- 4. Manifest, icon and assets, then the dex and the stripped library.
 "$build_tools/aapt2" link -o "$work/base.apk" \
       --manifest "$packaging/AndroidManifest.xml" -I "$android_jar" \
       --min-sdk-version "$min_sdk" --target-sdk-version "$target_sdk" \
       --version-code "$version_code" --version-name "$version_name" \
-      -A "$assets"
+      -A "$assets" "$work/res.zip"
 mkdir -p "$work/stage/lib/$abi"
 cp "$work/dex/classes.dex" "$work/stage/"
 "$strip" --strip-unneeded -o "$work/stage/lib/$abi/$(basename "$lib")" "$lib"
@@ -123,7 +142,7 @@ echo "  $(basename "$lib") $(du -h "$lib" | cut -f1) -> $(du -h "$work/stage/lib
 # boundary, so Android can map it straight from the APK.
 (cd "$work/stage" && zip -q "$work/base.apk" classes.dex && zip -q -0 -r "$work/base.apk" lib)
 
-# ---- 4. Align and sign. A debug key made here: an APK for a test install,
+# ---- 5. Align and sign. A debug key made here: an APK for a test install,
 # not for a store (a release key is the publisher's, and never in CI).
 # -P 16 aligns stored libraries to 16 KB pages (build-tools 35 and later);
 # older zipalign knows only 4 KB pages (-p).
@@ -140,5 +159,5 @@ mkdir -p "$(dirname "$out")"
 # native code it declares.
 "$build_tools/apksigner" verify --min-sdk-version "$min_sdk" "$out"
 "$build_tools/aapt2" dump badging "$out" |
-    grep -E "^(package|sdkVersion|targetSdkVersion|launchable-activity|native-code):" || true
+    grep -E "^(package|sdkVersion|targetSdkVersion|application-icon-[0-9]+|launchable-activity|native-code):" || true
 echo "android-package-apk: $out ($(du -h "$out" | cut -f1))"

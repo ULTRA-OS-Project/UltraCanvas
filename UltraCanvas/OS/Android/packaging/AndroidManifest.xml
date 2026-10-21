@@ -36,8 +36,14 @@
          but not required. Every minSdk-28 device ships ES 3.x anyway. -->
     <uses-feature android:glEsVersion="0x00030000" android:required="false"/>
 
+    <!-- android:icon is the launcher icon: a mipmap/ic_launcher resource at
+         each screen density. scripts/android-package-apk.sh makes them from
+         media/appicon/Demo.png; an app built otherwise must supply its own
+         res/mipmap-*/ic_launcher.png, or the link fails on the missing
+         resource. -->
     <application
         android:label="UltraCanvas"
+        android:icon="@mipmap/ic_launcher"
         android:hasCode="true">
 
         <!-- android:name is UltraCanvasActivity, NOT android.app.NativeActivity:
