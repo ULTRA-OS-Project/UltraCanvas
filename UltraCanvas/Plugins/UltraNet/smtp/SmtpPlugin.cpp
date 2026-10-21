@@ -10,12 +10,15 @@
 //
 // This is the canonical reference implementation for the
 // I<Category>ProtocolPlugin plug-in contract.
+// Version: 0.2.1 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result, never ends the process
 // Version: 0.2.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetCurlDebug.h>
@@ -92,108 +95,114 @@ public:
         return {"smtp", "smtps"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {}
 
     UltraNetResult SendMail(const UltraNetMailMessage& message,
                             const UltraNetMailOptions& options) override {
-        if (options.serverUrl.empty()) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                "UltraNetMailOptions::serverUrl is required for SMTP");
-        }
-        if (message.from.empty()) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                         "UltraNetMailMessage::from is empty");
-        }
-        if (message.to.empty() && message.cc.empty() && message.bcc.empty()) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                         "no recipients");
-        }
-
-        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-            curl_easy_init(), curl_easy_cleanup);
-        if (!h) {
-            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
-                                         "curl_easy_init() failed");
-        }
-
-        ultranet_curldebug::EnableIfRequested(h.get());
-
-        curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
-
-        // TLS is required either way here (CURLUSESSL_ALL below).
-        ultranet_curlmailauth::RecordContext(
-            std::string("UltraNet SMTP plug-in ") + kPluginVersion, options,
-            ultranet_curlmailauth::Protocol::Smtp,
-            options.implicitTls || options.serverUrl.rfind("smtps://", 0) == 0,
-            /*startTlsRequired=*/true);
-        if (UltraNetResult a = ultranet_curlmailauth::Apply(
-                h.get(), options, ultranet_curlmailauth::Protocol::Smtp); !a)
-            return a;
-        if (options.useTls || options.implicitTls) {
-            // Require TLS for both modes: implicit (smtps://host:465, TLS from
-            // connect) and STARTTLS upgrade (smtp://host:587). CURLUSESSL_ALL
-            // fails the transfer if TLS cannot be established instead of silently
-            // continuing in plaintext — the IMAP plug-in enforces TLS the same
-            // way, and relying on the smtps:// scheme alone left the implicit
-            // path without this guarantee.
-            curl_easy_setopt(h.get(), CURLOPT_USE_SSL, CURLUSESSL_ALL);
-            // Trust the same CA anchors as the HTTP client. Matters on Windows,
-            // where the system libcurl's baked-in CA path does not exist on an
-            // end user's machine; empty leaves libcurl's own default in place.
-            const std::string caBundle = UltraNet_ResolveCaBundlePath();
-            if (!caBundle.empty())
-                curl_easy_setopt(h.get(), CURLOPT_CAINFO, caBundle.c_str());
-            // Windows: system certificate store + browser-style revocation check.
-            ultranet_curltls::Apply(h.get());
-        }
-
-        // The envelope (MAIL FROM / RCPT TO) takes the bare addr-spec only —
-        // never the display name that the MIME From:/To: headers carry, or the
-        // server rejects "<Name <addr>>" (Gmail: 555 5.5.2 Syntax error).
-        const std::string fromAngle = ultranet_mailaddr::EnvelopeAddr(message.from);
-        curl_easy_setopt(h.get(), CURLOPT_MAIL_FROM, fromAngle.c_str());
-
-        curl_slist* recipients = nullptr;
-        auto addAll = [&](const std::vector<std::string>& list) {
-            for (const auto& addr : list) {
-                recipients = curl_slist_append(
-                    recipients, ultranet_mailaddr::EnvelopeAddr(addr).c_str());
+        return ultranet_plugin::Guarded("SendMail", [&]() -> UltraNetResult {
+            if (options.serverUrl.empty()) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                    "UltraNetMailOptions::serverUrl is required for SMTP");
             }
-        };
-        addAll(message.to);
-        addAll(message.cc);
-        addAll(message.bcc);
-        std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
-            recGuard(recipients, curl_slist_free_all);
-        curl_easy_setopt(h.get(), CURLOPT_MAIL_RCPT, recipients);
+            if (message.from.empty()) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                             "UltraNetMailMessage::from is empty");
+            }
+            if (message.to.empty() && message.cc.empty() && message.bcc.empty()) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                             "no recipients");
+            }
 
-        const std::string payload = UltraNet_MimeBuildMailMessage(message);
-        UploadCursor cursor{payload.data(), payload.size()};
-        curl_easy_setopt(h.get(), CURLOPT_READFUNCTION, &ReadCallback);
-        curl_easy_setopt(h.get(), CURLOPT_READDATA,     &cursor);
-        curl_easy_setopt(h.get(), CURLOPT_UPLOAD,       1L);
-        curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
-                         static_cast<curl_off_t>(payload.size()));
+            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                curl_easy_init(), curl_easy_cleanup);
+            if (!h) {
+                return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                             "curl_easy_init() failed");
+            }
 
-        curl_easy_setopt(h.get(), CURLOPT_CONNECTTIMEOUT_MS,
-                         static_cast<long>(options.connectTimeoutMs));
-        curl_easy_setopt(h.get(), CURLOPT_TIMEOUT_MS,
-                         static_cast<long>(options.operationTimeoutMs));
-        curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
+            ultranet_curldebug::EnableIfRequested(h.get());
 
-        std::string why, diagnostics;
-        CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
-        if (rc == CURLE_OK) return UltraNetResult::Ok();
-        return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
+            curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
+
+            // TLS is required either way here (CURLUSESSL_ALL below).
+            ultranet_curlmailauth::RecordContext(
+                std::string("UltraNet SMTP plug-in ") + kPluginVersion, options,
+                ultranet_curlmailauth::Protocol::Smtp,
+                options.implicitTls || options.serverUrl.rfind("smtps://", 0) == 0,
+                /*startTlsRequired=*/true);
+            if (UltraNetResult a = ultranet_curlmailauth::Apply(
+                    h.get(), options, ultranet_curlmailauth::Protocol::Smtp); !a)
+                return a;
+            if (options.useTls || options.implicitTls) {
+                // Require TLS for both modes: implicit (smtps://host:465, TLS from
+                // connect) and STARTTLS upgrade (smtp://host:587). CURLUSESSL_ALL
+                // fails the transfer if TLS cannot be established instead of silently
+                // continuing in plaintext — the IMAP plug-in enforces TLS the same
+                // way, and relying on the smtps:// scheme alone left the implicit
+                // path without this guarantee.
+                curl_easy_setopt(h.get(), CURLOPT_USE_SSL, CURLUSESSL_ALL);
+                // Trust the same CA anchors as the HTTP client. Matters on Windows,
+                // where the system libcurl's baked-in CA path does not exist on an
+                // end user's machine; empty leaves libcurl's own default in place.
+                const std::string caBundle = UltraNet_ResolveCaBundlePath();
+                if (!caBundle.empty())
+                    curl_easy_setopt(h.get(), CURLOPT_CAINFO, caBundle.c_str());
+                // Windows: system certificate store + browser-style revocation check.
+                ultranet_curltls::Apply(h.get());
+            }
+
+            // The envelope (MAIL FROM / RCPT TO) takes the bare addr-spec only —
+            // never the display name that the MIME From:/To: headers carry, or the
+            // server rejects "<Name <addr>>" (Gmail: 555 5.5.2 Syntax error).
+            const std::string fromAngle = ultranet_mailaddr::EnvelopeAddr(message.from);
+            curl_easy_setopt(h.get(), CURLOPT_MAIL_FROM, fromAngle.c_str());
+
+            curl_slist* recipients = nullptr;
+            auto addAll = [&](const std::vector<std::string>& list) {
+                for (const auto& addr : list) {
+                    recipients = curl_slist_append(
+                        recipients, ultranet_mailaddr::EnvelopeAddr(addr).c_str());
+                }
+            };
+            addAll(message.to);
+            addAll(message.cc);
+            addAll(message.bcc);
+            std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
+                recGuard(recipients, curl_slist_free_all);
+            curl_easy_setopt(h.get(), CURLOPT_MAIL_RCPT, recipients);
+
+            const std::string payload = UltraNet_MimeBuildMailMessage(message);
+            UploadCursor cursor{payload.data(), payload.size()};
+            curl_easy_setopt(h.get(), CURLOPT_READFUNCTION, &ReadCallback);
+            curl_easy_setopt(h.get(), CURLOPT_READDATA,     &cursor);
+            curl_easy_setopt(h.get(), CURLOPT_UPLOAD,       1L);
+            curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
+                             static_cast<curl_off_t>(payload.size()));
+
+            curl_easy_setopt(h.get(), CURLOPT_CONNECTTIMEOUT_MS,
+                             static_cast<long>(options.connectTimeoutMs));
+            curl_easy_setopt(h.get(), CURLOPT_TIMEOUT_MS,
+                             static_cast<long>(options.operationTimeoutMs));
+            curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
+
+            std::string why, diagnostics;
+            CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
+            if (rc == CURLE_OK) return UltraNetResult::Ok();
+            return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
+        });
     }
 
     UltraNetResult FetchMessages(const std::string&,
                                  std::vector<UltraNetMailMessage>&,
                                  const UltraNetMailOptions&) override {
-        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-            "SMTP plug-in only sends; install the IMAP / POP3 plug-in to fetch");
+        return ultranet_plugin::Guarded("FetchMessages", [&]() -> UltraNetResult {
+            return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
+                "SMTP plug-in only sends; install the IMAP / POP3 plug-in to fetch");
+        });
     }
 };
 
