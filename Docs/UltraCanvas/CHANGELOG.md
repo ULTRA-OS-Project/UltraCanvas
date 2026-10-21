@@ -1,3 +1,47 @@
+#### 2026-10-21 *0.9.368*
+- **Application changelogs take pending entries too, so app version numbers
+  stop colliding between pull requests.** A change to an application now drops
+  its bullets in `Docs/<App>/changelog.d/<change-name>.md` — no header, no
+  number — exactly as framework changes already did in
+  `Docs/UltraCanvas/changelog.d/`. On 2026-10-21 one pull request had to be
+  renumbered five times (UltraFiler 1.77.1 → 1.83.0 → 1.87.0, UltraPaint
+  0.2.26 → 0.2.27), because every other merge took the next app version and
+  conflicted with it on line 1 of the changelog and of UltraFiler's `.rc` and
+  `.manifest`; two files never conflict.
+  - `scripts/fold_changelog.py` folds every product's pending entries on
+    `main`, each into its own `CHANGELOG.md` under its own next version. The
+    step follows each file's habit — the component that changed between its
+    two latest releases (UltraFiler 1.88.0 → 1.89.0, UltraPaint 0.2.28 →
+    0.2.29, Texter 1.69 → 1.70, the framework 0.9.x → 0.9.x+1) — and never
+    goes below the highest version in the file. `--version UltraFiler=2.0.0`
+    overrides one app; a bare `--version` is still the framework's.
+  - Folding UltraFiler or UltraTexter runs `./set-version.sh`, and the fold
+    commit carries their `.rc` and `.manifest`; a branch no longer touches
+    them. The commit names every version folded
+    (`Changelog: 0.9.365, UltraFiler 1.89.0`).
+  - The release build skips a merge commit with any product's entry pending,
+    not only the framework's, and builds the fold commit instead — once — so
+    no app ships under its previous number.
+  - `scripts/check_changelog.py` applies the framework's rules to every
+    product's `changelog.d/` (no `####` header, not empty) and refuses entries
+    in a `changelog.d/` that belongs to no declared changelog. A hand-written
+    top entry for a hotfix is still accepted and checked as before.
+- **No exception leaves any UltraNet plug-in.** The guard the JMAP plug-in
+  got (an exception inside an entry point becomes a `PluginError` result
+  naming the call and the reason, instead of reaching a caller's worker
+  thread with no handler and ending the process) now lives in
+  `Plugins/UltraNet/common/UltraNetPluginGuard.h` (`ultranet_plugin::Guarded`,
+  `GuardedHandle`, `GuardedVoid`) and wraps every entry point of every
+  plug-in: the mail four (IMAP, SMTP, POP3, JMAP - sending, the bulk fetch,
+  folders, status, envelopes, messages, flags, moves, appends, expunge, the
+  folder reconcile, creating and deleting folders), the messaging ones
+  (MQTT, AMQP, CoAP: Connect, Publish, Subscribe), gRPC, the directories
+  (LDAP, mDNS, SNMP: Search), the streams (RTSP, RTMP, RTP: OpenStream,
+  ReadFrame), the remote shells (SSH, Telnet, SIP: OpenShell,
+  ExecuteCommand), WebDAV's file operations, and every Initialize and
+  Shutdown. A connect or open that throws reads as `UltraNetInvalidHandle`,
+  as every failure of those calls does.
+
 #### 2026-10-21 *0.9.367*
 - **UltraDatabase 0.3.1: re-registering or closing a connection no longer
   frees it under a running call.** `UltraDb_RegisterConnection` and
