@@ -14,6 +14,9 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.10.0 - loan-offer-fraud (a loan, credit or project funding offered by
+//                   anyone but a proven bank; its own switch, loanOffers);
+//                   kThreatRulesRevision 2026-10-21
 // Version: 0.9.0 - SenderLists: senders the reader trusts (only the findings that
 //                  catch a lie or a forgery count for them) and blocks (blocked-sender,
 //                  their mail marked as spam)
@@ -82,6 +85,7 @@ struct ThreatScanOptions {
                                  // claimed, credentials asked for, forged senders
     bool romance       = true;   // romance-scam
     bool advanceFee    = true;   // advance-fee-fraud, reply-elsewhere
+    bool loanOffers    = true;   // loan-offer-fraud: a loan or credit not offered by a bank
     bool government    = true;   // government-impersonation
     bool cryptoScams   = true;   // crypto-wallet-secret, -payment-demand, -investment-lure
     bool cryptoCaution = true;   // crypto-content: the caution on any mail about crypto
@@ -209,7 +213,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1791590400;   // 2026-10-10 00:00 UTC
+constexpr long long kThreatRulesRevision = 1792540800;   // 2026-10-21 00:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication
