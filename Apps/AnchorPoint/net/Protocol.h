@@ -8,11 +8,12 @@
 #include "Transport.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <string>
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 // Wire frame: [1 byte type][4 byte big-endian length N][N bytes payload].
 enum class MsgType : uint8_t {
@@ -43,9 +44,16 @@ using ProgressFn = std::function<void(uint64_t, uint64_t)>;
 
 struct TransferResult {
     bool ok = false;
+    bool cancelled = false;   // stopped through the `cancel` flag; error says so
     std::string error;
     uint64_t bytes = 0;
 };
+
+// Optional stop request, set from another thread. Checked between chunks; a
+// call blocked on the network is woken with IConnection::Interrupt(). The peer
+// is told, and the result has `cancelled` set. A receiver keeps the partial
+// file, so receiving the same file again resumes it.
+using CancelFlag = const std::atomic<bool>*;
 
 // Reduces a file name that came off the wire to one that can only name a file
 // directly inside the receiver's save folder. Keeps the last component, split
@@ -61,7 +69,8 @@ bool SafeFileName(const std::string& wireName, std::string& outName);
 TransferResult SendFile(IConnection& conn,
                         const std::string& filePath,
                         const std::string& displayName,
-                        ProgressFn onProgress = nullptr);
+                        ProgressFn onProgress = nullptr,
+                        CancelFlag cancel = nullptr);
 
 // ---- Receiver side --------------------------------------------------------
 // Decides whether to accept an incoming offer. `OfferInfo::fileName` has already
@@ -74,6 +83,7 @@ using AcceptFn = std::function<std::string(const OfferInfo&, const std::string& 
 // Receives one offered file. `accept` chooses the destination (or rejects).
 TransferResult ReceiveFile(IConnection& conn,
                            const AcceptFn& accept,
-                           ProgressFn onProgress = nullptr);
+                           ProgressFn onProgress = nullptr,
+                        CancelFlag cancel = nullptr);
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

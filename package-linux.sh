@@ -64,6 +64,10 @@ APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPa
       UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress
       SmartHomeCenter UltraDBAdmin)
 
+# AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
+# the same transfers from a terminal. Both output to bin/.
+APPS+=(AnchorPoint anchorpoint-cli)
+
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
 # libstdc++ / libgcc_s ARE bundled on purpose so the package runs on older distros.

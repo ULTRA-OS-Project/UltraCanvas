@@ -1533,12 +1533,12 @@ jobs:
           fi
           echo "VideoFX engine built and VideoFXTest ran"
 
-      # AnchorPoint is its own CMake project and not part of the build above,
-      # so nothing here built it: its standalone link broke (UltraCrypt had
-      # started calling the shared Base32 codec) and nobody saw. Build the core
-      # and CLI the way its README says, and run the protocol tests - they
-      # replay hostile file names against the receiver. Needs only libsodium,
-      # which is installed above.
+      # AnchorPoint is also its own CMake project. The build above includes it
+      # (BUILD_ANCHORPOINT), which builds the window against the framework; this step builds the core and CLI *without* the framework,
+      # the way its README says - that standalone link once broke (UltraCrypt
+      # had started calling the shared Base32 codec) and nobody saw - and runs
+      # the protocol tests: hostile file names against the receiver, and
+      # stopping a transfer. Needs only libsodium, which is installed above.
       - name: AnchorPoint core, CLI and protocol tests (Linux)
         if: runner.os == 'Linux'
         shell: bash

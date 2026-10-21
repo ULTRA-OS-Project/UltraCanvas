@@ -264,6 +264,9 @@ if(ANDROID)
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
+    # APPLE) and asks pkg-config for X11.
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
     # libvips is not in this list: it is part of UltraCanvas on Android as on
     # every platform, built into the sysroot with the rest of the stack
@@ -351,6 +354,7 @@ if(EMSCRIPTEN)
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
     set(BUILD_ULTRAPASSWORD OFF CACHE BOOL "Build the UltraPassword application")
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_ULTRAWIN_MANAGER OFF CACHE BOOL "Build the UltraWin Manager application")
     set(BUILD_ULTRAWIN_SETUP OFF CACHE BOOL "Build the ultrawin-setup CLI tool")
     set(BUILD_ULTRAMSG_CLI OFF CACHE BOOL "Build the ultramsg command-line tool")
@@ -766,6 +770,20 @@ endif()
 option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
 if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraPassword)
+endif()
+
+# ===== ANCHORPOINT =====
+# Peer-to-peer file sharing with no server file storage. Apps/AnchorPoint is
+# also its own CMake project (core + CLI build without the framework); here it
+# gets the framework's library and UltraCrypt, so the window is built wherever
+# the framework is. Its command line is `anchorpoint-cli`, so it and the
+# window's `AnchorPoint` stay two files in bin/ on case-insensitive file
+# systems.
+option(BUILD_ANCHORPOINT "Build the AnchorPoint application" ON)
+if(BUILD_ANCHORPOINT AND TARGET UltraCrypt AND ULTRACANVAS_LIBRARY)
+    message(STATUS "")
+    message(STATUS "── Building AnchorPoint ──")
+    add_subdirectory(Apps/AnchorPoint)
 endif()
 
 # ===== DEMO APPLICATION =====
